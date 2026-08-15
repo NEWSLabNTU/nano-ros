@@ -253,9 +253,9 @@ timings are not comparable — use `thumbv7em-none-eabihf`.
 
 ## Work items
 
-**W1 — the contract, written once (REVISED TWICE — see the phase-359 overlap
-above).** Add to `docs/design/ARCHITECTURE.md` §2 (feature axes) as normative
-text:
+**W1 — the contract, written once (LANDED 2026-08-15; REVISED TWICE before it
+was — see the phase-359 overlap above).** In
+`docs/design/ARCHITECTURE.md` §2 as "The `std` / `alloc` contract", normative:
 
 > `alloc` is the heap axis, and it is the ONLY spelling of it: every heap-gated
 > item is `cfg(feature = "alloc")`. `std` implies `alloc`, in one manifest line
@@ -270,7 +270,14 @@ text:
 > `platform-<rtos>` feature — which selects the provider and nothing else.
 
 Every crate feature table points here instead of restating it. *No code.*
-Acceptance: the rule exists in exactly one place.
+Acceptance — the rule exists in exactly one place — is met, and the §2 text also
+carries the reason the manifest edge won over independent axes, so a future
+reader does not re-derive the reversal. One stale claim was corrected while
+there: §2 said "`nros` default features are `["std"]` only", which W3 had already
+made false.
+
+The rule is no longer only text: **W4 asserts every clause of it**, and found a
+crate the hand-sweep behind this text had missed.
 
 *Two superseded drafts, kept because each was wrong in an instructive way.* The
 first said "a crate that declares both must declare `std = ["alloc", …]`" —
@@ -445,44 +452,48 @@ carry `default = []`, and the `generate-lifecycle-msgs` recipe's own closing
 `NOTE` says those manifests get workspace inheritance re-applied by hand after
 generation, so they were never a byte-for-byte template product.
 
-**W4 — the gate (OPEN — the state is right, nothing holds it there).**
-`scripts/check-feature-contract.sh`, wired into `just ci`, asserting over every
-workspace member:
+**W4 — the gate (LANDED 2026-08-15).** `scripts/check-feature-contract.py`,
+wired into `check-fast` beside `check-std-census`, buildless (manifests +
+sources). Six clauses over 212 crates in `packages/`:
 
-- **(a)** the heap has ONE spelling, in both layers. In the manifest: a crate
-  declaring both features lists `std = ["alloc", …]`, and **no other** feature
-  body enables `alloc` or `std` — a capability or platform feature that needs
-  the heap makes the user say so. In the source: every heap gate is
-  `cfg(feature = "alloc")`; `cfg(any(feature = "alloc", feature = "std"))` is
-  rejected outright, because that is the manifest edge re-spelled per use site
-  and it is what W2.a's middle state cost 88 branches. *Two earlier drafts of
-  this clause disagreed with each other and with this one; the overlap section
-  above records why the manifest half won.*
-- **(a′)** the same rule stated for the census's benefit: adding a `cfg` that
-  reaches `std` through anything but the anchored `cfg(feature = "std")` /
-  `cfg(not(feature = "std"))` form hides the site from
-  `check-std-census.py`. (a) forbids the one spelling that actually occurred;
-  the gate on phase-359's side should stop counting selectively, which is
-  issue 0586.
-- **(b)** no `no_std`-capable crate declares a non-empty `default` containing
-  `std` or `alloc`.
+- **(a/manifest)** a crate declaring both features lists `std = ["alloc", …]`,
+  and no OTHER feature body enables `alloc` or `std` — a capability, backend or
+  platform feature REQUIRES the heap and says so with `compile_error!`.
+- **(a/source)** the heap gate has one spelling, `cfg(feature = "alloc")`;
+  `any(feature = "alloc", feature = "std")` is rejected in either order and
+  inside `not(...)`. Comments are stripped first, so the declaration comments
+  explaining WHY that form was rejected are not themselves violations.
+- **(b)** no `no_std`-capable crate has a non-empty `default` containing `std`
+  or `alloc`. Hosted crates may.
 - **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a
-  dependency — catches `nros-platform/{alloc,threading}` and
-  `nros-cpp/global-allocator`, dead declarations found by hand and deleted in
-  W2.b. **The search must cover `tests/`, `benches/` and `examples/`, not just
-  `src/`.** W2.b's hand-grep was `src/`-scoped and therefore called
-  `nros-rmw-cyclonedds/std` dead when it gates two whole integration-test files
-  through an inner `#![cfg]` on the test crate root. A gate repeating that scope
-  would delete a live feature with more authority than the hand-grep had, which
-  is worse than not having the gate.
-- **(d)** no feature listed in a `default` set is UNREACHABLE from every
-  non-`default-features` dep-site in the workspace — catches issue 0584.
-- **(e)** exactly ONE `#[global_allocator]` definition exists in the tree, and
-  it is `nros-platform`'s — the W8.c invariant. A grep-level check: the audit
-  that found four of them was a grep, and the fifth will be too.
+  dependency — searching `tests/`, `benches/` and `examples/` as well as `src/`,
+  for the reason W2.b learned the hard way.
+- **(d)** no feature in a `default` set is unreachable: if every in-workspace
+  dep-site passes `default-features = false` without naming it, it is dead in
+  every real build. Issue 0584's exact shape.
+- **(e)** exactly one `#[global_allocator]`, in `nros-platform`. Test, bench and
+  example targets are exempt — a test binary is its own image and
+  `nros-tests/tests/loan_e2e.rs` legitimately installs a counting allocator. Its
+  ABSENCE is also a failure: the owner going missing is not an improvement.
 
-Acceptance: the script fails on a deliberate reintroduction of each of the five.
-Until it exists, every number in this phase is a measurement, not an invariant.
+*Acceptance was "the script fails on a deliberate reintroduction of each of the
+five".* `--self-test` does exactly that, in-tree, over synthetic trees: 13 cases,
+each clause asserted to FIRE on the violation and to STAY QUIET on the legitimate
+near-miss beside it (a hosted crate defaulting to `std`; a feature used only from
+`tests/` via an inner `#![cfg]`; a `default` feature one dep-site does request;
+an allocator inside a test target; the forbidden spelling appearing in a
+comment). A gate nobody has watched fail is a gate whose polarity nobody knows.
+
+**It found a violation on its first real run.** `nros-rmw-zenoh-staticlib`
+declared both features with `std = ["nros-rmw-zenoh/std"]` — no `alloc`. W2.a's
+hand-sweep had reported twelve crates and this was a thirteenth. That is the
+whole argument for W4 in one line: a hand-sweep's COVERAGE is unverifiable, and
+this phase's every other number is a hand-sweep. Fixed in the same commit.
+
+**Not covered, deliberately.** `examples/**` is out of scope — those are USER
+code (RFC-0026), and the contract's point is that the user spells `std`/`alloc`
+at their own dep-sites. And the census blind spot that (a/source) alludes to is
+phase-359's gate, not this one (issue 0586, fixed upstream).
 
 **W5 — gate the `model = "…"` arm.** Feature-gate
 `ros-launch-manifest-{model,sched}` in `nros-orchestration-ir` (which has no

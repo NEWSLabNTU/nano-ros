@@ -405,7 +405,7 @@ check-fast: \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes \
+    check-std-census check-flavour-lanes check-feature-contract \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2739,6 +2739,21 @@ check-flavour-lanes:
 [group("ci")]
 check-std-census:
     @python3 scripts/check-std-census.py
+
+# phase-360 W4 — the `std`/`alloc` feature contract (ARCHITECTURE.md §2).
+# Six clauses over every crate in `packages/`: `std` implies `alloc` in the
+# MANIFEST and nowhere else, the heap gate has one spelling, no `no_std` crate
+# defaults to `std`, no declared `std`/`alloc` feature is inert, no `default`
+# feature is unreachable from its dep-sites, and exactly one
+# `#[global_allocator]` exists (nros-platform's).
+#
+# Buildless — reads manifests and sources. `--self-test` drives all six over
+# synthetic trees and asserts each FIRES on a deliberate reintroduction; it
+# found a real violation (`nros-rmw-zenoh-staticlib`) on its first real run,
+# which W2.a's hand-sweep had missed.
+[group("ci")]
+check-feature-contract:
+    @python3 scripts/check-feature-contract.py
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.

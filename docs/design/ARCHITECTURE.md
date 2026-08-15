@@ -42,11 +42,54 @@ never cross-implied:
   `rmw_zenoh_cpp` apt package, so the zenoh interop lane runs only on jazzy —
   recorded in `examples/README.md`'s coverage matrix.
 
-`nros` default features are `["std"]` only; the user picks each axis explicitly. **RMW is a
+`nros` declares an EMPTY `default`; the user picks each axis explicitly, and the standard
+library with it (see the `std`/`alloc` contract below). **RMW is a
 declared, language-agnostic selection** (`system.toml` / deploy override / CLI flag), *lowered* by
 the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-deploy-binary
 (nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
 target, not the user-facing knob.
+
+### The `std` / `alloc` contract (phase-360 W1)
+
+Normative. Every crate feature table points here rather than restating it.
+
+> **`alloc` is the heap axis, and it is the only spelling of it.** Every
+> heap-gated item is `#[cfg(feature = "alloc")]`. `cfg(any(feature = "alloc",
+> feature = "std"))` is not an alternative spelling — see below.
+>
+> **`std` implies `alloc`, in one manifest line per crate** (`std = ["alloc",
+> …]`) and nowhere else. A hosted consumer therefore never has to name `alloc`;
+> an embedded one never acquires a heap without asking.
+>
+> **No feature other than `std` may enable `alloc`, and none may enable `std`.**
+> A capability, backend or platform feature that needs the heap says so with
+> `compile_error!` naming the feature the user must add — it does not turn it on
+> for them. Selecting a BACKEND or a PLATFORM must not change whether the image
+> has a heap.
+>
+> **No `no_std`-capable crate declares a non-empty `default` containing `std` or
+> `alloc`.**
+>
+> Orthogonally: **`malloc` and `panic` are unified per platform.** Exactly one
+> `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
+> `platform-<rtos>` feature — which selects the provider and nothing else.
+
+**Why the implication lives in the manifest and not in `cfg`s.** The one-line
+form was briefly replaced by independent axes, with the implication respelled at
+the use sites as `cfg(any(feature = "alloc", feature = "std"))`. The semantics
+were identical — a `std` build has a heap either way — but it put one fact in 123
+places and added 88 `std`-mentioning branches for phase-359 (which DELETES `std`
+from these crates) to unwind, 66 of them in `nros-node`, its largest target. A
+rule the code must route around is not a contract. With the manifest edge, every
+heap gate is already in its final form: dropping `std` needs no `cfg` edit.
+
+**What this is not.** It does not say a `std` consumer should think about
+`alloc`; it says the crate author writes the implication once. Nor does it
+survive on trust — `check-feature-contract` (W4) asserts each clause, and until
+that gate exists each is a measurement rather than an invariant.
+
+→ issue 0587 (the defect that produced the rule), issue 0585 (the 34 implicit
+enables), phase-360, phase-359 (the campaign that removes `std` entirely).
 
 **Agnosticism contract.** The `platform-*` / `rmw-*` axis features are lowering targets that
 belong ONLY to (a) **board crates** — the selection point that brings the concrete backend +

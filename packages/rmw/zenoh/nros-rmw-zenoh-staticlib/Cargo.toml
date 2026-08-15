@@ -25,7 +25,11 @@ crate-type = ["staticlib"]
 
 [features]
 default = []
-std = ["nros-rmw-zenoh/std"]
+# phase-360 W2.a / W4 — `std` implies `alloc`, one line, like every other crate
+# that declares both. Missed by W2.a's hand-sweep (twelve crates found, this one
+# not) and caught by `check-feature-contract` on its first run, which is the
+# argument for the gate: a hand-sweep's coverage is unverifiable.
+std = ["alloc", "nros-rmw-zenoh/std"]
 platform-posix = ["nros-rmw-zenoh/platform-posix"]
 platform-zephyr = ["nros-rmw-zenoh/platform-zephyr"]
 # phase-337 W2.b — bare-metal Zephyr (i.e. any real board) needs exactly what
