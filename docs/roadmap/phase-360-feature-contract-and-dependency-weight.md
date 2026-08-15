@@ -84,8 +84,10 @@ through `any(...)` does not count. The gate reports 183 sites for both trees.
 The one thing it does catch is a symptom of the same edge: `nros-node: path
 346 -> 347`, because `read_rmw_selector_env` must return `std::vec::Vec<u8>`
 here where `main` returns `alloc::vec::Vec<u8>` — under `std` alone there is no
-`alloc` to name. **This blind spot is worth filing against phase-359 W0
-regardless of the decision below.**
+`alloc` to name. **Filed as [issue 0586](../issues/0586-std-census-counts-only-anchored-cfg-sites.md)**,
+which measured the blind spot at 69 of 252 sites (27 %) in the census's own
+scope and mutation-verified it: two planted `std`-conditional items using no
+`std::` path leave the gate green.
 
 **The decision — SETTLED 2026-08-15: `std` is being dropped, so the manifest
 edge stays and the phase defers to phase-359.**
@@ -129,11 +131,13 @@ crate moved"), the wide count back to `main`'s 252/183 exactly;
 lanes green; seven host feature combos and seven bare-metal target/feature pairs
 (thumbv7em, aarch64-unknown-none, armv7r) check clean.
 
-**Still open, and independent of this:** the census blind spot. `CFG_RE` anchors
-`feature = "std"` immediately after `cfg(` or `cfg(not(`, so a predicate
-reaching `std` through `any(...)` is invisible to the ratchet — it reported 183
-sites for both trees while the real difference was 88. Worth an issue against
-phase-359 W0; the gate cannot see the regression it exists to catch.
+**Still open, and independent of this:** the census blind spot, now
+[issue 0586](../issues/0586-std-census-counts-only-anchored-cfg-sites.md).
+`CFG_RE` anchors `feature = "std"` immediately after `cfg(` or `cfg(not(`, so
+every `all(...)` / `any(...)` spelling is invisible — 69 of 252 sites in its own
+scope, and it reported 183 for both trees here while the real difference was 88.
+The gate cannot see the regression it exists to catch. Fixing it is phase-359's
+call, not this phase's; 0586 carries the measurement and the direction.
 
 ## Goal
 
@@ -421,9 +425,9 @@ workspace member:
 - **(a′)** the same rule stated for the census's benefit: adding a `cfg` that
   reaches `std` through anything but the anchored `cfg(feature = "std")` /
   `cfg(not(feature = "std"))` form hides the site from
-  `check-std-census.py`. (a) forbids the one spelling that actually occurred,
-  but the gate on phase-359's side should stop counting selectively — see the
-  blind spot noted in the overlap section.
+  `check-std-census.py`. (a) forbids the one spelling that actually occurred;
+  the gate on phase-359's side should stop counting selectively, which is
+  issue 0586.
 - **(b)** no `no_std`-capable crate declares a non-empty `default` containing
   `std` or `alloc`.
 - **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a

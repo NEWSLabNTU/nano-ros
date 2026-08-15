@@ -138,7 +138,7 @@ must not be a way to acquire a heap without asking — which respelled the same
 implication as `cfg(any(feature = "alloc", feature = "std"))` at 123 use sites.
 Measured against `main`, that added 88 std-mentioning `cfg` branches, 66 of them
 in `nros-node`, for phase-359 (which DELETES `std` from these crates) to unwind;
-its census could not see any of them. The revert was reverted.
+its census could not see any of them (issue 0586). The revert was reverted.
 
 Twelve crates now declare `std = ["alloc", …]` — the six that had it plus
 `nros-core`, `nros-serdes`, `nros-params`, `nros-rmw`, `nros-rmw-cffi`,

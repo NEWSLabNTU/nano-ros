@@ -168,6 +168,19 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
+**#586** (testing, open 2026-08-15) — phase-359's `std` census counts only `cfg` sites where
+`feature = "std"` sits IMMEDIATELY after `cfg(` / `cfg(not(`, so every `all(...)` / `any(...)` spelling
+is invisible: **69 of 252 sites (27 %)** in its own scope, 55 of them in `nros-node`, the campaign's
+largest work item. Mutation-verified — two planted `std`-conditional items in `nros-rmw` using no
+`std::` path leave the gate green; a third that also named `std::string::String` was caught by the
+PATH metric, which is the other half of the census and the docstring is explicit they move
+independently ("W2 deletes `cfg` branches without touching `path` counts" — W2 is exactly what this
+cannot measure). It already missed a real one: phase-360 W2.a's brief `std ⇒ alloc` deletion added 88
+std-mentioning branches and the gate reported 183 for both trees. Same class as #0196 (gate narrower
+than its rule) and the second instance inside phase-359 — W1's own notes record `check-no-std`
+compiling only the crate shell. Fix is a wider regex plus a re-baseline 183 → 252 in one commit.
+See `0586-*`. (2026-08-15)
+
 **#589** (zephyr, api-cpp, open 2026-08-15) — on `native_sim` ANY Rust `println!`/`eprintln!` recurses
 forever and SIGSEGVs the image: Zephyr's `stdinout_write_vmeth` is `return zvfs_write(1, buffer, count)` under
 `CONFIG_BOARD_NATIVE_POSIX`, called FROM `zvfs_write(1, …)` — no termination, `k_mutex` is recursive so it
