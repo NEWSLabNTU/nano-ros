@@ -54,10 +54,27 @@ property: on x86 it is invisible, and off x86 it fails without saying so.
 
 ## Fix
 
-The number is now `cfg`-selected per `target_arch`, and an unmapped
-architecture is a `compile_error!` rather than a default. Guessing is the one
-thing this site must not do, since a wrong guess yields silence instead of a
-failure.
+The write moved into the board's existing C glue
+(`nros_board_log_write_stderr` in `c/board_threadx_linux.c`), which issues the
+raw syscall with `SYS_write` from `<sys/syscall.h>`.
+
+The first fix was a `cfg`-selected per-arch constant in Rust with a
+`compile_error!` for unmapped architectures. That was correct but still a
+hand-maintained table — a thing someone has to keep right for hosts nobody has
+tried yet. The C headers already hold the answer for whatever host is
+compiling, and they are the same source the `libc` crate's constants are
+generated from, so asking them removes the table instead of making it more
+accurate.
+
+`libc::SYS_write` would also have been a genuine SSoT and was rejected for a
+local reason: it needs a runtime `libc` dep on this board crate (today `libc`
+is only a build-dependency here, via cbindgen → tempfile → getrandom), and
+`examples/workspaces/{rust,realtime-rust}` carry
+`[patch.crates-io] libc = { path = "third-party/nuttx/libc" }` documented as
+NOT applying to the regular crate graph. Adding that edge would make the patch
+start applying to the native/freertos/threadx/esp32 rows, silently swapping
+their libc and invalidating a written invariant — a large blast radius for one
+integer.
 
 Verified on aarch64: the fixture emits all six severities in order, and both
 `logging_smoke_threadx_linux_captures_stderr` and

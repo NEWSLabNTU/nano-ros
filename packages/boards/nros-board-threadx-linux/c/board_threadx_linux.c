@@ -13,9 +13,12 @@
  * forwarded directly to the host kernel.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 #include "tx_api.h"
 
@@ -73,4 +76,36 @@ void nros_board_compute_rng_seed(uint32_t *out)
     seed = seed * 2654435761u;  /* Knuth multiplicative hash */
     seed ^= ((uint32_t)cfg_mac[4] << 8) | (uint32_t)cfg_mac[5];
     *out = seed;
+}
+
+/* ---- Log line -> host stderr (issue 0583) ----
+ *
+ * Two constraints meet here, and each rules out the obvious answer to the
+ * other.
+ *
+ * We cannot call `write()`: the ThreadX Linux port defines a WEAK `write`
+ * that does not reach host file descriptors, so a normal call is captured by
+ * it and the bytes vanish. The raw syscall is what bypasses that.
+ *
+ * And the syscall NUMBER cannot be written down. It is per-ARCHITECTURE, not
+ * per-OS — `write` is 1 on x86_64 and 64 on every asm-generic port (aarch64,
+ * riscv64, loongarch64), where 1 is `io_destroy`. The Rust side hardcoded the
+ * x86 value, so off x86 it issued an unrelated syscall that failed, the
+ * return was discarded, and the image ran silently mute: booted, entered
+ * Rust, flushed, exited 0, printed nothing.
+ *
+ * Doing it here rather than in Rust is the point. `<sys/syscall.h>` supplies
+ * `SYS_write` for whatever host is compiling — the same headers the `libc`
+ * crate's constants are generated from — so the number cannot be wrong for a
+ * host we did not anticipate. The Rust side previously carried a hand-written
+ * per-arch table; a table is a thing to keep correct, and this is not.
+ *
+ * `len` is a byte count, not a C string: the caller's buffer is not NUL
+ * terminated. A short write is not retried — this is a log line, and the one
+ * failure mode worth ruling out was silence, not truncation.
+ */
+void nros_board_log_write_stderr(const uint8_t *buf, size_t len)
+{
+    if (buf == NULL || len == 0) { return; }
+    (void)syscall(SYS_write, STDERR_FILENO, buf, len);
 }
