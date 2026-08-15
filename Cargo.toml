@@ -675,6 +675,24 @@ panic = "abort"      # Smaller binary, no unwinding
 
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
+# phase-359 W10 — `abort`, so a bare `cargo check -p <crate>` works on the
+# `no_std` crates in this workspace.
+#
+# `nros-c` and `nros-cpp` build `staticlib`/`cdylib` artifacts, and rustc refuses
+# `no_std` + `panic = "unwind"` for those: "unwinding panics are not supported
+# without std". Since phase-361 W3 correctly stopped those crates defaulting to
+# `std`, the default configuration became one this profile could not compile —
+# a bare `cargo check -p nros-cpp` failed on a dependency, not on anything the
+# caller wrote. `panic` is a whole-profile setting (cargo rejects it per-package),
+# so the fix belongs here.
+#
+# This is also the honest setting for this workspace: every embedded profile
+# already aborts, and every shipped image does (`panic_abort` in `build-std`,
+# `panic = "abort"` in the profiles below), so `dev` was the outlier that
+# diverged from what actually ships. Cargo forces `unwind` for the `test` and
+# `bench` profiles regardless, so `#[should_panic]` and the harness's
+# `catch_unwind` skip-classification are unaffected.
+panic = "abort"
 # phase-340 W6 — `dev` is the profile the ZEPHYR west lane builds at, and cargo
 # defaults `incremental` ON there. W1 removed it from the two `nros-*` profiles
 # but this one is a cargo built-in, so nothing had touched it: each Zephyr

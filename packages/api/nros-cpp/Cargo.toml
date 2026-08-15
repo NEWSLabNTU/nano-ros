@@ -17,8 +17,14 @@ readme = "README.md"
 crate-type = ["staticlib", "lib"]
 
 [features]
-# phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
-default = []
+# phase-361 W3 / issue 0591 — EMPTY of `std`, deliberately. But a bare
+# `cargo check -p nros-cpp` builds this crate's `staticlib`/`cdylib`, which is a
+# FINAL artifact: `no_std` + no panic provider is `#[panic_handler] function
+# required, but not found`. Naming the crate's own spin handler here keeps the
+# standalone check meaningful without reintroducing a `std` default — every
+# real consumer takes this crate with `default-features = false` and picks its
+# own provider, so nothing downstream is affected.
+default = ["panic-spin"]
 std = [
     "alloc",
     "nros/std",
