@@ -1,7 +1,6 @@
 ---
 id: 619
-title: "`cargo test -p nros-c` cannot link: `nros-log`'s platform sink calls
-  `nros_platform_log_write`, which no test binary provides"
+title: "lib TESTS cannot link the platform symbol set: `nros-c` on `nros_platform_log_write`, `nros-cpp` on `nros_platform_clock_ns`"
 status: open
 type: bug
 area: build/api
@@ -71,3 +70,59 @@ Not diagnosed further, so these are candidates rather than a plan:
 
 Whichever way it goes, the general rule from 0618 applies: name what the final
 artifact must provide, and check it, instead of letting the linker discover it.
+
+## Second instance: `nros-cpp` / `nros_platform_clock_ns` (2026-08-16)
+
+Same class, different crate and symbol. `check-workspace-features` runs
+
+    cargo test --no-run --workspace --exclude nros-c --no-default-features
+
+and now dies on the crate the `--exclude` does not name:
+
+```
+rust-lld: error: undefined symbol: nros_platform_clock_ns
+error: could not compile `nros-cpp` (lib test)
+```
+
+`CffiPlatform` states the contract in its own doc — "the crate that pulls
+`CffiPlatform` into a final binary is responsible for ensuring the symbols are
+supplied at link time" — and a lib TEST is a final binary. `nros-cpp` reaches it
+transitively through `nros-platform`, and nothing supplies the symbols, so the
+harness cannot link. Verified pre-existing by stashing all local work.
+
+### An attempted fix that does NOT work, recorded so it is not retried
+
+`nros-platform-cffi`'s `c-stub-test` feature exists for exactly this: it
+compiles `tests/c_stubs/platform_stubs.c`, which defines every `nros_platform_*`
+symbol. Taking it as a `[dev-dependencies]` entry of `nros-cpp` looks right and
+fails:
+
+```
+error: features `c-stub-test` and `posix-c-port` are mutually exclusive
+       — both define the canonical `nros_platform_*` symbols
+```
+
+Feature unification enables `posix-c-port` from elsewhere in the workspace
+graph, so the dev-dependency turns both on and the build script's own guard
+fires. Backed out, lock included.
+
+That failure is worth keeping because it points at #0618's framing: the panic
+handler, the allocator and now the platform symbol set are IMAGE singletons, and
+a dev-dependency is a library-level lever. It cannot express "supply these only
+when nobody else does".
+
+### While proving it, `c-stub-test` turned out to be broken independently
+
+Fixed in `7d995209c`: `platform_stubs.c` never included `<nros/platform.h>`
+despite claiming to implement it, so it hand-declared every signature and could
+not see phase-359 W10's `nros_platform_task_attr_t`; and its integration test
+still called `clock_ms`/`clock_us`, retired by phase-352. The feature had not
+compiled since W10 landed, unnoticed because no default build enables it. That
+does not fix this issue, but any solution routed through the stubs needed it
+working first.
+
+### Cost, for prioritisation
+
+This is the ONLY thing keeping tier 1 red on a fully provisioned host as of
+2026-08-16 03:5x — the Zephyr lane now completes all 70 leaves (#590), and every
+other gate passes.

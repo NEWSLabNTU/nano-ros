@@ -2,7 +2,7 @@
 id: 590
 title: "Zephyr + Cyclone: `ddsrt` posix `environ.c` calls setenv/unsetenv, which
   Zephyr's libc does not declare — the cell cannot compile"
-status: open
+status: resolved
 type: bug
 area: rmw/zephyr
 related: [issue-0557, issue-0566, issue-0371, rfc-0005]
@@ -78,3 +78,55 @@ tier 1 is red on any host with a provisioned Zephyr workspace.
 just zephyr setup           # workspace + SDK (PEP 668 hosts: see e3225404c)
 just zephyr build-fixtures  # zenoh + xrce build; the 4 cyclonedds cells fail
 ```
+
+
+## RESOLVED 2026-08-16 — a Zephyr `environ` backend, plus four unrelated walls behind it
+
+The compile error itself was one line's worth of cause: `ddsrt` picks its POSIX
+environ backend on Zephyr, that TU calls `setenv`/`unsetenv`, and Zephyr's libc
+declares them only behind its POSIX options — an implicit declaration, which the
+gcc 14 the SDK 0.16.8 ships treats as an error.
+
+Fixed with a Zephyr backend (`zephyr/cyclonedds-zephyr/environ_zephyr.c`) and
+the TU swap that already exists for its siblings, rather than by enabling
+`CONFIG_POSIX_API`. This issue deliberately declined to choose among three
+options; the reasoning for this one:
+
+* **not `CONFIG_POSIX_API=y`** — turning the whole POSIX surface on to obtain
+  two functions drags in what #0566 is about, and Zephyr's POSIX objects come
+  from fixed static pools (#0371 / #0496). That pooling is precisely what the
+  native `k_mutex`/`k_condvar` sync backend exists to escape; adding a second
+  reason to depend on it would undo that work.
+* **not a bare stub** — same edit, less honest about why.
+
+A Zephyr image has no process environment (nros bakes locator/domain/node at
+build time via `option_env!` for exactly that reason), so `getenv` reports
+NOT_FOUND and the mutators return OK without storing. OK rather than an error
+because cyclone calls `ddsrt_setenv` on paths that must not fail; nothing can
+observe the dropped write, since the only reader is `ddsrt_getenv` in the same
+file. Argument validation matches the POSIX TU exactly.
+
+### The issue's real cost was not this bug
+
+The "It now fails TIER 1" section was right that the damage was the make driver
+stopping at the cyclone group. What it could not know is that FOUR more walls
+stood behind it, each invisible until the previous cleared:
+
+| leaf | wall | origin |
+| --- | --- | --- |
+| 13-18 | `setenv` implicit declaration | this issue |
+| 10 | task storage probes named `pthread_t`, undeclared without CONFIG_POSIX_API | #0566 vs phase-359 W10 |
+| 10 | `msg_to_cyclone_idl.py` returned a script that exists and cannot import | the rosidl ladder's dead path |
+| 56 | `BackendDynamic` arm gated on the CONSUMER's `alloc`, not the provider's | phase-360 W2.a |
+| 70 | two `nros_platform` units sharing one corrosion target dir | #0616 |
+
+Three of the five are collisions between commits that were each fine alone.
+Nobody had run the lane end to end since they landed, so they stacked.
+
+### Acceptance — met
+
+`just zephyr build-fixtures` completes: **0 failures across all 70 leaves**,
+`Zephyr test fixtures built successfully`, leaf 70 producing a 13,299,200-byte
+`zephyr.exe`. That is the first complete Zephyr fixture build on this host since
+the breakage began, and it also unblocks phase-353 W2's full-lane measurement
+and turns phase-363 W5's two realtime-entry staleness tests green.
