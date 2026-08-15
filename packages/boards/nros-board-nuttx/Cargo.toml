@@ -52,11 +52,17 @@ log = { version = "0.4", default-features = false }
 # `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
 # NuttX-built C port at `packages/platform/nros-platform-nuttx/`). Board-driven
 # platform selection: the umbrella `nros` dep below stays platform-agnostic.
-# phase-359 W7 — was `["std", "platform-nuttx"]`. The platform crate's ONLY
-# `std` gate is "std supplies the allocator, so do not install ours", so
-# dropping it here ENABLES the allocator that already exists rather than
-# requiring a new one.
-nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["alloc", "platform-nuttx"] }
+# phase-359 W7 — was `["std", "platform-nuttx"]`; the `std` is gone with the
+# rest of this family's.
+#
+# No `alloc` here on purpose. W7 first wrote `["alloc", "platform-nuttx"]`, and
+# phase-361 W2.b deleted `nros-platform/alloc` in parallel as an inert
+# declarative feature — correctly: it had zero `cfg` sites, forwarded nowhere,
+# and (when measured) was named by nothing. Naming it bought this board nothing
+# either; what actually wires the heap is `global-allocator`, which the
+# `image-runtime` feature below forwards. The two changes did not conflict
+# textually — different files — so the break surfaced only at resolution.
+nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-nuttx"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `run_entry` installs a live component runtime sink on `RuntimeCtx`
 # before invoking the user `setup` closure + spins forever
