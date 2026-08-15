@@ -12,7 +12,12 @@ related: [issue-0155, issue-0163, issue-0326, issue-0334, phase-338]
 
 On an aarch64 Linux host, nothing about nano-ros's ThreadX-Linux support works,
 and almost none of it says why. The failures look unrelated to each other and to
-the host architecture:
+the host architecture.
+
+A **seventh** instance of this class was found afterwards and is resolved
+separately as [[0583]]: the board's log writer hardcoded the x86_64 `write`
+syscall number, so off x86 every log line went to an unrelated syscall and the
+image ran silently mute. Same shape, same invisibility on x86.
 
 | where | what the user sees |
 | --- | --- |
@@ -127,14 +132,6 @@ and finds both `rust-lld` and `llvm-ar` there — where the hardcoded x86_64 pat
 found neither.
 
 ### Not yet fixed
-
-**One failure surfaced by this work, split out as [[0583]].** The ThreadX-Linux
-logging smoke fixture builds, boots, exits 0 and emits no log lines. It is NOT
-attributable to this issue — before these fixes the tree does not link on
-aarch64 at all, so there is no baseline to bisect against — but it was found
-here and shares a plausible mechanism (the force-link class). See
-`0583-threadx-linux-logging-smoke-emits-no-log-lines.md`; note that the
-`+whole-archive`-on-`libglue.a` hypothesis is recorded there as falsified.
 
 **Declared-fact drift (cosmetic, not a build break).** ~20 `system.toml`
 `[deploy.native]` blocks declare `target = "x86_64-unknown-linux-gnu"`. Traced

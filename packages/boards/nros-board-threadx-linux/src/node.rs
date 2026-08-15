@@ -76,7 +76,40 @@ fn register_log_writer() {
             fn syscall(num: isize, ...) -> isize;
         }
         const STDERR_FD: i32 = 2;
+        // The syscall NUMBER is per-ARCHITECTURE, not per-OS. `write` is 1 on
+        // x86_64 but 64 on every asm-generic port (aarch64, riscv64, …), where
+        // 1 is `io_destroy`. This was hardcoded to the x86 value, so off x86 the
+        // writer issued the wrong syscall, it failed, the return was ignored,
+        // and the image went silently mute: the logging smoke fixture booted,
+        // entered Rust, called `flush()`, exited 0 and printed not one line
+        // (issue 0583 — the same x86-assumption class as 0582, and the same
+        // failure mode: no error, just nothing).
+        //
+        // The raw syscall is deliberate and must stay. The ThreadX Linux port
+        // defines a WEAK `write` that does not reach host fds, so calling
+        // `write` normally would be captured by it. Only the number varies.
+        #[cfg(target_arch = "x86_64")]
         const SYS_WRITE: isize = 1;
+        #[cfg(any(
+            target_arch = "aarch64",
+            target_arch = "riscv64",
+            target_arch = "loongarch64"
+        ))]
+        const SYS_WRITE: isize = 64;
+        // An unmapped host architecture is a BUILD error. The whole point of
+        // this issue is that getting it wrong produces silence, so the one
+        // thing this must never do is guess.
+        #[cfg(not(any(
+            target_arch = "x86_64",
+            target_arch = "aarch64",
+            target_arch = "riscv64",
+            target_arch = "loongarch64"
+        )))]
+        compile_error!(
+            "nros-board-threadx-linux: the `write` syscall number is unknown for this \
+             host architecture. Add it above — see asm/unistd.h; asm-generic ports use 64. \
+             Guessing here yields a silently mute image, not an error (issue 0583)."
+        );
         // SAFETY: stderr is always open on Linux/POSIX; use the
         // syscall path directly because the ThreadX Linux port
         // provides a weak `write` symbol that does not write host fds.

@@ -62,16 +62,19 @@ ran `comm` on unsorted input, which warns and continues; the numbers above come 
 NOT closed by this: the threadx leaf's `.cargo/config.toml` whitespace churn is a CONTENT difference
 write-if-changed cannot suppress, and is recorded in phase-353 W1. See `archived/0562-*`.
 
-**#583** (platform-threadx, open 2026-08-15) — the ThreadX-Linux logging smoke fixture boots, enters the
-Rust entry, exits 0, and emits NONE of its six log lines. Not a threshold (the fixture sets
-`Severity::Trace` explicitly), not buffering (it calls `flush()`), not an unset env knob (the test spawns
-it bare). Leading candidate is the force-link class of 0155/0163: if the board's log-writer registration
-rides a weak hook whose archive member is never pulled, the sink stays null and the image is silently
-quiet — a missing sink and a quiet program are indistinguishable. Found while validating #0582 on aarch64
-and NOT attributable to it: before #0582 this tree does not link on aarch64 at all, so there is no
-baseline. One #0582 hypothesis was tested and FALSIFIED — `+whole-archive` on `libglue.a` (which holds the
-board's strong weak-hook overrides) did not change the symptom; the modifier was kept on its own merits
-but is not a fix here. Next step is `nm` on the linked image before more theory. See `0583-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#583** — the ThreadX-Linux logging smoke fixture booted, entered the
+Rust entry, exited 0 and emitted NONE of its six log lines. Root cause: the board's log writer hardcoded
+`const SYS_WRITE: isize = 1`, and the Linux syscall number is per-ARCHITECTURE — `write` is 1 on x86_64
+and **64** on every asm-generic port (aarch64/riscv64/loongarch64), where 1 is `io_destroy`. Off x86 it
+issued an unrelated syscall, which failed, and the return was discarded: no error, no partial output, a
+silently mute image. A seventh instance of #0582's class. The raw `syscall` had to stay (the ThreadX Linux
+port defines a WEAK `write` that never reaches host fds); only the number was wrong, and it is now
+cfg-selected with `compile_error!` for an unmapped arch — guessing yields silence, not a failure. TWO
+false trails recorded in the issue: it is not bisectable against #0582 (before that fix the tree does not
+link on aarch64 at all), and `+whole-archive` on `libglue.a` was the leading hypothesis and was FALSIFIED.
+`nm` on the linked image — one command — showed every symbol present and killed the link-class theory that
+had cost a whole detour. Lesson: when a program runs to completion and prints nothing, establish that the
+code is PRESENT before theorising about why it is not reached. See `archived/0583-*`. (2026-08-15)
 
 **#582** (build, open 2026-08-15) — the host is assumed to be `x86_64` in six places, and five of the six
 fail SILENTLY. Three spellings of one mistake: (1) `c_char` is `u8` on ARM and `i8` on x86, so
