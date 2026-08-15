@@ -193,8 +193,13 @@ documentation.
 behavioural rather than structural — it changes what an authored number means on
 ThreadX.
 
-**Acceptance**: `realtime_tiers_e2e` on NuttX and ThreadX. The inversion is only
-observable at runtime.
+**Acceptance**: `realtime_tiers_e2e` (its cells cover Linux, ZephyrNativeSim,
+NuttxArm, NuttxRiscv, FreertosMps2 and ThreadxLinux) plus
+`sched_dims_applied_e2e`, whose `sched(TierPriority, NuttxArm, Rust)` cell is
+the one that actually observes a declared priority reaching the kernel, and
+whose `sched(PreemptThreshold | TimeSlice, ThreadxLinux, Rust)` cells cover the
+port that INVERTS. The inversion is only observable at runtime — a compile
+proves the map exists, not that it points the right way.
 
 **IMPLEMENTED.** Band is `0` (least urgent) … `255` (most), `INHERIT` =
 `INT32_MIN`, and `NROS_PLATFORM_PRIORITY_RAW(n)` encodes as a large negative so
@@ -209,6 +214,19 @@ The band is deliberately small and does not pretend every RTOS has 256 levels:
 ThreadX ships 32, `configMAX_PRIORITIES` is commonly 5–32, so distinct band
 values DO collapse onto one level. It is a portable ordering, not a resolution
 promise.
+
+**VERIFIED at runtime.** `realtime_tiers_e2e` PASS — 16 rows ran, 11 skipped
+(unbuilt lanes), 0 out of lane; `nuttx-arm/rust` and `threadx-linux/rust` are
+NOT in the skip list, so both ran. `sched_dims_applied_e2e` PASS — 12 cells, 6
+skipped, 0 failed, with `TierPriority/nuttx/rust`,
+`PreemptThreshold/threadx-linux/rust` and `TimeSlice/threadx-linux/rust` among
+those that ran.
+
+That last check needed a temporary probe to establish, and the reason is worth
+recording: the test tolerates skips (it only fails when EVERY cell skips), so a
+green `sched_dims_applied` is consistent with the one cell you care about having
+silently skipped. Counting the cells is the difference between "the suite is
+green" and "the priority map ran on the port that inverts".
 
 ## Dependencies
 
