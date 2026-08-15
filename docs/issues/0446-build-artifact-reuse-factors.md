@@ -188,3 +188,50 @@ The issue's central question — *what actually makes those builds incompatible*
 now has a sharper answer for the largest population: **nothing does.** For 110
 of the probe directories, cargo itself says the artifacts are interchangeable;
 they are separate because the key is conservative on purpose.
+
+## Narrowed 2026-08-15 (phase-353 W4)
+
+The probe dir's over-keying is fixed, and the cause was not what the
+re-measurement above guessed.
+
+**Wrong first:** the section above blamed sizing knobs, and a follow-up blamed
+absolute paths (`NROS_REPO_DIR`, `NROS_C_INCLUDE`, …). A denylist of exactly
+those names, A/B'd on the same lane with the probe dir wiped both sides, changed
+**nothing** — 25 sub-keys and 7.2 G either way. Those variables are CONSTANT
+within a run, and a constant input cannot split anything. Both diagnoses were
+inferred from what the knob list *contained* rather than from what *varied*.
+
+**What actually splits it**, from a census the new `nros-probe-key-inputs.txt`
+provenance records made possible: of 25 keys, all shared one target triple and
+**19 shared the same feature set**, with 35 knobs varying inside that group and
+not one of them a sizing knob:
+
+```text
+NROS_BUILD_LOG_DIR    .../logs/20260815-111859-1157807-9133   <- timestamp + pid
+NROS_WS_RECORDS_FILE  .../ws-linux-20260815-112230-1214903-group-10.records
+NROS_FIXTURE_ID       11 values
+NROS_KIND_*           ~20 per-kind marker strings
+NROS_BUILD_JOBS       24 vs 6
+```
+
+The timestamped ones differ on **every run**, so every fixture build minted
+probe keys that could never be reused. That is the mechanism behind 110
+directories / 37 GB where one lane creates 25.
+
+**Result**, same lane, probe dir wiped both sides:
+
+| | before | after |
+| --- | --- | --- |
+| probe sub-keys | 25 | **8** |
+| disk | 7.2 G | **2.2 G** |
+
+A second run of the same lane now creates **zero** new keys (8 → 8, 2.2 G) —
+the growth, not just its size, is what stopped.
+
+Issue 0528's invariant is preserved and tested: a knob that can change a probed
+size still splits the key, unknown knobs still split by default, and
+`NROS_BOARD_TOML` / `NROS_PLATFORMS_DIR` / `NROS_MODEL_DIR` / `NROS_HOME` can
+never be excluded because each names a file whose CONTENT carries sizing knobs.
+
+No wall-clock claim: issue 0562 established this host's lane timing is set by
+page-cache state (a 14x spread on provably identical work).

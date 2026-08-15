@@ -140,8 +140,9 @@ restated against post-340/343 disk figures so a future runner is sized correctly
 
 ## W4 — Collapse the probe dir's over-keying (#446; opened by W1)
 
-**Status (2026-08-15). SAFETY NET + DIAGNOSIS LANDED; the narrowing itself is
-NOT done and now has evidence behind it.**
+**Status (2026-08-15). COMPLETE — narrowing landed and measured: 25 -> 8 probe
+sub-keys, 7.2 G -> 2.2 G on the same lane, and a second run now adds ZERO new
+keys. The first diagnosis was wrong and the A/B caught it; both are recorded.**
 
 W1's measurement made this the phase's largest contained prize: **110 probe
 sub-directories holding 18 distinct `nros-core` identities, 37 GB**, where cargo
@@ -199,23 +200,74 @@ PATH variable — cargo compares an env value as TEXT, and one directory has thr
 spellings here.* The same defect, one layer over, in a key rather than a
 `rerun-if-env-changed`.
 
-### What the narrowing should be, and what it must not be
+### The first diagnosis was wrong, and the A/B is what caught it
 
-**Not** "exclude paths". `NROS_BOARD_TOML` is a path whose CONTENT carries
-sizing knobs, so a blanket path rule would reintroduce 0528 by a new route.
+The provenance record showed the knob list was dominated by absolute paths
+(`NROS_REPO_DIR`, `NROS_C_INCLUDE`, `NROS_ZEPHYR_BUILD_ROOT`, …), and this phase
+concluded those were the splitter. A denylist of exactly those names was written
+and A/B'd on the same lane with the probe dir wiped both sides:
 
-The shape that inverts the risk correctly is an explicit **denylist with a
-stated reason per entry** — environment plumbing that provably cannot reach a
-probed size (`NROS_REPO_DIR`, `NROS_*_INCLUDE`, `NROS_*_SRC`,
-`NROS_ZEPHYR_CCACHE_*`, `NROS_ZEPHYR_BUILD_ROOT`, `NROS_CARGO_FLAGS`, the
-`NROS_ESP_IDF_*` pair). Everything unlisted keeps today's behaviour, so an
-unknown-but-set knob still keys the probe — which is the property
-`knob_identity()`'s comment defends and which must survive.
+```
+before: 25 sub-keys, 7.2 G
+after:  25 sub-keys, 7.2 G      <- no change at all
+```
 
-**Acceptance.** A measured reduction in probe sub-key count and disk, with the
-0528 reproduction passing, plus a `nros-probe-key-inputs.txt` census showing
-which knobs still split. Each denylist entry carries its reason in the source.
+**Those variables are CONSTANT within a run, and a constant input cannot split
+anything.** The diagnosis had been inferred from what the knob list *contained*
+rather than from what actually *varied* — the same error twice in one phase.
 
+### What actually splits it, from the census the provenance made possible
+
+Of the 25 keys, all shared ONE target triple and **19 shared the same feature
+set**. 35 knobs varied inside that group of 19, and not one was a sizing knob:
+
+```text
+NROS_BUILD_LOG_DIR    .../logs/20260815-111859-1157807-9133   <- timestamp + pid
+NROS_WS_RECORDS_FILE  .../ws-linux-20260815-112230-1214903-group-10.records
+NROS_FIXTURE_ID       11 values
+NROS_KIND_*           ~20 per-kind marker strings
+NROS_BUILD_JOBS       24 vs 6
+```
+
+The timestamped ones are the mechanism behind the 37 GB: they differ on **every
+run**, so every fixture build minted probe keys that could never be reused. That
+is why one lane creates 25 directories while the tree had accumulated 110.
+
+### Landed
+
+`KNOBS_THAT_CANNOT_CHANGE_A_SIZE` (exact names) plus
+`KNOB_PREFIXES_THAT_CANNOT_CHANGE_A_SIZE` (`NROS_KIND_`, `NROS_BUILD_` — one
+producer, uniform by construction). Anything unlisted keys the probe exactly as
+before, so forgetting a name costs a wasted directory, never corruption.
+
+Measured on the same lane, probe dir wiped both sides:
+
+| | before | after |
+| --- | --- | --- |
+| probe sub-keys | 25 | **8** |
+| disk | 7.2 G | **2.2 G** |
+
+And the growth is stopped, which is the defect rather than the symptom: a
+SECOND run of the same lane creates **zero** new keys (8 → 8, 2.2 G).
+
+Tests, all in `nros-sizes-build`:
+
+* `zephyr_dotconfig_sizing_knob_splits_the_probe_key` / `env_sizing_knob_…` —
+  issue 0528's reproduction, still passing WITH the narrowing in place
+* `identical_inputs_share_a_probe_key` — the control
+* `an_unlisted_knob_still_splits_the_probe_key` — 0528's default survives for
+  unknown knobs, including a real sizing knob
+* `run_scoped_orchestration_does_not_split_the_probe_key` — the census's actual
+  offenders, by name and value
+* `every_excluded_knob_carries_an_argument` — every entry has a reason, and
+  `NROS_BOARD_TOML` / `NROS_PLATFORMS_DIR` / `NROS_MODEL_DIR` / `NROS_HOME` can
+  never be excluded, directly or by prefix, because each names a file whose
+  CONTENT carries sizing knobs
+
+**Not claimed:** a wall-clock improvement. Issue 0562 established that this
+host's lane timing is set by page-cache state (a 14x spread on provably
+identical work), so no timing claim is supportable from it. The key count and
+the disk are deterministic and are what changed.
 
 ---
 
