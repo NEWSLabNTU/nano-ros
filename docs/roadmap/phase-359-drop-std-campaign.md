@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed. W7 and W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed; W7 DESIGN EXPLORED. W7 and W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -301,10 +301,95 @@ is a set of host-only features plus one clock provider. That reframes the rest
 of the campaign: W7-W10 are about deciding where those features live, not about
 migrating executor code.
 
-### W7 — NuttX off `std`
+### W7 — NuttX off `std` — **DESIGN EXPLORED 2026-08-15, not started**
 
-The other live `std` platform. `nros-platform-nuttx` exists and NuttX is POSIX,
-so the posix C layer is the template. **Unsized** — the plan's biggest unknown.
+NuttX is the second and last `std` platform (W9's derivation: `Linux`,
+`NuttxArm`, `NuttxRiscv`). Until it moves, W10 cannot happen — the `std` feature
+cannot be removed while a target platform requires it.
+
+#### Where the `std` actually is
+
+Measured, not assumed:
+
+| place | `std::` paths | what it does |
+| --- | --- | --- |
+| `nros-board-nuttx` | 48 | `process::exit`, `panic::set_hook`, `io::stdout().flush()`, `thread::sleep`, `Box` |
+| `nros-board-nuttx-qemu` | 8 | inherits the base board |
+| `examples/qemu-arm-nuttx/rust/**` | **0** | nothing — the examples are already portable |
+
+The chain is: `nros-board-nuttx-qemu` enables no `std` itself but depends on
+`nros-board-nuttx`, which requests `nros = [std, rmw-cffi]` and
+`nros-platform = [std, platform-nuttx]`. The board's own comment already knows
+what it costs: "this crate as no_std while its `std::` bodies are active ->
+build errors".
+
+Note what is NOT in the list: no application or example code. The port is
+confined to one crate plus its qemu wrapper.
+
+#### What each use needs instead
+
+| std | replacement | difficulty |
+| --- | --- | --- |
+| `process::exit` | NuttX libc `exit()` via `extern "C"` | trivial |
+| `io::stdout().flush()` | the platform log/putc C export | trivial |
+| `thread::sleep` | `nros_platform_sleep_*` | trivial |
+| `Box` | `alloc` | trivial |
+| `panic::set_hook` | a `#[panic_handler]` | **the real change** |
+
+The panic hook is the substantive one: std's panic runtime and a no_std
+`#[panic_handler]` are different mechanisms, not two spellings. The pattern
+already exists here — `nros-board-mps2-an385-freertos` and
+`nros-board-threadx-qemu-riscv64` each define one — so NuttX would follow them,
+with the usual constraint that exactly one handler may exist per image.
+
+`nros-platform`'s `std` role is narrower than it looks: its ONLY `std` gate is
+`#[cfg(all(feature = "global-allocator", not(feature = "std")))]`, i.e. "std
+supplies the allocator, so do not install ours". Dropping `std` therefore does
+not require writing an allocator — it requires ENABLING the one that already
+exists.
+
+`nros-platform-nuttx` has no `src/` at all (only `CMakeLists.txt`), so the
+primitives come from C exactly as they do for posix. There is no Rust platform
+layer to port.
+
+#### The prize, and it is not the census count
+
+`build-std = ["std", "panic_abort"]` in `nros-board-nuttx-qemu/nros-board.toml`
+means **NuttX compiles the standard library from source** on every build. Two
+consequences drop out if `std` goes:
+
+* `build-std` narrows to `core`/`alloc`, which is a large build-time saving on
+  every NuttX target and probe;
+* the **patched libc may become unnecessary**. `nros-sizes-build` records why it
+  exists: "The libc patch is mandatory: std's NuttX port references symbols the
+  crates.io libc lacks (e.g. `_SC_HOST_NAME_MAX`)". That patch is a vendored
+  fork carried at `third-party/nuttx/libc` — maintenance this campaign could
+  retire outright.
+
+That is a stronger reason to do W7 than the ~56 paths it removes.
+
+#### Risks
+
+* **Panic diagnostics regress.** The current hook flushes stdout and sleeps 5 s
+  before diverging — deliberate, and recently load-bearing (issues 0572/0579
+  turned on NuttX diagnostics to find a boot-tier fault). A `#[panic_handler]`
+  must reproduce the flush, or a NuttX panic goes silent exactly where the last
+  two bugs were found.
+* **Two handlers link-fail.** If any dependency in a NuttX image already
+  provides one, adding another is a hard link error rather than a warning.
+* **The verification lane is QEMU + a cross toolchain**, so this cannot be
+  proved by `check-no-std`; it needs `nuttx_qemu` runtime cells actually
+  executed.
+
+#### Open questions, to answer before starting
+
+1. Does the patched libc have any consumer OTHER than std's NuttX port? If yes,
+   the fork stays and the prize shrinks to build time.
+2. Does anything in the NuttX image depend on std's panic UNWINDING rather than
+   just the hook? `panic_abort` in `build-std` suggests not, but it is asserted
+   there, not verified.
+3. Is `_SC_HOST_NAME_MAX` (and its siblings) reachable from any no_std path, or
+   purely std's? That decides whether question 1 is even open.
 
 ### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 
