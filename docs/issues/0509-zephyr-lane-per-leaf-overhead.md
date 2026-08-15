@@ -272,3 +272,52 @@ Also unfixed, and blocking a full-lane measurement on this host: the cyclonedds
 zephyr leaves fail at configure with `ModuleNotFoundError: No module named
 'rosidl_adapter'`, so `just zephyr build-fixtures` aborts before finishing the
 58-leaf set here.
+
+## Direction (2) "storage" REFUTED on this host (2026-08-15, phase-353 W2)
+
+The 2026-08-13 sample recorded 76 % idle / 18 % iowait on "a rotational 5.5 TB
+`/dev/sda`, with page cache (50 GB of 61 GB) far smaller than the build trees",
+and promoted storage to a first-class direction. Both halves of that premise
+have changed, and the conclusion does not survive re-measurement.
+
+**The host now:**
+
+| | |
+| --- | --- |
+| RAM | **125 GB** (117 GB available), not 61 GB |
+| `/tmp` — the Zephyr build root | `nvme0n1`, **SSD**, 1.6 TB free |
+| `/home` — the repo, so `build/` | `sdb`, rotational 7.3 TB |
+| idle | a second 1.8 TB NVMe, unused |
+
+So the leaves already build on SSD; only the repo-side `build/` tree is on
+spinning disk.
+
+**A/B, both sides COLD, identical work** — the four west-* rows through the lane
+(narrowed to `zephyr,rust,zenoh`), `NROS_BUILD_ROOT` the only difference,
+iowait fraction taken from `/proc/stat` deltas because this issue established
+wall-clock alone is unusable here:
+
+| build root | elapsed | iowait | busy | edges | built |
+| --- | --- | --- | --- | --- | --- |
+| HDD `/home` | 46.9 s | **0.25 %** | 21.4 % | 1244 | 4 |
+| NVMe `/tmp` | 43.1 s | **0.03 %** | 14.8 % | 1244 | 4 |
+
+**iowait is ~0 on BOTH sides.** There is no I/O stall to recover, so relocating
+the build root to the idle NVMe buys nothing measurable. The 8 % elapsed gap is
+far inside the 14x spread this issue documented for identical work.
+
+**Scope of the refutation, stated precisely.** This measures the 1244-edge
+west-fixtures build, not the full 58-leaf lane, and the original 18 % sample was
+taken mid-`lane=all` with eight platform families competing for the box at half
+the memory. What is refuted is "storage is the constraint" *for the workload
+that can be measured on this host at its current memory size*. A full-lane
+number is still unavailable here: the cyclonedds zephyr leaves abort at
+configure with `ModuleNotFoundError: No module named 'rosidl_adapter'`.
+
+The doubled RAM is the likely reason — 117 GB of page cache now covers the build
+trees that 50 GB did not.
+
+**What this leaves.** Direction (3), fewer COLD leaves, is now the dominant
+remaining item: a cold leaf costs ~28 s (measured 2026-08-13, 512 s for 18), and
+the mtime treadmill (#0466) is what makes leaves cold after every pull, rebase
+or `git stash`. That is a correctness-of-caching problem, not a hardware one.

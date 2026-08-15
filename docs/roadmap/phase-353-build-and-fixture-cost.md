@@ -8,13 +8,15 @@ BLOCKED.** Opened to give four standing cost issues one owner instead of four.
 * **W4** — probe key narrowed: **25 -> 8** sub-keys, **7.2 G -> 2.2 G** on the
   same lane, and a second run now adds ZERO new keys.
 * **W2** — the zephyr no-op lane now does nothing: **1668 log lines -> 73,
-  1244 ninja edges -> 0, 129 `Compiling` -> 0.** The 70-leaf per-leaf overhead
-  and the disk-bound finding it is named for remain, so #509 stays open.
+  1244 ninja edges -> 0, 129 `Compiling` -> 0.** Direction (2) storage is
+  REFUTED on this host (iowait ~0 on both HDD and NVMe build roots). Direction
+  (3), fewer COLD leaves, is what remains, and #509 stays open for it.
 * **W3** — #200 is blocked on a big-disk CI runner and is not actionable
   locally.
 
-**Remaining:** #509's directions (2) storage and (3) fewer cold leaves, and
-#200's campaign. Both need hardware this host does not have — see each item.
+**Remaining:** #509 direction (3), fewer COLD leaves — actionable here, and
+bounded by the mtime treadmill (#0466) rather than by hardware. #200's campaign
+still needs a runner.
 
 **Owns:** [issue 0446](../issues/0446-build-artifact-reuse-factors.md),
 [issue 0509](../issues/0509-zephyr-lane-per-leaf-overhead.md),
@@ -164,13 +166,45 @@ The reuse removes them: **a no-op lane now does nothing, in 73 lines instead of
 1668.** Direction (1) of the issue's revised list — "skip per-leaf prep whose
 inputs are unchanged" — is delivered.
 
+### Direction (2), storage — REFUTED on this host
+
+The issue promoted storage to a first-class direction from a 76 % idle / 18 %
+iowait sample on "a rotational 5.5 TB `/dev/sda`" with 50 GB of page cache
+against 61 GB RAM. Both halves of that premise have moved:
+
+| | |
+| --- | --- |
+| RAM | **125 GB** (117 available), not 61 |
+| `/tmp` — the Zephyr build root | `nvme0n1`, **SSD** |
+| `/home` — the repo, so `build/` | `sdb`, rotational |
+
+A/B with `NROS_BUILD_ROOT` as the ONLY difference, both sides cold, identical
+work (the 1244-edge west-fixtures build through the lane), iowait taken from
+`/proc/stat` deltas:
+
+| build root | elapsed | iowait | busy | edges |
+| --- | --- | --- | --- | --- |
+| HDD `/home` | 46.9 s | **0.25 %** | 21.4 % | 1244 |
+| NVMe `/tmp` | 43.1 s | **0.03 %** | 14.8 % | 1244 |
+
+**iowait is ~0 on both sides**, so there is no stall to recover and relocating
+the build root buys nothing measurable; the 8 % elapsed gap sits far inside the
+14x spread the issue documented for identical work. The doubled RAM is the
+likely reason — 117 GB of page cache now covers what 50 GB did not.
+
+Scope, stated precisely: this measures the 1244-edge build, not the 58-leaf
+lane, and the original sample was taken mid-`lane=all` with eight families
+competing at half the memory. A full-lane number is unavailable here because the
+cyclonedds zephyr leaves abort at configure on `ModuleNotFoundError: No module
+named 'rosidl_adapter'`.
+
 ### What is still open
 
-The 70-leaf per-leaf overhead the issue is named for is a different cost, and
-untouched: the 7-leaf narrowing above builds only the zenoh coordinate, and the
-disk-bound finding (76 % idle / 18 % iowait on a rotational disk, 13 concurrent
-cmake configures against ~0 compilers) stands. Directions (2) storage and (3)
-fewer cold leaves remain.
+Direction (3), **fewer COLD leaves**, is now the dominant remaining item and is
+not a hardware problem: a cold leaf costs ~28 s (512 s for 18, measured
+2026-08-13), and the mtime treadmill (#0466) is what makes leaves cold after
+every pull, rebase or `git stash`. That is caching correctness, and it is
+actionable on this host.
 
 Blocking a full-lane measurement on this host: the cyclonedds zephyr leaves fail
 at configure with `ModuleNotFoundError: No module named 'rosidl_adapter'`, so
