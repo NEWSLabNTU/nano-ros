@@ -153,6 +153,41 @@ in-tree measures them (`nros-bench/stress-zenoh` is a native throughput bench).
 Same shape as W1 — the analysis is in-tree, the measurement lives in a consumer
 repo. Details and the restated experiment are in issue 0506.
 
+**CORRECTED 2026-08-16 — the paragraphs above are wrong on both counts, and
+BUILDING it is what showed that. They are kept, not edited, because the mistake
+is the lesson: a diff was read and a conclusion drawn, twice, without running
+anything.**
+
+1. **The harness was never a blocker.** `nano-ros-rt-eval` is public, clones in
+   seconds, pins nano-ros at `c10371776` (post-#567), and runs on the FreeRTOS
+   QEMU lane this host already has. "Not present on this host" was true and
+   irrelevant.
+2. **The blocker had NOT cleared for this lane.** `43ddb0ec` fixed
+   `_zp_unicast_read` — the POLLED path. `nm` on the built image shows it
+   exports `_zp_unicast_read_task`: the `Z_FEATURE_MULTI_THREAD` path, which
+   still reset unconditionally at the end of every peer's turn. So on exactly
+   the lane #506 and #567 were measured on, a cap was still a drop policy. The
+   claim "no longer true by construction" was construction-only, and wrong.
+
+Found because capped images came out byte-identical to the control, through a
+chain where each theory was disproved in turn (env var, cargo freshness, a
+`cargo clean`, the issue-0475 relink trap, an `#error` that never fired) and
+ended at `nm`.
+
+**Done since:** the conditional reset is ported to the task path, guarded on the
+transport having a single peer — `_zbuf` is SHARED across the peer list, so
+carrying a remainder across peers would feed peer A's stream to peer B; client
+mode (the island) is always single-peer. Landed as zenoh-pico `f4ce3d9f` and
+pinned. Measured neutral without a budget, which is the expected result and the
+point: delivery did not collapse, so carrying a remainder does not corrupt the
+stream.
+
+**Still open, and W3 is NOT done:** no budget exists, and the four-column table
+does not either. A budget built on top did not differentiate cap=1/4/16 in
+codegen — all three produced one identical binary — so it was dropped rather
+than shipped unproven. That is the next question: why the constant does not
+reach codegen, then the cells.
+
 ## W4 — NuttX boot tier drops its declared priority (#579)
 
 A `[tiers.*.nuttx] priority` ordering can silently invert. Filed 2026-08-14

@@ -538,3 +538,59 @@ eval harness.
 (Housekeeping done on the way: this checkout's zenoh-pico submodule was sitting
 at `07de44fb`, one behind the recorded `43ddb0ec`, so a local build would have
 tested the OLD receive path. `git submodule update` fixed it.)
+
+
+## CORRECTED 2026-08-16 — the fix was on the OTHER read path
+
+The section above says #567's conclusion is "no longer true by construction".
+That was construction-only, and wrong for the lane this issue was measured on.
+Recorded rather than edited away: it was written from reading a diff, and only
+building the thing exposed it.
+
+`43ddb0ec` made the reset conditional in **`_zp_unicast_read`** — the POLLED
+path. `nm` on the FreeRTOS mps2-an385 image shows it exports
+**`_zp_unicast_read_task`**: the `Z_FEATURE_MULTI_THREAD` path, whose
+`_zp_unicast_process_peer_event` still called `_z_zbuf_reset` unconditionally at
+the end of every peer's turn. On this lane a frame cap was therefore still a drop
+policy, exactly as `issue506_drain_budget.md` measured (inbound 282 -> 10 msg/s),
+and the prerequisite it named was NOT met.
+
+How it surfaced: capped images came out byte-identical to the control. Each
+theory was disproved in turn — the `CFLAGS_*` env var, cargo freshness, a
+`cargo clean -p zpico-sys`, the issue-0475 relink trap (`libzenohpico.a` rebuilt
+at 21:06 while the executable stayed at 20:59) — until an `#error` on line 1 of
+`read.c` failed to fire at all, and `nm` named the function actually linked.
+
+### Ported (zenoh-pico `f4ce3d9f`, pinned)
+
+The task path now compacts instead of resetting **when the transport has a
+single peer**. It cannot mirror the polled fix unconditionally: `_zbuf` is SHARED
+across the peer list, and that reset is what stops peer A's leftover bytes being
+parsed as peer B's stream. Client mode — the embedded island — is always the
+single-peer case; multi-peer keeps the unconditional reset, and a budget there
+would still be lossy.
+
+Measured on the FreeRTOS lane, ~2 kHz flood, one run per cell:
+
+| cell | stalls | worst | miss >15 ms | rx/s | chain % |
+| --- | --- | --- | --- | --- | --- |
+| before (unconditional) | 11 | 203 ms | 0.79% | 396 | 14.6% |
+| after (conditional) | 11 | 314 ms | 1.14% | 336 | 14.3% |
+
+Neutral, as expected — with no budget the loop drains everything, so the buffer
+is empty when the reset is reached. The result that matters is that delivery did
+NOT collapse: carrying a remainder across passes does not corrupt the stream.
+
+### Still open
+
+**Enabling work only.** There is no budget, and no four-column table. One built
+on top did not differentiate cap=1/4/16 in codegen — all three produced a single
+identical binary, though all three differed from unbounded — so it was dropped
+rather than shipped unproven, and a cap=16-vs-4 comparison would have been
+identical by construction. Next: establish why the constant does not reach
+codegen, then run the cells.
+
+Also relevant to anyone re-running this: rebuilding needs the ENTRY crate cleaned
+as well as `zpico-sys`. `libzenohpico.a` rebuilds without relinking the
+executable (issue 0475, here on a vendored source rather than an RMW backend),
+which is why several edits silently never reached the image.
