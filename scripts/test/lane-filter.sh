@@ -33,7 +33,53 @@ lane="${1:-all}"
 case "$lane" in
     all) exit 0 ;;
     native) ;;
-    *) echo "lane-filter.sh: expected 'native' or 'all', got '$lane'" >&2; exit 2 ;;
+    nostd)
+        # phase-359 W9 — the no_std FLAVOUR lane. Emitted as an INCLUSION union,
+        # not exclusions, and that is forced by this file's own hazard: the host
+        # platform `Linux` has no token, and `ThreadxLinux` — a no_std board
+        # running as a Linux process — CONTAINS "linux". So "exclude the std
+        # platforms" would either be inexpressible or would silently drop the
+        # very platform the lane exists to run.
+        #
+        # Flavour comes from scripts/check-flavour-lanes.py, which DERIVES it
+        # from the board manifests (a board is std iff it enables `std` on its
+        # nros/nros-platform deps, followed transitively through board->board
+        # deps — that is how NuttX resolves to std). One derivation, used by the
+        # gate and by this lane, so they cannot disagree.
+        flavours="$(python3 "$(dirname "$0")/../check-flavour-lanes.py" --print 2>/dev/null)"
+        [ -n "$flavours" ] || { echo "lane-filter.sh: flavour table unavailable" >&2; exit 2; }
+        expr=""
+        while IFS="$(printf '\t')" read -r platform flavour; do
+            [ "$flavour" = "no_std" ] || continue
+            tok="$(printf '%s' "$platform" | sed -E 's/^([A-Z][a-z0-9]*).*/\1/' | tr 'A-Z' 'a-z')"
+            case " $expr " in *" test(~$tok) "*) continue ;; esac
+            if [ -z "$expr" ]; then expr="test(~$tok)"; else expr="$expr or test(~$tok)"; fi
+        done <<EOF
+$flavours
+EOF
+        [ -n "$expr" ] || { echo "lane-filter.sh: no no_std platforms derived" >&2; exit 2; }
+        printf '%s\n' "$expr"
+        # …AND exclude the std families explicitly. The inclusion union alone is
+        # NOT enough, because family tokens overlap across flavours: the
+        # `QemuBaremetal` (no_std) token is "qemu", and `tests/nuttx_qemu.rs`
+        # matches it — so the union would drag NuttX, which is std, into the
+        # no_std lane. Caught by inspection before this shipped; it is precisely
+        # the mixing this work item exists to prevent.
+        #
+        # `Linux` needs no exclusion and must not get one: the host has no token,
+        # so the union never selects it, while excluding "linux" would drop
+        # `ThreadxLinux` — a no_std platform this lane must run.
+        while IFS="$(printf '\t')" read -r platform flavour; do
+            [ "$flavour" = "std" ] || continue
+            [ "$platform" = "Linux" ] && continue
+            tok="$(printf '%s' "$platform" | sed -E 's/^([A-Z][a-z0-9]*).*/\1/' | tr 'A-Z' 'a-z')"
+            printf 'not test(~%s)\n' "$tok"
+        done <<EOF
+$flavours
+EOF
+        exit 0
+        ;;
+    *) echo "lane-filter.sh: expected 'native', 'nostd' or 'all', got '$lane'" >&2; exit 2 ;;
 esac
 
 matrix="packages/testing/nros-tests/src/matrix.rs"

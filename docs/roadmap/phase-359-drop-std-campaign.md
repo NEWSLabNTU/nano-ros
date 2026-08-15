@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE. W7, W9, W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed. W7 and W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -432,11 +432,59 @@ fix added something to embedded builds rather than only lowering a count:
 | `nros-core` error impls | the `Error` trait itself (no `dyn Error` on no_std) |
 | `nros-params::types` | `ParameterVariant` for `String`/`Vec<…>` |
 
-### W9 — lanes and cell checks
+### W9 — lanes and cell checks — **DONE 2026-08-15**
 
-Separate `std`/`no_std` lanes (shapes genuinely differ: 74 `Linux` cells vs 132
-elsewhere) plus a per-cell flavour assertion. Best after W2–W6 shrink the
-divergence.
+Two pieces: a gate that makes the flavour of a platform knowable, and a lane
+that consumes it.
+
+**`scripts/check-flavour-lanes.py`** (wired into `check-fast`). Every
+`matrix_platform` must resolve to exactly ONE flavour, so a lane keyed on the
+platform cannot mix std and no_std images. Nothing is asserted: the flavour is
+DERIVED — a board is std iff it enables `std` on its `nros`/`nros-platform`
+deps, followed transitively through board->board deps, with the registry
+supplying the board -> platform relation it already maintains.
+
+The transitive part is not decoration. Reading each board's own manifest
+reported **NuttX as no_std**, which is wrong — `nros-board-nuttx-qemu` enables
+nothing itself, but the `nros-board-nuttx` it links does, and NuttX compiles
+the standard library from source via `build-std`. The walk is cycle-safe
+(`nuttx` and `nuttx-qemu` depend on each other, as do the threadx pair) and
+over-approximates toward std, which is the safe direction: a doubtful board
+stays OUT of the no_std lane.
+
+Derived today — 3 std, 8 no_std:
+
+| flavour | platforms |
+| --- | --- |
+| std | `Linux`, `NuttxArm`, `NuttxRiscv` |
+| no_std | `Esp32Qemu`, `FreertosMps2`, `Fvp`, `QemuBaremetal`, `ThreadxLinux`, `ThreadxRiscv64`, `ZephyrNativeSim`, `ZephyrQemuCortexM` |
+
+Verified both ways: pointing a no_std board at `Linux` in the registry makes the
+gate fail naming both sides; restoring it passes.
+
+**`lane-filter.sh nostd`** emits the no_std lane from that same derivation, so
+gate and lane cannot disagree. Two hazards were found while writing it, and both
+are the reason it is an INCLUSION union rather than exclusions:
+
+* The host `Linux` has NO token, while `ThreadxLinux` — a no_std board running
+  as a Linux process — contains "linux". "Exclude the std platforms" would
+  therefore have dropped a platform the lane exists to run.
+* Family tokens overlap across flavours: `QemuBaremetal`'s token is "qemu", and
+  `tests/nuttx_qemu.rs` matches it, so the union ALONE would have pulled std
+  NuttX into the no_std lane. The lane therefore also emits
+  `not test(~nuttx)` — caught by inspection before shipping, and exactly the
+  mixing this item exists to prevent.
+
+**On "checks on cells".** The gate is platform-level, and that IS the cell
+guarantee rather than a weaker substitute: every cell names a platform, and a
+platform now provably carries one flavour, so no cell can straddle. A separate
+per-cell assertion would re-check the same fact.
+
+**Not delivered:** a `std` lane mode. The host half is already served by the
+existing `native` lane, and the only other std platform is NuttX, whose tests
+are toolchain-gated out of tier 1 anyway — so a `std` mode would today select
+either exactly `native` or a set nothing can run. Adding it when it selects
+something real is better than adding it now.
 
 ### W10 — flip the default, delete the feature
 

@@ -405,7 +405,7 @@ check-fast: \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census \
+    check-std-census check-flavour-lanes \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2677,6 +2677,19 @@ ci-full: check rust-rtos-link-check test-all test-ignored
 # whose workflow yml previously carried only raw-shell steps. The heavy lane stays
 # `just ci` / `just test-all`; this is the fast per-push tier.
 # =============================================================================
+
+# phase-359 W9 — every matrix platform resolves to exactly ONE std flavour, so a
+# lane keyed on the platform cannot mix std and no_std images. Buildless (reads
+# board manifests + the registry), so it belongs in the fast tier.
+#
+# The flavour is DERIVED, never listed: a board is std iff it enables `std` on
+# its nros/nros-platform deps, followed through board->board deps. That is how
+# NuttX resolves to std — the qemu board enables nothing itself, but the base
+# board it links does. `--print` feeds `lane-filter.sh nostd`, so the gate and
+# the lane share one derivation.
+[group("ci")]
+check-flavour-lanes:
+    @python3 scripts/check-flavour-lanes.py
 
 # phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
 # belongs in the fast tier next to the other convention gates.
