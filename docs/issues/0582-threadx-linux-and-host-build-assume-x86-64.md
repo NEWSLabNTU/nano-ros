@@ -133,17 +133,48 @@ found neither.
 
 ### Not yet fixed
 
-**Declared-fact drift (cosmetic, not a build break).** ~20 `system.toml`
-`[deploy.native]` blocks declare `target = "x86_64-unknown-linux-gnu"`. Traced
-these: nothing turns them into a cargo `--target` (`PLATFORM_TARGETS["native"]`
-is `None`; the only non-test `--target` plumbing is the metadata probe, which
-already derives `host_triple()`). So a native deploy on aarch64 builds fine but
-*declares* an x86 triple. Worth a sweep when someone touches deploy resolution.
+**24 `system.toml` deploy blocks declare `target = "x86_64-unknown-linux-gnu"`.**
+This looked like cosmetic drift and is not — it needs a real change, deliberately
+deferred here rather than swept.
 
-**A stale comment.** `packages/boards/nros-board-threadx/build.rs:70` still says
-"threadx-linux is a real ThreadX board whose target IS `x86_64-unknown-linux-gnu`".
-The logic it justifies is arch-agnostic (it discriminates on the *port*, which is
-right), but the premise is no longer true.
+What was verified:
+
+- It never becomes a cargo `--target`. `PLATFORM_TARGETS["native"]` is `None`,
+  and the only non-test `--target` plumbing is the metadata probe, which already
+  calls `host_triple()`.
+- For `[deploy.native]` it is inert in the one predicate that reads it:
+  `plan_target_is_hosted` (`planner.rs`) short-circuits on
+  `matches!(build.board, "native" | "posix")` before reaching
+  `build.target.contains("linux")`.
+- **But it IS embedded in the resolved SystemModel.** Every
+  `build/nros/models/<bringup>/*_model.yaml` carries `target:
+  x86_64-unknown-linux-gnu`. The models are build artifacts, so on an aarch64
+  host every workspace resolves a model asserting a triple that is not this
+  machine's.
+
+So deleting the 24 declarations is not the fix, and it is not free: it changes
+model content for every workspace, which means re-resolution plus fixture
+rebuilds to verify, and `board_descriptor.rs`'s `target_contains` matching reads
+the same field for non-native deploys.
+
+The fix is for `nros sync` to FILL `build.target` with `host_triple()` when a
+`kind = "self"` deploy omits it — the declaration then stops being a hand-copied
+constant and starts being a resolved fact, the same move #0582 made for the
+rustlib dir. That is CLI behaviour plus a model-content change, i.e. phase work,
+not a drive-by edit.
+
+Note the six non-`native` sites need individual judgement and are not covered by
+that rule: `[deploy.robot1]`/`[deploy.robot2]` in four workspaces declare a
+REMOTE machine's triple (a real fact about another host, not this one), and
+`[deploy.esp_idf_esp32c3]` / `[deploy.zephyr_native_sim]` in the test fixtures
+declare x86_64 for an ESP32-C3 and a Zephyr sim respectively — the first of
+those looks simply wrong and is worth a look on its own.
+
+**Fixed: a stale comment.** `packages/boards/nros-board-threadx/build.rs` said
+"threadx-linux is a real ThreadX board whose target IS
+`x86_64-unknown-linux-gnu`" — true only on an x86 machine, and only because the
+board pinned that literal until this issue removed it. The logic it justifies
+was always arch-agnostic (it keys on the *port*); only the premise was wrong.
 
 ## Sweep
 

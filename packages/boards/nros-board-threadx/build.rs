@@ -67,10 +67,16 @@ fn main() {
     // callback slots (issue 0288).
     //
     // The triple ALONE cannot decide this: `threadx-linux` is a real ThreadX
-    // board whose target IS `x86_64-unknown-linux-gnu`, so "skip on x86_64"
-    // would break it. The honest discriminator is the PORT: a cross port
-    // selected while building for a host triple means we are host-tooling, not
-    // building firmware.
+    // board that builds for the HOST triple, whatever that is, so "skip when
+    // the target is a host triple" would break it. The honest discriminator is
+    // the PORT: a cross port selected while building for a host triple means we
+    // are host-tooling, not building firmware.
+    //
+    // This used to say "whose target IS `x86_64-unknown-linux-gnu`". That was
+    // true only on an x86 machine — the board pinned that literal until issue
+    // 0582 removed it, since a literal triple is a host pin on one host and a
+    // cross compile everywhere else. The logic below never depended on it (it
+    // keys on the port, which is right); only the premise was wrong.
     {
         let target = env::var("TARGET").unwrap_or_default();
         let cross_port_arch = if port_subpath.starts_with("risc-v64") {
