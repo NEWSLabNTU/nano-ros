@@ -433,6 +433,23 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         // The harness inherits no pinned toolchain so a generated
         // `rust-toolchain.toml` elsewhere can't force a re-resolve.
         .env_remove("RUSTUP_TOOLCHAIN")
+        // phase-359 W7 — `[unstable] build-std` is the SIBLING of the `--target`
+        // override above, and it comes from the same place for the same reason:
+        // the board's `.cargo/nros-board.toml`, inherited by the config walk-up
+        // the `[patch.crates-io]` entries require. `--target` had to be
+        // overridden because the board's is wrong for a HOST probe; `build-std`
+        // is wrong for exactly the same reason, and an env var beats config the
+        // way an explicit flag does.
+        //
+        // It stayed invisible while the NuttX boards said `build-std = ["std",
+        // …]`: cargo then built `std` from source for the host too, which is
+        // consistent, merely slow. Narrowing that to `["core", "alloc", …]`
+        // made it build `core` from source and link it beside the PREBUILT host
+        // `std` that depends on a different `core` — `duplicate lang item in
+        // crate `core` (which `std` depends on): `sized``. The probe wants the
+        // host's ordinary prebuilt libraries, which is what an empty value
+        // selects.
+        .env("CARGO_UNSTABLE_BUILD_STD", "")
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())
         .spawn()

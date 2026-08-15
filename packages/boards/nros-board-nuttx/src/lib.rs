@@ -78,13 +78,208 @@
 //! port-dir / config-dir env vars are read here. NuttX's own
 //! `make menuconfig` + `defconfig` flow drives all of that.
 
-// `std` is reachable (and required by `run_entry` / `run_generic`) when the
-// reference feature is on OR the target is NuttX (hosted, ships std). The
-// no_std predicate must match the std-using bodies' `cfg(any(feature =
-// "reference-qemu", target_os = "nuttx"))` gate — else a NuttX entry
-// built WITHOUT the feature (e.g. via `nros-board-nuttx-qemu`) compiles
-// this crate as no_std while its `std::` bodies are active → build errors.
-#![cfg_attr(not(any(feature = "reference-qemu", target_os = "nuttx")), no_std)]
+// phase-359 W7 — `no_std`, unconditionally.
+//
+// This used to read `cfg_attr(not(any(feature = "reference-qemu", target_os =
+// "nuttx")), no_std)`: std when the target was NuttX, `no_std` otherwise. The
+// predicate existed because the bodies below reached for `std::io::stdout`,
+// `std::thread` and `std::process::exit`, so the crate's FLAVOUR had to follow
+// whether those bodies were live. None of them reach for std any more — every
+// facility they used is exported by `<nros/platform.h>` or NuttX's own libc,
+// both of which this image already links — so the predicate has nothing left to
+// decide and the crate is one flavour on every target.
+//
+// See `docs/roadmap/phase-359-drop-std-campaign.md` W7 for what each std
+// facility became.
+#![no_std]
+
+extern crate alloc;
+
+/// phase-359 W7 — the NuttX system facilities this board used to reach through
+/// `std`.
+///
+/// Every one of them is a call NuttX already exports: the console and `exit`
+/// come from its libc (which is what libstd called underneath), and `sleep`
+/// comes from the canonical platform ABI this image links as
+/// `libnros_platform_nuttx.a`. Nothing here is new capability — it is the same
+/// syscall, reached without compiling the standard library to get to it.
+#[doc(hidden)]
+pub mod sys {
+    use core::ffi::{c_char, c_int, c_void};
+
+    unsafe extern "C" {
+        /// The console. `println!` bottomed out here through libstd's
+        /// `Stdout` -> `LineWriter` -> `write(2)`; this is the same fd and the
+        /// same syscall with the two wrappers removed.
+        fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
+        /// What libstd's `process::exit` calls. Same status semantics, so a
+        /// caller of `BoardExit::exit_failure` is unaffected.
+        fn exit(code: c_int) -> !;
+        /// `<nros/platform.h>` — the POSIX platform port NuttX already links.
+        fn nros_platform_sleep_s(s: usize);
+        /// Ditto — what `std::thread::yield_now` called.
+        fn nros_platform_yield_now();
+    }
+
+    /// Write every byte of `bytes` to fd 1, tolerating short writes.
+    fn write_all(bytes: &[u8]) {
+        let mut off = 0usize;
+        while off < bytes.len() {
+            // SAFETY: `bytes[off..]` is a valid readable range for `len - off`.
+            let n = unsafe {
+                write(
+                    1,
+                    bytes.as_ptr().add(off) as *const c_void,
+                    bytes.len() - off,
+                )
+            };
+            if n <= 0 {
+                // EOF or a hard error — a retry loop here would spin forever on
+                // a closed console, and a diagnostic printer must never
+                // out-live the thing it is diagnosing.
+                return;
+            }
+            off += n as usize;
+        }
+    }
+
+    /// A whole formatted line, assembled before it reaches the console.
+    ///
+    /// The buffer is not an optimisation, it is the ATOMICITY the std path
+    /// provided: `println!` locked `Stdout` and its `LineWriter` emitted one
+    /// `write(2)` per line, so two tiers printing concurrently could not
+    /// interleave mid-line. Writing each `core::fmt` fragment straight to fd 1
+    /// would have shredded exactly the multi-tier diagnostics that issues 0572
+    /// and 0579 added — a tier's identity line arrives interleaved with
+    /// another's, and the console stops being readable at the moment it matters.
+    ///
+    /// A line longer than the buffer degrades to several writes rather than
+    /// being truncated: losing atomicity on an over-long line is recoverable,
+    /// losing its tail is not.
+    struct LineBuf {
+        buf: [u8; 512],
+        len: usize,
+    }
+
+    impl LineBuf {
+        const fn new() -> Self {
+            Self {
+                buf: [0; 512],
+                len: 0,
+            }
+        }
+        fn flush(&mut self) {
+            if self.len > 0 {
+                write_all(&self.buf[..self.len]);
+                self.len = 0;
+            }
+        }
+    }
+
+    impl core::fmt::Write for LineBuf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            for &b in s.as_bytes() {
+                if self.len == self.buf.len() {
+                    self.flush();
+                }
+                self.buf[self.len] = b;
+                self.len += 1;
+            }
+            Ok(())
+        }
+    }
+
+    /// `println!`'s body — format, append the newline, emit as one write.
+    pub fn print_line(args: core::fmt::Arguments<'_>) {
+        use core::fmt::Write as _;
+        let mut line = LineBuf::new();
+        let _ = line.write_fmt(args);
+        let _ = line.write_str("\n");
+        line.flush();
+    }
+
+    /// Terminate the task, exactly as `std::process::exit` did.
+    pub fn exit_process(code: i32) -> ! {
+        // SAFETY: libc `exit` is always callable and diverges.
+        unsafe { exit(code as c_int) }
+    }
+
+    /// Sleep whole seconds via the platform ABI.
+    pub(crate) fn sleep_secs(s: usize) {
+        // SAFETY: documented, always callable.
+        unsafe { nros_platform_sleep_s(s) }
+    }
+
+    /// Yield the CPU via the platform ABI.
+    pub(crate) fn yield_now() {
+        // SAFETY: documented, always callable.
+        unsafe { nros_platform_yield_now() }
+    }
+
+    /// Spawn a detached tier task with an explicit stack size (issue 0246).
+    ///
+    /// Implemented in C (`nuttx_run_tiers.c`) for the reason every other
+    /// `nros_nuttx_*` shim in this crate is: `pthread_attr_t` is
+    /// **Kconfig-dependent** on NuttX, so a Rust-side layout mirror is issue
+    /// 0570 — the bug where a 20-byte Rust `pthread_attr_t` met NuttX's
+    /// 56-byte one and `pthread_attr_init` smashed 36 bytes of the caller's
+    /// frame. The C side is compiled against this kernel's own headers and
+    /// cannot disagree with it.
+    ///
+    /// Returns 0 on success, else the `pthread_create` errno.
+    pub(crate) fn spawn_tier(
+        name: &str,
+        stack_bytes: usize,
+        entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
+        arg: *mut c_void,
+    ) -> i32 {
+        unsafe extern "C" {
+            fn nros_nuttx_spawn_tier(
+                name: *const c_char,
+                stack_bytes: usize,
+                entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
+                arg: *mut c_void,
+            ) -> c_int;
+        }
+        // Same NUL-terminated stack copy the `apply_tier_*` shims use — a
+        // `TierSpec` name is a `&str`, never a C string.
+        let mut name_buf = [0u8; 64];
+        let n = name.len().min(63);
+        name_buf[..n].copy_from_slice(&name.as_bytes()[..n]);
+        // SAFETY: `name_buf` is NUL-terminated and outlives the call (the C
+        // side copies it); `entry`/`arg` are the caller's contract.
+        unsafe { nros_nuttx_spawn_tier(name_buf.as_ptr() as *const c_char, stack_bytes, entry, arg) }
+    }
+}
+
+/// Console line printer.
+///
+/// Shadows `std::println!` for the rest of this crate, with the same surface
+/// and the same bytes on the wire, so no call site below changed when the crate
+/// left `std`. The three `no_std` sibling boards
+/// (`nros-board-mps2-an385{,-freertos}`, `nros-board-threadx-qemu-riscv64`)
+/// each define this same macro over their own console primitive; NuttX's
+/// primitive is `write(2)`.
+///
+/// Unbuffered by construction: one line, one syscall. That retires the ~25
+/// explicit `stdout().flush()` calls the std path needed — with `LineWriter`
+/// gone there is no userspace buffer left to strand a diagnostic in, which is
+/// the failure mode issue 0572 was chasing.
+#[macro_export]
+macro_rules! nros_nuttx_println {
+    () => { $crate::sys::print_line(format_args!("")) };
+    ($($arg:tt)*) => { $crate::sys::print_line(format_args!($($arg)*)) };
+}
+
+/// Crate-local spelling, so no call site below had to change.
+///
+/// Unused off-target: every caller sits behind the `reference-qemu` /
+/// `target_os = "nuttx"` gate, which a host build (e.g. `nros sync`'s
+/// source-metadata probe) does not satisfy.
+#[allow(unused_macros)]
+macro_rules! println {
+    ($($arg:tt)*) => { $crate::nros_nuttx_println!($($arg)*) };
+}
 
 // Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init` path is
 // RETIRED for the NuttX family: the generic `run_generic<B>` shim, the
@@ -162,7 +357,6 @@
 /// [`run_generic`] so a bare `cargo check` without a NuttX target
 /// + without the reference feature skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
 /// Route panics to STDOUT (issue 0572; extended to `run_tiers` by issue 0583).
 ///
 /// A panic on this guest is INVISIBLE otherwise: Rust prints the message and
@@ -172,18 +366,55 @@
 /// look exactly like one that silently stopped scheduling", and it was then
 /// installed on ONE of the two entry paths: `run_tiers` — the multi-tier path,
 /// the only one that HAS siblings to spawn — never called it. Issue 0583 is
-/// exactly the scenario it describes, on exactly the path that lacked it, so
-/// the hook is a shared function now rather than a block inside one entry.
-fn install_stdout_panic_hook() {
-    use std::io::Write as _;
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(std::boxed::Box::new(move |info| {
-        println!("nros: PANIC {info}");
-        let _ = std::io::stdout().flush();
-        prev(info);
-    }));
+/// exactly the scenario it describes, on exactly the path that lacked it.
+///
+/// ## phase-359 W7 — a hook became a handler
+///
+/// This was `std::panic::set_hook`, installed at the top of each entry. A
+/// `no_std` image has no panic RUNTIME to hook, so the same job is now a
+/// `#[panic_handler]`: it runs for every panic in the image without an entry
+/// having to remember to install it, which structurally retires the 0583 class
+/// (an entry path that forgot the call). It also cannot be displaced by a later
+/// `set_hook`, so a user crate cannot silently take these diagnostics away.
+///
+/// The message text is deliberately byte-identical to the hook's
+/// (`nros: PANIC <info>`) — the e2e harness greps for it.
+///
+/// Diverging is now the handler's job rather than the runtime's. The target
+/// spec already says `panic-strategy: abort` (and the profiles set
+/// `panic = "abort"`), so nothing unwinds past here either way; `exit(1)` keeps
+/// the status a NuttX shell observes identical to what libstd produced when its
+/// abort path ran.
+///
+/// ## Why gated
+///
+/// Exactly one `#[panic_handler]` may exist per image, and `nros-c` supplies
+/// one for `no_std` C/C++ images (its own gate: `global-allocator`, not `std`,
+/// not `panic-halt`). Both crates are linked into a C/C++ NuttX image, so the
+/// two would be a duplicate-lang-item link error. Those images therefore take
+/// this crate with `default-features = false` and let `nros-c` own the image
+/// runtime; a pure-Rust image links no `nros-c` and takes this handler. See the
+/// `image-runtime` feature in `Cargo.toml` for why the handler and the
+/// allocator share one flag.
+#[cfg(all(target_os = "nuttx", feature = "image-runtime"))]
+#[panic_handler]
+fn nros_nuttx_panic(info: &core::panic::PanicInfo<'_>) -> ! {
+    println!("nros: PANIC {info}");
+    sys::exit_process(1)
 }
 
+// phase-359 W7 — `run_entry` carries the same gate as `run_tiers` and as every
+// helper both of them call (`install_stdout_logger`, `nuttx_run_one_tier`,
+// `nuttx_spin_tier_forever`, `NUTTX_TIER_STACK_DEFAULT_BYTES`).
+//
+// It did not before, and the reason is issue 0579's class again: the gate ONE
+// line above this fn belonged to `install_stdout_panic_hook`, which sat between
+// the two, so `run_entry` looked gated in context while being ungated in fact.
+// Nothing noticed because a host build still had `std`, so the ungated body
+// compiled; with the family on `no_std` it stops compiling off-target and its
+// gated helpers vanish out from under it. The host build that surfaced this is
+// `nros sync`'s source-metadata probe, which builds these leaves for the host.
+#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
 pub fn run_entry<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     setup: F,
@@ -193,18 +424,14 @@ where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-    install_stdout_panic_hook();
-
     <B as nros_platform::BoardInit>::init_hardware();
 
     // NuttX virtio-net needs a brief warm-up after kernel
     // `NETINIT_*` before `connect()` succeeds. Magic number matches
     // `run` / `run_generic`; future work could probe link state
     // via `SIOCGIFFLAGS` instead.
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    sys::sleep_secs(5);
 
-    use std::io::Write as _;
-    let _ = std::io::stdout().flush();
 
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
     // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
@@ -238,7 +465,14 @@ where
             }
             cfg
         }
-        None => ::nros::ExecutorConfig::from_env().node_name(node_name),
+        // phase-359 W7 — was `ExecutorConfig::from_env()`, which is std-only
+        // (it reads `std::env`). Nothing is lost: this guest has NO populated
+        // environment, which is exactly why the locator is baked above, and
+        // issue 0330 defines an unset env as an EMPTY locator that the backend
+        // then defaults. `new("")` is that same state, spelled without a
+        // lookup that could only ever miss. (The one other field `from_env`
+        // set, a std wall-clock epoch, is `None` in any no_std build anyway.)
+        None => ::nros::ExecutorConfig::new("").node_name(node_name),
     };
 
     // Explicitly register the zenoh RMW backend before opening the executor.
@@ -255,8 +489,7 @@ where
         Ok(e) => e,
         Err(err) => {
             println!("Executor::open failed: {:?}", err);
-            let _ = std::io::stdout().flush();
-            std::process::exit(1);
+            sys::exit_process(1);
         }
     };
     // #132 — install a stdout `log::Log` sink so the chatter examples'
@@ -271,16 +504,13 @@ where
     // examples' "Waiting for messages" is C-only). Emit one after the session
     // opens and before spin — greppable. The pattern is a test contract.
     println!("nros entry ready");
-    let _ = std::io::stdout().flush();
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
     let setup_result = setup(&mut runtime);
 
-    let _ = std::io::stdout().flush();
     if let Err(ref e) = setup_result {
         println!("Application error: {:?}", e);
-        let _ = std::io::stdout().flush();
         return setup_result;
     }
 
@@ -292,8 +522,7 @@ where
     loop {
         if let Err(err) = nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
             println!("spin_once error: {:?}", err);
-            let _ = std::io::stdout().flush();
-            std::process::exit(1);
+            sys::exit_process(1);
         }
     }
 }
@@ -471,21 +700,16 @@ where
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Sync,
     E: core::fmt::Debug,
 {
-    use std::io::Write as _;
 
-    // issue 0583 — this path spawns siblings, which is the case 0572's hook was
-    // written for, and it was the path that did not install it.
-    install_stdout_panic_hook();
 
     <B as nros_platform::BoardInit>::init_hardware();
 
     // NuttX virtio-net warm-up — same magic number + rationale as `run_entry`.
-    std::thread::sleep(std::time::Duration::from_secs(5));
-    let _ = std::io::stdout().flush();
+    sys::sleep_secs(5);
 
     if tiers.is_empty() {
         println!("nros: run_tiers called with no tiers — nothing to run");
-        std::process::exit(1);
+        sys::exit_process(1);
     }
 
     // Baked locator / domain / node name — identical to `run_entry` (compile-time
@@ -505,7 +729,14 @@ where
             }
             cfg
         }
-        None => ::nros::ExecutorConfig::from_env().node_name(node_name),
+        // phase-359 W7 — was `ExecutorConfig::from_env()`, which is std-only
+        // (it reads `std::env`). Nothing is lost: this guest has NO populated
+        // environment, which is exactly why the locator is baked above, and
+        // issue 0330 defines an unset env as an EMPTY locator that the backend
+        // then defaults. `new("")` is that same state, spelled without a
+        // lookup that could only ever miss. (The one other field `from_env`
+        // set, a std wall-clock epoch, is `None` in any no_std build anyway.)
+        None => ::nros::ExecutorConfig::new("").node_name(node_name),
     };
 
     // NuttX has no linkme / `.init_array` auto-register, so the backend register
@@ -525,8 +756,7 @@ where
                  — aborting.",
                 err
             );
-            let _ = std::io::stdout().flush();
-            std::process::exit(1);
+            sys::exit_process(1);
         }
     };
     install_stdout_logger();
@@ -538,7 +768,6 @@ where
         "nros: multi-tier run — {} tier(s) over one session",
         tiers.len()
     );
-    let _ = std::io::stdout().flush();
 
     let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
 
@@ -565,7 +794,6 @@ where
         // keeps whatever the init task was started with.
         boot_tier.priority
     );
-    let _ = std::io::stdout().flush();
     boot_crt.executor_mut().set_active_groups(boot_tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
     // boot tier is the SESSION OWNER: `apply_tier_sched_policy` installs the
@@ -612,14 +840,13 @@ where
             // error. Issue 0565 taught the harness to capture the console for
             // exactly these lines, and they could never appear in it.
             println!("nros: boot tier `{}` setup FAILED: {:?}", boot_tier.name, e);
-            let _ = std::io::stdout().flush();
             return Err(e);
         }
     }
 
     let shared = NuttxSharedSession(boot_crt.executor_mut().session_ptr());
     let setup = &setup;
-    std::thread::scope(|scope| {
+    {
         // Spawn every non-boot tier; each borrows the shared session pointer +
         // `&setup`. The boot declares are already done, so these only overlap the
         // boot tier's spin.
@@ -629,71 +856,88 @@ where
                 "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
                 tier.name, tier.groups, tier.class, tier.spin_period_us
             );
-            let _ = std::io::stdout().flush();
-            // issue #246 — a Rust `std::thread` spawned with no explicit stack
-            // requests the std default (2 MiB), which `pthread_create` cannot
-            // satisfy from NuttX's small kernel heap → ENOMEM ("failed to spawn
-            // tier"). The C/C++ sibling glue always passes an explicit
+            // issue #246 — a tier spawned with no explicit stack requested the
+            // std default (2 MiB), which `pthread_create` cannot satisfy from
+            // NuttX's small kernel heap → ENOMEM ("failed to spawn tier"). The
+            // C/C++ sibling glue always passes an explicit
             // `pthread_attr_setstacksize` (16 KiB default / `stack_bytes`
             // override) precisely because the executor arena lives on the heap
             // (`nros_platform_alloc`), so a tier stack only carries call frames.
             // Mirror that: honour `stack_bytes`, else a 64 KiB default
             // (== NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT`, generous for the
             // zenoh-pico/executor call depth the Rust closures reach).
+            //
+            // phase-359 W7 — the size is now handed to the C shim, which sets it
+            // on a `pthread_attr_t` laid out by THIS kernel's headers. Same
+            // number, same effect, one fewer std-shaped layer in between.
             let stack_bytes = if tier.stack_bytes > 0 {
                 tier.stack_bytes
             } else {
                 NUTTX_TIER_STACK_DEFAULT_BYTES
             };
-            // issue #246 — NuttX `pthread_create` from Rust std can fail
-            // TRANSIENTLY under host/QEMU load (observed: an `io::Error` with no
-            // OS errno, distinct from the deterministic 2-MiB-stack ENOMEM the
-            // explicit `stack_size` above fixes). A single failure drops the
+            // phase-359 W7 — the per-tier context the spawned task receives.
+            //
+            // `thread::scope` used to carry the borrows (`&setup`, `tier`, the
+            // shared session) into the spawned closure and PROVE they outlived
+            // it. A detached NuttX task cannot be given that proof by the type
+            // system, so the invariant becomes explicit and is stated here:
+            // `run_tiers` never returns — the boot tier's spin loop below is
+            // infinite — so every borrow reachable from this frame outlives
+            // every task spawned from it. That is the same invariant the C arm
+            // relies on (`nuttx_run_tiers.c` heap-allocates its ctx and never
+            // frees it), now with the same lifetime and one owner.
+            //
+            // The box is deliberately leaked: the task never exits, so there is
+            // no point at which freeing it would be correct.
+            let ctx = alloc::boxed::Box::new(TierCtx::<F, E> {
+                session: shared.0,
+                tier: tier as *const nros_platform::TierSpec<'_>
+                    as *const nros_platform::TierSpec<'static>,
+                setup: setup as *const F,
+                _e: core::marker::PhantomData,
+            });
+            // Keep the TYPED pointer as well: the `*mut c_void` the C shim wants
+            // has lost the type needed to reconstruct the box on the failure path.
+            let ctx_typed = alloc::boxed::Box::into_raw(ctx);
+            let ctx_ptr = ctx_typed as *mut core::ffi::c_void;
+            // issue #246 — NuttX `pthread_create` can fail TRANSIENTLY under
+            // host/QEMU load, distinct from the deterministic 2-MiB-stack ENOMEM
+            // the explicit stack size above fixes. A single failure drops the
             // whole tier for the run → the low tier never delivers → the cell
             // times out (the historical #246 flake). Retry a few times with a
-            // yield between attempts; the closure captures only Copy/ref state
-            // (`shared`, `tier`, `setup`), so it is cheap to rebuild per attempt.
+            // yield between attempts.
             const SPAWN_ATTEMPTS: u32 = 5;
             let mut spawned = false;
             for attempt in 1..=SPAWN_ATTEMPTS {
-                let builder = std::thread::Builder::new()
-                    .name(format!("nros-tier-{}", tier.name))
-                    .stack_size(stack_bytes);
-                match builder.spawn_scoped(scope, move || {
-                    // Re-bind the whole wrapper so the closure captures the
-                    // `Send` `NuttxSharedSession`, not the bare `*mut` field.
-                    let shared = shared;
-                    // SAFETY: `shared.0` aliases the boot executor's session,
-                    // kept alive for this scope by `thread::scope`.
-                    let exec = unsafe { ::nros::Executor::open_with_session(shared.0) };
-                    nuttx_run_one_tier::<F, E>(exec, tier, setup);
-                }) {
-                    Ok(_) => {
-                        spawned = true;
-                        break;
-                    }
-                    Err(e) => {
-                        println!(
-                            "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, \
-                             kind {:?}, os error {:?}): {e}",
-                            tier.name,
-                            attempt,
-                            SPAWN_ATTEMPTS,
-                            stack_bytes,
-                            e.kind(),
-                            e.raw_os_error()
-                        );
-                        let _ = std::io::stdout().flush();
-                        std::thread::yield_now();
-                    }
+                let rc = sys::spawn_tier(
+                    tier.name,
+                    stack_bytes,
+                    nuttx_tier_trampoline::<F, E>,
+                    ctx_ptr,
+                );
+                if rc == 0 {
+                    spawned = true;
+                    break;
                 }
+                // W7 — this reports the pthread errno directly. The std path
+                // could only offer `io::Error`, and issue 0246 recorded its
+                // diagnosis as "an `io::Error` with no OS errno": std had
+                // discarded the one number that identifies the failure.
+                println!(
+                    "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, errno {})",
+                    tier.name, attempt, SPAWN_ATTEMPTS, stack_bytes, rc
+                );
+                sys::yield_now();
             }
             if !spawned {
+                // Reclaim the context no task took ownership of.
+                // SAFETY: every attempt failed, so no task received `ctx_ptr`
+                // and this is the only live pointer to that allocation.
+                drop(unsafe { alloc::boxed::Box::from_raw(ctx_typed) });
                 println!(
                     "nros: FAILED to spawn tier `{}` after {} attempts — tier will not run",
                     tier.name, SPAWN_ATTEMPTS
                 );
-                let _ = std::io::stdout().flush();
             }
         }
         // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER:
@@ -713,7 +957,6 @@ where
                  stall the shared session flush; non-owner tiers realize the budget)",
                 boot_tier.name
             );
-            let _ = std::io::stdout().flush();
         }
         // phase-296 W5.11 — placement dim: the boot tier self-pins to its
         // declared `core` (safe here — a core pin, unlike the sporadic budget
@@ -746,10 +989,58 @@ where
         // this board now has one of them rather than neither.
         apply_tier_priority(boot_tier);
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
-    });
+    }
 
-    // Unreachable: the boot tier's spin loop never returns.
+    // Unreachable: the boot tier's spin loop never returns — which is also what
+    // keeps every borrow the spawned tiers hold alive (see `TierCtx`).
+    #[allow(unreachable_code)]
     Ok(())
+}
+
+/// phase-359 W7 — what a spawned tier receives, in place of a scoped closure's
+/// captures.
+///
+/// Raw pointers rather than references because the value crosses a C `void *`
+/// into a detached task, and a reference cannot survive that round trip with
+/// its lifetime intact. Soundness rests on the invariant stated at the spawn
+/// site: `run_tiers` never returns, so everything pointed at here outlives the
+/// task.
+#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+struct TierCtx<F, E> {
+    /// The boot executor's session, shared by every tier (see
+    /// [`NuttxSharedSession`] for why sharing it is sound).
+    session: *mut ::nros::internals::RmwSession,
+    /// The tier's spec. Stored as `'static` because a raw pointer cannot carry
+    /// the real lifetime; the invariant above is what makes reading it back
+    /// sound.
+    tier: *const nros_platform::TierSpec<'static>,
+    /// The shared `setup` closure — `Fn` + `Sync`, invoked once per tier.
+    setup: *const F,
+    _e: core::marker::PhantomData<fn() -> E>,
+}
+
+/// C-ABI entry for a spawned tier: rebuild the borrows and run the tier.
+///
+/// Generic, so each `(F, E)` pair gets its own monomorphised entry — the
+/// closure type is what a `void *` cannot carry.
+#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+unsafe extern "C" fn nuttx_tier_trampoline<F, E>(
+    arg: *mut core::ffi::c_void,
+) -> *mut core::ffi::c_void
+where
+    F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    // SAFETY: `arg` is the `TierCtx` leaked by the spawn site, whose contents
+    // outlive this task by the never-returns invariant documented there.
+    let ctx = unsafe { &*(arg as *const TierCtx<F, E>) };
+    // SAFETY: aliasing the boot executor's session is the per-tier model; the
+    // backend serializes concurrent access internally (`Z_FEATURE_MULTI_THREAD`).
+    let exec = unsafe { ::nros::Executor::open_with_session(ctx.session) };
+    // SAFETY: both pointers came from live borrows at the spawn site.
+    let (tier, setup) = unsafe { (&*ctx.tier, &*ctx.setup) };
+    nuttx_run_one_tier::<F, E>(exec, tier, setup);
+    core::ptr::null_mut()
 }
 
 /// `Send` wrapper for the shared raw session pointer so it can cross the
@@ -787,7 +1078,6 @@ fn nuttx_run_one_tier<F, E>(
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-    use std::io::Write as _;
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
@@ -814,7 +1104,6 @@ fn nuttx_run_one_tier<F, E>(
                 "nros: tier `{}` setup FAILED: {:?} — tier task exiting",
                 tier.name, e
             );
-            let _ = std::io::stdout().flush();
             return;
         }
     }
@@ -827,7 +1116,6 @@ fn nuttx_spin_tier_forever(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &nros_platform::TierSpec<'_>,
 ) {
-    use std::io::Write as _;
 
     // issue 0572 — which wait the executor's spin will take. The primary
     // (session-owning) executor sleeps in the wake primitive when the backend
@@ -850,7 +1138,6 @@ fn nuttx_spin_tier_forever(
         },
         wake_bytes
     );
-    let _ = std::io::stdout().flush();
 
     let period_ms = ((tier.spin_period_us / 1000).max(1)) as u32;
     // issue 0572 — a per-tier heartbeat carrying the counts `spin_once` used to
@@ -865,7 +1152,7 @@ fn nuttx_spin_tier_forever(
     let (mut timers, mut subs, mut errs) = (0usize, 0usize, 0usize);
     let mut announced_first = false;
     loop {
-        match crt.spin_once_counted(std::time::Duration::from_millis(period_ms as u64)) {
+        match crt.spin_once_counted(core::time::Duration::from_millis(period_ms as u64)) {
             Ok(r) => {
                 timers += r.timers_fired;
                 subs += r.subscriptions_processed;
@@ -874,7 +1161,6 @@ fn nuttx_spin_tier_forever(
             Err(err) => {
                 // STDOUT: this guest's stderr never reaches the serial console.
                 println!("nros: tier `{}` spin error: {:?}", tier.name, err);
-                let _ = std::io::stdout().flush();
             }
         }
         iters += 1;
@@ -883,7 +1169,6 @@ fn nuttx_spin_tier_forever(
             // from "never reached the spin at all" — two very different bugs
             // that both present as a silent topic.
             println!("nros: tier `{}` completed spin 1", tier.name);
-            let _ = std::io::stdout().flush();
         }
         // One-shot, and the datum that does not depend on how long the guest
         // lives: did this tier EVER dispatch anything?
@@ -893,14 +1178,12 @@ fn nuttx_spin_tier_forever(
                 "nros: tier `{}` FIRST dispatch at spin {} — {} timer(s), {} sub callback(s)",
                 tier.name, iters, timers, subs
             );
-            let _ = std::io::stdout().flush();
         }
         if iters % heartbeat_every == 0 {
             println!(
                 "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), {} error(s)",
                 tier.name, iters, timers, subs, errs
             );
-            let _ = std::io::stdout().flush();
         }
     }
 }
@@ -915,8 +1198,6 @@ fn nuttx_spin_tier_forever(
 /// `set_logger`, and the `Once` guard avoids the racey double-set path.
 #[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
 fn install_stdout_logger() {
-    use std::{io::Write as _, sync::Once};
-
     struct StdoutLogger;
     impl log::Log for StdoutLogger {
         fn enabled(&self, _: &log::Metadata<'_>) -> bool {
@@ -925,21 +1206,29 @@ fn install_stdout_logger() {
         fn log(&self, record: &log::Record<'_>) {
             // The examples bake the full human line into the message
             // (`Publishing: '...'` / `I heard: [...]`), so emit it verbatim.
-            let mut out = std::io::stdout();
             // `[LEVEL]` prefix — parity with `nros_log`'s sink; see
             // nros-board-linux for why the tag is load-bearing.
-            let _ = writeln!(out, "[{}] {}", record.level(), record.args());
-            let _ = out.flush();
+            println!("[{}] {}", record.level(), record.args());
         }
-        fn flush(&self) {
-            let _ = std::io::stdout().flush();
-        }
+        fn flush(&self) {}
     }
     static LOGGER: StdoutLogger = StdoutLogger;
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        if log::set_logger(&LOGGER).is_ok() {
-            log::set_max_level(log::LevelFilter::Trace);
-        }
-    });
+    // phase-359 W7 — `std::sync::Once` became an atomic flag. `Once` is a
+    // blocking primitive whose extra guarantee (a second caller WAITS for the
+    // first to finish) buys nothing here: `log::set_logger` is itself atomic and
+    // idempotent, so the guard's only job is to skip a redundant call. A
+    // `compare_exchange` says exactly that and nothing more.
+    static INIT: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+    if INIT
+        .compare_exchange(
+            false,
+            true,
+            core::sync::atomic::Ordering::AcqRel,
+            core::sync::atomic::Ordering::Acquire,
+        )
+        .is_ok()
+        && log::set_logger(&LOGGER).is_ok()
+    {
+        log::set_max_level(log::LevelFilter::Trace);
+    }
 }

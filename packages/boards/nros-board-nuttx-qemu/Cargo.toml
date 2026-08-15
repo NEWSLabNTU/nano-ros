@@ -39,12 +39,21 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 # a cyclic package dependency. The `run_entry` symbol is also gated
 # `target_os = "nuttx"`, which is the gate we rely on (matched by the
 # `BoardEntry` impl below).
-nros-board-nuttx = { path = "../nros-board-nuttx" }
+# phase-359 W7 — `default-features = false` + an explicit forward, so an image
+# that supplies its own panic handler / global allocator (a C/C++ image, via
+# `nros-c`) can switch the base crate's off through THIS crate. Without the
+# `default-features = false` the chain would re-enable it behind the bin's back.
+nros-board-nuttx = { path = "../nros-board-nuttx", default-features = false }
 
 [features]
+default = ["image-runtime"]
 # Forward to the generic NuttX board's explicit zenoh-backend registration
 # (its `run_entry` calls `nros_rmw_zenoh::register()` under this feature).
 rmw-zenoh = ["nros-board-nuttx/rmw-zenoh"]
+# phase-359 W7 — see `nros-board-nuttx`'s `image-runtime`. Default ON here too,
+# so a pure-Rust image needs no flag; the FFI bins take this crate with
+# `default-features = false`.
+image-runtime = ["nros-board-nuttx/image-runtime"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis through the nuttx family
 # crate to the zenoh backend's safety-e2e (CRC attach/validate). The descriptor
 # (both `[[board]]` entries of `nros-board.toml`) advertises this via capability_features.

@@ -20,11 +20,16 @@
 //! NOT this `fn main` directly. The board crate
 //! (`nros-board-nuttx-qemu`'s `entry.rs`) exports a
 //! `#[no_mangle] nsh_main` that runs `nsh_initialize()` (virtio FDT
-//! discovery + network bringup) and then calls the Rust `main`
-//! lang-start symbol — so the kernel reaches this `fn main()`.
+//! discovery + network bringup) and then calls the image's `main`
+//! symbol — so the kernel reaches the entry emitted below.
 //!
-//! NuttX is a hosted POSIX-shaped `std` target, so — unlike the
-//! `#![no_std] #![no_main]` freertos/esp32 entries — this is a plain
-//! `std` bin. The prebuilt NuttX kernel libs are linked by `build.rs`.
+//! phase-359 W7 — NuttX used to be built as a hosted `std` target, and this
+//! comment used to say so: it was "a plain `std` bin", unlike the
+//! `#![no_std] #![no_main]` freertos/esp32 entries. It is now one of them —
+//! `nros::main!()` emits the `extern "C" fn main` that `nsh_main` calls. The
+//! prebuilt NuttX kernel libs are still linked by `build.rs`.
+
+#![no_std]
+#![no_main]
 
 nros::main!(launch = "demo_bringup");

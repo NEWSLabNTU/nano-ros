@@ -106,6 +106,18 @@ Zephyr Rust entry is built by zephyr-lang-rust's `rust_cargo_application()`. The
 module, so the delivery must be arranged where we CALL it. Unmeasured: whether the C/C++ Zephyr cells get
 them (#0590 stops the lane first). See `0605-*`. (2026-08-15)
 
+**#608** (testing, open 2026-08-15) — a fixture row built into a phase-340 shared cargo GROUP is
+resolved at the AMBIENT cargo profile, discarding the platform carve-out the caller just applied. NuttX
+Rust pins `nros-minsizerel` (the `lto=off` cross-CGU bug), and `binaries/nuttx.rs` honours that on the
+LEAF path — but the group branch in `binaries/mod.rs` formats its path with a bare
+`cargo_target_profile_dir()`, so every group-built NuttX Rust row is looked up under
+`nros-relwithdebinfo`, which the builder never writes. Presents as the 0584 "broken promise" panic
+naming a binary that exists one directory over. issue-0196's shape once more: a rule threaded through
+the leaf resolver and the staleness probe but not through the third consumer phase-340 added beside
+them. Check `freertos-qemu`, which has the identical carve-out. NOT caused by phase-359 W7 (every file
+involved is byte-identical to HEAD; W7 only changed the feature signature, so the group dir was newly
+named and the mismatch became visible). See `0608-*`. (2026-08-15)
+
 **#590** (rmw/zephyr, open 2026-08-15) — every cyclonedds cell of `just zephyr build-fixtures` fails to
 COMPILE on a freshly provisioned workspace (3.7 line, SDK 0.16.8): cyclone's ddsrt picks its POSIX environ
 backend, whose `setenv`/`unsetenv` Zephyr's libc declares only behind `CONFIG_POSIX_API`, and gcc >= 14

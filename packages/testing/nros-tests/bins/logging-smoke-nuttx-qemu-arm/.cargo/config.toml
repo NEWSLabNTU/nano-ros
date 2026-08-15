@@ -2,7 +2,10 @@
 target = "armv7a-nuttx-eabihf"
 
 [unstable]
-build-std = ["std", "panic_abort"]
+# phase-359 W7 — was . This is a hand-written config
+# rather than one `nros sync` generates from the board descriptor, so it is the
+# one place in the family the descriptor flip does not reach on its own.
+build-std = ["core", "alloc", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
 # #127 — STATIC image-link args only (board-centric link convention,

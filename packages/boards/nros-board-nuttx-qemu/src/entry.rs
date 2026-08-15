@@ -5,12 +5,17 @@
 //! from NuttX's apps library starts an interactive shell — our application
 //! code is never called.
 //!
-//! This module provides a custom `nsh_main` that calls Rust's generated
-//! `main` symbol (from `lang_start`), which in turn calls the user's
-//! `fn main()`. Because this symbol is in the main binary, it takes
-//! precedence over the archive definition in `libapps.a`.
+//! This module provides a custom `nsh_main` that calls the image's `main`
+//! symbol. Because this symbol is in the main binary, it takes precedence over
+//! the archive definition in `libapps.a`.
 //!
-//! Call chain: NuttX init → `nsh_main` (ours) → `main` (Rust) → `fn main()`
+//! Call chain: NuttX init → `nsh_main` (ours) → `main`
+//!
+//! phase-359 W7 — that `main` used to be libstd's `lang_start` shim, which then
+//! called the user's Rust `fn main()`. The family is `no_std` now, so
+//! `nros::main!()` emits this exact C-ABI symbol directly and the chain is one
+//! call shorter. Nothing here changed: this file always went through the C ABI,
+//! which is why it kept working.
 
 use core::ffi::c_char;
 

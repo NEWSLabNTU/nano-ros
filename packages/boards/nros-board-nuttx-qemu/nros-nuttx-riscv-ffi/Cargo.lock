@@ -334,14 +334,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-bridge"
-version = "0.5.0"
-dependencies = [
- "nros-node",
- "nros-rmw-cffi",
-]
-
-[[package]]
 name = "nros-build-helpers"
 version = "0.5.0"
 dependencies = [
@@ -396,7 +388,6 @@ name = "nros-cpp"
 version = "0.5.0"
 dependencies = [
  "nros",
- "nros-bridge",
  "nros-build-helpers",
  "nros-c",
  "nros-log",
@@ -444,7 +435,6 @@ version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "heapless",
- "log",
  "nros-core",
  "nros-log",
  "nros-params",
@@ -524,7 +514,6 @@ name = "nros-rmw"
 version = "0.5.0"
 dependencies = [
  "heapless",
- "log",
  "nros-core",
  "nros-serdes",
 ]

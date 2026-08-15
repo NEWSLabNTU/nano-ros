@@ -62,7 +62,8 @@ nuttx_entry_nros_selection = { path = "../../generated/nros-selection/nuttx_entr
 # zpico-sys, with the NuttX setsockopt guards) and its explicit boot-path
 # `register()` (NuttX has no linkme/.init_array auto-register) now flow from the
 # board's `rmw-zenoh` feature below — `nros` names neither rmw nor platform.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+# phase-359 W7 — was `["std", "rmw-cffi"]`; this family is no_std now.
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # NuttX QEMU ARM virt board crate — supplies `QemuArmVirt` (real-runtime
 # `BoardEntry`, gated `target_os = "nuttx"`) + the `nros_platform_nuttx`
 # C shim (compiled by its own build.rs) + (via `nros-board-nuttx`)

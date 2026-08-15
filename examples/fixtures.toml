@@ -372,7 +372,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
 
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
 # arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
@@ -410,7 +410,7 @@ skip_probe = true
 # NOTE: the multi-word NUTTX_* env (PLATFORM_CFLAGS, ARCH_INCLUDES, …) is
 # exported by the `just nuttx build-riscv-rust` recipe — the lane's env
 # serialization is space-joined and cannot carry values with spaces.
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-realtime"
@@ -424,7 +424,7 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "std,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
 
 # phase-297 W5 (RFC-0053) — the 2-tier RT-tiers Rust ThreadX-Linux Entry
 # (`realtime-rust/src/threadx_entry`): the model's

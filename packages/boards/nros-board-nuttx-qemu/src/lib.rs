@@ -43,6 +43,17 @@
 //! }
 //! ```
 
+// phase-359 W7 — `no_std`, like the base board crate it overlays. Its `std`
+// uses were the console (`println!`), `process::exit` and one `/dev/urandom`
+// write; all three are libc calls this NuttX image already links, reached
+// directly instead of through a standard library compiled from source.
+#![no_std]
+
+/// The base crate's console, under the name every call site here already uses.
+macro_rules! println {
+    ($($arg:tt)*) => { ::nros_board_nuttx::nros_nuttx_println!($($arg)*) };
+}
+
 mod config;
 mod entry;
 // Phase 212.N.3 — new platform-level trait impls (`nros_platform::Board*`)

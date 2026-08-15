@@ -62,10 +62,9 @@ impl nros_platform::BoardInit for NuttxQemu {
 }
 
 impl nros_platform::BoardPrint for NuttxQemu {
-    /// Routes through hosted stdlib — same primitive the legacy
-    /// `<NuttxQemu as nros_board_common::BoardPrint>` impl uses.
-    /// NuttX ships `std`; `println!` ultimately bottoms out in
-    /// `write(2)` on the NuttX serial console.
+    /// phase-359 W7 — routes to the base crate's console, which is `write(2)`
+    /// on the NuttX serial console. That is where this always ended up: it went
+    /// through libstd's `Stdout` and `LineWriter` first, and now it does not.
     fn println(args: core::fmt::Arguments<'_>) {
         println!("{args}");
     }
@@ -76,16 +75,19 @@ impl nros_platform::BoardExit for NuttxQemu {
     ///
     /// NuttX's shell task-dispatch loop reclaims the task on a normal
     /// return from `main`, but `BoardEntry::run`'s contract for
-    /// non-NuttX siblings diverges via `exit_*`. We keep
-    /// `std::process::exit(...)` here so a caller invoking
+    /// non-NuttX siblings diverges via `exit_*`. We keep an `exit(...)`
+    /// here so a caller invoking
     /// `<NuttxQemu as BoardExit>::exit_success()` directly behaves
     /// identically across families.
+    ///
+    /// phase-359 W7 — this was `std::process::exit`, whose whole body is a call
+    /// to libc `exit(3)`. Same function, same status, one layer fewer.
     fn exit_success() -> ! {
-        std::process::exit(0)
+        nros_board_nuttx::sys::exit_process(0)
     }
 
     fn exit_failure() -> ! {
-        std::process::exit(1)
+        nros_board_nuttx::sys::exit_process(1)
     }
 }
 

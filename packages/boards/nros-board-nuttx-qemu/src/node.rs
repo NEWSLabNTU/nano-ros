@@ -24,10 +24,33 @@ pub fn init_hardware(config: &Config) {
     // generate identical /dev/urandom output → identical ZIDs → zenohd rejects
     // the second connection (Close with MAX_LINKS reason).
     // Writing to /dev/urandom re-seeds the xorshift128 state.
+    //
+    // phase-359 W7 — this was `std::fs::OpenOptions` + `Write::write_all`, i.e.
+    // `open(2)` + `write(2)` with a `File` wrapper around them. The wrapper is
+    // what needed std; the syscalls are NuttX's own, and the rest of this file
+    // already reaches them this way (see `apply_ip_config`'s socket/ioctl block).
     {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open("/dev/urandom") {
-            let _ = f.write_all(&config.ip());
+        unsafe extern "C" {
+            fn open(path: *const core::ffi::c_char, flags: core::ffi::c_int, ...)
+            -> core::ffi::c_int;
+            fn write(
+                fd: core::ffi::c_int,
+                buf: *const core::ffi::c_void,
+                count: usize,
+            ) -> isize;
+            fn close(fd: core::ffi::c_int) -> core::ffi::c_int;
+        }
+        const O_WRONLY: core::ffi::c_int = 1;
+        let ip = config.ip();
+        // SAFETY: a NUL-terminated literal path and a 4-byte buffer we own. A
+        // failed open yields a negative fd, which the guard below rejects — the
+        // seed is best-effort exactly as the `if let Ok(..)` before it was.
+        unsafe {
+            let fd = open(c"/dev/urandom".as_ptr(), O_WRONLY);
+            if fd >= 0 {
+                let _ = write(fd, ip.as_ptr() as *const core::ffi::c_void, ip.len());
+                close(fd);
+            }
         }
     }
 
@@ -40,7 +63,9 @@ pub fn init_hardware(config: &Config) {
 /// subnet without hard-coded NETINIT_IPADDR mismatches between
 /// sibling QEMU guests.
 fn apply_ip_config(config: &Config) {
-    use std::os::unix::io::RawFd;
+    // phase-359 W7 — `RawFd` is an alias for `c_int`; the alias was the only
+    // thing std supplied here.
+    type RawFd = core::ffi::c_int;
 
     // ioctl numbers — NuttX defines these as `_SIOC(N) = 0x0700 | N`,
     // *not* the Linux 0x89xx range (see

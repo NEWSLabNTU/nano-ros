@@ -1444,7 +1444,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #param_services_call
                     #( #register_calls )*
                     #lifecycle_call
-                    #[cfg(not(target_os = "none"))]
+                    #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
                     #hosted_spin_call
                     ::core::result::Result::Ok(())
                 }
@@ -1691,7 +1691,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // `#[allow(dead_code)]` — the multi-tier `run_tiers` entry path
             // (Phase 228.G) owns its own spin and never calls these, so they
             // are unused in that emit; harmless in the single-tier path.
-            #[cfg(not(target_os = "none"))]
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
             #[allow(dead_code)]
             fn __nros_env_usize(name: &str, default: usize) -> usize {
                 ::std::env::var(name)
@@ -1703,7 +1703,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // issue 0274 — unbounded hosted spin (`spin = "forever"` macro
             // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin
             // error; the process lifetime is the supervisor's problem.
-            #[cfg(not(target_os = "none"))]
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
             #[allow(dead_code)]
             fn __nros_hosted_spin_forever(
                 runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
@@ -1719,7 +1719,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
             }
 
-            #[cfg(not(target_os = "none"))]
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
             #[allow(dead_code)]
             fn __nros_hosted_spin_if_requested(
                 runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
@@ -1771,7 +1771,41 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
             }
 
-            #[cfg(not(target_os = "none"))]
+            // phase-359 W7 — NuttX takes the C-ABI `main`, not libstd's.
+            //
+            // NuttX is POSIX-shaped, so this used to fall into the hosted arm
+            // below and libstd's `lang_start` wrapped the Rust `main`. The
+            // family is `no_std` now, which removes `lang_start`, so the entry
+            // symbol NuttX's task dispatch calls has to be emitted directly —
+            // the same shape the `target_os = "none"` C-runtime boards
+            // (FreeRTOS / threadx-linux) already use, for the same reason: a C
+            // runtime calls `main`, and nothing is left to wrap it.
+            //
+            // The status mapping matches what `lang_start` did with a
+            // `Result`-returning main: `Ok` -> 0, `Err` -> 1. Entry leaves on
+            // this target carry `#![no_std]` + `#![no_main]`, as the other
+            // C-runtime families' leaves do.
+            //
+            // The `(argc, argv)` signature is not decoration: the board's
+            // `nsh_main` (nros-board-nuttx-qemu `entry.rs`) declares
+            // `fn main(argc: i32, argv: *const *const c_char) -> i32` and calls
+            // it with both. Ignoring them would work by accident on these ABIs
+            // — the caller passes them in registers the callee may leave alone
+            // — but the definition should match the declaration that already
+            // exists rather than rely on that.
+            #[cfg(target_os = "nuttx")]
+            #[unsafe(no_mangle)]
+            pub extern "C" fn main(
+                _argc: i32,
+                _argv: *const *const ::core::ffi::c_char,
+            ) -> i32 {
+                match __nros_entry_run() {
+                    ::core::result::Result::Ok(()) => 0,
+                    ::core::result::Result::Err(_) => 1,
+                }
+            }
+
+            #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
             fn main() {
                 if let ::core::result::Result::Err(e) = __nros_entry_run() {
                     ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);

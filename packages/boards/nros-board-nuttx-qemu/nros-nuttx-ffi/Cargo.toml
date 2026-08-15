@@ -12,12 +12,17 @@ description = "NuttX kernel + nros C/C++ FFI bundle for CMake-built examples"
 # Phase 144.6 — relocated under packages/boards/nros-board-nuttx-qemu/.
 # Path deps go up 3 levels to the repo root (was 4 under
 # examples/qemu-arm-nuttx/cmake/).
-nros-board-nuttx-qemu = { path = ".." }
+# phase-359 W7 — this bin supplies the image's runtime through `nros-c`
+# (`global-allocator` gives it the `#[global_allocator]`, and its own
+# `#[panic_handler]` activates once `std` is gone), so the board crate's copies
+# of both are switched off with `default-features = false`. Exactly one of each
+# may exist per image.
+nros-board-nuttx-qemu = { path = "..", default-features = false }
 nros-c = { path = "../../../api/nros-c", default-features = false, features = [
-    "std", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
+    "alloc", "global-allocator", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 nros-cpp = { path = "../../../api/nros-cpp", default-features = false, features = [
-    "std", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
+    "alloc", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 # Phase 115.L.x — link cffi shim directly so `register()` is callable
 # from main.rs before app_main() jumps into C/C++ code.

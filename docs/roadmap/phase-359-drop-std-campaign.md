@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 and W6 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W9 landed; W7 INVESTIGATED and sized — its three blocking questions are answered and none blocks. W7 and W10 not started.** The campaign
+**Status (2026-08-15). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`, `build-std` narrowed to `core`/`alloc`. W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -91,7 +91,9 @@ both directions. The gate's numbers supersede it.
 **Two live `std` platforms, not one.** Linux, and NuttX —
 `nros-board-nuttx-qemu` depends on `nros-board-nuttx`, which requests `std`,
 and NuttX targets compile std from source via `build-std`. NuttX is W7 and is
-the plan's largest unknown.
+the plan's largest unknown. (W7 landed 2026-08-15: NuttX is `no_std` and its
+`build-std` is `["core", "alloc", "panic_abort"]`, leaving **Linux as the only
+`std` platform** — which is what W10 needs.)
 
 ## Work items
 
@@ -301,7 +303,7 @@ is a set of host-only features plus one clock provider. That reframes the rest
 of the campaign: W7-W10 are about deciding where those features live, not about
 migrating executor code.
 
-### W7 — NuttX off `std` — **INVESTIGATED 2026-08-15, sized, not started**
+### W7 — NuttX off `std` — **IMPLEMENTED 2026-08-15**
 
 NuttX is the second and last `std` platform (W9's derivation: `Linux`,
 `NuttxArm`, `NuttxRiscv`). Until it moves, W10 cannot happen — the `std` feature
@@ -457,6 +459,71 @@ one genuinely new artifact is the `#[panic_handler]`, which must reproduce the
 existing hook's flush-then-delay or NuttX panics go silent (issues 0572/0583).
 Retiring `third-party/nuttx/libc` and narrowing `build-std` to `core`/`alloc`
 are consequences of finishing, not separate work.
+
+#### What the estimate above got wrong — IMPLEMENTED 2026-08-15
+
+The two-crate figure was right about where the `std::` PATHS are and wrong about
+where the WORK is. The code conversion was the small half; the flavour of an
+image is decided in a dozen places that no `std::` grep reaches.
+
+**The estimate missed that the C/C++ NuttX images are Rust bins too.** The
+investigation established that NuttX has a complete C platform port and
+concluded the C/C++ side was already std-free. It is not: `nros-nuttx-ffi` is a
+Rust binary that supplies the kernel and calls `app_main()`, and it enabled
+`std` on `nros-c` AND `nros-cpp`. So the family cannot go `no_std` two crates at
+a time — `build-std` is a property of the TARGET, shared by both image shapes,
+and it only narrows when both move.
+
+**Two lang items, not one.** The risk section named the `#[panic_handler]`.
+There is a second, `#[global_allocator]`, with the identical
+exactly-once-per-image constraint and the identical two-owner problem
+(`nros-c` supplies both for C/C++ images; the board must supply both for
+pure-Rust ones). They are now ONE feature — `image-runtime`, default ON, which
+the FFI bins switch off with `default-features = false` — because they are not
+two decisions: an image that takes its allocator from `nros-c` takes its panic
+handler from there too, and two flags would let a build pick one of each and
+duplicate a lang item.
+
+**The entry point changes shape.** Dropping `std` removes libstd's `lang_start`,
+which is what defined the `main` symbol the board's `nsh_main` calls. So
+`nros::main!` needs a `target_os = "nuttx"` arm emitting `extern "C" fn main`
+(the shape the `target_os = "none"` C-runtime boards already use), every NuttX
+Rust entry leaf needs `#![no_std] #![no_main]`, and the four hosted helpers
+gated `not(target_os = "none")` need widening — NuttX had been silently taking
+the hosted arm.
+
+**Where the flavour is actually written down.** Seven places, and a grep for
+`std` in the board crates finds none of them: the board descriptor
+(`nros-board.toml`, ×2 witnesses), the leaf `.cargo/nros-board.toml` copies
+`nros sync` generates from it (×9, tracked), `examples/fixtures.toml`'s per-row
+`CARGO_UNSTABLE_BUILD_STD` (×3), a hand-written `.cargo/config.toml` in
+`nros-tests/bins/logging-smoke-nuttx-qemu-arm` (the one copy sync does not
+reach), each entry leaf's own `nros` feature list (×9), the node packages'
+`crate-type` (a `staticlib` is a final artifact and needs the lang items a node
+package must not own — the other `no_std` families are `rlib`-only for exactly
+this reason), and the two FFI bins' feature lists.
+
+**Two latent bugs surfaced, neither caused by this work:**
+
+* `run_entry` was never `#[cfg]`-gated, while `run_tiers` and every helper both
+  call are. This is issue 0579's class exactly — the gate one line above it
+  belonged to `install_stdout_panic_hook`, which sat between the two, so it read
+  as gated in context while being ungated in fact. Nothing noticed because a
+  host build still had `std` to compile the ungated body against.
+* `nros sync`'s source-metadata probe inherits `[unstable] build-std` from the
+  board config through the same config walk-up its `[patch.crates-io]` entries
+  require. `--target` was already overridden for that reason; `build-std` is its
+  sibling and was not. It stayed invisible while the value was `["std", …]`
+  (cargo then built `std` from source for the host too — consistent, merely
+  slow) and became a hard error the moment it said `["core", "alloc", …]`:
+  `core` built from source, linked beside the prebuilt host `std` that depends
+  on a different one.
+
+**Not done here, deliberately:** retiring `third-party/nuttx/libc`. It is
+unnecessary now and its `[patch.crates-io]` simply goes unused, but actually
+removing it touches the SDK index, `nros-sizes-build` and the CLI's patch
+emission. That belongs after this is proven on hardware, not bundled ahead of
+it.
 
 ### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 

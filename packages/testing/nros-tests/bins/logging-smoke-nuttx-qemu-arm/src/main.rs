@@ -12,6 +12,13 @@
 //! propagating link directives; `.cargo/config.toml` carries the static
 //! link args.
 
+// phase-359 W7 — the NuttX family is `no_std`; the board crate supplies this
+// image's `#[panic_handler]` and `#[global_allocator]`, and `nros::main!` is not
+// used here, so this bin spells out the `extern "C" fn main` that `nsh_main`
+// calls (libstd's `lang_start` used to supply that symbol).
+#![no_std]
+#![no_main]
+
 // Link-anchor the board crate: its `entry.rs` `nsh_main` (the NuttX
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
@@ -23,7 +30,10 @@ use nros_log::{
 
 static LOGGER: Logger = Logger::new("smoke");
 
-fn main() {
+/// The image entry NuttX's `nsh_main` calls; signature matches the
+/// `extern "C" fn main(argc, argv)` that the board's `entry.rs` declares.
+#[unsafe(no_mangle)]
+pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i32 {
     register_logger(&LOGGER);
     init(sinks::default());
     LOGGER.set_level(Severity::Trace);
@@ -35,4 +45,5 @@ fn main() {
     nros_error!(&LOGGER, "error payload");
     nros_fatal!(&LOGGER, "fatal payload");
     nros_log::flush();
+    0
 }

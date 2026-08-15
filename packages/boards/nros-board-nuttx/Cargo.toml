@@ -52,15 +52,20 @@ log = { version = "0.4", default-features = false }
 # `nros-platform-cffi`; the canonical `nros_platform_*` C symbols come from the
 # NuttX-built C port at `packages/platform/nros-platform-nuttx/`). Board-driven
 # platform selection: the umbrella `nros` dep below stays platform-agnostic.
-nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["std", "platform-nuttx"] }
+# phase-359 W7 — was `["std", "platform-nuttx"]`. The platform crate's ONLY
+# `std` gate is "std supplies the allocator, so do not install ours", so
+# dropping it here ENABLES the allocator that already exists rather than
+# requiring a new one.
+nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["alloc", "platform-nuttx"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `run_entry` installs a live component runtime sink on `RuntimeCtx`
 # before invoking the user `setup` closure + spins forever
-# afterwards. NuttX ships `std`; the actual RMW backend
+# afterwards. The actual RMW backend
 # (`nros-rmw-zenoh`, ...) must be linked by the per-board overlay
 # (`nros-board-nuttx-qemu`, ...) so `Executor::open` resolves a
 # backend at boot.
-nros = { path = "../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+# phase-359 W7 — was `["std", "rmw-cffi"]`.
+nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-board-nuttx-qemu = { path = "../nros-board-nuttx-qemu", optional = true }
 # Phase 225.O — explicit RMW backend registration on NuttX. The unified-RMW
 # `nros_rmw_register_backend!` macro is a NO-OP on NuttX (linkme has no
@@ -75,7 +80,6 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 ], optional = true }
 
 [features]
-default = []
 # Reference QEMU ARM virt (Cortex-A7 + virtio-net) configuration.
 reference-qemu = ["dep:nros-board-nuttx-qemu"]
 # Link + explicitly register the zenoh RMW backend in `run_entry`.
@@ -84,3 +88,20 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 # safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh. Re-exported
 # by the per-board overlays (nros-board-nuttx-qemu-{arm,riscv}) the descriptor names.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
+# phase-359 W7 — "this crate supplies the image's runtime": the
+# `#[panic_handler]` and the `#[global_allocator]`. Each may exist exactly ONCE
+# per image, and a no_std image must have both.
+#
+# There are two image shapes on this family and they get them from different
+# places. A PURE-RUST image links only the board, so the board must supply them
+# — hence default ON, so the common case needs no flag. A C/C++ image also links
+# `nros-c`, which supplies both itself (its own gates: `global-allocator`, not
+# `std`, not `panic-halt`); those images take `default-features = false` here,
+# which is why the two FFI bins spell that out.
+#
+# Both live behind ONE feature on purpose. They are not two decisions — an image
+# that gets its allocator from `nros-c` gets its panic handler from there too,
+# and splitting them into two flags would let a build pick one of each and
+# duplicate a lang item.
+default = ["image-runtime"]
+image-runtime = ["nros-platform/global-allocator"]

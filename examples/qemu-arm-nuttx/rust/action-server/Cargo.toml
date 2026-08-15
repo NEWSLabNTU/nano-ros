@@ -14,7 +14,14 @@ name = "action-server"
 path = "src/main.rs"
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib"]
+# phase-359 W7 — was `["rlib", "staticlib"]`. A `staticlib` is a FINAL artifact,
+# so it needs its own `#[panic_handler]`; that used to arrive from `std` via
+# `nros`, and with the family on `no_std` there is nothing to supply one for a
+# node package (which should not own lang items anyway). Nothing consumes these
+# staticlibs — the entry links the RLIB, via `class = "<pkg>::<Node>"` — and the
+# node packages of every other no_std family (freertos, mps2) are `rlib`-only
+# for exactly this reason. This makes NuttX match them.
 
 [dependencies]
 # phase-338 W2 — carried over from the collapsed `-entry` package.
@@ -23,7 +30,8 @@ crate-type = ["rlib", "staticlib"]
 # auto-register); without it `Executor::open` fails instantly with
 # Transport(ConnectionFailed) before touching the network.
 nros-board-nuttx-qemu = { version = "*", features = ["rmw-zenoh"] }
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
+# phase-359 W7 — was `["std", "rmw-cffi"]`; this family is no_std now.
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
