@@ -235,22 +235,40 @@ Measured, back-to-back on this host:
 (1 of 4 because three rows need provisioning this host lacks; they retry each
 run because a row that never succeeded has no signature to match.)
 
-### It is NOT the 1244 edges, and this issue's attribution needs correcting
+### It IS the 1244 edges — measured in the lane, and my first reading was wrong
 
-The 2026-08-14 measurement above attributes the no-op lane's **1244 ninja edges
-and 129 `Compiling` lines** to "the west-fixtures step". Measured here:
-`west-fixtures.sh` emits **0 `Compiling` lines** and finishes in under 18 s cold.
-It builds the four west-* compile-check ROWS, not the 70-leaf fixture set.
+I first tested `west-fixtures.sh` standalone, saw **0** `Compiling` lines, and
+concluded from that it could not be the 1244-edge replay. That was wrong: run
+standalone it lacks the lane's environment, so only 1 of its 4 rows built. The
+generalisation from that one run is the error, not the measurement.
 
-So the 1244 edges come from the 70-leaf lane
-(`zephyr-fixture-make-driver.sh` / `just/zephyr-ci.just`), which is a different
-mechanism: it already has `--pristine auto` ("re-pristines when the cmake inputs
-actually change"), so its replay is NOT an unconditional wipe.
+Measured properly, inside the lane and narrowed to `zephyr,rust,zenoh` (7 leaves)
+so it completes on this host, two runs with nothing changed between them:
 
-**The remaining lead**, unverified: a 129-crate cargo rebuild of `nros-c` on
-every no-op run is a fingerprint invalidation, which is CLAUDE.md's issue-0491
-class (an env value compared as TEXT — a path with several spellings, or a
-run-scoped value). phase-353 W4 found exactly that shape one layer over, where
-`NROS_BUILD_LOG_DIR` and `NROS_WS_RECORDS_FILE` carry a timestamp and a pid.
-Whether either reaches the zephyr cargo build's fingerprint is the next thing to
-check, and it needs a lane run to answer.
+| run | log lines | `Compiling` | ninja edges | west fixtures |
+| --- | --- | --- | --- | --- |
+| 1 | 1668 | **129** | **1244** | `4/4 ok (0 reused, 4 built)` |
+| 2 | 73 | **0** | **0** | `4/4 ok (4 reused, 0 built)` |
+
+Run 1 reproduces this issue's numbers exactly — 1244 edges and 129 `Compiling`
+lines — and every one of them falls between the first `== west-fixture:` marker
+(line 64) and the step's summary (line 1667). So the replay this issue recorded
+across seven identical no-op runs was the `rm -rf` above, and the reuse removes
+it: **a no-op lane now does nothing, in 73 lines instead of 1668.**
+
+The original attribution in the 2026-08-14 section — "all from the west-fixtures
+step" — was right. It is my correction of it that was wrong, and it is recorded
+here rather than quietly dropped.
+
+### What this does NOT fix
+
+The 70-leaf per-leaf overhead this issue is named for is a different cost: the
+7-leaf narrowing above builds only the zenoh coordinate, and the disk-bound
+finding (76 % idle / 18 % iowait on a rotational disk, 13 concurrent cmake
+configures against ~0 compilers) is untouched. Direction (1) of the revised list
+is delivered; (2) storage and (3) fewer cold leaves remain.
+
+Also unfixed, and blocking a full-lane measurement on this host: the cyclonedds
+zephyr leaves fail at configure with `ModuleNotFoundError: No module named
+'rosidl_adapter'`, so `just zephyr build-fixtures` aborts before finishing the
+58-leaf set here.

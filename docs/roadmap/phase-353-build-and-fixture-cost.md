@@ -109,9 +109,10 @@ write-if-changed, which cannot see it.
 
 ## W2 — The Zephyr lane's per-leaf overhead (#509)
 
-**Status (2026-08-15). PARTLY DONE — one unconditional wipe removed and
-measured; the 1244-edge replay is NOT it, and this phase's own framing of that
-was wrong.**
+**Status (2026-08-15). DIRECTION (1) DONE — the unconditional wipe in
+`west-fixtures.sh` WAS the 1244-edge replay. A no-op lane goes 1668 log lines to
+73, 1244 ninja edges to 0, 129 `Compiling` to 0. The 70-leaf overhead and the
+disk-bound finding remain.**
 
 ### Landed: `west-fixtures.sh` had no warm state, by construction
 
@@ -132,25 +133,38 @@ mode is the old cost, never a stale fixture.
 | cold | `1/4 ok (0 reused, 1 built)` | 17.8 s |
 | warm | `1/4 ok (1 reused, 0 built)` | 9.7 s |
 
-### Not landed, and the attribution was wrong
+### It IS the 1244 edges — and my first reading of that was wrong
 
-Issue 0509 attributes the no-op lane's **1244 ninja edges and 129 `Compiling`
-lines** to "the west-fixtures step", and this phase repeated that. Measured:
-`west-fixtures.sh` emits **0 `Compiling` lines** and runs in under 18 s cold. It
-builds four compile-check ROWS, not the 70-leaf set.
+This section first said the 1244-edge replay was NOT west-fixtures, on the
+strength of a standalone run of the script that emitted 0 `Compiling` lines.
+That run lacked the lane's environment, so only 1 of its 4 rows built. The
+generalisation was the error.
 
-The 1244 edges therefore belong to the 70-leaf lane
-(`zephyr-fixture-make-driver.sh` / `just/zephyr-ci.just`), which already carries
-`--pristine auto`, so its replay is not an unconditional wipe and needs its own
-diagnosis.
+Measured in the lane, narrowed to `zephyr,rust,zenoh` (7 leaves) so it completes
+on this host, two runs with nothing changed between them:
 
-**The lead**, unverified: a 129-crate cargo rebuild of `nros-c` per no-op run is
-a fingerprint invalidation — CLAUDE.md's issue-0491 class, where an env value is
-compared as TEXT. W4 found precisely that shape one layer over
-(`NROS_BUILD_LOG_DIR` and `NROS_WS_RECORDS_FILE` carry a timestamp and a pid).
-`check-path-env-fingerprints` passes on the tracked Rust sources, so if this is
-the cause it is reaching cargo by a route that gate does not cover. Answering it
-needs a lane run.
+| run | log lines | `Compiling` | ninja edges | west fixtures |
+| --- | --- | --- | --- | --- |
+| 1 | 1668 | **129** | **1244** | `4/4 ok (0 reused, 4 built)` |
+| 2 | 73 | **0** | **0** | `4/4 ok (4 reused, 0 built)` |
+
+Run 1 reproduces issue 0509's numbers exactly, and all of them fall between the
+first `== west-fixture:` marker (line 64) and the step's summary (line 1667).
+The reuse removes them: **a no-op lane now does nothing, in 73 lines instead of
+1668.** Direction (1) of the issue's revised list — "skip per-leaf prep whose
+inputs are unchanged" — is delivered.
+
+### What is still open
+
+The 70-leaf per-leaf overhead the issue is named for is a different cost, and
+untouched: the 7-leaf narrowing above builds only the zenoh coordinate, and the
+disk-bound finding (76 % idle / 18 % iowait on a rotational disk, 13 concurrent
+cmake configures against ~0 compilers) stands. Directions (2) storage and (3)
+fewer cold leaves remain.
+
+Blocking a full-lane measurement on this host: the cyclonedds zephyr leaves fail
+at configure with `ModuleNotFoundError: No module named 'rosidl_adapter'`, so
+`just zephyr build-fixtures` aborts before finishing the 58-leaf set.
 
 **Acceptance (unchanged).** A stated cause for the replayed edges, and either a
 fix with a before/after EDGE COUNT — not wall-clock, which issue 0509 itself
