@@ -206,6 +206,52 @@ def self_test():
         sys.exit(2)
 
 
+def existing_leaf_target_dirs():
+    """Plain `examples/**/target/` directories that EXIST on disk.
+
+    The scan above is a static reading of build COMMANDS: it proves no
+    recipe/script this gate can parse writes a leaf `target/`. That is a
+    property of the sources, and it stayed green while 65 such directories
+    (119.9 GiB) sat in the tree — residue from before phase-340 P2, which
+    nothing rebuilt and nothing noticed. Measured 2026-08-16, issue 0200.
+
+    An existing dir is one of two things, and both want reporting:
+
+      * residue — delete it, and any disk estimate taken from this tree stops
+        being inflated by it (a runner sized from an accumulated tree is sized
+        from residue, which is what issue 0200's ≥200 GiB rested on);
+      * a LIVE writer this gate cannot see — a Makefile, a python driver, an
+        IDE, or an idiom the regexes miss. That is the issue-0196 shape: a gate
+        whose coverage is narrower than the rule it enforces. The static scan
+        cannot find it; the artifact can.
+
+    So the check is on the artifact, which is the observable the rule is
+    actually about.
+    """
+    found = []
+    root_examples = os.path.join(ROOT, "examples")
+    for dirpath, dirnames, _ in os.walk(root_examples):
+        dirnames[:] = [x for x in dirnames if x not in (".git", "third-party")]
+        if os.path.basename(dirpath) != "target":
+            continue
+        # Do not descend into it; one report per directory.
+        dirnames[:] = []
+        rel = os.path.relpath(dirpath, ROOT)
+        parts = rel.split(os.sep)
+        # Only a LEAF's own default dir counts. A `target` nested inside a cmake
+        # build tree — `…/build-cyclonedds/corrosion/required_libs/target` — is
+        # Corrosion's internal scratch, already covered by the `build*` ignore
+        # and NOT the thing phase-340 P2 is about. Scoping this down was forced
+        # by the first run, which reported 40+ of them.
+        if any(x == "build" or x.startswith("build-") for x in parts[:-1]):
+            continue
+        # And it must actually be a crate's target dir.
+        if not os.path.isfile(os.path.join(os.path.dirname(dirpath), "Cargo.toml")):
+            continue
+        found.append(rel)
+    return sorted(found)
+
+
 def main():
     self_test()
     failures = []
@@ -247,7 +293,31 @@ def main():
             "  scripts/build/fixtures-target-dir.sh. Never a new literal.\n"
         )
         sys.exit(1)
-    print("check-example-leaf-target-dirs: OK")
+
+    # The other half of the same rule: no such directory may EXIST.
+    stale = existing_leaf_target_dirs()
+    if stale:
+        sys.stderr.write(
+            "check-example-leaf-target-dirs: no build writes a leaf `target/`, "
+            "but some EXIST.\n\n"
+        )
+        for rel in stale[:20]:
+            sys.stderr.write(f"  {rel}\n")
+        if len(stale) > 20:
+            sys.stderr.write(f"  … and {len(stale) - 20} more ({len(stale)} total)\n")
+        sys.stderr.write(
+            "\n  Each is EITHER residue from before phase-340 P2 — delete it, and\n"
+            "  stop every disk estimate from being inflated by it (65 such dirs\n"
+            "  held 119.9 GiB on the maintainer host, issue 0200) — OR evidence of\n"
+            "  a writer this gate cannot see: a Makefile, a python driver, an IDE,\n"
+            "  or an idiom the scan above misses. The scan reads COMMANDS; only the\n"
+            "  artifact can catch a writer it does not parse (issue 0196).\n"
+            "  Fix: rm -rf the directories, then re-run a build. If one comes back,\n"
+            "  it is the second case and the writer needs finding.\n"
+        )
+        sys.exit(1)
+
+    print(f"check-example-leaf-target-dirs: OK (no writer, and none on disk)")
 
 
 if __name__ == "__main__":

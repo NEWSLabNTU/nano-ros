@@ -588,6 +588,9 @@ PX4_XRCE_EXAMPLES=(
     "px4_stub:examples/px4/rust/companion/px4-stub"
     "px4_offboard_companion:examples/px4/rust/companion/offboard-companion"
 )
+# shellcheck source=scripts/build/fixtures-target-dir.sh
+source "$repo_root/scripts/build/fixtures-target-dir.sh"
+
 px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
 px4_fail_n=0
@@ -661,7 +664,25 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
         fi
         mkdir -p "$out_root/$id"
         rm -f "$out_root/$id/.compile-ok"
-        if ( cd "$repo_root/$dir" && cargo check ); then
+        # phase-340 P2 — pass a `--target-dir`, never the leaf's default.
+        #
+        # This was a bare `cargo check`, which writes `<leaf>/target/`. That is
+        # the exact defect `check-example-leaf-target-dirs` was written for (the
+        # freertos `cd <leaf> && cargo build` case), and its STATIC scan could
+        # not see it: `dir` here comes from the `"id:path"` entries of
+        # `PX4_LEAVES`, so the "variable assigned a value containing examples/"
+        # heuristic never fires. The gate's new EXISTENCE half is what caught it
+        # — three `examples/px4/rust/companion/*/target` dirs on disk while the
+        # command scan reported OK (issue 0196's shape: coverage narrower than
+        # the rule).
+        #
+        # Derived, not a literal, per CLAUDE.md: one group for the host
+        # platform, shared with every other cargo fixture at that coordinate.
+        # Nothing reads these artifacts — the contract is the `.compile-ok`
+        # stamp below — so there is no test-side locator to move with it.
+        px4_tdir_flag="$(nros_fixture_target_dir_flag linux)"
+        # shellcheck disable=SC2086
+        if ( cd "$repo_root/$dir" && cargo check $px4_tdir_flag ); then
             date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
             echo "   stamped $out_root/$id/.compile-ok"
             px4_n=$((px4_n + 1))
