@@ -395,7 +395,15 @@ int8_t nros_platform_task_init(void *task, void *attr,
         TX_AUTO_START);
     if (rc != TX_SUCCESS) {
         if (slot->owned_stack != NULL) {
-            nros_platform_free(slot->owned_stack);
+            /* `_dealloc`, not `_free`: the canonical `nros_platform_free` is a
+             * `static inline` gated on `NROS_PLATFORM_HAS_MALLOC` (the 241.A
+             * capability gate, so a heap container on a heap-less board is a
+             * compile error). threadx-riscv64 does not define it, so the call
+             * was an implicit declaration and `-Werror` took the family out.
+             * This pairs with the `nros_platform_alloc` above, which is the
+             * ungated funnel; a port implementing the ABI has no reason to
+             * reach for the C++-facing alias. */
+            nros_platform_dealloc(slot->owned_stack);
             slot->owned_stack = NULL;
         }
         /* phase-364 W1 — a refused create is a RESOURCE condition, not a
@@ -451,7 +459,8 @@ void nros_platform_task_free(void **task) {
     /* phase-364 W3 — release a stack this port allocated because the caller
      * supplied none. A caller-provided `stack_mem` is the caller's to free. */
     if (slot->owned_stack != NULL) {
-        nros_platform_free(slot->owned_stack);
+        /* `_dealloc` for the same reason as the create path above. */
+        nros_platform_dealloc(slot->owned_stack);
         slot->owned_stack = NULL;
     }
 }
