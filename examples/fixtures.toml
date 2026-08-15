@@ -278,7 +278,6 @@ bringup = "src/demo_bringup"
 entry = "threadx_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
-target = "x86_64-unknown-linux-gnu"
 
 [[workspace_fixture]]
 id = "workspace-rust-zephyr"
@@ -448,7 +447,6 @@ bringup = "src/demo_bringup"
 entry = "threadx_entry"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
-target = "x86_64-unknown-linux-gnu"
 env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
@@ -1960,8 +1958,12 @@ features = ["rmw-zenoh"]
 # shim (package.xml `rmw="zenoh"`), so these are bare default-feature rows.
 # `fixtures-build.sh` runs `nros sync` (materialises generated/ + the
 # [patch.crates-io] block) before cargo, same as any package.xml dir. Build
-# lands the host binary at target/x86_64-unknown-linux-gnu/<profile>/<bin>;
-# asserted by tests/threadx_linux_entry_build.rs.
+# builds for the HOST — these rows carry no `target`, so no triple segment is
+# spliced into the artifact path (they used to pin `x86_64-unknown-linux-gnu`,
+# which is a cross compile on any other host — issue 0582). They author no
+# `target_dir` either, so the bytes land in a shared group dir under
+# `build/cargo-fixtures/`, NOT in `<leaf>/target`; tests must resolve them via
+# the group resolver. Asserted by tests/threadx_linux_entry_build.rs.
 [[fixture]]
 platform = "threadx-linux"
 lang = "rust"

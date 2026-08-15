@@ -108,26 +108,46 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 ///
 /// Prebuilt by the `[[fixture]]` rows in `examples/fixtures.toml` (built via
 /// `fixtures-build.sh threadx-linux rust`, which runs `nros sync` + cargo).
-/// Unlike the role examples above — flat `target-zenoh/<profile>/` — each
-/// Entry pkg pins the host triple via `.cargo/config` `[build] target`, so the
-/// artifact lands under `target/x86_64-unknown-linux-gnu/<profile>/`, where
-/// `<profile>` is whatever the build ran at (phase-336). `role` is hyphenated
-/// (`"service-server"`); `bin` is the `[[bin]]` name
+/// `role` is hyphenated (`"service-server"`); `bin` is the `[[bin]]` name
 /// (since phase-338 W2 collapsed the `-entry` package in, the same short
 /// name: `"service-server"`).
+///
+/// The artifact is resolved through the GROUP resolver, never by hand. Two
+/// things made the hand-built path wrong, and only one of them was visible:
+///
+///  * It spliced `x86_64-unknown-linux-gnu` in, because the Entry pkgs pinned
+///    `[build] target` to that literal — a host pin on one machine and a cross
+///    compile on every other (issue 0582). The pin is gone, so no triple.
+///  * The prefix was wrong too, on every host. These rows author no
+///    `target_dir`, so `fixtures-target-dir.sh` puts them in a shared group dir
+///    (`build/cargo-fixtures/<group>/`) and cargo never writes `<leaf>/target`
+///    at all. `fixtures-target-dir.sh` is explicit that the build and every
+///    resolver MUST call the SAME resolver; this one did not.
+///
+/// The leaf carries TWO row-sets at one artifact root — these bare Entry rows
+/// and the feature-selected role rows above — so `groups::attribute` reports
+/// AMBIGUOUS and refuses to redirect (issue 0517, deliberately: guessing would
+/// hand back a binary built with different features). `select_row` with the
+/// row's variant is how a caller resolves that. These rows author `rmw` and
+/// leave default features on, which is the `platform_rmw` shape.
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir = project_root().join(format!("examples/threadx-linux/rust/{role}"));
+    let leaf = format!("examples/threadx-linux/rust/{role}");
+    let dir = project_root().join(&leaf);
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "ThreadX Linux entry example not found: {}",
             dir.display()
         )));
     }
-    let bin_path = dir.join(format!(
-        "target/x86_64-unknown-linux-gnu/{}/{bin}",
-        super::cargo_target_profile_dir()
-    ));
-    super::require_prebuilt_binary_fresh(&bin_path)
+    let rel = PathBuf::from(format!("{}/{bin}", super::cargo_target_profile_dir()));
+    if crate::fixtures::groups::leaf_has_rows(&leaf) {
+        let row = crate::fixtures::groups::select_row(
+            &leaf,
+            &crate::fixtures::groups::FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh),
+        )?;
+        return super::require_prebuilt_row_binary_fresh(row, &rel);
+    }
+    super::require_prebuilt_binary_fresh(&dir.join("target").join(&rel))
 }
 
 // =============================================================================

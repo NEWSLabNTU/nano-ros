@@ -359,14 +359,15 @@ endfunction()
 # ----------------------------------------------------------------------
 # nros_threadx_setup_rust_lld (RISC-V picolibc TLS-vs-non-TLS errno mix)
 # ----------------------------------------------------------------------
+# The rustlib bin dir is keyed on the HOST triple; both lookups here used to
+# hardcode `x86_64-unknown-linux-gnu` and, with NO_DEFAULT_PATH, failed off-x86
+# by returning EMPTY rather than erroring. `nros_host_rustlib_bin` (layer 1,
+# `nros-rtos-helpers.cmake`, included above) is the single spelling — the
+# RISC-V toolchain file is its third caller. See issue 0582.
 function(nros_threadx_setup_rust_lld)
-    execute_process(
-        COMMAND rustc --print sysroot
-        OUTPUT_VARIABLE _rust_sysroot
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET)
+    nros_host_rustlib_bin(_rustlib_bin)
     find_program(_rust_lld rust-lld
-        PATHS "${_rust_sysroot}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
+        PATHS "${_rustlib_bin}"
         NO_DEFAULT_PATH)
     set(NROS_THREADX_LLD_PATH "${_rust_lld}" PARENT_SCOPE)
 endfunction()
@@ -376,13 +377,9 @@ endfunction()
 # ----------------------------------------------------------------------
 function(nros_threadx_strip_builtins archive)
     if(NOT DEFINED NROS_THREADX_STRIP_SCRIPT)
-        execute_process(
-            COMMAND rustc --print sysroot
-            OUTPUT_VARIABLE _rust_sysroot
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET)
+        nros_host_rustlib_bin(_rustlib_bin)
         find_program(_llvm_ar llvm-ar
-            PATHS "${_rust_sysroot}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
+            PATHS "${_rustlib_bin}"
             NO_DEFAULT_PATH)
         set(NROS_THREADX_LLVM_AR "${_llvm_ar}" CACHE FILEPATH "" FORCE)
         # The strip script ships next to this module in the install

@@ -1,8 +1,6 @@
 include = [ "../../../../../nros-patch.toml"]
-# Phase 212.N.7 step-2 — Entry pkg cargo config.
-
-[build]
-target = "x86_64-unknown-linux-gnu"
+# Phase 212.N.7 step-2 — Entry pkg cargo config. Builds for the HOST, so no
+# `[build] target` — see `talker` for why the old x86_64 literal was wrong.
 
 [patch.crates-io]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed

@@ -1,18 +1,26 @@
 include = [ "../../../../../nros-patch.toml"]
 # Phase 212.N.7 step-2 — Entry pkg cargo config.
 #
-# Pins the host target to `x86_64-unknown-linux-gnu`. ThreadX-Linux
-# is a Linux-userspace simulation port (pthreads-backed ThreadX +
-# raw-socket NetX Duo), so the Entry pkg is a regular host binary —
-# no cross compile.
+# Deliberately NO `[build] target`. ThreadX-Linux is a Linux-userspace
+# simulation port (pthreads-backed ThreadX + raw-socket NetX Duo), so the
+# Entry pkg is a regular HOST binary — and "host" means whatever host this
+# is. The literal `x86_64-unknown-linux-gnu` that used to sit here read as a
+# host pin on an x86 machine and as a CROSS COMPILE everywhere else, so the
+# leaf failed to build on any other host. Omitting it is what "host build"
+# actually means, and it drops the triple segment cargo would otherwise
+# insert into the artifact path.
+#
+# Do NOT infer the artifact location from this file. The fixture build routes
+# these rows into a shared group dir (`build/cargo-fixtures/<group>/`, see
+# `scripts/build/fixtures-target-dir.sh`), so `<leaf>/target/` is not written
+# at all; only a manual `cargo build` in here lands there. Tests resolve it
+# through the group resolver
+# (`nros_tests::fixtures::binaries::threadx_linux::require_entry_binary`).
 #
 # Environment variables required by `nros-board-threadx-linux`'s
 # `build.rs` (THREADX_DIR / THREADX_CONFIG_DIR / NETX_DIR /
 # NETX_CONFIG_DIR / NSOS_NETX_DIR) come from direnv via
 # `scripts/sdk-env.sh`. Not duplicated here — single source.
-
-[build]
-target = "x86_64-unknown-linux-gnu"
 
 [patch.crates-io]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed

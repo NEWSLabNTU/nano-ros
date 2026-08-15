@@ -129,44 +129,63 @@ set(ENV{RUSTFLAGS} "-Ctarget-feature=+d")
 # ThreadX's non-TLS errno. LLD handles this correctly (like Rust does).
 # GCC 10.x doesn't support -fuse-ld=lld for cross targets, so we override
 # the entire link rule via CMAKE_C_LINK_EXECUTABLE.
-execute_process(
-    COMMAND rustc --print sysroot
-    OUTPUT_VARIABLE _RUST_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+#
+# The rustlib bin dir holding rust-lld is keyed on the HOST triple, so it
+# cannot be spelled as a literal. `nros_host_rustlib_bin` derives it from
+# `rustc -vV`; this file is its third caller (issue 0582, and the 2026-07-28
+# audit's A1/A4 before that). Including the layer-1 RTOS helpers from a
+# toolchain file is safe: the module only defines functions behind an
+# include sentinel, so the re-execution CMake does for every try_compile
+# costs two `rustc` invocations and nothing else.
+include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-rtos-helpers.cmake")
+nros_host_rustlib_bin(_RUSTLIB_BIN)
 find_program(_RUST_LLD rust-lld
-    PATHS "${_RUST_SYSROOT}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
+    PATHS "${_RUSTLIB_BIN}"
     NO_DEFAULT_PATH)
-if(_RUST_LLD)
-    # Pass tool paths to the wrapper via environment variables. Earlier
-    # revisions of this toolchain materialised symlinks at
-    # `${CMAKE_CURRENT_LIST_DIR}/_real_lld` / `_llvm_ar` so the wrapper
-    # could resolve its sibling tools by `dirname "$0"`. Two problems
-    # with that: (1) it raced when two cmake configures ran in parallel
-    # against the same toolchain (nextest does this routinely) — both
-    # tried to create the same in-source symlink and the loser aborted
-    # with `file failed to create symbolic link: File exists`; (2) it
-    # wrote into the source tree as a side effect of configure. Env
-    # vars sidestep both: each link invocation carries its own
-    # `NROS_RUST_LLD` / `NROS_LLVM_AR` and the toolchain dir stays
-    # read-only.
-    get_filename_component(_lld_dir "${_RUST_LLD}" DIRECTORY)
-    find_program(_LLVM_AR_TC llvm-ar PATHS "${_lld_dir}" NO_DEFAULT_PATH)
-    if(NOT _LLVM_AR_TC)
-        message(FATAL_ERROR
-            "llvm-ar not found alongside rust-lld at ${_lld_dir} — needed by "
-            "riscv64-lld-wrapper.sh to strip soft-float compiler_builtins.")
-    endif()
-
-    set(_lld_wrapper "${CMAKE_CURRENT_LIST_DIR}/riscv64-lld-wrapper.sh")
-    set(CMAKE_LINKER "${_lld_wrapper}" CACHE FILEPATH "Linker" FORCE)
-
-    # Override link rules. The wrapper strips soft-float compiler_builtins
-    # from all .a archives, then delegates to rust-lld. `cmake -E env`
-    # injects the tool paths so the wrapper doesn't need siblings.
-    set(_lld_env "${CMAKE_COMMAND} -E env NROS_RUST_LLD=${_RUST_LLD} NROS_LLVM_AR=${_LLVM_AR_TC}")
-    set(CMAKE_C_LINK_EXECUTABLE
-        "${_lld_env} bash ${_lld_wrapper} -flavor gnu <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
-        CACHE STRING "" FORCE)
-    set(CMAKE_CXX_LINK_EXECUTABLE
-        "${_lld_env} bash ${_lld_wrapper} -flavor gnu <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
-        CACHE STRING "" FORCE)
+# Do NOT degrade to GNU ld when rust-lld is missing. Everything below exists
+# because ld refuses to mix picolibc's TLS `errno` with ThreadX's non-TLS one,
+# so continuing without it only relocates the failure to a link error naming
+# neither rust-lld nor this file. The hardcoded-triple bug this replaces landed
+# in exactly that silent branch on every non-x86 host — which is why the
+# 2026-07-28 audit could name the defect and it still survived unfixed.
+if(NOT _RUST_LLD)
+    message(FATAL_ERROR
+        "rust-lld not found in ${_RUSTLIB_BIN} — required by the riscv64-threadx "
+        "toolchain to link picolibc (TLS errno) against ThreadX (non-TLS errno); "
+        "GNU ld cannot. Install the rustup component that ships it:\n"
+        "    rustup component add llvm-tools")
 endif()
+
+# Pass tool paths to the wrapper via environment variables. Earlier
+# revisions of this toolchain materialised symlinks at
+# `${CMAKE_CURRENT_LIST_DIR}/_real_lld` / `_llvm_ar` so the wrapper
+# could resolve its sibling tools by `dirname "$0"`. Two problems
+# with that: (1) it raced when two cmake configures ran in parallel
+# against the same toolchain (nextest does this routinely) — both
+# tried to create the same in-source symlink and the loser aborted
+# with `file failed to create symbolic link: File exists`; (2) it
+# wrote into the source tree as a side effect of configure. Env
+# vars sidestep both: each link invocation carries its own
+# `NROS_RUST_LLD` / `NROS_LLVM_AR` and the toolchain dir stays
+# read-only.
+get_filename_component(_lld_dir "${_RUST_LLD}" DIRECTORY)
+find_program(_LLVM_AR_TC llvm-ar PATHS "${_lld_dir}" NO_DEFAULT_PATH)
+if(NOT _LLVM_AR_TC)
+    message(FATAL_ERROR
+        "llvm-ar not found alongside rust-lld at ${_lld_dir} — needed by "
+        "riscv64-lld-wrapper.sh to strip soft-float compiler_builtins.")
+endif()
+
+set(_lld_wrapper "${CMAKE_CURRENT_LIST_DIR}/riscv64-lld-wrapper.sh")
+set(CMAKE_LINKER "${_lld_wrapper}" CACHE FILEPATH "Linker" FORCE)
+
+# Override link rules. The wrapper strips soft-float compiler_builtins
+# from all .a archives, then delegates to rust-lld. `cmake -E env`
+# injects the tool paths so the wrapper doesn't need siblings.
+set(_lld_env "${CMAKE_COMMAND} -E env NROS_RUST_LLD=${_RUST_LLD} NROS_LLVM_AR=${_LLVM_AR_TC}")
+set(CMAKE_C_LINK_EXECUTABLE
+    "${_lld_env} bash ${_lld_wrapper} -flavor gnu <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+    CACHE STRING "" FORCE)
+set(CMAKE_CXX_LINK_EXECUTABLE
+    "${_lld_env} bash ${_lld_wrapper} -flavor gnu <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+    CACHE STRING "" FORCE)

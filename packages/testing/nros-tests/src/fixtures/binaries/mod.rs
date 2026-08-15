@@ -2302,9 +2302,12 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
 /// (low tier, 100 ms) Rust nodes over ONE shared session via
 /// `<ThreadxLinux>::run_tiers` (one ThreadX thread per tier, stacks from the
 /// shared byte pool — `nros_threadx_create_task`). Hosted simulation: a plain
-/// host `x86_64-unknown-linux-gnu` cargo cross-dir build (ThreadX threads are
+/// host cargo cross-dir build (ThreadX threads are
 /// pthreads, NSOS host sockets — no QEMU), so it resolves the prebuilt binary
-/// from the row's `target_dir` at the default fixture profile. Built by
+/// from the row's `target_dir` at the default fixture profile — FLAT, with no
+/// triple segment: the row used to carry `target = "x86_64-unknown-linux-gnu"`,
+/// which both spliced a triple in here and made the build fail on every non-x86
+/// host. Omitting the row's `target` is what "host build" actually means. Built by
 /// `workspace-fixtures-build.sh threadx-linux rust`
 /// (`just threadx_linux build-fixtures`).
 pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
@@ -2314,10 +2317,8 @@ pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path
             let fixture_id = "workspace-rust-threadx-linux-realtime";
             workspace_example_dir("realtime-rust")?;
             let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
-            let binary_path = target_dir.join(format!(
-                "x86_64-unknown-linux-gnu/{}/threadx_entry",
-                cargo_target_profile_dir()
-            ));
+            let binary_path =
+                target_dir.join(format!("{}/threadx_entry", cargo_target_profile_dir()));
             require_prebuilt_workspace_binary(
                 fixture_id,
                 &binary_path,

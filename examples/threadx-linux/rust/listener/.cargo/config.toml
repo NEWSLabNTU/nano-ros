@@ -1,9 +1,8 @@
 include = [ "../../../../../nros-patch.toml"]
-# Phase 212.N.7 step-2 — Entry pkg cargo config. Host target;
-# `nros-board-threadx-linux` build envs come from direnv.
-
-[build]
-target = "x86_64-unknown-linux-gnu"
+# Phase 212.N.7 step-2 — Entry pkg cargo config. Builds for the HOST, so no
+# `[build] target`; the old `x86_64-unknown-linux-gnu` literal was a cross
+# compile on every non-x86 host (see `talker`). `nros-board-threadx-linux`
+# build envs come from direnv.
 
 [patch.crates-io]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }  # nros-managed

@@ -175,9 +175,11 @@ impl ServiceBufferRef {
 pub(super) static SERVICE_SEQ_COUNTER: AtomicSeqCounter = AtomicSeqCounter::new(0);
 
 /// Callback function invoked by the C shim when queries arrive
-// `keyexpr as *const u8` is a no-op on platforms where `c_char == u8` (ARM) but
-// a real reinterpret where `c_char == i8` (x86) — keep it for portability.
-#[allow(clippy::unnecessary_cast)]
+// `c_char` is `u8` on ARM/aarch64 and `i8` on x86 — so `ptr as *const u8` is a
+// no-op on one and a real reinterpret on the other, and `clippy::unnecessary_cast`
+// fires under `-D warnings` on ARM hosts only. Repo-wide idiom is `.cast::<u8>()`,
+// which compiles identically on both and is never linted; never an `as` cast plus
+// an `#[allow]`, which only silences the site it is written on.
 extern "C" fn queryable_callback(
     keyexpr: *const core::ffi::c_char,
     keyexpr_len: usize,
@@ -202,7 +204,7 @@ extern "C" fn queryable_callback(
     // Safety: keyexpr pointer is valid for keyexpr_copy_len bytes (from C shim)
     unsafe {
         core::ptr::copy_nonoverlapping(
-            keyexpr as *const u8,
+            keyexpr.cast::<u8>(),
             buffer.keyexpr.as_mut_ptr(),
             keyexpr_copy_len,
         );

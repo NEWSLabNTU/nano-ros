@@ -22,7 +22,7 @@ pub(crate) unsafe fn copy_cstr_into<const N: usize>(
     if src.is_null() {
         return 0;
     }
-    let src = src as *const u8;
+    let src = src.cast::<u8>();
     let cap = N - 1;
     let mut len = 0usize;
     while len < cap {

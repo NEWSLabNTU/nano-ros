@@ -172,7 +172,7 @@ unsafe fn copy_cstr_to_buffer(src: *const c_char, dst: &mut [u8]) -> usize {
         return 0;
     }
 
-    let src = src as *const u8;
+    let src = src.cast::<u8>();
     let max_len = dst.len() - 1; // Reserve space for null terminator
     let mut len = 0usize;
 
@@ -195,7 +195,7 @@ unsafe fn cstr_eq_buffer(cstr: *const c_char, buffer: &[u8]) -> bool {
         return false;
     }
 
-    let cstr = cstr as *const u8;
+    let cstr = cstr.cast::<u8>();
     let mut i = 0usize;
 
     loop {
@@ -456,7 +456,7 @@ pub unsafe extern "C" fn nros_param_get_string(
             }
 
             // Copy string to output buffer
-            let dst = core::slice::from_raw_parts_mut(value as *mut u8, max_len);
+            let dst = core::slice::from_raw_parts_mut(value.cast::<u8>(), max_len);
             let src = &param.value.string_value;
             let copy_len = max_len.min(NROS_MAX_PARAM_STRING_LEN) - 1;
 
@@ -781,7 +781,7 @@ mod service_backed {
                 return None;
             }
         }
-        core::str::from_utf8(core::slice::from_raw_parts(name as *const u8, len)).ok()
+        core::str::from_utf8(core::slice::from_raw_parts(name.cast::<u8>(), len)).ok()
     }
 
     /// Copy a `&str` to a null-terminated C buffer of size `max_len`.

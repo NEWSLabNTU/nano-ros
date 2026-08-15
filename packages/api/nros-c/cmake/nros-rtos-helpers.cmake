@@ -40,6 +40,50 @@ endif()
 set(_NROS_RTOS_HELPERS_INCLUDED TRUE)
 
 # ----------------------------------------------------------------------
+# nros_host_rustlib_bin
+# ----------------------------------------------------------------------
+# Absolute path to the rustup toolchain's private binary dir, where
+# `rust-lld` and `llvm-ar` live. That dir is keyed on the HOST triple:
+#
+#     $(rustc --print sysroot)/lib/rustlib/<host-triple>/bin
+#
+# Three sites hardcoded `x86_64-unknown-linux-gnu` there, and all three
+# paired it with `NO_DEFAULT_PATH` on the `find_program`. Off x86 the path
+# does not exist, so the lookup yields an EMPTY string instead of an error
+# and the caller quietly proceeds without a linker it required — the RISC-V
+# toolchain then falls back to GNU ld and dies on the picolibc TLS-vs-non-TLS
+# `errno` mix that rust-lld exists to avoid, several steps removed from the
+# actual cause. Diagnosed by the 2026-07-28 audit (A1/A4), fixed in 0582.
+#
+# This lives in the cross-RTOS layer, not in `nros-threadx.cmake`, because
+# `cmake/toolchain/riscv64-threadx.cmake` is the third caller and a toolchain
+# file cannot reach an RTOS-specific module. Callers must still check the
+# `find_program` result: this returns a path, not a promise that it is
+# populated.
+#
+# `rustc -vV`'s `host:` line is the only authority for the triple —
+# CMAKE_HOST_SYSTEM_PROCESSOR spells it differently and would not match.
+function(nros_host_rustlib_bin out_var)
+    execute_process(
+        COMMAND rustc --print sysroot
+        OUTPUT_VARIABLE _rust_sysroot
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    execute_process(
+        COMMAND rustc -vV
+        OUTPUT_VARIABLE _rustc_vv
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    string(REGEX MATCH "host: ([^\n]+)" _host_match "${_rustc_vv}")
+    if(NOT CMAKE_MATCH_1)
+        message(FATAL_ERROR
+            "nros_host_rustlib_bin: could not read the host triple from "
+            "`rustc -vV`. Is rustc on PATH? Output was:\n${_rustc_vv}")
+    endif()
+    set(${out_var} "${_rust_sysroot}/lib/rustlib/${CMAKE_MATCH_1}/bin" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
 # nros_validate_vars
 # ----------------------------------------------------------------------
 function(nros_validate_vars)

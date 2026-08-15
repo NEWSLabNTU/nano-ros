@@ -69,7 +69,7 @@ pub unsafe extern "C" fn nros_log_emit(
     let msg_bytes: &[u8] = if message.is_null() || message_len == 0 {
         &[]
     } else {
-        core::slice::from_raw_parts(message as *const u8, message_len)
+        core::slice::from_raw_parts(message.cast::<u8>(), message_len)
     };
     let msg_str = core::str::from_utf8(msg_bytes).unwrap_or("<invalid utf-8>");
     let record = nros_log::Record {

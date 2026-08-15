@@ -440,7 +440,7 @@ pub unsafe extern "C" fn nros_cdr_write_string(
     while *value.add(len) != 0 {
         len += 1;
     }
-    let data = core::slice::from_raw_parts(value as *const u8, len);
+    let data = core::slice::from_raw_parts(value.cast::<u8>(), len);
     with_writer(ptr, end, origin, |w| write_string_payload(w, data))
 }
 
@@ -459,7 +459,7 @@ pub unsafe extern "C" fn nros_cdr_write_string_n(
     let slice = if data_len == 0 {
         &[][..]
     } else {
-        core::slice::from_raw_parts(data as *const u8, data_len)
+        core::slice::from_raw_parts(data.cast::<u8>(), data_len)
     };
     with_writer(ptr, end, origin, |w| write_string_payload(w, slice))
 }
@@ -776,7 +776,9 @@ mod tests {
             );
         }
         let mut read_ptr = buffer.as_ptr();
-        let mut value = [0i8; 32];
+        // `c_char`, not `i8` — the latter only matches on x86 (issue: `c_char`
+        // is `u8` on ARM/aarch64), so a hardcoded `i8` buffer fails to compile there.
+        let mut value: [c_char; 32] = [0; 32];
         unsafe {
             assert_eq!(
                 nros_cdr_read_string(&mut read_ptr, end, origin, value.as_mut_ptr(), value.len()),

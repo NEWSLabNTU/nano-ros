@@ -2587,7 +2587,7 @@ pub(crate) unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
             }
         }
     }
-    let bytes = unsafe { core::slice::from_raw_parts(ptr as *const u8, len) };
+    let bytes = unsafe { core::slice::from_raw_parts(ptr.cast::<u8>(), len) };
     core::str::from_utf8(bytes).ok()
 }
 
