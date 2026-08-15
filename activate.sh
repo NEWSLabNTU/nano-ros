@@ -240,6 +240,18 @@ if [ -x "$_nros_root/third-party/make/make" ]; then
     export PATH="$_nros_root/third-party/make:$PATH"
 fi
 
+# Zephyr's `west`, when `scripts/zephyr/setup.sh` had to install it into a venv.
+#
+# PEP 668 — Arch, Fedora and Debian 12+ mark their Python "externally managed"
+# and refuse `pip3 install`, INCLUDING `--user`. On those hosts setup.sh creates
+# `scripts/zephyr/.venv` (the same shape the 4.4 line already uses) and `west`
+# lands there instead of `~/.local/bin`. Without this, every `just zephyr …`
+# recipe prints "Zephyr skip: west not found" and exits 0 — a green that ran
+# nothing, which is the failure mode issue 0571 exists about.
+if [ -x "$_nros_root/scripts/zephyr/.venv/bin/west" ]; then
+    export PATH="$_nros_root/scripts/zephyr/.venv/bin:$PATH"
+fi
+
 # Project `.env` overrides (runtime config, buffer tuning, SDK paths)
 # + the just/sdk-env.just SSoT defaults. direnv loads `.env` via
 # `dotenv_if_exists`; outside direnv we shell-source it here.

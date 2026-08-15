@@ -145,3 +145,10 @@ if test -f $_nros_root/scripts/sdk-env.sh
 end
 
 set -e _nros_root
+
+# Zephyr's `west`, when `scripts/zephyr/setup.sh` had to install it into a venv
+# (PEP 668 hosts: Arch, Fedora, Debian 12+). Twin of the activate.sh block —
+# without it every `just zephyr …` recipe skips with exit 0.
+if test -x "$_nros_root/scripts/zephyr/.venv/bin/west"
+    set -gx PATH "$_nros_root/scripts/zephyr/.venv/bin" $PATH
+end
