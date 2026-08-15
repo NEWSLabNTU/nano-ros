@@ -31,7 +31,7 @@
 //! // Process timers periodically
 //! loop {
 //!     node.process_timers(10); // 10ms elapsed
-//!     std::thread::sleep(std::time::Duration::from_millis(10));
+//!     std::thread::sleep(core::time::Duration::from_millis(10));
 //! }
 //! ```
 //!

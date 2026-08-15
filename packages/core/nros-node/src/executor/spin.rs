@@ -681,7 +681,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // before dropping wake_ctx; this happens in `install_wake_*`
     // teardown path.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
-    wake.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+    wake.flag.store(true, core::sync::atomic::Ordering::SeqCst);
     // Lock-free notify. The waiter observes wake_flag under wake_mu
     // in its wait_timeout_while predicate — flag.store with SeqCst
     // happens-before any subsequent acquire in the waiter, so the
@@ -752,12 +752,12 @@ impl WakeSignalFd {
                         unsafe { libc::read(fd, buf.as_mut_ptr() as *mut core::ffi::c_void, 8) };
                     if n <= 0 {
                         // EINTR / EOF — re-check shutdown then loop.
-                        if shutdown_clone.load(std::sync::atomic::Ordering::Acquire) {
+                        if shutdown_clone.load(core::sync::atomic::Ordering::Acquire) {
                             return;
                         }
                         continue;
                     }
-                    if shutdown_clone.load(std::sync::atomic::Ordering::Acquire) {
+                    if shutdown_clone.load(core::sync::atomic::Ordering::Acquire) {
                         return;
                     }
                     // Same effect as nros_rmw_runtime_wake_cb. We
@@ -767,7 +767,7 @@ impl WakeSignalFd {
                     // shutdown_flag check above + Drop's join gives it.
                     unsafe {
                         let w = &*ctx;
-                        w.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        w.flag.store(true, core::sync::atomic::Ordering::SeqCst);
                         w.cv.notify_all();
                     }
                 }
@@ -797,7 +797,7 @@ impl WakeSignalFd {
 impl Drop for WakeSignalFd {
     fn drop(&mut self) {
         self.shutdown
-            .store(true, std::sync::atomic::Ordering::Release);
+            .store(true, core::sync::atomic::Ordering::Release);
         // Wake the worker so it re-checks shutdown.
         let one: u64 = 1;
         unsafe {
@@ -5101,7 +5101,7 @@ impl<'s> Executor<'s> {
         #[allow(unused_variables)]
         let was_woken = self
             .wake_flag
-            .swap(false, std::sync::atomic::Ordering::SeqCst);
+            .swap(false, core::sync::atomic::Ordering::SeqCst);
 
         // Phase 124.B.4 — condvar-blocked wait.
         //
@@ -5168,7 +5168,7 @@ impl<'s> Executor<'s> {
                 // waiting; mirrors the std cv predicate's flag drain.
                 let _ = self
                     .wake_flag
-                    .swap(false, std::sync::atomic::Ordering::SeqCst);
+                    .swap(false, core::sync::atomic::Ordering::SeqCst);
                 0
             } else {
                 timeout_ms
@@ -5185,7 +5185,7 @@ impl<'s> Executor<'s> {
                 let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
                     !self
                         .wake_flag
-                        .swap(false, std::sync::atomic::Ordering::SeqCst)
+                        .swap(false, core::sync::atomic::Ordering::SeqCst)
                 });
             }
             // drive_io is non-blocking when the cv-wait above ran;
@@ -6490,7 +6490,8 @@ impl<'s> Executor<'s> {
     /// executor.spin_blocking(SpinOptions::spin_once())?;
     /// ```
     pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
-        use std::time::{Duration, Instant};
+        use core::time::Duration;
+        use std::time::Instant;
 
         const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
@@ -6499,10 +6500,10 @@ impl<'s> Executor<'s> {
         let mut total_callbacks = 0usize;
 
         self.halt_flag
-            .store(false, std::sync::atomic::Ordering::SeqCst);
+            .store(false, core::sync::atomic::Ordering::SeqCst);
 
         loop {
-            if self.halt_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            if self.halt_flag.load(core::sync::atomic::Ordering::SeqCst) {
                 break;
             }
 
@@ -6533,7 +6534,7 @@ impl<'s> Executor<'s> {
     /// # Example
     ///
     /// ```ignore
-    /// let period = std::time::Duration::from_millis(10);
+    /// let period = core::time::Duration::from_millis(10);
     /// let result = executor.spin_one_period_timed(period);
     /// if result.overrun {
     ///     log::warn!("Period overrun: {:?}", result.elapsed);
@@ -6541,7 +6542,7 @@ impl<'s> Executor<'s> {
     /// ```
     pub fn spin_one_period_timed(
         &mut self,
-        period: std::time::Duration,
+        period: core::time::Duration,
     ) -> super::types::SpinPeriodResult {
         let start = std::time::Instant::now();
         let result = self.spin_once(period);
@@ -6567,15 +6568,15 @@ impl<'s> Executor<'s> {
     ///
     /// ```ignore
     /// // 100Hz control loop — blocks until halt() is called
-    /// executor.spin_period(std::time::Duration::from_millis(10))?;
+    /// executor.spin_period(core::time::Duration::from_millis(10))?;
     /// ```
     pub fn spin_period(&mut self, period: core::time::Duration) -> Result<(), NodeError> {
         self.halt_flag
-            .store(false, std::sync::atomic::Ordering::SeqCst);
+            .store(false, core::sync::atomic::Ordering::SeqCst);
         let mut next_invocation = std::time::Instant::now() + period;
 
         loop {
-            if self.halt_flag.load(std::sync::atomic::Ordering::SeqCst) {
+            if self.halt_flag.load(core::sync::atomic::Ordering::SeqCst) {
                 break;
             }
 
@@ -6603,9 +6604,9 @@ impl<'s> Executor<'s> {
     /// `timeout_ms` first.
     pub fn halt(&self) {
         self.halt_flag
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+            .store(true, core::sync::atomic::Ordering::SeqCst);
         self.wake_flag
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+            .store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
     /// Phase 110.D.b — move this Executor onto a fresh OS thread,
@@ -6671,7 +6672,7 @@ impl<'s> Executor<'s> {
 
     /// Check if halt has been requested.
     pub fn is_halted(&self) -> bool {
-        self.halt_flag.load(std::sync::atomic::Ordering::SeqCst)
+        self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
     }
 
     /// Get a clone of the halt flag for use in signal handlers or other threads.
@@ -6700,7 +6701,7 @@ impl<'s> Executor<'s> {
     /// calls collapse into one observed wake per `spin_once`.
     pub fn wake(&self) {
         self.wake_flag
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+            .store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
     /// Phase 104.C.6 — clone of the shared wake flag for cross-thread
@@ -6781,7 +6782,7 @@ impl ThreadHandle {
     /// Signal the spawned executor thread to stop. The thread exits
     /// on its next `spin_once` iteration.
     pub fn halt(&self) {
-        self.halt.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.halt.store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
     /// Wait for the spawned thread to exit. Returns the join result.
@@ -6798,7 +6799,7 @@ impl ThreadHandle {
 #[cfg(feature = "std")]
 impl Drop for ThreadHandle {
     fn drop(&mut self) {
-        self.halt.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.halt.store(true, core::sync::atomic::Ordering::SeqCst);
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
@@ -6854,7 +6855,7 @@ impl OsPriorityWorker {
             nros_platform_api::SchedPolicy,
         ) -> Result<(), nros_platform_api::SchedError>,
     ) -> Self {
-        use std::sync::atomic::Ordering;
+        use core::sync::atomic::Ordering;
         let (tx, rx) = std::sync::mpsc::channel::<WorkItem>();
         let halt = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let halt_w = std::sync::Arc::clone(&halt);
@@ -6902,7 +6903,7 @@ impl OsPriorityWorker {
 #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
 impl Drop for OsPriorityWorker {
     fn drop(&mut self) {
-        self.halt.store(true, std::sync::atomic::Ordering::Release);
+        self.halt.store(true, core::sync::atomic::Ordering::Release);
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }

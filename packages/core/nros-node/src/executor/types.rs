@@ -98,7 +98,7 @@ pub struct SpinPeriodResult {
     /// Whether processing exceeded the target period
     pub overrun: bool,
     /// Actual wall-clock processing time
-    pub elapsed: std::time::Duration,
+    pub elapsed: core::time::Duration,
 }
 
 // ============================================================================

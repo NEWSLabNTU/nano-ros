@@ -169,7 +169,7 @@ mod tests {
         let producer = thread::spawn(move || {
             for i in 0..16u32 {
                 let _ = q_prod.push(i);
-                thread::sleep(std::time::Duration::from_micros(50));
+                thread::sleep(core::time::Duration::from_micros(50));
             }
         });
         let mut drained: Vec<u32, 32> = Vec::new();
@@ -177,7 +177,7 @@ mod tests {
             while let Some(v) = q.pop() {
                 let _ = drained.push(v);
             }
-            thread::sleep(std::time::Duration::from_micros(100));
+            thread::sleep(core::time::Duration::from_micros(100));
         }
         producer.join().unwrap();
         // Best-effort drain — some pushes may have hit the

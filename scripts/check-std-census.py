@@ -27,6 +27,18 @@ They move independently. W2 (collapsing duplicated fields) deletes `cfg`
 branches without touching `path` counts; W4/W5 (routing time and threads
 through the platform seam) delete `path`s. Tracking one would hide the other.
 
+## `#[cfg(test)]` code is excluded, and that is a CORRECTION not a win
+
+Host unit tests link `std` even in a `no_std` crate, so their `std::` use can
+never block a target build. Counting it made the ruler answer the wrong
+question: `nros-node` read 309 paths, of which **209 were in its `#[cfg(test)]`
+module** — two thirds of the number was code that does not ship. W5's premise
+("29 `std::thread` sites to migrate") came from that inflation; 15 of those 29
+were `thread::sleep` in tests.
+
+Excluding them LOWERS the counts without anything being fixed. The drop is
+recorded as a metric correction in the phase doc, not as progress.
+
 ## Comments are excluded, and that is not fussiness
 
 This file's own sibling commits added doc comments that NAME `std::sync::Condvar`
@@ -76,19 +88,26 @@ PATH_RE = re.compile(r'\bstd::')
 
 # phase-359 baseline. W0 measured it; the corrected cfg metric re-measured
 # everything; then `nros-node` came down per work item: W2 139->131 / 346->342,
-# W3 131->127 / 342->321, W4 127->112 / 321->309.
+# W3 131->127 / 342->321, W4 127->112 / 321->309, W6 309->285 (pure re-export
+# spellings). Excluding `#[cfg(test)]` code then re-based every number — a
+# metric correction, not progress; see the module docstring.
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
-    "nros": {"cfg": 66, "path": 20},
-    "nros-c": {"cfg": 13, "path": 9},
-    "nros-core": {"cfg": 8, "path": 6},
+    "nros": {"cfg": 64, "path": 18},
+    "nros-c": {"cfg": 13, "path": 8},
+    "nros-core": {"cfg": 7, "path": 5},
     "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
-    "nros-node": {"cfg": 112, "path": 309},
-    "nros-params": {"cfg": 13, "path": 18},
+    "nros-node": {"cfg": 105, "path": 76},
+    "nros-params": {"cfg": 13, "path": 8},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
 }
+
+
+def is_test_gate(stripped: str) -> bool:
+    """A `#[cfg(test)]` / `#[cfg(all(test, ...))]` attribute."""
+    return stripped.startswith("#[cfg(") and re.search(r"\btest\b", stripped) is not None
 
 
 def strip_comments(line: str) -> str:
@@ -116,13 +135,35 @@ def census():
                 # Generated bindings are not hand-written std use.
                 if rs.name == "generated.rs":
                     continue
+                # `executor/tests.rs` is declared `#[cfg(all(test, …))] mod tests;`
+                # — the whole FILE is host-test code, and the gate lives in the
+                # parent module where this per-file scan cannot see it.
+                if rs.name == "tests.rs":
+                    continue
+                # Skip `#[cfg(test)] mod … { … }` bodies by brace depth, and
+                # skip whole files that are themselves test modules.
+                test_depth = None
+                depth = 0
+                pending_test = False
                 for line in rs.read_text(errors="replace").splitlines():
+                    stripped = line.strip()
+                    if test_depth is None and is_test_gate(stripped):
+                        pending_test = True
                     code = strip_comments(line)
-                    if not code:
-                        continue
-                    if "cfg" in code:
-                        cfg += len(CFG_FEATURE_RE.findall(code))
-                    path += len(PATH_RE.findall(code))
+                    opens = code.count("{")
+                    closes = code.count("}")
+                    if pending_test and opens:
+                        test_depth = depth
+                        pending_test = False
+                    elif pending_test and stripped.endswith(";"):
+                        pending_test = False  # `#[cfg(test)] mod tests;`
+                    if test_depth is None and code:
+                        if "cfg" in code:
+                            cfg += len(CFG_FEATURE_RE.findall(code))
+                        path += len(PATH_RE.findall(code))
+                    depth += opens - closes
+                    if test_depth is not None and depth <= test_depth:
+                        test_depth = None
             if (cfg or path) and crate_dir.name not in EXCLUDE:
                 out[crate_dir.name] = {"cfg": cfg, "path": path}
     return out

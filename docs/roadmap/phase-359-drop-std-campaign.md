@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0–W4 landed (W2/W3 partially, by design); W5–W10 not started.** The campaign
+**Status (2026-08-15). W0–W4 landed; W6 landed; W5 RE-SCOPED after measurement — see below. W7–W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -58,12 +58,13 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**223** `cfg` mentions of the `std` feature and **388** `std::` paths, nine
-crates (current, i.e. after W4):
+**213** `cfg` mentions of the `std` feature and **141** `std::` paths, nine
+crates (current: after W4 and W6, and after `#[cfg(test)]` code was excluded —
+see the metric correction below):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
-| `nros-node` | 112 | 309 |
+| `nros-node` | 105 | 76 |
 | `nros` | 66 | 20 |
 | `nros-c` | 13 | 9 |
 | `nros-params` | 13 | 18 |
@@ -219,13 +220,86 @@ unconditionally because the std-only sporadic runtime accounting consumes it —
 but expresses it as a VALUE, `lat_active || dl_active || cfg!(feature = "std")`,
 instead of four cfg arms across two sites.
 
-### W5 — threads through `PlatformThreading` / `task_*`
+### W5 — threads — **RE-SCOPED 2026-08-15, not implemented as written**
 
-29 sites.
+The item said "29 sites -> `PlatformThreading`". Both halves of that were wrong,
+and measuring said so before any code moved.
 
-### W6 — residue
+**The count was inflated.** 15 of the 29 were `thread::sleep` inside
+`executor/tests.rs`, which is `#[cfg(all(test, not(feature = "rmw-cffi")))]` —
+host test code that never compiles for a target.
 
-`std::io` (4), `HashMap` -> `BTreeMap` (2, tiny N), the single `thread_local!`.
+**The remaining 13 are all inside std-only blocks.** Checked one by one:
+
+| site | gate |
+| --- | --- |
+| `spin_period`'s sleeping loop (x2) | `feature = "std"` |
+| `ThreadHandle` spawn/join/field (x4) | `feature = "std"` |
+| os-priority worker pool (x2) | `std` + `scheduler-os-priority` |
+| signal-fd worker (x2) | `signal-fd-wake` + `target_os = "linux"` |
+
+None is on the embedded path. These are host-only CONVENIENCES that a no_std
+build never compiles, so "migrating" them is not the work — deciding whether
+they should exist at all is, and that is W10.
+
+**And the seam cannot take them anyway.** `PlatformThreading`, like
+`PlatformClock`, is a trait of associated fns, so calling it requires a generic
+parameter and `Executor` is deliberately non-generic. The alternative — the
+`nros_platform_task_*` C ABI, following `node_wake.rs`'s precedent — is a HARD
+link dependency, and the unit-test build deliberately avoids exactly that by
+excluding `node_wake` under `not(feature = "rmw-cffi")`.
+
+So W5 is not "do it later"; as written it is not the right change. What remains
+of it is folded into W10.
+
+### W6 — residue — **DONE 2026-08-15**
+
+`std::sync::atomic::Ordering` and `std::time::Duration` are RE-EXPORTS of the
+`core` types — identical types, so 39 sites in `nros-node` were spelling, not
+dependency. Converted (`nros-node` path 309 -> 285), zero behaviour risk.
+
+Deliberately NOT converted, because it would be motion rather than progress:
+
+* `std::io::Error` in `WakeSignalFd` (4 sites). The type spawns a
+  `std::thread`, holds a `std::sync::Arc`, and calls `libc::eventfd` behind
+  `signal-fd-wake` + `target_os = "linux"`. Retyping its error while the body
+  stays std leaves it exactly as std-bound as before. Same reasoning retires
+  W3's `signal_fd()` deferral: it is one type's problem, and that type is a
+  Linux-only feature.
+* `HashMap` -> `BTreeMap` for `os_priority_workers` (2 sites). Its own comment
+  says the field is std-gated "because workers need `std::thread` + `mpsc`".
+  Swapping the map does not change that.
+* `thread_local!` — there is none in `nros-node`. The one site counted in
+  planning is in another crate.
+
+### W0 metric correction — `#[cfg(test)]` excluded
+
+Host unit tests link `std` even in a `no_std` crate, so their `std::` use can
+never block a target build. The census counted it, and the distortion was large:
+`nros-node` read **309** paths of which **209 were its `#[cfg(test)]` module**.
+That inflation is where W5's "29 sites" came from.
+
+Totals re-based from 223/388 to **213 cfg / 141 paths**. That drop is a
+correction, not progress, and is recorded as such.
+
+### What the residue actually is
+
+Classifying every remaining `std::` path in `nros-node` outside the test module
+(100 at the time of measuring):
+
+| share | region |
+| --- | --- |
+| 60 % | inside `#[cfg(feature = "std")]` arms |
+| 13 % | `signal-fd-wake` (Linux-only feature) |
+| 12 % | `scheduler-os-priority` (needs `std::thread` + mpsc) |
+| 15 % | ungated — and on inspection nearly all of THOSE are test helpers the
+classifier's brace tracking missed, plus the single intentional std clock
+provider from W4 |
+
+**The shared executor path is essentially no_std-clean already.** What is left
+is a set of host-only features plus one clock provider. That reframes the rest
+of the campaign: W7-W10 are about deciding where those features live, not about
+migrating executor code.
 
 ### W7 — NuttX off `std`
 
