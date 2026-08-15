@@ -86,6 +86,14 @@ comment-length heuristic; an allowlist would be the hand-kept list this repo kee
 measured: whether the other ~39 leaves committing a config pass or fail under a corrected predicate.
 See `0587-*`. (2026-08-15)
 
+**#601** (build, open 2026-08-15) — a COLD cyclonedds fixture build dies `code=127` on
+`/opt/ros/humble/bin/idlc: error while loading shared libraries: libiceoryx_binding_c.so`. The tool is
+present; it cannot LOAD, because ROS's library path is not in the BUILD's environment. `find_package`
+takes the first prefix that resolves, so ROS's copy beats the `build/cyclonedds` that
+`just cyclonedds setup` provisions — selection by EXISTENCE where the property is RUNNABILITY. Invisible
+until something makes the leaves cold (`just setup-cli` does, by design), which is why the lane looked
+healthy all day and then could not rebuild. Third instance of this shape in one session (see #0500, and
+the rosidl-adapter ladder fixed alongside). See `0601-*`.
 
 Recently resolved (2026-08-15): **#562** `nros sync` rewrote byte-identical files, restamping mtimes and
 buying a cmake reconfigure for no change. The class fix (ONE write-if-changed helper in
