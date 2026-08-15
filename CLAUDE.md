@@ -117,6 +117,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   the `pre-push` hook — the hook because a rewind is usually INHERITED from a rebase
   rather than authored, which is exactly the window a pre-commit check misses.
   Deliberate rollback: `NROS_ALLOW_SUBMODULE_REWIND=1`, and say why.
+  **`just setup-hooks` also sets the three git BUILTINS that make a pin move
+  legible** — git has no setting that refuses a rewind, but it does know how to
+  describe one, and by default it does not: `diff.submodule=log` prints
+  `(rewind)` and the dropped commits with `<`; `status.submoduleSummary=true`
+  shows the same BEFORE you commit; `push.recurseSubmodules=check` refuses a push
+  whose pins are on no remote. Visibility from git, enforcement from the gate.
 - **Vendored-fork branch workflow (cyclonedds, netxduo, …):** land fixes with linear history
   (commit in submodule → `git fetch origin` + `git remote prune origin` → `git rebase origin/<branch>`
   → push). **Push the fork branch FIRST, then bump the superproject pointer** to the pushed commit.

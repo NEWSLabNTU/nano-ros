@@ -755,14 +755,34 @@ phase-new slug="":
 issue-new slug="":
     @scripts/reserve-issue-id.sh {{slug}}
 
-# Install the repo's git hooks (currently: pre-push refuses a duplicate issue
-# id). Idempotent; safe to re-run. Not automatic — pointing `core.hooksPath` at
-# tracked scripts means a clone can run repo code on push, so it stays opt-in
-# and `just setup` calls it explicitly.
+# Install the repo's git hooks (pre-push refuses a duplicate issue id, or a
+# submodule pin that moved backward) AND the three git builtins that make
+# submodule pointer moves legible. Idempotent; safe to re-run. Not automatic —
+# pointing `core.hooksPath` at tracked scripts means a clone can run repo code on
+# push, so it stays opt-in and `just setup` calls it explicitly.
+#
+# The builtins are VISIBILITY; `check-submodule-pins` + the hook are ENFORCEMENT.
+# Git has no setting that refuses a rewind, but it does know how to describe one,
+# and by default it does not: a pin move renders as two hex strings
+# (`-Subproject commit d3f0d26` / `+Subproject commit 43ddb0e`) whose order no
+# reader can tell. That is how a Zephyr `socklen_t` fix got silently unshipped on
+# 2026-08-15 inside a 24-file commit about issue-ID renumbering.
+#
+#   diff.submodule=log          `git diff/show/log` prints "(rewind)" and lists
+#                               the dropped commits with `<` before each subject.
+#   status.submoduleSummary     `git status` shows the same BEFORE you commit —
+#                               the earliest point anyone can catch it.
+#   push.recurseSubmodules=check  refuses a push whose pins name commits that are
+#                               on no remote (the "push the submodule FIRST" rule).
 [group("main")]
 setup-hooks:
     @git config core.hooksPath .githooks
+    @git config diff.submodule log
+    @git config status.submoduleSummary true
+    @git config push.recurseSubmodules check
     @echo "hooks installed: core.hooksPath -> .githooks"
+    @echo "submodule legibility: diff.submodule=log, status.submoduleSummary=true,"
+    @echo "                      push.recurseSubmodules=check"
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens
