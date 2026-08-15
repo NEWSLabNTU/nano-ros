@@ -81,3 +81,62 @@ and name causes.
 The mtime treadmill was 0466's territory, and 0466 is archived as resolved — its
 subject was the ORDERED setup contract, which is genuinely fixed. The cold-leaf
 cost outlived it and had nowhere to live; this is that home.
+
+## MEASURED 2026-08-16 — the fingerprint is innocent; three rows still over-invalidate
+
+This issue asked which of three causes the cascades are. Experiment (b), a
+COMMENT-ONLY edit to `nros-cli-core/src/lib.rs` followed by `just setup-cli`, on
+a tree whose compile-check fixtures had just been built:
+
+```
+fingerprint before: 02d3deaddbb42283ba1a36cf
+fingerprint after:  02d3deaddbb42283ba1a36cf     <- UNCHANGED
+stale fixtures:     4  ->  7
+```
+
+**`codegen-fingerprint` works as designed.** A behaviour-preserving CLI rebuild
+does not move it, which is the whole point of caching it by binary hash
+(phase-360). The four baseline-stale rows are the west ones, built by the west
+lane rather than by `compile-check-fixtures.sh`, so they are unrelated.
+
+**But three rows staled anyway**, and they have a shape:
+
+| row | builder | staled? |
+| --- | --- | --- |
+| `board_agnostic_run_plan` | `cargo-build` | yes |
+| `nav2_compat_smoke` | `cargo-build` | yes |
+| `freertos_firmware` | `cross-build` | yes |
+| `one_dep_component_pkg` | `cargo-check` | **no** |
+
+So it is specific to the builders that actually BUILD. Two candidates ruled out
+by measurement rather than reasoning:
+
+* not the fingerprint — unchanged above;
+* not the measured dep-info closure (phase-360 W4) — `dep-closure.py` over
+  `board_agnostic_run_plan` reports **zero** entries under `packages/cli` or
+  naming the `nros` binary.
+
+Which leaves the source manifest: something under those rows' own directories
+changed CONTENT during the rebuild. The likely writer is the `nros sync` /
+codegen step that runs as part of building them, emitting a file whose bytes
+carry the tool's identity. Issue 0562 made sync skip byte-identical writes, so
+whatever moved is genuinely different bytes, not a restamp.
+
+### Next step, precisely
+
+Diff a row's directory across a behaviour-preserving CLI rebuild:
+
+```sh
+find packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan -newer <marker> -type f
+```
+
+and read what changed. That names the file that carries the tool identity into
+the signature, which is the last piece of the attribution this issue exists for.
+
+### Scale check, so nobody over-reads this
+
+3 rows of ~36 over-invalidate on a behaviour-preserving rebuild. The six
+cascades that motivated this issue each followed a `git pull` or `rebase` that
+brought REAL CLI changes, so most of that cost was legitimate invalidation, not
+this. The remedy order should follow that: the treadmill is mostly correct
+behaviour, and this is a narrow leak.

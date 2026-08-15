@@ -103,6 +103,32 @@ def main() -> int:
             )
             fail = 1
 
+    # ---------------------------------------------------------------- CMake
+    # The SECOND provider table. `nros_feature_set()` emits features for the
+    # C/C++ dep-sites, entirely independently of the Cargo manifests above, and
+    # the same invariant applies: a row either rides `std` (which supplies both
+    # lang items) or names a panic provider itself. It is consistent today —
+    # this asserts it stays that way, because a table nobody checks is how the
+    # Cargo-side NuttX row lost both providers and nobody noticed until a
+    # `no_std` link failed four crates away (issue 0617).
+    fs = Path("cmake/NanoRosFeatureSet.cmake")
+    if fs.is_file():
+        # Each arm appends a flat list: `list(APPEND _feats std platform-posix)`.
+        for m in re.finditer(r"list\(APPEND _feats ([^)]*)\)", fs.read_text()):
+            feats = m.group(1).split()
+            plat = next((f for f in feats if f.startswith("platform-")), None)
+            if plat is None:
+                continue  # a partial append; the platform arrives in another
+            if "std" in feats:
+                continue  # std supplies panic + allocator
+            if not any(p in feats for p in PANIC):
+                print(
+                    f"ERROR: nros_feature_set emits {plat} with neither `std` nor a "
+                    f"panic provider: {' '.join(feats)}",
+                    file=sys.stderr,
+                )
+                fail = 1
+
     # nros-cpp must delegate, not restate. A second copy of the table is a
     # second thing to forget to update.
     if cpp.is_file():
