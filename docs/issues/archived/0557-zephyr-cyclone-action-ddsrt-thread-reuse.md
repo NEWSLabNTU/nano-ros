@@ -1,7 +1,7 @@
 ---
 id: 557
 title: "Zephyr Cyclone action images fail at boot with `tid … is in use!` and rc=-100 — the readiness timeout hides an immediate failure"
-status: open
+status: resolved
 type: bug
 severity: high
 area: rmw, zephyr, testing
@@ -192,3 +192,60 @@ and `action.rs`. Only the action-server one is fixed here, deliberately: the
 others' fallible calls return different error types (`create_publisher`,
 `commit_slot`, `send_request_raw`, …) and rewriting them blind would be guessing
 at mappings. Filed as a sweep rather than done wrong.
+
+
+## RESOLVED 2026-08-15 — one doubled underscore, defeating the guard written to prevent it
+
+Nothing to do with ddsrt thread reuse, the Zephyr sync backend, or the `tid … is
+in use!` lines. `ros_form_to_dds` appended a trailing `_` unconditionally, to a
+name that already had one:
+
+```
+type = 'example_interfaces/action/Fibonacci_SendGoal_'   <- already ends in '_'
+dds  = 'example_interfaces::action::dds_::Fibonacci_SendGoal__'
+base = 'example_interfaces::action::dds_::Fibonacci_SendGoal__SendGoal_'
+req  = '..._SendGoal__SendGoal_Request_'   MISS   (registry has 51 entries)
+```
+
+The second underscore is what did the damage. `action_effective_base` carries an
+idempotence guard from issue #234 — "detect an already-suffixed form and pass it
+through unchanged" — implemented as a `_SendGoal_` suffix test. With the tail
+mangled to `endGoal__` that test no longer matched, so the infix was appended a
+SECOND time, producing exactly the doubled `<A>_SendGoal_SendGoal_` shape #234
+existed to prevent. A guard walked past by a change one layer up.
+
+**Why only C/C++.** `ros_form_to_dds` returns early, unchanged, when the type has
+no `/`. Rust advertises the DDS form (`example_interfaces::action::dds_::…`) and
+never reaches the append; the C/C++ path advertises the ROS form and does. That
+is the entire C-vs-Rust divergence, and it is why cyclonedds/C/pubsub,
+cyclonedds/C/service and cyclonedds/Rust/action all passed while
+cyclonedds/{C,C++}/action failed.
+
+**Fix.** Append the trailing `_` only when it is not already present — the
+convention is EXACTLY one, which is what `service_type_name` assumes when it
+strips one before adding `_Request_`.
+
+**Verified**, after a clean rebuild of every Cyclone leaf:
+
+```
+PASS  case_14_cyclonedds_c_service_e2e
+PASS  case_18_cyclonedds_cpp_action_e2e     <- was failing
+PASS  case_17_cyclonedds_c_action_e2e       <- was failing
+PASS  case_16_cyclonedds_rust_action_e2e    <- control, still green
+```
+
+~8 s each, against a 60 s readiness timeout. The guest reaches
+`Waiting for action goals`, and the trace shows both descriptors HIT, the topics
+and the reader/writer created, then the same for `cancel_goal` and `get_result`.
+
+### What the six `tid … is in use!` lines were
+
+A red herring, established earlier in this issue and left standing: benign, one
+per ddsrt thread, leaking 32 KB each. They print before the real failure, which
+is why the verdict's line-order ranking had to become precedence ranking.
+
+### Debt this exposed, filed separately
+
+* **#586** — 15 more `Err(_) => TRANSPORT_ERROR` sites in the C++ FFI.
+* **#589** — on `native_sim`, any Rust `println!`/`eprintln!` recurses forever in
+  `zvfs_write` and SIGSEGVs the image. Found by adding a diagnostic here.

@@ -210,6 +210,31 @@ deadlocks, so a self-relock bug hangs natively and passes on Zephyr.
 **Acceptance.** The boot failure surfaces as itself, with `rc=-100` and the tid
 message attributed. Then the underlying cause.
 
+**DONE 2026-08-15 — both halves.** Three layers were hiding, each covering the
+next, and the item's own instinct (fix the hiding first) was what made the cause
+reachable.
+
+* **The test** reported the wait, not the failure. Fixed and guest-verified. One
+  correction to the fix itself: `first_guest_failure` scanned in LINE order and
+  led with `<err> os: tid … is in use!`, four lines above the real error. It is
+  rank-major now, with `is in use!` ranked low because it is BENIGN — Zephyr's
+  `pthread_attr_destroy` frees the stack of the thread it just created, logs
+  `-EBUSY` and returns 0 (leaking 32 KB each time). The tid message is
+  attributed, as the acceptance asked, and attributed correctly: to nothing.
+* **The FFI** discarded the `NodeError` (`Err(_) => TRANSPORT_ERROR`), and the
+  mapper it should have used had a `_` arm swallowing eight more variants. Both
+  fixed; the wildcard is gone entirely (rustc now rejects it as unreachable, so a
+  new variant fails to compile until someone maps it). `rc=-100` became `rc=-1`.
+* **The cause**: `ros_form_to_dds` appended a trailing `_` to a name that already
+  had one, and the doubled underscore defeated issue #234's idempotence guard,
+  producing the very doubled type name that guard prevents. Only C/C++ reached it
+  — Rust advertises the DDS form, which returns early. One-line fix.
+
+Verified after a clean rebuild of every Cyclone leaf: `case_17` (C), `case_18`
+(C++), `case_16` (Rust control) and `case_14` (C service) all PASS, ~8 s each
+against a 60 s readiness timeout. Issue 0557 resolved; 0586 and 0589 filed for
+debt this uncovered.
+
 ---
 
 ## Deliberately not doing

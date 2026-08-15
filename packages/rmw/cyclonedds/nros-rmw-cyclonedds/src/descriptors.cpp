@@ -154,6 +154,24 @@ bool ros_form_to_dds(const char *type_name, char *out, std::size_t out_cap) {
     }
     // Trailing `_` to match the registered `<Svc>_` convention (the later
     // `service_type_name` strips exactly one before adding `_Request_`).
+    //
+    // Issue 0557 — ONLY IF IT IS NOT ALREADY THERE. The convention is EXACTLY
+    // one trailing `_`, and callers legitimately pass a name that already has
+    // it: the action paths advertise the per-channel wrapper type
+    // `<Pkg>/action/<A>_SendGoal_` (issue #234). Appending unconditionally gave
+    // `<A>_SendGoal__`, whose tail is `endGoal__` — so the idempotence guard in
+    // `action_effective_base`, which tests for a `_SendGoal_` suffix, no longer
+    // matched and appended the infix a second time, yielding
+    // `<A>_SendGoal__SendGoal_Request_` and a descriptor MISS. That is the very
+    // doubled form #234 added the guard to prevent; the extra underscore walked
+    // straight past it.
+    //
+    // Only the C/C++ path was affected: Rust advertises the DDS form, which has
+    // no `/` and takes the early return above without ever reaching here.
+    if (out_len > 0 && out[out_len - 1] == '_') {
+        out[out_len] = '\0';
+        return true;
+    }
     if (out_len + 2 > out_cap) return false;
     out[out_len++] = '_';
     out[out_len] = '\0';
