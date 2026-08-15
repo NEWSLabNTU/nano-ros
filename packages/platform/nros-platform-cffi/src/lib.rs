@@ -415,6 +415,12 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     fn wake_storage_align() -> usize {
         unsafe { nros_platform_wake_storage_align() }
     }
+    fn task_storage_size() -> usize {
+        unsafe { nros_platform_task_storage_size() }
+    }
+    fn task_storage_align() -> usize {
+        unsafe { nros_platform_task_storage_align() }
+    }
 }
 
 // ============================================================================
@@ -870,6 +876,14 @@ macro_rules! nros_platform_export_threading {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_wake_signal_from_isr(w: *mut ::core::ffi::c_void) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::wake_signal_from_isr(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_storage_size() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_size()
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_storage_align() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_storage_align()
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_wake_storage_size() -> usize {
