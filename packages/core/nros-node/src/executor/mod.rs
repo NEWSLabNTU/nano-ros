@@ -41,6 +41,17 @@ mod node;
 pub mod node_record;
 #[cfg(any(has_rmw, test))]
 mod node_wake;
+// phase-359 W10 — the per-OS-priority worker pool, ported off `std::thread`
+// onto the platform task ABI so it is reachable on every platform.
+//
+// Deliberately the SAME predicate as `node_wake` above, which it imports:
+// spelling a second, hand-matched predicate here is how the two drift, and they
+// did — an `all(feature = …, any(has_rmw, test))` copy resolved true in a build
+// where `node_wake` resolved false. The feature half lives inside the file as
+// an inner `#![cfg]`, so there is one condition per fact and no pair to keep in
+// step.
+#[cfg(any(has_rmw, test))]
+pub(crate) mod os_priority;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
 pub mod sched_context;

@@ -408,12 +408,22 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, std::vec![20, 10]);
 }
 
-/// Phase 110.F — `os_pri` worker-pool dispatch routes the bound
-/// callback through a worker thread instead of the cooperative path.
-/// Smoke test: register a sub bound to an SC with `os_pri = 1`, fire
-/// spin_once, verify the worker eventually drains + dispatches.
-/// Uses a no-op `apply_policy` (non-root tests can't lift to
-/// SCHED_FIFO).
+/// Phase 110.F — an `os_pri`-bound callback is dispatched.
+///
+/// phase-359 W10 — read what this covers NOW. The worker pool moved off
+/// `std::thread` onto the platform task ABI, so it exists only where a platform
+/// provider is linked (`rmw-cffi`, the same proxy `node_wake` uses) — and this
+/// module is compiled `not(feature = "rmw-cffi")`, because a real backend would
+/// displace `MockSession`. So in THIS configuration there is no pool and the
+/// assertion below rides the cooperative fallback.
+///
+/// That is worth stating rather than leaving the old "via worker" wording to
+/// imply coverage that is no longer here: the fallback is what this proves, and
+/// the worker path now needs a platform-linked build to exercise. Registering
+/// the dispatcher still works everywhere, which is the other half of the
+/// contract and is what keeps this test meaningful.
+///
+/// Uses a no-op `apply_policy` (non-root tests can't lift to SCHED_FIFO).
 #[cfg(feature = "scheduler-os-priority")]
 #[test]
 fn test_os_priority_worker_dispatches_callback() {
@@ -453,14 +463,17 @@ fn test_os_priority_worker_dispatches_callback() {
     let (d, n) = encode_test_msg(7);
     unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
 
-    // spin_once routes to worker; sleep gives worker time to drain.
+    // No pool in this configuration (see the doc comment), so the dispatch is
+    // synchronous on the cooperative path; the sleep remains only to keep the
+    // assertion valid if a pool ever IS present here.
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     assert_eq!(
         count.load(std::sync::atomic::Ordering::SeqCst),
         1,
-        "os_pri-bound callback must dispatch via worker"
+        "os_pri-bound callback must dispatch — via a worker where the platform \
+         hosts one, cooperatively where it does not"
     );
 }
 
