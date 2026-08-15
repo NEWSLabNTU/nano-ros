@@ -109,6 +109,27 @@ cap of 1 degenerates to the pre-loop single-frame path and matched unbounded on
 every column, while 4/16 improved cadence and collapsed delivery 282 → 10 msg/s.
 Report the same columns so the comparison is direct.
 
+**REVISITED 2026-08-15 — blocker confirmed cleared IN CODE; both tables are now
+stale, including the baseline.** `43ddb0ec` makes the reset conditional (reset
+only when the buffer is empty, else `_z_zbuf_compact`), and its own message says
+the unconditional reset "is why … a budget on that loop is lossy rather than
+deferring work". So **#567's conclusion — "a frame cap here is a drop policy,
+not a budget" — is no longer true by construction**: an early exit leaves the
+remainder buffered.
+
+One amendment to the acceptance above: the #567 control cannot be *the baseline*
+as written, because it too was measured pre-`43ddb0ec`. It has to be re-taken
+alongside the capped cells. The falsifiable question is narrow — does a cap
+still cost delivery? If inbound rx/s holds near unbounded while stalls and miss%
+improve, the frame cap IS the budget and the remaining design work is choosing
+the cap and exposing the deferral counter.
+
+NOT run here: the four columns come from `NEWSLabNTU/nano-ros-rt-eval` on the
+FreeRTOS mps2-an385 QEMU lane, which is not present on this host, and nothing
+in-tree measures them (`nros-bench/stress-zenoh` is a native throughput bench).
+Same shape as W1 — the analysis is in-tree, the measurement lives in a consumer
+repo. Details and the restated experiment are in issue 0506.
+
 ## W4 — NuttX boot tier drops its declared priority (#579)
 
 A `[tiers.*.nuttx] priority` ordering can silently invert. Filed 2026-08-14

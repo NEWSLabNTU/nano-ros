@@ -472,3 +472,69 @@ unchanged and it matches unbounded on every column.
   strengthens, rather than weakens, the two-enforcement-point shape: the
   router rule is not merely the one that saves CPU, it is currently the
   only one that can shed without losing what matters.
+
+
+## Phase-358 W3 revisit, 2026-08-15 — the blocker cleared, and both tables went stale with it
+
+`43ddb0ec` (zenoh-pico fork, carried by the superproject pointer) makes
+`_zp_unicast_read`'s buffer reset CONDITIONAL:
+
+```c
+if (_z_zbuf_len(&ztu->_common._zbuf) == 0) {
+    _z_zbuf_reset(&ztu->_common._zbuf);
+} else {
+    _z_zbuf_compact(&ztu->_common._zbuf);
+}
+```
+
+with the commit stating the consequence directly: the unconditional reset "is
+why the drain loop below has to consume every complete frame it can see, and why
+a budget on that loop is lossy rather than deferring work."
+
+**So issue 0567's conclusion — "a frame cap here is a drop policy, not a
+budget" — is no longer true by construction.** An early exit now leaves the
+remainder buffered for the next pass instead of discarding it. Verified by
+reading the diff at the pinned commit, not inferred from the changelog.
+
+### What this invalidates
+
+Both measurement tables in play were taken against a receive path that no longer
+exists:
+
+* **this issue's** overload numbers (~750 msg/s sustainable drain, 100–340 ms
+  transport bursts, delivery collapsing 780 → 15–260/s) — the recovery dynamics
+  depend on whether a pass can leave bytes buffered;
+* **issue 0567's cap table** (cap 4/16 improving cadence while collapsing
+  inbound 282 → 10 msg/s) — that collapse WAS the discard. Re-running it is the
+  experiment, not the baseline.
+
+Phase 358 W3 names 0567's control as "the baseline any proposal must beat". That
+needs one amendment: the control itself must be re-taken, since it too was
+measured pre-`43ddb0ec`.
+
+### The experiment, unchanged in shape
+
+Same four columns, so the comparison stays direct:
+
+| cell | stalls >50 ms | miss >15 ms | inbound rx/s | chain delivered |
+
+Rows: unbounded (today), cap = 16, cap = 4, and the cap = 1 degenerate control.
+The falsifiable question is narrow — **does a cap still cost delivery?** If
+inbound rx/s now holds near the unbounded figure while stalls and miss% improve,
+the frame cap is the budget this issue asked for and the design work reduces to
+picking the cap and exposing the deferral counter. If delivery still collapses,
+the loss is somewhere other than the reset and the RFC questions in this issue
+stand as written.
+
+### Not run here
+
+The numbers come from `NEWSLabNTU/nano-ros-rt-eval` on the FreeRTOS mps2-an385
+QEMU lane (icount, guest-clock timestamps); that repo is not present on this
+host, and nothing in-tree measures the same columns — `nros-bench/stress-zenoh`
+is a native throughput/integrity bench, not an RT stall measurement. So W3 gets
+the code-level verification and the restated experiment; the table needs the
+eval harness.
+
+(Housekeeping done on the way: this checkout's zenoh-pico submodule was sitting
+at `07de44fb`, one behind the recorded `43ddb0ec`, so a local build would have
+tested the OLD receive path. `git submodule update` fixed it.)
