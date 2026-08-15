@@ -24,12 +24,6 @@ opt-level = 1
 # Zephyr west leaf — got `unwind` and the mismatch this file exists to prevent.
 panic = "abort"
 incremental = false
-# phase-359 W10 / `7f4da362c` — mirrors the manifest's `panic = "abort"`, which
-# is what lets a bare `cargo check -p nros-c` / `-p nros-cpp` work: rustc
-# refuses `no_std` + `panic = "unwind"` for a `staticlib`/`cdylib`. The setting
-# has to be in BOTH copies — a leaf outside the root workspace resolves `dev`
-# through this file, and only through this file.
-panic = "abort"
 
 # phase-336 — the nano-ros presets, so a bare `cargo build --profile
 # nros-relwithdebinfo` in any leaf UNDER this checkout resolves without the
