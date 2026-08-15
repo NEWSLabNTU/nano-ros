@@ -67,7 +67,6 @@ priority = 100
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
 
 # phase-281 W3c — the Zephyr (native_sim) embedded deploy target. Both [posix] and
 # [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded

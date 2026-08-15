@@ -139,46 +139,36 @@ Verified on this aarch64 host: the helper resolves
 and finds both `rust-lld` and `llvm-ar` there — where the hardcoded x86_64 path
 found neither.
 
-### Not yet fixed
+### Also fixed, after the first pass
 
-**24 `system.toml` deploy blocks declare `target = "x86_64-unknown-linux-gnu"`.**
-This looked like cosmetic drift and is not — it needs a real change, deliberately
-deferred here rather than swept.
+**The `system.toml` deploy triples.** 18 `[deploy.native]` blocks
+declared `target = "x86_64-unknown-linux-gnu"`, and every resolved
+`build/nros/models/<bringup>/*_model.yaml` carried it into
+`deploy.<node>.extra.target` — so on an aarch64 host every workspace resolved a
+model asserting a triple that is not this machine's.
 
-What was verified:
+The fix is deletion, and that is worth recording because the first plan was
+wrong. This issue previously proposed teaching `nros sync` to FILL the field
+with `host_triple()` when a `kind = "self"` deploy omits it, and deferred it as
+phase work. Testing the cheap thing first showed the field is simply optional:
+remove it and `nros sync` succeeds, the model omits `target` entirely, and
+nothing downstream complains — `plan_target_is_hosted` short-circuits on
+`board == "native"` before it would read the triple. An absent fact beats a
+wrong one, and it needed no CLI change at all.
 
-- It never becomes a cargo `--target`. `PLATFORM_TARGETS["native"]` is `None`,
-  and the only non-test `--target` plumbing is the metadata probe, which already
-  calls `host_triple()`.
-- For `[deploy.native]` it is inert in the one predicate that reads it:
-  `plan_target_is_hosted` (`planner.rs`) short-circuits on
-  `matches!(build.board, "native" | "posix")` before reaching
-  `build.target.contains("linux")`.
-- **But it IS embedded in the resolved SystemModel.** Every
-  `build/nros/models/<bringup>/*_model.yaml` carries `target:
-  x86_64-unknown-linux-gnu`. The models are build artifacts, so on an aarch64
-  host every workspace resolves a model asserting a triple that is not this
-  machine's.
+Deliberately NOT touched:
 
-So deleting the 24 declarations is not the fix, and it is not free: it changes
-model content for every workspace, which means re-resolution plus fixture
-rebuilds to verify, and `board_descriptor.rs`'s `target_contains` matching reads
-the same field for non-native deploys.
+- `[deploy.robot1]` / `[deploy.robot2]` in four workspaces. These declare a
+  REMOTE machine's architecture for the multihost demo — a real fact about
+  another host, not a claim about this one. Their models still carry the triple,
+  which is correct.
+- `[deploy.esp_idf_esp32c3]` and `[deploy.zephyr_native_sim]` in two test
+  fixtures. The first declares x86_64 for an ESP32-C3, which looks simply wrong
+  and deserves its own look rather than a guess; the second is a host sim and is
+  probably the same defect, but both sit in fixture workspaces whose model
+  content other tests assert.
 
-The fix is for `nros sync` to FILL `build.target` with `host_triple()` when a
-`kind = "self"` deploy omits it — the declaration then stops being a hand-copied
-constant and starts being a resolved fact, the same move #0582 made for the
-rustlib dir. That is CLI behaviour plus a model-content change, i.e. phase work,
-not a drive-by edit.
-
-Note the six non-`native` sites need individual judgement and are not covered by
-that rule: `[deploy.robot1]`/`[deploy.robot2]` in four workspaces declare a
-REMOTE machine's triple (a real fact about another host, not this one), and
-`[deploy.esp_idf_esp32c3]` / `[deploy.zephyr_native_sim]` in the test fixtures
-declare x86_64 for an ESP32-C3 and a Zephyr sim respectively — the first of
-those looks simply wrong and is worth a look on its own.
-
-**Fixed: a stale comment.** `packages/boards/nros-board-threadx/build.rs` said
+**A stale comment.** `packages/boards/nros-board-threadx/build.rs` said
 "threadx-linux is a real ThreadX board whose target IS
 `x86_64-unknown-linux-gnu`" — true only on an x86 machine, and only because the
 board pinned that literal until this issue removed it. The logic it justifies

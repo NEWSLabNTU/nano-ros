@@ -51,7 +51,6 @@ name = "rust_safety_listener"
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
 
 # phase-331 W4 — one model per language launch.
 

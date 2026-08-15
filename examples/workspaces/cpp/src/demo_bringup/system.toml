@@ -48,7 +48,6 @@ name = "fib_client"
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
 
 # Embedded deploy targets for this workspace's embedded Entry packages (issue
 # 0356). No `launch` key → the default `system.launch.xml` nodes deploy to each

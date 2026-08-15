@@ -125,7 +125,6 @@ name = "rust_remap_remap_talker"
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
 
 # phase-331 W2 — one model per theme launch (phase-330 W4.0 `[[model]]`).
 

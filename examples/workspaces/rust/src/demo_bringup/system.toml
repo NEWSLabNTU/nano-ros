@@ -50,7 +50,6 @@ name = "fibonacci_client"
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
 
 # phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
 # (`launch/multihost.launch.xml`: talker on robot1, listener on robot2, chosen

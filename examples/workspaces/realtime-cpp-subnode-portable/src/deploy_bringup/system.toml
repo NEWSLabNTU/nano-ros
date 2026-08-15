@@ -27,4 +27,3 @@ priority = 10
 
 [deploy.native]
 kind = "self"
-target = "x86_64-unknown-linux-gnu"
