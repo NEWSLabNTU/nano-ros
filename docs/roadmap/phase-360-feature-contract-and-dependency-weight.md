@@ -321,14 +321,44 @@ which forwards `nros-serdes/alloc`, so `heap::{Vec, String}` and the RFC-0033
 other. Verified with a reproducer built against `nros-core --features std`
 alone: `nros_core::heap::Vec<u32>` serializes.
 
-*W2.b — the dead declarations (OPEN, needs a decision).* `nros-platform/alloc`
-is commented *"capability feature — enabled by RMW shims to declare
-requirements"*: declarative by design, inert in fact — 0 `cfg` sites, forwards
-nowhere, and nothing in-tree names it. Either wire it (forward to the platform
-crates that actually allocate) or delete it and make `global-allocator = []`.
-`nros-rmw-cyclonedds/std` is unambiguous: delete. `nros-platform` is also the
-only crate in its layer still on `default = ["std"]`, which is W3's problem —
-decide W2.b and W3 together for that crate.
+*W2.b — the dead declarations (LANDED 2026-08-15, and one of the two was not
+dead).* Decided as: delete what is inert, and say so where a reader would
+otherwise believe the comment.
+
+**Deleted — `nros-platform/alloc` and `nros-platform/threading`.** Both sat under
+one comment, *"capability features — enabled by RMW shims to declare
+requirements"*: declarative by design, inert in fact — zero `cfg` sites anywhere
+in the crate (it has only `src/`), forwarding nowhere, named by nothing in the
+workspace. W2.b listed `alloc` alone; `threading` is its sibling under the same
+comment and went with it rather than being left to be rediscovered. The
+alternative — wiring `alloc` to the platform crates that allocate — is the wrong
+direction under W8.e: a crate that needs the heap says so with `compile_error!`
+naming the feature the USER must add, rather than declaring an empty feature and
+hoping a shim turns it on.
+
+**NOT deleted — `nros-rmw-cyclonedds/std`, and this phase was wrong to call it
+"unambiguous: delete".** It gates two entire integration-test files, each run
+explicitly with `--features bridge-stub,std`:
+
+```
+tests/registry_race.rs:29    #![cfg(all(feature = "std", feature = "bridge-stub"))]
+tests/bare_metal_link.rs:24  #![cfg(feature = "std")]
+```
+
+The "0 cfg sites" claim came from a grep scoped to `src/`. An inner `#![cfg]` on
+a TEST CRATE ROOT is precisely the site that scoping cannot see, and deleting the
+feature turned both files into `unexpected_cfg` errors under `-D warnings` —
+which is how the mistake was caught, immediately, rather than by review.
+
+**This changes W4(c).** A gate asserting "every declared `std`/`alloc` feature
+has a `cfg` site or forwards to a dependency" must search `tests/`, `benches/`
+and `examples/` as well as `src/`, or it will re-derive this exact deletion
+mechanically and with more authority than a human hand-grep had. That is now
+stated in W4 below.
+
+*(The old note "`nros-platform` is the only crate in its layer still on
+`default = ["std"]`, so decide W2.b and W3 together" is stale: W3 landed and
+`nros-platform` is `default = []`.)*
 
 **W3 — `default = []` on every `no_std`-capable crate (LANDED).** `nros-core`,
 `nros-serdes`, `nros-params`, `nros-node`, `nros-platform`, `nros`, `nros-c`,
@@ -437,8 +467,14 @@ workspace member:
 - **(b)** no `no_std`-capable crate declares a non-empty `default` containing
   `std` or `alloc`.
 - **(c)** every declared `std`/`alloc` feature has a `cfg` site or forwards to a
-  dependency — catches `nros-platform/alloc`, `nros-rmw-cyclonedds/std` and
-  `nros-cpp/global-allocator`, all dead declarations found by hand.
+  dependency — catches `nros-platform/{alloc,threading}` and
+  `nros-cpp/global-allocator`, dead declarations found by hand and deleted in
+  W2.b. **The search must cover `tests/`, `benches/` and `examples/`, not just
+  `src/`.** W2.b's hand-grep was `src/`-scoped and therefore called
+  `nros-rmw-cyclonedds/std` dead when it gates two whole integration-test files
+  through an inner `#![cfg]` on the test crate root. A gate repeating that scope
+  would delete a live feature with more authority than the hand-grep had, which
+  is worse than not having the gate.
 - **(d)** no feature listed in a `default` set is UNREACHABLE from every
   non-`default-features` dep-site in the workspace — catches issue 0584.
 - **(e)** exactly ONE `#[global_allocator]` definition exists in the tree, and

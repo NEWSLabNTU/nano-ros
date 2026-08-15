@@ -1255,7 +1255,9 @@ forwards only `std` to `nros-serdes`. At `nros-core`'s **default** feature set,
 `serialize``. `String` hides it by auto-derefing to the ungated `impl Serialize for str`, which is
 why per-type failure never surfaced in a build. Only reachable from OUTSIDE the workspace, which is
 exactly the generated-message-crate shape. Two dead declarations found alongside:
-`nros-platform/alloc` and `nros-rmw-cyclonedds/std` — declared, zero `cfg` sites, forward nowhere.
+`nros-platform/alloc` (+ its sibling `threading`) — declared, zero `cfg` sites, forward nowhere; both
+DELETED in W2.b 2026-08-15. `nros-rmw-cyclonedds/std` was listed here too and that was WRONG — it gates two
+integration-test files via an inner `#![cfg]`, invisible to a `src/`-scoped grep, and is restored.
 See `0587-*` and phase-360 W1–W2/W4. (2026-08-07)
 
 Recently resolved (2026-08-11): the on-target-time trio (embedded/api), filed from external RT-cadence

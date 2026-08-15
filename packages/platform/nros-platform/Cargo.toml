@@ -102,9 +102,15 @@ platform-zephyr = ["dep:nros-platform-cffi"]
 # boards. A Cortex-R5F FreeRTOS-FSP consumer selects `platform-freertos`
 # directly, which is what the alias forwarded to anyway.
 
-# Capability features — enabled by RMW shims to declare requirements
-alloc = []
-threading = []
+# phase-360 W2.b / issue 0585 — `alloc` and `threading` DELETED here (2026-08-15).
+# They were commented "capability features — enabled by RMW shims to declare
+# requirements": declarative by design, inert in fact. Each had zero `cfg` sites,
+# forwarded nowhere, and was named by nothing in the workspace — an intention
+# that never became a mechanism, and one a reader could reasonably have believed.
+# W2.b listed `alloc`; `threading` was its sibling under the same comment and is
+# deleted with it rather than left to be found again. A crate that genuinely
+# needs the heap says so with `compile_error!` naming the feature the USER must
+# add (W8.e); it does not declare an empty feature and hope.
 
 # Phase 71.27 — opt-in `#[global_allocator]` that routes Rust's
 # `Box`, `Vec`, etc. through `<ConcretePlatform as PlatformAlloc>`.

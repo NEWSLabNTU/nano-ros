@@ -26,6 +26,17 @@ ros-jazzy = []
 # Hosted-build escape hatch. Off by default to honour the K.7
 # `no_std`-only contract. Test code never enables `std`; the
 # `#[cfg(test)]` tree compiles under `no_std + alloc-free`.
+#
+# phase-360 W2.b — NOT dead, and this phase said it was. The claim was "0 `cfg`
+# sites, no forwarding", measured over `src/` only. It gates two whole
+# integration-test files, each run explicitly with `--features bridge-stub,std`:
+#   tests/registry_race.rs:29   #![cfg(all(feature = "std", feature = "bridge-stub"))]
+#   tests/bare_metal_link.rs:24 #![cfg(feature = "std")]
+# An inner `#![cfg]` on a test crate root is exactly the site a `src/`-scoped
+# grep cannot see, and deleting the feature turns both files into
+# `unexpected_cfg` errors under `-D warnings`. W4(c) must therefore search
+# `tests/`, `benches/` and `examples/` too, or it will re-derive this mistake
+# mechanically.
 std = []
 # Phase 212.K.7.6.b — expose the in-tree `#[cfg(test)]` stubs for
 # `nros_cyclonedds_build_descriptor_from_schema` and

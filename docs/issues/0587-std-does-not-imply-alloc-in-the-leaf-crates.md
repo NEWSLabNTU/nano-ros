@@ -101,9 +101,20 @@ and no forwarding to a dependency — enabling them is a no-op the manifest
 advertises as a knob:
 
 - **`nros-platform/alloc`** — 0 `cfg` sites, forwards nowhere. Its only effect
-  is being implied by `global-allocator = ["alloc"]`. A user who enables
-  `nros-platform/alloc` expecting an allocator gets nothing.
-- **`nros-rmw-cyclonedds/std`** — 0 `cfg` sites, no forwarding.
+  was being implied by `global-allocator = ["alloc"]`. A user who enabled
+  `nros-platform/alloc` expecting an allocator got nothing. **Deleted in
+  phase-360 W2.b (2026-08-15), together with its sibling `threading`**, which
+  sat under the same "capability features" comment and was equally inert.
+- **`nros-rmw-cyclonedds/std`** — **this entry was WRONG and is retracted
+  (2026-08-15).** The "0 `cfg` sites" came from a grep scoped to `src/`. The
+  feature gates two entire integration-test files through an inner `#![cfg]` on
+  the test crate root — `tests/registry_race.rs:29` and
+  `tests/bare_metal_link.rs:24`, both run explicitly with
+  `--features bridge-stub,std`. Deleting it made both files
+  `unexpected_cfg` errors under `-D warnings`; it has been restored. The lesson
+  is recorded against phase-360 W4(c): a gate for this rule must search
+  `tests/`, `benches/` and `examples/`, not just `src/`, or it will make the
+  same deletion automatically.
 
 (The `std` features on the nine generated interface crates are pass-through
 only, which is correct — they forward to `nros-core`/`nros-serdes`. Not dead.)
@@ -118,8 +129,9 @@ One rule, stated once, for every crate that can build `no_std`:
 2. **`alloc` is the real axis.** `std` is `alloc` plus OS services (clock,
    sockets, `std::error::Error`). Document that in one place and have the
    per-crate feature tables point at it, rather than each crate re-deriving it.
-3. **Delete or wire the dead declarations** — `nros-platform/alloc`,
-   `nros-rmw-cyclonedds/std`.
+3. **Delete or wire the dead declarations** — `nros-platform/alloc` (done:
+   deleted, with `threading`). `nros-rmw-cyclonedds/std` turned out not to be
+   dead; see the retraction above.
 4. **Gate it.** A `check-feature-contract` script asserting, over every
    workspace member: if a crate declares both `std` and `alloc`, then `std`
    lists `alloc`; and every declared `std`/`alloc` feature either has a `cfg`
