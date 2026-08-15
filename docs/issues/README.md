@@ -51,6 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#607** (testing, open 2026-08-15) — `boot_config_tests` set and read PROCESS-GLOBAL env vars, and
+`check-node-std-tests` runs `cargo test`, which puts a crate's unit tests in ONE process as threads. Nine
+of twenty-four fail together, ~1 run in 3, never with `--test-threads=1`. On the `just ci` line, so tier 1
+fails a third of the time for a reason unrelated to the change under test. The tree's own runner is
+nextest (process per test), which is exactly why the same hazard is written down as an assumption in
+`nros-tests` — an assumption this lane does not satisfy. See `0607-*`.
+
 Recently resolved (2026-08-15): **#603** — `nros setup --system --check` reported `libmbedtls` PRESENT on a
 host carrying only the RUNTIME package, so `just build-test-fixtures lane=tier2` built all six embedded
 families (~20 min, every one OK) and then died in the native lane on a missing `mbedtls/entropy.h`. The
