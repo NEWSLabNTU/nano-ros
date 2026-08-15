@@ -454,8 +454,18 @@ size_t nros_platform_condvar_storage_align(void);
  *
  * A port may raise a bound by defining it before including this header. */
 #ifndef NROS_PLATFORM_TASK_STORAGE_SIZE
-/* ThreadX `TX_THREAD` is the large one (~232 B on 32-bit). */
-#  define NROS_PLATFORM_TASK_STORAGE_SIZE     256
+/* 512. ThreadX is the large one, and the number here is MEASURED, not
+ * estimated: `sizeof(TX_THREAD)` is **360** bytes on the 64-bit Linux port,
+ * plus this port's owned-stack pointer and padding.
+ *
+ * The estimate it replaces is worth keeping visible. `zpico-sys` recorded
+ * "ThreadX TX_THREAD ≈ 232" and sized its task storage at 256 — correct for a
+ * 32-bit port and 128 bytes short on a 64-bit one. That table was hand-written
+ * prose about another platform's struct, which is why phase-364 W2 replaced it
+ * with probes and `_Static_assert`s; this bound was raised BECAUSE one of those
+ * asserts failed on the first real ThreadX build, rather than because someone
+ * re-read the comment. */
+#  define NROS_PLATFORM_TASK_STORAGE_SIZE     512
 #endif
 #ifndef NROS_PLATFORM_MUTEX_STORAGE_SIZE
 /* 256, not a tighter fit, and the reason is recorded rather than guessed:
