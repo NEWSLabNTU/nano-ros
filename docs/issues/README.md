@@ -586,6 +586,17 @@ on the fix, red on the break with the `just lock-update` remedy, SKIP when the s
 catching link errors a `cargo check` misses), skipping when the submodule is absent so a bare clone can
 still `just check`. Split by TIER — lock check sub-second in `check-fast`, compile in the build tier. See `archived/0560-*`. (2026-08-13)
 
+**#604** (build/testing, open 2026-08-15) — cold leaves after every pull, inherited from #509's one
+surviving direction: a cold Zephyr leaf costs ~28 s and a pull/rebase/`git stash` was believed to cold every
+one. Filed as a MEASUREMENT, not a defect, because the premise may already be half-fixed: content-aware
+staleness (a `.srcbaseline` of `(mtime,size,content_hash)` per watched file, shared by both arms since
+phase-353 W2) should make an mtime-only change a refresh rather than a stale, and `codegen-fingerprint`
+(phase-360) should stop a CLI rebuild invalidating what its codegen did not change. The cost is still being
+paid — five separate staleness cascades while chasing one tier-2 verdict on 2026-08-15 — but nobody has
+attributed them to genuine input change vs mtime artifact vs tool-fingerprint over-invalidation, and those
+want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
+See `0604-*`.
+
 **#584** (testing, open 2026-08-15) — skips are TOLERATED, not asserted: `170 skipped` is
 indistinguishable from `170 tests silently did not run`, which is how a lane greens over a coverage hole
 (cf. 0445, 0350). Two halves LANDED already: `skip_class!` gives the marker a machine-readable class
@@ -1039,20 +1050,15 @@ its missing half, since keeping the demand is only sound if the building lane wr
 the signature hashes the record verbatim, so an 8-field reconstruction of an 11-field line would have
 turned "missing" into a permanent "stale". See `archived/0576-*`.
 
-**#509** (build/testing, open 2026-08-10) — the Zephyr fixture lane is PER-LEAF-OVERHEAD bound, not compile
-bound. Measured mid-sweep: **40 min for 68 leaves**, and across all of them just **1254 ninja edges**
-(mean 18/leaf), only 8 reconfigures, sccache at 96.8 %, and 4 rustc + 2 C compilers live on a 32-core box.
-~140 s of work per leaf to emit 18 edges — the cost is `west`/cmake startup, `nros sync` prep, signature
-computation and a per-leaf cargo fingerprint pass that runs to completion to learn there is nothing to do,
-paid 68 times. It taxes the whole sweep because zephyr is an ORDER-ONLY prerequisite of every other
-platform (`zephyr (solo)`), so those 40 min are serial addition. The knob that would help is west-build
-CONCURRENCY, not `ninja-jobs` (8 threads cannot speed up 18 edges) — and that is capped by #0086's rustup
-staging collision, so raising it needs that guard re-checked. Empty `build/zephyr-ccache` is a red
-herring: the leaves pass `USE_CCACHE=0` and use sccache instead. See `0509-*`. (2026-08-10) RE-MEASURED 2026-08-13 mid-lane: the `/8` divisor is INERT under the fifo jobserver (make takes `-j` from
-the full token budget; leaf recipes omit `NROS_ZEPHYR_NINJA_JOBS` so ninja draws tokens dynamically) — sampled
-13 concurrent cmake, 7 ninja, far past the 4 this row assumed. And the box is 76% IDLE with 18% iowait and
-~0 compilers: the lane is DISK-bound on a rotational disk, not job-starved. Concurrency is therefore NOT the
-lever; per-leaf configure work and storage are.
+RESOLVED 2026-08-15 (phase-353) — **#509** the Zephyr lane was per-leaf-overhead bound, and every
+direction is now closed or refuted. FIXED: sync restamping byte-identical files (#562), and
+`west-fixtures.sh` wiping its build dir every invocation so a no-op replayed 1244 ninja edges — 1207 of
+them C compiles — plus a 129-crate rebuild (phase-353 W2; no-op edges 1244 -> 0). REFUTED by measurement:
+storage (iowait 0.25 % HDD vs 0.03 % NVMe, host since doubled to 125 GB RAM with the Zephyr build root
+already on SSD) and concurrency (the `/8` divisor is inert under the fifo jobserver; box 76 % idle). The
+title's numbers are all superseded — the 40 min was mid-sweep with eight families competing. Carry
+forward: **wall-clock is not a usable instrument on this host** (50–695 s for provably identical work) —
+count edges and leaves. Direction (3), fewer COLD leaves, continues as #604. See `archived/0509-*`.
 
 **Re-measured 2026-08-13 (phase-350):** a fully warm lane is **592 s (9 m 52 s)**, not 40 min — the
 original figure was taken MID-SWEEP with seven other families competing, so it should not be quoted as the

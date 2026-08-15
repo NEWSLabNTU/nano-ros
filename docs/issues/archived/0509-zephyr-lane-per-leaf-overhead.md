@@ -1,9 +1,10 @@
 ---
 id: 509
 title: "The Zephyr fixture lane is per-leaf-overhead bound, not compile bound: 68 leaves, 1254 ninja edges, 40 minutes"
-status: open
+status: resolved
 type: performance
 area: build, testing
+resolved_in: phase-353
 related: [issue-0086, phase-165, phase-174, phase-340]
 ---
 
@@ -321,3 +322,29 @@ trees that 50 GB did not.
 remaining item: a cold leaf costs ~28 s (measured 2026-08-13, 512 s for 18), and
 the mtime treadmill (#0466) is what makes leaves cold after every pull, rebase
 or `git stash`. That is a correctness-of-caching problem, not a hardware one.
+
+## RESOLVED 2026-08-15 — every direction is now closed or refuted
+
+| direction | outcome |
+| --- | --- |
+| (1) skip per-leaf prep whose inputs are unchanged | **fixed**: 0562 stopped sync restamping byte-identical files; phase-353 W2 stopped `west-fixtures.sh` wiping its build dir every run (no-op 1244 edges -> 0) |
+| (2) storage | **refuted**: iowait 0.25 % HDD vs 0.03 % NVMe, on a host that meanwhile doubled to 125 GB RAM with the Zephyr build root already on SSD |
+| (3) fewer COLD leaves | **survives** -> issue 0604 |
+| (4) concurrency | **refuted** twice: the `/8` divisor is inert under the fifo jobserver, and the box was 76 % idle |
+
+The headline numbers in the title are all superseded — the 40 min was measured
+mid-sweep with eight families competing, a warm lane was later 592 s, and the
+1244 edges were `west-fixtures.sh` rebuilding four leaves from scratch every
+invocation rather than anything about the other 66.
+
+Its central claim was right and is worth keeping: the lane was bound by FIXED
+PER-LEAF OVERHEAD, not by compilation. Every fix above followed from taking that
+seriously; the two refuted directions are the ones that assumed otherwise.
+
+Also worth carrying forward, because three separate investigations here tripped
+on it: **wall-clock is not a usable instrument on this host** (50–695 s for
+provably identical work). Count edges, leaves and restamped files instead.
+
+Continued as issue 0604 (cold leaves), which is deliberately framed as a
+measurement: the content-aware staleness baseline and `codegen-fingerprint` may
+already have removed most of what made leaves cold, and nobody has checked.
