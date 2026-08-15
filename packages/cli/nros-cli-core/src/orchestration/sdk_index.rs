@@ -874,7 +874,7 @@ check = { cmd = "west" }
                 .validate()
                 .unwrap_err()
                 .to_string()
-                .contains("at least one"),
+                .contains("exactly one"),
         );
 
         // A target referencing an undefined toolchain alias is rejected.

@@ -17,3 +17,17 @@ extern crate alloc;
 extern crate nros_board_threadx_qemu_riscv64 as _;
 
 nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(crate::register);
+
+// phase-360 W8.e / issue 0585 — the backend REQUIRES the heap; it does not
+// silently enable it. Build as `--features rmw-cyclonedds,alloc` (the cmake
+// path spells both in `nros_threadx_rv64_rust_cyclone_app`).
+//
+// It lives in this glue module, not in `lib.rs`, for the reason stated at the
+// top of this file: `lib.rs` is LOGIC and `example_portability` requires it to
+// be byte-identical to every other scheduled-platform copy. Native needs no
+// such guard — it is a `std` build, where `std` implies `alloc` — so putting a
+// platform-specific feature assertion in the shared logic file diverges it from
+// the group. Glue is exactly where a platform-specific assertion belongs, and
+// `mod app_main;` is unconditional, so the guard is always evaluated.
+#[cfg(all(feature = "rmw-cyclonedds", not(feature = "alloc")))]
+compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclonedds,alloc)");
