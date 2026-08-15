@@ -192,6 +192,18 @@ pub struct BoardDescriptor {
     pub link_kind: LinkKind,
     pub entry_kind: EntryKind,
     pub net_stack: NetStack,
+    /// phase-351 W4 — the network stacks this board can actually be built with,
+    /// in preference order; the first is the default when a deploy names none.
+    ///
+    /// A FACT of the board, not a menu: every vendor has already welded its
+    /// choice, and the pairing has a validity domain (NetX Duo ships a port
+    /// table of 24 arches against ThreadX's 47, so a ThreadX arch with no NetX
+    /// counterpart cannot be paired at all). Empty means "this board makes no
+    /// stack choice" — the RTOS or the host owns it and a deploy must not try
+    /// to select one. Distinct from [`NetStack`], which answers *who brings up
+    /// NIC+IP*, not *which stack*.
+    #[serde(default)]
+    pub supported_netstacks: Vec<String>,
     /// esp-hal / stm32 chip feature; `None` for non-chip platforms.
     #[serde(default)]
     pub chip: Option<String>,
@@ -260,6 +272,28 @@ pub struct BoardCmake {
     pub toolchain_file: String,
 }
 
+/// phase-351 W4 — why a `[deploy.<name>.nros].netstack` was refused.
+///
+/// Both arms name what IS available, because the whole point of declaring the
+/// domain is that a user who picked outside it can see the edge.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NetstackError {
+    #[error(
+        "board `{board}` does not support netstack `{requested}` — it supports: {}",
+        supported.join(", ")
+    )]
+    Unsupported {
+        board: String,
+        requested: String,
+        supported: Vec<String>,
+    },
+    #[error(
+        "board `{board}` declares no `supported_netstacks`, so `netstack = \"{requested}\"` \
+         selects nothing: this board's RTOS (or its host) owns the stack. Drop the key."
+    )]
+    BoardSelectsNone { board: String, requested: String },
+}
+
 impl BoardDescriptor {
     /// Board-crate path relative to the workspace root, applying the
     /// `packages/boards/<board_crate>` default.
@@ -282,6 +316,38 @@ impl BoardDescriptor {
     /// platform-inferred defaults). Used by the migration lint.
     pub fn has_declared_capabilities(&self) -> bool {
         self.capabilities.is_some()
+    }
+
+    /// phase-351 W4 — the netstack this deploy will build with, or an error
+    /// naming what the board actually supports.
+    ///
+    /// `requested` is `[deploy.<name>.nros].netstack`. `None` takes the board's
+    /// first declared stack, which is why the list is ordered. A board that
+    /// declares NO stacks makes no choice: naming one there is an error too,
+    /// because silently ignoring it is how a deploy ends up believing it
+    /// selected something.
+    pub fn resolve_netstack<'a>(
+        &'a self,
+        requested: Option<&'a str>,
+    ) -> Result<Option<&'a str>, NetstackError> {
+        match (requested, self.supported_netstacks.first()) {
+            (None, default) => Ok(default.map(String::as_str)),
+            (Some(want), None) => Err(NetstackError::BoardSelectsNone {
+                board: self.names.first().cloned().unwrap_or_default(),
+                requested: want.to_string(),
+            }),
+            (Some(want), Some(_)) => {
+                if self.supported_netstacks.iter().any(|s| s == want) {
+                    Ok(Some(want))
+                } else {
+                    Err(NetstackError::Unsupported {
+                        board: self.names.first().cloned().unwrap_or_default(),
+                        requested: want.to_string(),
+                        supported: self.supported_netstacks.clone(),
+                    })
+                }
+            }
+        }
     }
 
     /// Render `cargo_config` with `${workspace}` resolved to `workspace`.
@@ -481,6 +547,96 @@ impl std::error::Error for BoardLoadError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── phase-351 W4 — supported_netstacks ────────────────────────────────
+
+    fn board_with(stacks: &[&str]) -> BoardDescriptor {
+        let mut d: BoardDescriptor = toml::from_str::<BoardFile>(STM32_TOML)
+            .expect("fixture parses")
+            .boards
+            .remove(0);
+        d.supported_netstacks = stacks.iter().map(|s| s.to_string()).collect();
+        d
+    }
+
+    /// No request takes the board's FIRST declared stack — which is why the
+    /// list is ordered rather than a set.
+    #[test]
+    fn unrequested_netstack_takes_the_boards_default() {
+        assert_eq!(
+            board_with(&["lwip", "freertos_plus_tcp"])
+                .resolve_netstack(None)
+                .unwrap(),
+            Some("lwip")
+        );
+    }
+
+    #[test]
+    fn a_supported_netstack_resolves_to_itself() {
+        assert_eq!(
+            board_with(&["lwip", "freertos_plus_tcp"])
+                .resolve_netstack(Some("freertos_plus_tcp"))
+                .unwrap(),
+            Some("freertos_plus_tcp")
+        );
+    }
+
+    /// The error must NAME the domain — a refusal that does not say what is
+    /// available just moves the guessing.
+    #[test]
+    fn an_unsupported_netstack_lists_what_is_supported() {
+        let err = board_with(&["netxduo"])
+            .resolve_netstack(Some("lwip"))
+            .expect_err("lwip is not in the board's table");
+        let msg = err.to_string();
+        assert!(msg.contains("netxduo"), "{msg}");
+        assert!(msg.contains("lwip"), "{msg}");
+    }
+
+    /// A board that declares none makes no choice, so naming one is an error
+    /// rather than a silent no-op: the deploy would otherwise believe it had
+    /// selected something.
+    #[test]
+    fn naming_a_netstack_on_a_board_that_has_none_is_refused() {
+        let err = board_with(&[])
+            .resolve_netstack(Some("lwip"))
+            .expect_err("a board with no table cannot honour a request");
+        assert!(err.to_string().contains("owns the stack"), "{err}");
+        assert_eq!(board_with(&[]).resolve_netstack(None).unwrap(), None);
+    }
+
+    /// The SHIPPED descriptors, so the declarations cannot rot: each board that
+    /// claims a stack must resolve it, and the empties must refuse.
+    #[test]
+    fn shipped_boards_declare_a_resolvable_domain() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = match BoardCatalog::load(&root) {
+            Ok(c) => c,
+            Err(_) => return, // out-of-tree consumer: nothing to assert
+        };
+        let mut checked = 0;
+        for d in catalog.descriptors() {
+            for want in &d.supported_netstacks {
+                assert_eq!(
+                    d.resolve_netstack(Some(want)).unwrap(),
+                    Some(want.as_str()),
+                    "board {:?} does not resolve its own declared stack",
+                    d.names
+                );
+                checked += 1;
+            }
+            assert!(
+                d.resolve_netstack(None).is_ok(),
+                "board {:?} cannot resolve its default",
+                d.names
+            );
+        }
+        assert!(checked > 0, "no shipped board declares a netstack");
+    }
 
     const STM32_TOML: &str = r##"
 [[board]]
@@ -759,6 +915,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             link_kind: LinkKind::None,
             entry_kind: EntryKind::BoardRun,
             net_stack: NetStack::NanorosOwned,
+            supported_netstacks: Vec::new(),
             chip: None,
             board_crate: None,
             crate_path: None,
@@ -908,6 +1065,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             link_kind: LinkKind::None,
             entry_kind: EntryKind::HostedMain,
             net_stack: NetStack::NanorosOwned,
+            supported_netstacks: Vec::new(),
             chip: None,
             board_crate: None,
             crate_path: None,

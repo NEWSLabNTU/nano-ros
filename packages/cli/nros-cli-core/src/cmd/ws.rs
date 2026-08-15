@@ -6211,6 +6211,7 @@ rustflags = [
             link_kind: LinkKind::NuttxStaging,
             entry_kind: EntryKind::BoardRun,
             net_stack: NetStack::RtosOwned,
+            supported_netstacks: Vec::new(),
             chip: None,
             board_crate: Some("nros-board-nuttx-qemu".into()),
             crate_path: None,

@@ -40,24 +40,59 @@ except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SDK_ENV = os.path.join(ROOT, "just/sdk-env.just")
 
-# board -> (sdk name -> env var), plus the netstack that board runs in-tree.
+# board -> sdk name -> env var.
 #
 # Derived from what each platform's build actually reads, not from a wish list:
 # Zephyr and the bare-metal boards appear nowhere because their RTOS (or a Rust
 # crate) owns the stack and nano-ros needs no SDK root from the site.
+#
+# phase-351 W4 — the NETSTACK column is GONE from this table. It used to name
+# the stack each board runs, which made this file a second source of truth for a
+# board FACT; the boards now declare `supported_netstacks` in their own
+# descriptor and this gate reads it. One fact, one home (RFC-0072 §5 A vs B).
 BOARDS = {
-    "mps2-an385-freertos": (
-        {"freertos": "FREERTOS_DIR", "lwip": "LWIP_DIR"},
-        "lwip",
-    ),
-    "nuttx-qemu-arm": ({"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"}, None),
-    "nuttx-qemu-riscv": ({"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"}, None),
-    "qemu-armv7a-nsh": ({"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"}, None),
-    "threadx-linux": (
-        {"threadx": "THREADX_DIR", "netxduo": "NETX_DIR"},
-        "netxduo",
-    ),
+    "mps2-an385-freertos": {"freertos": "FREERTOS_DIR", "lwip": "LWIP_DIR"},
+    "nuttx-qemu-arm": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
+    "nuttx-qemu-riscv": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
+    "qemu-armv7a-nsh": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
+    "threadx-linux": {"threadx": "THREADX_DIR", "netxduo": "NETX_DIR"},
 }
+
+
+def board_netstacks():
+    """`supported_netstacks` per board NAME, from the shipped descriptors.
+
+    The descriptor is the SSoT for what a board can be built with (phase-351
+    W4); this gate only asserts that a site block stays inside that domain.
+    Every alias a descriptor lists maps to the same set, because `[deploy.*]`
+    may name any of them.
+
+    Keyed by BOTH the descriptor's declared `names` and its directory
+    (`packages/boards/nros-board-<x>` -> `<x>`), because `[deploy.*].board` and
+    a descriptor's `names` are NOT the same vocabulary: every in-tree site block
+    says `board = "mps2-an385-freertos"`, which that descriptor does not list
+    (its names are `freertos`/`freeRTOS`/`FreeRTOS`). phase-341 W3 closed part
+    of that gap by adding deploy spellings to `names`; this one is still open,
+    and `nros sync` cannot resolve those deploys either. Recorded in the
+    phase-351 doc — the gate accepts both spellings rather than pretending the
+    board is unknown.
+    """
+    out = {}
+    for path in sorted(glob.glob(os.path.join(ROOT, "packages/boards/*/nros-board.toml"))):
+        with open(path, "rb") as fh:
+            doc = tomllib.load(fh)
+        dir_name = os.path.basename(os.path.dirname(path))
+        from_dir = dir_name[len("nros-board-"):] if dir_name.startswith("nros-board-") else dir_name
+        for entry in doc.get("board", []):
+            stacks = entry.get("supported_netstacks", [])
+            for name in list(entry.get("names", [])) + [from_dir]:
+                # A directory serves several witnesses (the two nuttx boards);
+                # union rather than let the last one win.
+                out.setdefault(name, [])
+                for st in stacks:
+                    if st not in out[name]:
+                        out[name].append(st)
+    return out
 
 
 def exported_vars():
@@ -95,6 +130,7 @@ def main():
     args = ap.parse_args()
 
     exported = exported_vars()
+    netstacks = board_netstacks()
     if not exported:
         sys.exit("check-site-config: no exports found in just/sdk-env.just")
 
@@ -115,11 +151,12 @@ def main():
             if board not in BOARDS:
                 continue
             checked += 1
-            sdk_map, netstack = BOARDS[board]
+            sdk_map = BOARDS[board]
+            stacks = netstacks.get(board, [])
             site = blk.get("nros")
 
             if site is None:
-                missing.append((name, sdk_map, netstack))
+                missing.append((name, sdk_map, stacks[0] if stacks else None))
                 continue
 
             # S1 — every needed root declared, and as {env:VAR}
@@ -147,12 +184,16 @@ def main():
                             f"which just/sdk-env.just does not export — renamed?"
                         )
 
-            # S3 — netstack agrees with what the board runs here
-            if netstack and site.get("netstack") not in (None, netstack):
+            # S3 — phase-351 W4: the netstack is inside the BOARD's declared
+            # domain. Not "equals the one value this script knew": a board may
+            # support several, and the descriptor is what says so.
+            want = site.get("netstack")
+            if want is not None and want not in stacks:
                 problems.append(
-                    f"{rel}: [deploy.{name}.nros].netstack = "
-                    f"{site.get('netstack')!r}, but board `{board}` runs "
-                    f"{netstack!r} in this tree"
+                    f"{rel}: [deploy.{name}.nros].netstack = {want!r}, which board "
+                    f"`{board}` does not support. Its descriptor declares: "
+                    + (", ".join(stacks) if stacks else
+                       "NONE (its RTOS or host owns the stack — drop the key)")
                 )
 
         if missing and args.write:
@@ -179,8 +220,9 @@ def main():
         return 1
 
     print(
-        f"site config: OK ({checked} deploy block(s) across "
-        f"{len(BOARDS)} board(s) agree with just/sdk-env.just)"
+        f"site config: OK ({checked} deploy block(s) across {len(BOARDS)} board(s) "
+        f"agree with just/sdk-env.just; netstacks inside the domain declared by "
+        f"{len(netstacks)} board name(s))"
     )
     return 0
 

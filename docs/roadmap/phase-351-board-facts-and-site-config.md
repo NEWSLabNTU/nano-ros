@@ -129,10 +129,29 @@ hand-authors the same four `[env]` rows. It declares no
 `[package.metadata.nros.entry] deploy`, so no descriptor claims it and sync
 cannot reach it. Fixing that is a deploy-key question, not a rendering one.
 
-## W4 — `supported_netstacks`, and a resolver that checks it
+## W4 — `supported_netstacks`, and a resolver that checks it ✅ (2026-08-15)
 
-- [ ] Board packages declare `supported_netstacks`.
-- [ ] Selecting an unsupported pair is an error listing what IS supported.
+- [x] Board packages declare `supported_netstacks`, ordered (first = default),
+      each from evidence in that board's own tree: freertos `["lwip"]` (its
+      platform manifest builds `system/freertos/lwip/network.c`), mps2-an385 and
+      esp32 `["smoltcp"]`, both threadx `["netxduo"]`.
+- [x] An EMPTY list is a statement, not an omission — nuttx / linux / zephyr
+      make no choice (their RTOS or host owns the stack), and naming one there
+      is refused rather than ignored, because a silently dropped key leaves the
+      deploy believing it selected something.
+- [x] `BoardDescriptor::resolve_netstack` returns the resolved stack or an error
+      LISTING the domain. 5 unit tests, one of which runs over every shipped
+      descriptor so the declarations cannot rot.
+- [x] `check-site-config` reads the domain from the descriptors instead of the
+      board→netstack column it carried since W2 — that column was a second SSoT
+      for a board FACT. Mutation-verified.
+
+**Found doing it:** `[deploy.*].board` and a descriptor's `names` are NOT the
+same vocabulary. Every in-tree site block says `board = "mps2-an385-freertos"`,
+which that descriptor does not list (`freertos` / `freeRTOS` / `FreeRTOS`), so
+`nros sync` cannot resolve those deploys either — phase-341 W3 closed part of
+this gap and this part is still open. The gate accepts the directory spelling as
+well rather than reporting a board it can plainly see as unknown.
 
 **Not a free choice.** NetX Duo ships a smaller port table than ThreadX — 24
 arches against 47 — so a ThreadX arch with no NetX counterpart **cannot be

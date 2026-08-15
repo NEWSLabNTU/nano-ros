@@ -12,6 +12,8 @@ local_aliases = ["platform-threadx"]
 link_kind = "none"
 entry_kind = "hosted-main"
 net_stack = "nanoros-owned"
+# phase-351 W4 — the stacks this board can be built with: the board boots NetX Duo over the NSOS BSD shim.
+supported_netstacks = ["netxduo"]
 board_crate = "nros-board-threadx-linux"
 
 [board.entry]
