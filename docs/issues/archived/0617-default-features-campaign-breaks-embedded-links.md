@@ -1,7 +1,7 @@
 ---
 id: 617
 title: "Three embedded link failures from one cause: making default features opt-in removed the providers a `no_std` final artifact needs"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, api
@@ -91,3 +91,33 @@ string — so the server genuinely never reaches it, and the init sequence
 (`Support initialized` -> `Node created` -> `Action server created: /fibonacci`
 -> `Waiting for action goals`) gives a clean bisect the moment the fixture
 builds again.
+
+## Closed 2026-08-16 — all three items resolved, and item 2 was a different bug
+
+| # | outcome |
+| --- | --- |
+| 1 `E0004 BackendDynamic` | fixed, `e5bc6363e` — the arm was gated on `nros-cpp/alloc` while the variant is gated on `nros-rmw/alloc` |
+| 3 `#[panic_handler]` on NuttX | fixed, `717030676` — `platform-nuttx` was the one RTOS row selecting neither a malloc nor a panic provider; gated by `check-platform-provider-features` |
+| 2 duplicate `nros_platform` allocator | **not this class** — fixed independently as issue 0616 |
+
+**Item 2 did not belong here.** I grouped it with the other two as "phase-361
+removed a provider", and it is not: the crate was DUPLICATED, not
+under-provided. Its cause is one cargo artifact directory serving two workspace
+ROOTS — issue 0493's class — and phase-361 only changed its symptom, because
+making `nros-platform` the sole owner of the `#[global_allocator]` (W8) turned a
+latent duplication into a compile-time lang-item conflict instead of a link-time
+duplicate-symbol error. Louder, not newer.
+
+Fixed by 0616: `CARGO_TARGET_DIR` derived from the cargo workspace root via
+`cargo locate-project --workspace`, plus a configure-time `FATAL_ERROR` when two
+roots claim one directory.
+
+Evidence recorded in 0493 for the still-open native/Corrosion instance,
+including the measurement that rules the Corrosion hypothesis OUT for the Zephyr
+lane: that leaf uses no Corrosion at all, yet showed 4 cargo invocations sharing
+one `--target-dir` and 5 `nros_platform` metadata identities in one `deps/`.
+
+**What survives as the lesson of this issue** is items 1 and 3 only: when a
+crate stops defaulting a provider, every dep-site that builds a FINAL artifact
+must be audited, because a host build cannot detect a missing `#[panic_handler]`
+or `#[global_allocator]` — `std` supplies both.

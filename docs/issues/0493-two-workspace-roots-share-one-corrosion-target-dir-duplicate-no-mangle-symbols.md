@@ -665,3 +665,62 @@ Note for anyone reproducing: provisioning alone is not enough on a tree that has
 already configured. The stale build dirs carry the old topology in their
 `CMakeCache.txt`, so they must be removed — which is also why the two
 investigations disagreed for as long as they did.
+
+## 2026-08-16 — the SAME class was hit and fixed in the Zephyr lane (#0616)
+
+Recorded here because it answers this issue's central open question from the
+other side, and because the fix is likely transplantable.
+
+`build-ws-mixed-entry-zenoh` failed with
+
+```
+error: the `#[global_allocator]` in nros_platform conflicts with
+       global allocator in: nros_platform
+```
+
+— one crate named on both sides, i.e. this issue's duplication, surfacing
+through a LANG ITEM instead of through `#[no_mangle]` symbols. phase-361 W8 had
+just made `nros-platform` the sole owner of the `#[global_allocator]`, and
+duplicating a crate that owns a lang item fails at compile time where duplicating
+one that owns exported symbols only failed at link. Same defect, louder.
+
+Measured on that leaf before the fix landed:
+
+| signal | value |
+| --- | --- |
+| `--target-dir …/nros-rust` in `build.ninja` | **4** distinct cargo invocations |
+| `libnros_platform-*.rlib` in one `deps/` | **5** metadata identities |
+| `libnros_core-*.rlib` | 4 |
+| three of the five built | 00:47, 00:51, 00:52 the same night — not stale accumulation |
+
+**The Corrosion hypothesis cannot explain that instance.** phase-354 W1 asks
+whether #493 is the Corrosion `< 0.6.0` shared-`cargo/build` defect or an
+independent one. The Zephyr mixed entry uses **no Corrosion at all** — no
+`corrosion_import_crate`, nothing in its `CMakeCache.txt` or `build.ninja`; it
+builds Rust through the Zephyr cargo path. So the class is "one cargo artifact
+directory serving two workspace ROOTS", and Corrosion `< 0.6.0` is merely one
+way to arrange it. Pinning Corrosion is therefore necessary-at-most, not
+sufficient, and W1's either/or should become "both lanes, one rule".
+
+### The fix that landed there
+
+`zephyr/cmake/nros_cargo_build.cmake` derives `CARGO_TARGET_DIR` from the cargo
+WORKSPACE ROOT: the nros workspace keeps `<build>/nros-rust` (so no consumer
+path moves) and a foreign root gets `<build>/nros-rust-ws-<name>`. The root is
+resolved with `cargo locate-project --workspace` rather than by comparing paths
+— `packages/cli/Cargo.toml` is a separate workspace INSIDE the repo, so a
+path-prefix test would have put it straight back in the shared directory. A
+second root claiming an already-claimed dir is a configure-time `FATAL_ERROR`
+naming both claimants.
+
+Nothing is lost by splitting: units are keyed by that same path spelling, so two
+roots could never reuse each other's artifacts. The shared directory produced
+collisions and no sharing.
+
+**For this issue:** the native/Corrosion instance is still open, and the same
+remedy shape — derive the target dir from the workspace root, assert single
+ownership — applies whether or not the Corrosion version is also pinned. Reading
+the resolved version is still worth doing (CLAUDE.md: read
+`nano-ros: Corrosion <ver> via <origin>`, never infer), because BOTH
+`0.5.1-nros1` and `0.6.1-nros1` are present in this host's SDK store and the
+store enumerates newest-first only by convention (issue 0500).
