@@ -241,10 +241,22 @@ genuinely collided (`native_talker` ×3, including a *listener* declaring itself
 a talker) — renamed. With both fixed the island builds against current main,
 which is what made the `nm` above possible.
 
-**Still open:** no budget exists, and the four-column table does not either. A budget built on top did not differentiate cap=1/4/16 in
-codegen — all three produced one identical binary — so it was dropped rather
-than shipped unproven. That is the next question: why the constant does not
-reach codegen, then the cells.
+**Still open:** no budget exists, and the four-column table does not either. A
+budget built on top did not differentiate cap=1/4/16 in codegen — all three
+produced one identical binary — so it was dropped rather than shipped unproven.
+
+That "why" is now ANSWERED above (2026-08-16): both cap sites are absent from
+the image, so the value had nothing to apply to. The cells do not follow from
+it, because unbounded/16/4/1 are not four configurations of this lane. What
+remains is a design choice, not a measurement:
+
+* bound the READ TASK — its priority and CPU share against the tiers, which is
+  what actually preempts them here; or
+* take the polled-path cells on an image that links `_zp_unicast_read`
+  (`Z_FEATURE_MULTI_THREAD=0`, the multi-executor build), where `43ddb0ec`
+  makes a frame cap defer rather than drop.
+
+Either is a fresh work item with its own acceptance. Detail in #506.
 
 ## W4 — NuttX boot tier drops its declared priority (#579)
 
