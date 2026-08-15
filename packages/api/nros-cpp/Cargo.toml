@@ -191,7 +191,7 @@ host-only-reason = "C++ ABI surface, built per-platform by cmake not by the work
 [dependencies]
 # phase-361 W3 — `ffi-size-markers` REQUESTED, not inherited from `nros`'s
 # (now empty) `default`; see the same note on nros-c.
-nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers"] }
+nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers", "macros"] }
 nros-node.workspace = true
 # Phase 241.D3-rev — bundle the C umbrella as an rlib so `libnros_cpp.a` carries the
 # full C ABI + the cffi shim + the force-linked RMW backend (one archive, one std).

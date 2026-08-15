@@ -26,6 +26,5 @@ safety-e2e = []
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "safety-e2e",
-] }
+    "safety-e2e", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

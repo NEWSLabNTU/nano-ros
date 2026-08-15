@@ -1273,17 +1273,6 @@ W3 — requested explicitly at all four dep-sites. **Not verified**: that it eve
 macro value in a shipped artifact; `#[used]` acts at link time and this host cannot build the
 C/C++ lanes. Summary in `docs/issues/archived/0593-*`.
 
-**#0592** (build, open 2026-08-07) — a firmware build of `nros` compiles **57 crates; 47 of them
-exist only to run the `nros::main!` proc-macro** (`cargo tree -e normal -p nros --target
-thumbv7em-none-eabihf`, set-differenced against the same over `nros-macros`). Eleven crates are
-actual runtime. In a timed clean build — 96 units, 23.5 s CPU, 7.8 s wall — **the macro subtree is
-20.9 s of it (89 %)**, and every one of the twelve most expensive units is host TOML/YAML/derive
-tooling: `syn`, `toml_edit`, `ros-launch-manifest-model`, `serde_derive`, `winnow`, `serde_yaml_ng`.
-Phase 262 already cut `nros-build` out of the macro; the weight came back one justified dep
-at a time, and `nros-macros` is a NON-optional dep of `nros`, so a pure-library user pays all of it.
-Removable in order: the `model = "…"` arm's `ros-launch-manifest-{model,sched}` (a **git** dep, 7
-crates incl. the duplicate `thiserror` major), then `toml` 0.8→0.9 (5 more, un-splits the resolver),
-then `nros-macros` optional. See `0592-*` and phase-361 W5–W7. (2026-08-07)
 **#0591** (build, open 2026-08-07) — `default = ["std"]` on the `no_std` crates splits each of them
 into **two compile identities inside ONE cargo invocation**. Measured over `cargo check --workspace
 --timings`: `nros-core` and `nros-params` each compile once as `[alloc, std]` and once as `[alloc,
@@ -1293,11 +1282,18 @@ one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and 
 survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
 `nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
 `nros-core` never did. See `0591-*` and phase-361 W3. (2026-08-07)
-Recently resolved (2026-08-15): **#0595** — the SECOND filing of #0587, found independently within hours.
-Its angle was the in-repo `# nros-managed` `[patch.crates-io]` rows and issue 0457 (moving exactly that content
-stranded every leaf on `no matching package named 'mps2-an385-pac'`); 0587's was the authored comments. Both
-readings are true of the same four content lines and either alone justifies keeping the files tracked. Fixed
-with 0587; kept archived for the independent derivation. See `archived/0595-*`. (2026-08-15)
+
+Recently resolved (2026-08-16, phase-361 W7): **#0592** — a firmware build of `nros` compiled 58 crates,
+39 of them only to run the `nros::main!` proc-macro (`syn`, `toml_edit`, `serde_yaml_ng`, the
+`ros-launch-manifest` git deps, a duplicate `thiserror` major). `nros-macros` is now optional behind a
+`macros` feature: **58 -> 19 crates**. The removal ORDER this issue proposed did not survive re-derivation —
+the `model =` arm's 7 crates are on the MAINLINE `launch =` path (not the deprecated override), and `toml`
+0.8 -> 0.9 stays blocked on the `ros-launch-manifest` git deps pinned at `v0.1.6` — so the one viable step
+took the whole prize. Its stated shape was illegal too: a default-on `macros` is unreachable when all 62
+in-workspace dep-sites pass `default-features = false`, which `check-feature-contract` clause (d) rejects as
+#0593's shape. Landed opt-in: 145 in-tree crates gained it, and the 52 that dep `nros` without invoking a
+macro now stop compiling the subtree. Breaking out-of-tree — add `features = ["macros"]`. Lock did not move.
+See `archived/0592-*`. (2026-08-16)
 
 **#0596** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
 (`[ "$_cli_bin" -nt "$_resolver" ]`), and `just setup-launch-resolve` is a no-op when cargo has nothing to

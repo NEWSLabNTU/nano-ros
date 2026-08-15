@@ -16,7 +16,6 @@ default_namespace = "/"
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 custom_msgs = { path = "../../generated/custom_msgs", version = "0.0.0", default-features = false }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

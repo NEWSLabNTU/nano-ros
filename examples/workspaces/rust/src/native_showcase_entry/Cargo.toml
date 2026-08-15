@@ -32,7 +32,7 @@ max_callbacks = 12
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 native_showcase_entry_nros_selection = { path = "../../generated/nros-selection/native_showcase_entry" }
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 talker_pkg = { path = "../talker_pkg", default-features = false }
 listener_pkg = { path = "../listener_pkg", default-features = false }

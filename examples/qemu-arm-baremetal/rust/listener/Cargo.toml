@@ -37,7 +37,7 @@ gateway = "10.0.2.2"
 netmask = "255.255.255.0"
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
 # impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Keeps
 # its existing ethernet + rmw-zenoh defaults.

@@ -27,8 +27,7 @@ path = "src/lib.rs"
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
-] }
+    "ros-humble", "macros"] }
 # Board crate — supplies the `LinuxBoard` ZST referenced by the
 # macro-emitted `<Board as BoardEntry>::run(...)` call. Forms 2/3/4
 # would override it via `board = ...`.

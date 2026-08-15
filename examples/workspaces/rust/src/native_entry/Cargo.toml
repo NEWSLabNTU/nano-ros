@@ -24,7 +24,7 @@ deploy = "native"
 # edition only. Platform (`platform-posix`) AND the concrete RMW backend are
 # brought by the board crate below; the umbrella names neither.
 native_entry_nros_selection = { path = "../../generated/nros-selection/native_entry" }
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # Board crate — supplies the `LinuxBoard` ZST the macro-emitted
 # `<LinuxBoard as BoardEntry>::run(...)` call resolves (`deploy = "native"` →
 # `nros_board_linux::LinuxBoard`) AND is the RMW+platform selection point:

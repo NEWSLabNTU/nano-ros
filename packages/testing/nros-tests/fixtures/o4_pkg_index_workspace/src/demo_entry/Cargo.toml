@@ -18,8 +18,7 @@ deploy = "native"
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
-] }
+    "ros-humble", "macros"] }
 # Board crate — supplies the `LinuxBoard` ZST referenced by the
 # macro-emitted `<Board as BoardEntry>::run(...)` call.
 nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }

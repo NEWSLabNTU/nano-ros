@@ -38,7 +38,7 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 # registry; the actual RMW backend (`nros-rmw-zenoh`, ...) must be
 # linked by the per-board overlay so `Executor::open` resolves a
 # backend at boot.
-nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # #131 — `log` facade so `run_app_thread` can install a UART sink; the rust
 # examples emit their human lines (`Publishing: '...'` / `I heard: [...]`) via
 # `log::info!`, which is dropped without a registered logger (no std stdout on

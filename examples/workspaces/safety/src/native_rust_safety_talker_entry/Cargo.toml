@@ -19,7 +19,7 @@ deploy = "native"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 native_rust_safety_talker_entry_nros_selection = { path = "../../generated/nros-selection/native_rust_safety_talker_entry" }
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # safety-e2e on the board → the zenoh backend attaches a CRC on publish, so the
 # cross-process safe_listener can validate it (issue 0096: in-process delivery does
 # not happen, hence the split). Talker side only attaches; no integrity read needed.

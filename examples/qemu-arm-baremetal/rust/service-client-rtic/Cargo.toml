@@ -44,7 +44,7 @@ netmask = "255.255.255.0"
 # Node deps folded in from the former service_client_rtic_pkg (issue 0100).
 example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # nros Executor API + bare-metal platform glue.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board boot scaffold.
 # phase-338 W7 — one facade in user source: the body logs through `log`,

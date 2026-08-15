@@ -534,9 +534,7 @@ un-split. W6 was blocked on W5; with W5 dead it is blocked on an upstream bump
 in the `ros-launch-manifest` repo — a fork remote, which by repo policy the
 agent prepares and the maintainer pushes.
 
-**W7 — `nros-macros` optional — WORKS, and is worth more than the doc claimed,
-but its stated design is illegal under W4.** Measured by making the dep optional
-and re-running the same `cargo tree`:
+**W7 — `nros-macros` optional — LANDED 2026-08-16.**
 
 | | crates |
 | --- | --- |
@@ -544,30 +542,44 @@ and re-running the same `cargo tree`:
 | without | **19** |
 | dropped | **39** |
 
-(The old acceptance criterion, "the 11 runtime crates plus `paste`", was measured
-on a narrower feature set; at `alloc,rmw-cffi` the floor is 19 — it includes
-`nros-log`, `nros-platform{,-api}`, `nros-rmw-cffi`, `atomic-waker`, `heapless`,
-`hash32`, `byteorder`, `stable_deref_trait` and both `portable-atomic` crates.)
+Measured with `cargo tree -e normal -p nros --target thumbv7em-none-eabihf
+--no-default-features --features alloc,rmw-cffi`, before and after. (The old
+acceptance criterion — "the 11 runtime crates plus `paste`" — came from a
+narrower feature set; at `alloc,rmw-cffi` the floor is 19.)
 
-W7 said "a default-on `macros` feature on `nros`". **That is unreachable by
-construction and W4 clause (d) rejects it** — verified by trying it:
+**The shape W7 specified is illegal, and W4 is what says so.** "A default-on
+`macros` feature on `nros`" was tried: all 62 in-workspace dep-sites pass
+`default-features = false`, so a default-only feature is reachable ONLY by
+feature unification in a whole-workspace build and vanishes in the per-package
+builds cmake runs — issue 0593's exact shape, rejected by clause (d). W3 is what
+made that true: with `default = []` established and every dep-site explicit,
+nothing default-on can reach anyone.
 
-```
-packages/api/nros/Cargo.toml: `default` names ['macros'], and all 62 in-workspace
-      dep-sites on `nros` pass `default-features = false` without naming them.
-```
+So the landed form is **`macros` opt-in, named at the dep-site**, consistent with
+the rest of the contract and breaking for anyone who invokes a macro:
 
-Which is issue 0584 exactly: the feature would arrive only by unification in a
-whole-workspace build and vanish in the per-package builds cmake runs. W3 is what
-made this so — with `default = []` established and every dep-site explicit, a
-default-on feature cannot reach anyone.
+* `nros-macros` is `optional = true`; `macros = ["dep:nros-macros"]`.
+* The three re-exports (`main`, `node`, `derive::RosMessage`) are gated on it, as
+  is the in-crate `dispatch_probe_macro_test` module AND the test asserting the
+  ABI symbol that module's macro emits — without the macro there is nothing to
+  assert and the `extern` would not resolve.
+* **145 in-tree crates** gained `"macros"` at their `nros` dep-site. Measured, not
+  estimated: of 197 crates depending on `nros`, 145 invoke
+  `nros::main!` / `node!` / `derive::` / `nros_macros::`, and **52 do not** — and
+  those 52 now stop compiling the macro subtree entirely, which is the point.
 
-So W7's only correct form is **`macros` opt-in, requested at the dep-sites that
-use the macros** — consistent with the rest of the contract, and a BREAKING
-change of real size: **135 in-tree crates** reference `nros::main!` / `nros::node!`
-/ `nros::derive::`, across 64 `packages/` and 188 `examples/` dep-sites, and the
-examples are user-facing copy-out projects (RFC-0026). Every workspace fixture
-would need rebuilding, and the change cannot be validated below tier 2.
+**Cargo.lock did not move.** The change adds a feature edge, not a dependency;
+`cargo metadata` resolves the root workspace unchanged.
+
+Verified: `nros` checks with and without `macros`; `examples/native/rust/talker`
+(a real `nros::main!` leaf) checks clean; `check-feature-contract` 6/6 including
+clause (d), which is the clause that forced this design.
+
+**Out-of-tree consumers who invoke a macro must add `features = ["macros"]`.**
+That is a release note, and it is the cost W7 was always going to have — the
+alternative was every firmware build paying 39 crates for a macro it may never
+invoke.
+
 
 **Status: W5 closed as not-viable, W6 blocked upstream, W7 needs a scope
 decision.** The 39-crate prize is real and the mechanism is proven; what is

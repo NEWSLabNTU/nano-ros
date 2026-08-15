@@ -35,7 +35,7 @@ locator = "serial/UART_0#baudrate=115200"
 domain_id = 0
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # Board built with the serial UART link (no ethernet). `board-entry` pulls the
 # `nros_platform::BoardEntry` impl so `nros::main!()` can drive it; `run_with_deploy`
 # cfg-selects `Config::serial_default` under serial-only.

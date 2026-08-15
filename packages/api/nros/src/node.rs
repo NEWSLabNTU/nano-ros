@@ -3322,7 +3322,7 @@ mod tests {
     // alloc-gated `__private_node_state_into_raw`. Gate the test on
     // both features so the macro invocation only attempts to expand
     // when every referenced symbol is present.
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi", feature = "macros"))]
     mod dispatch_probe_macro_test {
         // `extern crate self as nros;` at the crate root (in `lib.rs`,
         // `cfg(test)`-gated) lets the `::nros::*` paths the macro emits
@@ -3355,7 +3355,10 @@ mod tests {
         nros_macros::node!(DispatchProbe);
     }
 
-    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    // Also `macros`: this asserts the ABI symbol the `node!` invocation above
+    // emits, so without the macro there is nothing to assert and the extern
+    // would not resolve.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi", feature = "macros"))]
     #[test]
     fn node_macro_emits_dispatch_strategy_symbol() {
         // Re-declare the ABI export the macro just emitted. If the macro

@@ -1,10 +1,11 @@
 ---
 id: 592
 title: "a firmware build of `nros` compiles 57 crates; 47 of them exist only to run the `nros::main!` proc-macro"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [issue-0582, phase-262, phase-360, rfc-0032, rfc-0052]
+resolved_in: "phase-361 W7"
 ---
 
 ## The number
@@ -176,4 +177,37 @@ projects (RFC-0026); every workspace fixture rebuilds; validation needs tier 2.
 Open, with the prize (39 crates, and per the original timing the bulk of the
 20.9 s macro subtree) and the price (a 135-manifest breaking change) both now
 measured rather than estimated.
+
+## Resolved 2026-08-16 — phase-361 W7
+
+`nros-macros` is now optional behind a `macros` feature on `nros`. A firmware
+build that does not invoke a macro goes **58 crates -> 19, 39 dropped**
+(`cargo tree -e normal -p nros --target thumbv7em-none-eabihf
+--no-default-features --features alloc,rmw-cffi`).
+
+The removal ORDER this issue proposed did not survive, and the reasons are worth
+keeping:
+
+1. **The `model = "..."` arm's 7 crates are not removable that way.**
+   `ros-launch-manifest-{model,sched}` are on the MAINLINE `launch = "..."` path,
+   not the deprecated override — `main_macro.rs` parses a SystemModel after
+   `model_location::ensure_model(...)`, and `nros-orchestration-ir` uses them in
+   four modules for the RFC-0052 tier schema.
+2. **`toml` 0.8 -> 0.9 stays blocked upstream.** Re-measured 2026-08-16: four
+   consumers, two ours and two the `ros-launch-manifest` git deps pinned at tag
+   `v0.1.6`. Bumping ours leaves 0.8 — and `toml_edit`, `winnow 0.7` — alive.
+3. **Making `nros-macros` optional was the only viable step, and it took the
+   whole prize** rather than the incremental 57 -> 50 -> 45 -> 11 this issue
+   sketched.
+
+**Its stated shape was illegal.** A default-on `macros` feature is unreachable:
+all 62 in-workspace dep-sites pass `default-features = false`, so
+`check-feature-contract` clause (d) rejects it as issue 0593's shape. The landed
+form is opt-in, named per dep-site — 145 in-tree crates gained it, and the 52
+that depend on `nros` WITHOUT invoking a macro now stop compiling the macro
+subtree entirely.
+
+Breaking for out-of-tree consumers that invoke a macro: add
+`features = ["macros"]`. `Cargo.lock` did not move — this is a feature edge, not
+a dependency change.
 

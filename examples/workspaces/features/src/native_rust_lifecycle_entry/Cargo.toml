@@ -23,6 +23,6 @@ native_rust_lifecycle_entry_nros_selection = { path = "../../generated/nros-sele
 # scope; `nros::main!` calls it because system.toml declares `[lifecycle]`. (A bake
 # build adds this feature automatically from `[lifecycle]`; the hand-cargo entry
 # sets it explicitly.)
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 rust_lifecycle_talker_pkg = { path = "../rust_lifecycle_talker_pkg", default-features = false }

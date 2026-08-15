@@ -24,6 +24,15 @@ readme = "README.md"
 # whole-workspace. Both consumers now request the feature explicitly on their
 # `nros` dep, which is what the size probe needed all along (cf. issue 0464).
 default = []
+# phase-361 W7 — `nros::main!` / `nros::node!` / `nros::derive::RosMessage`.
+#
+# NOT in `default`, and that is forced rather than chosen: 62 of the 62
+# in-workspace dep-sites on this crate pass `default-features = false`, so a
+# default-only feature is reachable ONLY by feature unification in a
+# whole-workspace build and vanishes in the per-package builds cmake runs.
+# That is issue 0593 exactly, and `check-feature-contract` clause (d) rejects
+# it. A crate that invokes a macro names this feature at its own dep-site.
+macros = ["dep:nros-macros"]
 # Phase 11.3.C — `#[used]` markers on the `__NROS_SIZE_*` opaque-storage
 # statics. nros-c / nros-cpp build scripts probe these out of the rlib
 # to derive C/C++ FFI macros (Phase 87). Pure-Rust applications (e.g.
@@ -156,7 +165,12 @@ ros-jazzy = ["nros-node/ros-jazzy"]
 [dependencies]
 # Core functionality (default-features = false for no_std support).
 nros-core = { version = "0.5.0", path = "../../core/nros-core", default-features = false }
-nros-macros = { version = "0.5.0", path = "../../core/nros-macros" }
+# phase-361 W7 / issue 0592 — OPTIONAL. A firmware build of `nros` compiles 58
+# crates and 39 of them exist only to run this proc-macro: `syn`, `toml_edit`,
+# `serde_yaml_ng`, the `ros-launch-manifest` git deps and their duplicate
+# `thiserror` major. A consumer that hand-writes its entry point — already a
+# supported shape — should not pay for a macro it never invokes.
+nros-macros = { version = "0.5.0", path = "../../core/nros-macros", optional = true }
 nros-node = { version = "0.5.0", path = "../../core/nros-node", default-features = false }
 nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.5.0", path = "../../rmw/cffi", default-features = false, optional = true }

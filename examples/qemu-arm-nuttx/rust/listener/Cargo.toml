@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 # Transport(ConnectionFailed) before touching the network.
 nros-board-nuttx-qemu = { version = "*", features = ["rmw-zenoh"] }
 # phase-359 W7 — was `["std", "rmw-cffi"]`; this family is no_std now.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-nuttx"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through

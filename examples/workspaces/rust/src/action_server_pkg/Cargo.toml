@@ -20,7 +20,6 @@ default_namespace = "/"
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 example_interfaces = { path = "../../generated/example_interfaces", default-features = false }
 heapless = "0.8"

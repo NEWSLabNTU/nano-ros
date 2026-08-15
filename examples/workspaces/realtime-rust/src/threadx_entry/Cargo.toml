@@ -50,7 +50,7 @@ locator = "tcp/127.0.0.1:9091"
 threadx_entry_nros_selection = { path = "../../generated/nros-selection/threadx_entry" }
 # Agnostic `nros`. ThreadX-Linux is a hosted std simulation, so the ENTRY pins
 # `std`; the board brings the zenoh backend + `platform-threadx`.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "macros"] }
 # ThreadX-Linux board crate — supplies `ThreadxLinux` (`BoardEntry` +
 # `run_tiers`) + the ThreadX kernel/port build. `rmw-zenoh` (#131/#194) → the
 # board links `nros-rmw-zenoh` and its `run_{entry,tiers}` register it; without

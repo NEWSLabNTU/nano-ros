@@ -44,7 +44,7 @@ netmask = "255.255.255.0"
 log = { version = "0.4", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # nros declarative-node + main! API.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # RTIC board entry (RticBoardEntry) for QEMU MPS2-AN385.
 # phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`
 # feature; `nros-board-rtic-mps2-an385` no longer exists.

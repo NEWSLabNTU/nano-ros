@@ -71,7 +71,7 @@ ros-jazzy = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy"]
 link-tls = ["nros-rmw-zenoh?/link-tls"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "macros"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

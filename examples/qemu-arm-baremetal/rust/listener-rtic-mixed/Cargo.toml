@@ -44,7 +44,7 @@ domain_id = 0
 log = { version = "0.4", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # nros Executor API — ffi-sync enables critical_section guards around FFI calls.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync", "macros"] }
 
 # RTIC board Entry (RticBoardEntry) — owns the `#[rtic::app]` boot scaffold.
 # phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`

@@ -22,6 +22,5 @@ type = "std_msgs/msg/Int32"
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

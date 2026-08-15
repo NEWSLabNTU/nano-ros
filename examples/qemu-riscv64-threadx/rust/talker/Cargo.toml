@@ -50,7 +50,7 @@ gateway = "10.0.2.2"
 
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { version = "*" }
-nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble", "macros"] }
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through

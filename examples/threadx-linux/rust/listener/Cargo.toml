@@ -35,7 +35,7 @@ rmw-cyclonedds = []
 # the codegen-emitted `run_plan` stays board-agnostic.
 # #131 / #194 — forward the family board's zenoh-backend link + boot-path register().
 nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "macros"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }

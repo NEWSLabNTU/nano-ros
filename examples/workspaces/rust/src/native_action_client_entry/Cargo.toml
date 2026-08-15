@@ -19,6 +19,6 @@ deploy = "native"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 native_action_client_entry_nros_selection = { path = "../../generated/nros-selection/native_action_client_entry" }
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 action_client_pkg = { path = "../action_client_pkg", default-features = false }

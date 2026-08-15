@@ -26,6 +26,5 @@ default_namespace = "/"
 # vtable seam only; the board crate links the concrete RMW backend.
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

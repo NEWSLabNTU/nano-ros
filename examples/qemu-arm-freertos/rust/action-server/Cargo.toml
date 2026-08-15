@@ -39,7 +39,7 @@ nros-board-mps2-an385-freertos = { version = "*", features = ["rmw-zenoh"] }
 # brings the FreeRTOS port; without this the image boots but the app never
 # reaches "Application setup complete".
 nros-platform = { version = "*", default-features = false, features = ["platform-freertos"] }
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.

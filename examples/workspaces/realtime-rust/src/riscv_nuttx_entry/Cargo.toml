@@ -55,7 +55,7 @@ riscv_nuttx_entry_nros_selection = { path = "../../generated/nros-selection/risc
 # Agnostic `nros`. NuttX ships `std`, so the ENTRY pins `std`; the board brings
 # the zenoh backend + `platform-nuttx`.
 # phase-359 W7 — was `["std", "rmw-cffi"]`; this family is no_std now.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # NuttX QEMU rv-virt board crate — supplies `QemuRvVirt` (real-runtime
 # `BoardEntry` + `run_tiers`, gated `target_os = "nuttx"`) + the NuttX platform
 # shim. `rmw-zenoh` → the board links `nros-rmw-zenoh` and its

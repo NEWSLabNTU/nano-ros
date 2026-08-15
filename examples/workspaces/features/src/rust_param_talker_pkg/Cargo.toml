@@ -36,6 +36,5 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     # W4c — `ctx.parameter::<T>(name)` (the live in-callback param read) is gated on
     # `param-services`; the node declares it so it compiles standalone, not only when the
     # Entry unifies the feature in.
-    "param-services",
-] }
+    "param-services", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

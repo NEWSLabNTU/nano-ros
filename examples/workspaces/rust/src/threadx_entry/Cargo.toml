@@ -29,7 +29,7 @@ threadx_entry_nros_selection = { path = "../../generated/nros-selection/threadx_
 # choice); the board brings `platform-threadx`. The concrete RMW (zenoh) is
 # linked through the ThreadX NetX-Duo C port (CMake), so — unlike the other
 # boards — there is no board `rmw-*` feature to set here.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "macros"] }
 nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link
 # map. NOT the agnostic-forbidden `nros/platform-*`.

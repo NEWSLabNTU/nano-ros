@@ -23,6 +23,5 @@ default_namespace = "/"
 # host targets use `platform-posix`.
 nros = { version = "*", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

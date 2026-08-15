@@ -17,5 +17,4 @@ callback_groups = [{ id = "telem", tier = "low" }]
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
-] }
+    "ros-humble", "macros"] }

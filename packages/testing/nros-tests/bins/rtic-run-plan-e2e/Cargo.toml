@@ -28,7 +28,7 @@ default_namespace = "/"
 dispatch = "deferred"
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # phase-337 W6.a — one board crate: the `rtic` feature is the RTIC entry
 # surface (formerly `nros-board-rtic-mps2-an385`), and the same crate's
 # `exit_success()` is what the node calls to signal the semihosting E2E pass.

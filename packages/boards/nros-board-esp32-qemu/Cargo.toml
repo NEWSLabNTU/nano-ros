@@ -33,8 +33,7 @@ nros-platform-api = { path = "../../platform/nros-platform-api" }
 nros = { path = "../../api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
-], optional = true }
+    "ros-humble", "macros"], optional = true }
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
     "ros-humble",

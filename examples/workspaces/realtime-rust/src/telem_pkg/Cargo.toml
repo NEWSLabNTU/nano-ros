@@ -19,8 +19,7 @@ callback_groups = [{ id = "telem", tier = "low" }]
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-] }
+    "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }
 # issue 0572 — a fixture that proves DELIVERY must say when a publish fails.
 log = { version = "0.4", default-features = false }

@@ -32,7 +32,7 @@ class = "shared_node_pkg::SharedNode"
 # `nros` carries the trait surface + macros. Platform feature is NOT
 # baked here — the Entry pkg picks it via the per-Entry feature
 # below.
-nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 
 [features]
 # Default-empty — pkg cannot build by itself. Each Entry pkg picks

@@ -38,7 +38,7 @@ netmask = "255.255.255.0"
 
 [dependencies]
 # nros Executor API + bare-metal platform glue.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 # RTIC board entry: brings up hardware + network, opens the executor, builds
 # the RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
 # phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`

@@ -332,10 +332,12 @@ where
 // Phase 212.N.12 — canonical `nros::node!()` macro. Replaces the legacy
 // `nros::node!()` macro (retired in the N.12 hard rename — both the
 // proc-macro forwarder and the Cargo metadata key are gone).
+#[cfg(feature = "macros")]
 pub use nros_macros::node;
 // Phase 212.N.9 — `nros::main!()` proc-macro family. One-line Entry-pkg
 // `main.rs` (replaces the legacy `build.rs + include!()` shape). See
 // `docs/design/0024-multi-node-workspace-layout.md` §11.6.
+#[cfg(feature = "macros")]
 pub use nros_macros::main;
 
 /// Define Zephyr's `rust_main` for a self-bringup Rust component package.
@@ -924,6 +926,7 @@ pub mod prelude {
 /// These macros help you create custom message types that are compatible
 /// with ROS 2's CDR serialization format.
 pub mod derive {
+    #[cfg(feature = "macros")]
     pub use nros_macros::RosMessage;
 }
 
