@@ -72,7 +72,7 @@ fn register_log_writer() {
         append(&mut line, &mut used, msg);
         append(&mut line, &mut used, b"\n");
 
-        // The write goes through the board's C glue (issue 0583). Two reasons,
+        // The write goes through the board's C glue (issue 0584). Two reasons,
         // and the second is why this is not done in Rust:
         //
         //  * A plain `write()` is captured by the WEAK `write` the ThreadX

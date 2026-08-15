@@ -78,7 +78,7 @@ void nros_board_compute_rng_seed(uint32_t *out)
     *out = seed;
 }
 
-/* ---- Log line -> host stderr (issue 0583) ----
+/* ---- Log line -> host stderr (issue 0584) ----
  *
  * Two constraints meet here, and each rules out the obvious answer to the
  * other.
