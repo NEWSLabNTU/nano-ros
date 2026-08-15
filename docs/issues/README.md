@@ -64,6 +64,16 @@ three zephyr compile-check fixtures. NOTE an earlier tier-2 run reported `== zep
 no west installed — a family reporting OK is not proof its toolchain exists. See `archived/0610-*`.
 (2026-08-15)
 
+**#616** (build, platform, open 2026-08-16) — `ws-mixed-entry-zenoh` fails: "the `#[global_allocator]` in
+nros_platform conflicts with global allocator in: nros_platform" — one crate named on BOTH sides. The only
+fixture of 70 that fails this way. #0594 removed a second allocator declaration so a duplicate lang item would
+be "impossible rather than merely discouraged", reasoning that "cargo unifies one crate's one feature into one
+unit" — and `cargo tree -i nros-platform -e features` on the generated manifest confirms EXACTLY ONE unit
+(`global-allocator`, no `std`). So cargo resolves one and rustc rejects two: one of them is not in the graph
+cargo prints. Leads: the `nros-rmw-zenoh-staticlib` built beside it carries its own copy, or host-vs-target
+`-C metadata` identities collide (the target here IS the host triple). NOT the #0589 work — verified by
+rebuilding with that change stashed. See `0616-*`. (2026-08-16)
+
 **#617** (build/api, open 2026-08-16) — THREE embedded link failures from one cause: phase-361's
 opt-in-features direction removed providers a `no_std` FINAL artifact needs, and none of the failures name
 the manifest that changed. (1) `E0004: TransportError::BackendDynamic(_) not covered` on thumbv7m — the
