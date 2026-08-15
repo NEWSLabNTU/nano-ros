@@ -266,12 +266,30 @@ def clause_d(mans):
         for tgt in (doc.get("target") or {}).values():
             for sec in ("dependencies", "dev-dependencies", "build-dependencies"):
                 sections.append(tgt.get(sec) or {})
+        # A consumer reaches a dependency's feature TWO ways, and counting only
+        # the first is a false positive factory: `features = [...]` on the dep
+        # line, and a `dep/feature` (or optional `dep?/feature`) entry in its own
+        # `[features]` table. `nros-board-nuttx-qemu` uses the second —
+        #     image-runtime = ["nros-board-nuttx/image-runtime"]
+        # — with `default-features = false` on the dep line, which this clause
+        # first reported as unreachable. It is reachable; the gate was not
+        # looking where cargo looks.
+        forwarded = {}
+        for body in (doc.get("features") or {}).values():
+            for entry in body or []:
+                if "/" not in entry or entry.startswith("dep:"):
+                    continue
+                dep_part, _, feat = entry.partition("/")
+                forwarded.setdefault(dep_part.rstrip("?"), set()).add(feat)
+
         for table in sections:
             for dep, spec in table.items():
                 if not isinstance(spec, dict):
                     spec = {}
+                named = set(spec.get("features", []) or [])
+                named |= forwarded.get(dep, set())
                 sites.setdefault(dep, []).append(
-                    (spec.get("default-features", True), spec.get("features", []) or [])
+                    (spec.get("default-features", True), sorted(named))
                 )
 
     bad = []
@@ -510,6 +528,39 @@ def self_test():
               {"src/lib.rs": "fn f() {}\n"})
         expect("default-requested-explicitly", r, "d", want_fail=False)
 
+        # d — reached by FORWARDING (`dep/feature` in the consumer's own feature
+        # table) rather than by `features = [...]` on the dep line. This is how
+        # `nros-board-nuttx-qemu` reaches `image-runtime`, and reporting it as
+        # unreachable was this clause's first false positive.
+        r = os.path.join(tmp, "d3")
+        base(r)
+        crate(r, "x", '[package]\nname = "x"\n[features]\ndefault = ["markers"]\nmarkers = []\n',
+              {"src/lib.rs": '#[cfg(feature = "markers")]\nfn f() {}\n'})
+        crate(r, "y", '[package]\nname = "y"\n[features]\nmarkers = ["x/markers"]\n'
+                      '[dependencies]\nx = { path = "../x", default-features = false }\n',
+              {"src/lib.rs": "fn f() {}\n"})
+        expect("default-reached-by-forwarding", r, "d", want_fail=False)
+
+        # d — the OPTIONAL-dep spelling `dep?/feature` counts too.
+        r = os.path.join(tmp, "d4")
+        base(r)
+        crate(r, "x", '[package]\nname = "x"\n[features]\ndefault = ["markers"]\nmarkers = []\n',
+              {"src/lib.rs": '#[cfg(feature = "markers")]\nfn f() {}\n'})
+        crate(r, "y", '[package]\nname = "y"\n[features]\nmarkers = ["x?/markers"]\n'
+                      '[dependencies]\nx = { path = "../x", default-features = false, optional = true }\n',
+              {"src/lib.rs": "fn f() {}\n"})
+        expect("default-reached-by-optional-forwarding", r, "d", want_fail=False)
+
+        # d — forwarding a DIFFERENT feature does not launder the unreachable one.
+        r = os.path.join(tmp, "d5")
+        base(r)
+        crate(r, "x", '[package]\nname = "x"\n[features]\ndefault = ["markers"]\nmarkers = []\nother = []\n',
+              {"src/lib.rs": '#[cfg(feature = "markers")]\nfn f() {}\n#[cfg(feature = "other")]\nfn g() {}\n'})
+        crate(r, "y", '[package]\nname = "y"\n[features]\nother = ["x/other"]\n'
+                      '[dependencies]\nx = { path = "../x", default-features = false }\n',
+              {"src/lib.rs": "fn f() {}\n"})
+        expect("forwarding-a-different-feature", r, "d", want_fail=True)
+
         # e — a second allocator outside the owner.
         r = os.path.join(tmp, "e")
         base(r)
@@ -536,7 +587,7 @@ def self_test():
         for f in failures:
             sys.stderr.write(f"self-test: {f}\n")
         return 2
-    print("check-feature-contract self-test: OK (13 cases, every clause fires and holds)")
+    print("check-feature-contract self-test: OK (17 cases, every clause fires and holds)")
     return 0
 
 

@@ -112,7 +112,13 @@ BASELINE = {
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.
-    "nros-node": {"cfg": 106, "path": 76},
+    # 106 -> 108 by `c3a16a529` (#607), which split the env cache on
+    # `all(feature = "std", test)` / `not(test)` and did not raise this
+    # baseline, leaving `check-fast` red on main. The sites are legitimate —
+    # a test/non-test split of a std-only cache — and are counted only
+    # because the matcher now sees `all(...)` forms. Raised here to unblock;
+    # the work item that removes them is phase-359's, not this branch's.
+    "nros-node": {"cfg": 108, "path": 76},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
