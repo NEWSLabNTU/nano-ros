@@ -83,3 +83,53 @@ Found 2026-08-15 under phase-353 W2 while restoring the native fixture lane on a
 host where the cyclone leaves had gone cold. `just cyclonedds setup` completes
 successfully and does NOT resolve the problem, because the ROS copy still wins
 discovery.
+
+## Partly fixed 2026-08-15 — the guard is in, and what is NOT yet proven
+
+Two runnability checks landed, both at the point where the tool is chosen:
+
+* `NrosRmwCycloneddsTypeSupport.cmake::_nros_find_idlc` — `find_program` is what
+  actually picks ROS's idlc off `PATH` for the native leaves. The resolved path
+  is now probed and, when it cannot run, the build stops at CONFIGURE time with
+  a message naming the binary, the loader error and the remedy, instead of
+  `FAILED: [code=127]` on the first `.idl` far away in the ninja.
+* `ProvideCycloneDDS.cmake` — the same check for the `find_package` branch,
+  which is a different route to the same tool. (The fixture lane passes
+  `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`, so this branch is inert there;
+  it matters for a bare cmake build.)
+
+**The probe flag is `-h`, not `--version`, and that distinction was measured
+rather than assumed:**
+
+```
+working idlc:  -h -> 0     --version -> 1
+broken  idlc:  -h -> 127   --version -> 127
+```
+
+`--version` is not a supported option, so probing with it would have rejected
+every healthy install and silently forced source-provisioning everywhere. That
+was the first version of this fix.
+
+### Not demonstrated, and stated rather than implied
+
+**The guard has not been observed firing end-to-end.** A cmake block only runs
+on a CONFIGURE, and every `examples/**/build-cyclonedds` on this host was
+configured before the change, so each keeps `/opt/ros/humble/bin/idlc` baked
+into its `build.ninja` and still fails with `code=127`. Wiping one leaf's build
+dir moved the failure to the next leaf, which is consistent with that reading
+but is not proof the new message appears. A bare `cmake -S … -B …` of one leaf
+does not exercise it either: without the fixture lane's extra defs the cyclone
+typesupport path is not reached at all (no `idlc` in the generated ninja).
+
+**This does not make the lane build here.** There is no working idlc on this
+host: `just cyclonedds setup` completes but installs no
+`build/cyclonedds/bin/idlc`, and ROS's copy cannot load. The fix converts a
+misleading late failure into a legible early one; it does not conjure a tool.
+Restoring the lane needs either ROS's environment propagated into the build, or
+`-DIDLC_EXECUTABLE=<a working idlc>`.
+
+### Still open
+
+The preferred shape in "Fix shape" above — prefer the tool the build
+provisioned, via prefix ordering — is NOT implemented, because this host has no
+provisioned idlc to prefer. It remains the better answer for a host that does.

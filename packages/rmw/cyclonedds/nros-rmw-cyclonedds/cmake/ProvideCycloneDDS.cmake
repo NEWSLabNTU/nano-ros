@@ -47,6 +47,70 @@ macro(nros_provide_cyclonedds)
         else()
             find_package(CycloneDDS CONFIG QUIET)
         endif()
+        # Issue 0601 — a find_package MATCH is not a usable Cyclone.
+        #
+        # On a host with ROS installed, find_package resolves to
+        # /opt/ros/humble, whose `idlc` links `libiceoryx_binding_c.so` from
+        # ROS's own lib/. That library is on the loader path only when
+        # `setup.bash` has been sourced INTO THE BUILD's environment — not
+        # merely into the shell that launched cmake. So the config is found, the
+        # target is imported, and the first `.idl` dies with
+        #
+        #     idlc: error while loading shared libraries: libiceoryx_binding_c.so
+        #     FAILED: [code=127] …
+        #
+        # which reads as "command not found" for a tool that is right there.
+        # Running `just cyclonedds setup` does not help: it provisions a working
+        # Cyclone that this discovery never reaches.
+        #
+        # Selection by EXISTENCE where the property is RUNNABILITY — the same
+        # shape as issue 0500's prefix ordering, and as the rosidl-adapter
+        # ladder fixed alongside this. So ASK the tool. If it cannot run, this
+        # install is not a candidate and we fall through to self-provisioning
+        # from source, which is what a host without ROS already does.
+        #
+        # Deliberately narrow: only `idlc` is probed, because it is the only
+        # part of the package this build EXECUTES. A library that fails to load
+        # is caught by the linker with a legible error; a code generator that
+        # fails to load is caught as `code=127` mid-ninja.
+        if(CycloneDDS_FOUND AND TARGET CycloneDDS::idlc)
+            get_target_property(_nros_idlc CycloneDDS::idlc IMPORTED_LOCATION)
+            if(NOT _nros_idlc)
+                # Config-specific installs (Release/None/…) put it here instead.
+                get_target_property(_nros_idlc_cfgs CycloneDDS::idlc IMPORTED_CONFIGURATIONS)
+                foreach(_cfg IN LISTS _nros_idlc_cfgs)
+                    if(NOT _nros_idlc)
+                        get_target_property(_nros_idlc CycloneDDS::idlc IMPORTED_LOCATION_${_cfg})
+                    endif()
+                endforeach()
+            endif()
+            if(_nros_idlc AND EXISTS "${_nros_idlc}")
+                # `-h`, NOT `--version`: idlc has no `--version`, and a
+                # WORKING one exits 1 on it ("invalid option"). Probing with
+                # `--version` would therefore reject every healthy install and
+                # silently force source-provisioning everywhere. Measured on
+                # this host:
+                #
+                #   working idlc:  -h -> 0    --version -> 1
+                #   broken  idlc:  -h -> 127  --version -> 127
+                #
+                # So `-h` separates "cannot load" from "loaded fine", and
+                # `--version` separates nothing.
+                execute_process(
+                    COMMAND "${_nros_idlc}" -h
+                    RESULT_VARIABLE _nros_idlc_rc
+                    OUTPUT_QUIET ERROR_VARIABLE _nros_idlc_err)
+                if(NOT _nros_idlc_rc EQUAL 0)
+                    string(STRIP "${_nros_idlc_err}" _nros_idlc_err)
+                    message(STATUS
+                        "nano-ros: ignoring CycloneDDS at ${CycloneDDS_DIR} — its idlc "
+                        "cannot run (${_nros_idlc}): ${_nros_idlc_err}")
+                    message(STATUS
+                        "nano-ros: falling back to a source-provisioned CycloneDDS (issue 0601)")
+                    set(CycloneDDS_FOUND FALSE)
+                endif()
+            endif()
+        endif()
         if(CycloneDDS_FOUND)
             set(NROS_CYCLONEDDS_PROVENANCE "find_package")
             message(STATUS "nano-ros: CycloneDDS via find_package (${CycloneDDS_DIR})")

@@ -52,6 +52,47 @@ endif()
 # Issue 0325 — defined BEFORE its first use: the two calls below run at
 # file scope during include(), so a definition further down the file is not
 # yet parsed and cmake fails with `Unknown CMake command "_nros_find_idlc"`.
+# Issue 0601 — EXISTS is not RUNS.
+#
+# `find_program` searches PATH, and on a host with ROS installed that is
+# `/opt/ros/humble/bin/idlc`. That binary links `libiceoryx_binding_c.so` from
+# ROS's own lib/, which is on the loader path only when `setup.bash` has been
+# sourced INTO THIS BUILD's environment — not merely into the shell that
+# launched cmake. So a perfectly findable idlc fails to LOAD, and the first
+# `.idl` dies mid-ninja with
+#
+#     idlc: error while loading shared libraries: libiceoryx_binding_c.so
+#     FAILED: [code=127] …
+#
+# `code=127` reads as "command not found" for a tool that is right there, in a
+# build the user cannot see the configure of. The block below already
+# re-resolves when the cached path no longer EXISTS; this is the same idea for
+# the case where it exists and cannot run.
+#
+# `-h`, not `--version`: idlc has no `--version`, and a WORKING one exits 1 on
+# it. Measured:
+#
+#     working idlc:  -h -> 0     --version -> 1
+#     broken  idlc:  -h -> 127   --version -> 127
+#
+# So `-h` separates "cannot load" from "loaded fine", and `--version` would
+# reject every healthy install.
+function(_nros_idlc_runs _path _out)
+    execute_process(
+        COMMAND "${_path}" -h
+        RESULT_VARIABLE _rc
+        OUTPUT_QUIET ERROR_VARIABLE _err)
+    if(_rc EQUAL 0)
+        set(${_out} "" PARENT_SCOPE)
+    else()
+        string(STRIP "${_err}" _err)
+        if(_err STREQUAL "")
+            set(_err "exit ${_rc}")
+        endif()
+        set(${_out} "${_err}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(_nros_find_idlc _out)
     find_program(${_out} idlc
         HINTS
@@ -68,6 +109,21 @@ if(NOT TARGET CycloneDDS::idlc)
     # Phase 186.3: a self-provisioned build with no `just` step resolves idlc
     # from PATH (e.g. a ROS 2 install) or a pre-set IDLC_EXECUTABLE.
     _nros_find_idlc(IDLC_EXECUTABLE)
+    if(IDLC_EXECUTABLE)
+        _nros_idlc_runs("${IDLC_EXECUTABLE}" _nros_idlc_why)
+        if(_nros_idlc_why)
+            message(FATAL_ERROR
+                "idlc was found but cannot run: ${IDLC_EXECUTABLE}\n"
+                "  ${_nros_idlc_why}\n"
+                "  (issue 0601 — this used to surface far away, mid-build, as "
+                "`FAILED: [code=127]` on the first .idl, which reads as a "
+                "missing tool rather than one that fails to LOAD.)\n"
+                "  A ROS-provided idlc needs ROS's library path in THIS build's "
+                "environment, not just in the launching shell. Either source "
+                "ROS's setup into the build, or pass a working "
+                "-DIDLC_EXECUTABLE=<path-to-idlc>.")
+        endif()
+    endif()
     if(NOT IDLC_EXECUTABLE)
         message(FATAL_ERROR
             "idlc (Cyclone DDS IDL compiler, a host tool) not found.\n"
