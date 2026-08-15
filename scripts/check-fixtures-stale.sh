@@ -96,6 +96,21 @@ if [ ${#cmake_stale[@]} -gt 0 ]; then
     echo "  (cmake/ninja incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
 fi
 
+# Issue 0466 — REPORT EVERY STALE FAMILY, then exit once.
+#
+# This gate checks three families (rust, workspace, compile-check) and each used
+# to `exit 1` on its own. So a tree with two stale families reported ONE, you
+# rebuilt it, and the next run reported the next — one discovery per attempt,
+# which is the very thing `check-tier-preconditions` exists to prevent and which
+# cost four rebuild-and-rerun rounds on 2026-08-15 (two workspace fixtures, then
+# ten compile-checks, then the main set).
+#
+# The probes were already independent; only the early exits coupled them. On the
+# success path this costs nothing — all three ran anyway. On the failure path it
+# pays for the later families in order to name them, which is the trade the
+# rounds already paid, serially, with a rebuild in between.
+stale_families=0
+
 rust_stale=()
 if command -v parallel >/dev/null 2>&1; then
     python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}" \
@@ -139,7 +154,7 @@ if [ ${#rust_failed[@]} -gt 0 ]; then
     echo "      source ./activate.sh && just build-test-fixtures lane=<the lane you will test>" >&2
     echo "  A leaf that needs codegen also needs \`nros sync\` first (its generated/" >&2
     echo "  tree is not in a fresh clone). Bypass with  NROS_SKIP_FIXTURE_CHECK=1 ." >&2
-    exit 1
+    stale_families=$((stale_families + 1))
 fi
 
 # issue 0030 — gate the workspace-fixture preflight on cross-toolchain presence.
@@ -203,7 +218,7 @@ if [ ${#workspace_stale[@]} -gt 0 ]; then
     printf '  %s\n' "${workspace_stale[@]}" >&2
     echo "  Run \`just native build-workspace-fixtures\` before test-all." >&2
     echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
-    exit 1
+    stale_families=$((stale_families + 1))
 fi
 
 # phase-319 W3 (issue 0351) — the compile-check lane, which this gate could not
@@ -263,5 +278,15 @@ if [ ${#compile_check_stale[@]} -gt 0 ]; then
     printf '  %s\n' "${compile_check_stale[@]}" >&2
     echo "  Run \`just build-test-fixtures\` before test-all." >&2
     echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+    stale_families=$((stale_families + 1))
+fi
+
+# One exit, after every family has had its say (issue 0466).
+if [ "$stale_families" -gt 0 ]; then
+    echo "" >&2
+    echo "check-fixtures-stale: $stale_families fixture family/families are stale — all of" >&2
+    echo "  them are listed above, deliberately: rebuilding one re-stamps inputs the" >&2
+    echo "  next one's signature covers, so discovering them one per run costs a" >&2
+    echo "  rebuild cycle each time." >&2
     exit 1
 fi

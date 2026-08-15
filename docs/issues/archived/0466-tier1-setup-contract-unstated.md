@@ -644,3 +644,28 @@ Every item this issue accumulated is now addressed:
 * finding (b), tool-version drift — this section.
 
 Resolved.
+
+## Reopened finding, 2026-08-15 — the gate itself discovered one family per run
+
+Recorded against this issue although it is already resolved: it is the same
+defect one layer down, and the next person will look here.
+
+`check-fixtures-stale.sh` checks three fixture families (rust, workspace,
+compile-check) and each had its own `exit 1`, so a tree with two stale families
+named ONE. Observed cost in a single afternoon: `ci-matrix` reported two stale
+workspace fixtures; rebuilt; then ten stale compile-checks; rebuilt; then the
+main fixture set (that last for a different reason — `lane=tier2` builds only
+the coordinates the gate checks while the run executes everything). Four
+rebuild-and-rerun rounds, one discovery each.
+
+Fixed by deferring the exits: each family records its failure, all report, one
+exit at the end names how many families are stale. Verified by hiding one stamp
+from each of two families — before, the workspace exit masked all 24
+compile-checks.
+
+TRIED AND REJECTED: making `check-tier-preconditions` run the same probe, so
+freshness is reported with the other preconditions. `NROS_FIXTURE_SCOPE=all
+check-fixtures-stale.sh` measures **1468 s (24.5 min)** — a content signature per
+row — so it costs more than the failure it prevents and cannot sit at the head of
+every tier-1 run. Preconditions still checks fixture PRESENCE only; the lane gate
+remains where freshness is established, and now reports completely.
