@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#615** (build, open 2026-08-16) — `check-feature-contract` clause (d) reasons only about DEP-SITES, so it
+calls `nros-cpp`'s `default = ['panic-spin']` unreachable and asks for it to be emptied. That would BREAK
+the build: `nros-cpp` produces a staticlib — a FINAL artifact — and a `no_std` final artifact with no
+panic provider does not link. Verified by applying the remedy: `error: #[panic_handler] function
+required, but not found`. A crate whose own artifact is final is a consumer of its own default, which the
+rule cannot see. Distinct from #0613, where the default really was dead and emptying it was verified
+inert. RED on the `just ci` line. See `0615-*`.
+
 Recently resolved (2026-08-16): **#613** `check-feature-contract` clause (d) failed on
 `nros-board-nuttx`: `default = ['image-runtime']` was unreachable, because its ONE in-workspace dep-site
 (`nros-board-nuttx-qemu`) takes it `default-features = false` and re-enables the feature by name. This is
