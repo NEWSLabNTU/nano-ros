@@ -64,6 +64,18 @@ three zephyr compile-check fixtures. NOTE an earlier tier-2 run reported `== zep
 no west installed — a family reporting OK is not proof its toolchain exists. See `archived/0610-*`.
 (2026-08-15)
 
+**#617** (build/api, open 2026-08-16) — THREE embedded link failures from one cause: phase-361's
+opt-in-features direction removed providers a `no_std` FINAL artifact needs, and none of the failures name
+the manifest that changed. (1) `E0004: TransportError::BackendDynamic(_) not covered` on thumbv7m — the
+variant is gated on `nros-rmw/alloc`, the arm was gated on `nros-cpp/alloc`, and that implication runs one
+way (FIXED, `e5bc6363e`); (2) `#[global_allocator] in nros_platform conflicts with global allocator in:
+nros_platform` in the mixed zephyr entry; (3) `#[panic_handler] function required` compiling `nros-c` for
+armv7a-nuttx-eabihf. (2) and (3) each take out a fixture family, so `lane=all` cannot finish and tier 2/3
+cannot reach a verdict. A HOST build detects none of them — it gets its panic handler and allocator from
+`std`. Rule the campaign needs: when a crate stops defaulting a provider, audit every dep-site that builds a
+FINAL artifact. Left unfixed deliberately — phase-361 W7/W8 and #615 were under active edit with commits
+minutes old. See `0617-*`.
+
 **#614** (api-c, api-cpp, open 2026-08-16) — `cargo check -p nros-c` (and `-p nros-cpp`) with NO features
 fails on the host: "`#[panic_handler]` function required" + "unwinding panics are not supported without std".
 `--features std` passes, and `just check-c` / `check-cpp` pass because they name features — so nothing in CI is
