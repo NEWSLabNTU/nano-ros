@@ -626,8 +626,34 @@ fn split_dep_info_line(deps: &str) -> Vec<String> {
 /// not flag a false-stale; an edited source is present with a newer mtime and
 /// is caught).
 fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
-    let bin_mtime = fs::metadata(binary_path).ok()?.modified().ok()?;
-    dep_file_newer_than(&binary_path.with_extension("d"), bin_mtime)
+    let Ok(bin_mtime) = fs::metadata(binary_path).and_then(|m| m.modified()) else {
+        return None;
+    };
+    // phase-353 W2 — pass the artifact so a newer MTIME is checked by CONTENT
+    // before it is called stale, and record the baseline when the verdict is
+    // fresh. Recording here rather than at the call site keeps the two halves
+    // (which deps were walked, and the verdict) in one place; splitting them is
+    // how the arms diverged in issue 0442.
+    let (newer, walked) = dep_file_newer_than_for(&binary_path.with_extension("d"), bin_mtime);
+    let Some(newer) = newer else {
+        // Fresh by mtime. Record/refresh the baseline NOW, while the artifact is
+        // known good, so a later byte-identical rewrite has something to be
+        // compared against. Recording only when something already looks newer
+        // would leave the FIRST treadmill event with no baseline, which is the
+        // event this exists to forgive.
+        let _ = staleness::candidates_changed_content_policy(binary_path, &walked, true);
+        return None;
+    };
+    // An mtime moved. Only the BYTES decide, through the one shared helper
+    // (#147 / phase-286 W2, now in `staleness`) that the zephyr arm has used
+    // since it was written. Called ONCE with the whole dep set, the way zephyr
+    // calls it — per-dep calls would each rewrite the baseline with a single
+    // entry.
+    match staleness::candidates_changed_content_policy(binary_path, &walked, false) {
+        Some(true) => Some(newer), // genuinely edited
+        Some(false) => None,       // identical bytes: a rewrite, not an edit
+        None => Some(newer),       // cannot tell → keep the old, strict answer
+    }
 }
 
 // The exemption rule (which candidate mtimes are edit events and which are
@@ -646,7 +672,27 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 /// (the west staticlib's `.d` vs the linked `zephyr.exe`, which are different
 /// artifacts). Missing/unreadable `.d` → `None` (treated fresh).
 fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Option<PathBuf> {
-    let content = fs::read_to_string(dep_file).ok()?;
+    dep_file_newer_than_for(dep_file, reference).0
+}
+
+/// [`dep_file_newer_than`], plus the dep list it walked.
+///
+/// phase-353 W2 direction (3) — the dep list comes back so the caller can put
+/// the whole set through the CONTENT check. `git pull --rebase`,
+/// `git stash push/pop` and a branch switch all rewrite tracked files whose
+/// bytes are identical, and every prebuilt fixture then reads STALE for no
+/// reason; a cold Zephyr leaf costs ~28 s (issue 0509, issue 0466).
+///
+/// mtime remains the cheap FIRST gate, so a warm tree does no extra work: the
+/// content check runs only once something already looks newer.
+fn dep_file_newer_than_for(
+    dep_file: &Path,
+    reference: std::time::SystemTime,
+) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let mut walked: Vec<PathBuf> = Vec::new();
+    let Ok(content) = fs::read_to_string(dep_file) else {
+        return (None, walked);
+    };
     for line in content.lines() {
         let Some((_target, deps)) = line.split_once(": ") else {
             continue;
@@ -656,14 +702,15 @@ fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Opt
             if staleness::note_candidate(&dep_path) {
                 continue;
             }
+            walked.push(dep_path.clone());
             if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
                 && dep_mtime > reference
             {
-                return Some(dep_path);
+                return (Some(dep_path), walked);
             }
         }
     }
-    None
+    (None, walked)
 }
 
 /// Existence contract PLUS a detect-only staleness check (issue #147 /
@@ -5426,7 +5473,16 @@ mod tests {
     /// result nobody then sees, which is how issue 0444 hid behind 0442.
     #[test]
     fn a_stale_verdict_reports_its_own_reasoning_and_its_age() {
-        let dir = project_root().join("target/nros-probe-selftest");
+        // Unique per invocation: phase-353 W2 gave the probe on-disk memory
+        // (`.nros-srcbaseline`, written beside the artifact), so a FIXED
+        // directory is shared mutable state between parallel tests in this
+        // binary. The path was safe only while the probe was stateless.
+        let dir = project_root().join(format!(
+            "target/nros-probe-selftest-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("fixture-bin");
         let src = dir.join("edited.rs");
@@ -5486,6 +5542,57 @@ mod tests {
         );
 
         staleness::record_fresh(&bin);
+        let _ = fs::remove_dir_all(&dir);
+    }
+    /// phase-353 W2 direction (3) — the DEP-INFO arm must be content-aware too.
+    ///
+    /// The zephyr arm has consulted `candidates_changed_content` since #147 /
+    /// phase-286 W2; this arm compared raw mtimes, so `git pull --rebase`,
+    /// `git stash push/pop` and a branch switch — all of which rewrite tracked
+    /// files whose BYTES are identical — turned every prebuilt fixture cold
+    /// (~28 s per cold Zephyr leaf, issue 0509 / issue 0466). One probe, two
+    /// arms, one of them wrong: issue 0442's shape.
+    ///
+    /// The test drives `dep_info_newer_source` through a real `.d` file, so it
+    /// fails if the arm stops consulting the shared helper.
+    #[test]
+    fn dep_info_arm_forgives_a_byte_identical_rewrite_but_not_an_edit() {
+        use std::{thread::sleep, time::Duration};
+        let dir = std::env::temp_dir().join(format!("nros-w2-depinfo-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let bin = dir.join("fixture");
+        let src = dir.join("watched.rs");
+        fs::write(&src, b"fn main() {}").unwrap();
+        fs::write(&bin, b"ARTIFACT").unwrap();
+        // rustc's dep-info shape: `<target>: <deps>`
+        fs::write(
+            bin.with_extension("d"),
+            format!("{}: {}\n", bin.display(), src.display()),
+        )
+        .unwrap();
+
+        // Baseline: nothing newer than the binary.
+        assert!(
+            dep_info_newer_source(&bin).is_none(),
+            "a freshly built fixture must not be stale"
+        );
+
+        // The rewrite a rebase performs: same bytes, newer mtime.
+        sleep(Duration::from_millis(10));
+        fs::write(&src, b"fn main() {}").unwrap();
+        assert!(
+            dep_info_newer_source(&bin).is_none(),
+            "an mtime-only rewrite was called STALE — the treadmill is back"
+        );
+
+        // A real edit must still be caught, or the probe is worthless.
+        sleep(Duration::from_millis(10));
+        fs::write(&src, b"fn main() { edited() }").unwrap();
+        assert!(
+            dep_info_newer_source(&bin).is_some(),
+            "an edited source was forgiven — the fixture would run against stale code"
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

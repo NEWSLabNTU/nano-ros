@@ -239,6 +239,225 @@ fn ledger_path(binary: &Path) -> PathBuf {
     ledger_dir().join(format!("{key}.stale"))
 }
 
+// ── Content-aware staleness (#147 / phase-286 W2) ───────────────────────────
+//
+// Moved here from `zephyr.rs` by phase-353 W2 so BOTH staleness arms share one
+// spelling. It answers "did the bytes change", which is the only honest answer
+// to an mtime that moved on its own: `git pull --rebase`, `git stash push/pop`
+// and a branch switch all rewrite tracked files identically, and every prebuilt
+// fixture then reads STALE (~28 s per cold Zephyr leaf — issue 0509 direction
+// 3, issue 0466).
+//
+// It lived in the zephyr module and was used by the zephyr arm alone, so the
+// dep-info arm kept comparing raw mtimes. That is issue 0442's shape exactly —
+// arms of one probe diverging because the rule lived in one of them — and the
+// reason this module's header already insists exemptions have ONE spelling.
+
+/// Flatten a candidate path (file or dir) into its source files, applying the
+/// same `target`/`build`/`.git` skips as [`path_newer_than`]'s dir recursion.
+pub(crate) fn collect_source_files(path: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(meta) = path.symlink_metadata() else {
+        return;
+    };
+    if meta.is_file() {
+        out.push(path.to_path_buf());
+        return;
+    }
+    if !meta.is_dir() {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if crate::treewalk::is_skipped_dir(name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        collect_source_files(&entry.path(), out);
+    }
+}
+
+/// Non-cryptographic content hash of a file (SipHash via `DefaultHasher`) — a
+/// change detector, not a security primitive. `None` if unreadable.
+pub(crate) fn hash_file_content(path: &Path) -> Option<u64> {
+    use std::hash::Hasher;
+    let bytes = std::fs::read(path).ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(&bytes);
+    Some(h.finish())
+}
+
+/// Content-aware staleness (#147 / phase-286 W2).
+///
+/// Returns `Some(true)` if a watched source's CONTENT differs from what the
+/// current linked binary was built with, `Some(false)` if everything matches
+/// (including the case where an mtime moved but the bytes did not), or `None`
+/// if the binary itself can't be hashed (caller falls back to the mtime gate).
+///
+/// Mechanism: a sidecar `<binary_dir>/.nros-srcbaseline` records the binary's
+/// content hash plus each watched file's `(mtime, size, content_hash)`. When the
+/// binary hash differs from the baseline (a rebuild happened, or first sight),
+/// the image IS the fresh truth — re-record the baseline and report not-stale.
+/// When the binary is unchanged, only files whose `(mtime, size)` moved are
+/// content-hashed; a moved mtime with an unchanged hash is an artifact (not
+/// stale), a changed hash or a newly-appearing file is a real edit (stale).
+/// Atomically (temp + rename) write the source baseline sidecar.
+fn write_srcbaseline(path: &Path, bin_hash: u64, files: &[PathBuf]) {
+    let mut out = format!("bin {bin_hash}\n");
+    for f in files {
+        let Ok(meta) = f.metadata() else { continue };
+        let Some(mtime) = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+        else {
+            continue;
+        };
+        let Some(h) = hash_file_content(f) else {
+            continue;
+        };
+        out.push_str(&format!("{mtime} {} {h} {}\n", meta.len(), f.display()));
+    }
+    // Atomic: write a pid-unique temp then rename, so parallel test processes
+    // sharing a fixture never read a half-written baseline.
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    if std::fs::write(&tmp, out.as_bytes()).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+pub(crate) fn candidates_changed_content(
+    binary_path: &Path,
+    candidates: &[PathBuf],
+) -> Option<bool> {
+    candidates_changed_content_policy(binary_path, candidates, true)
+}
+
+/// [`candidates_changed_content`], with the no-baseline answer named.
+///
+/// `first_sight_is_fresh = true` is the zephyr arm's long-standing behaviour;
+/// `false` keeps the dep-info arm strict, so an artifact whose mtime already
+/// looks stale is not forgiven merely for being unrecognised.
+pub(crate) fn candidates_changed_content_policy(
+    binary_path: &Path,
+    candidates: &[PathBuf],
+    first_sight_is_fresh: bool,
+) -> Option<bool> {
+    let bin_hash = hash_file_content(binary_path)?;
+
+    let mut files = Vec::new();
+    for c in candidates {
+        collect_source_files(c, &mut files);
+    }
+    files.sort();
+    files.dedup();
+
+    // phase-353 W2 — nothing to compare is INCONCLUSIVE, never "unchanged".
+    //
+    // `collect_source_files` skips `target`/`build`/`.git`, so a candidate that
+    // lives under one of those yields an empty set. Answering `Some(false)`
+    // there would report the artifact fresh on the strength of having examined
+    // nothing — a silent-fresh path, which is the museum-binary shape issue
+    // 0196 is about. `None` hands the decision back to the caller, which keeps
+    // its own (stricter) mtime verdict.
+    if files.is_empty() {
+        return None;
+    }
+
+    let baseline_path = binary_path.parent()?.join(".nros-srcbaseline");
+    let baseline = std::fs::read_to_string(&baseline_path).ok();
+
+    // Parse baseline: first line `bin <hash>`, then `<mtime_nanos> <size> <hash> <path>`.
+    let mut stored_bin: Option<u64> = None;
+    let mut stored: std::collections::HashMap<PathBuf, (u128, u64, u64)> =
+        std::collections::HashMap::new();
+    if let Some(text) = &baseline {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("bin ") {
+                stored_bin = rest.trim().parse().ok();
+                continue;
+            }
+            let mut it = line.splitn(4, ' ');
+            let (Some(m), Some(s), Some(h), Some(p)) = (it.next(), it.next(), it.next(), it.next())
+            else {
+                continue;
+            };
+            if let (Ok(m), Ok(s), Ok(h)) = (m.parse(), s.parse(), h.parse()) {
+                stored.insert(PathBuf::from(p), (m, s, h));
+            }
+        }
+    }
+
+    let file_meta = |p: &Path| -> Option<(u128, u64, u64)> {
+        let meta = p.metadata().ok()?;
+        let mtime = meta
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
+        Some((mtime, meta.len(), 0))
+    };
+
+    // Binary changed (rebuilt) or no baseline → the image is the fresh truth.
+    // Record a full baseline and report not-stale.
+    //
+    // phase-353 W2 — that "or no baseline" is a POLICY, not a fact, and the two
+    // arms need different ones. The zephyr arm has always taken it: a first
+    // sight records and reports fresh. The dep-info arm must not, because its
+    // mtime gate has ALREADY said something looks newer, and answering "fresh"
+    // to an unknown artifact would undo the guard #147 added — an existing test
+    // (`a_stale_verdict_reports_its_own_reasoning_and_its_age`) catches exactly
+    // that. `first_sight_is_fresh` names the choice at each call site instead of
+    // hiding it here.
+    if stored_bin != Some(bin_hash) {
+        if first_sight_is_fresh {
+            write_srcbaseline(&baseline_path, bin_hash, &files);
+            return Some(false);
+        }
+        // A stale verdict verifies NOTHING, so it must not leave a baseline
+        // behind: doing so made the very next call compare against bytes that
+        // were never blessed and report fresh, turning one real stale verdict
+        // into a permanent pass. Caught by
+        // `a_stale_verdict_reports_its_own_reasoning_and_its_age`, which probes
+        // the same artifact three times.
+        return Some(true);
+    }
+
+    // Binary unchanged: only content-hash files whose (mtime,size) moved.
+    let mut refreshed = false;
+    for f in &files {
+        let Some((mtime, size, _)) = file_meta(f) else {
+            // Unreadable now but tracked before → treat as a change.
+            if stored.contains_key(f) {
+                return Some(true);
+            }
+            continue;
+        };
+        match stored.get(f) {
+            Some(&(sm, ss, sh)) => {
+                if sm == mtime && ss == size {
+                    continue; // unchanged, cheap path
+                }
+                // (mtime,size) moved — disambiguate by content.
+                match hash_file_content(f) {
+                    Some(h) if h == sh => refreshed = true, // mtime artifact only
+                    Some(_) => return Some(true),           // real content change
+                    None => return Some(true),
+                }
+            }
+            // A watched file that did not exist at baseline time → real add.
+            None => return Some(true),
+        }
+    }
+    if refreshed {
+        write_srcbaseline(&baseline_path, bin_hash, &files);
+    }
+    Some(false)
+}
+
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
