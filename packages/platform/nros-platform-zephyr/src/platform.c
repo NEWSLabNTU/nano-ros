@@ -210,6 +210,20 @@ void nros_platform_task_free(void **task) {
     (void) task;  /* caller-owned pthread_t storage */
 }
 
+/* phase-360 W5 follow-up — the probe lives WITH the implementation that owns
+ * the storage. It used to sit outside every arm and hardcode `pthread_t`, so
+ * the non-POSIX builds (the default for these fixtures since issue 0566) could
+ * not compile it at all: the type is not declared there. A size stated in one
+ * place and allocated in another is issue 0570's trap in the mechanism built to
+ * avoid it. */
+size_t nros_platform_task_storage_size(void) {
+    return sizeof(pthread_t);
+}
+
+size_t nros_platform_task_storage_align(void) {
+    return _Alignof(pthread_t);
+}
+
 /* ---- Mutex ---- */
 
 int8_t nros_platform_mutex_init(void *m) {
@@ -527,6 +541,15 @@ void nros_platform_task_free(void **task) {
     *task = NULL;
 }
 
+/* The k_thread-backed storage this arm actually allocates. */
+size_t nros_platform_task_storage_size(void) {
+    return sizeof(struct nros_z_task);
+}
+
+size_t nros_platform_task_storage_align(void) {
+    return _Alignof(struct nros_z_task);
+}
+
 #else /* no CONFIG_DYNAMIC_THREAD */
 
 int8_t nros_platform_task_init(void *task, void *attr,
@@ -541,6 +564,12 @@ int8_t nros_platform_task_detach(void *task) { (void) task; return -1; }
 int8_t nros_platform_task_cancel(void *task) { (void) task; return -1; }
 void nros_platform_task_exit(void) {}
 void nros_platform_task_free(void **task)    { (void) task; }
+
+/* This arm cannot start a task at all (`task_init` returns -1), so there is no
+ * storage to size. Zero is the honest answer, not a guess that would let a
+ * caller allocate for a task it can never create. */
+size_t nros_platform_task_storage_size(void)  { return 0; }
+size_t nros_platform_task_storage_align(void) { return 1; }
 
 #endif /* CONFIG_DYNAMIC_THREAD */
 
@@ -605,13 +634,7 @@ size_t nros_platform_wake_storage_align(void) {
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */
-size_t nros_platform_task_storage_size(void) {
-    return sizeof(pthread_t);
-}
 
-size_t nros_platform_task_storage_align(void) {
-    return _Alignof(pthread_t);
-}
 
 /* ============================================================
  *   Critical section (Phase 121.9)
