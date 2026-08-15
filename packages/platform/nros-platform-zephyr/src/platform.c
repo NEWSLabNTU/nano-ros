@@ -602,6 +602,17 @@ size_t nros_platform_wake_storage_align(void) {
     return __alignof__(struct k_sem);
 }
 
+/* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
+ * probes above. `task_init`'s contract says the implementor decides the size;
+ * these let a caller ASK instead of hard-coding it (issue 0570's trap). */
+size_t nros_platform_task_storage_size(void) {
+    return sizeof(pthread_t);
+}
+
+size_t nros_platform_task_storage_align(void) {
+    return _Alignof(pthread_t);
+}
+
 /* ============================================================
  *   Critical section (Phase 121.9)
  * ============================================================ */

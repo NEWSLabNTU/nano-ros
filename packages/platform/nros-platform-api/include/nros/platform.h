@@ -281,6 +281,19 @@ void nros_platform_task_exit(void);
  *  or `task_detach + exit`. */
 void nros_platform_task_free(void **task);
 
+/** Opaque-storage sizing for `task`, mirroring the wake primitive's
+ *  probes below. Both are pure functions (no global state) and may be
+ *  called before `nros_platform_task_init`.
+ *
+ *  phase-359 W10 — added because `task_init`'s "size determined by the
+ *  implementor" had no way to ASK. A C caller can write
+ *  `pthread_t t;` and pass `&t`; a Rust caller cannot, and hard-coding
+ *  a size is precisely issue 0570 (Rust's 20-byte `pthread_attr_t` met
+ *  NuttX's 56-byte one and smashed the caller's frame). The wake
+ *  primitive already solved this the right way; tasks now match it. */
+size_t nros_platform_task_storage_size(void);
+size_t nros_platform_task_storage_align(void);
+
 /* ---- Threading: non-recursive mutex ---- */
 
 int8_t nros_platform_mutex_init(void *m);

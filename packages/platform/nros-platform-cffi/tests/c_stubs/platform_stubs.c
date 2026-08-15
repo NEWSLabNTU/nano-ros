@@ -85,6 +85,10 @@ int8_t nros_platform_task_detach(void *task)                    { (void) task; b
 int8_t nros_platform_task_cancel(void *task)                    { (void) task; bump(NROS_STUB_TASK); return -1; }
 void   nros_platform_task_exit(void)                            { bump(NROS_STUB_TASK); }
 void   nros_platform_task_free(void **task)                     { (void) task; bump(NROS_STUB_TASK); }
+/* phase-359 W10 — the task storage probes. Sized for a pointer, which is what
+ * this stub's `task_init` writes; the real ports return their own type's size. */
+size_t nros_platform_task_storage_size(void)                    { return sizeof(void *); }
+size_t nros_platform_task_storage_align(void)                   { return _Alignof(void *); }
 
 /* ---- Mutex (non-recursive + recursive share the same counter) ---- */
 

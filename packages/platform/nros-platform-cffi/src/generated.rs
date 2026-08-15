@@ -131,6 +131,13 @@ unsafe extern "C" {
     pub fn nros_platform_task_free(task: *mut *mut core::ffi::c_void);
 }
 unsafe extern "C" {
+    #[doc = " Opaque-storage sizing for `task`, mirroring the wake primitive's\n  probes below. Both are pure functions (no global state) and may be\n  called before `nros_platform_task_init`.\n\n  phase-359 W10 — added because `task_init`'s \"size determined by the\n  implementor\" had no way to ASK. A C caller can write\n  `pthread_t t;` and pass `&t`; a Rust caller cannot, and hard-coding\n  a size is precisely issue 0570 (Rust's 20-byte `pthread_attr_t` met\n  NuttX's 56-byte one and smashed the caller's frame). The wake\n  primitive already solved this the right way; tasks now match it."]
+    pub fn nros_platform_task_storage_size() -> usize;
+}
+unsafe extern "C" {
+    pub fn nros_platform_task_storage_align() -> usize;
+}
+unsafe extern "C" {
     pub fn nros_platform_mutex_init(m: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
