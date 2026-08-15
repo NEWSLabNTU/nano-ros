@@ -84,3 +84,33 @@ locator in the same commit** (#393). Both branches of `check-examples` (pool and
 Worth considering as part of the fix: run the gate **after** the examples lane
 as well, or the next writer added to this recipe gets the same one-run-delayed,
 misattributed failure.
+
+## A constraint the fix has to reckon with first
+
+The obvious fix — point the lane at one shared `--target-dir` — is not obviously
+safe here, and the reason is worth having before someone writes it:
+
+**Every example leaf is its own workspace root.** `examples/native/rust/talker/
+Cargo.toml` and its siblings each declare `[workspace]`, because examples are
+standalone copy-out projects with no workspace walk-up (RFC-0026). Issue 0616's
+rule is that *"a cargo `--target-dir` serves exactly ONE workspace root"* — a
+crate reached by two different path spellings gets two units, identical but for
+the `path` fingerprint field, and `nros-platform` holds the tree's one
+`#[global_allocator]`. So a single dir shared by 37 roots is precisely the shape
+0616 describes.
+
+Note this is NOT a claim that the existing fixture groups are broken. 0616 is
+resolved and its population was the cmake/`mixed` entry, not these leaves; and
+`nros_fixture_group_slug` keys on `platform` (+ a variant hash of args/env) with
+no workspace-root component, so per-platform sharing across leaf roots is
+already the landed, working design from phase-340. The point is only that a fix
+here should follow that precedent — and be measured, since a lint lane's cache
+mixed into a fixture group dir would also thrash fingerprints between `cargo
+clippy` and `cargo build`.
+
+Which suggests the ordering for whoever takes this: decide *where* the lane's
+artifacts belong (its own kind, or an existing group) before touching the
+recipe, and confirm 0616's duplicate-unit hazard does not apply to a lint-only
+lane that produces no linked artifact. `check-examples` consumes nothing
+downstream, so unlike #393's cases there is no test-side locator to move with
+it — that part, at least, is easier than the class usually is.
