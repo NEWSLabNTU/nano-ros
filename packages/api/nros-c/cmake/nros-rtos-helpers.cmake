@@ -69,6 +69,25 @@ function(nros_host_rustlib_bin out_var)
         OUTPUT_VARIABLE _rust_sysroot
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
+    nros_host_rust_triple(_host_triple)
+    set(${out_var} "${_rust_sysroot}/lib/rustlib/${_host_triple}/bin" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
+# nros_host_rust_triple
+# ----------------------------------------------------------------------
+# The Rust target triple for THIS machine, e.g. `aarch64-unknown-linux-gnu`.
+#
+# Anything that compiles for the host needs this and must not spell it as a
+# literal: `x86_64-unknown-linux-gnu` written down means "the host" on one
+# machine and a cross compile on every other (issue 0582). Zephyr's native_sim
+# is the case that motivated extracting it — native_sim builds a HOST binary, so
+# its Rust target is whatever this host is, not a constant.
+#
+# `rustc -vV`'s `host:` line is the authority. `CMAKE_HOST_SYSTEM_PROCESSOR`
+# spells the arch differently (`aarch64` vs `arm64` across platforms) and says
+# nothing about vendor/libc, so it cannot produce a triple rustc will accept.
+function(nros_host_rust_triple out_var)
     execute_process(
         COMMAND rustc -vV
         OUTPUT_VARIABLE _rustc_vv
@@ -77,10 +96,10 @@ function(nros_host_rustlib_bin out_var)
     string(REGEX MATCH "host: ([^\n]+)" _host_match "${_rustc_vv}")
     if(NOT CMAKE_MATCH_1)
         message(FATAL_ERROR
-            "nros_host_rustlib_bin: could not read the host triple from "
+            "nros_host_rust_triple: could not read the host triple from "
             "`rustc -vV`. Is rustc on PATH? Output was:\n${_rustc_vv}")
     endif()
-    set(${out_var} "${_rust_sysroot}/lib/rustlib/${CMAKE_MATCH_1}/bin" PARENT_SCOPE)
+    set(${out_var} "${CMAKE_MATCH_1}" PARENT_SCOPE)
 endfunction()
 
 # ----------------------------------------------------------------------

@@ -14,10 +14,18 @@ On an aarch64 Linux host, nothing about nano-ros's ThreadX-Linux support works,
 and almost none of it says why. The failures look unrelated to each other and to
 the host architecture.
 
-A **seventh** instance of this class was found afterwards and is resolved
-separately as [[0585]]: the board's log writer hardcoded the x86_64 `write`
-syscall number, so off x86 every log line went to an unrelated syscall and the
-image ran silently mute. Same shape, same invisibility on x86.
+Two further instances were found afterwards and are resolved separately:
+[[0585]] (the board's log writer hardcoded the x86_64 `write` syscall number,
+so off x86 every log line went to an unrelated syscall and the image ran
+silently mute) and [[0610]] (the Zephyr SDK download hardcoded the x86_64
+tarball, which fetched and CHECKSUMMED fine on aarch64 and then failed inside
+the SDK's own installer). A ninth site is fixed here: Zephyr's
+`nros_detect_rust_target()` mapped native_sim to `x86_64-unknown-linux-gnu`,
+but native_sim compiles a HOST binary — on aarch64 that is a cross compile to a
+target whose std is not installed, and the build died in `stable_deref_trait`
+naming neither the triple nor native_sim.
+
+All of them share this issue's shape, and its invisibility on x86.
 
 | where | what the user sees |
 | --- | --- |

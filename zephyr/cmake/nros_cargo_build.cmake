@@ -9,6 +9,10 @@
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
+# `nros_host_rust_triple` — native_sim's Rust target is the HOST's (issue 0582).
+# FILE scope for the same reason as the two above: an include() inside a
+# function frame drops the file's vars when the frame pops.
+include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-rtos-helpers.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -19,8 +23,22 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 function(nros_detect_rust_target)
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
         if(CONFIG_64BIT)
-            set(NROS_RUST_TARGET "x86_64-unknown-linux-gnu" PARENT_SCOPE)
+            # native_sim compiles a HOST binary, so its Rust target is whatever
+            # this host is — not a constant. This said
+            # `x86_64-unknown-linux-gnu`, which is the host triple on an x86
+            # machine and a CROSS COMPILE on every other: on aarch64 the build
+            # got as far as compiling Rust dependencies for a target whose std
+            # is not installed and died in `stable_deref_trait`, naming neither
+            # the triple nor native_sim (issue 0582's class, fifth site).
+            #
+            # `nros_host_rust_triple` is the one spelling of this question —
+            # the same helper the ThreadX rustlib lookups use.
+            nros_host_rust_triple(_nros_host_triple)
+            set(NROS_RUST_TARGET "${_nros_host_triple}" PARENT_SCOPE)
         else()
+            # 32-bit native_sim is x86-only in practice; a 32-bit ARM host would
+            # want `armv7-unknown-linux-gnueabihf` here. Left as-is rather than
+            # guessed, since nothing in this repo builds it.
             set(NROS_RUST_TARGET "i686-unknown-linux-gnu" PARENT_SCOPE)
         endif()
     elseif(CONFIG_CPU_CORTEX_M3)
