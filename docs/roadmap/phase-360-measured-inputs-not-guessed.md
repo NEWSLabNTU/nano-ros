@@ -224,12 +224,44 @@ row orch_tiers_multi, edit packages/boards/nros-board-common/src/platform_config
 196 in-repo paths now watched for that row, across `packages/core`,
 `platform`, `api`, `rmw` and `cli` — none of them reachable from `$dir`.
 
-Not covered, and stated rather than implied: `cxx-syntax`, `cmake-configure` and
-`west-*` rows write no cargo dep-info, so their closure is empty and they keep
-today's coverage. Extending means `-MD` for the C++ syntax rows and
-`ninja -t deps` for the cmake ones. Note the `platform_hdr_*` rows are
-`cxx-syntax`, so they are in that set — their inputs are the two public include
-trees, which `sig_paths` already names.
+### Extended to every builder (2026-08-15)
+
+The first cut covered only rows with cargo dep-info. The other builders each
+keep the same record under a different name, so the extractor now reads all
+three:
+
+| source | file | covers |
+| --- | --- | --- |
+| compiler / cargo dep-info | `*.d` (Make syntax) | cargo + `cxx-syntax` rows |
+| CMake configure inputs | `CMakeFiles/Makefile.cmake` | `cmake-configure` rows |
+| Ninja re-configure edge | `build.ninja` `RERUN_CMAKE` | `west-*` rows |
+
+`cxx-syntax` had no dep-info at all, so it now compiles with `-MD -MF` —
+which composes with `-fsyntax-only`: no object is produced, the dep list still
+is. `cmake-configure` rows compile NOTHING, so `CMAKE_MAKEFILE_DEPENDS` is
+their whole dependency set; one row lists 18 in-repo `cmake/NanoRos*.cmake`
+modules, none of which any signature saw before.
+
+```
+row cmake_add_subdir, edit cmake/NanoRosCapabilities.cmake
+  before … edited … restored …      PASS
+row platform_hdr_nuttx (cxx-syntax)
+  closure now names nros-platform-api/include/nros/platform.h — an include
+  root `sig_paths` does not list
+```
+
+**Two defects this found in its own extractor**, both discovered by a closure
+coming back empty when it plainly should not have, and both now asserted by
+`check-source-manifest.sh`:
+
+* a compiler's `-MD` output wraps with backslash continuations while cargo's
+  does not. A per-line parser sees the continuation lines as colon-less and
+  skips them, returning only the FIRST dependency — which hashes perfectly
+  well.
+* a depfile may record paths relative to the compiler's cwd. The extractor
+  accepted only absolute paths, so it dropped the entire list. It now tries the
+  repo root and the depfile's own directory and accepts only a base that
+  actually resolves — guessing one would have re-created the same silent drop.
 
 ## W5 — the zephyr candidate list
 

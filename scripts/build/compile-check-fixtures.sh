@@ -490,7 +490,14 @@ cxx_syntax_check() {
     # missing generated header) does NOT fail build-test-fixtures — it just
     # leaves no `.compile-ok`, so the consuming test reports the gap per tier
     # (hard-fail full / [SKIPPED] light). The compile error is in this log.
-    if "$cxx" -std=c++14 -fsyntax-only "${inc[@]}" "$src"; then
+    # phase-360 W4 — `-MD -MF` so the compiler records which headers it actually
+    # read. Without it these rows had NO measured closure: their signature was
+    # the snippet plus two hand-named include TREES, so a header reached through
+    # a third path (nros-platform-api, the cmake compat shim, or a generated
+    # config header under `target/`) was invisible. `-MD` composes with
+    # `-fsyntax-only` — no object is produced, the dep list still is.
+    rm -f "$staged/deps.d"
+    if "$cxx" -std=c++14 -fsyntax-only -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
         echo "   stamped $staged/.compile-ok"
     else

@@ -93,6 +93,74 @@ grep -q "with space.rs\$" <<< "$closure" \
     && ok "an escaped space is one path, not two" \
     || bad "escaped space truncated the closure"
 
+# Both of these were REAL defects in the first version of the extractor, found
+# only because a row's closure came back empty when it plainly should not have.
+echo "check-source-manifest: dep-info shapes"
+# gcc/clang `-MD` wraps with backslash continuations; cargo does not. A per-line
+# parser sees the continuation lines as colon-less and skips them, returning only
+# the first dependency — an empty-ish closure that hashes just fine.
+printf 'x.o: \\\n %s \\\n %s\n' "$sandbox/leaf/prj.conf" "$sandbox/leaf/memory.x" \
+    > "$sandbox/leaf/target/debug/wrapped.d"
+wrapped="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
+grep -q "leaf/memory.x\$" <<< "$wrapped" \
+    && ok "a backslash-continued depfile yields every dep, not just the first" \
+    || bad "continuation lines were dropped"
+# A depfile may record paths relative to the compiler's cwd rather than absolute.
+printf 'x.o: leaf/prj.conf\n' > "$sandbox/leaf/target/debug/rel.d"
+relout="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
+grep -q "leaf/prj.conf\$" <<< "$relout" \
+    && ok "relative dep paths resolve against the repo root" \
+    || bad "relative dep paths were dropped"
+
+# A depfile lists BUILD OUTPUT as readily as source. Hashing that arms a rebuild
+# on what the build just produced, so the signature never settles — three
+# cxx-syntax rows reported STALE immediately after a successful build until this
+# was fixed. Excluding the row's own build dir is not enough; the tree has other
+# output roots. Git's ignore rules are the answer both halves of a signature use.
+echo "check-source-manifest: build output stays out of the closure"
+printf 'x.o: %s %s\n' "$sandbox/leaf/target/debug/artifact.o" "$sandbox/leaf/prj.conf" \
+    > "$sandbox/leaf/target/debug/out.d"
+outc="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
+grep -q "artifact.o" <<< "$outc" \
+    && bad "a gitignored build artifact entered the closure" \
+    || ok "gitignored output is excluded (signature can settle)"
+grep -q "leaf/prj.conf\$" <<< "$outc" \
+    && ok "tracked sources in the same depfile are kept" \
+    || bad "the ignore filter dropped a tracked source"
+
+# `git check-ignore` REFUSES a path inside a submodule (exit 128) instead of
+# answering, which took the whole extraction down — 17 rows reported "signature
+# failed". Submodule content is tracked source, so it is kept without asking.
+echo "check-source-manifest: submodule paths survive the ignore filter"
+mkdir -p "$sandbox/sub"
+(
+    cd "$sandbox/sub"
+    git init -q .
+    git config user.email t@t.t
+    git config user.name t
+    printf 'int x;\n' > hdr.h
+    git add -A >/dev/null 2>&1
+    git commit -qm sub
+)
+printf '[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n' > "$sandbox/.gitmodules"
+printf 'x.o: %s\n' "$sandbox/sub/hdr.h" > "$sandbox/leaf/target/debug/sub.d"
+subc="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")" \
+    && ok "extraction survives a submodule path" \
+    || bad "extraction failed on a submodule path"
+grep -q "sub/hdr.h\$" <<< "$subc" \
+    && ok "submodule content is kept (it is tracked source)" \
+    || bad "submodule content was dropped"
+rm -f "$sandbox/leaf/target/debug/sub.d"
+
+echo "check-source-manifest: cmake configure inputs"
+mkdir -p "$sandbox/leaf/target/debug/CMakeFiles"
+printf 'set(CMAKE_MAKEFILE_DEPENDS\n  "%s"\n  )\n' "$sandbox/leaf/memory.x" \
+    > "$sandbox/leaf/target/debug/CMakeFiles/Makefile.cmake"
+cm="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
+grep -q "leaf/memory.x\$" <<< "$cm" \
+    && ok "CMAKE_MAKEFILE_DEPENDS is read (configure-only rows have no compile)" \
+    || bad "cmake configure inputs were not picked up"
+
 echo "check-source-manifest: errors are fatal"
 nros_source_manifest "$sandbox" >/dev/null 2>&1 && bad "no-path call should fail" || ok "no-path call fails"
 nros_source_manifest "$tmp/not-a-repo" leaf >/dev/null 2>&1 \
