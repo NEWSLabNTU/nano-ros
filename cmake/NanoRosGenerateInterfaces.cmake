@@ -206,28 +206,35 @@ function(nros_generate_interfaces target)
     endforeach()
   else()
     # Auto-discover: no files specified — search local dirs, ament, bundled
+    # phase-360 W2 — CONFIGURE_DEPENDS on every glob. A plain `file(GLOB)`
+    # runs at CONFIGURE time only, so ADDING an interface file left the
+    # build generating the old set until something unrelated forced a
+    # reconfigure. The generated sources are a function of this list, so a
+    # stale list is a museum artifact — the class phase-360 exists for. The
+    # tree already used CONFIGURE_DEPENDS in 26 other places; these were
+    # missed.
     # 1. Local directories
-    file(GLOB _local_msg "${CMAKE_CURRENT_SOURCE_DIR}/msg/*.msg")
-    file(GLOB _local_srv "${CMAKE_CURRENT_SOURCE_DIR}/srv/*.srv")
-    file(GLOB _local_action "${CMAKE_CURRENT_SOURCE_DIR}/action/*.action")
+    file(GLOB _local_msg CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/msg/*.msg")
+    file(GLOB _local_srv CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/srv/*.srv")
+    file(GLOB _local_action CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/action/*.action")
     list(APPEND _interface_files ${_local_msg} ${_local_srv} ${_local_action})
 
     # 2. Ament index
     if(NOT _interface_files AND DEFINED ENV{AMENT_PREFIX_PATH})
       string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
       foreach(_prefix ${_ament_paths})
-        file(GLOB _ament_msg "${_prefix}/share/${target}/msg/*.msg")
-        file(GLOB _ament_srv "${_prefix}/share/${target}/srv/*.srv")
-        file(GLOB _ament_action "${_prefix}/share/${target}/action/*.action")
+        file(GLOB _ament_msg CONFIGURE_DEPENDS "${_prefix}/share/${target}/msg/*.msg")
+        file(GLOB _ament_srv CONFIGURE_DEPENDS "${_prefix}/share/${target}/srv/*.srv")
+        file(GLOB _ament_action CONFIGURE_DEPENDS "${_prefix}/share/${target}/action/*.action")
         list(APPEND _interface_files ${_ament_msg} ${_ament_srv} ${_ament_action})
       endforeach()
     endif()
 
     # 3. Bundled interfaces
     if(NOT _interface_files)
-      file(GLOB _bundled_msg "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/msg/*.msg")
-      file(GLOB _bundled_srv "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/srv/*.srv")
-      file(GLOB _bundled_action "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/action/*.action")
+      file(GLOB _bundled_msg CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/msg/*.msg")
+      file(GLOB _bundled_srv CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/srv/*.srv")
+      file(GLOB _bundled_action CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/action/*.action")
       list(APPEND _interface_files ${_bundled_msg} ${_bundled_srv} ${_bundled_action})
     endif()
 
@@ -951,7 +958,9 @@ function(nros_workspace_interfaces)
     if(NOT IS_DIRECTORY "${_root}")
       continue()
     endif()
-    file(GLOB _pxs RELATIVE "${_root}" "${_root}/*/package.xml")
+    # phase-360 W2 — a NEW msg package appearing under a scanned root is an
+    # input to this discovery, same as a new `.msg` above.
+    file(GLOB _pxs RELATIVE "${_root}" CONFIGURE_DEPENDS "${_root}/*/package.xml")
     foreach(_pxrel ${_pxs})
       get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
       nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)

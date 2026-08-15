@@ -40,6 +40,18 @@ fn main() {
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
+        // phase-360 W1 — let bindgen report what it ACTUALLY read.
+        // `CargoCallbacks` emits `cargo:rerun-if-changed` for every header the
+        // parse opened, transitively, across every `-I` root added below. The
+        // hand-written watches above cover `wrapper.h` and the include DIRs,
+        // which is a guess: a `rerun-if-changed` on a directory sees its
+        // immediate entries, not a header two levels down, so an RTOS header
+        // could change with these bindings never regenerating.
+        //
+        // Both are kept. bindgen can only report files that EXIST — a header
+        // added later to an `-I` root is invisible to it (ccache documents the
+        // same hole for its direct mode), and the directory watches catch that.
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .use_core()
         .ctypes_prefix("core::ffi")
         .clang_arg(format!("-I{}", nuttx_include.display()))
