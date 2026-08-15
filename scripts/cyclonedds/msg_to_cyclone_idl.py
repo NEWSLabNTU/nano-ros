@@ -53,13 +53,48 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _VENDORED_ROSIDL = _REPO_ROOT / "third-party/ros/rosidl"
 
 
+def _adapter_importable(env: "dict") -> bool:
+    """Can a subprocess actually `import rosidl_adapter` under `env`?
+
+    Asked with the env the adapter will really run under, in a subprocess, so
+    the answer is about the BUILD's interpreter rather than this process's.
+    """
+    try:
+        return (
+            subprocess.run(
+                [sys.executable, "-c", "import rosidl_adapter"],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _adapter_bin_and_env() -> "tuple[Path, dict]":
     env = dict(os.environ)
     if explicit := os.environ.get("NROS_ROSIDL_ADAPTER_BIN_DIR"):
         return Path(explicit), env
     ros = Path("/opt/ros/humble/lib/rosidl_adapter")
-    if ros.is_dir():
+    if ros.is_dir() and _adapter_importable(env):
         return ros, env
+    # The directory existing is a PROXY; being importable is the property.
+    #
+    # `/opt/ros/humble/lib/rosidl_adapter/msg2idl.py` does
+    # `from rosidl_adapter.cli import ...`, which needs ROS's site-packages on
+    # PYTHONPATH — i.e. `setup.bash` sourced INTO THIS BUILD's environment, not
+    # merely into the shell that launched it. On a host with ROS installed but
+    # not sourced through to the nested cmake/ninja invocation, this branch was
+    # taken anyway and every cold cyclonedds build died with
+    #
+    #     ModuleNotFoundError: No module named 'rosidl_adapter'
+    #
+    # while the vendored tree below sat right there, unused, with the
+    # PYTHONPATH injection that would have worked. Falling through to it costs
+    # nothing when ROS is properly sourced, because the check passes then.
     vendored = _VENDORED_ROSIDL / "rosidl_adapter/scripts"
     if vendored.is_dir():
         # Source-tree scripts import rosidl_adapter/_parser/_cli from their
