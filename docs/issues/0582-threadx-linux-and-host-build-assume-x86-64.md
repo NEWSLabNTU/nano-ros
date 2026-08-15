@@ -100,21 +100,41 @@ Two traps here, both hit:
 
 ## Status
 
-Fixed on `main` for: the `.cast::<u8>()` sites, the `c_char` test buffer, the
-two cmake lookups (via one shared `nros_threadx_host_rustlib_bin()` helper), the
-six leaves + two fixture rows, and the ThreadX fork (`NEWSLabNTU/threadx`
-`nros-lp64-ulong`, committed as `b52acd8cf`).
+Fixed on `main`: the `.cast::<u8>()` sites, the `c_char` test buffer, all three
+cmake lookups, the six leaves + two fixture rows, and the ThreadX fork
+(`NEWSLabNTU/threadx` `nros-lp64-ulong`, committed as `b52acd8cf`).
+
+Mechanism 2 is fixed as ONE helper, `nros_host_rustlib_bin()`, placed in the
+cross-RTOS layer (`packages/api/nros-c/cmake/nros-rtos-helpers.cmake`) rather
+than in `nros-threadx.cmake` — because the third caller is a toolchain file,
+which cannot reach an RTOS-specific module. A first pass at this fix put the
+helper in `nros-threadx.cmake` and left the toolchain file alone, which would
+have been the #326 shape exactly: a helper plus a surviving second spelling.
+Including the layer-1 module from a toolchain file is safe — it defines
+functions behind an include sentinel and has no other top-level effect, so the
+re-execution CMake does per `try_compile` costs two `rustc` invocations.
+
+The RISC-V toolchain also no longer falls through when `rust-lld` is absent.
+That silent `if(_RUST_LLD)` skip is *why* the hardcoded triple survived: off
+x86 the lookup returned empty, the block was skipped, and the build degraded to
+GNU ld — which then failed on the very picolibc TLS-`errno` mix the block exists
+to avoid, naming neither rust-lld nor the toolchain file. It is now a
+`FATAL_ERROR` naming the missing tool and the rustup component that ships it.
+
+Verified on this aarch64 host: the helper resolves
+`~/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin`
+and finds both `rust-lld` and `llvm-ar` there — where the hardcoded x86_64 path
+found neither.
 
 ### Not yet fixed
 
-**`cmake/toolchain/riscv64-threadx.cmake:136` is a third site of mechanism 2.**
-It carries the same hardcoded `rustlib/x86_64-unknown-linux-gnu/bin` +
-`NO_DEFAULT_PATH` lookup for `rust-lld`, with the same silent-empty failure. It
-was NOT covered by the helper added to `packages/api/nros-c/cmake/nros-threadx.cmake`,
-because a toolchain file is evaluated before that module is available — so this
-needs either a tiny shared module both can include, or the derivation inlined
-with a comment pointing at the helper. Fixing only the two reported sites and
-leaving this one is precisely the recurrence pattern CLAUDE.md warns about.
+**One failure surfaced by this work, split out as [[0583]].** The ThreadX-Linux
+logging smoke fixture builds, boots, exits 0 and emits no log lines. It is NOT
+attributable to this issue — before these fixes the tree does not link on
+aarch64 at all, so there is no baseline to bisect against — but it was found
+here and shares a plausible mechanism (the force-link class). See
+`0583-threadx-linux-logging-smoke-emits-no-log-lines.md`; note that the
+`+whole-archive`-on-`libglue.a` hypothesis is recorded there as falsified.
 
 **Declared-fact drift (cosmetic, not a build break).** ~20 `system.toml`
 `[deploy.native]` blocks declare `target = "x86_64-unknown-linux-gnu"`. Traced
@@ -151,3 +171,17 @@ rejecting that pattern would have caught all three sites at once, and would
 catch the fourth. Mechanism 3's signature is a tracked `.cargo/config.toml`
 whose `[build] target` equals the host triple — a pin that is always either a
 no-op or a bug.
+
+## Why a diagnosed defect survived a year
+
+`docs/development/audit-findings-2026-07-28.md` line 77 (A1/A4, P2) already
+recorded mechanism 2 — both sites, the `NO_DEFAULT_PATH` consequence, and the
+resulting GNU-ld fallback into the picolibc `errno` failure — a year before this
+issue. It was correct and specific, and nothing acted on it.
+
+The plausible reason is that it was unreproducible for whoever read it: on an
+x86 host every one of these six defects is invisible, so the finding reads as
+theoretical. It became urgent only when someone built on aarch64. Audit findings
+whose blast radius is "another host architecture" have no natural forcing
+function, which argues for turning them into gates at audit time rather than
+filing them as prose — see the checker above.
