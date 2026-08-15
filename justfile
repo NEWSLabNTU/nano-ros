@@ -397,7 +397,7 @@ check-fast: \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
-    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes \
+    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
     check-capability-slot-counts check-kconfig-knob-forwarding \
@@ -1201,6 +1201,13 @@ check-nuttx-shared-tree-headers:
 # buildless: reports NOT CHECKED, exit 0, on a tree with no configured NuttX or
 # no cross compiler, which is why it also runs in the nuttx lane where both
 # exist.
+# phase-360 W3/W4 — self-test for the one source-signature helper: no type
+# filter, build output cannot leak in, deterministic order, dep-info parsed as
+# Make syntax, and failures fatal. Hermetic (throwaway git repo in $TMPDIR).
+[private]
+check-source-manifest:
+    @bash scripts/check-source-manifest.sh
+
 [private]
 check-nuttx-libc-struct-sizes:
     @python3 scripts/check-nuttx-libc-struct-sizes.py

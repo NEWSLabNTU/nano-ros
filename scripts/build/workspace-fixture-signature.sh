@@ -7,6 +7,9 @@ record="${1:?usage: workspace-fixture-signature.sh <manifest-record>}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
+# shellcheck source=scripts/build/source-manifest.sh
+source "$script_dir/source-manifest.sh"
+
 IFS=$'\x1f' read -r id _lang dir bringup _entry _build_subdir _target_dir _codegen_out _defs <<< "$record"
 [ -n "$id" ] && [ -n "$dir" ] || {
     echo "workspace fixture record is missing id/dir" >&2
@@ -67,24 +70,13 @@ workspace="$repo_root/$dir"
     if [ -n "${bringup:-}" ]; then
         printf 'tool:resolve\0%s\0' "$(bash "$repo_root/scripts/build/resolve-fingerprint.sh" 2>/dev/null || echo resolver-error)"
     fi
-    # phase-300 W2.1 — enumerate via the git index instead of walking: the
-    # find-prune list omitted _deps/install/log, so cmake byproducts were
-    # content-hashed into the signature (slow + FALSE STALENESS when a
-    # rebuilt _deps changed the hash with no source change). Tracked files
-    # plus untracked-but-unignored ones (new sources not yet committed)
-    # cover exactly the source set; gitignored build trees can never leak.
+    # phase-360 W3 — ONE spelling, in `source-manifest.sh`, shared with the
+    # compile-check lane. Enumerating through the git index is what makes an
+    # extension filter redundant: gitignored build trees (`_deps`, `install`,
+    # `log`) can never leak in, which is the false-staleness phase-300 W2.1
+    # fixed by moving off a find-based walk. The allowlist that used to sit here
+    # dropped 92 `.conf`, 6 `.msg` and 6 `.x` across these rows — Zephyr Kconfig
+    # overlays, codegen input and `memory.x` linker layout, all build inputs.
     rel_ws="${workspace#$repo_root/}"
-    git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- "$rel_ws" \
-        | while IFS= read -r -d '' relf; do printf '%s/%s\0' "$repo_root" "$relf"; done \
-        | sort -z \
-        | while IFS= read -r -d '' file; do
-            rel="${file#$repo_root/}"
-            case "$rel" in
-                *.c|*.cc|*.cpp|*.h|*.hpp|*.rs|*.toml|*.xml|*.lock|*/CMakeLists.txt|*/package.xml|*.cmake)
-                    printf 'path:%s\0' "$rel"
-                    cat "$file"
-                    printf '\0'
-                    ;;
-            esac
-        done
+    nros_source_manifest "$repo_root" "$rel_ws"
 } | sha256sum | awk '{print $1}'

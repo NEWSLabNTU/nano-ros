@@ -15,6 +15,12 @@ record="${1:?usage: compile-check-signature.sh <manifest-record>}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 
+NROS_REPO_ROOT="$repo_root"
+# shellcheck source=scripts/build/build-root.sh
+source "$script_dir/build-root.sh"
+# shellcheck source=scripts/build/source-manifest.sh
+source "$script_dir/source-manifest.sh"
+
 IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$record"
 [ -n "$id" ] && [ -n "$builder" ] || {
     echo "compile-check record is missing id/builder" >&2
@@ -60,18 +66,27 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
         sig_paths=("$dir")
     fi
 
-    # Enumerate via the git index, not a filesystem walk (phase-300 W2.1): build
-    # byproducts under gitignored trees can never leak into the signature, which
-    # is what made the old find-based walk both slow and falsely stale.
-    git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- "${sig_paths[@]}" 2>/dev/null \
-        | sort -z \
-        | while IFS= read -r -d '' rel; do
-            case "$rel" in
-                *.c|*.cc|*.cpp|*.h|*.hpp|*.rs|*.toml|*.xml|*.yaml|*.lock|*/CMakeLists.txt|*/package.xml|*.cmake)
-                    printf 'path:%s\0' "$rel"
-                    cat "$repo_root/$rel"
-                    printf '\0'
-                    ;;
-            esac
-        done
+    # phase-360 W3 — ONE spelling, in `source-manifest.sh`, shared with the
+    # workspace lane. It enumerates through the git index (so gitignored build
+    # trees can never leak in, which is what made the old find-based walk both
+    # slow and falsely stale) and hashes EVERY file it finds — no extension
+    # allowlist. The allowlist that used to live here dropped 8 `.conf` and 3
+    # `.msg` under these rows, both real build inputs, and had drifted apart
+    # from the workspace lane's copy.
+    nros_source_manifest "$repo_root" "${sig_paths[@]}"
+
+    # phase-360 W4 — plus the closure the build MEASURED. `sig_paths` above is
+    # the row's own dir, and a compile-check row exists to compile AGAINST
+    # workspace crates that are not in it; issue 0466 records the gate staying
+    # silent while `nros-board-common/src/platform_config.rs` changed. Cargo
+    # already wrote that answer as dep-info, so read it instead of guessing.
+    # Empty (and therefore inert) for rows with no cargo dep-info — cxx-syntax,
+    # cmake-configure, west-*.
+    if [ "$builder" = "cmake-configure" ]; then
+        _sig_build_dir="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" "$id")"
+    else
+        _sig_build_dir="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" "$id")"
+    fi
+    printf 'closure\0'
+    nros_dep_closure_manifest "$repo_root" "$_sig_build_dir"
 } | sha256sum | awk '{print $1}'
