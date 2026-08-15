@@ -1989,6 +1989,13 @@ build-test-fixtures lane="all": _require-build-sources _clear-fixture-stamp gene
     # makes the trustworthy reading visible, so drift shows up as a moving
     # number in build logs instead of surfacing days later on a stale tree.
     bash scripts/check-artifact-identity-budget.sh || true
+    # issue 0616 — the archives exist now, so ask them whether any image ships
+    # two allocators. This is the check `check-feature-contract` clause (e)
+    # cannot make: it counts DEFINITIONS IN SOURCE (exactly one, always), while
+    # the invariant is per LINKED ARTIFACT and there are four staticlib roots.
+    # Hard failure, not `|| true`: a duplicate lang item is a broken image, not
+    # a drifting number.
+    bash scripts/check-archive-lang-items.sh
 
 # phase-319 W1 (issue 0351) — clear the stamp BEFORE building, so a failed or
 # interrupted run leaves none and `_require-fixtures` fails with its build hint
@@ -3836,6 +3843,21 @@ check-path-env-fingerprints:
 # pristine per-push CI checkout there is no tree and this gate SKIPS (loudly,
 # naming the build command); its live coverage is the developer who just built
 # fixtures and then ran the tier their change earned.
+# issue 0616 — at most ONE Rust archive per image defines the allocator.
+#
+# The companion to `check-feature-contract` clause (e), which counts
+# `#[global_allocator]` DEFINITIONS IN SOURCE — there is exactly one, and there
+# always will be. `packages/` has four `crate-type = ["staticlib"]` roots, each
+# of which BAKES that one definition into its own `.a`; linking two gives an
+# image two allocators while the source still has one. Source counting cannot
+# see that, so this asks the artifacts.
+#
+# Needs built output, so it belongs with the lanes that produce it rather than
+# in `check-fast`.
+[private]
+check-archive-lang-items:
+    @bash scripts/check-archive-lang-items.sh
+
 [private]
 check-artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh
