@@ -161,14 +161,16 @@ error through #0436's `eprintln!("nros: NodeError::…")` — `x/s buf` in the b
 around by gating that one site on `not(feature = "platform-zephyr")`; 5 more `std::eprintln!` sites in
 `nros-cpp` are the same landmine. See `0589-*`. (2026-08-15)
 
-**#586** (api-cpp, open 2026-08-15) — the C++ FFI throws away the backend error at 15 call sites
-(`Err(_) => NROS_CPP_RET_TRANSPORT_ERROR` in `publisher.rs` 3, `subscription.rs` 5, `service.rs` 7), so a
-C/C++ caller sees "transport error" for a too-long name, a too-small buffer, an in-flight slot or an
-unimplemented op — and on a guest the return code is often the only thing that reaches the console. #0436
-fixed exactly this for `nros_cpp_init` (mapper + `eprintln!` naming the variant); #0557 fixed the action-server
-site and showed the class is still live. NOT swept blind: the fifteen have DIFFERENT error types
-(`create_publisher`, `commit_slot`, `send_request_raw`, …), so one mapper for all of them would be a
-wrong-and-varied answer replacing a wrong-but-uniform one. See `0586-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#586** — the C++ FFI discarded the backend error at 15 sites
+(`Err(_) => NROS_CPP_RET_TRANSPORT_ERROR`), so a caller saw "transport error" for a too-long name, a
+too-small buffer, an unsupported op or an incompatible QoS — and on a guest the return code is often all that
+reaches the console (#0589 makes printing fatal on Zephyr native_sim). Types came from the COMPILER, not from
+reading call chains: `Err(e) => { let _: () = e; … }` makes rustc name all 15 at once, including 4 behind
+`lending`/`safety-e2e` that a default build never reaches — 5 `NodeError`, 10 `TransportError`. New
+`transport_error_to_cpp_ret` sibling; both mappers now EXHAUSTIVE (no `_`, rustc enforces), so a new variant
+fails to compile until someone maps it. Gate `check-cpp-ffi-error-mapping` matches only the discard into the
+catch-all — its first version flagged 43 sites, most correct, which would have taught people to ignore it.
+See `archived/0586-*`. (2026-08-15)
 
 Recently resolved (2026-08-15): **#583** — the nuttx-arm Rust realtime boot tier "stopped scheduling" after
 spawning. Not scheduling and not nano-ros code: the image linked a `std` built 2026-08-10 against crates.io

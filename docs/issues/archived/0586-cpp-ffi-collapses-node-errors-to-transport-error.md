@@ -2,7 +2,7 @@
 id: 586
 title: "The C++ FFI discards 15 backend errors and returns `-100 TRANSPORT_ERROR`
   for causes that are not transport"
-status: open
+status: resolved
 type: tech-debt
 area: api-cpp
 related: [issue-0436, issue-0557, issue-0428, phase-358]
@@ -62,3 +62,47 @@ signature would replace a wrong-but-uniform answer with a wrong-and-varied one.
 
 Issue 0436 fixed this for `nros_cpp_init` and named the class in its comment;
 issue 0557 is the case that showed the class was still live everywhere else.
+
+
+## RESOLVED 2026-08-15
+
+All fifteen sites map their error now. The types came from the compiler rather
+than from reading each call chain: replacing every `Err(_)` with
+`Err(e) => { let _: () = e; … }` and compiling makes rustc name all fifteen at
+once, including the four behind `lending` / `safety-e2e` features that a default
+build never reaches.
+
+    NodeError       (5)  service.rs 258, 622; subscription.rs 243, 343, 458
+    TransportError (10)  publisher.rs 124, 255, 282; service.rs 146, 452, 675,
+                         697, 734; subscription.rs 122, 694
+
+`NodeError` sites go through the existing `node_error_to_cpp_ret`.
+`TransportError` sites go through a new sibling, `transport_error_to_cpp_ret`,
+which also replaces the inline `match` that `node_error_to_cpp_ret` used to carry
+for its `Transport(t)` arm — so there is ONE mapping per error type, in one
+place.
+
+Both mappers are exhaustive: no `_` arm, which rustc enforces by rejecting an
+unreachable one. Adding a variant to either enum now fails to compile until
+someone decides what a C++ caller should see, instead of silently joining the
+`-100` pile. That is the property worth having; the fifteen call sites were only
+the symptom.
+
+`TRANSPORT_ERROR` is kept for what it names: connection, peer, wire, and a
+backend-specific string this layer cannot interpret. Entity-creation failures map
+to `PUBLISH_FAILED` / `SUBSCRIPTION_FAILED` / `SERVICE_FAILED`, capacity to
+`FULL`, `WouldBlock`/`NoData` to `TRY_AGAIN`, `IncompatibleQos` to `NOT_ALLOWED`,
+`Unsupported`/`LoanNotSupported` to `UNSUPPORTED`, and so on.
+
+### Gate
+
+`scripts/check-cpp-ffi-error-mapping.py`, wired into the fast checks. It rejects
+`Err(_) => …TRANSPORT_ERROR` and a `_` arm in either mapper. Self-tested in both
+directions before landing.
+
+Scope was corrected during that self-test. The first version matched every
+`Err(_) => <any code>` and reported 43 sites — most of them correct, e.g.
+`Err(_) => NROS_CPP_RET_FULL` on a timer arena, where "full" is the whole truth
+and the error carries nothing more. A gate that flags correct code teaches people
+to ignore it. It now matches only the discard into the catch-all, which is the
+one return value that asserts "we did not look".

@@ -143,7 +143,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 
@@ -449,7 +449,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -619,7 +619,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 
@@ -672,7 +672,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
             entry.handle.register_waker(&waker);
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -694,7 +694,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
     match client.send_request_raw(req_slice) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -731,7 +731,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
             }
             NROS_CPP_RET_TRY_AGAIN
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 

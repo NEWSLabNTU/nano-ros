@@ -415,7 +415,7 @@ check-fast: \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-board-facts-delivery \
-    check-opaque-storage-guards \
+    check-opaque-storage-guards check-cpp-ffi-error-mapping \
     check-workspace-order \
     check-atomic-sync-writes \
     check-test-domain-assignment \
@@ -1220,6 +1220,14 @@ check-source-manifest:
 [private]
 check-nuttx-libc-struct-sizes:
     @python3 scripts/check-nuttx-libc-struct-sizes.py
+
+# Issue 0586 — the C++ FFI must not discard a backend error in favour of
+# `-100 TRANSPORT_ERROR`, the code its own source documents as the catch-all for
+# UNMAPPED variants. Also holds the two mappers exhaustive, so a NEW variant
+# fails to compile until someone maps it (issue 0557 is what the collapse cost).
+[private]
+check-cpp-ffi-error-mapping:
+    @python3 scripts/check-cpp-ffi-error-mapping.py
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
 # The Rust->C mirror of `check-abi-bindings`, which has guarded the C->Rust

@@ -696,12 +696,65 @@ pub unsafe extern "C" fn nros_cpp_init(
     }
 }
 
+/// issue 0586 — map `TransportError` to the closest `NROS_CPP_RET_*` code.
+///
+/// The sibling of [`node_error_to_cpp_ret`], and the reason that one no longer
+/// carries an inline `match` with a `_` arm. Ten call sites across
+/// `publisher.rs` / `subscription.rs` / `service.rs` used to write
+/// `Err(_) => NROS_CPP_RET_TRANSPORT_ERROR`, so a C++ caller was told "transport
+/// error" for an unsupported operation, a bad argument, an incompatible QoS or a
+/// failed allocation. `-100` is documented as the catch-all for UNMAPPED
+/// variants; it should not be the answer for variants that map perfectly well.
+///
+/// NO wildcard, deliberately — see [`node_error_to_cpp_ret`]. Adding a
+/// `TransportError` variant fails to compile here until someone decides what the
+/// C++ caller should see.
+///
+/// `TRANSPORT_ERROR` is kept for the cases that genuinely ARE the transport:
+/// the connection, the peer, the wire, and a backend-specific string this layer
+/// cannot interpret.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_cpp_ret_t {
+    use nros_rmw::TransportError as T;
+    match err {
+        // Genuinely transport.
+        T::ConnectionFailed | T::Disconnected | T::PublishFailed => NROS_CPP_RET_TRANSPORT_ERROR,
+        T::KeepaliveFailed | T::PollFailed | T::JoinFailed => NROS_CPP_RET_TRANSPORT_ERROR,
+        T::IncompatibleAbi | T::Backend(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        #[cfg(feature = "alloc")]
+        T::BackendDynamic(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+
+        // Entity creation — the C++ surface has codes for these.
+        T::PublisherCreationFailed => NROS_CPP_RET_PUBLISH_FAILED,
+        T::SubscriberCreationFailed => NROS_CPP_RET_SUBSCRIPTION_FAILED,
+        T::ServiceServerCreationFailed | T::ServiceClientCreationFailed => {
+            NROS_CPP_RET_SERVICE_FAILED
+        }
+        T::ServiceRequestFailed | T::ServiceReplyFailed => NROS_CPP_RET_SERVICE_FAILED,
+
+        // Payload / capacity.
+        T::SerializationError | T::DeserializationError => NROS_CPP_RET_ERROR,
+        T::BufferTooSmall | T::MessageTooLarge | T::TooLarge | T::BadAlloc => NROS_CPP_RET_FULL,
+
+        // Timing.
+        T::Timeout => NROS_CPP_RET_TIMEOUT,
+        T::WouldBlock | T::NoData => NROS_CPP_RET_TRY_AGAIN,
+
+        // Caller / configuration.
+        T::InvalidConfig | T::InvalidArgument => NROS_CPP_RET_INVALID_ARGUMENT,
+        T::TopicNameInvalid => NROS_CPP_RET_INVALID_ARGUMENT,
+        T::NodeNameNonExistent => NROS_CPP_RET_NOT_FOUND,
+        T::IncompatibleQos => NROS_CPP_RET_NOT_ALLOWED,
+        T::Unsupported | T::LoanNotSupported => NROS_CPP_RET_UNSUPPORTED,
+        T::TaskStartFailed => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Phase 155.C — map `NodeError` to the closest `NROS_CPP_RET_*` code.
 /// Unknown variants stay TRANSPORT_ERROR (-100) — the legacy catch-all.
 #[cfg(feature = "rmw-cffi")]
 pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
     use nros_node::NodeError as E;
-    use nros_rmw::TransportError as T;
     // Issue 0436 — `-100` is documented as the catch-all for unmapped variants, so
     // a C++ caller sees "TransportError" for causes that are not transport at all.
     // That collapse is what made the PX4 bridge's init failure undiagnosable (the
@@ -728,13 +781,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         E::Timeout => NROS_CPP_RET_TIMEOUT,
         E::NotInitialized => NROS_CPP_RET_NOT_INIT,
         E::RequestInFlight => NROS_CPP_RET_REENTRANT,
-        E::Transport(t) => match t {
-            T::ConnectionFailed | T::Disconnected => NROS_CPP_RET_TRANSPORT_ERROR,
-            T::Timeout | T::WouldBlock => NROS_CPP_RET_TIMEOUT,
-            T::InvalidConfig => NROS_CPP_RET_INVALID_ARGUMENT,
-            T::BufferTooSmall | T::MessageTooLarge | T::TooLarge => NROS_CPP_RET_FULL,
-            _ => NROS_CPP_RET_TRANSPORT_ERROR,
-        },
+        E::Transport(t) => transport_error_to_cpp_ret(t),
         // issue 0557 / phase-358 W5 — these eight used to fall into the `_` arm
         // below and come out as `-100 TRANSPORT_ERROR`, which is how a Zephyr
         // Cyclone C action image reported "transport error" for a failure that

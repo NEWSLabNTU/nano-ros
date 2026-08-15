@@ -10,8 +10,8 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{Publisher as PublisherTrait, Session, TopicInfo};
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Create a publisher on a node.
@@ -121,7 +121,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_loan(
             NROS_CPP_RET_OK
         }
         Ok(None) => crate::NROS_CPP_RET_TRY_AGAIN,
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
     slot.set_len(actual_len);
     match publisher.commit_slot(*slot) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 

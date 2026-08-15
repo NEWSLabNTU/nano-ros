@@ -11,8 +11,7 @@ use nros_rmw::{Session, Subscription as SubscriberTrait, TopicInfo, TransportErr
 
 use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_OK, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
-    nros_cpp_ret_t,
+    NROS_CPP_RET_OK, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Create a subscription on a node.
@@ -119,7 +118,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -240,7 +239,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 
@@ -340,7 +339,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 
@@ -455,7 +454,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
             }
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 
@@ -691,7 +690,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_borrow(
             len as i32
         }
         Ok(None) => 0,
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
