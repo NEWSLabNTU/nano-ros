@@ -64,7 +64,12 @@ fn roles(
     match (lang, workload) {
         (ML::Rust, MW::Service) => (
             "service-server",
-            "add_two_ints_server",
+            // The BINARY, not the ROS node. `add_two_ints_server` is the
+            // example's `[package.metadata.nros.node] name`, and no binary has
+            // ever carried it — the cell asked the fixture resolver for a file
+            // that cannot exist. Its Rust ACTION sibling below already spells
+            // this correctly (dir and bin are the same string).
+            "service-server",
             "service-client",
             "service-client",
             "Waiting for service",
