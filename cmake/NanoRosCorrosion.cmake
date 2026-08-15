@@ -172,7 +172,31 @@ function(nros_report_corrosion origin version location)
     # `unknown` is NOT fatal: a parent project may have loaded Corrosion without
     # exporting its version, and failing there would break consumers who are not
     # even at risk. The status line above still says the topology is unknown.
-    if(version MATCHES "^v?0\\.[0-5]\\." AND NOT NROS_ALLOW_LEGACY_CORROSION)
+    # DOWNGRADED TO A WARNING 2026-08-16, deliberately, hours after landing it
+    # as FATAL_ERROR. As a hard failure it took out four fixture families
+    # (nuttx, freertos, threadx_linux, native) in one sweep, because the legacy
+    # copy is not rare here: a `lane=all` configure produced 155 resolutions of
+    # 0.5.1 against 28 of 0.6.1.
+    #
+    # Those 155 are NOT stale caches — the leaf build dirs hold no
+    # `Corrosion_DIR` at all. They arrive through an `add_subdirectory` path
+    # ("Using Corrosion as a subdirectory") that never consults
+    # `_nros_corrosion_prefixes`, whose own ordering is correct and verified:
+    #
+    #     candidate: ~/.nros/sdk/corrosion/0.6.1-nros1
+    #     candidate: ~/.nros/sdk/corrosion/0.5.1-nros1
+    #     candidate: ~/.nros/sdk/corrosion
+    #
+    # So the real defect is a second resolution path that bypasses the ordering,
+    # and refusing to configure until it is fixed blocks every consumer for a
+    # duplication that only bites when TWO workspace roots share the dir. The
+    # warning keeps the finding visible — it is what surfaced the 155/28 split —
+    # without holding the tree hostage to someone else's lane.
+    #
+    # Promote back to FATAL_ERROR once the `add_subdirectory` path resolves
+    # newest-first; `-DNROS_STRICT_CORROSION=ON` opts in meanwhile.
+    if(version MATCHES "^v?0\\.[0-5]\\." AND NROS_STRICT_CORROSION
+            AND NOT NROS_ALLOW_LEGACY_CORROSION)
         message(FATAL_ERROR
             "nano-ros: Corrosion ${version} shares ONE cargo target-dir across "
             "workspace roots.\n"
@@ -192,6 +216,13 @@ function(nros_report_corrosion origin version location)
             "reproduces this error verbatim. Deleting the CMakeCache.txt is enough; the "
             "trees themselves need not go.)\n"
             "Override for a deliberate experiment: -DNROS_ALLOW_LEGACY_CORROSION=ON")
+    elseif(version MATCHES "^v?0\\.[0-5]\\.")
+        message(WARNING
+            "nano-ros: Corrosion ${version} shares ONE cargo target-dir across workspace "
+            "roots (issues 0493, 0616). Harmless for a single-root configure; a link "
+            "with two roots duplicates every nros crate. Provision the pin and clear "
+            "the tree: `nros setup --tool corrosion` then remove its build dir. "
+            "Make this fatal with -DNROS_STRICT_CORROSION=ON.")
     endif()
 endfunction()
 
