@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-15). W0, W1 and W2 landed; W3–W10 not started.** The campaign
+**Status (2026-08-15). W0, W1, W2 landed; W3 mostly landed; W4–W10 not started.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -58,12 +58,12 @@ current Cyclone — to a full-timeout `drive_io` is deliberate, phase-127.C.4.)
 
 ## Baseline
 
-**242** `cfg` mentions of the `std` feature and **421** `std::` paths, nine
-crates (current, i.e. after W2):
+**238** `cfg` mentions of the `std` feature and **400** `std::` paths, nine
+crates (current, i.e. after W3):
 
 | crate | cfg | `std::` |
 | --- | --- | --- |
-| `nros-node` | 131 | 342 |
+| `nros-node` | 127 | 321 |
 | `nros` | 66 | 20 |
 | `nros-c` | 13 | 9 |
 | `nros-params` | 13 | 18 |
@@ -145,17 +145,42 @@ version**, and they move to the work items that actually own them:
 `WakeCtx::node_wake` was retyped to the portable Arc so the one shared field
 has one type across both structs.
 
-### W3 — public API conversion (BREAKING — schedule early)
+### W3 — public API conversion — **MOSTLY DONE 2026-08-15**
 
-Five methods leak `std` types, and every native consumer touches two of them:
+Converted:
 
 ```rust
-spin_period(std::time::Duration)        -> core::time::Duration      mechanical
-halt_flag()   -> std::sync::Arc<..>     -> portable_atomic_util::Arc mechanical
-wake_handle() -> std::sync::Arc<..>     -> portable_atomic_util::Arc mechanical
-signal_fd()   -> std::io::Result<c_int>    needs a decision
-join()        -> std::thread::Result<()>   needs a decision
+spin_period(std::time::Duration)  -> core::time::Duration
+halt_flag()   -> portable_atomic_util::Arc<portable_atomic::AtomicBool>
+wake_handle() -> portable_atomic_util::Arc<portable_atomic::AtomicBool>
 ```
+
+`spin_period` was not a change of type at all — `std::time::Duration` IS
+`core::time::Duration`, re-exported. Only the spelling moved.
+
+The point of doing this before W4–W6 was to unblock a W2 pair, and it did:
+`wake_flag` / `wake_flag_alloc` are now ONE field (the public `wake_handle()`
+handing out a `std::sync::Arc` is exactly what pinned them apart). `WakeCtx`'s
+`flag` and both `ThreadHandle::halt` fields follow the same type.
+
+`nros-node` cfg 131 -> 127, path 342 -> 321.
+
+**This doc claimed "every native consumer touches `halt_flag`/`wake_handle`".
+That was wrong.** Neither has a single caller outside `nros-node` — the only
+tracked mentions are its own source, its own tests, and prose in docs. The
+in-repo break is therefore nil; the semver break for out-of-tree users is real
+but the crate is 0.5.0.
+
+Two deferred, each to the item that actually owns it rather than forced through
+here:
+
+* `signal_fd() -> std::io::Result<c_int>` -> **W6**. The signature is not the
+  problem: `WakeSignalFd::new` is itself `std::io`-based, so changing the return
+  type while the implementation stays `io::Error` buys nothing. It is triple
+  gated (`signal-fd-wake` + `rmw-cffi` + `target_os = "linux"`).
+* `join() -> std::thread::Result<()>` -> **W5**. It belongs to `ThreadHandle`,
+  which wraps a `std::thread::JoinHandle` and is `#[cfg(feature = "std")]`
+  throughout. That is not an API-spelling change, it is the threading work item.
 
 ### W4 — one spelling of "what time is it"
 

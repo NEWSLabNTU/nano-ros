@@ -632,7 +632,7 @@ mod group_filter_tests {
 /// the callback decodes back to `&WakeCtx`.
 #[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub(crate) struct WakeCtx {
-    pub(crate) flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub(crate) flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     pub(crate) cv: std::sync::Arc<std::sync::Condvar>,
     #[allow(dead_code)] // Held by spin_once's wait predicate (124.B.4).
     pub(crate) mu: std::sync::Arc<std::sync::Mutex<()>>,
@@ -1152,7 +1152,11 @@ pub struct Executor<'s> {
     pub(crate) primary_rmw_name: heapless::String<32>,
     pub(crate) primary_locator: heapless::String<128>,
     #[cfg(feature = "std")]
-    pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    // phase-359 W3 — `portable_atomic_util::Arc`, not `std::sync::Arc`. Same
+    // atomically-refcounted pointer, available without `std`, and it compiles on
+    // std too. The public `halt_flag()` returns it, which is why this could not
+    // move in W2.
+    pub(crate) halt_flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// Phase 104.C.6 — shared executor wake flag. Any source of work
     /// (foreign thread handing off a callback, signal handler, future
     /// per-session vtable wake hook) sets this; `spin_once` swaps it to
@@ -1160,8 +1164,12 @@ pub struct Executor<'s> {
     /// a 0-ms timeout instead of blocking. Lets one notification wake
     /// the executor regardless of which session the user is currently
     /// blocked on (the multi-RMW bridge case).
-    #[cfg(feature = "std")]
-    pub(crate) wake_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    // phase-359 W3 — ONE wake flag, both flavours. W2 had to leave this pair
+    // alone because `wake_handle()` hands it out as a `std::sync::Arc`;
+    // converting that signature is what lets the two collapse. Gated on
+    // `alloc` (which `std` implies) because the Arc needs an allocator.
+    #[cfg(feature = "alloc")]
+    pub(crate) wake_flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// Phase 124.B.2 — wake condvar paired with `wake_flag`. The
     /// runtime-supplied wake callback (`nros_rmw_runtime_wake_cb` in
     /// nros-rmw-cffi) writes `wake_flag = true` AND signals
@@ -1212,7 +1220,7 @@ pub struct Executor<'s> {
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub(crate) wake_ctx: Option<std::sync::Arc<WakeCtx>>,
     // Phase 141.A.3 — alloc-mode (no_std RTOS) mirror of the wake
-    // state above. Same semantics: `wake_flag_alloc` is set SeqCst
+    // state above. Same semantics: `wake_flag` is set SeqCst
     // by the runtime cb + cleared by spin_once on entry;
     // `node_wake` is the kernel-native binary semaphore
     // (lifted to alloc cfg in e36ee8cf) the cb signals;
@@ -1223,8 +1231,6 @@ pub struct Executor<'s> {
     // Drives the no_std spin_once wait branch to block on
     // `node_wake.wait_ms(deadline)` instead of relying on
     // `drive_io`'s transport-blocking recv for the full timeout.
-    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-    pub(crate) wake_flag_alloc: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
     pub(crate) wake_ctx_alloc: Option<portable_atomic_util::Arc<super::wake_alloc::WakeCtxAlloc>>,
     /// Phase 124.B.7.c — lazily-allocated POSIX signalfd worker.
@@ -1359,9 +1365,9 @@ impl<'s> Executor<'s> {
                 ns
             },
             #[cfg(feature = "std")]
-            halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            #[cfg(feature = "std")]
-            wake_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            halt_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
+            #[cfg(feature = "alloc")]
+            wake_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(feature = "std")]
             wake_cv: std::sync::Arc::new(std::sync::Condvar::new()),
             #[cfg(feature = "std")]
@@ -1378,10 +1384,6 @@ impl<'s> Executor<'s> {
             // alloc inside spin_once. `None` when the platform
             // provider reports the primitive unavailable (matches
             // the std-RTOS path's `node_wake: Option<...>`).
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(
-                false,
-            )),
             #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
             wake_ctx_alloc: None,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
@@ -2572,7 +2574,7 @@ impl<'s> Executor<'s> {
     fn wake_ctx_ptr(&mut self) -> *mut core::ffi::c_void {
         if self.wake_ctx.is_none() {
             self.wake_ctx = Some(std::sync::Arc::new(WakeCtx {
-                flag: std::sync::Arc::clone(&self.wake_flag),
+                flag: self.wake_flag.clone(),
                 cv: std::sync::Arc::clone(&self.wake_cv),
                 mu: std::sync::Arc::clone(&self.wake_mu),
                 node_wake: self.node_wake.clone(),
@@ -2598,7 +2600,7 @@ impl<'s> Executor<'s> {
         if self.wake_ctx_alloc.is_none() {
             self.wake_ctx_alloc = Some(portable_atomic_util::Arc::new(
                 super::wake_alloc::WakeCtxAlloc {
-                    flag: portable_atomic_util::Arc::clone(&self.wake_flag_alloc),
+                    flag: portable_atomic_util::Arc::clone(&self.wake_flag),
                     node_wake: portable_atomic_util::Arc::clone(node_wake),
                 },
             ));
@@ -5195,7 +5197,7 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
         let primary_drive_timeout_ms = {
             let was_woken_alloc = self
-                .wake_flag_alloc
+                .wake_flag
                 .swap(false, portable_atomic::Ordering::SeqCst);
             if !was_woken_alloc
                 && self.has_async_wake
@@ -5204,7 +5206,7 @@ impl<'s> Executor<'s> {
                 let _ = wake.wait_ms(timeout_ms as u32);
                 // Drain any flag the cb set while we were waiting.
                 let _ = self
-                    .wake_flag_alloc
+                    .wake_flag
                     .swap(false, portable_atomic::Ordering::SeqCst);
                 0
             } else {
@@ -6554,7 +6556,7 @@ impl<'s> Executor<'s> {
     /// // 100Hz control loop — blocks until halt() is called
     /// executor.spin_period(std::time::Duration::from_millis(10))?;
     /// ```
-    pub fn spin_period(&mut self, period: std::time::Duration) -> Result<(), NodeError> {
+    pub fn spin_period(&mut self, period: core::time::Duration) -> Result<(), NodeError> {
         self.halt_flag
             .store(false, std::sync::atomic::Ordering::SeqCst);
         let mut next_invocation = std::time::Instant::now() + period;
@@ -6633,7 +6635,7 @@ impl<'s> Executor<'s> {
         // the `alloc` convenience constructors or a program-lifetime region).
         's: 'static,
     {
-        let halt = std::sync::Arc::clone(&self.halt_flag);
+        let halt = self.halt_flag.clone();
         // SAFETY: Send is asserted via `unsafe impl Send for Executor`
         // below; the caller's safety contract on `from_session_ptr`
         // covers the pointer-validity invariant.
@@ -6671,7 +6673,7 @@ impl<'s> Executor<'s> {
     /// });
     /// executor.spin_blocking(SpinOptions::default())?;
     /// ```
-    pub fn halt_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+    pub fn halt_flag(&self) -> portable_atomic_util::Arc<portable_atomic::AtomicBool> {
         self.halt_flag.clone()
     }
 
@@ -6703,7 +6705,7 @@ impl<'s> Executor<'s> {
     /// });
     /// loop { executor.spin_once(Duration::from_millis(100)); }
     /// ```
-    pub fn wake_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+    pub fn wake_handle(&self) -> portable_atomic_util::Arc<portable_atomic::AtomicBool> {
         self.wake_flag.clone()
     }
 }
@@ -6758,7 +6760,7 @@ impl Drop for OpaqueTimerHandle {
 #[cfg(feature = "std")]
 pub struct ThreadHandle {
     join: Option<std::thread::JoinHandle<()>>,
-    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    halt: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
 }
 
 #[cfg(feature = "std")]
@@ -6810,7 +6812,7 @@ unsafe impl<'s> Send for Executor<'s> {}
 #[cfg(all(feature = "std", feature = "scheduler-os-priority"))]
 pub(crate) struct OsPriorityWorker {
     sender: std::sync::mpsc::Sender<WorkItem>,
-    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    halt: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     join: Option<std::thread::JoinHandle<()>>,
 }
 

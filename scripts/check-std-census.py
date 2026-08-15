@@ -74,8 +74,9 @@ EXCLUDE = {"nros-macros", "nros-orchestration-ir"}
 CFG_FEATURE_RE = re.compile(r'feature\s*=\s*"std"')
 PATH_RE = re.compile(r'\bstd::')
 
-# phase-359 baseline. W0 measured it; W2 lowered `nros-node` (cfg 139 -> 131,
-# path 346 -> 342) and the corrected cfg metric re-measured everything.
+# phase-359 baseline. W0 measured it; the corrected cfg metric re-measured
+# everything; W2 lowered `nros-node` cfg 139 -> 131 / path 346 -> 342, and W3
+# lowered it again to cfg 127 / path 321.
 # Lower these as work items land; the gate rejects any increase.
 BASELINE = {
     "nros": {"cfg": 66, "path": 20},
@@ -83,7 +84,7 @@ BASELINE = {
     "nros-core": {"cfg": 8, "path": 6},
     "nros-cpp": {"cfg": 8, "path": 26},
     "nros-log": {"cfg": 1, "path": 0},
-    "nros-node": {"cfg": 131, "path": 342},
+    "nros-node": {"cfg": 127, "path": 321},
     "nros-params": {"cfg": 13, "path": 18},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
