@@ -1105,6 +1105,10 @@ pub(crate) fn source_dir_is_stale(
     lang: Option<&str>,
     rmw: Option<&str>,
     conf_files: Option<&str>,
+    // phase-363 W5 — extra candidates the BUILD recorded (ninja's RERUN_CMAKE
+    // edge), which no hand list can reach: the shared `cmake/NanoRos*.cmake`
+    // modules and the entry template the generated TU comes from.
+    extra: &[std::path::PathBuf],
 ) -> bool {
     let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
         // Can't stat the binary — assume stale so we rebuild and get a
@@ -1172,6 +1176,7 @@ pub(crate) fn source_dir_is_stale(
             candidates.push(example_dir.join(conf_file));
         }
     }
+    candidates.extend(extra.iter().cloned());
     // #147 / phase-286 W2 — content-aware staleness. A pure mtime compare
     // (`path_newer_than`) cannot tell a real edit from an mtime bump that left
     // the bytes identical (a rebase/checkout/pull "mtime treadmill", or an edit

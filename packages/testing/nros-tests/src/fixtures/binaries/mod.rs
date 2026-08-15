@@ -680,6 +680,52 @@ fn dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 // one arm was already exempting, so those cells stopped running and issue 0444
 // hid behind them for as long as it lasted.
 
+/// phase-363 W5 — the CONFIGURE inputs the Zephyr build itself recorded.
+///
+/// The leaf's candidate list cannot reach what west/cmake read to CONFIGURE the
+/// image, and that set is neither small nor inert: measured on
+/// `build-c-talker-cyclonedds`, ninja records 3291 in-repo configure inputs,
+/// among them
+///
+///   * `cmake/NanoRos*.cmake` — the shared modules; an edit changes every image;
+///   * `cmake/templates/zephyr_entry_main_c_typed.cpp.in` — the template that
+///     GENERATES the entry TU;
+///   * `cmake/zephyr/native-sim-line-3.7.conf`, `cmake/compat/stubs/*`.
+///
+/// A hand list cannot enumerate those without becoming a second copy of the
+/// build graph, which is the guessing this phase exists to retire.
+///
+/// Returns PATHS for the content-aware check, deliberately NOT an mtime verdict.
+/// The first cut compared mtimes here and reported every image stale, because at
+/// 3291 files any `just format` or pull touches something — the treadmill #147
+/// exists to avoid. A measured input set still needs a content comparison; the
+/// two halves of "was this built from what is on disk" are independent.
+///
+/// Paths under the build root are skipped: they are this build's own output.
+fn ninja_configure_deps(build_root: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(build_root.join("build.ninja")) else {
+        return Vec::new();
+    };
+    // `$` continues a line in ninja syntax; the edge is one logical line.
+    let unfolded = text.replace("$\n", " ");
+    let Some(line) = unfolded
+        .lines()
+        .find(|l| l.starts_with("build build.ninja:"))
+    else {
+        return Vec::new();
+    };
+    let Some((_, deps)) = line.split_once('|') else {
+        return Vec::new();
+    };
+    let root = crate::project_root();
+    deps.split_whitespace()
+        .map(Path::new)
+        .filter(|p| p.is_absolute() && p.starts_with(&root) && !p.starts_with(build_root))
+        .filter(|p| p.is_file())
+        .map(|p| p.to_path_buf())
+        .collect()
+}
+
 /// Return the first dependency listed in a make-style `.d` dep-info file whose
 /// mtime is newer than `reference`. Shared by the direct-cargo probe
 /// ([`dep_info_newer_source`], `.d` next to the binary) and the Zephyr probe
@@ -1212,6 +1258,14 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
         ));
     }
 
+    // phase-363 W5 — the configure inputs the build recorded, handed to the
+    // content-aware check below rather than judged on mtime here.
+    let configure_inputs = zephyr_exe
+        .parent()
+        .and_then(Path::parent)
+        .map(ninja_configure_deps)
+        .unwrap_or_default();
+
     // Half 2 — issue 0466. The leaf's own AUTHORED sources: `prj.conf`, the
     // board overlays, `CMakeLists.txt`, `src/`, plus the shared core and RMW
     // crates. Half 1 sees none of them: measured on `build-ws-rs-qos-entry-zenoh`,
@@ -1234,7 +1288,14 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
             src.dir
         )));
     }
-    if crate::zephyr::source_dir_is_stale(&resolved, &src_dir, src.lang, src.rmw, src.conf_files) {
+    if crate::zephyr::source_dir_is_stale(
+        &resolved,
+        &src_dir,
+        src.lang,
+        src.rmw,
+        src.conf_files,
+        &configure_inputs,
+    ) {
         return Err(staleness::stale_error(
             "Zephyr fixture",
             zephyr_exe,

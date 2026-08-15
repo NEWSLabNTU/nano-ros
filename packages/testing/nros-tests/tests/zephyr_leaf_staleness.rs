@@ -19,7 +19,8 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        Rmw, build_zephyr_cmake_example_rmw, build_zephyr_workspace_c_realtime_entry,
+        build_zephyr_workspace_rust_realtime_entry,
     },
     skip,
 };
@@ -86,6 +87,46 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
         "{build_dir}: still stale after restoring the original bytes — a \
          content-identical mtime bump must not be stale (#147), or every pull \
          reports the lane stale."
+    );
+}
+
+/// phase-363 W5 — the shared cmake modules and the entry TEMPLATE are configure
+/// inputs no hand-authored candidate list reaches. Ninja recorded them; the
+/// probe reads that record. Without this half, editing the file that GENERATES
+/// the entry TU left every Zephyr image reporting fresh.
+#[test]
+fn a_shared_cmake_input_marks_the_image_stale() {
+    let root = repo_root();
+    let exe = root.join("zephyr-workspace/build-c-talker-cyclonedds/zephyr/zephyr.exe");
+    if !exe.is_file() {
+        skip!("build-c-talker-cyclonedds not built here — nothing to probe");
+    }
+    // A shared module every Zephyr configure reads, well outside the leaf.
+    let shared = root.join("cmake/NanoRosCodegenCore.cmake");
+    assert!(shared.is_file(), "{} vanished", shared.display());
+
+    let resolve = || build_zephyr_cmake_example_rmw("c", "talker", Rmw::Cyclonedds);
+    assert!(
+        resolve().is_ok(),
+        "stale before any edit — the mutation below would prove nothing"
+    );
+
+    let original = fs::read(&shared).expect("read");
+    let mut edited = original.clone();
+    edited.extend_from_slice(b"\n# phase-363 W5 probe\n");
+    fs::write(&shared, &edited).expect("write");
+    let saw = resolve().is_err();
+    fs::write(&shared, &original).expect("restore");
+
+    assert!(
+        saw,
+        "editing a shared cmake module did NOT mark the image stale — the \
+         configure-input half is not reaching ninja's RERUN_CMAKE record"
+    );
+    assert!(
+        resolve().is_ok(),
+        "still stale after restoring the bytes — a content-identical write must \
+         not be stale (#147)"
     );
 }
 
