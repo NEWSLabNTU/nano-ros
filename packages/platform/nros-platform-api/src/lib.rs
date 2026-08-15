@@ -563,6 +563,22 @@ pub trait PlatformThreading {
     fn wake_storage_align() -> usize {
         1
     }
+    /// Caller-storage size requirement (bytes) for a task handle.
+    ///
+    /// phase-359 W10 added these probes to `platform.h` and to the C ports but
+    /// not to this trait or the export macro, so `check-platform-abi-mirror`
+    /// saw a header symbol with no Rust emission. Same contract as the wake
+    /// pair above: default `0` means "this platform cannot start a task", which
+    /// is the honest answer for a port whose `task_init` always fails, and it
+    /// is safe to call before `task_init`.
+    fn task_storage_size() -> usize {
+        0
+    }
+    /// Caller-storage alignment requirement (bytes) for a task handle.
+    /// Default `1`.
+    fn task_storage_align() -> usize {
+        1
+    }
 }
 
 /// Network poll callback for bare-metal platforms using smoltcp.

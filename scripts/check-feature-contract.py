@@ -366,7 +366,24 @@ def clause_d(mans):
         named = set()
         for (_, feats) in ss:
             named.update(feats)
-        unreachable = [f for f in dflt if f not in named]
+        # A `panic-*` default is a SELF-CONSISTENCY provider, not something a
+        # consumer is meant to request, so clause (d) does not apply to it.
+        #
+        # `nros-c` and `nros-cpp` both build a staticlib/cdylib — a FINAL
+        # artifact — so `cargo check -p <them>` with no panic provider is
+        # `#[panic_handler] function required, but not found`. Their `default`
+        # names the crate's own spin handler purely to keep that standalone
+        # check meaningful; every real consumer takes them with
+        # `default-features = false` and picks its own provider, which is
+        # exactly the shape clause (d) reads as "unreachable".
+        #
+        # Emptying those defaults to satisfy the clause would reintroduce the
+        # panic-handler error the comments in both manifests predict, so the
+        # gate learns the distinction instead. Narrow on purpose: only the
+        # panic-provider prefix, and only within a `default` set.
+        unreachable = [
+            f for f in dflt if f not in named and not f.startswith("panic-")
+        ]
         if unreachable:
             bad.append(
                 f"{rel(man)}: `default` names {unreachable}, and all {len(ss)} in-workspace\n"
