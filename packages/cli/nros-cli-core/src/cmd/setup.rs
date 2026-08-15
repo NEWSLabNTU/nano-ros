@@ -1259,7 +1259,7 @@ pub(crate) fn native_install_command(manager: &str, packages: &[String]) -> Stri
 }
 
 /// One entry's probe result.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ProbeResult {
     Present,
     Missing,
@@ -1303,6 +1303,34 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
             .lines()
             .any(|l| l.trim_start().starts_with(lib.as_str()))
         {
+            return ProbeResult::Present;
+        }
+        answered_missing = true;
+    }
+    if let Some(hdr) = &check.header
+        && std::env::consts::OS == "linux"
+    {
+        // issue 0603 — the probe for a `-dev` package whose consumer COMPILES
+        // against it. `sharedlib` cannot answer this: it prefix-matches the
+        // versioned SONAME the RUNTIME package ships, so mbedTLS read as
+        // present on a host carrying only `libmbedtls14`, and the sweep died
+        // twenty minutes later inside a vendored TU.
+        //
+        // Default search path only, and no compiler invocation: this runs for
+        // every entry on every `nros setup`, and a probe that shells a compiler
+        // would cost more than the check is worth. A package that installs
+        // outside these roots wants `pkg_config` or `sharedlib` instead.
+        let multiarch = ["aarch64-linux-gnu", "x86_64-linux-gnu"];
+        let mut roots: Vec<std::path::PathBuf> = vec![
+            std::path::PathBuf::from("/usr/include"),
+            std::path::PathBuf::from("/usr/local/include"),
+        ];
+        roots.extend(
+            multiarch
+                .iter()
+                .map(|m| std::path::PathBuf::from("/usr/include").join(m)),
+        );
+        if roots.iter().any(|r| r.join(hdr).exists()) {
             return ProbeResult::Present;
         }
         answered_missing = true;
@@ -1821,6 +1849,35 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 0603 — a `header` probe answers about the `-dev` package, where
+    /// `sharedlib` answers about the runtime one.
+    ///
+    /// The regression this pins: `sharedlib` PREFIX-matches, so
+    /// `sharedlib = "libmbedtls.so"` accepted the `libmbedtls.so.14` that the
+    /// RUNTIME package ships, and the gate reported a header-less host as ready.
+    /// A header the compiler can actually reach is the honest test.
+    #[test]
+    fn header_probe_answers_missing_for_an_absent_header() {
+        use crate::orchestration::sdk_index::CheckProbe;
+        if std::env::consts::OS != "linux" {
+            return; // probe is Linux-only by construction; `Unknown` elsewhere.
+        }
+        let absent = CheckProbe {
+            header: Some("nros-nonexistent-probe/should-not-exist.h".into()),
+            ..Default::default()
+        };
+        assert_eq!(run_probe(Some(&absent)), ProbeResult::Missing);
+
+        // A header every Linux toolchain has, to prove the probe is not simply
+        // always-missing — which would trade a false positive for a false
+        // negative and hard-block `nros setup` on an already-provisioned host.
+        let present = CheckProbe {
+            header: Some("stdio.h".into()),
+            ..Default::default()
+        };
+        assert_eq!(run_probe(Some(&present)), ProbeResult::Present);
+    }
 
     fn board_index() -> SdkIndex {
         SdkIndex::parse(

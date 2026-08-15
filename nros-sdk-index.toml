@@ -678,7 +678,14 @@ apt = ["libmbedtls-dev"]
 dnf = ["mbedtls-devel"]
 pacman = ["mbedtls"]
 brew = ["mbedtls"]
-check = { sharedlib = "libmbedtls.so" }
+# issue 0603 — HEADER, not sharedlib. The consumer compiles
+# `zenoh-pico/system/link/tls.c` against `mbedtls/entropy.h`; the runtime
+# package `libmbedtls14` ships `libmbedtls.so.14`, which a prefix-matching
+# `sharedlib = "libmbedtls.so"` accepted. So this gate said "present" on a host
+# with no headers and `lane=tier2` died twenty minutes in, after building six
+# embedded families. Same string `nros-zpico-build/src/runner.rs` checks before
+# it fabricates the .pc files, so the gate and the build ask one question.
+check = { header = "mbedtls/entropy.h" }
 
 [system.clang]
 why = "bindgen + C toolchain probes"
@@ -694,6 +701,12 @@ apt = ["libclang-dev"]
 dnf = ["clang-devel"]
 pacman = ["clang"]
 brew = ["llvm"]
+# issue 0603 swept the `-dev`-package-with-sharedlib-probe shape and DELIBERATELY
+# left this one. bindgen `dlopen`s libclang at run time — it wants the LIBRARY,
+# not `/usr/include/clang-c`. And the versioned dev packages (`libclang-14-dev`)
+# install their headers under `/usr/lib/llvm-14/include`, so a `header` probe
+# would report MISSING on a host that has the thing and works. Loadable is the
+# right question here; the prefix match is deliberate too (libclang-14.so.1).
 check = { sharedlib = "libclang" }
 
 [system.libz3]
@@ -702,7 +715,12 @@ apt = ["libz3-dev"]
 dnf = ["z3-devel"]
 pacman = ["z3"]
 brew = ["z3"]
-check = { sharedlib = "libz3.so" }
+# issue 0603 — same latent defect as libmbedtls, caught by the sweep rather than
+# by a failure: `libz3.so` prefix-matches the runtime `libz3.so.4`, so a host
+# with only `libz3-4` would read as present and z3-sys would then fail to find
+# `z3.h`. Unlike libclang this dev package is unversioned and does install into
+# `/usr/include`, so the header is the honest test.
+check = { header = "z3.h" }
 
 [system.python3-dev]
 why = "pyo3 source builds (play_launch_parser, nros-launch-resolve; issue 0368 F5)"

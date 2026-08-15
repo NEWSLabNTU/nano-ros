@@ -124,11 +124,37 @@ pub struct CheckProbe {
     pub cmd: Option<String>,
     /// A shared library the dynamic linker can find (`ldconfig -p` on Linux;
     /// skipped elsewhere — the entry reports `unknown` there).
+    ///
+    /// Matches by PREFIX, so this answers "is some build of this library
+    /// loadable", NOT "is the `-dev` package installed". Those differ: the
+    /// runtime package ships `libfoo.so.N`, which a `sharedlib = "libfoo.so"`
+    /// probe matches, while the headers and the unversioned symlink come from
+    /// `-dev`. Use this when the CONSUMER needs the library at run time — a
+    /// `dlopen` (bindgen/libclang) or a runtime dependency (libslirp). When the
+    /// consumer compiles against headers, use [`Self::header`]; issue 0603 was
+    /// this probe reporting mbedTLS present on a host with only `libmbedtls14`.
     #[serde(default)]
     pub sharedlib: Option<String>,
     /// `pkg-config --exists <name>` succeeds (dev headers).
+    ///
+    /// The right probe for a `-dev` package that ships a `.pc` — but many do
+    /// not (Ubuntu's `libmbedtls-dev` is why `generate_mbedtls_pc_files` has to
+    /// fabricate one), so [`Self::header`] covers the rest.
     #[serde(default)]
     pub pkg_config: Option<String>,
+    /// A C header exists on the compiler's default search path — the honest
+    /// test for a `-dev` package whose consumer `#include`s it (issue 0603).
+    ///
+    /// Written as the include spelling, not a path: `mbedtls/entropy.h`, so
+    /// the probe and the `#include` that needs it are the same string. Checked
+    /// against `/usr/include`, `/usr/local/include` and the Debian multiarch
+    /// dir; Linux-only, `unknown` elsewhere, same as `sharedlib`.
+    ///
+    /// Not right for every `-dev` package: a VERSIONED one (`libclang-14-dev`)
+    /// installs under `/usr/lib/llvm-14/include`, so a probe here would be a
+    /// false negative on a host that genuinely has it.
+    #[serde(default)]
+    pub header: Option<String>,
 }
 
 impl CheckProbe {
@@ -137,6 +163,7 @@ impl CheckProbe {
             self.cmd.is_some(),
             self.sharedlib.is_some(),
             self.pkg_config.is_some(),
+            self.header.is_some(),
         ]
         .iter()
         .filter(|b| **b)
@@ -509,7 +536,9 @@ impl SdkIndex {
             if let Some(check) = &dep.check
                 && check.field_count() == 0
             {
-                bail!("[system.{key}].check must set at least one of cmd/sharedlib/pkg_config");
+                bail!(
+                    "[system.{key}].check must set at least one of cmd/sharedlib/pkg_config/header"
+                );
             }
         }
         for (alias, target) in &self.rust.target {

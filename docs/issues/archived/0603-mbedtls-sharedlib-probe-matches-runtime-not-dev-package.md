@@ -2,7 +2,7 @@
 id: 603
 title: "`nros setup --system` reports libmbedtls present when only the RUNTIME
   package is installed, so the build dies 20 minutes later on missing headers"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0399, issue-0466, issue-0368, issue-0196, rfc-0062]
@@ -78,34 +78,65 @@ said "you have it".
 
 ## Fix
 
-The probe must test what the consumer needs. For a `-dev` mapping that is a
-header, not a SONAME:
+There was no probe kind that could express "the headers are installed".
+`sharedlib` answers about the runtime, and `pkg_config` — documented as the dev
+probe — cannot answer for mbedTLS at all, because Ubuntu's `libmbedtls-dev`
+ships no `.pc` file. That absence is precisely why
+`generate_mbedtls_pc_files` has to fabricate one, so reaching for `pkg_config`
+here would have re-entered the loop that made issue 0399.
 
-```toml
-check = { header = "mbedtls/entropy.h" }
+So `CheckProbe` gains a `header` kind: the include spelling
+(`mbedtls/entropy.h`, not a path) checked against `/usr/include`,
+`/usr/local/include` and the Debian multiarch dir. Linux-only and `unknown`
+elsewhere, matching `sharedlib`'s existing contract. Written as the include
+spelling so the probe and the `#include` that needs it are the same string —
+`libmbedtls` now names the exact header `runner.rs` checks before fabricating
+the `.pc` files, so the gate and the build ask one question.
+
+No compiler is invoked: this runs for every entry on every `nros setup`, and a
+probe that shells a compiler would cost more than the check is worth. A package
+installing outside those roots should use `pkg_config` or `sharedlib` instead.
+
+Verified on the host that produced the bug:
+
+```
+$ nros setup --system --check
+17 present, 5 missing, 2 unprobed
+  [MISSING] libmbedtls — zenoh-pico TLS link (zpico-sys)
+Error: 5 system package(s) missing. Install with:
+  sudo apt-get install -y … libmbedtls-dev
 ```
 
-if a `header` probe kind exists, or a `sharedlib` match that requires the
-unversioned symlink rather than any versioned SONAME. The build script already
-names the exact path it needs (`runner.rs:1719` checks
-`/usr/include/mbedtls/entropy.h`), so the gate and the build can share that one
-predicate instead of spelling it two different ways — the recurring rule in this
-repo.
+`libz3` still reports present here (its header is installed), confirming the new
+probe does not simply answer "missing" — which would trade this false positive
+for a false negative and hard-block setup on a provisioned host. A unit test
+pins both directions.
 
-**Three entries share the defect and one does not — swept:**
+**Swept — and the sweep found the rule is not "every `-dev` entry":**
 
 | entry | apt package | probe | verdict |
 | --- | --- | --- | --- |
-| `libmbedtls` | `libmbedtls-dev` | `sharedlib = "libmbedtls.so"` | **wrong** — dev pkg, runtime probe |
-| `libclang-dev` | `libclang-dev` | `sharedlib = "libclang"` | **wrong** — same shape, and the loosest pattern of the three |
-| `libz3` | `libz3-dev` | `sharedlib = "libz3.so"` | **wrong** — same shape |
-| `libslirp` | `libslirp0` | `sharedlib = "libslirp.so.0"` | correct — RUNTIME package, versioned SONAME |
+| `libmbedtls` | `libmbedtls-dev` | was `sharedlib` | **wrong** — fixed, `header = "mbedtls/entropy.h"` |
+| `libz3` | `libz3-dev` | was `sharedlib` | **wrong** — fixed, `header = "z3.h"` |
+| `libclang-dev` | `libclang-dev` | `sharedlib = "libclang"` | **correct — deliberately unchanged** |
+| `libslirp` | `libslirp0` | `sharedlib = "libslirp.so.0"` | correct — runtime package, versioned SONAME |
 
-`libslirp` is the control that shows the rule: a `sharedlib` probe is right when
-the mapped package IS the runtime library, and wrong when it is the `-dev`
-package, because the dev package's distinguishing contents are headers and the
-unversioned symlink. Fixing only the reported site is the class-recurrence
-pattern CLAUDE.md warns about, so all three move together.
+The rule is what the CONSUMER needs, not what the package is named.
+
+`libclang-dev` looked like the same defect and is not, which is why it was
+checked rather than swept blindly. bindgen `dlopen`s libclang at run time — it
+wants the loadable library, not `/usr/include/clang-c`. And this very host
+proves a header probe there would be a false negative: `libclang-12-dev` and
+`libclang-14-dev` are both installed and working, while
+`/usr/include/clang-c/Index.h` does **not** exist, because versioned dev
+packages install under `/usr/lib/llvm-14/include`. Swapping its probe would have
+traded a false positive for a false negative and hard-blocked `nros setup` on a
+correctly provisioned machine.
+
+`libz3` had no observed failure — it was caught by the sweep. Its dev package is
+installed here, so the old probe happened to be right by accident; on a host
+with only `libz3-4` it would have read present and z3-sys would then have failed
+to find `z3.h`.
 
 Sweep:
 

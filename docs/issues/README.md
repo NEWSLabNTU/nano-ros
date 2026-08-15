@@ -51,17 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#603** (build, open 2026-08-15) — `nros setup --system --check` reports `libmbedtls` PRESENT on a host
-that has only the RUNTIME package, so `just build-test-fixtures lane=tier2` builds all six embedded
-families (~20 min, all OK) and then dies in the native lane on missing `mbedtls/entropy.h`. The entry maps
-`apt = ["libmbedtls-dev"]` but probes `sharedlib = "libmbedtls.so"`, and `libmbedtls14` ships
-`libmbedtls.so.14` which the probe matches — the headers and the unversioned symlink are what the `-dev`
-package adds. The gate answers "is the runtime loadable", the build asks "can I compile against it"
-(issue-0196's narrower-than-the-rule shape), and the surface a user would run FIRST to avoid a 20-minute
-dead end is the one that says they are fine. Swept: `libclang-dev` and `libz3` have the identical
-dev-package/runtime-probe mismatch; `libslirp` is the control that proves the rule (runtime package,
-versioned SONAME, correct). Fix all three, and share the predicate with `runner.rs:1719`, which already
-names the exact header. The 0399 panic itself is correct and stays. See `0603-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#603** — `nros setup --system --check` reported `libmbedtls` PRESENT on a
+host carrying only the RUNTIME package, so `just build-test-fixtures lane=tier2` built all six embedded
+families (~20 min, every one OK) and then died in the native lane on a missing `mbedtls/entropy.h`. The
+entry mapped `apt = ["libmbedtls-dev"]` but probed `sharedlib = "libmbedtls.so"`, which PREFIX-matches the
+`libmbedtls.so.14` that `libmbedtls14` ships — headers and the unversioned symlink are what `-dev` adds. The
+gate asked "is the runtime loadable", the build asked "can I compile against it" (issue-0196's shape), and
+the one command a user runs FIRST to avoid a 20-minute dead end told them they were fine. No probe kind
+could express it: `pkg_config` is the documented dev probe but Ubuntu's `libmbedtls-dev` ships no `.pc` —
+which is exactly why `generate_mbedtls_pc_files` fabricates one (#0399). Added a `header` probe kind
+(include spelling, `/usr/include` + `/usr/local/include` + multiarch, no compiler invoked) and moved
+`libmbedtls` + `libz3` onto it. **The sweep's real finding: the rule is what the CONSUMER needs, not what
+the package is named.** `libclang-dev` looks identical and was deliberately LEFT on `sharedlib` — bindgen
+`dlopen`s libclang, and this host has `libclang-{12,14}-dev` working with NO `/usr/include/clang-c` (versioned
+dev packages install under `/usr/lib/llvm-14/include`), so a header probe there would be a false negative
+that hard-blocks setup. `libslirp` is the other control (runtime package, versioned SONAME, correct). See
+`archived/0603-*`. (2026-08-15)
 
 **#590** (rmw/zephyr, open 2026-08-15) — every cyclonedds cell of `just zephyr build-fixtures` fails to
 COMPILE on a freshly provisioned workspace (3.7 line, SDK 0.16.8): cyclone's ddsrt picks its POSIX environ
