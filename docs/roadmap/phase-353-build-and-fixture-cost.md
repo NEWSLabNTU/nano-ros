@@ -17,23 +17,26 @@
     served the zephyr arm alone (issue 0442's shape); it now lives in
     `fixtures::staleness` and both arms share it.
 
-  #509 stays open for the 70-leaf per-leaf overhead it is named for, which none
-  of these three addressed.
+  #509 is now CLOSED (upstream `07e4dce92`, 2026-08-15): every direction was
+  either fixed or refuted, and the one survivor — fewer COLD leaves — continues
+  as **#604**, filed as a MEASUREMENT (how many leaves a pull genuinely
+  invalidates versus merely re-stamps) rather than as a defect. #604 already
+  credits this phase's W2 for the content-aware staleness half.
 * **W3** — #200 is blocked on a big-disk CI runner and is not actionable
   locally.
 
 **Remaining:** only W3 — #200's timing campaign, which needs a big-disk CI
 runner. Everything actionable on a dev host is done.
 
-Carried OUT of this phase rather than left implied: #509 stays open for the
-70-leaf per-leaf overhead (its namesake, untouched by any of W2's three
-directions), #446 stays open with a current number and W4's census as its next
-lead, and #601 (a ROS `idlc` that is found but cannot load) blocks a cold
-cyclonedds build on any host where ROS is installed but not sourced into the
-build.
+Carried OUT of this phase rather than left implied: **#604** continues #509's
+one surviving direction (fewer cold leaves) as a measurement — #509 itself
+closed upstream on 2026-08-15; **#446** stays open with a current number and
+W4's census as its next lead; and **#601** (a ROS `idlc` that is found but
+cannot load) blocks a cold cyclonedds build wherever ROS is installed but not
+sourced into the build.
 
 **Owns:** [issue 0446](../issues/0446-build-artifact-reuse-factors.md),
-[issue 0509](../issues/0509-zephyr-lane-per-leaf-overhead.md),
+[issue 0509](../issues/archived/0509-zephyr-lane-per-leaf-overhead.md) (now closed; continues as [issue 0604](../issues/0604-cold-leaves-mtime-treadmill.md)),
 [issue 0562](../issues/0562-sync-rewrites-unchanged-files.md),
 [issue 0200](../issues/0200-fixture-build-timing-campaign-needs-ci-runner.md).
 
