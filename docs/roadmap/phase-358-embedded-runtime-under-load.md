@@ -1,8 +1,22 @@
 # Phase 358 — Embedded runtime under load: footprint, overrun, overload
 
-**Status (2026-08-15). PLANNING — nothing implemented.** Five embedded issues
-about what the runtime does when it does not fit, or does not keep up. Grouped
-because each is a *policy* gap rather than a broken mechanism.
+**Status (2026-08-16). THREE of five DONE; W1 blocked, W3 open.** This header
+said "PLANNING — nothing implemented" while ELEVEN commits named the phase — my
+error, corrected here.
+
+* **W1 (#271, Orin SPE footprint)** — BLOCKED. The re-measurement it asked for
+  cannot run: three API removals stand in front of it (`af478b64d`). #271 open.
+* **W2 (#505, timer overrun)** — DONE. The policy is written down where the
+  decision belongs (`74badc8f2`); #505 resolved.
+* **W3 (#506, transport budget)** — OPEN, and the blocker cleared twice over:
+  #567 landed, then `7eb86ae05` bumped zenoh-pico because the read TASK can keep
+  a remainder too. `af5f5d7e4` corrects a claim made from reading a diff rather
+  than running it. #506 open.
+* **W4 (#579, NuttX boot tier priority)** — DONE. The tier adopts its declared
+  priority, and the GATE that accepted the bug was fixed alongside
+  (`64fee4e60`, `8424db51c`). #579 resolved.
+* **W5 (#557, Zephyr Cyclone boot)** — DONE. "Three layers of hiding, each one
+  covering the next" (`b838fc19d`, `a45c36abe`). #557 resolved.
 
 **Owns:** [issue 0271](../issues/0271-orin-spe-btcm-footprint-regression.md),
 [issue 0505](../issues/0505-timer-backlog-replay-no-overrun-policy.md),

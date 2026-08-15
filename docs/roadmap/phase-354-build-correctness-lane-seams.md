@@ -1,8 +1,16 @@
 # Phase 354 — Contract seams: the places two sides disagree about one fact
 
-**Status (2026-08-15). PLANNING — nothing implemented.** Four open BUGS (not
-costs) whose owning phases have since closed or never existed, so none has a
-live home. Each is two sides of a seam disagreeing about one fact.
+**Status (2026-08-16). W2 DONE; W1, W3 and W4 open.** This header said
+"PLANNING — nothing implemented" after work had landed — corrected here.
+
+* **W1 (#493, two workspace roots / one corrosion dir)** — OPEN. Zephyr evidence
+  recorded in #493 by `230e6044c`.
+* **W2 (#466, tier-1's unstated setup contract)** — DONE. `d38a409ff` took
+  finding (a): one gate joins the precondition batch, one is declined WITH
+  evidence. #466 resolved.
+* **W3 (#454, `*_send_goal_raw` does not strip the CDR header)** — OPEN.
+* **W4 (#532, clock ABI resolution)** — OPEN; still wants the staleness check
+  against phase-352 before any design work.
 
 **Owns:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md),
 [issue 0466](../issues/0466-tier1-setup-contract-unstated.md),
