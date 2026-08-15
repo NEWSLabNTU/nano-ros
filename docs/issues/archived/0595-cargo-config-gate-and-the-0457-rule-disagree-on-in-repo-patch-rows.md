@@ -1,11 +1,39 @@
 ---
 id: 595
 title: "`check-cargo-config-tracked` and issue 0457's rule disagree about a config holding only in-repo `# nros-managed` rows — tier 1 is red on main"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0457, issue-0463, phase-351, phase-341]
 ---
+
+> **RESOLVED 2026-08-15 by `be849583a` — and this was the SECOND filing.**
+> Issue 0587 recorded the same defect hours earlier from another host
+> (`refs/issue-ids/0587`, slug `cargo-config-gate-treats-authored-comments-as-sync-output`),
+> and the fix landed there: `has_authored_content` no longer excludes `^\s*#`,
+> so a comment counts as authored content; only sync's own `# === BEGIN/END
+> nros-managed [patch.crates-io] ===` fence stays excluded.
+>
+> This branch reached the same fix independently and it was DROPPED in favour of
+> upstream's, which is the narrower version of the same predicate. Nothing of the
+> analysis is lost by that: keeping two implementations of one rule is how the
+> rule drifts.
+>
+> Kept for the derivation rather than the conclusion. 0587 argued from the
+> COMMENTS — issue 0582's lesson, written where someone would otherwise re-add
+> the host triple. This one argued from the `[patch.crates-io]` rows and issue
+> 0457, where moving exactly that content stranded every leaf on
+> `no matching package named 'mps2-an385-pac'`. Both readings are true of the
+> same four content lines, and either alone justifies keeping the files tracked.
+>
+> Also measured here, and not in 0587, which listed it as "not investigated":
+> of 75 tracked leaf configs, 18 read as pure sync output under the old
+> predicate and 12 under the new — the six threadx-linux leaves flip to
+> authored, **nothing flips the other way**, and the other 12 were never failing
+> (a tracked `nros-board.toml` already exempted them). That is what makes this a
+> six-file correction rather than a convention change.
+>
+> The three candidate resolutions below are superseded: (2) was taken.
 
 ## Symptom — `just ci` stops here, on a clean checkout of `main`
 

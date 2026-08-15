@@ -1218,17 +1218,11 @@ one of the five `-C metadata` identities issue 0446 counts for `nros-core`, and 
 survives any cache-layout fix, because to cargo the two units are genuinely different feature sets.
 `nros-rmw` already converted to `default = []` and its manifest says it "matches nros-core" —
 `nros-core` never did. See `0591-*` and phase-361 W3. (2026-08-07)
-**#0595** (build, open 2026-08-15) — **tier 1 is red on `main`.** `check-cargo-config-tracked` calls the six
-`examples/threadx-linux/rust/*/.cargo/config.toml` "pure sync output" and demands they be untracked; what they
-hold is `include` plus two in-repo `# nros-managed` `[patch.crates-io]` rows redirecting `nros-board-threadx-linux`
-and `nros-platform` to relative paths — the exact content CLAUDE.md, recording #0457/#0463, says must STAY tracked
-("stranded every leaf on `no matching package named 'mps2-an385-pac'`, an in-repo patch a clone needs"). The gate's
-`has_authored_content` (`:37`) treats `# nros-managed` lines as regenerable; the 0457 rule treats them as the thing
-a clone cannot do without. Both cannot hold. The one exemption — an `include` naming a tracked `nros-board.toml`
-(`:150`) — is unreachable here: `nros-board-threadx-linux` declares no `cargo_config`, so sync writes no projection.
-The gate itself did not change in the pull that surfaced this; phase-351 W5/W6 moved which leaves carry a
-projection, so the resolution is that phase's call. Three candidates in the issue, none obviously right.
-See `0595-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#0595** — the SECOND filing of #0587, found independently within hours.
+Its angle was the in-repo `# nros-managed` `[patch.crates-io]` rows and issue 0457 (moving exactly that content
+stranded every leaf on `no matching package named 'mps2-an385-pac'`); 0587's was the authored comments. Both
+readings are true of the same four content lines and either alone justifies keeping the files tracked. Fixed
+with 0587; kept archived for the independent derivation. See `archived/0595-*`. (2026-08-15)
 
 **#0596** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
 (`[ "$_cli_bin" -nt "$_resolver" ]`), and `just setup-launch-resolve` is a no-op when cargo has nothing to
