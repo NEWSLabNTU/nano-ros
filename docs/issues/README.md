@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#590** (rmw/zephyr, open 2026-08-15) — every cyclonedds cell of `just zephyr build-fixtures` fails to
+COMPILE on a freshly provisioned workspace (3.7 line, SDK 0.16.8): cyclone's ddsrt picks its POSIX environ
+backend, whose `setenv`/`unsetenv` Zephyr's libc declares only behind `CONFIG_POSIX_API`, and gcc >= 14
+makes an implicit declaration fatal. zenoh and xrce build on the same workspace — 12 images, 4 failures,
+all cyclone. Same class as #0566 (a port reaching for `CONFIG_POSIX_API` and giving up when absent) and
+as the two gcc-14 fixes on the zenoh-pico fork. Not established: whether it is new (0557 reports a RUNTIME
+failure of these images, so they build somewhere) or which of three fixes is right — the Zephyr ddsrt seam
+is under active change by another session, so that call is theirs. See `0590-*`. (2026-08-15)
+
 Recently resolved (2026-08-15): **#562** `nros sync` rewrote byte-identical files, restamping mtimes and
 buying a cmake reconfigure for no change. The class fix (ONE write-if-changed helper in
 `cargo_nano_ros::atomic_file`, re-exported by `nros-cli-core`, replacing four private spellings and
