@@ -3,7 +3,8 @@ id: 493
 title: "Two cargo workspace ROOTS share one corrosion target dir, so a mixed
   workspace's umbrella staticlib bundles the nros stack twice and the link dies
   on duplicate `#[no_mangle]` symbols"
-status: open
+status: resolved
+resolved_in: phase-354
 type: bug
 area: build
 related: [phase-340, phase-344, issue-0492, rfc-0070]
@@ -724,3 +725,54 @@ the resolved version is still worth doing (CLAUDE.md: read
 `nano-ros: Corrosion <ver> via <origin>`, never infer), because BOTH
 `0.5.1-nros1` and `0.6.1-nros1` are present in this host's SDK store and the
 store enumerates newest-first only by convention (issue 0500).
+
+## RESOLVED 2026-08-16 — fixed, verified twice, and now enforced in BOTH lanes
+
+| | |
+| --- | --- |
+| **Fix** | Corrosion `0.5.1 -> 0.6.1`: per-workspace HASHED cargo dirs instead of one hashless `cargo/build` |
+| **Verified** | 2026-08-10 end-to-end (RC=0, `duplicate symbol` = 0, two hashed dirs holding ONE identity each); re-verified 2026-08-16 on three trees reconfigured from scratch |
+| **Enforced** | this lane: a configure-time FATAL_ERROR below 0.6.0 (`nros_report_corrosion`). Zephyr lane: issue 0616's FATAL_ERROR when two workspace roots claim one `--target-dir` |
+
+### The enforcement item, closed at last
+
+This issue asked for it and predicted the cost of skipping it:
+
+> **Enforcement, either way.** ... Without it, the next consumer that imports a
+> root-workspace crate re-creates this silently.
+
+That happened on 2026-08-16 as issue 0616 — the same duplication, in the ZEPHYR
+lane, with no Corrosion involved at all. Which also answers phase-354 W1's
+either/or: the class is **one cargo artifact directory serving two workspace
+ROOTS**, and Corrosion `< 0.6.0` is one way to arrange it, not the cause.
+Measured on the Zephyr mixed entry (no `corrosion_import_crate` anywhere in it):
+4 cargo invocations sharing one `--target-dir`, 5 `nros_platform` and 4
+`nros_core` metadata identities in one `deps/`, three built minutes apart.
+
+### What the floor caught immediately, and why it was needed
+
+`Corrosion_DIR` is a CACHED cmake variable, so provisioning 0.6.1 does not touch
+a tree that already configured — the caveat this issue records. Six days after
+the fix, FOUR trees were still building the 0.5.1 topology in silence:
+
+```
+safety  managed  realtime-c  realtime-cpp-subnode-portable
+```
+
+They fail only once a leaf links both identities, which is why `mixed` caught
+this twice and nothing else ever did. All nine trees are now on 0.6.1.
+
+### A reading error worth recording
+
+The live configure printed both `Corrosion 0.5.0` and `0.6.1`, and I twice read
+that as the newest-first ORDERING failing (issue 0500 recurring). It was not:
+checking `Corrosion_DIR` across all nine trees — rather than a `grep -B25`
+window that straddled several leaves' output — showed every tree reconfigured
+from scratch picked 0.6.1. Stale caches, not ordering. The prefix gate is fine.
+
+### Carried forward, not fixed
+
+Whether this reproduces in the distrobox lane and in CI is still reasoning
+rather than measurement, exactly as the "Not verified" section above says. The
+floor makes that cheap to answer now: a CI host resolving `< 0.6.0` fails at
+configure and names the version, instead of linking and failing obscurely.

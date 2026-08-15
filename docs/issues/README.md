@@ -1467,26 +1467,17 @@ on a newer CLI, an expert `MODEL` override), and a consumer tracking only inputs
 **Not the same bug as #501**, though they shared a file and a `Finished in 0.0Ns` symptom — each fix was
 reverted independently to prove the other did not mask it. See `archived/0495-*`. (2026-08-10)
 
-**#493** — TWO cargo workspace ROOTS share one corrosion target dir, so a mixed workspace's umbrella staticlib
-bundles the nros stack TWICE and the link dies on duplicate `#[no_mangle]` symbols. `libnros_ws_runtime.a` holds
-two `-C metadata` identities of TEN crates; the two debuginfo paths name the cause —
-`packages/rmw/cffi/src/lib.rs` (repo root as workspace root) vs `src/lib.rs` (path dep of another workspace).
-`packages/api/nros-cpp/CMakeLists.txt:54` imports nros-cpp UNCONDITIONALLY (root workspace) while a Rust-node
-workspace also gets the synthesised `nros_ws_runtime` umbrella (own workspace); corrosion derives its target dir
-from `CMAKE_BINARY_DIR` with no override (phase-344), so both land in one `deps/`. `cargo metadata` reports ONE
-package — the graph is fine, the IDENTITY is not. Only MIXED workspaces fail (needs umbrella + plain import).
-Likely the same mechanism behind the disputed identity-budget reading (nros at 12 = 2 roots × 2 R3 halves × 3
-feature sets) in this very tree. **The framing that settles it: ONE implementation provider** — in C exactly one site builds the archive and every
-other site is headers-plus-link. `nros-cpp-headers` is already that INTERFACE target and the umbrella already SWAPS
-the provider it links; the bug is that the swap is PARTIAL. The displaced `nros_cpp-static` "stays built but
-unreferenced" (its own comment), forced by a header mirror that depends on `$<TARGET_FILE:nros_cpp-static>` — so
-after the swap, SYMBOLS come from the umbrella while HEADERS come from the plain crate, and those headers carry the
-`*_OPAQUE_U64S` sizes: the 0088→0245→0268 sizes-mirror class through a new door. Separate target dirs would remove
-the link error and KEEP the defect. Fix is to make the umbrella the sole provider (skip the plain import; mirror
-headers from the umbrella), which needs `links = "nros_cpp"` + `cargo:include` — the provider mechanism Cargo has
-and this tree does not use. `links` would NOT have caught this (per-graph; here two invocations each have a valid
-graph); the enforceable invariant is a CMake gate: one Rust staticlib exporting the nros symbols per configure.
-See `0493-*`. (2026-08-10)
+RESOLVED 2026-08-16 (phase-354 W1) — **#493** two cargo workspace ROOTS shared one corrosion target dir, so
+`libnros_ws_runtime.a` bundled two `-C metadata` identities of ten crates and every `#[no_mangle]` export
+collided. FIXED by the Corrosion `0.5.1 -> 0.6.1` bump (per-workspace hashed dirs), verified end-to-end
+2026-08-10 and again 2026-08-16. Its long-open ENFORCEMENT item is now closed in both lanes: a
+configure-time FATAL_ERROR below 0.6.0 here, and #0616's FATAL_ERROR when two roots claim one `--target-dir`
+in the Zephyr lane. That gate found FOUR trees still silently on the 0.5.1 topology six days after the fix —
+`Corrosion_DIR` is CACHED, so provisioning never touches an already-configured tree. Answers phase-354 W1's
+either/or: the class is one artifact directory serving two workspace ROOTS; Corrosion `< 0.6.0` is one way
+to arrange it, not the cause — the Zephyr instance had no Corrosion in it at all. Carried forward: whether
+it reproduces in distrobox/CI is still reasoning, but a CI host on `< 0.6.0` now fails at CONFIGURE naming
+the version. See `archived/0493-*`.
 
 Recently resolved (2026-08-11, phase-347): **#492** — the CMake self-provisioned CycloneDDS built **slim GCC-LTO objects** and `ld.lld` cannot read GCC LTO
 IR, so `build-test-fixtures lane=native` dies with 36 `undefined symbol: dds_*` while every obvious check says the
