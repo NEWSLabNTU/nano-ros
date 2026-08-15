@@ -71,3 +71,91 @@ meant to characterize — hence the runner requirement, not a workaround.
   Corrosion `--target-dir` per (triple, feature-set, profile) role group —
   removes the ~200 structurally-non-cacheable staticlib recompiles per
   cell that sccache cannot cover.
+
+## RESTATED 2026-08-16 against post-340/343 disk figures (phase-353 W3)
+
+The 2026-08-10 update asked for a re-derivation before any procurement, and
+made it conditional on phase-340 item 5. **That precondition is met**:
+phase-340 is COMPLETE (2026-08-12, "every work item is closed"). So the
+arithmetic is re-run here.
+
+### The headline number from this tree is NOT the answer
+
+The maintainer host's checkout currently measures **994 GB**:
+
+| root | size |
+| --- | --- |
+| `examples/` | 563 G |
+| `zephyr-workspace/` | 148 G |
+| `target/` | 95 G |
+| `build/` | 72 G |
+| `packages/cli/target/` | 48 G |
+
+Anyone sizing a runner from that would buy an order of magnitude too much. It is
+an ACCUMULATED tree — a day of lane builds, wipes and rebuilds — and this issue's
+own neighbours already warn about reading one as a cost: the artifact-identity
+budget gate says "an accumulated tree can inflate it (issue 0499)", and issue
+0446's re-measurement found the same trap.
+
+### Measured: 120 GB of it is pre-340 residue that nothing rebuilds
+
+**65 plain per-leaf `examples/**/target/` directories, 120 GB total**, with
+mtimes spanning **2026-08-01 … 2026-08-06** — all before phase-340's completion
+and untouched since. These are exactly the per-leaf dirs phase-340 P2 replaced
+with coordinate-keyed group dirs (`target-*`, of which the tree has 49). Nothing
+in the current build graph writes them; they are dead bytes that inflate every
+estimate taken from this checkout.
+
+That single line is the most useful output of this re-derivation: **a runner
+sized from an accumulated dev tree is sized from residue.**
+
+### The duplication factor the ≥200 GiB rested on has moved
+
+The requirement was a consequence of ~21:1 artifact duplication. Re-measured in
+the same scope by issue 0446 (2026-08-15):
+
+| | 2026-08-06 | 2026-08-15 |
+| --- | --- | --- |
+| `nros-core` rlibs | 106 | 707 |
+| distinct `-C metadata` identities | 5 | 49 |
+| duplication factor | **21.2x** | **14.4x** |
+
+And the worst single population, `build/sizes-probe`, was narrowed by phase-353
+W4: on one `lane=native`, **25 sub-keys / 7.2 G → 8 / 2.2 G**, with a second run
+now adding zero new keys (it previously grew per run, which is how it had
+reached 37 G).
+
+### What is still NOT derivable without a runner
+
+The campaign's three measurements are wall-clock and CPU-utilisation questions
+(clean vs warm per platform, jobserver vs fallback, oversubscription), and they
+need a CLEAN full-matrix build. This host cannot supply one:
+
+* a clean `just native build-fixtures` alone consumed ~52 GiB and 25 min without
+  completing (the original 2026-06-13 measurement, unchanged);
+* the accumulated state above cannot be distinguished from matrix cost without
+  wiping it, which is the same serialisation the runner requirement exists to
+  avoid;
+* and issue 0509 established that **wall-clock is not a usable instrument on
+  this host at all** — seven no-op runs of one lane, provably identical work,
+  took 50s…695s, a 14x spread set by page-cache state.
+
+That last point sharpens the runner requirement rather than removing it: the
+campaign needs a machine where timings mean something, not merely one with disk.
+
+### Revised guidance for sizing a runner
+
+Do **not** use 994 GB, and do not use the old ≥200 GiB either — both are derived
+from trees that no longer describe the build.
+
+The honest inputs are: 14.4x duplication (down from 21.2x), phase-340's group
+dirs in force, and `build/sizes-probe` bounded rather than growing. Derive the
+figure from a CLEAN build on the runner itself, measuring as it goes — which is
+the campaign, not a precondition of it. Budget generously for scratch, then
+measure; do not budget from a dev host's `du`.
+
+**Recommendation:** delete the 120 GB of pre-340 residue on the maintainer host
+(`examples/**/target/`, the 65 dirs above) before any future estimate is taken
+from it. It is not this issue's to do — a stale-residue sweep is its own change,
+and `check-example-leaf-target-dirs` currently passes with those dirs present,
+which is worth checking separately.

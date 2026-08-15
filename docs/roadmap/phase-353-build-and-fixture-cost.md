@@ -248,6 +248,27 @@ Note W1's re-measurements may reduce what this campaign needs to cover — phase
 **Acceptance.** Either a runner exists and the campaign runs, or #200 is
 restated against post-340/343 disk figures so a future runner is sized correctly.
 
+**Status (2026-08-16): the RESTATEMENT half is DONE.** Phase-340 completed
+2026-08-12, which cleared this issue's own "run after item 5" precondition, so
+the arithmetic was re-run. Recorded in #200:
+
+* the checkout measures **994 GB**, and that number is useless for sizing — it
+  is an accumulated tree, the trap issue 0499 and the artifact-identity gate
+  both name;
+* **120 GB of it is dead**: 65 plain per-leaf `examples/**/target/` dirs,
+  mtimes 2026-08-01…06, replaced by phase-340 P2's coordinate-keyed group dirs
+  and rebuilt by nothing;
+* the duplication factor the ≥200 GiB requirement rested on moved **21.2x →
+  14.4x** (#446), and `build/sizes-probe` went from growing-per-run (37 G) to
+  bounded (**8 sub-keys / 2.2 G** on a clean native lane, phase-353 W4).
+
+**The runner is still required**, and for a sharper reason than disk: issue 0509
+established that wall-clock on this host is not a usable instrument at all — a
+14x spread on provably identical work. The campaign needs a machine where
+timings mean something.
+
+So W3's local half is complete; the measuring half stays blocked, as designed.
+
 ## W4 — Collapse the probe dir's over-keying (#446; opened by W1)
 
 **Status (2026-08-15). COMPLETE — narrowing landed and measured: 25 -> 8 probe
