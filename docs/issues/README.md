@@ -82,9 +82,11 @@ assertions run. TWO quiet causes stacked. (1) `ZENOH_SESSION_CONFIG_URI` REPLACE
 `mode`/`connect`/`scouting` — so `timestamping` is dropped, and `/rosout` is transient-local, so NO ROS 2 node
 can start under our config. Verified: adding the block changes the error to `0 data: samples`, i.e. the node
 now starts. (2) That uncovers the second — `rmw_zenoh_overlay()` (`ros2.rs:24`) silently falls back to the
-distro RMW when `build/rmw_zenoh_ws/install` is absent, so `ros-humble-rmw-zenoh-cpp 0.1.1` (vendored against
-the 1.4.0-era zenoh; apt ships `zenohd 1.4.0`) talks to the `zenohd 1.7.2` the tests spawn — the skew
-CLAUDE.md's "Zenoh pinned 1.7.2 (rmw_zenoh_cpp compat)" exists to prevent. Fix: MERGE onto the shipped config
+distro RMW when `build/rmw_zenoh_ws/install` is absent, so the run pairs a zenoh **1.2.0** client with the
+`zenohd 1.7.2` the tests spawn — five minor versions, the skew CLAUDE.md's "Zenoh pinned 1.7.2
+(rmw_zenoh_cpp compat)" exists to prevent. The 1.2.0 is from the vendored library's own
+`zenoh_configure.h`; the apt package versions (0.1.1) are ROS wrapper versions and say nothing about the
+zenoh inside, and the apt `zenohd 1.4.0` is never spawned. Fix: MERGE onto the shipped config
 rather than replace, and make the overlay fallback loud (`skip!`, not silence — #0599's shape).
 See `0609-*`. (2026-08-15)
 

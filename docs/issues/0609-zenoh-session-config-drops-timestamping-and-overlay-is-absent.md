@@ -77,18 +77,41 @@ appends nothing and falls through to the distro package. There is no message.
 
 On this host it IS missing, so the tests run:
 
-| component | version |
-| --- | --- |
-| `ros-humble-rmw-zenoh-cpp` (apt) | 0.1.1 |
-| `ros-humble-zenoh-cpp-vendor` (apt) | 0.1.1 |
-| `zenohd` from the Eclipse apt repo | **1.4.0** |
-| `zenohd` the tests actually spawn | **1.7.2** (`~/.nros/sdk/zenohd/1.7.2-nros2`) |
+| component | zenoh version | in the failing run? |
+| --- | --- | --- |
+| `ros-humble-rmw-zenoh-cpp` -> vendored `libzenohc.so` | **1.2.0** | **yes** |
+| `zenohd` from the Eclipse apt repo | 1.4.0 | no — never spawned |
+| `zenohd` the tests spawn | **1.7.2** (`~/.nros/sdk/zenohd/1.7.2-nros2`) | **yes** |
+| `zenoh-pico` pin (embedded side) | 1.7.2 | yes |
+
+The RMW's zenoh version is 1.2.0, stated by the vendored library's own header —
+not inferable from the apt package version, and not from the apt `zenohd`:
+
+```c
+/opt/ros/humble/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+#define ZENOH_C       "1.2.0"
+#define ZENOH_C_MAJOR 1
+#define ZENOH_C_MINOR 2
+```
+
+corroborated by `zenohcConfigVersion.cmake` and `zenohcxxConfigVersion.cmake`
+(both `set(PACKAGE_VERSION "1.2.0")`). **The Debian versions 0.1.1 on
+`rmw-zenoh-cpp` / `zenoh-cpp-vendor` are ROS wrapper-package versions and say
+nothing about the zenoh inside** — an easy conflation, and the reason the number
+here is read from the header rather than from `dpkg -l`.
+
+The clincher that this library is the one failing: it was built from zenoh git
+checkout `e4ea6f0`, which is the path in the error itself —
+`…/git/checkouts/zenoh-cc237f2570fab813/e4ea6f0/zenoh-ext/src/publication_cache.rs:213`.
+So the `timestamping` requirement is raised by zenoh-ext **1.2.0 inside
+`libzenohc.so`**, not by our router.
 
 CLAUDE.md pins zenoh at 1.7.2 explicitly "(rmw_zenoh_cpp compat)", and the
 overlay is the mechanism that keeps the C++ side on the matching build. Without
-it, a 0.1.1 RMW vendored against the 1.4.0-era zenoh is speaking to a 1.7.2
-router and our zenoh-pico pin. After cause 1 is fixed the session establishes and
-**zero samples cross**, which is what a wire mismatch looks like.
+it the live pairing is a **1.2.0 client against a 1.7.2 router** — five minor
+versions, over a range in which zenoh 1.x changed behaviour (the `PublicationCache`
+`timestamping` requirement being one such change). After cause 1 is fixed the
+session establishes and **zero samples cross**, which is what that looks like.
 
 Not proven to be the version skew specifically — only that delivery fails once
 the node starts. Proving it needs a run with the overlay built, which this host
@@ -117,8 +140,18 @@ decision, surfacing later as a product-level failure.
    `skip!` with a reason ("no wire-matched rmw_zenoh_cpp; distro 0.1.1 would be
    used"), so an unprovisioned host declares itself instead of producing fifteen
    delivery failures.
-3. **Then re-run the interop lane with the overlay built** and settle whether
-   cause 2 is the version skew or something else.
+3. **Then re-run the interop lane with a matched RMW** and settle whether cause 2
+   is the version skew or something else. Two ways to get one: build the pinned
+   overlay (`build/rmw_zenoh_ws`), or upgrade the ROS packages to a release whose
+   vendored zenoh matches the 1.7.2 pin. Either way the check is the same one
+   line, and it is the header rather than `dpkg -l`, for the reason above:
+
+   ```
+   grep ZENOH_C /opt/ros/humble/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+   ```
+
+   If that still reports a 1.2.x after an upgrade, the ROS distribution has not
+   moved and the overlay is the only route.
 
 Until (1) and (2) land, `just ci` cannot be green on any host that has ROS 2
 humble but no `build/rmw_zenoh_ws` — which is every host that has not run the
