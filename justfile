@@ -1551,7 +1551,8 @@ test-unit verbose="":
     fi
     real="$(just _count-real-failures)"
     if [ "$real" -ne 0 ]; then
-        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
+        just _name-real-failures || true
         exit 1
     fi
     echo "All failures were [SKIPPED] preconditions — treating as pass."
@@ -1602,7 +1603,8 @@ test-integration verbose="": build-zenohd
     real="$(just _count-real-failures)"
     just _test-summary || true
     if [ "$real" -ne 0 ]; then
-        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
+        just _name-real-failures || true
         exit 1
     fi
     echo "All failures were [SKIPPED] preconditions — treating as pass."
@@ -1642,7 +1644,8 @@ _nextest-platform test_name verbose="":
     real="$(just _count-real-failures)"
     just _test-summary || true
     if [ "$real" -ne 0 ]; then
-        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
+        just _name-real-failures || true
         exit 1
     fi
     echo "All failures were [SKIPPED] preconditions — treating as pass."
@@ -1666,6 +1669,13 @@ test-doc:
 _rewrite-skipped-junit junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
     python3 scripts/test/rewrite-skipped-junit.py "{{junit}}"
+    # Issue 0527 — SNAPSHOT the rewritten file. `junit.xml` is written by every
+    # `cargo nextest` invocation, so the doctest phase that runs after this, and
+    # every suite a human re-runs while triaging, overwrite the one artifact
+    # that knew which failures were real. `junit-real.xml` is written only here.
+    if [ -f "{{junit}}" ]; then
+        cp -f "{{junit}}" "$(dirname "{{junit}}")/junit-real.xml" || true
+    fi
 
 # Count real (non-[SKIPPED]) test failures from the latest junit.xml.
 # Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
@@ -1693,6 +1703,14 @@ _count-real-failures junit="target/nextest/default/junit.xml":
     real=$((total - skipped))
     if [ $real -lt 0 ]; then real=0; fi
     echo "$real"
+
+# Issue 0527 — NAME the real failures, not just count them. Reads the
+# `junit-real.xml` snapshot by default (see `_rewrite-skipped-junit`), because
+# the live `junit.xml` is whatever ran most recently. Always exits 0: this runs
+# on a path that has already decided to fail.
+_name-real-failures junit="":
+    #!/usr/bin/env bash
+    python3 scripts/test/name-real-failures.py {{junit}}
 
 # Print a one-line summary of test outcomes from junit.xml.
 _test-summary junit="target/nextest/default/junit.xml":

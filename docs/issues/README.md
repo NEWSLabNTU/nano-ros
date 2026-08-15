@@ -467,15 +467,14 @@ on the fix, red on the break with the `just lock-update` remedy, SKIP when the s
 catching link errors a `cargo check` misses), skipping when the submodule is absent so a bare clone can
 still `just check`. Split by TIER — lock check sub-second in `check-fast`, compile in the build tier. See `archived/0560-*`. (2026-08-13)
 
-**#527** (testing, open 2026-08-12) — the doctest phase overwrites the junit.xml the skip-rewrite just
-produced, so a failed sweep reports a trustworthy COUNT of real failures and destroys the record of WHICH
-they were. `rewrite-skipped-junit` prints "Real failures: 19 / 19"; read the file afterwards and it holds
-ZERO `<failure>` elements, because doctests run last, pass, and write the same path. The console log is no
-substitute — it interleaves TRY retries and carries no skip/fail classification, which is precisely what
-the rewrite computed and lost; classifying by duration over-counted 31 against the authoritative 19. It
-obstructed triage three times in one session and fails in the direction that looks fine (count right, file
-present, well-formed, describing a different run). Cheapest fix: have `_count-real-failures` emit the
-failing test ids as well as the count, so the names survive in the log. See `0527-*`. (2026-08-12)
+RESOLVED 2026-08-15 — **#527** the doctest phase (and every suite a human re-ran while triaging) overwrote
+the rewritten `junit.xml`, so a failed sweep could say HOW MANY real failures it had but not WHICH. Fixed
+both cheap ways: `_rewrite-skipped-junit` now snapshots to `junit-real.xml` (a path no nextest run writes),
+and `_name-real-failures` prints the ids at all three `test*` recipe tails that previously printed only a
+count. Verified on a synthetic junit: count and names agree, and after `junit.xml` is clobbered by a clean
+run the snapshot still names the real failure. Filed in the morning and walked into the same afternoon —
+a 171-failure sweep read as `tests=1 failures=1` because triage runs had overwritten the evidence. See
+`archived/0527-*`.
 
 RESOLVED 2026-08-12 — **#521** `eyre::Context::with_context` on a `Result` is eyre's FEATURE-GATED
 anyhow-compat surface (`ContextCompat`); `WrapErr::wrap_err_with` is the native one. `nros-pkg-index` and

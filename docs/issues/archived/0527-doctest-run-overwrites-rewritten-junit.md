@@ -1,11 +1,12 @@
 ---
 id: 527
 title: "The doctest run overwrites the rewritten junit.xml, so a failed sweep's real failures cannot be named afterwards"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: testing
 related: [issue-0499, phase-214]
+resolved_in: phase-340
 ---
 
 ## Symptom
@@ -71,3 +72,41 @@ console log is what a CI reader actually has.
 Filed while chasing tier-2 blockers; the fix is not urgent for correctness of
 the gate (the count is right) but is the difference between a triagable sweep
 and a re-run.
+
+## Fixed 2026-08-15 — snapshot the artifact, and name the failures
+
+Both of the cheap directions above, because they fail differently: one keeps the
+XML, the other survives even when the XML is gone.
+
+1. **`_rewrite-skipped-junit` snapshots to `target/nextest/default/junit-real.xml`.**
+   `junit.xml` is written by EVERY `cargo nextest` invocation — not only the
+   doctest phase this issue named, but every suite a human re-runs while
+   triaging. `junit-real.xml` is written by the rewrite step alone.
+
+2. **`_name-real-failures` prints the ids** (`scripts/test/name-real-failures.py`),
+   and all three `test*` recipe tails now call it where they previously printed
+   only a count. It reads the snapshot by preference and falls back to the live
+   file. It re-derives "real" from the `[SKIPPED]` marker rather than trusting
+   the rewrite to have run, matching `_count-real-failures`'s own
+   defence-in-depth — the two must not disagree about what real means.
+
+### The author walked into this issue while it was open
+
+Filed in the morning; that afternoon a tier-2 sweep reported 171 failures, I ran
+individual suites to triage, and then read `junit.xml` and found
+`tests=1 failures=1` — my own solo runs had overwritten it. The count I
+eventually trusted (1 real failure, 170 skips) came from re-running the whole
+sweep with a manual `cp` of the XML. That is the cost this issue describes,
+paid by the person who wrote it down.
+
+### Verified
+
+Synthetic junit carrying one real failure and one `[SKIPPED]`:
+
+| step | result |
+| --- | --- |
+| namer before rewrite | names the real one only |
+| rewrite | 1 `[SKIPPED]` → `<skipped>`, snapshot written |
+| `_count-real-failures` | 1 |
+| namer after rewrite | same one name — count and names agree |
+| **overwrite `junit.xml` with a clean run** | live file says 0; **snapshot still names it** |
