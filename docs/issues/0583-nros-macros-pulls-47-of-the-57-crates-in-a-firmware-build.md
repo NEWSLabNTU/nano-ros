@@ -135,3 +135,45 @@ Do not attempt (2) before (1) — the git-dep pin makes it a no-op.
 
 Measure the same two commands after each step; the acceptance number is the
 57-crate count.
+
+## Re-measured 2026-08-15 (phase-360 W5–W7)
+
+Baseline confirmed and slightly larger: `cargo tree -e normal -p nros --target
+thumbv7em-none-eabihf --no-default-features --features alloc,rmw-cffi` is **58
+crates**, **47** reachable through `nros-macros`.
+
+**The removal order this issue proposed does not survive re-derivation.**
+
+1. **"the `model = \"…\"` arm's `ros-launch-manifest-{model,sched}` (7 crates)"
+   — NOT removable that way.** Those crates are on the mainline `launch = "…"`
+   path, not the deprecated override: `nros-macros/src/main_macro.rs:595` parses
+   a `SystemModel` after `model_location::ensure_model(...)` (issue 0414), and
+   `nros-orchestration-ir` uses them across `derive.rs`, `mapper_input.rs`,
+   `rtos_realizer.rs` and `lib.rs` for the RFC-0052 tier schema. Gating one arm
+   drops nothing.
+2. **"then `toml` 0.8 → 0.9 (5 more)" — blocked upstream, confirmed.**
+   `cargo tree -i toml` names four consumers; two are ours and two are the
+   `ros-launch-manifest` git deps pinned at tag `v0.1.6`. Bumping ours leaves
+   0.8 — and therefore `toml_edit` and `winnow 0.7` — alive. Needs an upstream
+   bump in a fork remote.
+3. **"then `nros-macros` optional" — the only viable step, and bigger than
+   expected.** Measured by making the dep optional: **58 → 19 crates, 39
+   dropped.** The floor is 19 rather than the "11 plus paste" this issue
+   predicted, because that figure came from a narrower feature set.
+
+**Its stated shape is illegal under the contract, though.** A default-on
+`macros` feature on `nros` is unreachable: all 62 in-workspace dep-sites pass
+`default-features = false`, so `check-feature-contract` clause (d) rejects it as
+issue 0584's shape — a feature reachable only by whole-workspace unification,
+absent from the per-package builds cmake runs. W3 (`default = []` everywhere,
+dep-sites explicit) is what made that true.
+
+The viable form is `macros` opt-in, requested per dep-site. Cost: **135 in-tree
+crates** use `nros::main!` / `nros::node!` / `nros::derive::`, across 64
+`packages/` and 188 `examples/` dep-sites; the examples are user-facing copy-out
+projects (RFC-0026); every workspace fixture rebuilds; validation needs tier 2.
+
+Open, with the prize (39 crates, and per the original timing the bulk of the
+20.9 s macro subtree) and the price (a 135-manifest breaking change) both now
+measured rather than estimated.
+

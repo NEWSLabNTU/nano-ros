@@ -89,21 +89,24 @@ ANY_HEAP_CFG = re.compile(
 GLOBAL_ALLOC = re.compile(r"^\s*#\[global_allocator\]")
 
 
-def skip_path(p):
-    parts = p.replace("\\", "/").split("/")
-    return any(
-        seg == "target" or seg.startswith("target-") or seg == "generated"
-        for seg in parts
-    )
+def is_build_output(name):
+    """A directory that holds build OUTPUT rather than authored source.
+
+    One spelling, matching `example_portability`'s: `build*/` and `target*/` at
+    ANY level. This is load-bearing for clause (d) — `nros sync`'s metadata
+    probe writes real `Cargo.toml`s under `<leaf>/build/nros-metadata/`, and 58
+    of them dep `nros` WITHOUT `default-features = false`. Counting those as
+    authored dep-sites made clause (d) unfalsifiable: every `default` feature
+    looked reachable because a generated probe manifest reached it.
+    """
+    return name.startswith("build") or name.startswith("target") or name == "generated"
 
 
 def manifests(root=None):
     root = root or ROOT
     out = []
     for base, dirs, files in os.walk(os.path.join(root, SCOPE)):
-        dirs[:] = [
-            d for d in dirs if d != "target" and not d.startswith("target-") and d != "generated"
-        ]
+        dirs[:] = [d for d in dirs if not is_build_output(d)]
         if "Cargo.toml" in files:
             out.append(os.path.join(base, "Cargo.toml"))
     return sorted(out)
@@ -131,9 +134,7 @@ def rust_files(crate_dir, subdirs=("src", "tests", "benches", "examples")):
         if not os.path.isdir(d):
             continue
         for base, dirs, files in os.walk(d):
-            dirs[:] = [
-                x for x in dirs if x != "target" and not x.startswith("target-") and x != "generated"
-            ]
+            dirs[:] = [x for x in dirs if not is_build_output(x)]
             for f in files:
                 if f.endswith(".rs"):
                     yield os.path.join(base, f)

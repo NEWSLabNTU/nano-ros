@@ -495,24 +495,80 @@ code (RFC-0026), and the contract's point is that the user spells `std`/`alloc`
 at their own dep-sites. And the census blind spot that (a/source) alludes to is
 phase-359's gate, not this one (issue 0586, fixed upstream).
 
-**W5 — gate the `model = "…"` arm.** Feature-gate
-`ros-launch-manifest-{model,sched}` in `nros-orchestration-ir` (which has no
-`[features]` block today) and `nros-macros`; the arm emits `compile_error!`
-naming the feature when off. Drops 7 crates including `unsafe-libyaml` and the
-duplicate `thiserror` major, and removes a **git** dependency from every cold
-firmware build. Acceptance: the 57-crate count drops to 50.
+### W5–W7 — dependency weight: re-measured 2026-08-15, and the plan does not survive it
 
-**W6 — `toml` 0.8 → 0.9** in `nros-macros`, `nros-orchestration-ir`,
-`nros-board-common`. Drops `toml_edit`, `winnow 0.7` (the most expensive unit in
-the firmware build), `toml_write`, `serde_spanned 0.6`, `toml_datetime 0.6`, and
-un-splits the resolver against the 0.9 that `nros-tests`/`cbindgen` already
-pull. **Blocked on W5** — the git deps pin 0.8 and would hold the old tree
-alive. Acceptance: one `toml` version in `cargo tree`; 45-crate count.
+The baseline holds, slightly larger than issue 0583 recorded: a firmware build
+of `nros` (`-e normal --target thumbv7em-none-eabihf --no-default-features
+--features alloc,rmw-cffi`) is **58 crates**, of which **47** are reachable
+through `nros-macros`. Everything below was measured on that command.
 
-**W7 — `nros-macros` optional.** A default-on `macros` feature on `nros`, so a
-consumer that hand-writes its entry point (already supported) drops all 47.
-Acceptance: `cargo tree -e normal -p nros --no-default-features --features std
---target thumbv7em-none-eabihf` is the 11 runtime crates plus `paste`.
+**W5 — gate the `model = "…"` arm — CANNOT DELIVER AS WRITTEN.** The item
+assumed `ros-launch-manifest-{model,sched}` are reached only by the deprecated
+`model = "…"` override, so feature-gating that arm would drop them. They are on
+the MAINLINE path:
+
+* `nros-macros/src/main_macro.rs:595` parses a `SystemModel` after
+  `nros_orchestration_ir::model_location::ensure_model(...)` — that is the
+  `launch = "…"` arm, the shape CLAUDE.md and phase-330 W4 make canonical. Issue
+  0414 is why it resolves the model itself rather than only looking for an
+  artifact.
+* `nros-orchestration-ir` uses them in four modules —
+  `derive.rs`, `mapper_input.rs`, `rtos_realizer.rs`, `lib.rs` — for the RFC-0052
+  tier schema and the chain-aware rank. Not one arm; the crate's purpose.
+
+So the 7 crates cannot be dropped by gating a deprecated arm, because the arm is
+not their only consumer. **Same shape as W2.b**: an item asserted a dependency
+was reachable by one path, and the claim was never re-derived after the code
+moved under it.
+
+**W6 — `toml` 0.8 → 0.9 — STILL BLOCKED, and the blocker is confirmed rather
+than assumed.** `cargo tree -i toml` shows four consumers: `nros-macros`,
+`nros-orchestration-ir` (ours, bumpable) and `ros-launch-manifest-{model,sched}`
+(git deps at tag `v0.1.6`, not ours). Bumping our two leaves 0.8 alive through
+the other two, so the `toml_edit` → `winnow 0.7` chain survives and nothing is
+un-split. W6 was blocked on W5; with W5 dead it is blocked on an upstream bump
+in the `ros-launch-manifest` repo — a fork remote, which by repo policy the
+agent prepares and the maintainer pushes.
+
+**W7 — `nros-macros` optional — WORKS, and is worth more than the doc claimed,
+but its stated design is illegal under W4.** Measured by making the dep optional
+and re-running the same `cargo tree`:
+
+| | crates |
+| --- | --- |
+| with `nros-macros` | 58 |
+| without | **19** |
+| dropped | **39** |
+
+(The old acceptance criterion, "the 11 runtime crates plus `paste`", was measured
+on a narrower feature set; at `alloc,rmw-cffi` the floor is 19 — it includes
+`nros-log`, `nros-platform{,-api}`, `nros-rmw-cffi`, `atomic-waker`, `heapless`,
+`hash32`, `byteorder`, `stable_deref_trait` and both `portable-atomic` crates.)
+
+W7 said "a default-on `macros` feature on `nros`". **That is unreachable by
+construction and W4 clause (d) rejects it** — verified by trying it:
+
+```
+packages/api/nros/Cargo.toml: `default` names ['macros'], and all 62 in-workspace
+      dep-sites on `nros` pass `default-features = false` without naming them.
+```
+
+Which is issue 0584 exactly: the feature would arrive only by unification in a
+whole-workspace build and vanish in the per-package builds cmake runs. W3 is what
+made this so — with `default = []` established and every dep-site explicit, a
+default-on feature cannot reach anyone.
+
+So W7's only correct form is **`macros` opt-in, requested at the dep-sites that
+use the macros** — consistent with the rest of the contract, and a BREAKING
+change of real size: **135 in-tree crates** reference `nros::main!` / `nros::node!`
+/ `nros::derive::`, across 64 `packages/` and 188 `examples/` dep-sites, and the
+examples are user-facing copy-out projects (RFC-0026). Every workspace fixture
+would need rebuilding, and the change cannot be validated below tier 2.
+
+**Status: W5 closed as not-viable, W6 blocked upstream, W7 needs a scope
+decision.** The 39-crate prize is real and the mechanism is proven; what is
+undecided is whether to spend a 135-manifest breaking change on it now. Issue
+0583 stays open and should carry these numbers.
 
 **W8 — no feature may enable `alloc` or `std` but `alloc`/`std` (LANDED).**
 Issue 0585 enumerated 34 sites. **0 remain**, and the `#[global_allocator]`
