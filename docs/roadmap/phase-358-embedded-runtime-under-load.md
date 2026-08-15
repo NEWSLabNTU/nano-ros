@@ -170,8 +170,27 @@ guest run the acceptance demands turned up something else.
   of the SAME board running the same workspace correctly for 60 s at the
   expected ~10:1 tick ratio.
 
-So W4's code and gate work is complete; its runtime proof is deferred to 0583,
-which is a bigger bug than the one this item was about.
+**W4 COMPLETE later the same day — 0583 was fixed, and the observation landed.**
+0583 turned out not to be a scheduling bug at all: the image linked a `std`
+compiled 2026-08-10 against crates.io `libc`'s 20-byte `pthread_attr_t` while
+NuttX's is 56, so every thread spawn wrote 36 bytes past the attr on
+`Thread::new`'s own frame and the caller returned to ~0. Issue 0570's fork fix
+never reached those artifacts because the workspace fixture signature was blind
+to the vendored libc and these rows set `skip_probe = true`. Fixed by hashing the
+pin into the signature AND dropping the build-std artifacts when it moves.
+
+With that cleared, the guest shows exactly what this item asked for:
+
+```
+nros: tier priority set tier=`high` prio=110      <- the boot tier
+nros: tier priority set tier=`low`  prio=100
+nros: tier `high` alive — 3000 spin(s), 2437 timer(s) fired, 0 error(s)
+nros: tier `low`  alive —  300 spin(s),  142 timer(s) fired, 0 error(s)
+```
+
+Ordering observed rather than read: the ~10:1 ratio matches the declared 1 ms /
+10 ms periods, both tiers publish, and the guest survives the full run. Issues
+0579 and 0583 both resolved.
 
 ## W5 — Zephyr Cyclone action images fail at boot, hidden by a timeout (#557)
 

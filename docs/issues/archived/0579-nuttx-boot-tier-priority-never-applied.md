@@ -2,7 +2,7 @@
 id: 579
 title: "NuttX: the boot tier never adopts its declared priority, so a
   `[tiers.*.nuttx] priority` ordering can silently invert"
-status: open
+status: resolved
 type: bug
 area: platform-nuttx
 related: [issue-0251, issue-0263, issue-0246, issue-0572, issue-0570, rfc-0015, rfc-0016, phase-281]
@@ -156,3 +156,24 @@ runs the same workspace correctly, so the fix's own correctness is not in doubt
 
 So this issue stays OPEN on its runtime point, gated behind 0583, with the code
 fix and the gate fix landed.
+
+
+## RESOLVED 2026-08-15 — the runtime observation landed once issue 0583 cleared
+
+The blocked acceptance point ("verified by observing the ordering rather than by
+reading the code") is met. On the `workspace-rust-nuttx-realtime` fixture, with
+0583's stale-`std` cause fixed:
+
+```
+nros: boot tier `high` (session owner) — … spin 1000 us, priority 110
+nros: tier `high` declares a sporadic budget but is the session-owning boot tier — kept SCHED_FIFO
+nros: tier priority set tier=`high` prio=110
+nros: tier priority set tier=`low`  prio=100
+nros: tier `high` alive — 3000 spin(s), 2437 timer(s) fired, 0 error(s)
+nros: tier `low`  alive —  300 spin(s),  142 timer(s) fired, 0 error(s)
+```
+
+The boot tier adopts its declared 110 — the marker it never printed — the
+spawned tier keeps 100, and the ~10:1 spin ratio matches the declared 1 ms /
+10 ms periods. All four acceptance points met; the gate that used to accept the
+bug (`EachTierOrFailNote`) now names both tiers and both declared values.

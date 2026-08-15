@@ -70,6 +70,28 @@ workspace="$repo_root/$dir"
     if [ -n "${bringup:-}" ]; then
         printf 'tool:resolve\0%s\0' "$(bash "$repo_root/scripts/build/resolve-fingerprint.sh" 2>/dev/null || echo resolver-error)"
     fi
+    # issue 0583 — the VENDORED NuttX libc, for nuttx records.
+    #
+    # These rows build `std` from source (`-Z build-std`) against the fork at
+    # `third-party/nuttx/libc`, which mirrors NuttX's opaque pthread/sem structs
+    # by SIZE. That fork is as much a build input as the workspace sources: its
+    # `__PTHREAD_ATTR_SIZE__` decides how many bytes
+    # `std::sys::thread::unix::Thread::new` reserves for the `pthread_attr_t` on
+    # its own frame, and NuttX's `pthread_attr_init`/`destroy` memset the
+    # KERNEL's size into it regardless.
+    #
+    # The signature was blind to it, so bumping the fork left every nuttx Rust
+    # fixture verifying as FRESH while its `std` still carried the old size. That
+    # is issue 0583: a `std` compiled against the pre-#570 20-byte mirror wrote 36
+    # bytes past the attr, smashed the caller's frame, and the boot task returned
+    # to ~0 — silently, since nothing on that path printed. Hash the pin.
+    case "$record" in
+        *nuttx*)
+            printf 'sdk:nuttx-libc\0%s\0' \
+                "$(git -C "$repo_root/third-party/nuttx/libc" rev-parse HEAD 2>/dev/null || echo absent)"
+            ;;
+    esac
+
     # phase-360 W3 — ONE spelling, in `source-manifest.sh`, shared with the
     # compile-check lane. Enumerating through the git index is what makes an
     # extension filter redundant: gitignored build trees (`_deps`, `install`,

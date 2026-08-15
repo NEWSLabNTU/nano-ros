@@ -3,7 +3,7 @@ id: 583
 title: "nuttx-arm Rust realtime entry: the boot tier never resumes after
   spawning, so the shared session is never flushed and the guest dies of lease
   expiry ~7 s in"
-status: open
+status: resolved
 type: bug
 area: boards
 related: [issue-0579, issue-0572, issue-0569, issue-0246, rfc-0015, phase-281, phase-358]
@@ -127,3 +127,96 @@ guessed at.
 * `realtime_tiers_e2e` `nuttx-arm/rust` RUNS (not skips) and passes;
 * the bisect either names the commit that regressed it or shows it never worked
   in the shape 0569 recorded.
+
+
+## RESOLVED 2026-08-15 — a stale `std`, carrying issue 0570's pre-fix struct sizes
+
+Not a scheduling bug, and not in nano-ros code. The image linked a `std` that had
+been compiled days earlier, against the OLD opaque-struct mirror.
+
+### The chain
+
+Narrowed with raw `write(2)` probes on fd 1 — chosen because `println!` takes a
+lock and allocates, and both were suspects on a path whose symptom is "stops
+printing". A probe that never fires proves nothing, so a POSITIVE CONTROL went in
+at a point the console already proved reachable; it fired, the ones after the
+spawn did not.
+
+1. The boot task never returns from `Builder::spawn_scoped`, though the child
+   runs. A control with the child's body replaced by a bare park behaved
+   identically, so it is not what the child does.
+2. Nor is it `thread::scope`: a plain `std::thread::Builder::spawn` beside it
+   printed "child ran" and never printed "spawn returned".
+3. Kernel breakpoints put the caller inside `pthread_attr_destroy`, called from
+   `std::sys::thread::unix::Thread::new`, and never at `pthread_detach`.
+4. Stepping out of it, the PC walks 0x48, 0x4c, 0x50 … with `lr == sp`: the
+   epilogue restored a smashed frame and returned to near-NULL.
+5. The disassembly says why. `Thread::new` passes `attr = sp` and puts the
+   `pthread_t` at `sp+28` — a frame laid out for a `pthread_attr_t` of at most
+   ~24 bytes, while NuttX's `pthread_attr_init`/`destroy` memset **56**. A
+   36-byte overwrite of the caller's saved registers.
+
+That is exactly issue 0570's defect, which was fixed by taking the fork's
+`__PTHREAD_ATTR_SIZE__` from 5 (20 bytes) to 14 (56).
+
+### Why the fix was not in the image
+
+* `crates.io libc 0.2.183` still has `__PTHREAD_ATTR_SIZE__ = 5`; the fork has
+  14. Which one a build gets decides whether it smashes.
+* The leaf's `libstd-*.rlib` and `liblibc-*.rlib` were built **2026-08-10
+  20:12**, while the fork file carrying the fix was checked out later. So the
+  image linked a pre-fix `std` and nothing rebuilt it.
+* Nothing noticed. `workspace-fixture-signature.sh` hashed the workspace
+  sources, the codegen tool and the resolver — not the vendored libc — so the
+  stamp said FRESH. These rows also set `skip_probe = true`, so the runtime
+  staleness probe skips them by design.
+
+Proof: `rm -rf` of the leaf target dir and a rebuild, nothing else changed, and
+the boot tier runs — including the marker issue 0579 was about:
+
+```
+nros: tier priority set tier=`high` prio=110      <- boot tier, was never printed
+nros: tier priority set tier=`low`  prio=100
+nros: tier `high` alive — 4000 spin(s), 3061 timer(s) fired, 0 error(s)
+nros: tier `low`  alive —  500 spin(s),  244 timer(s) fired, 0 error(s)
+```
+
+Both tiers publish, the ~10:1 ratio matches the declared 1 ms / 10 ms periods,
+and the guest survives the full run instead of dying at ~7 s.
+
+### The fix
+
+Two parts, because the stamp and the artifacts fail independently:
+
+* **`workspace-fixture-signature.sh` hashes the vendored libc pin** for nuttx
+  records. The fork is a build input exactly like a workspace source; the
+  signature was blind to it.
+* **`scripts/build/nuttx-libc-pin-guard.sh` drops the build-std artifacts** when
+  that pin moves, wired into both `build-fixtures-arm` and `build-fixtures-riscv`.
+  An honest stamp alone is not enough: a stale stamp only makes cargo run again,
+  and cargo reuses the `std` it already has. A first run with no stamp records
+  the pin WITHOUT wiping — nothing on disk is known to disagree with it, and a
+  gratuitous rebuild of every NuttX row is its own problem.
+
+Beware `fixtures-manifest.py fixture-groups`: it ignores `--platform`/`--lang`
+and prints every row. The guard's first version trusted it and deleted four
+native `target/` dirs before that was caught; it now takes the row set from
+`list` (which does filter) and uses `fixture-groups` only to look up the artifact
+root of a row already known to be NuttX.
+
+### Also fixed on the way
+
+The panic hook that issue 0572 added to route panics to stdout — written for
+precisely this case, its comment saying "a boot tier that panics after spawning
+its siblings would look exactly like one that silently stopped scheduling" — was
+installed in `run_entry` only. `run_tiers`, the path that HAS siblings, never
+called it. It is a shared function now, installed by both. (It came back negative
+here: no panic. Worth having anyway, and the negative was itself informative —
+it is what ruled out the whole panic branch.)
+
+### What this does NOT explain
+
+Issue 0569 records this row passing 16/16 on 2026-08-14, after 0570's fix. That
+is consistent: a tree whose build-std artifacts post-date the fix is fine. Only a
+checkout that moves the fork under warm artifacts reproduces this, which is why
+it appeared here and not in that run. No bisect needed.

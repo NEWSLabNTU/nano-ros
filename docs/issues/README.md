@@ -75,25 +75,25 @@ assert against `size_of` of the type they store, and `check-opaque-storage-guard
 `15 macro(s) emitted, all guarded`. A silently substituted size is now a build error naming the macro.
 See `archived/0464-*`.
 
-**#583** (boards, open 2026-08-15) — the nuttx-arm **Rust** realtime entry's BOOT tier never resumes
-after spawning the low tier: its next statement is an unconditional `println!` (the `kept SCHED_FIFO` note,
-whose three conditions the console itself shows are met) and it never appears, so the tier's affinity,
-priority (#0579) and spin never run. Being the SESSION OWNER (#0246) its stall stops the shared zenoh-pico
-flush: a NIC dump shows one TCP connection, the guest silent after ~7 s, and the router FINing unanswered —
-so the spawned tier's publishes never leave the guest. NOT #0579's fix (a revert-rebuild at `64fee4e60^`
-gives an identical console), NOT the #0570 mirror overflow (`check-nuttx-libc-struct-sizes` green), and NOT
-the board — the C++ arm of the SAME board runs the SAME workspace 60 s at the expected ~10:1 ratio. Uncaught
-because `realtime_tiers_e2e`'s `nuttx-arm/rust` row currently SKIPS on a stale native peer fixture.
-See `0583-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#583** — the nuttx-arm Rust realtime boot tier "stopped scheduling" after
+spawning. Not scheduling and not nano-ros code: the image linked a `std` built 2026-08-10 against crates.io
+`libc`'s 20-byte `pthread_attr_t` while NuttX's is 56, so `pthread_attr_init`/`destroy` wrote 36 bytes past
+the attr on `Thread::new`'s own frame and the caller returned to ~0 (PC walking 0x48, 0x4c, … with `lr == sp`).
+That is #0570's defect, whose fork fix (5 -> 14) never reached these artifacts: the workspace signature hashed
+sources/tool/resolver but NOT the vendored libc, and the rows set `skip_probe = true`. Fixed both halves — the
+signature hashes the pin, and `nuttx-libc-pin-guard.sh` DROPS the build-std artifacts when it moves (an honest
+stamp only re-runs cargo, which reuses the `std` it has). Also installed #0572's stdout panic hook on
+`run_tiers`, the sibling-spawning path that never had it. See `archived/0583-*`. (2026-08-15)
 
-**#579** (platform-nuttx, open 2026-08-15) — `apply_tier_priority` is called from ONE place, the SPAWNED
-tier path, so the boot tier keeps the init task's priority and its declared `[tiers.*.nuttx] priority` is
-parsed, baked, carried to the board and dropped. The in-tree realtime workspace declares high=110 (boot)
-over low=100 and the guest runs BOTH at 100 — #0570's crash dump shows `PRI 100` for `nsh_main` and both
-pthreads. A declared number is an ORDERING, so dropping one silently inverts the set, on the one tier that
-also drives the shared session flush. ThreadX already fixed exactly this (`nros_threadx_set_current_priority`,
-whose comment names the inversion) and Zephyr avoids it by sorting (#0251); NuttX does neither. NOT #0572's
-cause — that was #0570's mirror overflow; recorded so the misreading is not repeated. See `0579-*`. (2026-08-15)
+Recently resolved (2026-08-15): **#579** — `apply_tier_priority` was called only from the SPAWNED tier path,
+so the NuttX boot tier kept the init task's priority and its declared `[tiers.*.nuttx] priority` was parsed,
+baked, carried to the board and dropped — silently inverting an ORDERING on the one tier that also drives the
+shared session flush. Fixed by adopting it on the boot path too (the answer ThreadX already takes; Zephyr
+avoids the problem by sorting, #0251). The e2e cell that should have caught it asked only whether the accept
+marker appeared ANYWHERE, which one spawned tier satisfied for the whole image — now `EachTierOrFailNote`,
+per declaring tier and per declared value. Runtime proof was blocked behind #0583 and landed with it: the guest
+prints `tier priority set tier=\`high\` prio=110` and a ~10:1 spin ratio. NOT #0572's cause — that was #0570's
+mirror overflow. See `archived/0579-*`. (2026-08-15)
 
 Recently resolved (2026-08-15): **#577** — `cargo test -p nros-node --lib` failed
 (`violations_beyond_the_ring_are_counted`, `ExecutorFull`) while `just ci` was green. TWO defects. The test

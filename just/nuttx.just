@@ -183,6 +183,12 @@ build-fixtures-arm:
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
         echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
+    # Issue 0583 — drop the build-std artifacts when the vendored NuttX libc
+    # pin moves. `workspace-fixture-signature.sh` hashes the pin so the STAMP
+    # is honest, but a stale stamp only makes cargo run again and cargo reuses
+    # the `std` it already built. A `std` compiled against the old opaque-struct
+    # sizes smashes the caller's frame on every thread spawn.
+    bash scripts/build/nuttx-libc-pin-guard.sh
     # Provision the NuttX kernel first: each example's build.rs compiles
     # platform.c (`#include <nuttx/config.h>`) and links staging/libc.a, so
     # the configured kernel must exist before the cargo fixtures run. On a
@@ -278,6 +284,9 @@ build-fixtures-riscv:
         echo "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
         exit 0
     fi
+    # Issue 0583 — same build-std/vendored-libc coupling as the arm half; the
+    # riscv rows build `std` from the same fork.
+    bash scripts/build/nuttx-libc-pin-guard.sh
     # Serial, same stage: they share ONE kernel tree, so they cannot overlap.
     just nuttx build-riscv-c
     just nuttx build-riscv-c-workspaces

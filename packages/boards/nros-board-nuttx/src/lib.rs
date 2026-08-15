@@ -163,6 +163,27 @@
 /// + without the reference feature skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
 #[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+/// Route panics to STDOUT (issue 0572; extended to `run_tiers` by issue 0583).
+///
+/// A panic on this guest is INVISIBLE otherwise: Rust prints the message and
+/// location to stderr, and stderr does not reach the NuttX serial console here
+/// — the same finding that hid every `eprintln!` diagnostic on this board. Its
+/// own comment said "a boot tier that panics after spawning its siblings would
+/// look exactly like one that silently stopped scheduling", and it was then
+/// installed on ONE of the two entry paths: `run_tiers` — the multi-tier path,
+/// the only one that HAS siblings to spawn — never called it. Issue 0583 is
+/// exactly the scenario it describes, on exactly the path that lacked it, so
+/// the hook is a shared function now rather than a block inside one entry.
+fn install_stdout_panic_hook() {
+    use std::io::Write as _;
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(std::boxed::Box::new(move |info| {
+        println!("nros: PANIC {info}");
+        let _ = std::io::stdout().flush();
+        prev(info);
+    }));
+}
+
 pub fn run_entry<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     setup: F,
@@ -172,22 +193,7 @@ where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-    // issue 0572 — a panic on this guest is INVISIBLE: Rust prints the message
-    // and location to stderr, and stderr never reaches the NuttX serial console
-    // here (the same finding that hid every `eprintln!` diagnostic in this
-    // function). A boot tier that panics after spawning its siblings would look
-    // exactly like one that silently stopped scheduling. Route it to stdout.
-    // (For 0572 itself this came back NEGATIVE — no panic — which is why the
-    // hook stays: that was worth knowing and cost a build to learn.)
-    {
-        use std::io::Write as _;
-        let prev = std::panic::take_hook();
-        std::panic::set_hook(std::boxed::Box::new(move |info| {
-            println!("nros: PANIC {info}");
-            let _ = std::io::stdout().flush();
-            prev(info);
-        }));
-    }
+    install_stdout_panic_hook();
 
     <B as nros_platform::BoardInit>::init_hardware();
 
@@ -466,6 +472,10 @@ where
     E: core::fmt::Debug,
 {
     use std::io::Write as _;
+
+    // issue 0583 — this path spawns siblings, which is the case 0572's hook was
+    // written for, and it was the path that did not install it.
+    install_stdout_panic_hook();
 
     <B as nros_platform::BoardInit>::init_hardware();
 
