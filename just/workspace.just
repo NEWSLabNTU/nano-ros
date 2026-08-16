@@ -167,7 +167,26 @@ install-corrosion:
     # Honour NROS_HOME: the ROS distrobox points it at its own store, and a
     # binary installed into the HOST store is invisible to activate.sh there
     # (it reads ${NROS_HOME:-$HOME/.nros}). Issue 0400 family.
-    prefix="${NROS_HOME:-$HOME/.nros}/sdk/corrosion"
+    # phase-365 W5 — install into the VERSIONED prefix, the same one
+    # `nros setup --tool corrosion` writes and every consumer now constructs.
+    #
+    # This recipe used to install into the unversioned `<store>/sdk/corrosion`,
+    # so the store had TWO layouts from two producers. That flat prefix is what
+    # actually caused issue 0625: `cmake-prefix.sh` globbed
+    # `<store>/corrosion/*/`, which matched the flat install's `lib/` and
+    # `share/` subdirectories — not versions at all — and under `sort -Vr` a
+    # pure-alpha name sorts BEFORE the numeric ones, so it led the prefix path
+    # and won 155 of 183 resolutions.
+    #
+    # `nros sdk-path` is the single constructor (phase-365 W2); asking it here
+    # means the installer and the consumers cannot disagree about where the
+    # tool lives.
+    prefix="$(nros sdk-path corrosion 2>/dev/null || true)"
+    if [ -z "$prefix" ]; then
+        echo "[corrosion] cannot resolve the pinned install path — is \`nros\` on PATH?" >&2
+        echo "            (source ./activate.sh, or use \`nros setup --tool corrosion\`)" >&2
+        exit 1
+    fi
     stamp="$prefix/.installed-version"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
         echo "[corrosion] $want already installed ($prefix)"

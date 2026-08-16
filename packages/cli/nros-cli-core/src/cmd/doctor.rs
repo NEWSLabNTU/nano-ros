@@ -46,7 +46,58 @@ pub struct Args {
     pub config: Option<PathBuf>,
 }
 
+/// phase-365 W5 — report a legacy UNVERSIONED install as removable.
+///
+/// `just workspace install-corrosion` used to install into
+/// `<store>/corrosion/` with no version component, so the store carried two
+/// layouts from two producers. That flat prefix is what caused issue 0625:
+/// `cmake-prefix.sh` globbed `<store>/corrosion/*/`, which matched the flat
+/// install's `lib/` and `share/` SUBDIRECTORIES — not versions — and under
+/// `sort -Vr` a pure-alpha name sorts before the numeric ones, so it led the
+/// prefix path and won 155 of 183 resolutions in one configure.
+///
+/// Both producers now write `<store>/<tool>/<version>`. An existing flat prefix
+/// is inert once nothing enumerates the store, but it is confusing to find and
+/// costs disk, so say it is there rather than leaving it to be rediscovered.
+fn report_legacy_unversioned_installs() {
+    let store = crate::orchestration::sdk_store::store_root();
+    let Ok(entries) = std::fs::read_dir(&store) else {
+        return;
+    };
+    for tool in entries.flatten() {
+        if !tool.path().is_dir() {
+            continue;
+        }
+        // A version dir contains the install; the flat layout puts `lib/` or
+        // `share/` DIRECTLY under the tool, where a version should be.
+        // Name ONLY the flat subdirectories. An earlier draft printed
+        // `rm -rf <store>/<tool>`, which deletes the VERSIONED installs
+        // alongside the legacy one — a doctor that tells you to delete your
+        // pinned toolchain is worse than one that says nothing.
+        let legacy: Vec<std::path::PathBuf> = ["lib", "share"]
+            .iter()
+            .map(|d| tool.path().join(d))
+            .filter(|p| p.is_dir())
+            .collect();
+        if !legacy.is_empty() {
+            let paths: Vec<String> = legacy.iter().map(|p| p.display().to_string()).collect();
+            eprintln!(
+                "nros doctor: [REMOVABLE] legacy unversioned install under {}\n\
+                 \x20   {}\n\
+                 \x20   the store is keyed by version now; this prefix belongs to no \
+                 project and no longer participates in resolution (issue 0625).\n\
+                 \x20   remove it:  rm -rf {}",
+                tool.path().display(),
+                paths.join("\n\x20   "),
+                paths.join(" ")
+            );
+        }
+    }
+}
+
 pub fn run(args: Args) -> Result<()> {
+    report_legacy_unversioned_installs();
+
     // RFC-0004 §4 — deploy-target health check. Resolve the bringup
     // `system.toml` (explicit `--config`, else the cwd's `system.toml`) and
     // report each `[deploy.<target>]` block. `None` ⇒ no system.toml here

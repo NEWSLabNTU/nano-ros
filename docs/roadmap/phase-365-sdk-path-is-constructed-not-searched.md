@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1, W2, W3a, W3b, W4 LANDED; W5 open.** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). W1–W5 LANDED. Owed: the full `lane=all` re-measurement (the complete inverse of 155/28).** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -223,13 +223,38 @@ on a deliberately reintroduced search. That is why the self-test is part of the
 gate and not a formality: this is the second gate today that would have shipped
 green and blind.
 
-### W5 — retire the unversioned prefix
+### W5 — retire the unversioned prefix — LANDED
 
 `~/.nros/sdk/corrosion/{lib,share}` belongs to no version and therefore to no
 project. Provisioning stops writing it; `nros doctor` reports it removable.
 
-**Acceptance.** A fresh provisioning run writes no flat prefix; `doctor` names
-an existing one.
+**The flat prefix had a PRODUCER, and it was the cause.** `nros setup --tool
+corrosion` wrote `<store>/corrosion/<version>` while
+`just workspace install-corrosion` wrote the unversioned `<store>/corrosion/` —
+two producers, two layouts. That second layout is what caused 0625:
+`cmake-prefix.sh` globbed `<store>/corrosion/*/`, which matched the flat
+install's `lib/` and `share/` SUBDIRECTORIES (not versions), and under
+`sort -Vr` a pure-alpha name sorts before the numeric ones, so it led the prefix
+path and won 155 of 183 resolutions.
+
+`install-corrosion` now asks `nros sdk-path corrosion` for its destination, so
+installer and consumers share one constructor.
+
+**Acceptance — met.** `nros doctor` reports an existing flat prefix and is
+silent once it is gone:
+
+```
+nros doctor: [REMOVABLE] legacy unversioned install under ~/.nros/sdk/corrosion
+    ~/.nros/sdk/corrosion/lib
+    ~/.nros/sdk/corrosion/share
+    remove it:  rm -rf ~/.nros/sdk/corrosion/lib ~/.nros/sdk/corrosion/share
+```
+
+**Caught before landing:** the first draft printed
+`rm -rf <store>/corrosion` — which deletes the VERSIONED installs along with the
+legacy one. A doctor that tells you to delete your pinned toolchain is worse
+than one that says nothing, so the remedy now names only the flat
+subdirectories.
 
 ## The decision this needs, made deliberately
 
