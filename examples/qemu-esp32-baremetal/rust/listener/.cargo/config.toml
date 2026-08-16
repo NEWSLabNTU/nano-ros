@@ -1,4 +1,4 @@
-include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
+include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 
 
 [env]

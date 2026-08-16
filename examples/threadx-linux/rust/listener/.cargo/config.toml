@@ -1,4 +1,4 @@
-include = [ "../../../../../nros-patch.toml"]
+include = ["../../../../../nros-patch.toml"]
 # Phase 212.N.7 step-2 — Entry pkg cargo config. Builds for the HOST, so no
 # `[build] target`; the old `x86_64-unknown-linux-gnu` literal was a cross
 # compile on every non-x86 host (see `talker`). `nros-board-threadx-linux`
