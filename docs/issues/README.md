@@ -93,6 +93,20 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
+**#630** (testing/build, open 2026-08-16) — tier 1 cannot go GREEN on a host with no Zephyr workspace, so
+"the tier anyone can afford per task" has no baseline to compare against there. `CiLane::Tier1 =>
+RunScope::Native` narrows by test NAME (`NROS_TEST_SCOPE=native`); tier 2/nightly narrow by COORDINATE
+(`NROS_TEST_COORDS`), and that is the only path where an out-of-lane fixture SKIPS. `sched_dims_applied` is
+ONE test over `matrix::SCHED_CELLS`, which spans every platform by construction (phase-329 W2 consolidated ten
+files into it precisely so a row could not be forgotten) — so a name takes the whole test or none of it, and
+its four zephyr cells hard-fail on the gated-run branch. That branch is RIGHT (issue 0445: a run that asserted
+freshness must not silently skip); it is being asked a question a name filter cannot answer. Exact converse of
+the tension #482 records from the other side: "name filtering cannot express tier 2 — it is 1-wise over
+platform, so every platform is in it." Deterministic, no `just ci` needed:
+`NROS_TEST_SCOPE=native cargo nextest run -p nros-tests --test sched_dims_applied_e2e` fails, ungated passes.
+Note `check-tier-preconditions` currently says "Tier 1 does not need it" — the sentence someone reads before
+deciding to skip `just zephyr setup`. Three candidate fixes weighed, none measured. See `0630-*`.
+
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
 IGNORED and every configure silently fetches Corrosion from GitHub — configure now needs the network, and
