@@ -309,9 +309,20 @@ doctor:
     fi
 
     # --- Corrosion (cmake ↔ Rust bridge, Phase 212) ---
-    corrosion_stamp="${NROS_HOME:-$HOME/.nros}/sdk/corrosion/.installed-version"
-    if [ -f "$corrosion_stamp" ] && [ "$(cat "$corrosion_stamp" 2>/dev/null)" = "{{CORROSION_VERSION}}" ]; then
-        echo "  [OK] corrosion {{CORROSION_VERSION}} (~/.nros/sdk/corrosion)"
+    # phase-365 — ask for the prefix; do not hand-join it. W5 moved
+    # `install-corrosion` to the VERSIONED destination and this reader kept
+    # looking in the flat one, so the status line reported MISSING for a
+    # correctly installed tool. Two spellings of one join, drifting the moment
+    # one side moved — which is the whole reason the constructor exists.
+    corrosion_prefix="$(nros sdk-path corrosion 2>/dev/null || true)"
+    # Presence is "the PINNED prefix holds a usable Corrosion", not "this recipe
+    # wrote its stamp". `nros setup --tool corrosion` installs the same tool and
+    # leaves `.nros-provenance` instead of `.installed-version`, so the
+    # stamp-only test reported MISSING for a perfectly good install — a wart
+    # that predates phase-365 and that moving to the versioned prefix exposed.
+    if [ -n "$corrosion_prefix" ] && \
+       [ -f "$corrosion_prefix/lib/cmake/Corrosion/CorrosionConfig.cmake" ]; then
+        echo "  [OK] corrosion {{CORROSION_VERSION}} ($corrosion_prefix)"
     else
         echo "  [MISSING] corrosion {{CORROSION_VERSION}} (run: just workspace install-corrosion)"
         fail=1

@@ -178,7 +178,7 @@ Still open: ~10 files spelling the store directly (`just/workspace.just` ×8,
 `doctor.rs`). W4's gate lands with them, not before — a gate against a rule the
 tree still breaks in ten places is a red nobody can act on.
 
-### W3b — the other tools — LANDED
+#### W3b (continued) — the other tools
 
 Converted the two consumers that enumerated: `scripts/dev/zenohd.sh`
 (`ls …/sdk/zenohd/*/bin/zenohd | sort -V | tail -1`) and
@@ -187,11 +187,37 @@ plus `list(GET … -1)`). Both are the corrosion defect in another tool, and bot
 were found by the rule rather than by a failure — zenohd especially matters,
 since CLAUDE.md pins it to 1.7.2 for `rmw_zenoh_cpp` compatibility.
 
-### W3b-rest — the other tools
+### W3c — hand-joined paths — LANDED
 
-cmake toolchain files, `just` recipes, shell scripts, in that order.
+**The acceptance this section originally carried was wrong, and W4 is why.**
+It read "zero raw `.nros/sdk` outside the constructor", which the survey then
+refuted: installers legitimately WRITE the store, and `.nros/sdks/arm-fvp` is a
+different tree. W4 bans ENUMERATION instead, which is the actual defect.
 
-**Acceptance.** Zero raw `.nros/sdk` outside the constructor and the W2 command.
+But that leaves a gap the gate cannot see: a HAND-JOINED path. No wildcard, so
+no enumeration, yet still a second spelling of the join the constructor owns —
+and it drifts the moment either side moves. Converted:
+
+* `just/zenohd.just` built `<store>/sdk/zenohd/$want/bin/zenohd` itself;
+* `just/workspace.just`'s corrosion check read
+  `<store>/sdk/corrosion/.installed-version`.
+
+That second one had already broken: W5 moved `install-corrosion` to the
+versioned prefix while the reader kept looking in the flat one, so `just
+workspace doctor` reported MISSING for a correctly installed tool. My own
+regression, caught by converting rather than by a test — the gate is blind here
+by construction.
+
+Fixing it also cured a wart that predates this phase: presence was tested as
+"this recipe wrote its stamp", so an `nros setup --tool corrosion` install (which
+leaves `.nros-provenance`, not `.installed-version`) also read MISSING. Presence
+is now "the pinned prefix holds a usable Corrosion".
+
+**Still hand-joined, deliberately not converted:** `play_launch_parser` in
+`just/workspace.just`. It is installed UNVERSIONED (`<store>/play_launch_parser/`),
+so converting the reader alone would point it at a directory the installer never
+writes — exactly the break above. It needs W5's treatment (move the installer
+first), which is its own change and belongs with whoever owns that tool.
 
 ### W4 — make the class uncommittable — LANDED
 
