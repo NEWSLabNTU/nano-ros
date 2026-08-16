@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1–W5 LANDED. Owed: the full `lane=all` re-measurement (the complete inverse of 155/28).** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). W1–W5 LANDED + W3a.2 (stale-cache self-heal). Owed: the `lane=all` re-measurement, now expected to reach zero.** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -270,3 +270,52 @@ implementations of one rule cost. Take the PATH dependency.
 
 W3a before W3b: Corrosion is the case with a measurement attached, so it is the
 one that can prove the design before the mechanical conversions follow.
+
+## W3a.2 — a cached `Corrosion_DIR` outranks the constructed path
+
+The first `lane=all` after W1–W5 did NOT reach acceptance:
+
+| | before | after W1–W5 |
+| --- | --- | --- |
+| resolutions of 0.5.1 | 155 | **64** |
+| resolutions of 0.6.1 | 28 | 22 |
+
+Better, not fixed — so the phase's claim stayed unproven, and three further
+rounds of narrowing by inspection each eliminated a plausible route and left the
+count non-zero.
+
+**What finally found it was instrumentation, not argument.** The report line said
+WHAT resolved and never WHO asked; adding `CMAKE_CURRENT_SOURCE_DIR` to it
+showed the same source directory — the repo root, reached by every example's
+`add_subdirectory(<repo-root>)` — resolving 0.6.1 nine times and 0.5.0 four
+times in one family. Same source, different answers, so the difference had to be
+per-BUILD-dir state:
+
+```
+139 example build dirs cached Corrosion_DIR=0.5.1-nros1
+ 20 cached 0.6.1-nros1
+```
+
+`find_package` short-circuits on a cached `<Pkg>_DIR` and never consults `PATHS`
+or `NO_DEFAULT_PATH`. So constructing the prefix was only half the principle: a
+build dir configured before the pin moved answers with the old version forever,
+and nothing says so.
+
+**Fix.** The resolver drops a cached `Corrosion_DIR` that is not inside the
+constructed prefix, says so, and lets the search re-cache the right one. We know
+where the tool is; a cache is not a second opinion worth honouring. Clearing 139
+build dirs by hand would have been a remedy for this host and not a fix.
+
+Verified in place, without deleting the build dir:
+
+```
+cache before : 0.5.1-nros1
+-- nano-ros: dropping stale Corrosion_DIR (…/0.5.1-nros1/lib/cmake/Corrosion)
+-- nano-ros: Corrosion 0.6.1 via SDK store
+cache after  : 0.6.1-nros1
+```
+
+**Method note.** I twice reported "no live 0.5.1 caches" from a `grep -r
+--include=CMakeCache.txt` that silently returned nothing — it also reported zero
+caches on 0.6.1, which a single known counter-example would have contradicted.
+A negative result whose positive control is also absent is not evidence.

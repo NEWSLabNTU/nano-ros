@@ -220,8 +220,13 @@ function(nros_report_corrosion origin version location)
     else()
         set(_topology "hashed per-workspace cargo dirs")
     endif()
+    # phase-365 — name the SOURCE DIR that resolved it. Three rounds of
+    # narrowing-by-inspection failed to find the route that still resolves a
+    # legacy copy (64 of 86 resolutions in the 2026-08-16 lane=all), because a
+    # bare version line says WHAT was resolved and never WHO asked.
     message(STATUS
-        "nano-ros: Corrosion ${version} via ${origin} [${_topology}] — ${location}")
+        "nano-ros: Corrosion ${version} via ${origin} [${_topology}] — ${location} "
+        "(asked by ${CMAKE_CURRENT_SOURCE_DIR})")
 
     # Issue 0493 — REFUSE the broken topology, do not merely narrate it.
     #
@@ -341,6 +346,27 @@ macro(nros_resolve_corrosion)
         # copy this project never pinned — the defect, reintroduced by omission.
         _nros_corrosion_store_dir(_nros_corrosion_prefix)
         if(_nros_corrosion_prefix)
+            # A CACHED `Corrosion_DIR` outranks PATHS and NO_DEFAULT_PATH:
+            # `find_package` short-circuits on it and never looks at either. So
+            # constructing the prefix is only HALF the principle — a build dir
+            # configured before the pin moved keeps answering with the old
+            # version forever, and nothing says so.
+            #
+            # Measured 2026-08-16 across this tree: 139 example build dirs
+            # cached 0.5.1 against 20 on 0.6.1, which is the whole of the
+            # 64-of-86 residue left after the constructor landed. Clearing 139
+            # build dirs by hand is not a fix; the resolver self-heals instead.
+            #
+            # Drop a cached value that is not inside the constructed prefix and
+            # let the search below re-cache the right one. We KNOW where the
+            # tool is — a cache is not a second opinion worth honouring.
+            if(DEFINED CACHE{Corrosion_DIR}
+                    AND NOT "${Corrosion_DIR}" MATCHES "^${_nros_corrosion_prefix}/")
+                message(STATUS
+                    "nano-ros: dropping stale Corrosion_DIR (${Corrosion_DIR}) — "
+                    "this project pins ${_nros_corrosion_prefix}")
+                unset(Corrosion_DIR CACHE)
+            endif()
             find_package(Corrosion QUIET
                 PATHS "${_nros_corrosion_prefix}" NO_DEFAULT_PATH)
         endif()
