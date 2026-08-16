@@ -25,7 +25,10 @@ crate-type = ["staticlib", "cdylib", "lib"]
 # real consumer takes this crate with `default-features = false` and picks its
 # own provider, so nothing downstream is affected.
 default = ["panic-spin"]
-std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
+# phase-359 W10 — `env` rides with `std` here; see the same note in `nros-cpp`.
+# `std` on the C API has always meant "hosted", and a hosted C entry resolves
+# its locator/domain from the environment at runtime.
+std = ["alloc", "nros/std", "nros/env", "nros-node/std", "nros-node/env", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (cffi vtable dispatch) — every backend ships as a cffi

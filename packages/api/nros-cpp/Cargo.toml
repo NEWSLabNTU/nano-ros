@@ -27,6 +27,22 @@ crate-type = ["staticlib", "lib"]
 default = ["panic-spin"]
 std = [
     "alloc",
+    # phase-359 W10 — `env` rides with `std` HERE, and only here.
+    #
+    # W10 split `ExecutorConfig::from_env` and `try_resolve`'s hosted rung off
+    # the `std` flavour onto an `env` CAPABILITY, so a Rust consumer now names
+    # `alloc` + `env` explicitly. The C/C++ API has no such per-consumer
+    # feature list to update — `std` on this crate has always MEANT "hosted",
+    # and the hosted C entry resolves its locator and domain from the
+    # environment at runtime.
+    #
+    # Dropping the forward silently removed that rung: the C++ and MIXED
+    # service/action servers built and started, resolved against the baked
+    # fallback instead of the environment, and the harness reported "server
+    # never became ready" — 4 of 8 `roundtrip_xprocess` cells. Compiling proved
+    # nothing about it.
+    "nros/env",
+    "nros-node/env",
     "nros/std",
     "nros-node/std",
     "nros-rmw/std",
