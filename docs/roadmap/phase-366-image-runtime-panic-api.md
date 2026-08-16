@@ -1,11 +1,27 @@
 # Phase 366 — The panic platform API, and one fatal path per image
 
-**Status (2026-08-16).** IN PROGRESS. Implements RFC-0077's first half: the
-platform ABI gains a fatal entry point, every port implements it, the four
-hardcoded panic handlers migrate onto it, and the old paths retire. W1 is the
-gate on everything else — the C header is the ABI SSoT (RFC-0054), so the
-generated Rust mirror and the export macro must move with it in one commit or
-`check-abi-bindings` goes red.
+**Status (2026-08-16).** IN PROGRESS — W1, W2, W3, W4 and W6 landed; W5 is
+HALF done and is where the remaining risk is.
+
+Landed: the ABI entry point with its regenerated mirror and `PlatformPanic`
+trait (W1); five C ports and two bare-metal Rust ports mapped onto their native
+fatal paths (W2, W3); `nros-c`'s `#[panic_handler]` forwarding to the ABI
+instead of spinning silently (W4); and the lang-item gate extended to
+`rust_begin_unwind`, mutation-tested both directions — two providers exit 1, one
+exits 0 (W6). Verified across `lane=tier2`: zephyr, threadx-linux, nuttx, esp32,
+qemu and freertos all build.
+
+W5 half: the threadx-riscv64 and nuttx boards now EXPORT their behaviour as a
+strong `nros_platform_panic` and their lang items only forward. The lang items
+themselves are still in the boards, because removing them leaves a pure-Rust
+image on those boards with no handler at all — the entry does not supply one
+yet. That is the remaining work, and W6's gate now exists to catch it.
+
+Two families are red for reasons outside this phase: threadx-riscv64 on #0629
+(the lld wrapper passes no `-L`, so the CycloneDDS C++ link cannot find
+`-lstdc++` — unmasked by this phase's header edit, not caused by it), and one
+native run where `ar` died with "Bus error (core dumped)", which retested clean
+SOLO and is the under-load flake.
 
 Implements: RFC-0077. Tracked issues: 0618 (the design defect), 0617 (the two
 failure modes it produces).

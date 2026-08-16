@@ -49,6 +49,14 @@ cd "$(dirname "$0")/.."
 # have been seen depending on toolchain, so match either.
 SYM_RE='(^|[^A-Za-z0-9_])__rust_alloc$'
 
+# phase-366 W6 — the two lang items an image may hold exactly one of. `panic`
+# joins `alloc` because they are the same defect (issue 0618): a singleton of the
+# FINAL ARTIFACT, decided in a library. `rust_begin_unwind` is what
+# `#[panic_handler]` emits, verified against
+# `examples/workspaces/mixed/build-workspace-fixtures-freertos/libnros_ws_runtime.a`
+# rather than assumed.
+LANG_ITEMS=("__rust_alloc:the global allocator" "rust_begin_unwind:the panic handler")
+
 roots=("$@")
 if [ ${#roots[@]} -eq 0 ]; then
     roots=(examples packages build)
@@ -59,13 +67,16 @@ command -v nm >/dev/null 2>&1 || {
     exit 0
 }
 
-# Does this archive DEFINE the allocator shim (`T`), rather than reference it
+# Does this archive DEFINE the given lang item (`T`), rather than reference it
 # (`U`)? Memoised: the same `.a` appears on many link lines.
 declare -A defines_cache=()
-defines_allocator() {
+# defines_symbol <archive> <symbol>
+defines_symbol() {
     local a="$1"
-    if [ -n "${defines_cache[$a]:-}" ]; then
-        [ "${defines_cache[$a]}" = "yes" ]
+    # Key on archive AND symbol: the same `.a` is asked about once per lang item.
+    local key="$a::$2"
+    if [ -n "${defines_cache[$key]:-}" ]; then
+        [ "${defines_cache[$key]}" = "yes" ]
         return
     fi
     local hits
@@ -73,11 +84,11 @@ defines_allocator() {
     # SIGPIPE and the pipeline reports FAILURE on a match — which inverted an
     # earlier revision of this gate silently. It passed on a pair of archives
     # measured by hand to both define the symbol. Capture and test instead.
-    hits="$(nm -g "$a" 2>/dev/null | grep -E "^[0-9a-f]+ T .*__rust_alloc$" || true)"
+    hits="$(nm -g "$a" 2>/dev/null | grep -E "^[0-9a-f]+ T .*${2}\$" || true)"
     if [ -n "$hits" ]; then
-        defines_cache["$a"]="yes"; return 0
+        defines_cache["$key"]="yes"; return 0
     fi
-    defines_cache["$a"]="no"; return 1
+    defines_cache["$key"]="no"; return 1
 }
 
 links=0
@@ -85,7 +96,7 @@ rc=0
 while IFS= read -r lt; do
     links=$((links + 1))
     dir="$(dirname "$lt")"
-    owners=()
+    declare -A owners_by_item=()
     # cmake writes the link line space-separated; archives may be relative to
     # the build dir the link runs in, which is the ancestor holding CMakeFiles.
     base="${dir%%/CMakeFiles/*}"
@@ -97,16 +108,25 @@ while IFS= read -r lt; do
         cand="$tok"
         [ -f "$cand" ] || cand="$base/$tok"
         [ -f "$cand" ] || continue
-        if defines_allocator "$cand"; then
-            owners+=("$tok")
-        fi
+        for item in "${LANG_ITEMS[@]}"; do
+            sym="${item%%:*}"
+            if defines_symbol "$cand" "$sym"; then
+                owners_by_item["$sym"]+="$tok "
+            fi
+        done
     done < <(tr " " "\n" < "$lt")
 
-    if [ "${#owners[@]}" -gt 1 ]; then
-        rc=1
-        echo "check-archive-lang-items: $lt links ${#owners[@]} archives that each define the global allocator:" >&2
-        for o in "${owners[@]}"; do echo "    $o" >&2; done
-    fi
+    for item in "${LANG_ITEMS[@]}"; do
+        sym="${item%%:*}"
+        what="${item#*:}"
+        # shellcheck disable=SC2206
+        owners=(${owners_by_item[$sym]:-})
+        if [ "${#owners[@]}" -gt 1 ]; then
+            rc=1
+            echo "check-archive-lang-items: $lt links ${#owners[@]} archives that each define $what:" >&2
+            for o in "${owners[@]}"; do echo "    $o" >&2; done
+        fi
+    done
 done < <(
     for r in "${roots[@]}"; do
         [ -d "$r" ] && find "$r" -name 'link.txt' -path '*CMakeFiles*' -type f 2>/dev/null
@@ -131,4 +151,4 @@ if [ "$rc" -ne 0 ]; then
     exit 1
 fi
 
-echo "check-archive-lang-items: OK ($links link line(s), no image links two allocator-defining archives)"
+echo "check-archive-lang-items: OK ($links link line(s), no image links two archives defining one lang item)"
