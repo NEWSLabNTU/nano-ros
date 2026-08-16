@@ -47,7 +47,12 @@ ffi-size-markers = []
 # `src/metadata_mode.rs`). Host probe only: it never ships in firmware, and a
 # build that enables it also replaces the RMW with a backend that transports
 # nothing. Implies `std` (the probe writes a file and exits).
-metadata-mode = []
+# The doc above is now enforced rather than asserted: `metadata_mode.rs` uses
+# `std::sync::Mutex` / `Box::leak` / `format!`, so the feature cannot build on
+# `alloc`. It used to be `[]` with a `compile_error!` telling the consumer to
+# add `std` by hand — which made `std` a consumer-named flavour for a purely
+# internal requirement (phase-359 W10).
+metadata-mode = ["std"]
 # phase-359 W10 — a CAPABILITY, not the `std` flavour.
 #
 # `ExecutorConfig::from_env` reads the process environment, which a target

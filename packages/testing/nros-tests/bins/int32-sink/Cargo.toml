@@ -29,7 +29,7 @@ rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-bo
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "std",
+    "alloc", "env",
     "rmw-cffi",
     "ros-humble",
 ] }

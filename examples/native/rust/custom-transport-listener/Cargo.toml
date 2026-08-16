@@ -22,8 +22,8 @@ default = []
 
 [dependencies]
 # See the custom-transport-talker example for migration notes.
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-nros-rmw = { version = "*", default-features = false, features = ["std"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros-rmw = { version = "*", default-features = false, features = ["alloc"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

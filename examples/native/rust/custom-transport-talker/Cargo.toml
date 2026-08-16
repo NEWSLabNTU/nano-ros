@@ -28,8 +28,8 @@ default = []
 # Phase 115.L.5-custom-transport — route through `nros_rmw_vtable_t`
 # via the zenoh-cffi shim. `link-custom` forwarded by the shim's
 # matching feature.
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
-nros-rmw = { version = "*", default-features = false, features = ["std"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros-rmw = { version = "*", default-features = false, features = ["alloc"] }
 # Phase 244 E2 — reusable custom-transport callback factories (TCP bridge,
 # loopback). Replaces the open-coded TcpBridge + FFI callbacks in src/main.rs.
 nros-transport-callbacks = { version = "*" }

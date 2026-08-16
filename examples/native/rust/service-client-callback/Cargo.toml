@@ -24,7 +24,7 @@ rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-bo
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["alloc", "env", "rmw-cffi", "ros-humble"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # Native board shim: `nros_board_linux::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature

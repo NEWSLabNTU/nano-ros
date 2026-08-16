@@ -525,6 +525,34 @@ removing it touches the SDK index, `nros-sizes-build` and the CLI's patch
 emission. That belongs after this is proven on hardware, not bundled ahead of
 it.
 
+#### The `std` forward chain, mapped (2026-08-16)
+
+The last step — deleting `std` from the nine crates — fails at RESOLUTION, not
+compile, for anything still naming it. So the set is measured up front rather
+than discovered one `cargo` error at a time:
+
+| feature | manifest lines naming it |
+| --- | --- |
+| `nros-core/std` | 13 |
+| `nros-serdes/std` | 12 |
+| `nros-rmw/std` | 6 |
+| `nros-node/std` | 5 |
+| `nros/std` | 2 |
+| `nros-params/std` | 1 |
+| `nros-log/std` | 0 |
+
+`nros-core/std`'s 13 are the shape of the whole problem: three are INTERNAL
+forwards between core crates, eight are committed GENERATED message crates under
+`packages/interfaces/**`, and two are node packages in `tests/simple-workspace`.
+
+Which fixes the ordering. The codegen template
+(`packs/scaffold/cargo_nros.toml.jinja`, byte-identical to its `templates/`
+copy) emits `std = ["alloc", "nros-core/std", "nros-serdes/std"]`, so it cannot
+be changed AHEAD of the core crates — a template that names a feature its
+dependency no longer has is the same resolution error, just deferred to the next
+`nros sync`. Template, generated crates, and core feature tables move in ONE
+commit, and the two template copies move together.
+
 ### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 
 `alloc` is a separate feature (`std = ["alloc", ...]`), so the real flavours are

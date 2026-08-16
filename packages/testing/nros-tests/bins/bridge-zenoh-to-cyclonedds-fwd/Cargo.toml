@@ -15,7 +15,7 @@ path = "src/main.rs"
 # zenoh `/chatter` raw subscription onto a Cyclone DDS raw publisher. Cyclone
 # resolves a raw topic by a registered `dds_topic_descriptor_t`, so the Int32
 # schema is staged via `nros_rmw::register_type_descriptor` first.
-nros = { path = "../../../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { path = "../../../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }

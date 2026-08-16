@@ -18,7 +18,7 @@ path = "src/main.rs"
 # a registered `dds_topic_descriptor_t`, so the egress type's schema is staged
 # via `nros_rmw::register_type_descriptor` BEFORE creating the raw publisher
 # (XRCE registers lazily from name+hash; Cyclone is stricter).
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
 # posix `nros_platform_*` symbols via a direct `nros-platform` dep
 # (pulls `nros-platform-cffi[posix-c-port]`).
 nros-platform = { version = "*", default-features = false, features = ["platform-posix"] }
@@ -28,8 +28,8 @@ nros-rmw-zenoh = { version = "*", features = ["std", "platform-posix", "ros-humb
 nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"] }
 # The backend-agnostic type-descriptor seam + the schema `Field`/`FieldType`
 # used to stage the egress type (not re-exported from the `nros` umbrella).
-nros-rmw = { version = "*", default-features = false, features = ["std"] }
-nros-serdes = { version = "*", default-features = false, features = ["std"] }
+nros-rmw = { version = "*", default-features = false, features = ["alloc"] }
+nros-serdes = { version = "*", default-features = false, features = ["alloc"] }
 log = "0.4"
 env_logger = "0.11"
 

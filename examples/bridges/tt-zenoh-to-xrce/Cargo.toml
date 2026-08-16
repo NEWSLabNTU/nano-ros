@@ -15,7 +15,7 @@ path = "src/main.rs"
 # non-overlapping windows of a 10 ms major frame, exercising
 # `apply_time_triggered_schedule` + per-handle TT window gating
 # from Phase 110.G.
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Phase 248 C5c — posix `nros_platform_*` symbols via a direct `nros-platform`
 # dep (pulls `nros-platform-cffi[posix-c-port]`); retires the `nros/platform-posix` forward.
 nros-platform = { version = "*", default-features = false, features = ["platform-posix"] }

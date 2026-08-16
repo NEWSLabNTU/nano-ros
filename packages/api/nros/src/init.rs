@@ -29,7 +29,7 @@
 //! the structured overlay (Option A — `nros launch --emit-runtime-overlay`
 //! → JSON sidecar consumed here). See Phase 212.L.5 notes.
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 use std::path::Path;
 
 use nros_node::ExecutorConfig;
@@ -63,7 +63,7 @@ impl core::fmt::Display for InitError {
 // `core::error::Error` — `std::error::Error` is a re-export of it since Rust
 // 1.81, so this is the same trait. The `cfg` stays: this whole module reads the
 // environment (`std::env::var`), which has no no_std equivalent.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 impl core::error::Error for InitError {}
 
 /// Phase 212.L.5 — resolved init context.
@@ -73,7 +73,7 @@ impl core::error::Error for InitError {}
 ///
 /// Fields are owned (`String` on hosted builds) so the `Context` can
 /// outlive transient parents (env caches, parsed launch files).
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 #[derive(Debug, Clone)]
 pub struct Context {
     /// ROS 2 domain ID (`ROS_DOMAIN_ID`, default 0).
@@ -93,7 +93,7 @@ pub struct Context {
 }
 
 /// Where the [`Context`] came from. Diagnostics only.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextSource {
     /// Built from env vars by [`init`] / [`init_with_args`].
@@ -105,7 +105,7 @@ pub enum ContextSource {
     Launch,
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 impl Context {
     /// Materialise an [`ExecutorConfig`] for a node with the given name.
     ///
@@ -124,7 +124,7 @@ impl Context {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
     // Issue 0330 — no backend default here: `nros` is RMW-agnostic. Unset env
     // leaves the locator EMPTY (= absent) and the linked backend substitutes
@@ -162,7 +162,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
 /// `NROS_RMW` / `RMW_IMPLEMENTATION`) and returns a [`Context`]. The
 /// caller owns the spin loop — typically `Executor::open(&ctx.config(name))`
 /// followed by `spin_blocking` or a hand-rolled `spin_once` loop.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub fn init() -> Result<Context, InitError> {
     read_env_context(ContextSource::Env)
 }
@@ -171,7 +171,7 @@ pub fn init() -> Result<Context, InitError> {
 /// iterator. Currently a thin wrapper over [`init`] that ignores the args;
 /// the structured argv parse (`--ros-args -p foo:=42`, etc.) lands with the
 /// runtime-overlay wave.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub fn init_with_args<I, S>(_args: I) -> Result<Context, InitError>
 where
     I: IntoIterator<Item = S>,
@@ -197,7 +197,7 @@ where
 ///
 /// Returns a [`Context`] whose `source = ContextSource::Launch` so callers
 /// can introspect whether the run is launch-driven.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub fn init_with_launch_auto() -> Result<Context, InitError> {
     // TODO (Phase 212.L.5 follow-up):
     //   1. If $NROS_RUNTIME_OVERLAY is set, read the JSON sidecar and fold
@@ -213,7 +213,7 @@ pub fn init_with_launch_auto() -> Result<Context, InitError> {
 /// Verifies the file exists (so misspelled paths fail fast at init time)
 /// but does NOT yet parse the XML; the launcher's projected env is the
 /// active overlay. See the module-level notes for the follow-up plan.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub fn init_with_launch(path: impl AsRef<Path>) -> Result<Context, InitError> {
     let p = path.as_ref();
     if !p.exists() {

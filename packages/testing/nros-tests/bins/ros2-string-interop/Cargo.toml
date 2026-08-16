@@ -13,7 +13,7 @@ name = "ros2-string-interop"
 path = "src/main.rs"
 
 [dependencies]
-nros = { path = "../../../../api/nros", default-features = false, features = ["std", "rmw-cffi"] }
+nros = { path = "../../../../api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Phase 248 C5c — posix `nros_platform_*` symbols via a direct `nros-platform`
 # dep (pulls `nros-platform-cffi[posix-c-port]`); retires the `nros/platform-posix` forward.
 nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-posix"] }

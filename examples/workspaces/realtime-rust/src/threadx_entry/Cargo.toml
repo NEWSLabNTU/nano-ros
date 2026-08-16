@@ -48,9 +48,11 @@ locator = "tcp/127.0.0.1:9091"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 threadx_entry_nros_selection = { path = "../../generated/nros-selection/threadx_entry" }
-# Agnostic `nros`. ThreadX-Linux is a hosted std simulation, so the ENTRY pins
-# `std`; the board brings the zenoh backend + `platform-threadx`.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "macros"] }
+# Agnostic `nros`. The board brings the zenoh backend + `platform-threadx`.
+# phase-359 W10 — was `["std", …]`. ThreadX is a no_std board that merely RUNS
+# as a Linux process; nothing in this entry calls `ExecutorConfig::from_env`,
+# so no `env` either.
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # ThreadX-Linux board crate — supplies `ThreadxLinux` (`BoardEntry` +
 # `run_tiers`) + the ThreadX kernel/port build. `rmw-zenoh` (#131/#194) → the
 # board links `nros-rmw-zenoh` and its `run_{entry,tiers}` register it; without

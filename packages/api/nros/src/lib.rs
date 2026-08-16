@@ -165,10 +165,10 @@ pub mod node_runtime;
 /// Re-exported flat at the crate root: `nros::init()`,
 /// `nros::init_with_launch_auto()`, `nros::init_with_launch(path)`,
 /// `nros::init_with_args(args)`, `nros::Context`, `nros::InitError`.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub mod init;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 pub use init::{
     Context, ContextSource, InitError, init, init_with_args, init_with_launch,
     init_with_launch_auto,
@@ -680,7 +680,7 @@ pub mod internals {
         // C-side `nros_support_init` decodes the variant into a
         // specific `NROS_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
-        #[cfg(feature = "std")]
+        #[cfg(feature = "env")]
         if let Some(name) = std::env::var("NROS_RMW").ok().filter(|s| !s.is_empty()) {
             return nros_rmw_cffi::CffiRmw::open_with_rmw(&name, &config);
         }

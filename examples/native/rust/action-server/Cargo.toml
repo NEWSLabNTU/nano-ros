@@ -55,7 +55,7 @@ ros-iron = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron"]
 ros-jazzy = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "env", "rmw-cffi", "macros"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # Native board shim: `nros_board_linux::register_linked_rmw()` (called first
 # thing in `main`) registers whichever backend the selected `rmw-*` feature

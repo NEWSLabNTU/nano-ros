@@ -47,7 +47,7 @@ libc = "0.2"
 # `AtomicSporadicState` + `atomic_sporadic_refill_thunk` round-trip
 # against the real POSIX `PlatformTimer` impl. Only the test pulls
 # nros-node, so the production crate stays dependency-light.
-nros-node = { path = "../../core/nros-node", default-features = false, features = ["std", "rmw-cffi"] }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi"] }
 
 [lints]
 workspace = true

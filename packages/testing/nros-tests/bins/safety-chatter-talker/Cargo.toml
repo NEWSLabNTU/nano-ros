@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "std",
+    "alloc", "env",
     "rmw-cffi",
     "ros-humble",
     "safety-e2e",

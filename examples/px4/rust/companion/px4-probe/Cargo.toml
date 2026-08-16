@@ -21,7 +21,11 @@ default = ["rmw-xrce"]
 rmw-xrce = []
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "ros-humble"] }
+# phase-359 W10 — was `["std", …]`. The probe is a hosted binary, but it builds
+# its `ExecutorConfig` with `ExecutorConfig::new` from its OWN `std::env::var`
+# reads (src/main.rs), never `ExecutorConfig::from_env`, so it needs no `env`
+# (and hence no `std`) from the core.
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 px4_msgs = { version = "*", default-features = false, features = ["std"] }

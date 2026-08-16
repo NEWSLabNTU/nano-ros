@@ -24,12 +24,14 @@ locator = "tcp/127.0.0.1:9030"
 # below. This entry names none of them: the declaration is the SSoT, and
 # an edition restated here would fail on the WIRE, not at build time.
 threadx_entry_nros_selection = { path = "../../generated/nros-selection/threadx_entry" }
-# Phase 248 C6a (#60 T5) — agnostic `nros`. ThreadX-Linux is a hosted std
-# simulation, so the ENTRY pins `std` (the contract's per-entry std/alloc
-# choice); the board brings `platform-threadx`. The concrete RMW (zenoh) is
-# linked through the ThreadX NetX-Duo C port (CMake), so — unlike the other
-# boards — there is no board `rmw-*` feature to set here.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["std", "rmw-cffi", "macros"] }
+# Phase 248 C6a (#60 T5) — agnostic `nros`. The board brings
+# `platform-threadx`. The concrete RMW (zenoh) is linked through the ThreadX
+# NetX-Duo C port (CMake), so — unlike the other boards — there is no board
+# `rmw-*` feature to set here.
+# phase-359 W10 — was `["std", …]`. ThreadX is a no_std board that merely RUNS
+# as a Linux process; nothing in this entry calls `ExecutorConfig::from_env`,
+# so no `env` either.
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 nros-board-threadx-linux = { path = "../../../../../packages/boards/nros-board-threadx-linux" }
 # Concrete platform impl — also pulled by the board; kept explicit for the link
 # map. NOT the agnostic-forbidden `nros/platform-*`.
