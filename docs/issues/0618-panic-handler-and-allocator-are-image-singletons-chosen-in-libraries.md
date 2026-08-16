@@ -8,6 +8,23 @@ area: build/api
 related: [issue-0617, issue-0615, issue-0594, issue-0591, issue-0566, rfc-0034]
 ---
 
+## Owner
+
+The rule this issue disputes is normative, not accidental. `ARCHITECTURE.md` §2
+("The `std` / `alloc` contract") says:
+
+> Orthogonally: **`malloc` and `panic` are unified per platform.** Exactly one
+> `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
+> `platform-<rtos>` feature — which selects the provider and nothing else.
+
+implemented by **phase-361**, which quotes it verbatim as the rule every crate
+feature table points at. So this is a disagreement with the architecture, and
+changing it means amending §2 — the argument for that is RFC-0077.
+
+Note two of the three clauses are not in dispute: *exactly one per image* and
+*malloc and panic move together* are both right and both kept. Only *selected by
+the `platform-<rtos>` feature* is challenged.
+
 ## The defect in one sentence
 
 `#[panic_handler]` and `#[global_allocator]` are link-time singletons of the
@@ -110,9 +127,19 @@ nothing else), and must be absent when the staticlib is one input among several
 Rust crates in a larger image. That distinction is knowable at the dep-site and
 is exactly what nobody is currently checking.
 
+## A third instance, found independently
+
+Issue 0619's author reached this framing from another direction while fixing a
+`cargo test` link failure, and extended it: the platform SYMBOL SET is a third
+image singleton, and *"a dev-dependency is a library-level lever — it cannot
+express 'supply these only when nobody else does'."* Three singletons, one
+missing concept.
+
 ## Suggested gate
 
-The composition rule is mechanically checkable and currently is not checked:
+Half of it is now checked: `check-archive-lang-items` enforces "at most ONE Rust
+archive per link line may define the global allocator". The panic half is not,
+and neither is checked per image coordinate:
 for each buildable image coordinate, count the crates in the resolved graph that
 can emit `#[panic_handler]` under the selected features, and require exactly
 one. That is the check that would have caught both halves of 0617 before either

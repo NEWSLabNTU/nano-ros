@@ -99,7 +99,16 @@ is authoritative for that tree's next configure. `nros setup --tool corrosion` m
 reasoning, including the better version: the gate already knows the path it rejected and could LIST the stale
 trees instead of handing out a glob. See `0622-*`. (2026-08-16)
 
-**#618** (build/api, open 2026-08-16) — `#[panic_handler]` and `#[global_allocator]` are link-time singletons
+**#618** (build/api, open 2026-08-16) — **OWNER: `ARCHITECTURE.md` §2, implemented by phase-361** — this is a
+disagreement with normative architecture, not a gap in it. §2 says `malloc` and `panic` are "unified per
+platform … selected by the `platform-<rtos>` feature"; two of its three clauses are right and kept (exactly
+one per image; malloc and panic move together), only the SELECTOR is disputed. Changing it means amending §2,
+and RFC-0077 is that argument. Note §2 is already not self-enforcing: `nros-board-threadx-qemu-riscv64`
+defines an UNGATED `#[panic_handler]` no platform feature selects. Half the enforcement exists —
+`check-archive-lang-items` covers the allocator per LINK LINE; the panic half and a per-image-coordinate view
+do not. #0619's author reached the same framing independently and extended it: the platform SYMBOL SET is a
+third image singleton, and "a dev-dependency is a library-level lever — it cannot express 'supply these only
+when nobody else does'". Original finding below.  `#[panic_handler]` and `#[global_allocator]` are link-time singletons
 of the FINAL ARTIFACT, but nano-ros picks them in LIBRARY crates keyed on the PLATFORM — so "exactly one per
 image" is not guaranteed by the build, it is maintained by hand at every dep-site. Both halves of #0617 are
 the two failure modes this permits: two providers (`#[global_allocator] in nros_platform conflicts with`) and

@@ -5,6 +5,7 @@ status: Draft
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [issue-0618, issue-0617, issue-0615]
+amends: [ARCHITECTURE.md#2-the-std-alloc-contract]
 supersedes: []
 superseded-by: null
 ---
@@ -37,6 +38,40 @@ The concept nano-ros needs already exists in the tree, under the right name.
 **This RFC does not introduce that idea. It inverts its direction:** stop
 defaulting every candidate ON and negating the losers, and let the IMAGE name
 its one owner, once.
+
+## What this contradicts, and who owns it today
+
+This is not a gap in the design. It is a disagreement with a rule that is
+already normative, and adopting this RFC means amending `ARCHITECTURE.md` §2
+("The `std` / `alloc` contract"), which says:
+
+> Orthogonally: **`malloc` and `panic` are unified per platform.** Exactly one
+> `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
+> `platform-<rtos>` feature — which selects the provider and nothing else.
+
+Owner: that section, implemented by **phase-361** (which quotes it verbatim as
+the rule every crate feature table points at).
+
+Two of its three clauses are right and this RFC keeps them. *Exactly one per
+image* is the invariant; *malloc and panic move together* is the coupling
+`nros-board-nuttx` independently re-derived. The clause this RFC rejects is the
+third — **selected by the `platform-<rtos>` feature** — on the grounds that the
+platform is the one participant that cannot know the answer, and that the two
+observed failure modes follow from putting the choice there.
+
+Read narrowly, §2 is also already falsified by the tree it governs: it says
+exactly one provider per image "selected by the `platform-<rtos>` feature", and
+`nros-board-threadx-qemu-riscv64` defines an **ungated** `#[panic_handler]`
+that no platform feature selects. That is a bug against §2, not evidence for
+this RFC — but it shows the rule is not self-enforcing, which is why the gate
+below matters whichever way the selection clause is settled.
+
+**Credit where the mechanism already exists.** `check-archive-lang-items`
+("at most ONE Rust archive per LINK LINE may define the global allocator")
+already implements this RFC's gate for the allocator half, per link line. The
+gate proposed here is that check extended to `#[panic_handler]` and reasoned per
+image coordinate rather than per archive — a smaller step than it first appears,
+and evidence the enforcement shape is workable.
 
 ## The evidence
 
@@ -192,8 +227,9 @@ choice moves to the image.
 
 ## The gate
 
-The composition rule is mechanically checkable and currently is not checked.
-Per buildable image coordinate: count the crates in the resolved graph that can
+Half of this already exists: `check-archive-lang-items` enforces "at most ONE
+Rust archive per link line may define the global allocator". What is missing is
+the panic half, and a coordinate-level view. Per buildable image coordinate: count the crates in the resolved graph that can
 emit `#[panic_handler]` (or `#[global_allocator]`) under the selected features,
 and require exactly one.
 
