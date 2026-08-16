@@ -40,7 +40,7 @@ host-only-reason = "the Linux host board"
 # `__FORCE_LINK_CFFI` anchor that keeps `libnros_platform_posix.a` in the link).
 # This is the board-driven platform-selection point, mirroring C5a's RMW gate:
 # the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
-nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`
@@ -48,11 +48,15 @@ nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", defa
 # (`nros-rmw-zenoh`, `nros-rmw-cyclonedds`, ...) must be linked by
 # the Entry pkg or a per-board shim crate so `Executor::open`
 # resolves a backend at boot.
-nros = { version = "0.5.0", path = "../../api/nros", default-features = false, features = ["std", "rmw-cffi", "macros"] }
+# phase-359 W10 — `alloc` + the `env` CAPABILITY, not the `std` flavour. This
+# board is the hosted one, so it is the layer that legitimately has a process
+# environment; `env` is what `ExecutorConfig::from_env` needs and nothing else
+# here does.
+nros = { version = "0.5.0", path = "../../api/nros", default-features = false, features = ["alloc", "env", "rmw-cffi", "macros"] }
 # Phase 264 W3 — the family driver inits the default log sink at boot so a Node
 # pkg's `nros_info!` reaches stdout/stderr without per-app `nros_log::init`
 # (board-agnostic Node pkgs can't pick the sink). Host → the platform sink.
-nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features = false, features = ["std"] }
+nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features = false, features = ["alloc"] }
 # phase-338 W3 — the `log` facade's host sink. nano-ros has TWO logging stacks
 # split by board: posix + mps2-baremetal init `nros_log`, while freertos, nuttx
 # and threadx bridge `log`. The node bodies inherited that split, so a Node pkg

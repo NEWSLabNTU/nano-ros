@@ -118,7 +118,7 @@ BASELINE = {
     # the OS-priority pool's, the signalfd forwarder's and the condvar path's
     # `std` — so the measured figure after both is 91/40, not either side's
     # number. Set from the tree rather than from arithmetic on the two diffs.
-    "nros-node": {"cfg": 91, "path": 40},
+    "nros-node": {"cfg": 86, "path": 40},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

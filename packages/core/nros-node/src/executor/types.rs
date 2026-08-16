@@ -338,7 +338,7 @@ impl<'a> ExecutorConfig<'a> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 struct EnvCache {
     locator: std::string::String,
     domain_id: u32,
@@ -347,7 +347,7 @@ struct EnvCache {
     node_name: std::string::String,
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 
 /// The process-global env cache — and why tests do not share it.
@@ -376,7 +376,7 @@ static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 /// `#[cfg]` attributes, and the builder is a nested `fn` rather than a
 /// cfg-gated one, so this fix adds no `feature = "std"` cfg sites —
 /// `check-std-census` counts those and phase-359 is removing them.
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 fn env_cache() -> &'static EnvCache {
     fn build() -> EnvCache {
         // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
@@ -424,7 +424,7 @@ fn env_cache() -> &'static EnvCache {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "env")]
 impl ExecutorConfig<'static> {
     /// Create a configuration from environment variables.
     ///
@@ -536,8 +536,13 @@ impl<'a> ExecutorConfig<'a> {
         baked: BootConfig<'a>,
         hosted_env: bool,
     ) -> Result<ExecutorConfig<'a>, BootConfigError> {
-        // ── hosted path (std only) ──────────────────────────────────────────
-        #[cfg(feature = "std")]
+        // ── hosted path (the `env` capability) ──────────────────────────────
+        //
+        // phase-359 W10 — was `feature = "std"`. What this branch needs is not
+        // the std FLAVOUR but a process ENVIRONMENT to read, which is exactly
+        // what `env` names; a `std` build without it falls through to the baked
+        // path below, as a target build always did.
+        #[cfg(feature = "env")]
         if hosted_env {
             let env = env_cache();
 
@@ -1368,6 +1373,8 @@ mod boot_config_tests {
 
     /// `resolve(BootConfig::default(), true)` must be field-for-field
     /// identical to `from_env()`, regardless of what env vars are set.
+    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
+    #[cfg(feature = "env")]
     #[test]
     fn noop_resolve_matches_from_env() {
         let _g = env_lock().lock().unwrap();
@@ -1426,6 +1433,8 @@ mod boot_config_tests {
 
     /// When `hosted_env=true` and `NROS_LOCATOR` is set in the process
     /// environment, the env value must win over a baked locator.
+    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
+    #[cfg(feature = "env")]
     #[test]
     fn env_overrides_baked_on_hosted() {
         let _g = env_lock().lock().unwrap();
@@ -1481,6 +1490,8 @@ mod boot_config_tests {
 
     /// A baked `node_name` and an env-derived `locator` must both apply
     /// independently in the same `resolve` call.
+    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
+    #[cfg(feature = "env")]
     #[test]
     fn per_field_independence_baked_name_env_locator() {
         let _g = env_lock().lock().unwrap();
@@ -1507,6 +1518,8 @@ mod boot_config_tests {
     }
     // ── #206 / RFC-0045 — try_resolve validation + env parity ──────────────
 
+    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
+    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_malformed_domain_env_errors() {
         let _l = env_lock().lock().unwrap();
@@ -1518,6 +1531,8 @@ mod boot_config_tests {
         assert_eq!(err, BootConfigError::DomainIdParse);
     }
 
+    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
+    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_domain_env_over_max_errors() {
         let _l = env_lock().lock().unwrap();
@@ -1590,6 +1605,8 @@ mod boot_config_tests {
         assert_eq!(cfg.domain_id, 0);
     }
 
+    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
+    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_domain_max_is_valid() {
         let _l = env_lock().lock().unwrap();
@@ -1605,6 +1622,8 @@ mod boot_config_tests {
         assert_eq!(cfg.domain_id, DOMAIN_ID_MAX);
     }
 
+    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
+    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_node_name_env_rung() {
         let _l = env_lock().lock().unwrap();
@@ -1627,6 +1646,8 @@ mod boot_config_tests {
         );
     }
 
+    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
+    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_env_overrides_baked_locator_model_a() {
         let _l = env_lock().lock().unwrap();

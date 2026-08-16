@@ -48,6 +48,20 @@ ffi-size-markers = []
 # build that enables it also replaces the RMW with a backend that transports
 # nothing. Implies `std` (the probe writes a file and exits).
 metadata-mode = []
+# phase-359 W10 — a CAPABILITY, not the `std` flavour.
+#
+# `ExecutorConfig::from_env` reads the process environment, which a target
+# simply does not have — and it is public API with ~39 call sites, most of them
+# in user-facing native examples. Deleting it with the `std` feature would break
+# every native Rust consumer's code; keeping it gated on `std` would keep `std`
+# as an implicit flavour of the core, which is what this campaign removes.
+#
+# So it moves onto its own name. A hosted build that wants `from_env` says
+# `env`; a target build says nothing and never compiles it. `std` stops being a
+# flavour, the capability stays reachable, and no user's CODE changes — only
+# which feature their manifest names.
+env = ["std", "nros-node/env"]
+
 std = [
     "alloc",
     "nros-core/std",
