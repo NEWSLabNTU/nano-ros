@@ -1,10 +1,10 @@
 # Phase 354 — Contract seams: the places two sides disagree about one fact
 
-**Status (2026-08-16). W2 DONE; W1, W3 and W4 open.** This header said
+**Status (2026-08-16). W1 and W2 DONE; W3 and W4 open.** This header said
 "PLANNING — nothing implemented" after work had landed — corrected here.
 
-* **W1 (#493, two workspace roots / one corrosion dir)** — OPEN. Zephyr evidence
-  recorded in #493 by `230e6044c`.
+* **W1 (#493, two workspace roots / one corrosion dir)** — **DONE.** Both halves
+  of the acceptance are met; see the W1 section. #493 is resolved and archived.
 * **W2 (#466, tier-1's unstated setup contract)** — DONE. `d38a409ff` took
   finding (a): one gate joins the precondition batch, one is declined WITH
   evidence. #466 resolved.
@@ -54,6 +54,42 @@ diagnosis names which of the two causes it was, with the Corrosion version the
 failing tree resolved (`nano-ros: Corrosion <ver> via <origin>` from the
 configure output — CLAUDE.md is explicit that this must be READ, never inferred
 from having run the installer).
+
+### DONE 2026-08-16
+
+**The diagnosis: NEITHER branch as posed.** #493's resolution answers the
+either/or from the other side. The Zephyr mixed entry hit the identical
+duplication — surfacing as `the #[global_allocator] in nros_platform conflicts
+with global allocator in: nros_platform`, a lang item rather than a
+`#[no_mangle]` symbol — with **no Corrosion in it at all**: no
+`corrosion_import_crate`, nothing in its `CMakeCache.txt` or `build.ninja`.
+Measured there before the fix: 4 cargo invocations sharing one `--target-dir`,
+5 `nros_platform` and 4 `nros_core` metadata identities in one `deps/`, three
+built minutes apart (so not stale accumulation).
+
+So the class is **one cargo artifact directory serving two workspace ROOTS**, and
+Corrosion `< 0.6.0` is one way to arrange that, not the cause. Which is why the
+answer was not "a pin and a gate": it needed enforcement in both lanes, and
+issue 0616 supplied the Zephyr half (a configure-time `FATAL_ERROR` when two
+roots claim one `--target-dir`) beside this lane's Corrosion version floor.
+
+**The build: `linux mixed` links.** Re-measured from this tree:
+
+```
+-- nano-ros: Corrosion v0.6.1 via FetchContent [hashed per-workspace cargo dirs]
+[8/8] Linking CXX executable src/native_entry_robot2/native_entry_robot2
+     built: examples/workspaces/mixed/build-workspace-fixtures/src/native_entry_robot2/native_entry_robot2
+```
+
+rc=0, zero `duplicate symbol`, hashed per-workspace cargo dirs.
+
+**Reading that line as CLAUDE.md requires found a separate live defect.** The
+origin is `FetchContent`, not `SDK store` — this host has a provisioned v0.6.1
+that the configure ignored and re-fetched from GitHub, because
+`nros sdk-path corrosion` constructs only the VERSIONED store layout and this
+host has the FLAT one. Filed as [issue 0628](../issues/0628-sdk-path-constructs-only-the-versioned-corrosion-layout.md);
+it does not affect W1's acceptance (the version and topology are right either
+way) and belongs to phase-365, so it is not folded in here.
 
 ## W2 — Tier 1's unstated, ORDERED setup contract (#466)
 

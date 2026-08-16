@@ -81,6 +81,14 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
+**#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
+store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
+IGNORED and every configure silently fetches Corrosion from GitHub — configure now needs the network, and
+the remedy the message prints is the thing already done. The module's own header documents both layouts and
+records that missing one is the pre-0493 defect; phase-365's switch from a searched prefix list to a single
+constructed path reintroduced it, one layout the other way. Found by READING the `via <origin>` line, which
+CLAUDE.md requires. See `0628-*`. (2026-08-16)
+
 **#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
 store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
 for one tool in one configure, only the FetchContent fallback reads the index — and (b) it cannot serve two
