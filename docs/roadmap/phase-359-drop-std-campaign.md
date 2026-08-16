@@ -621,6 +621,38 @@ backends stop granting `std` to every graph that links them.
 generated message crates, `nros-tests`, and the 2 `tests/simple-workspace` node
 packages — no backend among them.
 
+#### `nros-tests` and `tests/simple-workspace` — **DONE 2026-08-17**
+
+Three more forwarders, none of which a lane builds — which is why they survived
+the sweep and why each needed its own verification path.
+
+`nros-tests` carried `nros-node/std` inside its `trigger-test` feature. Nothing
+in `just/` or the `justfile` mentions that feature, so those targets are never
+compiled; issue 0652 owns that, along with a `trigger_conditions` failure found
+behind it that predates this work. The forward itself was unneeded —
+`wake_latency` and `component_runtime` are 6/6 green without it.
+
+`tests/simple-workspace`'s two node packages defaulted to `std` and forwarded
+it to `nros-core` and `nros-serdes`. Their own code needs none: `src/lib.rs` is
+`#![no_std]` over `RosMessage`/`Serialize`/`CdrWriter`, and `src/main.rs`'s
+`println!` is the BINARY's std, which is unrelated to a dependency's feature.
+
+That workspace has no `generated/` in a fresh checkout (user-side codegen) and
+no recipe builds it, so "it compiles" was not available as evidence. Verified
+by copying it to `tmp/`, running the real `nros generate rust` against ROS
+humble, and building AND RUNNING both binaries: the talker prints
+`Publishing: 0 (serialized 8 bytes)` — correct CDR for `Int32` with header —
+and the listener receives. Done before the edit as a baseline and after it,
+in a copy so no tracked `.cargo/config.toml` was rewritten.
+
+One trap worth recording: the first draft of the explanatory comment QUOTED the
+feature string it was removing, so `git grep` for the forward still matched both
+files. A gate grepping sources would have read prose as the thing it forbids.
+The count only moved 16 -> 14 once the comment was reworded.
+
+**Forwarders: 17 -> 14.** What remains is 6 core/api crates and 8 committed
+generated message crates — no test crate, no fixture workspace, no backend.
+
 #### The final commit's exact file set (2026-08-16)
 
 After the consumer sweep (d48e78ea0), the crates that still name a core `std`

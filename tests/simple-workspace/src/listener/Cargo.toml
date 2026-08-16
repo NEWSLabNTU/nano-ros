@@ -12,8 +12,16 @@ name = "listener"
 path = "src/lib.rs"
 
 [features]
-default = ["std"]
-std = ["nros-core/std", "nros-serdes/std", "std_msgs/std"]
+# phase-359 W10 — this used to default to `std` and forward that flavour on to
+# the nros-core and nros-serdes crates as well as the msgs. This package's
+# own code needs none of it: `src/lib.rs` is `#![no_std]` and uses only
+# `RosMessage`/`Serialize`/`CdrWriter`, and `src/main.rs`'s `println!` is the
+# BINARY's std, which has nothing to do with a dependency's feature. So the
+# forward existed only to hand the core crates a flavour on this package's
+# behalf. What remains is the message crate's own `std`, which is that crate's
+# decision to make.
+default = []
+std = ["std_msgs/std"]
 
 [dependencies]
 # Message bindings (patched to local generated via .cargo/config.toml)
