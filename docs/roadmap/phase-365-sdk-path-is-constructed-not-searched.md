@@ -198,7 +198,12 @@ But that leaves a gap the gate cannot see: a HAND-JOINED path. No wildcard, so
 no enumeration, yet still a second spelling of the join the constructor owns —
 and it drifts the moment either side moves. Converted:
 
-* `just/zenohd.just` built `<store>/sdk/zenohd/$want/bin/zenohd` itself;
+* `just/zenohd.just` built `<store>/sdk/zenohd/$want/bin/zenohd` itself — but
+  that file was RETIRED upstream by `bc9de35a9` (phase-362 W4, "retire the
+  vendored zenoh router") while this change was rebasing, so the conversion
+  landed as a deletion rather than an edit. The commit message names it as
+  converted; it was removed instead. Same outcome for the hand-join, different
+  reason, and worth stating because the message is now wrong about it.
 * `just/workspace.just`'s corrosion check read
   `<store>/sdk/corrosion/.installed-version`.
 
