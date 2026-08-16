@@ -108,19 +108,84 @@ where the handler currently lives and proves the funnel works end to end.
 **Acceptance:** a panic in a fixture prints through the port's path, not
 `nros-c`'s silent spin.
 
-### W5 — migrate the four hardcoded handlers, then retire the old paths
+### W5 — migrate the providers, then move ownership to the entry
 
-In order, because each step must leave every image with exactly one provider:
+The order is FORCED, and the reason is issue 0617 from the opposite direction:
+delete a provider before something else supplies one and every pure-Rust image
+on that board fails with `#[panic_handler] function required`. Each step must
+leave every image with exactly one.
 
-1. Board handlers (`nuttx`, `threadx-qemu-riscv64`, `mps2-an385-freertos`)
-   forward to `nros_platform_panic` instead of implementing a behaviour.
-2. `nros-board-threadx-qemu-riscv64`'s handler is **ungated** today — it is the
-   one that cannot currently be turned off, so it moves first.
-3. The entry (`nros::main!` / `nano_ros_entry()`) supplies the handler; the
-   `panic-spin` feature on `nros-c`/`nros-cpp` retires.
-4. `ARCHITECTURE.md` §2 amended: panic's selector is the image, not
-   `platform-<rtos>`. The allocator's sentence stays — its implementation IS
-   platform-keyed, and the arena must remain shared.
+Providers as they stand (verified in tree, not recalled):
+
+| provider | shape | state |
+| --- | --- | --- |
+| `nros-c/src/lib.rs:160` | `#[panic_handler]` | **forwards** to the ABI (W4) |
+| `nros-board-nuttx` | `#[panic_handler]` | **forwards**; behaviour is its strong `nros_platform_panic` |
+| `nros-board-threadx-qemu-riscv64` | `#[panic_handler]` | **forwards**; ditto |
+| `nros-board-mps2-an385-freertos` | `use panic_semihosting as _` | **not migrated** |
+| `nros-c` / `nros-cpp` `panic-halt` | `use panic_halt as _` | feature-gated, library-owned |
+
+**W5.a (done)** — threadx-qemu-riscv64 and nuttx export their behaviour as a
+strong `nros_platform_panic`; their lang items only forward. The ungated one
+moved first because it was the provider no feature could turn off.
+
+**W5.b — the third board. BLOCKED on W5.c, and the attempt proved why.**
+
+`nros-board-mps2-an385-freertos` imports the lang item from `panic-semihosting`
+rather than writing one. Replacing that with a forwarding handler — the same
+migration the other two boards took — fails:
+
+```
+error[E0152]: duplicate lang item in crate `panic_semihosting`
+  (which `logging_smoke_freertos_mps2` depends on): `panic_impl`
+```
+
+The old arrangement worked only because BOTH sides named the same crate, so
+cargo unified them into one lang item. The moment the board writes its own, the
+image's `panic-semihosting` is a second definition.
+
+The images split, and that is the whole constraint:
+
+- `packages/testing/nros-tests/bins/logging-smoke-freertos-mps2` declares its own
+  provider with `features = ["exit"]`, so a panic EXITS QEMU instead of hanging
+  the harness. That is a deliberate image-specific policy and exactly what
+  RFC-0077 says should happen — this image already owns its ending, for a
+  reason the board could not know.
+- the six `examples/qemu-arm-freertos/rust/*` declare NOTHING and depend on the
+  board for theirs.
+
+So the board cannot stop providing until those six have their own, and it cannot
+start writing one while the smoke bin has its own. Both directions are blocked
+by the same missing piece: **W5.c**. Attempted, reverted, recorded — the
+alternative was a suppression feature that W5.c would delete again.
+
+Note `examples/qemu-arm-baremetal/rust/*` already write `use panic_semihosting
+as _;` in their own `main.rs`, which is a second existence proof of the target
+shape alongside ESP32's `esp-backtrace`.
+
+**W5.c — the entry emits a provider.** `nros::main!` and `nano_ros_entry()`
+today emit NONE — verified, zero matches in `main_macro.rs`. This is the
+substantive step, and W5.b's failed attempt shows it is a HARD prerequisite
+rather than merely the next item. Default forwards to
+`nros_platform_panic`; an entry that declares its own (or `use panic_halt as _`)
+must win, which means the emitted default has to be suppressible rather than
+unconditional.
+
+**W5.d — delete the forwarding handlers**, in `nros-c` and the three boards,
+once W5.c supplies one. Only now is it safe.
+
+**W5.e — retire the features.** `panic-spin` disappears from `nros-c`/`nros-cpp`;
+`panic-halt` stops being a library feature and becomes what it always should
+have been — a dependency the IMAGE names.
+
+**W5.f — amend `ARCHITECTURE.md` §2.** Panic's selector is the image, not
+`platform-<rtos>`. The allocator's sentence stays: its implementation IS
+platform-keyed and its arena must remain shared. Last, so the text lands only
+once the code makes it true.
+
+**Prerequisite for W5.d, not a nicety.** W6's gate counts per LINK LINE, which
+catches duplication and cannot catch ABSENCE — and absence is precisely what
+W5.d risks. Extending it to count per image COORDINATE should land first.
 
 ### W6 — the gate
 

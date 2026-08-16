@@ -144,6 +144,10 @@ impl nros_platform_api::PlatformPanic for Mps2An385Platform {
     }
 }
 
+// Same `cffi-export` gate as every other export in this file — the crate is an
+// optional dep, so an ungated invocation fails to resolve in a build that has
+// not enabled it.
+#[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_panic!(Mps2An385Platform);
 
 // Phase 121.9 — Cortex-M PRIMASK critical section. Always emitted
