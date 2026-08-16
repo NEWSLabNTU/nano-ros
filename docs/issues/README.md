@@ -205,6 +205,38 @@ cell's `.platform`), refusing anything in neither; each exemption carries a reas
 Three plausible fixes had been weighed before the cause was found, and all three were wrong.
 See `archived/0630-*`.
 
+**#644** (build, open 2026-08-16) — the threadx-linux talker was DECLARED `no_std` by phase-359 W10 and
+never was: `nros`'s `env` capability listed `"std"`, so std arrived through the graph and supplied both the
+`#[global_allocator]` AND the `#[panic_handler]`. Removing that grant made it visible. The allocator half
+follows the tree's pattern (the board wires `nros-platform/global-allocator`), but a board-supplied panic
+handler cannot reach this target: the leaf is `crate-type = ["rlib", "staticlib"]`, a staticlib is a final
+artifact so rustc demands lang items at LIB compile time, and `src/lib.rs` never references the board —
+only `main.rs` does, via `nros::main!()` — so the rlib is never loaded. Same DCE class CLAUDE.md records
+for force-linked backends, applied to a lang item. The leaf names `std` again, restoring exactly what it
+linked before rather than inventing a different image; three candidate shapes are recorded. Acceptance is
+NOT "it compiles" — that is what hid it for the length of W10. See `0644-*`. (2026-08-16)
+
+**#639** (build, open 2026-08-16) — the fixture lane invoked ROS's `idlc` with no usable
+`LD_LIBRARY_PATH`, and WHICH boundary drops it is not established. Known: that binary needs
+`/opt/ros/humble/lib/x86_64-linux-gnu` on the loader path, `activate.sh` puts it there (`-h` -> 0), and
+`just build-test-fixtures lane=native` still died at `code=127` when launched from such a shell. Unknown:
+whether the make driver, a `cmake -E env` launcher, ninja's raw command or a `just` boundary strips it —
+deliberately not guessed. MASKED now (#633 routes idlc to the SDK copy); filed rather than closed because
+the gap is not idlc-specific, and because `_nros_idlc_runs`'s `LD_LIBRARY_PATH` launcher has never been
+exercised — #633's cache is exactly what stopped the probe running. See `0639-*`. (2026-08-16)
+
+Recently resolved (2026-08-16): **#638** — the generated Zephyr entry TU had only a TARGET edge to the
+nros-cpp cargo build, so it raced the header it includes and fell through to the in-tree `#error` stub.
+Diagnosed from two IDENTICAL rows disagreeing in one run — `c-talker-cyclonedds` linked,
+`c-listener-cyclonedds` hit the stub, same platform/lang/rmw and the same configure stamp — which is the
+signature of a missing edge, not a missing feature, and means the talker had been passing by luck. The
+code states the reason while exempting this case: it gives component sources a FILE-level `OBJECT_DEPENDS`
+because a target edge "orders the target but ninja can still start the object compile early (issue 0090)",
+then exempts the carrier *because* it compiles into `app` — a target edge. FIXED by giving the entry
+source the same file-level edge, `APPEND`ed so the interface-codegen module's stamp is not clobbered;
+verified in the generated ninja (an IMPLICIT `|` dep, not `||`) rather than by one green build, since a
+race that goes the right way proves nothing. See `archived/0638-*`. (2026-08-16)
+
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
 IGNORED and every configure silently fetches Corrosion from GitHub — configure now needs the network, and

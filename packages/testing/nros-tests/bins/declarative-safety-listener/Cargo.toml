@@ -13,8 +13,15 @@ name = "declarative-safety-listener"
 path = "src/main.rs"
 
 [dependencies]
+# `std` is named because this bin calls `ExecutorNodeRuntime::spin()`, which is
+# `#[cfg(feature = "std")]`. It used to arrive by accident — `nros`'s `env`
+# capability listed `"std"`, so anything that pulled `env` into the graph
+# granted the standard library to everyone in it. That grant is gone
+# (ARCHITECTURE §2 clause (a): a capability REQUIRES the heap, it does not
+# grant it), so the dependency this bin always had is now written down.
 nros = { path = "../../../../api/nros", default-features = false, features = [
     "alloc",
+    "std",
     "rmw-cffi",
     "ros-humble",
     # phase-359 W10 swept consumer manifests off `std`, and this bin was left
