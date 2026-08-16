@@ -243,14 +243,25 @@ fi
 # Baseline: one repo-relative directory per line, '#' comments allowed.
 mapfile -t baseline < <(grep -vE '^\s*(#|$)' "$BASELINE" 2>/dev/null | sort -u)
 
+# CLAUDE.md: scratch files belong in `$repo/tmp/` (gitignored), not the system
+# `/tmp`. A gate is the worst place to ignore that — it runs on shared CI hosts
+# and in containers, where a stale `/tmp/.nros-leaf-*` from another user or a
+# killed run is readable by the next one, and `$$` only makes collision
+# unlikely rather than impossible. `mktemp` under the repo keeps the scratch
+# beside the tree it describes and inside the dir the repo already ignores.
+_nros_tmp="$(git rev-parse --show-toplevel)/tmp"
+mkdir -p "$_nros_tmp"
+_drift="$(mktemp "$_nros_tmp/leaf-drift.XXXXXX")"
+_base="$(mktemp "$_nros_tmp/leaf-base.XXXXXX")"
+trap 'rm -f "$_drift" "$_base"' EXIT
+
 # `printf '%s\n' "${arr[@]}"` on an EMPTY array still emits one blank line, which
 # made the summary read "1 known-drifted" with an empty backlog. Guard both.
-if [ ${#drifted[@]} -gt 0 ]; then printf '%s\n' "${drifted[@]}"; fi | sort -u > /tmp/.nros-leaf-drift.$$
-if [ ${#baseline[@]} -gt 0 ]; then printf '%s\n' "${baseline[@]}"; fi > /tmp/.nros-leaf-base.$$
-trap 'rm -f /tmp/.nros-leaf-drift.$$ /tmp/.nros-leaf-base.$$' EXIT
+if [ ${#drifted[@]} -gt 0 ]; then printf '%s\n' "${drifted[@]}"; fi | sort -u > "$_drift"
+if [ ${#baseline[@]} -gt 0 ]; then printf '%s\n' "${baseline[@]}"; fi > "$_base"
 
-new="$(comm -23 /tmp/.nros-leaf-drift.$$ /tmp/.nros-leaf-base.$$)"
-fixed="$(comm -13 /tmp/.nros-leaf-drift.$$ /tmp/.nros-leaf-base.$$)"
+new="$(comm -23 "$_drift" "$_base")"
+fixed="$(comm -13 "$_drift" "$_base")"
 
 fail=0
 if [ -n "$new" ]; then

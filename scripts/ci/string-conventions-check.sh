@@ -17,23 +17,31 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# Scratch goes in `$repo/tmp/` (gitignored), not the system `/tmp` —
+# CLAUDE.md's rule, and it matters most for a gate: these run on shared
+# hosts where a leftover `/tmp/string-conv-hits.*` outlives the run that
+# made it.
+mkdir -p tmp
+
 fail=0
 
 scan() {
     local label="$1"; shift
     local pattern="$1"; shift
+    local hits
+    hits="$(mktemp tmp/string-conv-hits.XXXXXX)"
     # Paths to scan are the remaining args.
     if git grep -nE "$pattern" -- "$@" \
             ':!docs/roadmap/archived/*' \
             ':!docs/roadmap/phase-208-*' \
             ':!scripts/ci/string-conventions-check.sh' \
             ':!.git/*' \
-        > /tmp/string-conv-hits.$$ 2>/dev/null; then
+        > "$hits" 2>/dev/null; then
         echo "::error::$label: forbidden string found"
-        cat /tmp/string-conv-hits.$$
+        cat "$hits"
         fail=1
     fi
-    rm -f /tmp/string-conv-hits.$$
+    rm -f "$hits"
 }
 
 scan "aeon/nano-ros (real org = NEWSLabNTU/nano-ros)" \
