@@ -692,6 +692,47 @@ someone else's behalf. Deleting those is not a manifest change: it is the ~91
 `cfg` sites still in `nros-node` plus 60 across the others, which is the body of
 W10 that remains.
 
+#### `nros-node`: the wake mirror collapses — **84 -> 60 cfg, 2026-08-17**
+
+The largest remaining cluster was not "paired arms that collapse mechanically".
+It was a whole SECOND IMPLEMENTATION: `executor/wake_alloc.rs` held a
+`WakeCtxAlloc` that was `WakeCtx` minus an `Option`, with its own runtime
+callback, its own `wake_ctx_alloc` field, and its own
+`install_wake_signal_on_{primary,extra}_alloc` — plus a duplicated
+`primary_drive_timeout_ms` arm and four duplicated call sites.
+
+The two stopped differing when W10 deleted the condvar fallback: the std arm's
+`else` branch became "drive the transport for the full timeout", which is what
+the alloc arm had always done. Merged onto `alloc + rmw-cffi` (std implies
+alloc), and the mirror module is deleted.
+
+Two hazards in the merge, both found by evidence rather than by reading:
+
+* **Two swaps of one flag.** The std path swapped `wake_flag` in an outer
+  `#[cfg(feature = "std")]` statement; the alloc arm swapped it again inside
+  itself. Merged naively, that is two swaps per spin, the first consuming what
+  the second tests — the arm would have read `was_woken == false` forever and
+  taken the blocking wait every time.
+* **Deleting the outer swap instead broke a different build.** `wake_flag` is
+  `alloc`-gated and "spin_once consumes the wake flag" is an invariant of every
+  alloc build, but the merged arm only compiles with `rmw-cffi`. A
+  `std`-without-`rmw-cffi` build stopped clearing it, and
+  `test_wake_cleared_each_spin` failed — the gate `check-node-std-tests` builds
+  exactly that configuration. The swap now sits at the scope of the field it
+  reads.
+
+Also restored in the same pass: the `all(std, not(rmw-cffi))` arm's `= 0`,
+which the first merge swallowed, and a stranded `#[cfg(any(has_rmw, test))]`
+left stacked on `pub mod wake_probe` when the `mod wake_alloc;` line was
+removed without its attribute — the issue-0579 class, and the second time this
+campaign has produced it.
+
+Verified: five feature combinations compile (std / std+rmw-cffi / alloc+rmw-cffi
+/ alloc / none); `cargo test -p nros-node --lib` 254 pass on `std` and 139 on
+`std,rmw-cffi`; `just check` green; native fixtures green; 7/7 on
+`wake_latency` + `component_runtime` + `roundtrip_xprocess`, which covers the
+cross-thread wake trigger this merge is about.
+
 #### The final commit's exact file set (2026-08-16)
 
 After the consumer sweep (d48e78ea0), the crates that still name a core `std`

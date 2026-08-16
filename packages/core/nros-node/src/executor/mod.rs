@@ -74,8 +74,6 @@ mod storage;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod triple_buffer;
 mod types;
-#[cfg(any(has_rmw, test))]
-mod wake_alloc;
 #[cfg(all(any(has_rmw, test), feature = "wake-latency-probe"))]
 pub mod wake_probe;
 

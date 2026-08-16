@@ -149,7 +149,14 @@ BASELINE = {
     # `halt_flag` joined `wake_flag` on `alloc`.
     # Same rebase, same rule: issue 0589 moved four `cfg(feature = "std")`
     # diagnostics to `nros_log`. Measured, not derived.
-    "nros-node": {"cfg": 84, "path": 36},
+    #
+    # phase-359 W10: 84 -> 60, path 36 -> 33. The no_std wake MIRROR is gone.
+    # `wake_alloc.rs` held a `WakeCtxAlloc` that was `WakeCtx` minus an
+    # `Option`, with its own callback, its own installers and its own field —
+    # a second implementation of a thing that had stopped differing when the
+    # condvar fallback was deleted. One `WakeCtx` on `alloc + rmw-cffi` now,
+    # and the two `primary_drive_timeout_ms` arms are one arm.
+    "nros-node": {"cfg": 60, "path": 33},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

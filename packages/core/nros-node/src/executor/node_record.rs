@@ -322,7 +322,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         #[cfg(feature = "std")]
         self.executor.install_wake_signal_on_extra(idx - 1);
         #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-        self.executor.install_wake_signal_on_extra_alloc(idx - 1);
+        self.executor.install_wake_signal_on_extra(idx - 1);
         Ok(idx as u8)
     }
 

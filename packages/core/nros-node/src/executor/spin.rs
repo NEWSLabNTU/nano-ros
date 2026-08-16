@@ -191,10 +191,8 @@ impl<'s> Executor<'s> {
             executor.epoch_us_fn = config.epoch_us;
         }
         executor.set_node_identity(config.node_name, config.namespace);
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-        executor.install_wake_signal_on_primary_alloc();
         // Phase 277 W2.c — readiness marker for E2E harnesses. This is the
         // single call-through `open()`/`open_sized()` share, so it fires on
         // every platform that reaches here (native, freertos, zephyr,
@@ -333,10 +331,8 @@ impl<'s> Executor<'s> {
         // recording rationale.
         let _ = executor.primary_rmw_name.push_str(primary.rmw);
         let _ = executor.primary_locator.push_str(primary.locator);
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-        executor.install_wake_signal_on_primary_alloc();
 
         for spec in specs.iter().skip(1) {
             let session = nros_rmw_cffi::CffiRmw::open_with_rmw(spec.rmw, &spec.to_rmw_config())
@@ -355,15 +351,10 @@ impl<'s> Executor<'s> {
                 let _ = loc_s.push_str(spec.locator);
                 let _ = executor.extra_session_ids.push((rmw_s, loc_s));
             }
-            #[cfg(feature = "std")]
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             {
                 let idx = executor.extra_sessions.len() - 1;
                 executor.install_wake_signal_on_extra(idx);
-            }
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            {
-                let idx = executor.extra_sessions.len() - 1;
-                executor.install_wake_signal_on_extra_alloc(idx);
             }
         }
 
@@ -413,10 +404,8 @@ impl<'s> Executor<'s> {
         // cache hit path. See `Executor::open` for the rationale.
         let _ = executor.primary_rmw_name.push_str(rmw_name);
         let _ = executor.primary_locator.push_str(config.locator);
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
-        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-        executor.install_wake_signal_on_primary_alloc();
         Ok(executor)
     }
 }
@@ -635,7 +624,7 @@ mod group_filter_tests {
 /// Phase 124.B.2 — opaque context handed to the runtime wake
 /// callback. Backends store the raw pointer + invoke the callback;
 /// the callback decodes back to `&WakeCtx`.
-#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) struct WakeCtx {
     pub(crate) flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// The wake primitive. Phase 130.3 added it beside a `std::sync::Condvar`
@@ -668,7 +657,7 @@ pub(crate) struct WakeCtx {
 /// The cb is the symbol backends invoke from their async wake path
 /// (datagram arrival, worker-thread enqueue, etc.). It does
 /// flag-write + condvar-signal in that order, lock-free.
-#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_void) {
     if ctx.is_null() {
         return;
@@ -1267,22 +1256,8 @@ pub struct Executor<'s> {
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
     /// in backends remains valid.
-    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-    pub(crate) wake_ctx: Option<std::sync::Arc<WakeCtx>>,
-    // Phase 141.A.3 — alloc-mode (no_std RTOS) mirror of the wake
-    // state above. Same semantics: `wake_flag` is set SeqCst
-    // by the runtime cb + cleared by spin_once on entry;
-    // `node_wake` is the kernel-native binary semaphore
-    // (lifted to alloc cfg in e36ee8cf) the cb signals;
-    // `wake_ctx_alloc` is the Arc handed to backends via
-    // `set_wake_callback(Some(cb), Arc::as_ptr(ctx) as *mut _)`.
-    // `has_async_wake` is `true` after the first session
-    // accepts the wake-cb install (`supports_wake_callback`).
-    // Drives the no_std spin_once wait branch to block on
-    // `node_wake.wait_ms(deadline)` instead of relying on
-    // `drive_io`'s transport-blocking recv for the full timeout.
-    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-    pub(crate) wake_ctx_alloc: Option<portable_atomic_util::Arc<super::wake_alloc::WakeCtxAlloc>>,
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) wake_ctx: Option<portable_atomic_util::Arc<WakeCtx>>,
     /// Phase 124.B.7.c — lazily-allocated POSIX signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
     /// Drop joins the worker thread and closes the fd.
@@ -1420,7 +1395,7 @@ impl<'s> Executor<'s> {
             wake_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             node_wake: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
-            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_ctx: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
@@ -1430,8 +1405,6 @@ impl<'s> Executor<'s> {
             // alloc inside spin_once. `None` when the platform
             // provider reports the primitive unavailable (matches
             // the std-RTOS path's `node_wake: Option<...>`).
-            #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-            wake_ctx_alloc: None,
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
             #[cfg(feature = "param-services")]
@@ -2564,7 +2537,7 @@ impl<'s> Executor<'s> {
     /// `Session::set_wake_callback` (poll-only XRCE, bare-metal)
     /// ignore the call and continue to be drained on the executor's
     /// deadline-bound cv-wait boundary.
-    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
@@ -2582,7 +2555,7 @@ impl<'s> Executor<'s> {
     /// Phase 124.B.1 — install the wake callback onto an extra
     /// session opened by `node_builder.rmw(...)`. Called from
     /// `NodeBuilder::build()` right after `extra_sessions.push(...)`.
-    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn install_wake_signal_on_extra(&mut self, idx: usize) {
         use nros_rmw::Session as _;
         let ctx = self.wake_ctx_ptr();
@@ -2632,77 +2605,16 @@ impl<'s> Executor<'s> {
         Ok(self.signal_fd.as_ref().expect("just set").fd())
     }
 
-    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     fn wake_ctx_ptr(&mut self) -> *mut core::ffi::c_void {
         if self.wake_ctx.is_none() {
-            self.wake_ctx = Some(std::sync::Arc::new(WakeCtx {
+            self.wake_ctx = Some(portable_atomic_util::Arc::new(WakeCtx {
                 flag: self.wake_flag.clone(),
                 node_wake: self.node_wake.clone(),
             }));
         }
         let arc = self.wake_ctx.as_ref().expect("just set");
-        std::sync::Arc::as_ptr(arc) as *mut core::ffi::c_void
-    }
-
-    // Phase 141.A.3 — alloc-mode (no_std RTOS) mirror of
-    // `install_wake_signal_on_primary` /
-    // `install_wake_signal_on_extra` / `wake_ctx_ptr`. Same
-    // best-effort install contract: backends that don't override
-    // `Session::set_wake_callback` ignore the call and continue
-    // to be drained on the executor's deadline-bound wait.
-    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-    fn wake_ctx_alloc_ptr(&mut self) -> Option<*mut core::ffi::c_void> {
-        // Without a NodeWake there's no kernel primitive to signal;
-        // skip the install + let spin_once fall back to drive_io
-        // for the full timeout. Mirrors the std-RTOS path's
-        // `if let Some(wake) = self.node_wake.as_ref()` predicate.
-        let node_wake = self.node_wake.as_ref()?;
-        if self.wake_ctx_alloc.is_none() {
-            self.wake_ctx_alloc = Some(portable_atomic_util::Arc::new(
-                super::wake_alloc::WakeCtxAlloc {
-                    flag: portable_atomic_util::Arc::clone(&self.wake_flag),
-                    node_wake: portable_atomic_util::Arc::clone(node_wake),
-                },
-            ));
-        }
-        let arc = self.wake_ctx_alloc.as_ref().expect("just set");
-        Some(portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void)
-    }
-
-    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-    fn install_wake_signal_on_primary_alloc(&mut self) {
-        use nros_rmw::Session as _;
-        let Some(ctx) = self.wake_ctx_alloc_ptr() else {
-            return;
-        };
-        // SAFETY: `ctx` is the raw pointer of an Arc<WakeCtxAlloc>
-        // owned by the Executor (`self.wake_ctx_alloc`); the Arc
-        // lives as long as the Executor and is cleared on drop.
-        unsafe {
-            self.session
-                .set_wake_callback(Some(super::wake_alloc::nros_rmw_runtime_wake_cb), ctx);
-        }
-        if self.session.supports_wake_callback() {
-            self.has_async_wake = true;
-        }
-    }
-
-    #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
-    pub(crate) fn install_wake_signal_on_extra_alloc(&mut self, idx: usize) {
-        use nros_rmw::Session as _;
-        let Some(ctx) = self.wake_ctx_alloc_ptr() else {
-            return;
-        };
-        if let Some(s) = self.extra_sessions.get_mut(idx) {
-            // SAFETY: same wake state as the primary session; the
-            // extra session is owned by this Executor.
-            unsafe {
-                s.set_wake_callback(Some(super::wake_alloc::nros_rmw_runtime_wake_cb), ctx);
-            }
-            if s.supports_wake_callback() {
-                self.has_async_wake = true;
-            }
-        }
+        portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void
     }
 
     /// Phase 104.C.4 — apply a Node's default SchedContext to a
@@ -5143,11 +5055,23 @@ impl<'s> Executor<'s> {
         // thread (or, post-104.C.6.b, any backend's vtable hook)
         // pre-empt whichever session the executor would otherwise
         // sleep on. Cost on the no-wake path is one atomic swap.
-        #[cfg(feature = "std")]
+        // phase-359 W10 — ONE swap, at `alloc` scope.
+        //
+        // This was `#[cfg(feature = "std")]` while the alloc wait arm did its
+        // own swap further down. Merging the two arms made that two swaps of
+        // one flag per spin, the first consuming what the second tested, so the
+        // arm would have read `was_woken == false` forever. Deleting the outer
+        // one instead broke a different thing: `wake_flag` is `alloc`-gated and
+        // "spin_once consumes the wake flag" is an invariant of every alloc
+        // build, but the merged arm only runs with `rmw-cffi` — so a
+        // `std`-without-`rmw-cffi` build stopped clearing it, which
+        // `test_wake_cleared_each_spin` catches. It belongs here, at the scope
+        // of the field it reads.
+        #[cfg(feature = "alloc")]
         #[allow(unused_variables)]
         let was_woken = self
             .wake_flag
-            .swap(false, core::sync::atomic::Ordering::SeqCst);
+            .swap(false, portable_atomic::Ordering::SeqCst);
 
         // Phase 124.B.4 — condvar-blocked wait.
         //
@@ -5174,93 +5098,30 @@ impl<'s> Executor<'s> {
         // the predicate. If wake fires between drain and cv.wait
         // entry, the predicate sees flag=true on first eval and
         // exits immediately.
-        // Phase 130.4 — only sleep in the wake-primitive wait when a
-        // backend actually installed `set_wake_callback`. Poll-only
-        // backends (XRCE, current Cyclone / dust-DDS) leave the
-        // vtable slot NULL → `has_async_wake == false` → drive_io
-        // for the caller's full timeout instead of sleeping in a
-        // never-signaled wait that starves reliable retransmission
-        // (Phase 127.C.4 root cause: server's send_reply flushes
-        // 100 ms once, then NodeWake.wait_ms(100) sleeps 100 ms
-        // with zero session activity, so the agent's ACK arrives
-        // into a stalled session and reliable redelivery never
-        // fires). RTOS std builds with an event-driven backend
-        // installed still use `NodeWake` (kernel-native binary
-        // semaphore — honors its deadline, dodges Zephyr's libc
-        // `pthread_cond_timedwait` hang); POSIX/macOS std keep
-        // the existing `std::Condvar` path.
-        // Phase 248 (C2) — platform-agnostic wake wait. The choice of
-        // wait primitive is made at runtime from the platform vtable's
-        // wake probe, NOT a compile-time per-RTOS `cfg`:
+        // Phase 130.4 — only sleep in the wake wait when a backend actually
+        // installed `set_wake_callback`. Poll-only backends (XRCE, current
+        // Cyclone) leave the vtable slot NULL → `has_async_wake == false` →
+        // drive_io for the caller's full timeout instead of sleeping in a
+        // never-signaled wait that starves reliable retransmission (Phase
+        // 127.C.4 root cause: the server's `send_reply` flushes 100 ms once,
+        // then a blind `wait_ms(100)` sleeps with zero session activity, so the
+        // agent's ACK arrives into a stalled session and reliable redelivery
+        // never fires).
         //
-        //   * `node_wake.is_some()` → a kernel-native binary semaphore
-        //     (`nros_platform_wake_*`) is linked; block on it. It honors
-        //     its deadline (dodging e.g. Zephyr's libc
-        //     `pthread_cond_timedwait` hang) and `nros_rmw_runtime_wake_cb`
-        //     signals it on transport arrival.
-        //   * `node_wake.is_none()` → no platform wake primitive; fall
-        //     back to the std `Condvar` wake pair.
-        //
-        // Either way, only sleep in the wake-primitive/cv wait when a
-        // backend actually installed `set_wake_callback`
-        // (`has_async_wake`); poll-only backends (XRCE, current Cyclone)
-        // leave the slot NULL and get a full-timeout `drive_io` so
-        // reliable retransmission isn't starved (Phase 127.C.4).
-        #[cfg(all(feature = "std", feature = "rmw-cffi"))]
-        let primary_drive_timeout_ms = if let Some(wake) = self.node_wake.as_ref() {
-            if !was_woken && self.has_async_wake {
-                let _ = wake.wait_ms(timeout_ms as u32);
-                // Clear any pending flag the cb set while we were
-                // waiting; mirrors the std cv predicate's flag drain.
-                let _ = self
-                    .wake_flag
-                    .swap(false, core::sync::atomic::Ordering::SeqCst);
-                0
-            } else {
-                timeout_ms
-            }
-        } else {
-            // phase-359 W10 — no platform wake primitive: drive the transport
-            // for the caller's full timeout.
-            //
-            // This branch used to be a `std::sync::Condvar` wait, and it was
-            // the FALLBACK, never the mechanism — the `if` above shows the
-            // choice being made at runtime on `node_wake.is_some()`, always
-            // preferring the kernel-native semaphore. Every supported std host
-            // links one (the POSIX C port has had `nros_platform_wake_*` since
-            // phase 130, with its own `c_port_posix_wake` test), so on Linux
-            // this arm was already unreachable.
-            //
-            // What is lost where it IS reached: an async wake could cut the
-            // condvar wait short, and now it cannot. What is not lost is
-            // blocking — `drive_io(timeout)` blocks in the transport's own
-            // recv, which is where the campaign's condvar audit found every
-            // flavour ends up anyway. It is also exactly what the `alloc` arm
-            // below has always done in this case, so the two flavours stop
-            // disagreeing about a situation neither of them can service well.
-            timeout_ms
-        };
-
-        // std builds without rmw-cffi (mock-session tests, future
-        // alternative backends) keep the original "drive_io is
-        // non-blocking" assumption.
-        #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
-        let primary_drive_timeout_ms = 0;
-
-        // Phase 248 (C2) — no_std + alloc + rmw-cffi path. When a backend
-        // installed the wake-cb (`has_async_wake`) and a platform
-        // wake primitive is available (`node_wake.is_some()` — the
-        // runtime vtable probe), block on `node_wake.wait_ms` so the
-        // executor unblocks on transport arrival rather than relying on
-        // drive_io's blocking recv for the full timeout. Then drive_io(0)
-        // drains whatever the backend's poll path buffered. Platforms with
-        // no wake primitive (bare-metal) fall through to the full timeout.
-        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
+        // Phase 248 (C2) — which primitive is a RUNTIME choice from the
+        // platform vtable's wake probe, not a compile-time per-RTOS `cfg`:
+        // `node_wake.is_some()` means `nros_platform_wake_*` is linked and
+        // `nros_rmw_runtime_wake_cb` signals it on transport arrival.
+        // phase-359 W10 — ONE arm. This was a `std` arm and an `alloc` arm with
+        // the same body: block on the platform wake primitive when a backend
+        // installed the callback and nothing has woken us yet, else drive the
+        // transport for the caller's full timeout. They stopped differing when
+        // the condvar fallback was deleted — the std arm's `else` branch had
+        // already become "drive for the full timeout", which is what the alloc
+        // arm always did — so keeping two was keeping a fork that agreed.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         let primary_drive_timeout_ms = {
-            let was_woken_alloc = self
-                .wake_flag
-                .swap(false, portable_atomic::Ordering::SeqCst);
-            if !was_woken_alloc
+            if !was_woken
                 && self.has_async_wake
                 && let Some(wake) = self.node_wake.as_ref()
             {
@@ -5271,9 +5132,20 @@ impl<'s> Executor<'s> {
                     .swap(false, portable_atomic::Ordering::SeqCst);
                 0
             } else {
+                // No wake primitive linked, or a poll-only backend: drive the
+                // transport for the full timeout. It still BLOCKS — in the
+                // transport's own recv — which is where every flavour ended up
+                // anyway.
                 timeout_ms
             }
         };
+
+        // std builds without rmw-cffi (mock-session tests, future alternative
+        // backends) keep the original "drive_io is non-blocking" assumption.
+        // `std` implies `alloc`, so this is the only std configuration the arm
+        // above does not cover.
+        #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
+        let primary_drive_timeout_ms = 0;
 
         // no_std without (alloc + rmw-cffi) keeps the legacy
         // full-timeout drive_io call.
