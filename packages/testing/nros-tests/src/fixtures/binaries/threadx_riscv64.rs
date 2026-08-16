@@ -39,10 +39,10 @@ pub fn is_netx_available() -> bool {
 /// the same answer, kept to the candidate list rather than shelling out so a
 /// unit test needs no shell.
 fn riscv64_gcc() -> String {
-    if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX") {
-        if !prefix.is_empty() {
-            return format!("{prefix}-gcc");
-        }
+    if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX")
+        && !prefix.is_empty()
+    {
+        return format!("{prefix}-gcc");
     }
     let store = std::env::var("NROS_SDK_STORE")
         .unwrap_or_else(|_| format!("{}/.nros/sdk", std::env::var("HOME").unwrap_or_default()));
