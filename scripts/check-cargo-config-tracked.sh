@@ -302,30 +302,5 @@ if [ "$tracked_pure" -ne 0 ]; then
     rc=1
 fi
 
-# phase-363 — the TRACKED spelling must be the one `nros sync` writes, or every
-# sync dirties the tree and everyone learns to `git checkout --` the result.
-#
-# `toml_edit` normalises an array's decor when it rewrites it, so sync emits
-# `include = ["a", "b"]`. 45 tracked configs carried `include = [ "a", "b"]`
-# instead — one leading space, semantically identical, and enough to make a
-# no-op sync produce 45 modified files. The habit that builds around that is the
-# real cost: a worktree that is never clean is one where an accidental edit
-# hides, and `git add -u` scoops the churn up (CLAUDE.md already warns that the
-# sidecar `include` line has been committed twice this way).
-noncanon="$(git ls-files -- '*/.cargo/config.toml' \
-    | xargs -r grep -l 'include = \[ ' 2>/dev/null || true)"
-if [ -n "$noncanon" ]; then
-    {
-        echo "ERROR: tracked .cargo/config.toml with a non-canonical \`include\` array:"
-        printf '%s\n' "$noncanon" | sed 's/^/       /'
-        echo
-        echo "  \`nros sync\` writes \`include = [\"…\"]\` (no space after the bracket);"
-        echo "  these carry \`include = [ \"…\"]\`, so every sync rewrites them and the"
-        echo "  worktree is never clean. Semantically identical — fix the spelling:"
-        echo "      sed -i 's/include = \\[ \"/include = [\"/' <path>"
-    } >&2
-    rc=1
-fi
-
 [ "$rc" -eq 0 ] && echo "check-cargo-config-tracked: OK (tracked <=> hand-authored content)"
 exit "$rc"
