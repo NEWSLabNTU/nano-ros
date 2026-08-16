@@ -562,11 +562,11 @@ pub fn detect_riscv_compiler(build: &mut cc::Build) {
     // compiled the zenoh C shim with one toolchain and the ThreadX board with
     // the other — two libcs in one image, agreeing about nothing.
     let target = std::env::var("TARGET").unwrap_or_default();
-    if target.starts_with("riscv64") {
-        if let Some(gcc) = nros_build_paths::riscv64::tool("gcc") {
-            build.compiler(gcc);
-            return;
-        }
+    if target.starts_with("riscv64")
+        && let Some(gcc) = nros_build_paths::riscv64::tool("gcc")
+    {
+        build.compiler(gcc);
+        return;
     }
     for cc_name in RISCV_GCC_CANDIDATES {
         if Command::new(cc_name).arg("--version").output().is_ok() {

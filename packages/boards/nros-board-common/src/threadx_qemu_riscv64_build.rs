@@ -447,10 +447,11 @@ fn get_picolibc_lib_dir() -> Option<PathBuf> {
     {
         let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
         // gcc echoes the bare name back when it cannot find the file.
-        if path.is_absolute() && path.exists() {
-            if let Some(dir) = path.parent() {
-                return Some(dir.to_path_buf());
-            }
+        if path.is_absolute()
+            && path.exists()
+            && let Some(dir) = path.parent()
+        {
+            return Some(dir.to_path_buf());
         }
     }
     None
