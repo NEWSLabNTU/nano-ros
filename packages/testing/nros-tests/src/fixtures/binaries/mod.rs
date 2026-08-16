@@ -1145,8 +1145,119 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
     if !build_dir.to_string_lossy().contains("zenoh") {
         return None;
     }
+
+    // phase-363 — ASK the tool that owns the graph. `zpico-sys`'s `build.rs`
+    // drives the `cc` crate, which emits `cargo:rerun-if-changed` for every path
+    // it read; cargo stores that verbatim in the build script's `output`. That
+    // set is what the build ACTUALLY consumed, and it is strictly broader than
+    // the walk below ever was: it names `nros-platform-api/include` and
+    // `config/*/nros-platform.toml`, neither under `zpico-sys/c` nor a `.c`/`.h`,
+    // so a platform-config edit used to slip past this gate entirely.
+    let recorded = zpico_recorded_inputs(build_dir);
+    if !recorded.is_empty() {
+        return recorded
+            .into_iter()
+            .find_map(|p| newest_path_after(&p, bin_mtime));
+    }
+
+    // Bootstrap only: no build script output found, so nothing has recorded an
+    // answer for this tree yet. Fall back to the hand-authored walk, which is
+    // over-broad and therefore fails SAFE — the same reasoning W4 records for
+    // needing a pre-build answer to bootstrap a row that has never built.
     let c_root = project_root().join("packages/rmw/zenoh/zpico-sys/c");
     newest_source_after(&c_root, bin_mtime)
+}
+
+/// In-repo paths `zpico-sys`'s build script recorded as its inputs.
+///
+/// Cargo writes `cargo:rerun-if-changed=<path>` lines into
+/// `<target>/<profile>/build/zpico-sys-<hash>/output`. Corrosion puts that tree
+/// somewhere under the cmake build dir, and the hash and profile both vary, so
+/// the file is located by shape rather than by a spelled path.
+fn zpico_recorded_inputs(build_dir: &Path) -> Vec<PathBuf> {
+    let root = project_root();
+    let mut out = Vec::new();
+    for output in find_build_script_outputs(build_dir, "zpico-sys-", 0) {
+        let Ok(text) = fs::read_to_string(&output) else {
+            continue;
+        };
+        for line in text.lines() {
+            // `cargo::` is the modern spelling, `cargo:` the legacy one; the cc
+            // crate still emits the legacy form, and a probe that knew only one
+            // would silently record nothing.
+            let Some(rest) = line
+                .strip_prefix("cargo::rerun-if-changed=")
+                .or_else(|| line.strip_prefix("cargo:rerun-if-changed="))
+            else {
+                continue;
+            };
+            let path = PathBuf::from(rest.trim());
+            // Only in-repo inputs: a system header changing is not this tree's
+            // staleness, and `..` segments are why this canonicalizes first.
+            let Ok(path) = path.canonicalize() else {
+                continue;
+            };
+            if path.starts_with(&root) && !out.contains(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// `<dir>/**/build/<prefix><hash>/output`, bounded so a deep cmake tree cannot
+/// turn a staleness probe into a full-tree walk.
+fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<PathBuf> {
+    const MAX_DEPTH: usize = 8;
+    let mut found = Vec::new();
+    if depth > MAX_DEPTH {
+        return found;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(prefix) {
+            let output = path.join("output");
+            if output.is_file() {
+                found.push(output);
+            }
+            continue;
+        }
+        found.extend(find_build_script_outputs(&path, prefix, depth + 1));
+    }
+    found
+}
+
+/// First path at or under `p` whose mtime is newer than `bin_mtime`.
+///
+/// No extension filter, deliberately: cargo named this path an input, so what it
+/// is matters less than that it changed. A `rerun-if-changed` entry may be a
+/// FILE or a DIRECTORY — `nros-platform-api/include` is the latter — and cargo
+/// treats a directory as "anything under it".
+fn newest_path_after(p: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
+    let meta = fs::metadata(p).ok()?;
+    if meta.is_file() {
+        if staleness::note_candidate(p) {
+            return None;
+        }
+        return (meta.modified().ok()? > bin_mtime).then(|| p.to_path_buf());
+    }
+    if !meta.is_dir() {
+        return None;
+    }
+    for entry in fs::read_dir(p).ok()?.flatten() {
+        if let Some(found) = newest_path_after(&entry.path(), bin_mtime) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Recursively walk `dir` for `.c`/`.h`/`.cpp`/`.hpp` sources and return the
@@ -5671,6 +5782,86 @@ mod tests {
             !msg.contains(&format!("armv7a-nuttx-eabihf/{ambient}/listener")),
             "resolver still used the AMBIENT profile — this is issue 0608: {msg}"
         );
+    }
+
+    /// phase-363 — the zpico probe reads the inputs cargo RECORDED, not a
+    /// hand-authored walk. Hermetic: builds a fake build-script `output` in a
+    /// temp tree, so it asserts the parser and the search, never a real fixture.
+    #[test]
+    fn zpico_inputs_come_from_the_build_script_output() {
+        let root = project_root();
+        let tmp = root.join("tmp/zpico-probe-test");
+        let _ = fs::remove_dir_all(&tmp);
+        // The REAL nesting corrosion produces, measured on
+        // `examples/qemu-riscv64-threadx/cpp/action-client/build-zenoh`:
+        //   cargo/<pkg>_<hash>/<triple>/<profile>/build/zpico-sys-<hash>/output
+        // The `zpico-sys-*` dir is matched at recursion depth 5 from the build
+        // dir — measured, not counted by eye: MAX_DEPTH 4 fails this test and 5
+        // passes. The shipped 8 is that bound plus headroom for a deeper
+        // corrosion layout, and it is a real bound rather than a round number:
+        // without it a staleness probe walks the whole cmake tree.
+        let bs = tmp.join(
+            "cargo/nano-ros_0b88c/riscv64gc-unknown-none-elf/release/build/zpico-sys-deadbeef",
+        );
+        fs::create_dir_all(&bs).unwrap();
+
+        // A real in-repo path, a real in-repo DIR, and two that must be dropped:
+        // a system header (not in-repo) and a non-rerun line.
+        let in_repo_file = root.join("packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c");
+        let in_repo_dir = root.join("packages/platform/nros-platform-api/include");
+        fs::write(
+            bs.join("output"),
+            format!(
+                "cargo:rerun-if-changed={}\n\
+                 cargo:rerun-if-changed={}\n\
+                 cargo:rerun-if-changed=/usr/include/stdio.h\n\
+                 cargo:rustc-link-lib=static=zpico\n",
+                in_repo_file.display(),
+                in_repo_dir.display(),
+            ),
+        )
+        .unwrap();
+
+        let found = zpico_recorded_inputs(&tmp);
+        assert!(
+            found.contains(&in_repo_file.canonicalize().unwrap()),
+            "the recorded C source must be an input: {found:?}"
+        );
+        assert!(
+            found.contains(&in_repo_dir.canonicalize().unwrap()),
+            "a recorded DIRECTORY must be an input — this is the entry the old \
+             walk could not see: {found:?}"
+        );
+        assert!(
+            !found.iter().any(|p| p.starts_with("/usr")),
+            "a system header is not this tree's staleness: {found:?}"
+        );
+
+        // The measured set must be BROADER than the old walk: prove the
+        // directory entry lies outside `zpico-sys/c`, which is all the walk
+        // ever looked at.
+        let old_walk_root = root.join("packages/rmw/zenoh/zpico-sys/c");
+        assert!(
+            !in_repo_dir.starts_with(&old_walk_root),
+            "this assertion is vacuous if the include tree moved under the walk"
+        );
+
+        // A DIRECTORY input reports a newer file inside it — the case the
+        // extension-filtered walk also could not express.
+        let long_ago = std::time::SystemTime::UNIX_EPOCH;
+        assert!(
+            newest_path_after(&in_repo_dir, long_ago).is_some(),
+            "a directory input must resolve to a file under it"
+        );
+        // …and nothing is newer than the far future, so this is not a probe
+        // that simply always fires.
+        let far_future = std::time::SystemTime::now() + std::time::Duration::from_secs(86_400);
+        assert!(
+            newest_path_after(&in_repo_dir, far_future).is_none(),
+            "the probe must not report staleness against a future binary"
+        );
+
+        fs::remove_dir_all(&tmp).unwrap();
     }
 
     #[test]
