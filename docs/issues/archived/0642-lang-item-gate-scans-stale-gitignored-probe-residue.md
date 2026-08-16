@@ -2,7 +2,7 @@
 id: 642
 title: "`check-archive-lang-items` fails the fixture build on 16-day-old
   gitignored probe residue, and takes ~25 min doing it"
-status: open
+status: resolved
 type: bug
 area: build, testing
 related: [issue-0616, issue-0436, phase-366]
@@ -90,3 +90,60 @@ staleness probe in #0445.
 
 A tier-2 sweep. The lane's eight families were green and the run still failed at
 the end, which is the most expensive place to discover a scoping problem.
+
+
+## 2026-08-17 — fixed: the scan is pruned, and both halves fall out of it
+
+One change closes both problems, because they had one cause — the walk went
+everywhere.
+
+`scan_link_lines()` prunes `.git`, `deps`, `incremental`, `.fingerprint`, `out`
+and `nros-metadata`. Measured on this tree, with an unpruned walk as the truth
+set:
+
+| scan | link lines | wall clock |
+| --- | --- | --- |
+| unpruned (before) | 260 | ~22 min |
+| pruned (now) | 89 | **1.1 s** |
+| difference | 171 | — |
+
+and the 171 classify exactly:
+
+```
+vendored build-script out/ : 138
+metadata probe residue     :  33
+REAL LOSSES                :   0
+```
+
+**The 0 is the load-bearing number.** Every excluded path is either a VENDORED
+cmake build inside a cargo build script's `OUT_DIR` — `cyclonedds-sys-*/out/build/`
+linking CycloneDDS's own `ddsc` / `ddsrt-internal` / `idl` / `ddsperf`, which are
+not nano-ros images and never were this gate's business — or the metadata-probe
+residue that made it fail in the first place. Scoping and cost were the same bug.
+
+The whole gate now runs in **4.9 s**, against ~25 minutes before.
+
+### Two things this needed beyond the prune
+
+* **A zero-result guard.** The failure mode of a prune is silence: exclude one
+  directory too many and the gate prints `OK (0 link line(s))` while checking
+  nothing — the issue-0196 shape it would otherwise be inviting. It now says so.
+  Not fatal, because 0 is legitimate on a fresh clone with no cmake image built;
+  the message says which case the reader is in.
+* **`--list`.** The prune is only defensible against a measurement, so the
+  script carries the half of that measurement that can be re-run:
+  `comm -23 <(unpruned find) <(check-archive-lang-items.sh --list)` should show
+  nothing but vendored `out/` and `nros-metadata`. The guard's message names
+  this command, which is why it had to exist rather than be described.
+
+One spelling of the prune, used by both `--list` and the check — a second copy
+is how the exclusion list and the thing it documents drift apart.
+
+### A correction worth keeping
+
+The first prune tried here was `target` / `target-*`, on the reasoning that
+cargo output cannot hold a cmake image. It was WRONG in a way only measurement
+caught: 114 `link.txt` live under cargo target dirs. They turned out to be the
+vendored CycloneDDS builds above, so the conclusion survived — but the rule did
+not, and `out` is the honest expression of it. "Cargo dirs hold no cmake builds"
+is false here; "a build script's OUT_DIR holds third-party builds" is true.

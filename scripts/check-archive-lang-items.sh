@@ -57,6 +57,16 @@ SYM_RE='(^|[^A-Za-z0-9_])__rust_alloc$'
 # rather than assumed.
 LANG_ITEMS=("__rust_alloc:the global allocator" "rust_begin_unwind:the panic handler")
 
+# issue 0642 — `--list` prints the link lines this scan WOULD check, and exits.
+# The prune below is only defensible against a measurement, and this is the half
+# of that measurement that lives in the script: diff it against an unpruned
+# `find` and every difference should be vendored `out/` or `nros-metadata`.
+list_only=0
+if [ "${1:-}" = "--list" ]; then
+    list_only=1
+    shift
+fi
+
 roots=("$@")
 if [ ${#roots[@]} -eq 0 ]; then
     roots=(examples packages build)
@@ -90,6 +100,22 @@ defines_symbol() {
     fi
     defines_cache["$key"]="no"; return 1
 }
+
+scan_link_lines() {
+    for r in "${roots[@]}"; do
+        [ -d "$r" ] || continue
+        find "$r" -xdev \
+            \( -type d \( -name .git -o -name deps -o -name incremental \
+                        -o -name .fingerprint -o -name out -o -name nros-metadata \) \
+               -prune \) -o \
+            -type f -name 'link.txt' -path '*CMakeFiles*' -print 2>/dev/null
+    done
+}
+
+if [ "$list_only" -eq 1 ]; then
+    scan_link_lines
+    exit 0
+fi
 
 links=0
 rc=0
@@ -128,9 +154,41 @@ while IFS= read -r lt; do
         fi
     done
 done < <(
-    for r in "${roots[@]}"; do
-        [ -d "$r" ] && find "$r" -name 'link.txt' -path '*CMakeFiles*' -type f 2>/dev/null
-    done
+    # issue 0642 — PRUNE. This walk used to descend into everything under
+    # `examples packages build` and cost ~22 MINUTES of wall clock against ~15
+    # seconds of CPU: pure I/O over millions of object files, paid by every
+    # `build-test-fixtures`. `-path '*CMakeFiles*'` cannot help, because find has
+    # to reach a path before it can test it.
+    #
+    # Measured on this tree (260 link.txt total, unpruned walk as the truth set):
+    #
+    #   unpruned          260 files   ~22 min
+    #   pruned (below)     89 files   1.1 s
+    #   difference        171 files   = 138 vendored + 33 probe residue + 0 real
+    #
+    # What each prune drops, and why it cannot hide a real image:
+    #
+    #   deps, incremental, .fingerprint  cargo internals. No cmake target lives
+    #                                    in them; they hold most of the inodes.
+    #   out                              a cargo build script's OUT_DIR. The
+    #                                    link lines under it are VENDORED cmake
+    #                                    builds — `cyclonedds-sys-*/out/build/`
+    #                                    linking CycloneDDS's own `ddsc`,
+    #                                    `ddsrt-internal`, `idl`, `ddsperf`.
+    #                                    Third-party internals are not nano-ros
+    #                                    images and this gate has no claim on
+    #                                    them.
+    #   nros-metadata                    metadata-PROBE residue, which is what
+    #                                    made this gate fail on 16-day-old
+    #                                    gitignored output in the first place.
+    #                                    A probe's link line is not an image's.
+    #   .git                             never build output.
+    #
+    # The 0 in that table is the load-bearing number: every excluded path is in
+    # one of those two categories, so the fast scan sees every link line the slow
+    # one did that this gate is about. Re-derive it with
+    # `comm -23 <(unpruned) <(pruned)` if a prune is ever added here.
+    scan_link_lines
 )
 
 if [ "$rc" -ne 0 ]; then
@@ -149,6 +207,27 @@ if [ "$rc" -ne 0 ]; then
         echo "  lang items. See issue 0616, and issue 0436 for the same class on px4."
     } >&2
     exit 1
+fi
+
+# issue 0642 — a gate that matches nothing must SAY so.
+#
+# The scan is pruned (see above), and the failure mode of a prune is silence:
+# exclude one directory too many and this prints "OK (0 link line(s))" while
+# checking nothing. That is the issue-0196 shape — a gate whose coverage quietly
+# became narrower than the rule it enforces.
+#
+# Not fatal, because 0 is legitimate on a tree where no cmake image has been
+# built yet (a fresh clone running `just check-archive-lang-items` by hand). It
+# is never legitimate after a fixture build, and the line says which case the
+# reader is in.
+if [ "$links" -eq 0 ]; then
+    echo "check-archive-lang-items: WARNING — no link lines matched." >&2
+    echo "  Nothing was checked. Expected after a fresh clone (no cmake image built" >&2
+    echo "  yet); NOT expected after \`just build-test-fixtures\`, where it means the" >&2
+    echo "  prune list in this script has grown too broad. Re-derive the exclusions:" >&2
+    echo "    comm -23 <(find examples packages build -name link.txt -path '*CMakeFiles*' | sort) \\" >&2
+    echo "             <(bash scripts/check-archive-lang-items.sh --list | sort)" >&2
+    exit 0
 fi
 
 echo "check-archive-lang-items: OK ($links link line(s), no image links two archives defining one lang item)"

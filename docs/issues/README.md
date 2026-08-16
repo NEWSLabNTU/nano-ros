@@ -300,17 +300,17 @@ not reduce contention on a global lock. Remedies: pre-warm + `--offline`, per-la
 invocations; which one works depends on whether anything still WRITES the cache offline, stated as the open
 question rather than assumed. Spotted by the maintainer in `htop`. See `0648-*`.
 
-**#642** (build/testing, open 2026-08-16) — `check-archive-lang-items` fails `build-test-fixtures` AFTER all
-eight platform families report OK, on `link.txt` under
-`examples/workspaces/*/build/nros-metadata/metadata-probe-cmake/` — metadata-PROBE residue dated **Jul 31**,
-**gitignored** (`examples/workspaces/c/.gitignore:2:/build/`). Deleting those dirs makes the gate pass with
-no source change. The RULE (one allocator per link line, #0616/#0436) is right; the SCOPE is not — a probe's
-link line is not an image's, and a 16-day-old one is not evidence about this tree. Second problem: unbounded
-`find <dir> -name link.txt -path '*CMakeFiles*'` over `examples`, `packages`, `build` — 22 min elapsed
-against 15 s CPU, paid by every fixture build. Fix: scope to real artifacts (skip `*/nros-metadata/*`, or
-take the set from the fixture manifest), respect gitignore, prune build dirs, or apply a freshness rule
-(#0445). NOTE #0645/#0641 landed perf fixes to OTHER scans the same day; this one was not among them.
-See `0642-*`. (2026-08-16)
+**#642** (build/testing, RESOLVED 2026-08-17) — `check-archive-lang-items` failed `build-test-fixtures` on
+16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it
+(unbounded `find` over `examples packages build`, pure I/O over millions of object files, paid by every
+fixture build). ONE cause: the walk went everywhere. Fixed by pruning `.git`/`deps`/`incremental`/
+`.fingerprint`/`out`/`nros-metadata` — **260 link lines / ~22 min -> 89 / 1.1 s**, whole gate 4.9 s. The 171
+excluded classify exactly: 138 vendored (`cyclonedds-sys-*/out/build/` linking CycloneDDS's own ddsc/idl/
+ddsperf — third-party internals, never this gate's business), 33 probe residue, **0 real losses** — the
+load-bearing number, re-derivable via the new `--list` mode. Also added a zero-result guard: the failure mode
+of a prune is silence (`OK (0 link line(s))` while checking nothing = the #0196 shape). CORRECTION kept: the
+first prune tried `target*` on the reasoning that cargo dirs hold no cmake builds — false here (114 link.txt
+live under them); `out` is the honest rule. See `archived/0642-*`. (2026-08-17)
 
 RESOLVED 2026-08-16 — **#0643** `just ci-matrix` failed `check-feature-contract`: `nros-node`'s
 `env = ["std"]` (from `1badb6f72`, phase-359 W10, *"`env` is a capability, not the `std` flavour"*) tripped
