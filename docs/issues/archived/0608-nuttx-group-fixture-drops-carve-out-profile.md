@@ -3,7 +3,7 @@ id: 608
 title: "A shared-group fixture row resolves at the AMBIENT cargo profile, so
   every NuttX Rust row is looked up under `nros-relwithdebinfo` while the
   builder writes `nros-minsizerel`"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0196, issue-0393, issue-0488, issue-0584, phase-340]
@@ -92,3 +92,50 @@ that each consumer has to remember to apply.
 
 Guard it the way #393 asks: move the build-side and test-side locators in the
 same commit, and assert the agreement rather than restating the constant.
+
+## Resolution 2026-08-16
+
+Fixed as the sketch asks — one derivation, applied at the chokepoint.
+
+**`nros_cargo_profile::platform_profile(platform)`** is the Rust twin of
+`nros_cargo_platform_profile` in `scripts/build/cargo.sh`, keyed on the same
+coordinate `platform` values the manifest emits (`freertos`, `nuttx`,
+`nuttx-riscv`). `CARVE_OUTS` could not serve: it is keyed by carve-out NAME
+(`nuttx-rust`), which no resolver holds — what a resolver has is the row's
+coordinate. That mismatch is why each site rebuilt the mapping itself and the
+group-row resolver never did.
+
+**The rewrite happens in `require_prebuilt_row_binary`**, not at the nine call
+sites that build `rel` from the ambient profile. Same reasoning the neighbouring
+`require_prebuilt_binary` already records for its own redirect: the funnels are
+not the whole class, and fixing a subset of resolvers is the #328 shape. Only
+the path COMPONENT equal to the ambient profile dir is replaced, so a binary or
+triple that happens to share the name is left alone.
+
+`freertos-qemu` — which this issue flagged as a candidate for the same failure —
+is covered by the same change rather than a second fix.
+
+### Both guards were mutation-tested, and the first one was inadequate
+
+* `platform_profile_agrees_with_the_shell_builder` PARSES `cargo.sh`'s switch
+  and asserts the Rust table answers the same for every arm. Restating the
+  constants would have agreed with itself forever. Verified by deleting the
+  `"nuttx"` arm: fails with *"cargo.sh maps platform "nuttx" to
+  nros_cargo_nuttx_profile; platform_profile disagrees"*.
+
+* `a_row_is_resolved_at_its_platforms_profile` covers the rewrite itself.
+  **It passed with the chokepoint bypassed** — it exercises the helper, not the
+  wiring, which is exactly the issue-0196 gap this issue is an instance of. So
+  `the_row_resolver_uses_the_carve_out_profile` drives the real resolver and
+  asserts on the path it went looking for; that one does fail when the call is
+  removed.
+
+  It reads a PANIC rather than an `Err`: a missing in-lane fixture is issue
+  0584's "broken promise", not a recoverable error. The first cut used
+  `expect_err` and never reached its assertions.
+
+### Build side unchanged, deliberately
+
+`nros_cargo_platform_profile` was already correct — the builder has always
+written `nros-minsizerel`. Only the test-side locator moved, so #393's
+"move both in the same commit" is satisfied by there being one side to move.

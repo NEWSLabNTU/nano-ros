@@ -1,7 +1,7 @@
 ---
 id: 601
 title: "`find_package(CycloneDDS)` selects ROS's `idlc`, which cannot run without ROS's library path — cold cyclone fixtures die at code=127"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0500, phase-353]
@@ -133,3 +133,53 @@ Restoring the lane needs either ROS's environment propagated into the build, or
 The preferred shape in "Fix shape" above — prefer the tool the build
 provisioned, via prefix ordering — is NOT implemented, because this host has no
 provisioned idlc to prefer. It remains the better answer for a host that does.
+
+## Resolved 2026-08-16 — the preferred shape is now implemented
+
+The "Still open" note above said prefix ordering was not implemented *because
+this host had no provisioned idlc to prefer*. That premise no longer holds — the
+SDK store has one:
+
+```
+$ env -i ~/.nros/sdk/cyclonedds/0.10.5-nros1/bin/idlc -h ; echo $?
+0
+$ env -i /opt/ros/humble/bin/idlc -h
+/opt/ros/humble/bin/idlc: error while loading shared libraries:
+libiceoryx_binding_c.so: cannot open shared object file: No such file or directory
+127
+```
+
+It was looked for under `build/cyclonedds/bin` (where `just cyclonedds setup`
+does not put it) rather than `$NROS_HOME/sdk/cyclonedds/<version>/bin` (where
+`nros setup --tool cyclonedds` does). An interactive shell hides the whole thing,
+because `LD_LIBRARY_PATH` there makes ROS's copy load — the failure only appears
+in a clean environment, which is what the build actually gets.
+
+**`_nros_cyclonedds_sdk_bins()` puts the SDK store on `_nros_find_idlc`'s HINTS,
+newest version first.** HINTS rather than PATHS because HINTS are searched
+BEFORE the system PATH, and preferring the tool this build provisioned is the
+entire point. Newest-first for issue 0500's reason: the store accumulates, and a
+provisioning run that installs a new version while an old one keeps winning is
+the worst shape a setup step can have — it reports success and changes nothing.
+
+### Measured, both directions
+
+Clean env, ROS on PATH, dummy `CycloneDDS::ddsc`:
+
+```
+with the fix:     SELECTED idlc: ~/.nros/sdk/cyclonedds/0.10.5-nros1/bin/idlc
+hints removed:    nano-ros: idlc at /opt/ros/humble/bin/idlc needs its own prefix libs;
+                  running it with LD_LIBRARY_PATH=/opt/ros/humble/lib:… (issue 0601)
+                  SELECTED idlc: /opt/ros/humble/bin/idlc
+```
+
+The second line also confirms the earlier partial fix works: when ROS's copy is
+all there is, the derived `LD_LIBRARY_PATH` rescues it instead of dying
+`code=127` mid-ninja. So the two halves now cover both cases — prefer the
+provisioned tool, and make the ROS fallback actually run.
+
+### What is still not demonstrated
+
+The guard firing on a host with NO working idlc at all is still unobserved, for
+the reason already recorded: it needs a configure, and it needs an environment
+without either copy. That gap is unchanged and is not what this issue was about.

@@ -297,83 +297,9 @@ invocation — `NodeWake` needs `rmw-cffi`, which is exactly what excludes `nros
 a bare `cargo test` can open. Skips now panic. Lane deliberately NOT added yet: it would only add a red, and
 pressure the next person toward loosening the `#![cfg]`. (2026-08-16)
 
-**#608** (testing, open 2026-08-15) — a fixture row built into a phase-340 shared cargo GROUP is
-resolved at the AMBIENT cargo profile, discarding the platform carve-out the caller just applied. NuttX
-Rust pins `nros-minsizerel` (the `lto=off` cross-CGU bug), and `binaries/nuttx.rs` honours that on the
-LEAF path — but the group branch in `binaries/mod.rs` formats its path with a bare
-`cargo_target_profile_dir()`, so every group-built NuttX Rust row is looked up under
-`nros-relwithdebinfo`, which the builder never writes. Presents as the 0584 "broken promise" panic
-naming a binary that exists one directory over. issue-0196's shape once more: a rule threaded through
-the leaf resolver and the staleness probe but not through the third consumer phase-340 added beside
-them. Check `freertos-qemu`, which has the identical carve-out. NOT caused by phase-359 W7 (every file
-involved is byte-identical to HEAD; W7 only changed the feature signature, so the group dir was newly
-named and the mismatch became visible). See `0608-*`. (2026-08-15)
+Recently resolved (2026-08-16): **#0608** — a group-built row resolved at the AMBIENT cargo profile, so every group-built NuttX Rust row was looked up under `nros-relwithdebinfo` while the builder wrote `nros-minsizerel`. Fixed with ONE derivation (`nros_cargo_profile::platform_profile`, the Rust twin of `cargo.sh`'s switch, gated by a test that PARSES the shell) applied at the `require_prebuilt_row_binary` chokepoint rather than at nine call sites; covers the `freertos-qemu` sibling too. See `archived/0608-*`. (2026-08-16)
 
-Recently resolved (2026-08-16): **#590** — every cyclonedds cell failed to compile: `ddsrt`'s POSIX environ TU
-calls `setenv`/`unsetenv`, which Zephyr's libc declares only behind CONFIG_POSIX_API, and gcc 14 makes an
-implicit declaration fatal. Fixed with a Zephyr `environ` backend + TU swap, NOT by enabling the POSIX surface
-— that surface is pooled (#0371/#0496) and is what the native sync backend exists to escape. The lane's real
-cost was that FOUR more walls stood behind this one, each invisible until the previous cleared (task probes
-naming `pthread_t`, the rosidl dead path, a match arm gated on the consumer's `alloc`, and #0616's shared
-corrosion target dir) — three of them collisions between commits that were fine apart. `just zephyr
-build-fixtures` now completes: 0 failures across all 70 leaves. Unblocks phase-353 W2, greens phase-363 W5.
-(The old row pointed at `0596-*`, a different issue's file.) See `archived/0590-*`.
-
-Recently resolved (2026-08-15): **#588** — WITHDRAWN, premise wrong in three ways, recorded because the
-misreading is the useful part. I claimed `build-test-fixtures lane=native` "builds nothing while stamping
-the lane": the `build=0` line belongs to a DIFFERENT builder, and the native stage's output is redirected to
-`tmp/build-test-fixtures-*/native.log`, which shows the row building normally with all three RMW variants
-and zero errors. The MISSING binary was a test naming a ROS NODE (`add_two_ints_server`) where the crate's
-only `[[bin]]` is `service-server` — fixed upstream the same day by `c385a914a`, independently. The fifth
-failure was a capability skip (`[SKIPPED] qemu-baremetal-main-e2e fixture not prebuilt`) that only reads as
-FAIL under bare `cargo nextest`. Lesson kept: `find` failing to locate the artifact was evidence the NAME
-was wrong, not the builder — check the per-stage log before concluding anything about a build.
-See `archived/0588-*`. (2026-08-15)
-
-Recently resolved (2026-08-15): **#587** — `check-cargo-config-tracked` called six threadx-linux configs
-"pure sync output" and told you to `git rm --cached` them; the comment IS the file (issue 0582's finding on
-why there is deliberately no `[build] target`). Its predicate excluded ALL comment lines. Fixed by excluding
-only the decor sync itself emits (`# === BEGIN/END nros-managed …` and the trailing `# nros-managed`), so
-any other comment counts as authored — no heuristic needed, because sync's output is fixed and knowable.
-The open question is answered and reframes it: ALL 74 tracked leaf configs score "pure" under the old
-predicate, not six; the other 68 were masked by a second condition (they include a committed board
-projection) which the threadx six lost in #582's edit. So an allowlist would have been wrong — 68 files were
-one upstream edit from the same false positive. Verified both ways: a synthesised pure config is still
-caught. See `archived/0587-*`. (2026-08-15)
-
-**#601** (build, open 2026-08-15) — a COLD cyclonedds fixture build dies `code=127` on
-`/opt/ros/humble/bin/idlc: error while loading shared libraries: libiceoryx_binding_c.so`. The tool is
-present; it cannot LOAD, because ROS's library path is not in the BUILD's environment. `find_package`
-takes the first prefix that resolves, so ROS's copy beats the `build/cyclonedds` that
-`just cyclonedds setup` provisions — selection by EXISTENCE where the property is RUNNABILITY. Invisible
-until something makes the leaves cold (`just setup-cli` does, by design), which is why the lane looked
-healthy all day and then could not rebuild. Third instance of this shape in one session (see #0500, and
-the rosidl-adapter ladder fixed alongside). See `0601-*`.
-
-Recently resolved (2026-08-15): **#562** `nros sync` rewrote byte-identical files, restamping mtimes and
-buying a cmake reconfigure for no change. The class fix (ONE write-if-changed helper in
-`cargo_nano_ros::atomic_file`, re-exported by `nros-cli-core`, replacing four private spellings and
-reaching the five writers that had none) had landed without the status being flipped. Both headline
-measurements re-verified on no-op syncs: `examples/native/rust/talker` 2 -> **0** restamped,
-`examples/workspaces/features` 27 -> **6**, and all six are cmake's own outputs under the probe's
-`build/` — sync-owned restamps are **0**. The first measurement attempt reported 31890 files because it
-ran `comm` on unsorted input, which warns and continues; the numbers above come from a stat-map compare.
-NOT closed by this: the threadx leaf's `.cargo/config.toml` whitespace churn is a CONTENT difference
-write-if-changed cannot suppress, and is recorded in phase-353 W1. See `archived/0562-*`.
-
-Recently resolved (2026-08-15): **#585** — the ThreadX-Linux logging smoke fixture booted, entered the
-Rust entry, exited 0 and emitted NONE of its six log lines. Root cause: the board's log writer hardcoded
-`const SYS_WRITE: isize = 1`, and the Linux syscall number is per-ARCHITECTURE — `write` is 1 on x86_64
-and **64** on every asm-generic port (aarch64/riscv64/loongarch64), where 1 is `io_destroy`. Off x86 it
-issued an unrelated syscall, which failed, and the return was discarded: no error, no partial output, a
-silently mute image. A seventh instance of #0582's class. The raw `syscall` had to stay (the ThreadX Linux
-port defines a WEAK `write` that never reaches host fds); only the number was wrong, and it is now
-cfg-selected with `compile_error!` for an unmapped arch — guessing yields silence, not a failure. TWO
-false trails recorded in the issue: it is not bisectable against #0582 (before that fix the tree does not
-link on aarch64 at all), and `+whole-archive` on `libglue.a` was the leading hypothesis and was FALSIFIED.
-`nm` on the linked image — one command — showed every symbol present and killed the link-class theory that
-had cost a whole detour. Lesson: when a program runs to completion and prints nothing, establish that the
-code is PRESENT before theorising about why it is not reached. See `archived/0585-*`. (2026-08-15)
+Recently resolved (2026-08-16): **#0601** — `find_program` picked ROS's `idlc` (selection by EXISTENCE, not RUNNABILITY) and it cannot load its own libs outside a sourced ROS env, so cold cyclone fixtures died `code=127`. The SDK store's provisioned copy is now on the HINTS list newest-version-first (0500's ordering rule), so the tool this build controls wins; the `LD_LIBRARY_PATH` fallback still rescues ROS's copy where it is all there is. Both directions measured in a clean env. See `archived/0601-*`. (2026-08-16)
 
 **#582** (build, open 2026-08-15) — the host is assumed to be `x86_64` in six places, and five of the six
 fail SILENTLY. Three spellings of one mistake: (1) `c_char` is `u8` on ARM and `i8` on x86, so
