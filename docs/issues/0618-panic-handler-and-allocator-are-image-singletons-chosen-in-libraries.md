@@ -190,3 +190,43 @@ ARTIFACTS rather than dep-sites.
 `std` supplies both singletons, so every failure in this class is invisible on a
 host lane and appears only on an embedded target — the same asymmetry recorded
 in 0582 and 0617. Any gate for it has to run against embedded coordinates.
+
+## Measured 2026-08-16 — the allocator half is already done, and that is the argument
+
+Re-checked while closing issue 0594, whose "malloc / panic half" this issue
+inherited. The two lang items are no longer in the same state, and the
+difference is the strongest available evidence for what to do here.
+
+**`#[global_allocator]` — one provider, enforced.**
+
+    packages/platform/nros-platform/src/lib.rs:190          (the only one)
+    packages/testing/nros-tests/tests/loan_e2e.rs:71        (exempt: a test
+                                                             binary is its own
+                                                             image)
+
+phase-361 W8.c cut four to one, and `check-feature-contract` clause (e) holds it
+there — the clause is "exactly one, *and it is `nros-platform`'s*", so it pins
+the OWNER and not just the count. `nros-c` used to define one under a gate
+identical to `nros-platform`'s, separated only by a hand-written note in
+`nros-cpp`'s manifest; its source now records that it "used to".
+
+**`#[panic_handler]` — three providers, no clause.**
+
+    packages/api/nros-c/src/lib.rs:160
+    packages/boards/nros-board-nuttx/src/lib.rs:512
+    packages/boards/nros-board-threadx-qemu-riscv64/src/lib.rs:402
+
+ARCHITECTURE.md §2 states both singletons in ONE sentence — "Exactly one
+`#[global_allocator]` and one `#[panic_handler]` per image, selected by the
+`platform-<rtos>` feature". The gate implements the first clause of that
+sentence and not the second. That is the issue-0196 shape this tree keeps
+finding: a gate narrower than the rule it enforces, and here the narrowing is
+invisible because the rule reads as one statement.
+
+**Why this matters for the direction.** The allocator was fixed by making one
+crate the owner and gating that fact, NOT by making the selection cleverer. The
+panic handler is the same shape with an extra constraint — a `no_std` image
+needs a handler that a hosted one must not have, and boards legitimately want
+their own — so "one owner" is not directly transplantable. But it does answer
+the framing question this issue opens with: the invariant became real when
+something asserted it, and nothing asserts it for `#[panic_handler]` today.

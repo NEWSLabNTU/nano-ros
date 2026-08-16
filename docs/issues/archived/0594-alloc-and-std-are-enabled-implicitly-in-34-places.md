@@ -69,14 +69,39 @@ via `compile_error!`. `metadata-mode` is worth noting — `= ["std"]` had also m
 its own guard unreachable, so the feature carried a `compile_error!` that could
 never fire.
 
-### What is NOT closed here
+### The malloc / panic half — half FIXED, half open, and they are not symmetric
 
-The **malloc / panic half** below. Clause (e) asserts exactly one
-`#[global_allocator]`, which is the narrow version of it, but the design
-question this issue raises — that `nros-c` and `nros-platform` define the lang
-item under IDENTICAL gates and are kept apart only by a hand-written rule in a
-manifest comment — is [issue 0618](0618-panic-handler-and-allocator-are-image-singletons-chosen-in-libraries.md)'s
-subject, filed later and specifically for it. Not re-scoped here.
+Corrected 2026-08-16 after re-reading clause (e). An earlier draft of this note
+said clause (e) was "the narrow version" of this section's design question and
+sent the reader to issue 0618 for it. That was wrong in the direction that
+matters — it understates what landed and misdirects to an issue that does not
+own it.
+
+**The allocator half is structurally FIXED, not merely counted.** Clause (e) is
+"exactly one `#[global_allocator]`, *and it is `nros-platform`'s*". W8.c cut
+four definitions to one, and the specific defect this section names — `nros-c`
+and `nros-platform` defining it under IDENTICAL gates, kept apart only by a
+hand-written rule in a manifest comment — is gone: `nros-c/src/lib.rs:114` now
+reads "This crate used to define its own `#[global_allocator]`". Measured:
+
+    #[global_allocator]  packages/platform/nros-platform/src/lib.rs:190   (1, plus
+                         nros-tests/tests/loan_e2e.rs, which clause (e) exempts
+                         by design — a test binary is its own image)
+
+**The panic half is open and has no clause at all.** ARCHITECTURE.md §2 states
+BOTH singletons in one sentence — "Exactly one `#[global_allocator]` and one
+`#[panic_handler]` per image" — but only the allocator is gated. Measured:
+
+    #[panic_handler]     packages/api/nros-c/src/lib.rs:160
+                         packages/boards/nros-board-nuttx/src/lib.rs:512
+                         packages/boards/nros-board-threadx-qemu-riscv64/src/lib.rs:402
+
+Three providers, chosen in LIBRARY crates, held apart by consumers knowing which
+shape of image they are building. That is
+[issue 0618](0618-panic-handler-and-allocator-are-image-singletons-chosen-in-libraries.md)'s
+subject, and the asymmetry is worth stating plainly: the contract names two
+singletons and the gate enforces one, which is the issue-0196 shape (a gate
+narrower than the rule it enforces).
 
 ## The 34 sites (as filed, kept for the record)
 
