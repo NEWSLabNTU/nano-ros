@@ -293,14 +293,18 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     source scripts/dev/zenohd.sh
     source scripts/build/lane-skip.sh   # issue 0599 — SKIPPED, not OK
     if ! zenohd_bin="$(nros_zenohd_bin)"; then
-        nros_lane_skip "zenohd not found — run \`just zenohd setup\`"
+        nros_lane_skip "the ROS zenoh router is absent — install \`ros-<distro>-rmw-zenoh-cpp\` or set NROS_RMW_ZENOHD (phase-362)"
     fi
     # issue 0488 residue 1 — the kernel path comes from the same
     # `nros_fixture_group` answer `build-rtic-main-e2e` builds with.
     source scripts/build/fixtures-target-dir.sh
     rtic_artifacts="$(nros_fixture_row_artifact_dir packages/testing/nros-tests/bins/rtic-run-plan-e2e qemu-arm-baremetal "" "")"
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
-    "$zenohd_bin" --listen tcp/127.0.0.1:10200 --no-multicast-scouting > "$zenoh_log" 2>&1 &
+    # phase-362 — `rmw_zenohd` is configured by env, not argv. Backgrounded with
+    # a log here, so it uses the binary + override directly rather than
+    # `nros_router_exec` (which execs).
+    ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10200"];scouting/multicast/enabled=false' \
+        "$zenohd_bin" > "$zenoh_log" 2>&1 &
     zenoh_pid=$!
     trap 'kill "$zenoh_pid" 2>/dev/null || true; wait "$zenoh_pid" 2>/dev/null || true' EXIT
     sleep 0.5
@@ -607,4 +611,4 @@ zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:10200 --no-multicast-scouting
+    nros_router_exec tcp/127.0.0.1:10200

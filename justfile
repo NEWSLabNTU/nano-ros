@@ -73,7 +73,6 @@ mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
 mod workspace 'just/workspace.just'
 mod verification 'just/verification.just'
-mod zenohd 'just/zenohd.just'
 mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
 mod cyclonedds 'just/cyclonedds.just'
@@ -162,7 +161,7 @@ list-all:
 build: \
     generate-bindings \
     build-workspace build-workspace-embedded \
-    build-zenohd qemu::build-zenoh-pico
+    qemu::build-zenoh-pico
     @echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build-test-fixtures" for `test-all` staging, or "just build-all" for everything.'
 
 # `build` + every example crate + per-RTOS example builds (native,
@@ -1673,7 +1672,7 @@ test-unit verbose="":
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
 # `package(nros-tests)` so the workspace unit tests aren't re-run.
 [group("main")]
-test-integration verbose="": build-zenohd
+test-integration verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -1891,7 +1890,7 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 # input (`rerun-if-env-changed`) and sharing `target/` with the default-1 tiers
 # would rebuild the shim back and forth on every alternation.
 [group("test")]
-test-zpico-multisession verbose="": build-zenohd
+test-zpico-multisession verbose="":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
@@ -1914,7 +1913,7 @@ test-zpico-multisession verbose="": build-zenohd
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 [group("main")]
-test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale build-zenohd test-zpico-multisession
+test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale test-zpico-multisession
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
@@ -2419,7 +2418,7 @@ _check-fixtures-stale:
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
 [group("full-matrix")]
-test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
+test-all verbose="": _require-fixtures _check-fixtures-stale
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
@@ -4083,15 +4082,6 @@ build-zenoh:
 check-zenoh:
     cargo clippy --quiet -p nros-rmw --features std
 
-# Build zenohd from submodule (alias for `just zenohd build`).
-[group("maintenance")]
-build-zenohd: zenohd::build
-
-# Clean zenohd build (alias for `just zenohd clean`).
-[group("maintenance")]
-clean-zenohd: zenohd::clean
-
-
 # Build zenoh-pico C library (standalone, for debugging)
 [group("debug")]
 build-zenoh-pico:
@@ -4440,7 +4430,7 @@ regenerate-bindings: clean-bindings generate-bindings
 # Setup & Doctor orchestrators
 #
 # `just setup`     — print setup choices; does not fetch/install.
-# `just setup base` — safe quick-start setup (workspace + zenohd).
+# `just setup base` — safe quick-start setup (workspace).
 # `just setup all` — full contributor setup (all platforms + services).
 # `just doctor`    — read-only diagnosis of install status.
 #
@@ -4511,7 +4501,7 @@ setup target="" tier="":
             base|quickstart|minimal|default|all|everything|contributor|extended)
                 chosen_tier="$target"
                 ;;
-            workspace|verification|zenohd|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|platformio|esp_idf|px4)
+            workspace|verification|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|platformio|esp_idf|px4)
                 # Focused platform setup may still shell `nros setup …`;
                 # build the CLI first so the binary is on disk.
                 just setup-cli
@@ -4644,7 +4634,9 @@ _orchestrate verb tier="everything":
         fi
     }
     # Tiers:
-    #   - `base` : quick start for first-time users (workspace + zenohd)
+    #   - `base` : quick start for first-time users (workspace)
+    #             phase-362 — no router here: it comes from ROS (`rmw_zenoh_cpp`),
+    #             which is not ours to provision.
     #   - `all`  : full contributor / test-all setup
     # Legacy aliases:
     #   - `minimal` and `default` -> base
@@ -4652,12 +4644,10 @@ _orchestrate verb tier="everything":
     case "{{tier}}" in
         base|quickstart|minimal|default)
             run workspace
-            run zenohd
             ;;
         all|everything|contributor|extended)
             run workspace
             run verification
-            run zenohd
             run qemu
             run freertos
             run nuttx
@@ -4983,8 +4973,10 @@ clean: clean-examples clean-fixtures
 # re-run `just setup tier=all` afterwards. Phase 184: per-platform setup-undo
 # (uninstall just one platform's SDKs) is deferred pending design discussion.
 [group("maintenance")]
-clean-setup: clean-zenohd
-    rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
+clean-setup:
+    # phase-362 — `build/zenohd` joins the list; the vendored router is gone,
+    # but an existing checkout still has one to remove.
+    rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache build/zenohd
     # The Zephyr SDK install + downloads live under `scripts/zephyr/` (gitignored,
     # ~9 GB) — a `just setup`-stage tool install, so nuke it here too. Re-fetched
     # by the zephyr setup recipe.

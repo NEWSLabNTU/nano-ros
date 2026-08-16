@@ -905,4 +905,4 @@ zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" --no-multicast-scouting
+    nros_router_exec "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"

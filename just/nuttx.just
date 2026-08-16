@@ -664,7 +664,7 @@ zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/0.0.0.0:8200 --no-multicast-scouting
+    nros_router_exec tcp/0.0.0.0:8200
 
 # Phase 127.B.5 — one-time host setup for NuttX DDS cross-QEMU mcast.
 #

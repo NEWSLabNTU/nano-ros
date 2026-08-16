@@ -725,28 +725,6 @@ impl Drop for ManagedProcess {
 // Zenoh Availability Check
 // =============================================================================
 
-/// Get the path to the locally-built zenohd binary.
-///
-/// Returns `<build root>/zenohd/zenohd`.
-/// Build it with `just build-zenohd`.
-pub fn zenohd_binary_path() -> std::path::PathBuf {
-    // phase-334 W2.b step 2 — the Rust half of the `zenohd` family reads the
-    // path from the ONE derivation (`crate::build_dir`, the mirror of
-    // `nros_build_dir`), not a literal. The shell half — `just zenohd` and
-    // `scripts/zenohd/build.sh` — moved in the same commit, which is the point:
-    // a build that moves without its resolver is how a family ends up looking
-    // in two places. Step 2 emits today's path; step 3 moves it, once.
-    let local = crate::build_dir(crate::kind::ZENOHD, &[]).join("zenohd");
-    if local.exists() {
-        return local;
-    }
-    // `nros setup` store, then system PATH (e.g. inside Docker container).
-    if let Some(store) = crate::nros_store_bin("zenohd", "zenohd") {
-        return store;
-    }
-    std::path::PathBuf::from("zenohd")
-}
-
 /// phase-362 W1 — locate the ROS-shipped `rmw_zenohd`.
 ///
 /// `rmw_zenohd` ships with `rmw_zenoh_cpp` and links the SAME `libzenohc.so`
@@ -828,17 +806,13 @@ pub fn zenoh_pairing_versions() -> String {
     format!("zenoh-c (ROS) {zenoh_c}, zenoh-pico {pico}")
 }
 
-/// Check if the locally-built zenohd is available.
+/// Is a zenoh router available on this host?
+///
+/// phase-362 — that means the ROS one. Existence is the whole check: the
+/// vendored binary was probed with `--version`, which `rmw_zenohd` cannot
+/// answer — it ignores argv and a probe would START A ROUTER and block.
 pub fn is_zenohd_available() -> bool {
-    let path = zenohd_binary_path();
-    path.exists()
-        && Command::new(&path)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+    ros_zenohd_path().is_some()
 }
 
 /// Check if the current environment allows local TCP listeners.
@@ -872,7 +846,10 @@ pub fn require_zenohd() -> bool {
     }
 
     if !is_zenohd_available() {
-        eprintln!("Skipping test: zenohd not found (run `just build-zenohd`)");
+        eprintln!(
+            "Skipping test: no ROS zenoh router — install `ros-<distro>-rmw-zenoh-cpp` \
+             or set NROS_RMW_ZENOHD (phase-362)"
+        );
         return false;
     }
     true

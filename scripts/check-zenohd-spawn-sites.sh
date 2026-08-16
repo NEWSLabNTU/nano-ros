@@ -3,7 +3,7 @@
 #
 # WHAT THIS CATCHES
 #
-# A `Command` built on `zenohd_binary_path()` anywhere except the shared
+# A `Command` built on the router path helper anywhere except the shared
 # fixture. Such a spawn misses THREE guards that only live in
 # `fixtures/zenohd_router.rs`:
 #
@@ -36,7 +36,14 @@
 # the only one.
 #
 # Sweep this gate encodes:
-#   git grep -ln 'zenohd_binary_path' -- '*.rs'
+#   git grep -ln 'ros_zenohd_path' -- '*.rs'
+#
+# phase-362 — the helper is `ros_zenohd_path()` now (the ROS-shipped
+# `rmw_zenohd`), not the retired `zenohd_binary_path()`. The RULE is unchanged:
+# `ZenohRouter` stays the only spawner, because the three guards this gate
+# protects live in that fixture and nowhere else. When the helper was renamed
+# this gate's own staleness self-test fired — which is why it is worth having
+# a gate that knows when it has stopped watching anything.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -51,10 +58,10 @@ fail=0
 
 # Every Rust file naming the zenohd binary helper. `git grep` so untracked
 # scratch files and build output never enter the population.
-mapfile -t candidates < <(git grep -ln 'zenohd_binary_path' -- '*.rs' || true)
+mapfile -t candidates < <(git grep -ln 'ros_zenohd_path' -- '*.rs' || true)
 
 if [ "${#candidates[@]}" -eq 0 ]; then
-    echo "check-zenohd-spawn-sites: no file references zenohd_binary_path — stale" >&2
+    echo "check-zenohd-spawn-sites: no file references ros_zenohd_path — stale" >&2
     exit 2
 fi
 
@@ -67,9 +74,9 @@ for f in "${candidates[@]}"; do
     # `Command::new(<something zenohd>)` is the spawn signature. Match the
     # helper reaching a Command, on one line or via a local binding.
     if grep -nE 'Command::new\(&?[A-Za-z_:]*zenohd' "$f" >/dev/null 2>&1 ||
-        grep -nE 'Command::new\(.*zenohd_binary_path' "$f" >/dev/null 2>&1; then
+        grep -nE 'Command::new\(.*ros_zenohd_path' "$f" >/dev/null 2>&1; then
         echo "ERROR: $f spawns zenohd directly — use nros_tests::fixtures::ZenohRouter" >&2
-        grep -nE 'Command::new\(&?[A-Za-z_:]*zenohd|Command::new\(.*zenohd_binary_path' "$f" >&2
+        grep -nE 'Command::new\(&?[A-Za-z_:]*zenohd|Command::new\(.*ros_zenohd_path' "$f" >&2
         fail=1
     fi
 done
@@ -92,7 +99,7 @@ done
 probe="$(mktemp -t zenohd-spawn-probe.XXXXXX.rs)"
 trap 'rm -f "$probe"' EXIT
 cat >"$probe" <<'PROBE'
-let zenohd = nros_tests::process::zenohd_binary_path();
+let zenohd = nros_tests::process::ros_zenohd_path().unwrap();
 let child = Command::new(&zenohd)
     .args(["--listen", &endpoint, "--no-multicast-scouting"])
     .spawn();

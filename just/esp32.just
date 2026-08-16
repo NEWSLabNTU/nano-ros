@@ -321,4 +321,4 @@ zenohd:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    exec "$(nros_zenohd_bin)" --listen tcp/127.0.0.1:9800 --no-multicast-scouting
+    nros_router_exec tcp/127.0.0.1:9800

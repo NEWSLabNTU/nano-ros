@@ -106,14 +106,20 @@ The zenoh protocol may have changed, causing transport-level incompatibilities.
 
 ### Solution
 
-Upgrade zenoh-pico to match zenohd version. All zenoh components in
-nros are pinned to the same version. Use `just zenohd build` to build
-the matching router from the submodule.
+Compare the two zenoh versions across the seam — nano-ros does not pin the
+router, because the router is the one ROS ships (phase-362 / RFC-0075):
 
-**Temporary workaround**: Install an older zenohd version:
 ```bash
-cargo install zenoh --version 1.5.1 --features=zenohd
+grep 'define ZENOH_C ' /opt/ros/$ROS_DISTRO/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+cat packages/rmw/zenoh/zpico-sys/zenoh-pico/version.txt
 ```
+
+Read the HEADER, not `dpkg -l`: the package version (`ros-humble-rmw-zenoh-cpp
+0.1.9`) is a wrapper version and says nothing about the zenoh inside it.
+
+Under zenoh's 1.x wire guarantee the two need not match, so a mismatch is
+evidence rather than a diagnosis. The interop tests print both numbers on a
+delivery failure for exactly this comparison.
 
 ---
 

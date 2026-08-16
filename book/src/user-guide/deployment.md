@@ -24,12 +24,23 @@ colcon build && source install/setup.bash
 ros2 run my_pkg my_node
 ```
 
-For interop with stock ROS 2 over Zenoh, run the bundled router (built
-by `just zenohd setup`) and point ROS 2 at it:
+For interop with stock ROS 2 over Zenoh, run **the router ROS ships** and point
+ROS 2 at it:
 
 ```bash
-zenohd --listen tcp/127.0.0.1:7447
+ros2 run rmw_zenoh_cpp rmw_zenohd
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+```
+
+nano-ros no longer bundles a router (phase-362 / RFC-0075). `rmw_zenohd` links
+the same `libzenohc.so` that `rmw_zenoh_cpp` does, so it cannot drift from the
+RMW you are talking to — and it is what a ROS 2 deployment actually runs.
+
+It takes no command-line configuration. To move it off the default `tcp/[::]:7447`:
+
+```bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"]' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
 See [Native POSIX](../platform-guides/native-posix.md).

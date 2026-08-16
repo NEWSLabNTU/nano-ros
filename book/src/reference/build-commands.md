@@ -22,7 +22,6 @@ just zephyr build-fixtures
 just zephyr build-all
 just qemu setup-network             # QEMU TAP networking only
 just zephyr help                    # Zephyr-specific help
-just zenohd build                   # Build the pinned zenoh router
 ```
 
 Install the local book tooling before previewing docs:
