@@ -51,6 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#641** — `nros sync` took 1.2 s on two workspaces and 0.2 s on the other
+twenty, and `regenerate-bindings.sh` runs it 22x at the head of every fixture build. `strace -c` on a WARM run:
+**1167 `execve`s, 88 % of wall-clock in `wait4`** — it was configuring and BUILDING a CMake project (Corrosion
+included), the phase-308 C/C++ metadata probe, which in both cases **could not succeed**. `mixed`:
+`rust_heartbeat_pkg` declares `LANGUAGE RUST`, but `infer_cmake_language` knew only c/cpp/cxx, so `rust` fell
+through to the class-shape guess — `::` — and came back **Cpp**; the C++ probe then emitted a TU including a
+header the Rust package does not have. Its own doc comment claims "`LANGUAGE` is authoritative when present".
+`features`: the batch's configure fails, so all 17 components are unprobeable. **The general defect: the C/C++
+batch path had no negative cache** — the Rust branch has had one since #0288, so a failing Rust probe is not
+retried; the batch retried for ever. Fixed: `rust`/`rs` honoured (unrecognised values now fall back LOUDLY),
+per-component negative marker on both build AND configure failure, keyed on `source_digest +
+NROS_CLI_SOURCE_STAMP` — the digest alone mixes only `CARGO_PKG_VERSION`, so a stale marker would HIDE a probe
+someone had just repaired. mixed 1.24->0.26 s, features 1.21->0.27 s, loop 7.0->5.1 s, regenerate-bindings
+12.8->10.9 s. Invalidation verified per-component, not assumed. See `archived/0641-*`.
+
 Recently resolved (2026-08-16): **#629** — every C++ link on threadx-riscv64 failed on `-lstdc++` /
 `-lnosys`, libraries the provisioned toolchain ships. The wrapper passing no `-L` was a true observation
 about the WRONG LAYER: `riscv64-threadx.cmake` already locates the SDK `libstdc++.a` and adds its directory

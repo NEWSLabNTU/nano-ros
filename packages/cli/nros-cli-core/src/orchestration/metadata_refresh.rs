@@ -109,6 +109,21 @@ pub fn refresh_stale_sidecars(
             // of nested sizes-probe cargo builds) once rather than once per
             // component.
             match cpp_probe_options(decl, nano_ros, &probe_root) {
+                // issue 0641 — a C/C++ probe that FAILED at this exact source is
+                // not re-attempted until something changes. The Rust branch
+                // below has had this since #0288; the batch path never did, so
+                // an unprobeable component paid a full CMake configure + build
+                // on EVERY sync, for ever. Measured on
+                // `examples/workspaces/features`, whose probe project fails to
+                // configure: 17 components, 1.2 s of cmake per sync, no
+                // possible progress. `nros sync` is run 22 times by
+                // `regenerate-bindings.sh` at the head of every fixture build.
+                Ok(Some(opts)) if is_known_unprobeable_now(&opts.output_path, decl) => {
+                    report.unsupported.push(format!(
+                        "{}::{} (probe failed at this source last sync; unchanged)",
+                        decl.config.package, decl.config.component
+                    ));
+                }
                 Ok(Some(opts)) => cpp_batch.push(opts),
                 // Already current — no probe needed.
                 Ok(None) => report.fresh.push(decl.source_metadata_path()),
@@ -200,15 +215,23 @@ pub fn refresh_stale_sidecars(
                             }
                             report.rebuilt.push(opts.output_path.clone());
                         }
-                        Err(why) => report
-                            .unsupported
-                            .push(format!("{}::{} ({why:#})", o.package, o.component)),
+                        Err(why) => {
+                            mark_unprobeable_now(&opts.output_path, &opts.package_dir);
+                            report
+                                .unsupported
+                                .push(format!("{}::{} ({why:#})", o.package, o.component));
+                        }
                     }
                 }
             }
             // A configure failure is the whole project, not one component.
             Err(why) => {
                 for opts in &cpp_batch {
+                    // Every component in the batch shares the project that
+                    // failed to configure, so every one of them is unprobeable
+                    // until something changes — mark each, or the next sync
+                    // rebuilds the same broken project.
+                    mark_unprobeable_now(&opts.output_path, &opts.package_dir);
                     report.unsupported.push(format!(
                         "{}::{} (probe project configure failed: {why:#})",
                         opts.package, opts.component
@@ -351,6 +374,33 @@ fn unprobeable_marker(sidecar: &Path) -> PathBuf {
 }
 
 /// True iff a prior sync recorded THIS package unprobeable at THIS digest.
+/// The key a C/C++ negative marker is stored under: the package's own sources
+/// AND the CLI that probed them.
+///
+/// `source_digest` mixes only `CARGO_PKG_VERSION`, which moves on a release
+/// bump and not on a fix. That is fine for a POSITIVE cache — a stale sidecar
+/// is caught by the coverage gate — and wrong for a negative one, where a
+/// stale marker would hide a probe someone had just repaired. `NROS_CLI_SOURCE_STAMP`
+/// is baked by `build.rs` from the CLI's own sources, so it changes exactly
+/// when the thing that might fix the probe changes, and costs nothing at run
+/// time (issue 0641).
+fn unprobeable_key(package_dir: &Path) -> Option<String> {
+    let digest = source_digest(package_dir).ok()?;
+    Some(format!("{digest}:{}", env!("NROS_CLI_SOURCE_STAMP")))
+}
+
+/// Has this component's probe already failed, at these sources and this CLI?
+fn is_known_unprobeable_now(sidecar: &Path, decl: &ComponentDeclaration) -> bool {
+    unprobeable_key(&decl.package_root).is_some_and(|key| is_known_unprobeable(sidecar, &key))
+}
+
+/// Record a C/C++ probe failure against [`unprobeable_key`].
+fn mark_unprobeable_now(sidecar: &Path, package_dir: &Path) {
+    if let Some(key) = unprobeable_key(package_dir) {
+        mark_unprobeable(sidecar, &key);
+    }
+}
+
 fn is_known_unprobeable(sidecar: &Path, digest: &str) -> bool {
     std::fs::read_to_string(unprobeable_marker(sidecar))
         .map(|m| m.trim() == digest)

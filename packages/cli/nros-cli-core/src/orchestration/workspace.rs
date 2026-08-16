@@ -445,11 +445,40 @@ fn cargo_summary_to_component_config(summary: &CargoComponentSummary) -> Compone
 /// Phase 219.L / 223 — Best-effort language inference for CMake Node pkgs.
 /// `LANGUAGE` is authoritative when present. Older CMakeLists omitted it, so
 /// fall back to the historical class-shape heuristic.
+///
+/// # `rust` belongs here, and leaving it out was not free (issue 0641)
+///
+/// The doc line above says `LANGUAGE` is authoritative, and for `RUST` it was
+/// not: the match knew `c`/`cpp`/`cxx`, so `LANGUAGE RUST` fell through to the
+/// `_` arm, met a class containing `::`, and came back **Cpp**. A Rust node
+/// package was then handed to the C/C++ metadata probe, which emits a C++ TU
+/// that `#include`s a header the package does not have.
+///
+/// The cost was not a wrong answer but a repeated one. That probe configures
+/// and builds a whole CMake project (Corrosion included), fails at
+/// `fatal error: rust_heartbeat_pkg/Heartbeat.hpp: No such file`, and the
+/// failure is not remembered for a non-`deploy_bound` component — so EVERY
+/// `nros sync` of `examples/workspaces/mixed` re-ran it. Measured: 1.2 s warm
+/// against ~0.25 s for its sibling workspaces, and 12.5 s whenever the probe
+/// tree needed real work.
+///
+/// An unrecognised value now falls back LOUDLY rather than silently, because a
+/// silent fallback is exactly what hid this: the declaration said one thing,
+/// the inference did another, and nothing printed.
 fn infer_cmake_language(language: Option<&str>, class: Option<&str>) -> ComponentLanguage {
     match language.map(|s| s.to_ascii_lowercase()) {
         Some(lang) if lang == "c" => ComponentLanguage::C,
         Some(lang) if lang == "cpp" || lang == "cxx" => ComponentLanguage::Cpp,
-        _ => infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp),
+        Some(lang) if lang == "rust" || lang == "rs" => ComponentLanguage::Rust,
+        Some(lang) => {
+            eprintln!(
+                "nros: `LANGUAGE {lang}` is not one of c/cpp/cxx/rust — guessing from the \
+                 class shape instead. Fix the declaration; a wrong guess here routes the \
+                 component to the wrong metadata probe (issue 0641)."
+            );
+            infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
+        }
+        None => infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp),
     }
 }
 
