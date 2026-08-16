@@ -141,7 +141,14 @@ trigger-test = [
     # umbrella `rmw-cffi` enables the walker that discovers whichever
     # backend the manifest pulled in via `dep:nros-rmw-<name>`.
     "nros-node/rmw-cffi",
-    "nros-node/std",
+    # phase-359 W10 — `nros-node/std` used to be here. None of the three
+    # `trigger-test` targets touches nros-node's std-only surface (the
+    # wall-clock spin loops and `open_threaded`); they drive `spin_once` and
+    # the wake primitives, which are `alloc`. The forward made this test crate
+    # one more grantor of the core's `std` flavour, which is what the campaign
+    # removes. This crate's OWN `std` is not in question — it is a host test
+    # harness and uses std freely; what it stops doing is imposing that on
+    # `nros-node`.
 ]
 # Phase 169.2 — multi-RMW bridge test deleted with the retired Rust
 # DDS backend.

@@ -245,6 +245,14 @@ then exempts the carrier *because* it compiles into `app` — a target edge. FIX
 source the same file-level edge, `APPEND`ed so the interface-codegen module's stamp is not clobbered;
 verified in the generated ninja (an IMPLICIT `|` dep, not `||`) rather than by one green build, since a
 race that goes the right way proves nothing. See `archived/0638-*`. (2026-08-16)
+**#0652** (testing, open 2026-08-17) — `required-features` test targets in `nros-tests` are in NO lane:
+nothing in `just/` or the `justfile` mentions `trigger-test`, so those targets are never compiled or run by
+`check`/`ci`/`test-all`. Two things were sitting behind that — `trigger_conditions` fails outright
+(`Failed to open session: Transport(InvalidConfig)`, 0.15 s, zenohd present and `require_zenohd()` passed,
+so not a skip), and the feature carried a stale `"nros-node/std"` forward that no target needed (removing it
+leaves `wake_latency` + `component_runtime` 6/6 green). The 0319 class one level down: the gate is not
+missing, the TARGET is unreachable, and an unreachable target still reads as coverage. Wants an audit over
+every `required-features` target, not a fix for these two by name. See `0652-*`. (2026-08-17)
 
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
