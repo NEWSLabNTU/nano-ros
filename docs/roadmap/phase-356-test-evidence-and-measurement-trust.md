@@ -1,8 +1,24 @@
 # Phase 356 — Test evidence: a sweep you can read afterwards, and numbers you can believe
 
-**Status (2026-08-16). W2 DONE; W1 and W3 not started.** Three issues about
-the same failure: a test run that reports something which cannot be checked, or
-which is not what it appears to be.
+**Status (2026-08-17). W1 and W2 DONE; W3's available half DONE, its remainder
+unblocked and specified.** Three issues about the same failure: a test run that
+reports something which cannot be checked, or which is not what it appears to
+be.
+
+**Two corrections to the 2026-08-16 status, both found by checking the issues
+rather than the phase doc:**
+
+* **W1 was already done.** #527 was resolved 2026-08-15 in phase-340 — the day
+  BEFORE this doc recorded it as "not started". `_rewrite-skipped-junit`
+  snapshots to `junit-real.xml` and `_name-real-failures` prints the ids. The
+  phase doc was simply stale; nothing was owed.
+* **W3 was never blocked on phase-162.** This doc said accepting the dims
+  "needs capabilities a normal test host does not have". #260 says otherwise
+  and is right: sporadic / EDF / preempt-threshold were ALREADY kernel-accepted,
+  and `sched_setaffinity` is unprivileged (which is why the posix core-pin
+  accept arm exists). What the four remaining arms need is an image with **more
+  than one CPU**, which is a fixture question, not a privilege one. The blocker
+  was written into this doc, not into the work.
 
 * **W2 (#403)** — DONE, both halves. The bench no longer prints a table of zeros
   from a run whose cycle counter never counted: it refuses and exits FAILURE.
@@ -10,7 +26,10 @@ which is not what it appears to be.
   `scripts/bench/wcet-log-to-json.py` lifts into a `nros.wcet.measurements/1`
   artifact. That unblocks [phase-357](phase-357-wcet-as-declared-data.md) W1 —
   #404 has a real artifact to design a schema against instead of guessing.
-* **W1 (#527)** and **W3 (#260)** — not started.
+* **W1 (#527)** — DONE in phase-340 (2026-08-15), before this phase recorded it
+  as outstanding. See the correction above.
+* **W3 (#260)** — the half that could be done without an SMP fixture is DONE;
+  the remainder is unblocked, not phase-162-blocked. See W3 below.
 
 **Owns:** [issue 0527](../issues/0527-doctest-run-overwrites-rewritten-junit.md),
 [issue 0403](../issues/archived/0403-wcet-bench-machine-readable.md) (resolved),
@@ -142,18 +161,60 @@ hitting. Neither is a substitute for a run on a part with a live DWT.
 the request and the runtime falls back. No fixture exercises the accept path, so
 the code that runs when the kernel says yes has never been observed working.
 
-The obstacle is privilege: accepting these dims needs capabilities a normal test
-host does not have, which is what
+~~The obstacle is privilege: accepting these dims needs capabilities a normal
+test host does not have, which is what
 [phase-162](phase-162-rt-scheduling-harness.md) exists to stand up. This work
-item is therefore **blocked on phase-162**, and is recorded here rather than
-attempted.
+item is therefore **blocked on phase-162**.~~
 
-What can be done now without privilege: make the fallback arm SAY it is the
-fallback arm, so a future accept-path run is distinguishable from today's pass.
-A test that passes identically under both is the reason this went unnoticed.
+**Struck 2026-08-17 — I wrote a blocker this work does not have.** #260's own
+text says the sporadic (W5.9b), EDF (W5.5) and preempt-threshold (W5.10) accept
+arms were already kernel-accepted, and the posix core-pin accept arm exists
+precisely BECAUSE `sched_setaffinity` needs no privilege. What the four
+remaining arms need is an image with more than one CPU — `CONFIG_SMP` /
+`configUSE_CORE_AFFINITY` / `TX_THREAD_SMP`. That is a fixture-configuration
+question. phase-162 is not in the way.
 
-**Acceptance (now).** The suite reports which arm each sched dim took.
-**Acceptance (full).** Blocked on phase-162; do not close #260 on the partial.
+The paragraph also overstated the gap: it said `core-pin` *and* `sporadic
+budget` are fallback-only. Sporadic is kernel-accepted, and the run below
+proves it.
+
+### DONE — the arm is declared and asserted, not merely tolerated
+
+`Shape::AcceptOrFallback` asserted "accept marker OR fallback note", so a cell
+passed identically on either arm. Each two-mode cell now declares the arm its
+image is known to take — `AcceptOrFallback { expect: Arm }` — and a mismatch in
+either direction fails. A capability silently LOST is caught; a capability
+silently GAINED is caught too, which is the state #260 wants reached
+deliberately rather than by accident.
+
+Every cell also prints its arm. 12/12 cells, no skips:
+
+```
+sched-dim arm: [zephyr rust CorePin]              FALLBACK
+sched-dim arm: [nuttx rust CorePin]               FALLBACK
+sched-dim arm: [threadx-linux rust CorePin]       FALLBACK
+sched-dim arm: [freertos cpp CorePin]             FALLBACK
+sched-dim arm: [posix rust CorePin]               ACCEPT
+sched-dim arm: [zephyr {rust,cpp,c} EdfDeadline]  ACCEPT
+sched-dim arm: [nuttx cpp SporadicBudget]         ACCEPT
+sched-dim arm: [nuttx rust TierPriority]          2/2 tiers ACCEPT
+sched-dim arm: [threadx-linux rust PreemptThreshold] ACCEPT
+sched-dim arm: [threadx-linux rust TimeSlice]     ACCEPT
+```
+
+**The only fallback arms in the tree are the four RTOS core-pins** — measured,
+not re-derived from `#ifdef`s. `SporadicBudget = Accept` was the one
+non-obvious declaration and was verified by building the fixture and running
+it, not taken from #260's prose; it is also the cell that gained most, having
+previously tolerated a regression to the fallback while #260 recorded the dim
+as covered.
+
+**Acceptance (now).** The suite reports which arm each sched dim took. **MET** —
+and exceeded: the arm is asserted, not only reported.
+**Acceptance (full).** One SMP fixture flips a core-pin cell to the ACCEPT arm.
+Unblocked; #260's Direction specifies it (a separate Zephyr `native_sim` SMP
+variant, or a FreeRTOS `configNUMBER_OF_CORES > 1` build, plus a dedicated
+`*_core_pin_smp` cell). Do not close #260 on the partial.
 
 ---
 

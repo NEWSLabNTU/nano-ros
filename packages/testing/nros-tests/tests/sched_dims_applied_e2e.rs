@@ -12,8 +12,16 @@
 //! execution data ([`exec_for`]); the neutral `(dim, platform, lang)` coordinate
 //! lives in `matrix::SCHED_CELLS`. Four assert shapes, preserved 1:1 from the
 //! per-file originals:
-//! - **AcceptOrFallback** — the kernel-accept marker OR the honest fallback note
-//!   (core-pin on zephyr/nuttx/threadx/freertos; nuttx sporadic).
+//! - **AcceptOrFallback { expect }** — the kernel-accept marker OR the honest
+//!   fallback note (core-pin on zephyr/nuttx/threadx/freertos; nuttx sporadic),
+//!   AND it is the arm that fixture is known to take. Issue 0260 / phase-356 W3
+//!   added `expect`: asserting only "one of the two happened" makes the cell
+//!   pass identically whichever arm runs, so an accept path that regresses to
+//!   the fallback stays green — which is how #260 stayed invisible. The arm is
+//!   a property of the IMAGE (SMP? `CONFIG_SCHED_SPORADIC`?), so it is knowable
+//!   up front and belongs beside the markers. Every cell also PRINTS its arm
+//!   (`sched-dim arm: …`), so a sweep answers "is the accept path exercised
+//!   anywhere?" without reading defconfigs.
 //! - **AcceptOnly** — the accept marker must be present (posix core-pin, the #260
 //!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any host).
 //! - **StrictCountOne** — exactly one accept marker (zephyr EDF; threadx
@@ -79,10 +87,45 @@ enum Router {
     Baked(&'static str),
 }
 
+/// Which arm of a two-mode (fail-loud) dim a fixture is EXPECTED to take on
+/// TODAY's images — issue 0260 / phase-356 W3.
+///
+/// RFC-0052 consumers are two-mode by design: honor the declaration, or say
+/// loudly that the kernel could not. `AcceptOrFallback` used to assert only
+/// that ONE of the two happened, which means the cell passed identically
+/// whichever arm ran — and that is precisely why #260 went unnoticed for as
+/// long as it did. The arm a fixture takes is a property of the IMAGE (is it
+/// SMP? does the defconfig carry `CONFIG_SCHED_SPORADIC`?), so it is knowable
+/// ahead of the run and belongs in the table beside the markers.
+///
+/// Declaring it buys two things the old shape could not:
+///   * a silent REGRESSION on an accept arm (the kernel stops honoring a dim
+///     and the consumer dutifully falls back) now FAILS instead of passing;
+///   * a fixture that silently GAINS the capability is caught too, so the
+///     accept path cannot start being exercised without anyone noticing —
+///     which is the state #260 wants to reach deliberately, via its own cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Arm {
+    /// The kernel honored the declaration.
+    Accept,
+    /// The kernel could not, and the consumer said so loudly.
+    Fallback,
+}
+
+impl Arm {
+    fn as_str(self) -> &'static str {
+        match self {
+            Arm::Accept => "ACCEPT",
+            Arm::Fallback => "FALLBACK",
+        }
+    }
+}
+
 /// The per-cell assertion shape.
 enum Shape {
-    /// Accept marker OR fallback note present (fail-loud two-mode).
-    AcceptOrFallback,
+    /// Accept marker OR fallback note present (fail-loud two-mode), AND it is
+    /// the arm this fixture is known to take (`expect`) — see [`Arm`].
+    AcceptOrFallback { expect: Arm },
     /// Accept marker present (the fallback is a real degrade we don't expect).
     AcceptOnly,
     /// Exactly one accept marker (the fixture bakes exactly one such tier).
@@ -133,8 +176,13 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: core pin",
             accept: ZEPHYR_CORE_PIN_MARKER,
             fallback: Some(ZEPHYR_CORE_PIN_FALLBACK_MARKER),
-            shape: AcceptOrFallback,
-            note: "k_thread_cpu_pin honored, or uniprocessor/SMP fallback",
+            // #260: native_sim is uniprocessor (no CONFIG_SCHED_CPU_MASK_PIN_ONLY),
+            // so the pin CANNOT be honored — the honest fallback is the only
+            // correct outcome here, and the accept path stays compile-only.
+            shape: AcceptOrFallback {
+                expect: Arm::Fallback,
+            },
+            note: "uniprocessor native_sim: k_thread_cpu_pin cannot be honored, expect the loud fallback",
         },
         (SD::CorePin, MP::NuttxArm, ML::Rust) => Exec {
             resolver: || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -144,8 +192,12 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: core pin",
             accept: NUTTX_CORE_PIN_MARKER,
             fallback: Some(NUTTX_CORE_PIN_FALLBACK_MARKER),
-            shape: AcceptOrFallback,
-            note: "NuttX SMP affinity applied, or the image lacks CONFIG_SMP",
+            // #260: qemu-arm-virt is single-core and the defconfig has no
+            // CONFIG_SMP, so the affinity call is not compiled in.
+            shape: AcceptOrFallback {
+                expect: Arm::Fallback,
+            },
+            note: "uniprocessor image (no CONFIG_SMP): expect the loud fallback",
         },
         (SD::CorePin, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -155,8 +207,12 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: core pin",
             accept: THREADX_CORE_PIN_MARKER,
             fallback: Some(THREADX_CORE_PIN_FALLBACK_MARKER),
-            shape: AcceptOrFallback,
-            note: "ThreadX SMP core exclusion applied, or the image lacks SMP",
+            // #260: the ThreadX POSIX-sim build carries no TX_THREAD_SMP, so
+            // tx_thread_smp_core_exclude is absent.
+            shape: AcceptOrFallback {
+                expect: Arm::Fallback,
+            },
+            note: "no TX_THREAD_SMP in the POSIX-sim build: expect the loud fallback",
         },
         (SD::CorePin, MP::FreertosMps2, ML::Cpp) => Exec {
             resolver: || build_freertos_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
@@ -166,8 +222,13 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: core pin",
             accept: FREERTOS_CORE_PIN_MARKER,
             fallback: Some(FREERTOS_CORE_PIN_FALLBACK_MARKER),
-            shape: AcceptOrFallback,
-            note: "configUSE_CORE_AFFINITY build, or the uniprocessor fallback (W5.11)",
+            // #260: mps2-an385 is uniprocessor, so configUSE_CORE_AFFINITY is
+            // off and vTaskCoreAffinitySet is not built (W5.11 made this loud
+            // where it had been a silent `(void)task`).
+            shape: AcceptOrFallback {
+                expect: Arm::Fallback,
+            },
+            note: "uniprocessor mps2-an385: expect the loud fallback (W5.11)",
         },
         (SD::CorePin, MP::Linux, ML::Rust) => Exec {
             resolver: || build_native_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -200,8 +261,15 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: sporadic budget",
             accept: NUTTX_SPORADIC_MARKER,
             fallback: Some(NUTTX_SPORADIC_FALLBACK_MARKER),
-            shape: AcceptOrFallback,
-            note: "W5.9: SCHED_SPORADIC applied, or the honest CONFIG_SCHED_SPORADIC-absent note",
+            // #260, and the reason declaring the arm is worth doing: the
+            // arm/riscv defconfigs gained CONFIG_SCHED_SPORADIC=y in W5.9b, so
+            // this cell measures a KERNEL-ACCEPTED budget. Asserting only
+            // "accept OR fallback" let a regression to the fallback arm pass
+            // green while #260 recorded the dim as covered.
+            shape: AcceptOrFallback {
+                expect: Arm::Accept,
+            },
+            note: "W5.9b defconfigs carry CONFIG_SCHED_SPORADIC=y: the kernel must ACCEPT",
         },
         (SD::TierPriority, MP::NuttxArm, ML::Rust) => Exec {
             resolver: || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -375,6 +443,26 @@ fn sched_dims_applied() {
     }
 }
 
+/// issue 0260 / phase-356 W3 — say which arm the dim actually took.
+///
+/// The assertions above make the arm LOAD-BEARING; this makes it READABLE. A
+/// reviewer asking "is the accept path exercised anywhere?" could previously
+/// only answer by reading each consumer's `#ifdef`s and each fixture's
+/// defconfig. One grep over a sweep now answers it:
+///
+/// ```text
+/// cargo nextest run --success-output final -E 'test(sched_dims_applied)' \
+///     | grep 'sched-dim arm:'
+/// ```
+///
+/// Deliberately a plain `println!` on the SUCCESS path: nextest captures it and
+/// shows it on failure always, on success with `--success-output`. The arm is
+/// context for a human, not a second channel a gate should parse — the gate is
+/// the `expect:` field.
+fn report_arm(platform: &str, lang: &str, dim: SD, arm: &str) {
+    println!("sched-dim arm: [{platform} {lang} {dim:?}] {arm}");
+}
+
 /// Boot one sched-dim cell and assert its dim is honored per the [`Shape`].
 /// Panics with `[SKIPPED] …` on an unmet precondition; the caller classifies.
 fn run_cell(cell: &SchedCell) {
@@ -473,9 +561,52 @@ fn run_cell(cell: &SchedCell) {
     // Classify per the cell's assert shape.
     let accepted = log.contains(ex.accept);
     match ex.shape {
-        Shape::AcceptOrFallback => {
+        Shape::AcceptOrFallback { expect } => {
             let fb = ex.fallback.map(|f| log.contains(f)).unwrap_or(false);
+
+            // The RFC-0052 fail-loud contract first: SOMETHING must be said.
+            // Kept as its own assert because "silently dropped" and "took the
+            // wrong arm" are different bugs and want different messages.
             assert!(accepted || fb, "{silence}{}\nlog:\n{log}", fail_loud());
+
+            // issue 0260 / phase-356 W3 — then WHICH arm. A cell that passes
+            // identically under both arms cannot notice the accept path
+            // regressing to the fallback, which is the hole this closes.
+            let observed = match (accepted, fb) {
+                (true, false) => Arm::Accept,
+                (false, true) => Arm::Fallback,
+                // Both arms in one log: some declaring tier was honored and
+                // another was not. Every fixture here is uniformly capable or
+                // uniformly not, so this is not a state any current image can
+                // reach — and if one does, it is a finding, not a pass.
+                (true, true) => panic!(
+                    "{silence}[{platform} {lang} {:?}] BOTH the accept marker (`{}`) and the \
+                     fallback note (`{}`) appear — this image honored the dim for some tiers \
+                     and not others, which no current fixture should do. Expected a uniform \
+                     {}. {}\nlog:\n{log}",
+                    cell.dim,
+                    ex.accept,
+                    ex.fallback.unwrap_or("<none>"),
+                    expect.as_str(),
+                    ex.note
+                ),
+                (false, false) => unreachable!("guarded by the fail-loud assert above"),
+            };
+
+            assert_eq!(
+                observed,
+                expect,
+                "{silence}[{platform} {lang} {:?}] took the {} arm, expected {}. {}\n\
+                 If this is a DELIBERATE capability change to the image (e.g. it gained SMP, \
+                 or a defconfig knob moved), update this cell's `expect:` — do not widen the \
+                 assert back to \"either arm\", which is what issue 0260 is about.\nlog:\n{log}",
+                cell.dim,
+                observed.as_str(),
+                expect.as_str(),
+                ex.note
+            );
+
+            report_arm(platform, lang, cell.dim, observed.as_str());
         }
         Shape::AcceptOnly => {
             assert!(
@@ -484,6 +615,7 @@ fn run_cell(cell: &SchedCell) {
                  fallback? {}\nlog:\n{log}",
                 cell.dim, ex.accept, ex.note
             );
+            report_arm(platform, lang, cell.dim, Arm::Accept.as_str());
         }
         Shape::StrictCountOne => {
             let hits = nros_tests::count_pattern(&log, ex.accept);
@@ -493,6 +625,7 @@ fn run_cell(cell: &SchedCell) {
                  declaring tier), saw {hits}. {}\nlog:\n{log}",
                 cell.dim, ex.accept, ex.note
             );
+            report_arm(platform, lang, cell.dim, Arm::Accept.as_str());
         }
         Shape::EachTierOrFailNote { tiers, fail_marker } => {
             // issue 0579 — assert per DECLARING TIER. Each tier must produce
@@ -520,6 +653,29 @@ fn run_cell(cell: &SchedCell) {
                 ex.accept,
                 missing.join(", "),
                 ex.note
+            );
+
+            // Per-TIER dim, so there is no single arm: report the split. A
+            // sweep where every tier silently moved to the fail-note arm is a
+            // real degrade that the assert above tolerates by design (it is
+            // the fail-loud contract), and this is what makes it visible.
+            let honored = tiers
+                .iter()
+                .filter(|(tier, prio)| {
+                    log.contains(&nros_tests::output::nuttx_tier_priority_line(
+                        ex.accept, tier, *prio,
+                    ))
+                })
+                .count();
+            report_arm(
+                platform,
+                lang,
+                cell.dim,
+                &format!(
+                    "{honored}/{} tiers ACCEPT, {} FALLBACK",
+                    tiers.len(),
+                    tiers.len() - honored
+                ),
             );
         }
     }

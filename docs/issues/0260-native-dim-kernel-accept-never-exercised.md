@@ -67,3 +67,63 @@ already two-mode — they upgrade automatically):
 - a FreeRTOS SMP build (`configNUMBER_OF_CORES > 1` + `configUSE_CORE_AFFINITY`).
 Then point a dedicated `*_core_pin_smp` cell at it and assert the ACCEPT marker
 exactly. Until then, the accept arms stay header-compile-verified.
+
+## Update (phase-356 W3, 2026-08-17) — the arm is now DECLARED and ASSERTED, not merely tolerated
+
+The `AcceptOrFallback` shape in `sched_dims_applied_e2e.rs` asserted that the
+accept marker **or** the fallback note appeared. That passes identically on
+either arm — which is the mechanism by which this issue stayed invisible, and
+is worse than it sounds: it means a dim whose accept path we *do* exercise
+could silently regress to the fallback and stay green.
+
+Each two-mode cell now declares the arm its image is known to take
+(`AcceptOrFallback { expect: Arm }`), and a mismatch in EITHER direction fails.
+So a fixture that loses a capability is caught, and a fixture that silently
+gains one is caught too — the accept path cannot start being exercised without
+someone noticing, which is how this issue should eventually be closed.
+
+Every cell also prints its arm, so the landscape is machine-produced rather
+than re-derived from `#ifdef`s and defconfigs. Full run, 12/12 cells, no skips:
+
+```
+sched-dim arm: [zephyr rust CorePin]              FALLBACK
+sched-dim arm: [nuttx rust CorePin]               FALLBACK
+sched-dim arm: [threadx-linux rust CorePin]       FALLBACK
+sched-dim arm: [freertos cpp CorePin]             FALLBACK
+sched-dim arm: [posix rust CorePin]               ACCEPT
+sched-dim arm: [zephyr rust EdfDeadline]          ACCEPT
+sched-dim arm: [zephyr cpp EdfDeadline]           ACCEPT
+sched-dim arm: [zephyr c EdfDeadline]             ACCEPT
+sched-dim arm: [nuttx cpp SporadicBudget]         ACCEPT
+sched-dim arm: [nuttx rust TierPriority]          2/2 tiers ACCEPT, 0 FALLBACK
+sched-dim arm: [threadx-linux rust PreemptThreshold] ACCEPT
+sched-dim arm: [threadx-linux rust TimeSlice]     ACCEPT
+```
+
+That confirms the residual stated above, by measurement rather than by reading
+the consumers: **the only fallback arms in the tree are the four RTOS
+core-pins.** Every other Native dim is kernel-accepted somewhere.
+
+The one non-obvious declaration was `SporadicBudget = Accept`. It was
+verified by building the fixture and running it, not taken from this issue's
+own prose — and it is the case that gained the most: that cell previously
+tolerated a regression to the fallback arm while this issue recorded the dim
+as covered.
+
+### The obstacle is SMP, not privilege
+
+[phase-356](../roadmap/phase-356-test-evidence-and-measurement-trust.md) W3
+recorded this item as blocked on [phase-162](../roadmap/phase-162-rt-scheduling-harness.md)
+because "accepting these dims needs capabilities a normal test host does not
+have". That is not what this issue says, and it is not true of what remains:
+
+* the sporadic / EDF / preempt-threshold accept arms were already kernel
+  accepted, so no privilege was ever needed for them;
+* `sched_setaffinity` is unprivileged, which is exactly why the posix core-pin
+  accept arm could be added at all (W5.13);
+* what the four remaining arms need is an image with **more than one CPU** —
+  `CONFIG_SMP` / `configUSE_CORE_AFFINITY` / `TX_THREAD_SMP` — which is a
+  fixture-configuration question, not a capability one.
+
+So the Direction above stands unchanged and is NOT blocked: add one SMP
+fixture and point a dedicated cell at it.
