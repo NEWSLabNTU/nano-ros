@@ -2,7 +2,7 @@
 id: 643
 title: "`nros-node`'s `env = [\"std\"]` fails the feature contract its own phase
   wrote — a capability grants the heap"
-status: open
+status: resolved
 type: bug
 area: core, build
 related: [phase-359, phase-360, issue-0642]
@@ -76,3 +76,29 @@ Plus #0642, the lang-item gate failing on stale gitignored probe residue.
 
 That is four separate blockers between a green tree and a completed tier-2 run,
 which is the argument for running the sweep more often rather than less.
+
+
+## 2026-08-16 — resolved upstream, by the phase that wrote it
+
+Fixed in `03ca659c8`, *"fix(phase-359 W10): `env` REQUIRES the standard library,
+it does not grant it"* — `env = ["std"]` became `env = []`. That is resolution 1
+of the three above, chosen by whoever is running phase-359, which is where the
+choice belonged.
+
+Verified here rather than assumed: `just check-feature-contract` now reports
+
+```
+ok  (a/manifest) `std` lists `alloc`; nothing else enables either
+ok  (a/source) the heap gate has one spelling
+ok  (b) no `no_std` crate defaults to `std`/`alloc`
+ok  (c) every declared `std`/`alloc` feature is used
+ok  (d) no `default` feature is unreachable
+ok  (e) exactly one `#[global_allocator]`
+check-feature-contract: OK (216 crate(s), 6 clauses)
+```
+
+The fix landed while this issue was being pushed, so the two crossed. Filing it
+still paid: the sweep had to stop somewhere, and "here is the blocker, here are
+the three resolutions, the choice is the phase owner's" is the handoff that let
+it be fixed by the person holding the context rather than guessed at by the one
+holding the build.

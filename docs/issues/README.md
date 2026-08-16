@@ -206,14 +206,14 @@ take the set from the fixture manifest), respect gitignore, prune build dirs, or
 (#0445). NOTE #0645/#0641 landed perf fixes to OTHER scans the same day; this one was not among them.
 See `0642-*`. (2026-08-16)
 
-**#643** (core/build, open 2026-08-16) — `just ci-matrix` fails `check-feature-contract`: `nros-node`'s
-`env = ["std"]` (from `1badb6f72`, phase-359 W10, *"`env` is a capability, not the `std` flavour"*) trips the
-gate's own rule that a capability REQUIRES the heap and must not GRANT it. The tension is real, not a typo —
+**#643** (core/build, RESOLVED 2026-08-16) — `just ci-matrix` failed `check-feature-contract`: `nros-node`'s
+`env = ["std"]` (from `1badb6f72`, phase-359 W10, *"`env` is a capability, not the `std` flavour"*) tripped
+the gate's own rule that a capability REQUIRES the heap and must not GRANT it. Real tension, not a typo:
 `env` needs `std::env`, and the contract exists so a capability cannot pull `std` into an image that never
-asked. Three non-equivalent fixes (compile_error! naming the feature; read the environment through a platform
-capability; or exempt hosted capabilities and weaken the gate) — a design call inside an ACTIVE phase, so
-recorded rather than patched. Everything before it passes, including contract clauses (a/source)(b)(c)(d)(e)
-and "exactly one `#[global_allocator]`". Found by a tier-2 sweep. See `0643-*`. (2026-08-16)
+asked. Filed with three non-equivalent resolutions and deliberately NOT patched — a design call inside an
+ACTIVE phase. Fixed upstream the same day by the phase itself, `03ca659c8` *"`env` REQUIRES the standard
+library, it does not grant it"* (`env = []`), i.e. resolution 1. Verified here: `check-feature-contract` OK
+(216 crates, 6 clauses). Found by a tier-2 sweep. See `archived/0643-*`. (2026-08-16)
 
 **#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
 store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
