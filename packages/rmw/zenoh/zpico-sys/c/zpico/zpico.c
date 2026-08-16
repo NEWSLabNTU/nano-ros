@@ -1206,9 +1206,39 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
     g_default_read_task_configured = true;
     g_default_lease_task_configured = true;
+#elif defined(ZENOH_THREADX)
+    // Issue 0626 — ThreadX carries the platform ABI's attributes now.
+    //
+    // This used to share the `#else` arm below, whose comment ("z_task_attr_t
+    // is void* and zenoh-pico ignores it") was accurate when written and is
+    // what made the priority unstatable here: `_z_task_init` in
+    // `c/platform/threadx/task.c` discarded the attr and gave every zenoh task
+    // the single compile-time `Z_TASK_PRIORITY`.
+    //
+    // The priority stays on the NORMALISED band; `task.c` inverts it, because
+    // ThreadX counts 0 as the HIGHEST priority and the band counts larger as
+    // more urgent. Doing the inversion at the spawn site keeps every caller in
+    // one vocabulary (phase-364 W5) — that is the whole point of the band.
+    //
+    // Stacks are not forwarded: the ThreadX `_z_task_t` embeds its stack at the
+    // compile-time `Z_TASK_STACK_SIZE`, so there is no larger region to point
+    // at, and `task.c` documents the same refusal at the other end.
+    nros_platform_task_attr_init(&g_default_read_task_attr);
+    g_default_read_task_attr.name = "zpico_read";
+    g_default_read_task_attr.priority = (int32_t)read_priority;
+    nros_platform_task_attr_init(&g_default_lease_task_attr);
+    g_default_lease_task_attr.name = "zpico_lease";
+    g_default_lease_task_attr.priority = (int32_t)lease_priority;
+    g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
+    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
+    g_default_read_task_configured = true;
+    g_default_lease_task_configured = true;
+    (void)read_stack_bytes;
+    (void)lease_stack_bytes;
 #else
-    // ThreadX, generic, and other platforms: z_task_attr_t is void* and
-    // zenoh-pico ignores it. Config stored for future platform support.
+    // Bare-metal and other single-threaded platforms: `z_task_attr_t` is still
+    // `void *` there (see `c/platform/bare-metal/platform.h`) and no task is
+    // ever created, so there is nothing to configure.
     (void)read_priority;
     (void)read_stack_bytes;
     (void)lease_priority;
@@ -1261,15 +1291,17 @@ int32_t zpico_open(zpico_session_t* session) {
     /* issue 0348 / phase-328 — copy the process-wide task-spawn DEFAULTS (set by
      * the board via zpico_set_task_config before any session existed) into this
      * session, and re-point the opts at the session's OWN attr copy. */
-#if defined(ZENOH_ZEPHYR)
-    /* Issue 0626 — Zephyr has no board-side caller for `zpico_set_task_config`
-     * (the FreeRTOS board is its only one in the tree), so before this the
-     * transport tasks got NULL attrs and an unstatable priority. Apply the
-     * compile-time default here when nothing set one explicitly; a board that
-     * DOES call the setter first wins, because that sets `configured`.
+#if defined(ZENOH_ZEPHYR) || defined(ZENOH_THREADX)
+    /* Issue 0626 — neither Zephyr nor ThreadX has a board-side caller for
+     * `zpico_set_task_config` (the FreeRTOS board is its only one in the tree),
+     * so before this the transport tasks got NULL attrs and an unstatable
+     * priority. Apply the compile-time default here when nothing set one
+     * explicitly; a board that DOES call the setter first wins, because that
+     * sets `configured`.
      *
-     * Stacks are passed as 0 deliberately: this path is stating a priority, and
-     * zenoh-pico's own stack default is the one that has been exercised. */
+     * Stacks are passed as 0 deliberately: this path is stating a priority.
+     * Zephyr reads 0 as "leave the port default alone", and ThreadX ignores the
+     * field outright (its stack is embedded in `_z_task_t`). */
     if (!g_default_read_task_configured) {
         zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u, ZPICO_LEASE_TASK_PRIORITY, 0u);
     }

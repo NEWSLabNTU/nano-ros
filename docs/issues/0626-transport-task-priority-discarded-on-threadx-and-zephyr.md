@@ -185,9 +185,93 @@ one-line log of the resolved value at session open — worth adding, since nothi
 today makes this observable from the outside, which is how it stayed unsettable
 without anyone noticing.
 
-### ThreadX: unchanged
+### ThreadX: unchanged (superseded — see below)
 
 Still `(void)`'d. It needs the `z_task_attr_t` widening described above, which
 touches the generic and bare-metal headers as well, and it has no board caller
 either. Left for a separate change rather than bundled in behind a Zephyr
 verification gap.
+
+
+## 2026-08-16 (later) — ThreadX done, and verified at RUNTIME
+
+Both platforms are now settable. ThreadX turned out to be the easier of the two
+to PROVE, which is the opposite of what the Zephyr entry above expected.
+
+### What ThreadX actually had
+
+Narrower than "no knob": `c/platform/threadx/platform.h` already carried a
+compile-time `Z_TASK_PRIORITY` (14), `#ifndef`-guarded and overridable. But
+`_z_task_init` opened with `(void)attr;` and passed that one constant to
+`tx_thread_create` for EVERY zenoh task — read, lease and tx-flush alike — so
+`zpico_set_task_config`'s per-task arguments reached nothing and no
+configuration path in nano-ros set the constant either.
+
+### The change
+
+* **`z_task_attr_t` widened to `nros_platform_task_attr_t`** in BOTH headers a
+  ThreadX build sees. That pairing is load-bearing: `task.c` does a TU-local
+  `#undef NROS_PLATFORM_ALIASES` to reach the concrete TX_THREAD-flavoured
+  `_z_task_t`, so it reads `threadx/platform.h` while every other TU reads
+  `nros_zenoh_generic_platform.h`. The shim ALLOCATES the attr and `task.c`
+  DEREFERENCES it — one header changed alone would be a silent type confusion
+  across that seam (issue 0135's shape). `bare-metal/platform.h` deliberately
+  stays `void *`: it is single-threaded, creates no task, and lacks the include.
+* **`_z_task_init` honours the attr**, inverting the band because ThreadX
+  documents priority as "0 through (TX_MAX_PRIORITIES-1), where a value of 0
+  represents the highest priority" while the band counts larger as more urgent.
+  Scaled against `TX_MAX_PRIORITIES` rather than a literal 32, since it is
+  configurable (32..1024).
+* **`preempt_threshold` tracks the resolved priority.** ThreadX requires it to
+  be `<= priority`; leaving the old fixed `Z_TASK_PREEMPT_THRESHOLD` would make
+  any attr-supplied priority numerically below it ILLEGAL, and
+  `tx_thread_create` would fail with `TX_PRIORITY_ERROR` — a scheduling knob
+  that breaks thread creation when used.
+* **`stack_bytes` is refused, at both ends.** The ThreadX `_z_task_t` embeds its
+  stack at the compile-time `Z_TASK_STACK_SIZE`, so there is no larger region to
+  point at; silently accepting a bigger number would be worse than ignoring it.
+* **The knob lives in `config/threadx/nros-platform.toml`** (`defines_env`,
+  so environment-settable with a default), because ThreadX's shim is compiled by
+  the manifest-driven unified builder — `build_c_shim` is explicitly skipped for
+  this platform, so a define added there would never have reached it. Listed in
+  `rerun_if_env_changed` too: without that, changing the value in the
+  environment would not rebuild the shim and the old one would silently persist,
+  which is this issue's own failure mode.
+
+### Default 17, not 16, on purpose
+
+17 is the band value that maps back to ThreadX **14** — the `Z_TASK_PRIORITY`
+every zenoh task took before. 16 would land on 15. Plumbing a value through
+should not also retune it: a one-step scheduling shift on an RTOS is exactly
+the kind of change that resurfaces later as a timing flake nobody connects back
+to this commit. Retuning is now a one-line edit, which is the point.
+
+### Verified
+
+* `just threadx_riscv64 build-examples` green;
+* **runtime**: the ThreadX RISC-V talker on QEMU opens its zenoh session and
+  publishes (88 messages on the first run, 74 on the re-run with the
+  behaviour-preserving default, 0 errors both times). This is a real check
+  rather than a plumbing one — a priority `tx_thread_create` rejects returns
+  `TX_PRIORITY_ERROR` and there would be no session at all;
+* `check-kconfig-knob-forwarding` green.
+
+### Two things the build corrected mid-change
+
+* **The gate caught a wrong home for the Zephyr knob.** Routing it through
+  `_nros_resolve_knob` looked tidier, and `check-kconfig-knob-forwarding`
+  rejected it: that resolver is for knobs with a *Rust* reader, because a Zephyr
+  Rust image inherits none of cmake's env exports (issue 0460). A priority gates
+  no layout and has one consumer, so it forwards from `CONFIG_*` directly.
+* **`size_probe.c` needed the same include.** Widening the typedef made the
+  platform headers pull `<nros/platform.h>`, and the probe compiled with a
+  narrower include set — `fatal error: nros/platform.h: No such file or
+  directory` on the ThreadX cross build until it was added.
+
+### Still open
+
+`build-fixture-extras` on this lane fails at link with `rust-lld: unable to find
+library -lnosys`, from `cmake/toolchain/riscv64-threadx.cmake`'s
+`if(EXISTS .../libnosys.a)` conditional. This change adds no link flags and the
+Rust examples link fine, so it is not from here — but no clean control was run
+for it, and it wants its own issue.

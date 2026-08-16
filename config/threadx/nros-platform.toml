@@ -28,7 +28,24 @@ defines = [
   "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
 ]
 defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
-defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" } }
+# Issue 0626 — the zenoh read/lease task priority, on the NORMALISED 0-31 band
+# (0 = least urgent, larger = more urgent; phase-364 W5). `task.c` INVERTS it for
+# ThreadX, which counts 0 as the highest priority.
+#
+# Settable here rather than in `build_c_shim`: ThreadX's shim is compiled by the
+# manifest-driven unified builder (`extra_sources` below), and `build_c_shim` is
+# explicitly skipped for this platform — a define added there would never have
+# reached the lane that needs it.
+#
+# 17, not the 16 used elsewhere, and the difference is deliberate: 17 is the
+# band value that maps BACK to ThreadX 14, the `Z_TASK_PRIORITY` every zenoh
+# task took before this change. (31 - round(31*17/31) = 14; 16 would land on
+# 15.) Plumbing a value through should not also retune it — a one-step
+# scheduling shift on an RTOS is exactly the kind of change that resurfaces
+# later as a timing flake nobody connects to this commit.
+#
+# Retuning it is now a one-line edit here, which is the point of the issue.
+defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" }, ZPICO_READ_TASK_PRIORITY = { env = "NROS_ZENOH_READ_PRIORITY", default = "17" }, ZPICO_LEASE_TASK_PRIORITY = { env = "NROS_ZENOH_LEASE_PRIORITY", default = "17" } }
 include = ["system/common"]
 extra_sources = [
   { path = "{nros}/c/platform/threadx/task.c" },
@@ -77,6 +94,12 @@ include_paths = [
 # forever. The include paths are watched by CONTENT in `runner.rs` instead.
 rerun_if_env_changed = [
   "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
+  # Issue 0626 — VALUE knobs (a small integer), so they belong here: 0491's
+  # exclusion is for PATH variables, which have several spellings for one
+  # directory. Without these, changing the priority in the environment would
+  # not rebuild the shim and the old value would silently persist — the same
+  # "declared value never took effect" failure the issue is about.
+  "NROS_ZENOH_READ_PRIORITY", "NROS_ZENOH_LEASE_PRIORITY",
 ]
 [[build.zenoh.include_paths_conditional]]
 path = "{env:THREADX_DIR}/ports/linux/gnu/inc"

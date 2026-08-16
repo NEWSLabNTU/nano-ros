@@ -19,6 +19,11 @@
 #include "zenoh-pico/config.h"
 #include "tx_api.h"
 
+/* Issue 0626 — `nros_platform_task_attr_t` for the `z_task_attr_t` typedef
+ * below. The generic alias header already includes this; both must, or the two
+ * views of the type cannot agree. */
+#include <nros/platform.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,7 +64,18 @@ typedef struct {
     TX_EVENT_FLAGS_GROUP done_flags;
 } _z_task_t;
 
-typedef void *z_task_attr_t;  // Not used
+/* Issue 0626 — was `void *` and documented "Not used", because `_z_task_init`
+ * below discarded it and every zenoh task took the compile-time
+ * `Z_TASK_PRIORITY`. It now carries the platform ABI's attributes, so a caller
+ * can state a per-task priority.
+ *
+ * MUST match `nros_zenoh_generic_platform.h`'s typedef: a ThreadX build sees
+ * this header only inside `task.c` (which does a TU-local
+ * `#undef NROS_PLATFORM_ALIASES` to reach the concrete TX_THREAD-flavoured
+ * `_z_task_t`) and the generic one everywhere else. The shim ALLOCATES the
+ * attr and `task.c` DEREFERENCES it, so a disagreement here is a silent
+ * type confusion across that seam — issue 0135's shape. */
+typedef nros_platform_task_attr_t z_task_attr_t;
 
 typedef TX_MUTEX _z_mutex_rec_t;
 typedef TX_MUTEX _z_mutex_t;

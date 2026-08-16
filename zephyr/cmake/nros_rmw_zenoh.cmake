@@ -165,11 +165,26 @@ zephyr_compile_definitions(
     ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_ZPICO_GET_POLL_INTERVAL_MS}
     ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}
     ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}
-    # Issue 0626 — the read/lease task priority, normalized 0-31. Before this
-    # the shim's Zephyr branch configured only a stack size, so the transport
-    # tasks' priority could not be stated at all on this platform.
-    ZPICO_READ_TASK_PRIORITY=${NROS_RESOLVED_ZPICO_READ_TASK_PRIORITY}
-    ZPICO_LEASE_TASK_PRIORITY=${NROS_RESOLVED_ZPICO_LEASE_TASK_PRIORITY}
 )
+
+# Issue 0626 — the read/lease task priority, normalized 0-31.
+#
+# Read from CONFIG_* directly, NOT through `_nros_resolve_knob`, and that is
+# deliberate. The resolver exists for knobs with TWO consumers — a `build.rs`
+# env var and a C define — that must agree or a struct's size splits between
+# the Rust and C halves (issues 0135 / 0316). `check-kconfig-knob-forwarding`
+# enforces exactly that pairing, and correctly rejected these two when they
+# were routed through the resolver: no Rust build script reads them, because
+# they gate no layout. One consumer, one path.
+#
+# `DEFINED`, not truthiness: 0 is a legal priority on this band (the least
+# urgent), and a bare `if(CONFIG_...)` would silently drop it — the same
+# "declared value discarded" failure this issue exists to fix.
+if(DEFINED CONFIG_NROS_ZENOH_READ_PRIORITY)
+    zephyr_compile_definitions(ZPICO_READ_TASK_PRIORITY=${CONFIG_NROS_ZENOH_READ_PRIORITY})
+endif()
+if(DEFINED CONFIG_NROS_ZENOH_LEASE_PRIORITY)
+    zephyr_compile_definitions(ZPICO_LEASE_TASK_PRIORITY=${CONFIG_NROS_ZENOH_LEASE_PRIORITY})
+endif()
 
 endfunction()

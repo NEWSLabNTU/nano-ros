@@ -70,7 +70,23 @@ typedef uint8_t _z_task_t[NROS_ZP_TASK_STORAGE_BYTES];
 typedef uint8_t _z_mutex_t[NROS_ZP_MUTEX_STORAGE_BYTES];
 typedef uint8_t _z_mutex_rec_t[NROS_ZP_MUTEX_STORAGE_BYTES];
 typedef uint8_t _z_condvar_t[NROS_ZP_CONDVAR_STORAGE_BYTES];
-typedef void *z_task_attr_t;
+/* Issue 0626 — the task attributes are the platform ABI's, not an opaque.
+ *
+ * This was `void *`, which is why a transport task's priority could not be
+ * stated on any alias platform: `zp_task_read_options_t.task_attributes` is a
+ * `z_task_attr_t *`, so the only thing the shim could hand down was a pointer
+ * to a pointer. `platform_aliases.c` forwards that value straight to
+ * `nros_platform_task_init`, which reads it as a `nros_platform_task_attr_t *`
+ * — correct only while the value is always NULL, which it was.
+ *
+ * Naming the real type makes the forward type-correct and lets a caller state
+ * a priority on the normalised band (phase-364 W5). The POINTER width does not
+ * change, so `zp_task_read_options_t`'s layout is unaffected; what changes is
+ * what the pointer points at, which is why `threadx/platform.h` — the one
+ * other header a ThreadX build sees, via `task.c`'s TU-local
+ * `#undef NROS_PLATFORM_ALIASES` — moves in the same commit. Two headers
+ * disagreeing about this type is issue 0135's shape. */
+typedef nros_platform_task_attr_t z_task_attr_t;
 
 /* -------------------------------------------------------------------------
  *  Clock + wall-clock time — both are millisecond `uint64_t`.

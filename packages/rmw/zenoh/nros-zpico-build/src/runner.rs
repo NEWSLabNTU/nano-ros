@@ -915,6 +915,13 @@ fn probe_net_type_sizes(
     // <zenoh_generic_config.h> via the stale c/platform copy (deleted);
     // give every probe the OUT_DIR-generated config the library uses.
     build.include(out_dir.join("zenoh-config"));
+    // Issue 0626 — the platform headers now name `nros_platform_task_attr_t`
+    // for `z_task_attr_t`, so the probe needs `<nros/platform.h>` like every
+    // other TU that includes them. The probe measures the NET types, but it
+    // reaches them through the same platform header, so its include set has to
+    // match — it failed with `nros/platform.h: No such file or directory` on
+    // the ThreadX cross build until this was added.
+    build.include(nros_build_paths::nros_platform_cffi_include());
 
     // Set the same platform defines as the main build so platform.h selects
     // the correct platform header (unix.h, freertos/lwip.h, void.h, etc.)
