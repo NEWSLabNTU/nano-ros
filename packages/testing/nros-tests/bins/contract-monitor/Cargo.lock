@@ -462,6 +462,7 @@ version = "0.5.0"
 dependencies = [
  "atomic-waker",
  "heapless",
+ "log",
  "nros-core",
  "nros-log",
  "nros-params",
