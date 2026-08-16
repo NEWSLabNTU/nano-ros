@@ -31,3 +31,18 @@ nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(crate::register);
 // `mod app_main;` is unconditional, so the guard is always evaluated.
 #[cfg(all(feature = "rmw-cyclonedds", not(feature = "alloc")))]
 compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclonedds,alloc)");
+
+// phase-366 W5.c — this image's ending, declared where the image is built.
+//
+// In the GLUE module, not `lib.rs`: it must be in the lib's module tree (the
+// `staticlib` is a FINAL ARTIFACT and needs the lang item on its own account —
+// RFC-0077's staticlib qualification, which is also why it cannot live in
+// `main.rs`), and `lib.rs` is node LOGIC, compared byte-for-byte against every
+// other scheduled-platform copy by `example_portability`. A `#[panic_handler]`
+// is boot glue in exactly the sense this file's header describes, so putting it
+// here satisfies both: the image still declares its own ending, visibly, and
+// the node body stays portable. Declaring it in `lib.rs` diverged all six
+// copies from `native` (2026-08-16).
+//
+// Swap for `use panic_halt as _;`, or write a handler that logs and reboots.
+nros::panic_to_platform!();
