@@ -210,11 +210,17 @@ the OWNER and not just the count. `nros-c` used to define one under a gate
 identical to `nros-platform`'s, separated only by a hand-written note in
 `nros-cpp`'s manifest; its source now records that it "used to".
 
-**`#[panic_handler]` — three providers, no clause.**
+**`#[panic_handler]` — ONE library provider left, and the fix is in flight.**
 
-    packages/api/nros-c/src/lib.rs:160
-    packages/boards/nros-board-nuttx/src/lib.rs:512
-    packages/boards/nros-board-threadx-qemu-riscv64/src/lib.rs:402
+    packages/api/nros-c/src/lib.rs:160   (gated panic-spin, not std, not panic-halt)
+
+CORRECTION: an earlier revision of this note counted THREE, adding
+`nros-board-nuttx` and `nros-board-threadx-qemu-riscv64`. That measurement was
+already stale when written — phase-366 W5.d had removed both, and the rebase
+that pulled it landed between my grep and this paragraph. Both files now carry
+only the note explaining the removal, which is what my grep's context matched.
+The lesson is the one this tree keeps relearning: a measurement is only true as
+of a tree state, and mine was not the tree state I was writing about.
 
 ARCHITECTURE.md §2 states both singletons in ONE sentence — "Exactly one
 `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
@@ -223,10 +229,28 @@ sentence and not the second. That is the issue-0196 shape this tree keeps
 finding: a gate narrower than the rule it enforces, and here the narrowing is
 invisible because the rule reads as one statement.
 
-**Why this matters for the direction.** The allocator was fixed by making one
-crate the owner and gating that fact, NOT by making the selection cleverer. The
-panic handler is the same shape with an extra constraint — a `no_std` image
-needs a handler that a hosted one must not have, and boards legitimately want
-their own — so "one owner" is not directly transplantable. But it does answer
-the framing question this issue opens with: the invariant became real when
-something asserted it, and nothing asserts it for `#[panic_handler]` today.
+**And the direction is already decided — by RFC-0077, which this issue should
+defer to.** "One owner" is indeed not transplantable, and RFC-0077 says why in
+sharper terms than this issue does: §2 conflates three separable concerns.
+
+| concern | question | belongs to |
+| --- | --- | --- |
+| implementation | *how* does malloc/panic work here? | the PLATFORM |
+| installation | which artifact carries the lang item? | the LINK ROOT |
+| policy | what should a panic DO? | the IMAGE |
+
+The allocator is placement-only — the image chooses WHERE the static lives, never
+WHAT it forwards to, because zenoh-pico, CycloneDDS and the RTOS all allocate
+from the same arena and a second heap would silently falsify
+`nros_platform_heap_used_bytes`. The panic handler is a free POLICY choice, and
+nothing constrains it beyond "exactly one".
+
+So the asymmetry recorded above is real but its resolution is the opposite of
+what I implied: §2's sentence gets AMENDED (phase-366 W5.f — "panic's selector is
+the image, not `platform-<rtos>`"), rather than the gate widened to enforce it.
+The rule was wrong for one of its two halves.
+
+Remaining, per phase-366: **W5.e** retires `panic-spin` from `nros-c`/`nros-cpp`,
+which removes the last library-owned handler above; **W5.f** amends §2. W6's
+`check-archive-lang-items` already counts per LINK LINE — note it catches
+duplication and cannot catch ABSENCE, which is why W5.d ordering mattered.

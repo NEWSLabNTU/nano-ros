@@ -551,3 +551,83 @@ panic does. So the answer is to couple INSTALLATION (one owner, one switch,
 exactly as the board argues) and decouple POLICY (the image names the panic
 behaviour; the allocator has only one sensible answer and stays with the
 platform).
+
+
+## Review feedback 2026-08-16 — two gaps in the Rust-entry framing
+
+Raised by the maintainer against the W5 surface. Both are about the same
+assumption: that "the image" is always a Rust entry crate that can write a line.
+
+### 1. A mandatory `panic_to_platform!()` line is not the Rust convention
+
+In `no_std` Rust an image does not normally *write* a framework line to get a
+panic handler. It either pulls one in as a dependency (`use panic_halt as _;`,
+`use esp_backtrace as _;`) or writes `#[panic_handler]` itself. Requiring
+`nros::panic_to_platform!()` beside `nros::main!()` adds a second obligatory
+line that no other `no_std` crate asks for, and the failure mode when it is
+forgotten is a link error about a missing lang item rather than anything that
+names this framework.
+
+The RFC's stated reason for keeping it separate — "emitting one silently from
+`nros::main!()` would collide with every image that already declares its own" —
+holds only for an UNCONDITIONAL emit. `main!()` is already a macro that takes
+arguments, so the default can be emitted and suppressed explicitly:
+
+```rust
+nros::main!();                     // default: panics route to nros_platform_panic
+nros::main!(panic = "own");        // this image declares its own handler
+```
+
+The opt-out keeps what the RFC actually cares about — the image says what it
+wants, once, visibly — while removing the line every image has to remember.
+`esp-backtrace` and `panic-semihosting` images write the opt-out; they are still
+right, and they are still the ones who said so.
+
+**A constraint any variant must respect:** Rust has no weak or overridable lang
+item. "Default that the image overrides" cannot be expressed at link time — two
+`#[panic_handler]`s is a compile error, not an override. So a default has to be
+suppressible AT THE EMIT SITE (a macro argument or a cargo feature) and can
+never be a fallback the linker discards.
+
+### 2. A C/C++ entry package cannot write any of these lines
+
+`nros-c` and `nros-cpp` are `crate-type = ["staticlib", …]`, and
+`nros-cpp/Cargo.toml` already records the consequence:
+
+> its `[lib] crate-type` includes `staticlib`/`cdylib`, so rustc emits those
+> final artifacts for the dep too; **on a no_std target each needs a
+> `#[panic_handler]`**
+
+rustc requires the lang item WHEN THE STATICLIB IS COMPILED. By the time cmake
+links the C/C++ executable, that decision is already made and baked into
+`libnros_c.a`. A C or C++ entry therefore cannot supply a Rust lang item at all —
+there is no Rust crate in the image for it to live in, and the link root is not
+a Rust compilation unit.
+
+So W5.e's plan — "`panic-halt` stops being a library feature and becomes what it
+always should have been, a dependency the IMAGE names" — is a Rust-entry answer.
+On the C/C++ path there is nothing to name it. Today the choice is made by
+`cmake/NanoRosFeatureSet.cmake`, which hardcodes it per platform:
+
+```cmake
+list(APPEND _feats alloc panic-halt platform-freertos)     # :120
+list(APPEND _feats alloc panic-halt platform-threadx)      # :126, :140
+list(APPEND _feats alloc panic-halt "platform-${_FS_PLATFORM}")  # :147
+```
+
+That is the same defect this RFC exists to fix, one language over: a LIBRARY
+decision, made on the image's behalf, by a table the image's author never sees
+and has no documented way to override.
+
+**What the C/C++ path needs is the same shape expressed in its own vocabulary.**
+The policy still belongs to the image; the image is a cmake target rather than a
+Rust crate, so the knob belongs on `nano_ros_entry()` and lowers to the cargo
+feature the staticlib is built with — e.g. `nano_ros_entry(… PANIC platform|halt|own)`,
+defaulting to the platform route and requiring `own` before the user supplies a
+strong symbol themselves. The invariant is unchanged; only the surface differs.
+
+Worth stating plainly in §2's amendment (W5.f): **the image owns the panic
+policy, and how it says so depends on what the image is written in.** A Rust
+entry says it in a macro; a C/C++ entry says it in the cmake call that builds it.
+Leaving the second unaddressed would close this RFC with the C/C++ half of the
+tree still in exactly the state the RFC describes as wrong.
