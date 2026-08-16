@@ -127,6 +127,25 @@ clean run (rc=0), and no coordinate file — where assertion 1 reports
 (rc=1). That third case matters: a budget that quietly checks nothing when its
 input is missing is worse than no budget.
 
+## Follow-up (2026-08-16): the two classes are invocation-dependent, by design
+
+Commit `497a2ee09` recorded that `baremetal_run_plan_runtime` still reported the
+capability text under `just test-all` while the lane skip verified by hand, and
+declined to guess at it. The cause is the invocation, not the code — measured
+both ways on the same binary:
+
+| run | class emitted |
+| --- | --- |
+| `NROS_TEST_SCOPE=native cargo nextest … --test baremetal_run_plan_runtime` | `[SKIPPED:lane] qemu/run-plan: out of lane` |
+| same command with no scope | `[SKIPPED] qemu-baremetal-main-e2e fixture not prebuilt` |
+
+`just ci` sets `NROS_TEST_SCOPE=native` (justfile tier-1 recipe); a bare
+`just test-all` sets nothing, and unset means ALL (`lane_scope`'s stated rule) —
+so the cell IS in lane there, and a genuinely absent fixture is a genuinely
+correct capability skip. Reading a bare run's class as tier 1's is the mistake.
+It also means the two classes cannot be compared across invocations: quote the
+scope alongside any skip-class claim.
+
 ## What remains: direction 1 only
 
 Preferring DESELECTION over an in-test skip is still open and is now the whole
