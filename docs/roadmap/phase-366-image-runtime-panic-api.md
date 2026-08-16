@@ -1,27 +1,30 @@
 # Phase 366 — The panic platform API, and one fatal path per image
 
-**Status (2026-08-16).** IN PROGRESS — W1, W2, W3, W4 and W6 landed; W5 is
-HALF done and is where the remaining risk is.
+**Status (2026-08-16).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W5.e and
+W5.f remain.
 
-Landed: the ABI entry point with its regenerated mirror and `PlatformPanic`
-trait (W1); five C ports and two bare-metal Rust ports mapped onto their native
-fatal paths (W2, W3); `nros-c`'s `#[panic_handler]` forwarding to the ABI
-instead of spinning silently (W4); and the lang-item gate extended to
-`rust_begin_unwind`, mutation-tested both directions — two providers exit 1, one
-exits 0 (W6). Verified across `lane=tier2`: zephyr, threadx-linux, nuttx, esp32,
-qemu and freertos all build.
+The lang item now belongs to the image on all three boards. `nros-board-nuttx`,
+`nros-board-threadx-qemu-riscv64` and `nros-board-mps2-an385-freertos` no longer
+declare or import a `#[panic_handler]`; each keeps its BEHAVIOUR as a strong
+`nros_platform_panic`, and ~23 images declare their own ending —
+`nros::panic_to_platform!()` where the crate deps the facade, the same body
+written out where it does not.
 
-W5 half: the threadx-riscv64 and nuttx boards now EXPORT their behaviour as a
-strong `nros_platform_panic` and their lang items only forward. The lang items
-themselves are still in the boards, because removing them leaves a pure-Rust
-image on those boards with no handler at all — the entry does not supply one
-yet. That is the remaining work, and W6's gate now exists to catch it.
+Two images deliberately keep a different provider and are left alone:
+`logging-smoke-freertos-mps2` and `examples/workspaces/rust/src/freertos_entry`
+use `panic-semihosting`, the smoke bin with `features = ["exit"]` so a panic ends
+the QEMU run instead of hanging the harness. That is the design working, not an
+exception to it.
 
-Two families are red for reasons outside this phase: threadx-riscv64 on #0629
-(the lld wrapper passes no `-L`, so the CycloneDDS C++ link cannot find
-`-lstdc++` — unmasked by this phase's header edit, not caused by it), and one
-native run where `ar` died with "Bus error (core dumped)", which retested clean
-SOLO and is the under-load flake.
+Verified per family as each migrated: ThreadX-RV64, NuttX and FreeRTOS fixtures
+all build, zero panic-handler errors, `check-archive-lang-items` green across 248
+link lines.
+
+**The full tier-2 sweep is currently blocked by an unrelated upstream red**:
+`e228a8e80 feat(#626)` added an unguarded `sched_get_priority_min/max` to
+`zpico.c`, which Zephyr's libc declares only behind `CONFIG_POSIX_API` — the same
+family as the `pthread_t` break earlier in this phase. No zpico or zephyr file is
+touched by this phase's commits.
 
 Implements: RFC-0077. Tracked issues: 0618 (the design defect), 0617 (the two
 failure modes it produces).
