@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-16). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the platform task ABI gained storage probes, `scheduler-os-priority` and `signal-fd-wake` are ported off `std::thread`, and the condvar wake path is deleted — `nros-node` 106/76 -> 91/40. The manifest half (nine crates' `std` features, 54 consumers, 8 generated crates, 2 template copies) is not started.** The campaign
+**Status (2026-08-16). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
