@@ -1,6 +1,8 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-08-16). W3 DONE; W1 and W2 not started.** Three orchestration
+**Status (2026-08-16). W3 DONE; W1 BLOCKED, W2 blocked behind it — nothing in
+this phase is actionable until [phase-356](phase-356-test-evidence-and-measurement-trust.md)
+W2 emits a machine-readable WCET artifact (#403).** Three orchestration
 issues that are one dependency chain, not three tasks.
 
 * **W1 (#404, the WCET schema)** — **BLOCKED on #403**, which this phase failed
