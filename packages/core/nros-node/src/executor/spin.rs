@@ -135,7 +135,10 @@ impl<'s> Executor<'s> {
                         }
                         nros_rmw_cffi::BackendResolution::Single(_) => unreachable!(),
                     };
-                    std::eprintln!("nros: cannot select an RMW backend — {why}");
+                    nros_log::nros_error!(
+                        nros_log::get_logger("nros"),
+                        "cannot select an RMW backend — {why}"
+                    );
                 }
                 let _ = other;
                 return Err(NodeError::Transport(TransportError::InvalidConfig));
@@ -167,8 +170,10 @@ impl<'s> Executor<'s> {
             // exhausted session pool (`InvalidConfig`) and a router that is not
             // there produced the same sentence. Same lesson as the selection
             // arm above: say which failure happened.
-            #[cfg(feature = "std")]
-            std::eprintln!("nros: RMW session open failed — {e:?}");
+            nros_log::nros_error!(
+                nros_log::get_logger("nros"),
+                "RMW session open failed — {e:?}"
+            );
             NodeError::Transport(e)
         })?;
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized

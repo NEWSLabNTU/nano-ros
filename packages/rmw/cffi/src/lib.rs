@@ -1345,11 +1345,16 @@ impl CffiSession {
         // post-open backend_data state so callers see which of
         // the two failure paths fired. Gated on env var so
         // production traffic stays quiet.
+        // issue 0589 — `nros_log`, never std stdio (fatal on Zephyr
+        // native_sim). The env gate stays: it decides whether to FORMAT, which
+        // is the cost worth avoiding on a hot open path; the level would only
+        // decide whether to emit.
         #[cfg(feature = "std")]
         if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
-            std::eprintln!(
-                "[nros-rmw-cffi] open: locator={locator:?} mode={mode} ret={ret} backend_data={:p}",
-                view.backend_data,
+            nros_log::nros_info!(
+                nros_log::get_logger("nros_rmw_cffi"),
+                "open: locator={locator:?} mode={mode} ret={ret} backend_data={:p}",
+                view.backend_data
             );
         }
         if ret != NROS_RMW_RET_OK {

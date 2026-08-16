@@ -189,6 +189,12 @@ nros-core = { version = "0.5.0", path = "../../core/nros-core", default-features
 # supported shape — should not pay for a macro it never invokes.
 nros-macros = { version = "0.5.0", path = "../../core/nros-macros", optional = true }
 nros-node = { version = "0.5.0", path = "../../core/nros-node", default-features = false }
+# issue 0589 — the diagnostic sink. `std::eprintln!` is FATAL on Zephyr
+# `native_sim` (recursive `zvfs_write`, SIGSEGV from stack exhaustion), and this
+# crate carries no `platform-*` feature to gate on (ARCHITECTURE §2), so the sink
+# has to be the one that already knows where it is. Adds an EDGE, not a crate:
+# `nros-node` above deps `nros-log` non-optionally, so it is already in the graph.
+nros-log = { version = "0.5.0", path = "../../core/nros-log" }
 nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
 nros-rmw-cffi = { version = "0.5.0", path = "../../rmw/cffi", default-features = false, optional = true }
 # Phase 248 C5c — the optional concrete-backend deps (`nros-rmw-zenoh`,

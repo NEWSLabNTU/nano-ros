@@ -671,9 +671,16 @@ impl Session for ZenohSession {
             Err(TransportError::Timeout) => Ok(0),
             r => r,
         };
-        #[cfg(feature = "std")]
+        // issue 0589 — was a bare `std::eprintln!("DBG …")`, which is a
+        // leftover debug print on the executor's hot path AND fatal on Zephyr
+        // native_sim (std stdio recurses in `zvfs_write` until the stack is
+        // gone). `trace` is the level a per-spin line belongs at; the sink
+        // drops it unless someone asked.
         if let Err(ref e) = res {
-            std::eprintln!("DBG drive_io err: {:?}", e);
+            nros_log::nros_trace!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "drive_io error: {e:?}"
+            );
         }
         // Phase 124.B.3 — when zenoh's spin_once observed any work
         // (n > 0), call the runtime-supplied wake callback so the

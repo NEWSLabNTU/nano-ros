@@ -17,6 +17,16 @@ categories = ["embedded", "no-std", "api-bindings"]
 name = "nros_rmw_cffi"
 
 [dependencies]
+# issue 0589 — the diagnostic sink, and the reason there is no `std::eprintln!`
+# left in this crate. Rust std stdio is FATAL on Zephyr `native_sim`:
+# `zvfs_write(1, …)` dispatches to `stdinout_write_vmeth`, which calls
+# `zvfs_write(1, …)` again, and `k_mutex` is recursive, so a diagnostic
+# exhausts the stack and SIGSEGVs the image it was diagnosing. A `no_std` crate
+# cannot gate on the platform (no `platform-*` feature — ARCHITECTURE §2), so
+# the sink has to be the one that already knows where it is. Costs nothing in a
+# real image: `nros-node` deps `nros-log` non-optionally, so anything that links
+# an RMW backend already has it.
+nros-log = { workspace = true }
 nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
 

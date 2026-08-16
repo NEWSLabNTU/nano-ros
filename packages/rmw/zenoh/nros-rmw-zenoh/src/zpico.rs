@@ -318,15 +318,21 @@ impl Context {
                 // is how an exhausted session pool spent two months looking like
                 // `Transport(ConnectionFailed)` — a router/network problem, and
                 // chased as one.
-                #[cfg(feature = "std")]
-                std::eprintln!(
-                    "nros: zenoh session pool exhausted — this build allows \
+                // issue 0589 — `nros_log`, not `std::eprintln!`: std stdio
+                // SIGSEGVs a Zephyr native_sim image, which would replace the
+                // one explanation this failure has with a bare core dump. It
+                // also reaches `no_std` targets, where the old
+                // `cfg(feature = "std")` arm left the pool exhaustion mute —
+                // and firmware is where a fixed-size pool actually fills.
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "zenoh session pool exhausted — this build allows \
                      ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
                      application opens exactly ONE session; two usually means \
                      something opened a second executor instead of reusing the \
                      global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
                      extra session is genuinely wanted (a bridge).",
-                    crate::zpico::ZPICO_MAX_SESSIONS,
+                    crate::zpico::ZPICO_MAX_SESSIONS
                 );
                 return Err(ZpicoError::Full);
             }
@@ -404,15 +410,21 @@ impl Context {
                 // is how an exhausted session pool spent two months looking like
                 // `Transport(ConnectionFailed)` — a router/network problem, and
                 // chased as one.
-                #[cfg(feature = "std")]
-                std::eprintln!(
-                    "nros: zenoh session pool exhausted — this build allows \
+                // issue 0589 — `nros_log`, not `std::eprintln!`: std stdio
+                // SIGSEGVs a Zephyr native_sim image, which would replace the
+                // one explanation this failure has with a bare core dump. It
+                // also reaches `no_std` targets, where the old
+                // `cfg(feature = "std")` arm left the pool exhaustion mute —
+                // and firmware is where a fixed-size pool actually fills.
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "zenoh session pool exhausted — this build allows \
                      ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
                      application opens exactly ONE session; two usually means \
                      something opened a second executor instead of reusing the \
                      global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
                      extra session is genuinely wanted (a bridge).",
-                    crate::zpico::ZPICO_MAX_SESSIONS,
+                    crate::zpico::ZPICO_MAX_SESSIONS
                 );
                 return Err(ZpicoError::Full);
             }

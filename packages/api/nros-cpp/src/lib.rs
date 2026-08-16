@@ -701,6 +701,10 @@ pub unsafe extern "C" fn nros_cpp_init(
 #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
 #[allow(unused_macros)]
 macro_rules! cpp_diag {
+    // nros-allow-std-stdio: this arm is the `not(feature = "platform-zephyr")`
+    // one — the Zephyr arm below routes through `nros_log`, which is what makes
+    // std stdio safe to spell here at all. `check-no-std-stdio` (issue 0589)
+    // otherwise forbids it in a no_std crate.
     ($($arg:tt)+) => { std::eprintln!($($arg)+) };
 }
 
@@ -839,7 +843,12 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
     // So this diagnostic is fatal on exactly the platform whose return code is
     // often the only thing that reaches the console. The mapping below is the
     // part that carries the information; the print is a hosted convenience.
-    #[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
+    // issue 0589 — the `cfg` that used to sit here is GONE, and that is the fix
+    // rather than a tidy-up. It suppressed this diagnostic on Zephyr because
+    // `std::eprintln!` is fatal there; `cpp_diag!` now has a Zephyr arm that
+    // routes through `nros_log`, so gating the CALL SITE only threw the
+    // information away on the one platform whose return code is often all that
+    // reaches the console. The macro picks the sink; callers do not.
     crate::cpp_diag!("nros: NodeError::{err:?}");
     match err {
         E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,

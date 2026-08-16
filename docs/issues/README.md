@@ -397,7 +397,7 @@ redundant, which is why the `cfg` half had to be fixed and not leaned on. Still 
 `not(std)` and positive `std` sites are summed, so a conversion between them reads as no progress.
 See `archived/0597-*`.
 
-**#589** (zephyr, api-cpp, open 2026-08-15) — on `native_sim` ANY Rust `println!`/`eprintln!` recurses
+Recently resolved (2026-08-16): **#589** — on `native_sim` ANY Rust `println!`/`eprintln!` recursed
 forever and SIGSEGVs the image: Zephyr's `stdinout_write_vmeth` is `return zvfs_write(1, buffer, count)` under
 `CONFIG_BOARD_NATIVE_POSIX`, called FROM `zvfs_write(1, …)` — no termination, `k_mutex` is recursive so it
 never deadlocks, just exhausts the stack (`lock_count = 104756`). C/C++ `printf` uses picolibc's console hook
@@ -405,7 +405,17 @@ and is unaffected, which is why it stayed latent; the config is IDENTICAL in cel
 every native_sim image and fires only when a Rust std stdio call is reached. Found when #0557's fix routed an
 error through #0436's `eprintln!("nros: NodeError::…")` — `x/s buf` in the backtrace is that literal. Worked
 around by gating that one site on `not(feature = "platform-zephyr")`; 5 more `std::eprintln!` sites in
-`nros-cpp` are the same landmine. See `0589-*`. (2026-08-15)
+`nros-cpp` were the same landmine. **Resolved 2026-08-16:** all nine `std::`-qualified stdio sites in `no_std`
+crates route through `nros_log`, which on Zephyr reaches `LOG_ERR`/`printk` — the console path C `printf`
+already used safely, never the POSIX fdtable. The call-site `cfg` went AWAY: it stopped the crash by throwing
+the information away on the one platform where a return code is often all you get. Two sites were worse than
+they looked — zenoh's session-pool message, "the ONLY frame that knows why" (#0465), was `cfg(feature = "std")`
+and so mute on the firmware where a fixed pool actually fills, and `shim/session.rs` had a bare `DBG` print on
+the executor's per-spin path. Gated by `check-no-std-stdio` (`just check`): no `std::`-qualified stdio in a
+`#![no_std]` crate's `src/` — exact rather than conservative, because `println!` needs the std prelude, so a
+bare one there is a board's own console macro, and matching it too would flag ~150 correct calls. `--self-test`
+(16 cases) caught two of the gate's own false readings before they landed. Zephyr's `stdinout_write_vmeth` is
+still unfixed upstream. See `archived/0589-*`. (2026-08-16)
 
 Recently resolved (2026-08-15): **#586** — the C++ FFI discarded the backend error at 15 sites
 (`Err(_) => NROS_CPP_RET_TRANSPORT_ERROR`), so a caller saw "transport error" for a too-long name, a

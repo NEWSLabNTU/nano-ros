@@ -384,7 +384,10 @@ fn env_cache() -> &'static EnvCache {
         let locator = std::env::var("NROS_LOCATOR")
             .or_else(|_| {
                 std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                    std::eprintln!("nros: ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead");
+                    nros_log::nros_warn!(
+                        nros_log::get_logger("nros"),
+                        "ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead"
+                    );
                 })
             })
             // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
@@ -397,7 +400,10 @@ fn env_cache() -> &'static EnvCache {
         let mode_str = std::env::var("NROS_SESSION_MODE")
             .or_else(|_| {
                 std::env::var("ZENOH_MODE").inspect(|_| {
-                    std::eprintln!("nros: ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead");
+                    nros_log::nros_warn!(
+                        nros_log::get_logger("nros"),
+                        "ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead"
+                    );
                 })
             })
             .ok();

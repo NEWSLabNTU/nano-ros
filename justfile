@@ -405,7 +405,7 @@ check-fast: \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes check-feature-contract \
+    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2849,6 +2849,23 @@ check-std-census:
 [group("ci")]
 check-feature-contract:
     @python3 scripts/check-feature-contract.py
+
+# Issue 0589 — no `std::`-qualified stdio in a `#![no_std]` crate's `src/`.
+#
+# On Zephyr `native_sim` a Rust `std::eprintln!` does not print, it SIGSEGVs the
+# image: `zvfs_write(1, …)` re-enters itself through `stdinout_write_vmeth` and
+# `k_mutex` is recursive, so the stack runs out. The print that found this was a
+# diagnostic — so an error path got LESS informative the more it said. The Kconfig
+# is identical in cells that pass, which makes it latent in every native_sim image
+# rather than a bug in any one of them; a gate is the only thing that keeps the
+# next `eprintln!` out.
+#
+# Buildless. `--self-test` drives 16 synthetic trees, including the two false
+# readings this gate shipped with and had to fix: a `cfg_attr(not(feature =
+# "std"), no_std)` crate read as hosted, and two calls on one line counted once.
+[group("ci")]
+check-no-std-stdio:
+    @python3 scripts/check-no-std-stdio.py
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.

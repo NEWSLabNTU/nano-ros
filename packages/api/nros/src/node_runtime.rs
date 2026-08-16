@@ -1474,11 +1474,15 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
     // mis-diagnosed twice. Surface the real variant on the error path (rare — this
     // only runs when a declaration is already failing), so the register seam names
     // WHAT failed, not just WHERE.
-    // `#![no_std]` crate with `extern crate std` under the std feature — the
-    // eprintln! macro is not in the no_std prelude, so qualify it.
-    #[cfg(feature = "std")]
+    // issue 0589 — `nros_log`, not `std::eprintln!`: std stdio is fatal on Zephyr
+    // native_sim, and this crate cannot gate on the platform. Routing it here
+    // also means a `no_std` image gets the diagnostic, which the old
+    // `cfg(feature = "std")` arm never delivered.
     if !matches!(e, nros_node::NodeError::ExecutorFull) {
-        std::eprintln!("nros: node declaration failed — NodeError::{e:?}");
+        nros_log::nros_error!(
+            nros_log::get_logger("nros"),
+            "node declaration failed — NodeError::{e:?}"
+        );
     }
     // no_std targets get the same diagnostic through the `log` facade (every
     // RTOS board bridges it); without this the collapse left only an opaque

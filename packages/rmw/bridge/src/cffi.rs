@@ -147,10 +147,15 @@ pub unsafe extern "C" fn nros_init_multi(
         // Issue 0436 — this discarded the only description of WHY the open failed,
         // so a C/C++ caller saw a bare -1 for "backend not registered", "that RMW
         // name is not linked in", "the transport refused" and everything else.
-        // Name it on the error path (std only — the crate is no_std-capable).
-        Err(_e) => {
-            #[cfg(feature = "std")]
-            std::eprintln!("nros: nros_init_multi failed — {_e:?}");
+        // Name it on the error path. Through `nros_log`, not `std::eprintln!`:
+        // issue 0589 — std stdio SIGSEGVs a Zephyr native_sim image, and it
+        // reaches `no_std` targets, which the old `cfg(feature = "std")` arm
+        // never did.
+        Err(e) => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_bridge"),
+                "nros_init_multi failed — {e:?}"
+            );
             NROS_RMW_RET_ERROR
         }
     }
