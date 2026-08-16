@@ -5,7 +5,7 @@ status: open
 type: design
 severity: high
 area: build, provisioning
-related: [issue-0493, issue-0500, issue-0616, rfc-0014, phase-354]
+related: [issue-0493, issue-0500, issue-0616, rfc-0014, phase-354, phase-365]
 ---
 
 ## The two problems, stated
@@ -148,6 +148,12 @@ should report it as removable.
 * Nine workspace trees resolved correctly after their caches were cleared, which
   is why an earlier reading of this as "stale caches" looked right and was
   incomplete: it described the 9 and not the ~180.
+
+## Owned by phase-365
+
+The design and its staged migration (W1 constructor, W2 `nros sdk-path`, W3
+consumers, W4 gate, W5 retire the unversioned prefix) live in
+[phase-365](../roadmap/phase-365-sdk-path-is-constructed-not-searched.md).
 
 ## Scope note
 
