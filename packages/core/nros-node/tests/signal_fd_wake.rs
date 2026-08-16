@@ -9,6 +9,12 @@
 
 #![cfg(all(feature = "signal-fd-wake", feature = "rmw-cffi", target_os = "linux"))]
 
+// issue 0612 — links the POSIX C port that defines `nros_platform_wake_*`.
+// The dev-dependency alone is not enough: rustc drops a dev-dep no code
+// references, and its build script's `cargo:rustc-link-lib` goes with it, so
+// the undefined symbols come back looking exactly as they did before the fix.
+use nros_platform_cffi as _;
+
 use std::time::{Duration, Instant};
 
 use nros_node::executor::*;
@@ -31,13 +37,27 @@ fn signal_fd_wake_unblocks_spin_once() {
         .domain_id(94);
     let mut executor = match Executor::open(&config) {
         Ok(e) => e,
-        Err(_) => {
-            eprintln!(
-                "[SKIPPED] Executor::open failed — no transport. \
-                 signal_fd API exists; runtime test skipped."
-            );
-            return;
-        }
+        Err(e) => panic!(
+            // issue 0612 — this was `eprintln!("[SKIPPED] …"); return;`, which
+            // reports PASS. Both tests took that branch every run, so the wake
+            // path has never actually executed while the suite showed green —
+            // the prohibited shape in CLAUDE.md ("Bare `eprintln!`+`return`
+            // reports PASS — never").
+            //
+            // It fails here rather than skipping because the precondition is
+            // not environmental: `NodeWake` is gated on `all(alloc, rmw-cffi)`,
+            // while `nros_node::mock` is compiled under
+            // `all(test, not(feature = "rmw-cffi"))`. The feature set that makes
+            // the wake path live is exactly the one that removes the only
+            // session a bare `cargo test` can open, and no cffi backend is
+            // registered by this crate. So there is no invocation that both
+            // compiles the code under test and opens a session — a structural
+            // gap, not a missing transport, and it must not read as a skip.
+            "Executor::open failed ({e:?}). See issue 0612: `signal-fd-wake` \
+             needs `rmw-cffi`, which excludes `nros_node::mock`, so no session \
+             can be opened and the wake path cannot be exercised. Resolve the \
+             gating before treating this test as coverage."
+        ),
     };
 
     let fd = executor.signal_fd().expect("signal_fd() failed");
@@ -101,13 +121,12 @@ fn sigusr1_handler_wakes_spin_once() {
         .domain_id(93);
     let mut executor = match Executor::open(&config) {
         Ok(e) => e,
-        Err(_) => {
-            eprintln!(
-                "[SKIPPED] Executor::open failed — SIGUSR1 path \
-                 cannot be exercised end-to-end without a session"
-            );
-            return;
-        }
+        Err(e) => panic!(
+            // issue 0612 — same silent-skip removal as above; see that comment
+            // for why this is a failure and not a skip.
+            "Executor::open failed ({e:?}). See issue 0612: the SIGUSR1 path \
+             cannot be exercised end-to-end without a session."
+        ),
     };
 
     let fd = executor.signal_fd().expect("signal_fd() failed");
