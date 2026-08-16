@@ -93,19 +93,20 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
-**#630** (testing/build, open 2026-08-16) — tier 1 cannot go GREEN on a host with no Zephyr workspace, so
-"the tier anyone can afford per task" has no baseline to compare against there. `CiLane::Tier1 =>
-RunScope::Native` narrows by test NAME (`NROS_TEST_SCOPE=native`); tier 2/nightly narrow by COORDINATE
-(`NROS_TEST_COORDS`), and that is the only path where an out-of-lane fixture SKIPS. `sched_dims_applied` is
-ONE test over `matrix::SCHED_CELLS`, which spans every platform by construction (phase-329 W2 consolidated ten
-files into it precisely so a row could not be forgotten) — so a name takes the whole test or none of it, and
-its four zephyr cells hard-fail on the gated-run branch. That branch is RIGHT (issue 0445: a run that asserted
-freshness must not silently skip); it is being asked a question a name filter cannot answer. Exact converse of
-the tension #482 records from the other side: "name filtering cannot express tier 2 — it is 1-wise over
-platform, so every platform is in it." Deterministic, no `just ci` needed:
-`NROS_TEST_SCOPE=native cargo nextest run -p nros-tests --test sched_dims_applied_e2e` fails, ungated passes.
-Note `check-tier-preconditions` currently says "Tier 1 does not need it" — the sentence someone reads before
-deciding to skip `just zephyr setup`. Three candidate fixes weighed, none measured. See `0630-*`.
+Recently resolved (2026-08-16): **#630** — tier 1 could not go GREEN on a host with no Zephyr workspace, so
+"the tier anyone can afford per task" had no baseline there. `CiLane::Tier1 => RunScope::Native` narrows by test
+NAME; `sched_dims_applied` is ONE test over `matrix::SCHED_CELLS`, which spans every platform by construction
+(phase-329 W2 consolidated ten `*_applied.rs` files into it), so a name takes the whole test or none of it and
+its zephyr cells hit the gated-run panic (#0584 — the scope var means a gate already promised the fixtures).
+**Cause: this is #0571 at a FIFTH site.** `lane_scope::admits(platform)` exists for exactly this and 0571 fixed
+four consolidated consumers; `sched_dims_applied` is the same shape from the same move and was on nobody's
+list — which is why two siblings over the same fixtures behaved differently in one run (`realtime_tiers` passed
+in 21.7 s, four lines apart). Fixed, and it now reports what it dropped (0571's other half): gated `1 ran, 11
+out of lane`, ungated `12 ran` — tier 2/3 untouched. The list WAS the defect, so `lane_scope::{CONSUMERS,
+EXEMPT}` are data now and a test RECOMPUTES the candidate set from the sources (reads a cell list + reads a
+cell's `.platform`), refusing anything in neither; each exemption carries a reason. Mutation-tested both ways.
+Three plausible fixes had been weighed before the cause was found, and all three were wrong.
+See `archived/0630-*`.
 
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy

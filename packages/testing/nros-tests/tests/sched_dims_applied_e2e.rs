@@ -299,9 +299,30 @@ fn sched_dims_applied() {
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let mut skipped: Vec<String> = Vec::new();
+    let mut out_of_lane: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
         let label = format!("{:?}/{}/{}", c.dim, plat_str(c.platform), lang_str(c.lang));
+        // issue 0630 — narrow by LANE here, because no name filter can reach
+        // inside one test. This is issue 0571's fix at its fifth site: that
+        // issue found four consolidated matrix consumers that escape both
+        // halves of `lane-filter.sh native`, and phase-329 W2 had already
+        // folded ten `*_applied.rs` files into this one, making it a fifth
+        // nobody listed. Without this, a tier-1 host reaches the zephyr cells,
+        // finds no west-built image, and — because `NROS_TEST_SCOPE` is set —
+        // takes the gated-run branch and PANICS, so `just ci` cannot go green
+        // on a host with no Zephyr workspace at all.
+        //
+        // The skip is keyed on the CELL'S PLATFORM, never on "the artifact is
+        // missing" (issue 0445): an admitted platform whose fixture is absent
+        // still fails exactly as hard.
+        if !nros_tests::lane_scope::admits(c.platform) {
+            out_of_lane.push(nros_tests::lane_scope::skip_note(
+                c.platform,
+                lang_str(c.lang),
+            ));
+            continue;
+        }
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
         if let Err(p) = res {
             let msg = p
@@ -318,18 +339,38 @@ fn sched_dims_applied() {
     }
     std::panic::set_hook(prev_hook);
 
+    // issue 0571's other half, and it is the half that matters more: say what
+    // did NOT run, always. A cell dropped for lane or fixture reasons used to
+    // vanish into a green verdict unless EVERY cell went, so "1 of 9 ran" and
+    // "9 of 9 passed" printed the same thing.
+    let ran = cells.len() - out_of_lane.len();
+    println!(
+        "sched_dims: {ran} cell(s) ran, {} skipped, {} out of lane",
+        skipped.len(),
+        out_of_lane.len()
+    );
+    for note in out_of_lane.iter().chain(skipped.iter()) {
+        println!("  - {note}");
+    }
+
     assert!(
         failed.is_empty(),
         "sched_dims: {} of {} cell(s) FAILED:\n  {}",
         failed.len(),
-        cells.len(),
+        ran,
         failed.join("\n  ")
     );
-    if skipped.len() == cells.len() {
+    if ran == 0 || skipped.len() == ran {
         nros_tests::skip!(
-            "all {} sched-dim cell(s) skipped:\n  {}",
+            "no sched-dim cell RAN ({} skipped, {} out of lane):\n  {}",
             skipped.len(),
-            skipped.join("\n  ")
+            out_of_lane.len(),
+            skipped
+                .iter()
+                .chain(out_of_lane.iter())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n  ")
         );
     }
 }
