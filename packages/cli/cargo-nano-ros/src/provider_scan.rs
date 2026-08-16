@@ -54,6 +54,41 @@ const PRUNED_DIRS: &[&str] = &[
     "node_modules",
 ];
 
+/// Build-root name PREFIXES, pruned like [`PRUNED_DIRS`] (issue 0645).
+///
+/// An exact-name list misses this tree's actual build roots, because almost
+/// none of them are called `build` or `target`: a workspace fixture build
+/// writes `build-workspace-fixtures/`, its FreeRTOS sibling
+/// `build-workspace-fixtures-freertos/`, and phase-340's shared cargo groups
+/// write `target-<coord>/`. Those are exactly the trees this list exists to
+/// skip, and the exact match walked straight into them.
+///
+/// Measured on `examples/workspaces/mixed`: the scan descended 7113
+/// directories, 3923 of them build output, paying four `stat`s each
+/// (`COLCON_IGNORE`, `AMENT_IGNORE`, `NROS_IGNORE`, `package.xml`). That is
+/// 34k `statx` calls with 86 % returning ENOENT — after the issue-0641 fix
+/// removed the subprocess cost, this was co-dominant with it.
+///
+/// A staged copy under a build root DOES contain real `package.xml` files, so
+/// the walk found them and they were not junk — they were duplicates of the
+/// source tree it had already scanned.
+///
+/// The cost of the rule: a real package directory may not be named `build-*`
+/// or `target-*`. That is already true by convention here (`build/` and
+/// `target/` are pruned outright, and `examples/**/target-*/` is globally
+/// gitignored), and the alternative — dropping an ignore marker into every
+/// build root as it is created — needs every creator to remember, which is the
+/// failure mode markers already have.
+const PRUNED_DIR_PREFIXES: &[&str] = &["build-", "target-"];
+
+/// Is this directory name build output or a vendored tree?
+fn is_pruned_dir(name: &str) -> bool {
+    PRUNED_DIRS.contains(&name)
+        || PRUNED_DIR_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+}
+
 /// Marker files that exclude a subtree, honoured as colcon and ament spell them
 /// plus our own. Buying the convention: a user who already knows `COLCON_IGNORE`
 /// should not have to learn a second spelling to get the same effect.
@@ -248,7 +283,7 @@ fn walk_packages(
             }
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with('.') || PRUNED_DIRS.contains(&name.as_ref()) {
+            if name.starts_with('.') || is_pruned_dir(name.as_ref()) {
                 continue;
             }
             stack.push(path);
@@ -1396,5 +1431,41 @@ mod tests {
                 .ends_with("nros-rmw.toml"),
             "the scan hands selection a path; it does not read it"
         );
+    }
+}
+
+#[cfg(test)]
+mod pruned_dir_tests {
+    use super::is_pruned_dir;
+
+    /// issue 0645 — the exact-name list missed this tree's real build roots.
+    #[test]
+    fn build_root_prefixes_are_pruned() {
+        // The names that actually cost the walk 3923 directories.
+        assert!(is_pruned_dir("build-workspace-fixtures"));
+        assert!(is_pruned_dir("build-workspace-fixtures-freertos"));
+        assert!(is_pruned_dir("target-zenoh-fixture-posix"));
+        // Still the plain ones.
+        assert!(is_pruned_dir("build"));
+        assert!(is_pruned_dir("target"));
+        assert!(is_pruned_dir("third-party"));
+    }
+
+    /// The prefix must not swallow source packages. `builder_pkg` and
+    /// `targeting_pkg` are the shapes a prefix match gets wrong if it is
+    /// written as `contains` or without the hyphen.
+    #[test]
+    fn source_package_names_survive() {
+        for name in [
+            "builder_pkg",
+            "buildings",
+            "targeting_pkg",
+            "targets",
+            "src",
+            "talker_pkg",
+            "rust_heartbeat_pkg",
+        ] {
+            assert!(!is_pruned_dir(name), "{name} must not be pruned");
+        }
     }
 }

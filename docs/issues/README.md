@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#645** — found by re-profiling after #0641: with the subprocess cost gone,
+**I/O was co-dominant** — 34,172 `statx` calls, 86 % ENOENT, 32.7 % of wall-clock. The failing paths named the
+shape at once: `NROS_IGNORE`/`COLCON_IGNORE`/`AMENT_IGNORE`/`package.xml` x **7113 directories**, in a workspace
+with ~19 source packages; 3923 of them (55 %) build output. `provider_scan::PRUNED_DIRS` exists for exactly
+this and names `build`/`target` — matched by EXACT equality, while this tree's build roots are
+`build-workspace-fixtures`, `build-workspace-fixtures-freertos` and phase-340's `target-<coord>`. Right about
+what to skip, wrong about how to name it. Invisible because staged copies under a build root contain REAL
+`package.xml` files, so the scan found packages, not junk — duplicates of the tree it had already scanned.
+Fixed with `PRUNED_DIR_PREFIXES = ["build-", "target-"]` behind one predicate; two tests pin both directions
+(`builder_pkg`/`targeting_pkg` must survive). Dirs walked 7113->1590, statx 34k->12k, getdents 14k->2.9k. With
+#0641: 22-workspace loop 7.0->3.6 s, `regenerate-bindings.sh` 12.8->9.4 s. Left open: `wait4` is now 55 % of a
+smaller total (~85 subprocesses, ~726 execve per sync). See `archived/0645-*`.
+
 Recently resolved (2026-08-16): **#641** — `nros sync` took 1.2 s on two workspaces and 0.2 s on the other
 twenty, and `regenerate-bindings.sh` runs it 22x at the head of every fixture build. `strace -c` on a WARM run:
 **1167 `execve`s, 88 % of wall-clock in `wait4`** — it was configuring and BUILDING a CMake project (Corrosion

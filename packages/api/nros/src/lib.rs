@@ -392,8 +392,7 @@ macro_rules! panic_to_platform {
                 fn write_str(&mut self, s: &str) -> ::core::fmt::Result {
                     let room = self.bytes.len() - self.used;
                     let n = s.len().min(room);
-                    self.bytes[self.used..self.used + n]
-                        .copy_from_slice(&s.as_bytes()[..n]);
+                    self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
                     self.used += n;
                     Ok(())
                 }
