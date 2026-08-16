@@ -80,8 +80,13 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     # workspace crates that are not in it; issue 0466 records the gate staying
     # silent while `nros-board-common/src/platform_config.rs` changed. Cargo
     # already wrote that answer as dep-info, so read it instead of guessing.
-    # Empty (and therefore inert) for rows with no cargo dep-info — cxx-syntax,
-    # cmake-configure, west-*.
+    # Was "empty (and therefore inert) for rows with no cargo dep-info —
+    # cxx-syntax, cmake-configure, west-*". No longer true: the 2026-08-15
+    # extension gave every builder a measured record — `cxx-syntax` compiles
+    # with `-MD -MF` (which composes with `-fsyntax-only`: no object, still a
+    # dep list), `cmake-configure` reads `CMAKE_MAKEFILE_DEPENDS`, and `west-*`
+    # reads `build.ninja`'s RERUN_CMAKE edge. The comment outlived the code and
+    # would have told the next reader that these rows still guess.
     if [ "$builder" = "cmake-configure" ]; then
         _sig_build_dir="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES" "$id")"
     else

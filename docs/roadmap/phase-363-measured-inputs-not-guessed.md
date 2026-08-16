@@ -214,6 +214,51 @@ remove, reintroduced while removing it. The self-test caught it before the
 commit; enumeration now goes through a temp file, which also preserves the NUL
 separators command substitution strips.
 
+### Re-swept 2026-08-17 — the CLI's own freshness predicate had the same allowlist
+
+W3 deleted the extension allowlist from both signature scripts. The tree's THIRD
+freshness predicate kept one: `packages/cli/nros-cli-core/src/source_stamp.rs`
+decides "is the in-tree `nros` CLI stale" from
+
+    rel.ends_with(".rs") || rel.ends_with(".jinja")
+      || rel.ends_with("Cargo.toml") || rel.ends_with("Cargo.lock")
+
+266 tracked files under the dirs it watches fall outside that list. Almost all
+are `tests/fixtures/**` data and correctly not build inputs — but one is:
+`packages/cli/rosidl-bindgen/askama.toml`, which carries `dirs = ["templates"]`.
+That file decides WHICH templates askama compiles into the binary, so editing it
+changes what the build consumes while touching no `.rs` and no `.jinja` — the
+exact argument the file's own comment already makes for `.jinja`, one file over.
+The comment even states the rule it was breaking: *"Any input list here that
+watches less than what the build consumes is the issue-0196 shape."*
+
+Measured on a freshly built CLI, all three states:
+
+```
+baseline                          not stale
+edit askama.toml `dirs`           not stale   <- the defect
+restore                           not stale
+```
+
+and after the fix:
+
+```
+baseline                          not stale
+edit askama.toml `dirs`           STALE
+restore                           not stale   <- content-based, so no rebuild needed
+```
+
+Matched by BASENAME rather than adding `.toml` to the allowlist: a blanket
+clause would pull in the fixture board and orchestration manifests, and a
+fixture edit would then stale the CLI and force a rebuild for nothing — the cost
+this predicate exists to avoid. Widening a guess is not the same as measuring.
+
+**Also corrected here:** `compile-check-signature.sh` still told the reader that
+the measured closure is "empty (and therefore inert) for rows with no cargo
+dep-info — cxx-syntax, cmake-configure, west-*". The 2026-08-15 extension gave
+every builder a record; the comment outlived the code and would have told the
+next reader those rows still guess.
+
 ## W4 — the compile-check row's dependency closure (LANDED — #466's last item)
 
 `sig_paths=("$dir")` covers the row's own directory. A compile-check row exists

@@ -68,7 +68,18 @@ fn is_cli_input(rel: &str) -> bool {
         // clauses above are read from, so a stamp blind to it would not move
         // when the watched set changed. Same reasoning as `.jinja`: an input
         // that changes what the build consumes without being a `.rs`.
-        || rel == CLI_SOURCE_DIRS_FILE)
+        || rel == CLI_SOURCE_DIRS_FILE
+        // phase-363 — `askama.toml` is the `.jinja` argument one file over.
+        // It carries `dirs = [...]`, i.e. WHICH templates askama compiles into
+        // the binary, so editing it changes what the build consumes while
+        // touching no `.rs` and no `.jinja`. Measured on a freshly built CLI:
+        // adding a directory to that list left the stamp unmoved.
+        //
+        // Matched by basename, not by extension: a blanket `.toml` clause would
+        // pull in the `tests/fixtures/**` board and orchestration manifests,
+        // and a fixture edit would then stale the CLI and force a rebuild for
+        // nothing — the cost this predicate exists to avoid.
+        || rel.ends_with("askama.toml"))
         && !rel.contains("/third-party/")
         && !rel.contains("/testing_workspaces/")
 }
