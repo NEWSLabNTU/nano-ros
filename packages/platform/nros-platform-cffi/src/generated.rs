@@ -297,6 +297,9 @@ unsafe extern "C" {
     );
 }
 unsafe extern "C" {
+    pub fn nros_platform_panic(msg: *const core::ffi::c_char, len: usize);
+}
+unsafe extern "C" {
     #[doc = " Resolve `(address, port)` strings into the caller-allocated endpoint\n  storage at `ep`. Both strings are NUL-terminated."]
     pub fn nros_platform_tcp_create_endpoint(
         ep: *mut core::ffi::c_void,

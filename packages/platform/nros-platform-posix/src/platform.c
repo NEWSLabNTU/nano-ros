@@ -791,3 +791,27 @@ void nros_platform_log_flush(void) {
     fflush(stderr);
 #endif
 }
+
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * Hosted, so the honest ending is the libc one: say what happened on stderr,
+ * then `abort()` — which raises SIGABRT, so a debugger stops here and a shell
+ * sees the signal rather than a plain non-zero status.
+ *
+ * `__attribute__((weak))` so a C/C++ image can define this symbol strongly and
+ * take the decision back; that is the whole point of the API. A Rust image
+ * declares its own `#[panic_handler]` in the entry package instead.
+ *
+ * `fwrite` rather than the log ABI: this must work from any context, including
+ * one where the log mutex is already held by the thread that is dying.
+ */
+__attribute__((weak))
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    fputs("nros: PANIC ", stderr);
+    if (msg != NULL && len > 0) {
+        (void) fwrite(msg, 1, len, stderr);
+    }
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}

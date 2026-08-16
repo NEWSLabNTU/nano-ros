@@ -827,3 +827,32 @@ const char *nros_runtime_locator_override(void) {
     return NULL;
 }
 #endif
+
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * `printk` then `k_panic()`. Both halves are deliberate.
+ *
+ * `printk` rather than the `LOG_*` macros: the logging subsystem may be
+ * deferred (`CONFIG_LOG_MODE_DEFERRED`), in which case a message logged here is
+ * processed by a thread that will never run again. `printk` is synchronous and
+ * works with the scheduler locked or from an ISR, which is the contract this
+ * function has to honour.
+ *
+ * `k_panic()` rather than a spin: it routes into Zephyr's own fatal path, so an
+ * image that installed `k_sys_fatal_error_handler` — the RTOS's own weak
+ * override hook — still gets to run it. Spinning here would silently defeat
+ * that.
+ */
+__attribute__((weak))
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    if (msg != NULL && len > 0) {
+        printk("nros: PANIC %.*s\n", (int) len, msg);
+    } else {
+        printk("nros: PANIC\n");
+    }
+    k_panic();
+    /* k_panic() is noreturn, but it is a macro on some lines and the compiler
+     * cannot always see that; keep the contract explicit. */
+    for (;;) {
+    }
+}

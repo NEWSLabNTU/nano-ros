@@ -38,6 +38,8 @@
 #include <esp_random.h>
 #include <esp_timer.h>
 #include <esp_rom_sys.h>
+/* phase-366 — `esp_system_abort` for the fatal path. */
+#include <esp_system.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -616,4 +618,34 @@ void nros_platform_log_write(uint8_t severity,
 
 void nros_platform_log_flush(void) {
     /* esp_log_write is synchronous to UART; nothing to flush. */
+}
+
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * ESP-IDF is the closest match to what this API wants: the MECHANISM is the
+ * platform's and the POLICY is already configuration. `esp_system_abort()`
+ * enters IDF's panic handler, which prints a backtrace and then honours
+ * `CONFIG_ESP_SYSTEM_PANIC_*` — print-and-reboot, halt, or hand over to a GDB
+ * stub. Reimplementing any of that here would take the choice away from the
+ * user's sdkconfig, which is exactly the defect this API removes.
+ *
+ * `esp_system_abort` takes a NUL-terminated string and our `msg` is a
+ * length-delimited diagnostic, so it is copied into a bounded stack buffer and
+ * truncated rather than heap-allocated — this runs when the heap may be the
+ * thing that failed.
+ */
+__attribute__((weak))
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    char line[192];
+    size_t n = 0;
+    const char kPrefix[] = "nros: PANIC ";
+    memcpy(line, kPrefix, sizeof(kPrefix) - 1);
+    n = sizeof(kPrefix) - 1;
+    if (msg != NULL && len > 0) {
+        size_t copy = len < (sizeof(line) - n - 1) ? len : (sizeof(line) - n - 1);
+        memcpy(line + n, msg, copy);
+        n += copy;
+    }
+    line[n] = '\0';
+    esp_system_abort(line);
 }

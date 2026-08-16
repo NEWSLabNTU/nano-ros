@@ -730,3 +730,50 @@ void nros_platform_log_flush(void) {
         flusher();
     }
 }
+
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * ThreadX has no fatal primitive of its own — no `k_panic`, no `PANIC()`. The
+ * kernel's model is that an application checks return codes, so the ending has
+ * to be built here.
+ *
+ * Text goes through the REGISTERED WRITER rather than the log ABI's usual entry:
+ * the writer is a raw function pointer the board installed (UART, semihosting,
+ * stderr), so it needs no scheduler and is safe with interrupts disabled, which
+ * is what this contract demands. Severity 5 = Fatal.
+ *
+ * The two supported ThreadX ports want different endings, and the discriminator
+ * is whether the image is hosted:
+ *
+ *   - hosted (threadx-linux, ThreadX-over-pthreads): `exit(1)`. A test harness
+ *     watching this process gets a status; spinning would make it hang until the
+ *     harness's timeout, turning a clear failure into a slow one.
+ *   - bare metal (threadx-riscv64): disable interrupts and halt, the only thing
+ *     that is true everywhere. A board with a reset controller or a debugger
+ *     probe should override this symbol strongly and use it.
+ */
+__attribute__((weak))
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    nros_platform_log_writer_fn writer = s_log_writer;
+    if (writer != NULL) {
+        static const uint8_t kName[] = "nros";
+        writer(5, kName, sizeof(kName) - 1,
+               (const uint8_t *) msg, (uintptr_t) (msg != NULL ? len : 0));
+        nros_platform_log_flush_fn flusher = s_log_flusher;
+        if (flusher != NULL) {
+            flusher();
+        }
+    }
+#if defined(__linux__)
+    /* Declared locally rather than pulling <stdlib.h> into this TU: the
+     * bare-metal port compiles the same file with a freestanding libc where the
+     * header may not exist. */
+    extern _Noreturn void exit(int status);
+    exit(1);
+#else
+    TX_INTERRUPT_SAVE_AREA
+    TX_DISABLE
+    for (;;) {
+    }
+#endif
+}

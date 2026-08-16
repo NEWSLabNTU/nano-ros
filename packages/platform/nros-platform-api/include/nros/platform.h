@@ -680,6 +680,39 @@ void nros_platform_register_log_writer(
  */
 const char* nros_runtime_locator_override(void);
 
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * The image's one ending. Rust's `#[panic_handler]`, a C precondition failure
+ * and a C++ terminate all arrive here, so an operator debugging a board has one
+ * place to look instead of four.
+ *
+ * Before this existed the ABI could express ALLOCATION but not fatality, so each
+ * language invented its own: `nros-c` spun silently, `nros-board-nuttx` printed
+ * and exited 1, the ThreadX RV64 board wrote UART and exited QEMU, the FreeRTOS
+ * board did semihosting + `bkpt` + spin. Four reasonable answers to four
+ * different questions, none of them the image's to choose.
+ *
+ * `msg` is a DIAGNOSTIC, not a C string: `len` bytes, no NUL required, possibly
+ * empty (`msg` may be NULL only when `len == 0`). It is not necessarily UTF-8 —
+ * a port that forwards to a text sink should treat it as bytes.
+ *
+ * Contract on the implementor:
+ *   - MUST NOT return. Declared `_Noreturn` so a caller (and Rust's `-> !`) can
+ *     rely on it.
+ *   - MUST tolerate being called from ANY context — interrupt, scheduler
+ *     locked, or before the kernel starts. That rules out anything needing a
+ *     scheduler, which is why this is not simply "log at Fatal then halt".
+ *   - SHOULD emit `msg` somewhere a human can read before terminating. A silent
+ *     halt is the one behaviour no RTOS in this tree chose for itself.
+ *
+ * Ports map it to the fatal path they already have (`k_panic`, `PANIC()`,
+ * `esp_system_abort`, the FreeRTOS hook, `abort()`). A C/C++ image overrides the
+ * port's definition by defining this symbol strongly; a Rust image declares its
+ * own `#[panic_handler]` in the entry package. Either way the choice belongs to
+ * whoever builds the image — RFC-0077.
+ */
+_Noreturn void nros_platform_panic(const char *msg, size_t len);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

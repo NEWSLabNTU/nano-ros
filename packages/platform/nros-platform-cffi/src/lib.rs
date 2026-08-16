@@ -629,6 +629,23 @@ macro_rules! nros_platform_export_clock {
     };
 }
 
+/// Emit `nros_platform_panic` delegating to `<$ty as PlatformPanic>`
+/// (phase-366 / RFC-0077).
+///
+/// NOT in `nros_platform_export!` deliberately. The fatal path is the IMAGE's,
+/// and a Rust port that exports it unconditionally would be the same defect
+/// this API exists to remove: a library claiming the image's ending. A port
+/// calls this only when it is the one supplying the behaviour.
+#[macro_export]
+macro_rules! nros_platform_export_panic {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
+            <$ty as ::nros_platform_api::PlatformPanic>::panic(msg, len)
+        }
+    };
+}
+
 /// Emit `nros_platform_{alloc,realloc,dealloc}` delegating to
 /// `<$ty as PlatformAlloc>`.
 #[macro_export]

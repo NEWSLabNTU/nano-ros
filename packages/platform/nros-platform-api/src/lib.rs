@@ -115,6 +115,35 @@ pub trait PlatformAlloc {
 }
 
 // ============================================================================
+// Fatal error
+// ============================================================================
+
+/// The image's one ending — phase-366 / RFC-0077.
+///
+/// Mirrors `nros_platform_panic` in `<nros/platform.h>`. Rust's
+/// `#[panic_handler]`, a C precondition failure and a C++ terminate all arrive
+/// here, so an image has one fatal path instead of one per language.
+///
+/// The ABI could express ALLOCATION but not fatality, so each language invented
+/// its own ending and four libraries each hardcoded a different one. This is the
+/// missing half.
+pub trait PlatformPanic {
+    /// Terminate the image. Never returns.
+    ///
+    /// `msg` is a DIAGNOSTIC, not a C string: `len` bytes, no NUL required,
+    /// possibly empty, and not necessarily UTF-8 — a port forwarding to a text
+    /// sink should treat it as bytes.
+    ///
+    /// Implementors must tolerate being called from ANY context: interrupt,
+    /// scheduler locked, or before the kernel starts. That rules out anything
+    /// needing a scheduler, which is why this is not "log at Fatal, then halt".
+    ///
+    /// Implementors SHOULD emit `msg` where a human can read it first. A silent
+    /// halt is the one behaviour no RTOS in this tree chose for itself.
+    fn panic(msg: *const u8, len: usize) -> !;
+}
+
+// ============================================================================
 // Sleep / delay
 // ============================================================================
 

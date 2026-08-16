@@ -879,3 +879,33 @@ void nros_platform_log_flush(void) {
         flusher();
     }
 }
+
+/* ---- Fatal error (phase-366 / RFC-0077) ----
+ *
+ * FreeRTOS's own model is application hooks — `configASSERT`,
+ * `vApplicationMallocFailedHook`, `vApplicationStackOverflowHook` — and
+ * nano-ros already implements two of them in `nros-board-freertos`'s
+ * `freertos_hooks.c`, hardcoded. This is the same ending, reachable from the
+ * ABI so C, C++ and Rust all land on it.
+ *
+ * Through the registered writer, not the log ABI's queueing path: this must run
+ * with the scheduler suspended or from an ISR.
+ *
+ * Then `taskDISABLE_INTERRUPTS()` and halt. Halting rather than resetting is the
+ * conservative default for a board we know nothing about; a product that wants a
+ * watchdog reset overrides this symbol strongly. The board's existing hooks add
+ * a `bkpt` for an attached debugger — that is board knowledge and stays there,
+ * which is why this does not emit one.
+ */
+__attribute__((weak))
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    nros_platform_log_writer_fn writer = nros_platform_freertos_log_writer;
+    if (writer != NULL) {
+        static const uint8_t kName[] = "nros";
+        writer(5, kName, sizeof(kName) - 1,
+               (const uint8_t *) msg, (uintptr_t) (msg != NULL ? len : 0));
+    }
+    taskDISABLE_INTERRUPTS();
+    for (;;) {
+    }
+}
