@@ -158,6 +158,7 @@ dependencies = [
  "nros",
  "nros-board-common",
  "nros-board-threadx-port-riscv64",
+ "nros-build-paths",
  "nros-cc-flags",
  "nros-platform",
 ]
