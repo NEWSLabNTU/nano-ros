@@ -705,13 +705,26 @@ const char* nros_runtime_locator_override(void);
  *   - SHOULD emit `msg` somewhere a human can read before terminating. A silent
  *     halt is the one behaviour no RTOS in this tree chose for itself.
  *
+ * Spelled through `NROS_PLATFORM_NORETURN` because this header is included from
+ * C++ too (`nros-cpp`), where `_Noreturn` is not a keyword — that mismatch is a
+ * hard `'_Noreturn' does not name a type` in every C++ TU, which is how it was
+ * found.
+ *
  * Ports map it to the fatal path they already have (`k_panic`, `PANIC()`,
  * `esp_system_abort`, the FreeRTOS hook, `abort()`). A C/C++ image overrides the
  * port's definition by defining this symbol strongly; a Rust image declares its
  * own `#[panic_handler]` in the entry package. Either way the choice belongs to
  * whoever builds the image — RFC-0077.
  */
-_Noreturn void nros_platform_panic(const char *msg, size_t len);
+#if defined(__cplusplus)
+#  define NROS_PLATFORM_NORETURN [[noreturn]]
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#  define NROS_PLATFORM_NORETURN _Noreturn
+#else
+#  define NROS_PLATFORM_NORETURN __attribute__((noreturn))
+#endif
+
+NROS_PLATFORM_NORETURN void nros_platform_panic(const char *msg, size_t len);
 
 #ifdef __cplusplus
 }  /* extern "C" */

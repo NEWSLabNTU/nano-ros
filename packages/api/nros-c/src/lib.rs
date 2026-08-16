@@ -131,26 +131,66 @@ mod heap_stats {
 #[cfg(all(feature = "global-allocator", not(feature = "std")))]
 extern crate nros_platform;
 
-// Minimal panic handler for the no_std C/C++ API staticlib when no other
-// panic strategy is linked (no `std`, no `panic-halt`). The Rust API path
-// defers to the platform crate / zephyr-lang-rust's panic_handler; the
-// standalone C/C++ staticlib needs its own. A halt+reboot would be ideal
-// but needs port-specific config (e.g. Zephyr's k_panic + CONFIG_ASSERT_
-// VERBOSE); looping is the safest no_std-compatible default.
+// Panic handler for the no_std C/C++ API staticlib when no other panic strategy
+// is linked (no `std`, no `panic-halt`).
+//
+// phase-366 W4 — this FORWARDS to `nros_platform_panic` instead of deciding
+// anything. The old body was `loop { spin_loop() }`, and its own comment
+// conceded the problem: "a halt+reboot would be ideal but needs port-specific
+// config … looping is the safest no_std-compatible default". That is a library
+// choosing a policy it cannot know. The port knows — `k_panic()` on Zephyr,
+// `esp_system_abort()` on ESP-IDF, `exit(1)` on a hosted ThreadX — and now
+// there is an ABI to ask it through, so C, C++ and Rust reach one ending
+// (RFC-0077).
+//
+// Formatting goes into a fixed stack buffer, never the heap: this runs when the
+// allocator may be exactly what failed. A message too long for the buffer is
+// truncated rather than dropped — a truncated panic line is still a diagnosis,
+// a missing one is not.
+//
 // phase-361 W8.b / issue 0594 — gated on `panic-spin`, NOT on
 // `global-allocator`. Asking for a panic handler no longer means asking for a
-// heap; the `platform-*` features select both, so they stay unified per
-// platform without being the same switch.
+// heap. The gate is unchanged here; what changed is what the handler DOES.
+// W5 moves ownership out of this library entirely, to the entry.
 #[cfg(all(
     feature = "panic-spin",
     not(feature = "std"),
     not(feature = "panic-halt")
 ))]
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {
-        core::hint::spin_loop();
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write as _;
+
+    /// Bounded sink so `write!` cannot allocate. 192 bytes holds a file:line
+    /// plus a short message, which is what a panic line is in practice.
+    struct Buf {
+        bytes: [u8; 192],
+        used: usize,
     }
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let room = self.bytes.len() - self.used;
+            let n = s.len().min(room);
+            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
+            self.used += n;
+            // Truncation is not an error: the diagnostic is best-effort and the
+            // caller is about to terminate either way.
+            Ok(())
+        }
+    }
+
+    let mut buf = Buf {
+        bytes: [0u8; 192],
+        used: 0,
+    };
+    let _ = write!(buf, "{info}");
+
+    unsafe extern "C" {
+        fn nros_platform_panic(msg: *const u8, len: usize) -> !;
+    }
+    // SAFETY: `buf.bytes[..used]` is initialised and lives until the call
+    // diverges; the ABI takes a length-delimited diagnostic, not a C string.
+    unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
 }
 
 // critical-section impl backed by the platform vtable

@@ -107,6 +107,45 @@ impl nros_platform_api::PlatformLog for Mps2An385Platform {
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_log!(Mps2An385Platform);
 
+// ---- Fatal error (phase-366 / RFC-0077) ----
+//
+// Semihosting for the message, then `bkpt #0`, then halt. That ordering is the
+// one MCU practice converged on and it is what this board's FreeRTOS hooks
+// already do by hand — say something, give an attached debugger the trap, and
+// only then stop.
+//
+// `bkpt` is safe here in a way it is not in the log path above: on a board with
+// no debugger attached the instruction is a no-op-ish fault the runtime ignores,
+// and we are terminating anyway. The log impl has to avoid it because it runs
+// in normal operation.
+//
+// Deliberately NOT routed through `PlatformLog::write`: that formats with
+// `core::fmt` and takes the semihosting handle, and a panic reaching here may be
+// a panic RAISED inside that machinery. Writing the bytes directly keeps the
+// fatal path independent of the thing that may have failed.
+impl nros_platform_api::PlatformPanic for Mps2An385Platform {
+    fn panic(msg: *const u8, len: usize) -> ! {
+        use core::fmt::Write as _;
+        if let Ok(mut out) = cortex_m_semihosting::hio::hstderr() {
+            let _ = out.write_str("nros: PANIC ");
+            if !msg.is_null() && len > 0 {
+                // SAFETY: the ABI contract is `len` readable bytes at `msg`.
+                let bytes = unsafe { core::slice::from_raw_parts(msg, len) };
+                let _ = out.write_str(core::str::from_utf8(bytes).unwrap_or("<non-utf8>"));
+            }
+            let _ = out.write_str("\n");
+        }
+        // SAFETY: a breakpoint is architecturally defined on Cortex-M; with no
+        // debugger attached it escalates to a fault, and we are ending anyway.
+        unsafe { core::arch::asm!("bkpt #0") };
+        loop {
+            cortex_m::asm::wfi();
+        }
+    }
+}
+
+nros_platform_cffi::nros_platform_export_panic!(Mps2An385Platform);
+
 // Phase 121.9 — Cortex-M PRIMASK critical section. Always emitted
 // (independent of the `critical-section` feature, which only gates
 // the `critical_section::set_impl!` global registration). The

@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#629** (build, open 2026-08-16) — `riscv64-lld-wrapper.sh` execs `rust-lld` with the args it was given and
+adds NO `-L`, so any C++ link on threadx-riscv64 fails on `-lstdc++` / `-lnosys` — libraries the provisioned
+toolchain ships at `riscv-none-elf/lib/`. `gcc` would have passed its own search set; `rust-lld` invoked
+directly has none. C links never noticed; the CycloneDDS cells link with the CXX driver (`needs_cxx_linker`)
+and are the first to need it. Any fix must handle MULTILIB — the toolchain ships per-ABI subdirs, so the
+right `-L` depends on `-march`/`-mabi` and must be asked of the compiler (`-print-file-name=libnosys.a`),
+not composed by hand (#0582's lesson). **NOT caused by phase-366, only unmasked by it**: the cell was green in
+this session's full sweep because it was UP TO DATE and never relinked; editing `<nros/platform.h>`
+invalidated it and the first real rebuild exposed a link line broken for as long as the C++ linker has been
+selected. Museum-binary hazard in its exact shape — a fixture passing freshness while carrying an artifact the
+tree can no longer produce. See `0629-*`. (2026-08-16)
+
 Recently resolved (2026-08-16): **#0624** — `check-examples` (`just/native.just`) ran `cd <leaf> && cargo
 clippy` with no `--target-dir` in BOTH its pool and `SERIAL=1` branches, re-creating the 39 per-leaf
 `examples/**/target/` dirs that #0488 declared empty and gated. Not a regression of 0488 — a site its sweep

@@ -99,6 +99,37 @@ impl nros_platform_api::PlatformLog for Esp32QemuPlatform {
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_log!(Esp32QemuPlatform);
 
+// ---- Fatal error (phase-366 / RFC-0077) ----
+//
+// Through the registered writer slot at severity Fatal, then halt. The slot is
+// a raw fn-ptr the board installed, so it needs no allocator and no scheduler —
+// which is the contract, since this may run from an ISR or before the kernel is
+// up.
+//
+// A `bkpt`-equivalent is deliberately absent: on RISC-V `ebreak` traps to the
+// machine-mode handler, and on this QEMU target that ends the run in a way that
+// looks like a crash rather than a reported panic. The message has already been
+// written by then, so halting keeps the diagnostic readable in the transcript.
+impl nros_platform_api::PlatformPanic for Esp32QemuPlatform {
+    fn panic(msg: *const u8, len: usize) -> ! {
+        if let Some(writer) = log_slot::get() {
+            let bytes: &[u8] = if msg.is_null() || len == 0 {
+                &[]
+            } else {
+                // SAFETY: the ABI contract is `len` readable bytes at `msg`.
+                unsafe { core::slice::from_raw_parts(msg, len) }
+            };
+            writer(5, b"nros", bytes);
+        }
+        loop {
+            core::hint::spin_loop();
+        }
+    }
+}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_panic!(Esp32QemuPlatform);
+
 // Phase 121.9 — RISC-V mstatus.MIE critical section; see sibling
 // nros-platform-esp32 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Esp32QemuPlatform {
