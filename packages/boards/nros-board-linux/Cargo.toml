@@ -48,11 +48,15 @@ nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", defa
 # (`nros-rmw-zenoh`, `nros-rmw-cyclonedds`, ...) must be linked by
 # the Entry pkg or a per-board shim crate so `Executor::open`
 # resolves a backend at boot.
-# phase-359 W10 — `alloc` + the `env` CAPABILITY, not the `std` flavour. This
-# board is the hosted one, so it is the layer that legitimately has a process
-# environment; `env` is what `ExecutorConfig::from_env` needs and nothing else
-# here does.
-nros = { version = "0.5.0", path = "../../api/nros", default-features = false, features = ["alloc", "env", "rmw-cffi", "macros"] }
+# phase-359 W10 — the `env` CAPABILITY, not the `std` flavour. This board is the
+# hosted one, so it is the layer that legitimately has a process environment;
+# `env` is what `ExecutorConfig::from_env` needs and nothing else here does.
+#
+# `std` is named explicitly because `env` requires it and does not grant it:
+# `from_env` reads the process environment. Naming it changes nothing about what links
+# — it linked before too — it only stops the standard library arriving in a
+# build that never asked for it (ARCHITECTURE §2, clause (a)).
+nros = { version = "0.5.0", path = "../../api/nros", default-features = false, features = ["alloc", "std", "env", "rmw-cffi", "macros"] }
 # Phase 264 W3 — the family driver inits the default log sink at boot so a Node
 # pkg's `nros_info!` reaches stdout/stderr without per-app `nros_log::init`
 # (board-agnostic Node pkgs can't pick the sink). Host → the platform sink.

@@ -101,7 +101,14 @@ BASELINE = {
     # ENABLE `std`; it now REQUIRES it and says so. A guard must NAME the
     # feature it checks, so making an implicit enable explicit costs one
     # counted site and removes one implicit enable. Same shape as nros-node.
-    "nros": {"cfg": 13, "path": 16},
+    # phase-359 W10 follow-up: +1 on top of that campaign's own reduction (13),
+    # the `env` `compile_error!` guard. `env` used to ENABLE `std`
+    # (`env = ["std"]`), which is the implicit-flavour shape this campaign
+    # removes and clause (a) forbids; it now REQUIRES it. The guard must NAME
+    # the feature it checks, so the count goes up by one while an implicit
+    # enable goes away. Same trade phase-361 W8.e made for `metadata-mode`
+    # directly above.
+    "nros": {"cfg": 14, "path": 16},
     "nros-c": {"cfg": 13, "path": 8},
     # phase-361 W2.a: 5 -> 3. The heap gate is `cfg(feature = "alloc")` alone,
     # `std` reaching it through `std = ["alloc", …]` in the manifest; the two
@@ -118,7 +125,13 @@ BASELINE = {
     # the OS-priority pool's, the signalfd forwarder's and the condvar path's
     # `std` — so the measured figure after both is 91/40, not either side's
     # number. Set from the tree rather than from arithmetic on the two diffs.
-    "nros-node": {"cfg": 86, "path": 40},
+    # phase-359 W10 follow-up: 86 -> 87, the `env` `compile_error!` guard.
+    # W10 made the process environment a capability but wrote it
+    # `env = ["std"]`, which GRANTS the standard library instead of requiring
+    # it — the implicit flavour this campaign exists to remove, and a clause
+    # (a) violation that sat red on main. Requiring it costs one counted site
+    # and removes one silent enable.
+    "nros-node": {"cfg": 87, "path": 40},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

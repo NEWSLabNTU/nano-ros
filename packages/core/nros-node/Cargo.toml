@@ -35,7 +35,7 @@ default = []
 # `env`; a target build says nothing and never compiles it. `std` stops being a
 # flavour, the capability stays reachable, and no user's CODE changes — only
 # which feature their manifest names.
-env = ["std"]
+env = []
 
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util"]

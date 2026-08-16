@@ -251,3 +251,15 @@ compile_error!(
 compile_error!(
     "`signal-fd-wake` still reaches the std-gated `WakeCtx`: add \"std\" (phase-359 W10 removes this)"
 );
+// phase-359 W10 made the process environment a CAPABILITY rather than a
+// flavour of the core, which was right; the manifest then wrote
+// `env = ["std"]`, which grants what it should have required. `from_env`
+// reads `std::env::var`, so `env` genuinely needs `std` — but a capability
+// that turns `std` on for the user is how a build acquires the standard
+// library without anyone naming it, and that is what this whole block exists
+// to prevent. Requiring it changes nothing about what links; it only makes
+// the manifest say so.
+#[cfg(all(feature = "env", not(feature = "std")))]
+compile_error!(
+    "`env` reads the process environment, which needs the standard library: add \"std\" to this crate's features"
+);

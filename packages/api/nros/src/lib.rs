@@ -963,3 +963,15 @@ mod tests {
 // ---------------------------------------------------------------------------
 #[cfg(all(feature = "metadata-mode", not(feature = "std")))]
 compile_error!("`metadata-mode` writes a file and exits: add \"std\" to this crate's features");
+// Emitted here as well as in `nros-node`, and NOT for the reason it first
+// looks like. `nros = { features = ["env"] }` alone does not reach this line:
+// `env` forwards to `nros-node/env`, nros-node is compiled first, and its own
+// guard aborts the build there — measured, not assumed. What this covers is
+// the case feature unification creates, where some other crate in the graph
+// turns `nros-node/std` on so that guard stays quiet while THIS crate's `std`
+// is still off. Rare, and exactly the shape that would otherwise compile a
+// hosted capability into a build that never named the standard library.
+#[cfg(all(feature = "env", not(feature = "std")))]
+compile_error!(
+    "`env` reads the process environment, which needs the standard library: add \"std\" to this crate's features"
+);
