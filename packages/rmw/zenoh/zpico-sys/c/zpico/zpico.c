@@ -1110,9 +1110,9 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  *
  * The band is phase-364 W5's, chosen so a single authored number does not mean
  * "run me first" on one kernel and "run me last" on another. It is mapped onto
- * whatever `sched_get_priority_min/max` reports for the policy rather than
- * assumed, because that range is a Zephyr build-configuration property
- * (`CONFIG_NUM_PREEMPT_PRIORITIES`), not a constant.
+ * the SCHED_RR range for THIS build rather than an assumed one — that range is
+ * a Zephyr build-configuration property (`CONFIG_NUM_PREEMPT_PRIORITIES`), not
+ * a constant. See the body for why it is computed rather than queried.
  *
  * SCHED_RR rather than SCHED_FIFO: the transport tasks are not the only
  * runnable work at their level, and a FIFO thread that never blocks would keep
@@ -1120,10 +1120,33 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * is being asked for, without turning a busy transport into a starvation
  * source. */
 static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) {
+#if !defined(CONFIG_PREEMPT_ENABLED)
+    /* No preemptive priorities to place a task on. */
+    (void)attr;
+    (void)normalized;
+    return;
+#else
     const int policy = SCHED_RR;
-    const int lo = sched_get_priority_min(policy);
-    const int hi = sched_get_priority_max(policy);
-    if (lo < 0 || hi < 0 || hi < lo) {
+    /* The SCHED_RR range, WITHOUT calling `sched_get_priority_{min,max}`.
+     *
+     * Those live in Zephyr's `lib/posix/options/sched.c`, gated on
+     * `CONFIG_POSIX_PRIORITY_SCHEDULING` — an EXPERIMENTAL symbol that is off
+     * by default. Calling them linked fine on native_sim, which resolves them
+     * from the HOST libc, and failed on every other board:
+     *
+     *     undefined reference to `sched_get_priority_min'
+     *
+     * caught by the tier-2 sweep on cortex-m (mps2_an385) after a native_sim
+     * build had "verified" the change. Requiring an experimental Kconfig just
+     * to read two constants would also have made the knob silently do nothing
+     * on boards that lacked it — the exact failure issue 0626 is about.
+     *
+     * These are the values those functions return, from
+     * `lib/posix/options/pthread_sched.h`: min is 0 for any valid policy, and
+     * max is `CONFIG_NUM_PREEMPT_PRIORITIES - 1` for SCHED_RR/SCHED_OTHER. */
+    const int lo = 0;
+    const int hi = CONFIG_NUM_PREEMPT_PRIORITIES - 1;
+    if (hi < lo) {
         return; /* No usable range: leave the attr at its defaults. */
     }
     uint32_t n = normalized > 31u ? 31u : normalized;
@@ -1138,6 +1161,7 @@ static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) 
     (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
     (void)pthread_attr_setschedpolicy(attr, policy);
     (void)pthread_attr_setschedparam(attr, &param);
+#endif /* CONFIG_PREEMPT_ENABLED */
 }
 #endif /* ZENOH_ZEPHYR */
 
