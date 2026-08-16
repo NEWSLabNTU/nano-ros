@@ -225,14 +225,7 @@ for force-linked backends, applied to a lang item. The leaf names `std` again, r
 linked before rather than inventing a different image; three candidate shapes are recorded. Acceptance is
 NOT "it compiles" — that is what hid it for the length of W10. See `0644-*`. (2026-08-16)
 
-**#639** (build, open 2026-08-16) — the fixture lane invoked ROS's `idlc` with no usable
-`LD_LIBRARY_PATH`, and WHICH boundary drops it is not established. Known: that binary needs
-`/opt/ros/humble/lib/x86_64-linux-gnu` on the loader path, `activate.sh` puts it there (`-h` -> 0), and
-`just build-test-fixtures lane=native` still died at `code=127` when launched from such a shell. Unknown:
-whether the make driver, a `cmake -E env` launcher, ninja's raw command or a `just` boundary strips it —
-deliberately not guessed. MASKED now (#633 routes idlc to the SDK copy); filed rather than closed because
-the gap is not idlc-specific, and because `_nros_idlc_runs`'s `LD_LIBRARY_PATH` launcher has never been
-exercised — #633's cache is exactly what stopped the probe running. Also records the 2026-08-17 measurement behind KEEPING the SDK idlc: every RELEASED edition (humble/iron/jazzy/kilted) ships upstream 0.10.5 today and their idlc output is byte-identical to ours over 8 real IDLs, but ROLLING already ships 11.0.1 — so "the version ROS used" is a coincidence of timing, not a contract, and the constraint that matters is matching the `ddsc` the image LINKS (built from source in-tree). See `0639-*`. (2026-08-17)
+Recently resolved (2026-08-17): **#639** — `activate.sh` sourced ROS's bash-only `setup.bash` unconditionally, so under **zsh** it set NOTHING and said nothing: `${BASH_SOURCE[0]}` is undefined there, the script bails, and activation reported success with no ROS environment at all. A build launched from zsh then invoked `/opt/ros/humble/bin/idlc` with no loader path and died `code=127` on the first `.idl` — reading as a missing tool rather than a missing environment. None of the four suspected boundaries (make driver, `cmake -E env`, ninja, `just`) dropped anything; the variable was never set. FIXED: pick a file the current shell can read (`setup.bash` under bash, POSIX `setup.sh` otherwise) and then CHECK it took, warning when `ROS_DISTRO` is still unset — sourcing something that silently sets nothing is the whole bug. `activate.fish` already had the right shape and is untouched. Proven in both shells, guard sabotage-tested, and the real ninja rule rebuilt from zsh now sees the full `LD_LIBRARY_PATH` where it previously got 127. Also records the idlc-choice measurement: every RELEASED edition ships upstream 0.10.5 and their idlc output is byte-identical to ours over 8 real IDLs, but ROLLING already ships 11.0.1 — so keep the SDK copy, because what must match is the `ddsc` the image LINKS. See `archived/0639-*`. (2026-08-17)
 
 Recently resolved (2026-08-16): **#638** — the generated Zephyr entry TU had only a TARGET edge to the
 nros-cpp cargo build, so it raced the header it includes and fell through to the in-tree `#error` stub.

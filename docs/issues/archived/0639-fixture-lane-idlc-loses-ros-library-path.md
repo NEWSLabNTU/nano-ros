@@ -1,8 +1,8 @@
 ---
 id: 639
-title: The fixture lane invoked ROS's `idlc` without `LD_LIBRARY_PATH`, and it is
-  not established what drops it between `activate.sh` and the build
-status: open
+title: "`activate.sh` sourced ROS's bash-only `setup.bash`, so under zsh it set
+  NOTHING — and said nothing
+status: resolved
 type: bug
 area: build
 related: [0601, 0633]
@@ -32,7 +32,63 @@ LD_LIBRARY_PATH=/opt/ros/humble/opt/zmqpp_vendor/lib:/opt/ros/humble/opt/rviz_og
 
 so the tool is not intrinsically broken here.
 
-## The unexplained part
+## RESOLVED 2026-08-17 — it was the SHELL, and none of the candidates below
+
+`activate.sh` sourced `/opt/ros/humble/setup.bash` unconditionally.
+`setup.bash` is a bash script: it reads `${BASH_SOURCE[0]}`, which zsh does not
+define, so under zsh it sets **nothing** — and it fails silently, so
+`activate.sh` reported success while no ROS environment existed at all.
+
+Everything downstream was innocent. No make driver, `cmake -E env`, ninja rule
+or `just` boundary dropped the variable; it was never set in the first place.
+Measured on this host:
+
+| shell | sourced | result |
+| --- | --- | --- |
+| bash | `activate.sh` (→ `setup.bash`) | `ROS_DISTRO=humble`, `LD_LIBRARY_PATH` set |
+| **zsh** | `activate.sh` (→ `setup.bash`) | **both UNSET** |
+| zsh | ROS's `setup.zsh` | `ROS_DISTRO=humble`, `LD_LIBRARY_PATH` set |
+| zsh | ROS's `setup.sh` (POSIX) | `ROS_DISTRO=humble`, `LD_LIBRARY_PATH` set |
+| bash | ROS's `setup.sh` | `ROS_DISTRO=humble`, `LD_LIBRARY_PATH` set |
+
+That is the whole of `code=127`: a build launched from zsh invoked
+`/opt/ros/humble/bin/idlc` with no loader path, and the failure surfaced far
+away as "command not found" on the first `.idl`.
+
+### The fix
+
+`activate.sh` now picks a file the CURRENT shell can read — `setup.bash` under
+bash (so a working setup sees no change, and keeps bash completions),
+`setup.sh` otherwise — and then CHECKS that it worked, warning when
+`ROS_DISTRO` is still unset afterwards. Sourcing something that quietly sets
+nothing is the failure this issue is made of, so the file no longer assumes its
+own success.
+
+`activate.fish` already had the right shape and is untouched: it looks for
+`setup.fish`, and when there is none it says so and names the remedy
+(`bass source …`). This file was the one that assumed its own shell.
+
+### Proofs
+
+* Both shells now load the environment: `bash: ROS_DISTRO=humble LD=set`,
+  `zsh: ROS_DISTRO=humble LD=set`.
+* The new guard was sabotage-tested with a setup file that sources cleanly and
+  sets nothing — the shape the zsh/`setup.bash` pairing had. It fires and names
+  the shell correctly (`shell: zsh`, `shell: bash`), and stays silent on a
+  healthy load (0 occurrences in both).
+* End to end: with a probe shim standing in for `/opt/ros/humble/bin/idlc`, the
+  real ninja rule was rebuilt from **zsh**. The rule now sees the full
+  `LD_LIBRARY_PATH=/opt/ros/humble/opt/zmqpp_vendor/lib:…:/opt/ros/humble/lib/x86_64-linux-gnu`
+  and the build returns 0 — the same path that produced `code=127` before.
+
+### One correction to the message this issue shipped with
+
+The guard's first draft printed `shell: ${0##*/}`, which under a SOURCED file is
+the file — it reported `shell: activate-sabotage.sh`, pointing the reader at
+`activate.sh` when the shell is the thing that matters. It now derives the name
+from `ZSH_VERSION` / `BASH_VERSION`.
+
+## The unexplained part (superseded — kept for the record)
 
 `just build-test-fixtures lane=native` was launched from a shell that HAD
 sourced `activate.sh`, and the cyclone leaves still failed with
@@ -52,10 +108,17 @@ Something between that shell and the `idlc` invocation does not carry
 * ninja's own invocation of a raw baked command;
 * a `just` recipe boundary.
 
-None of these has been confirmed and this issue does not guess between them.
-Whoever picks it up should find the boundary first — printing
-`LD_LIBRARY_PATH` from inside the failing `idlc` rule is the cheapest probe —
-rather than adding propagation somewhere plausible.
+None of these was the cause. All four assumed the variable existed and was
+lost in transit; it never existed. The instruction to "find the boundary first
+— printing `LD_LIBRARY_PATH` from inside the failing `idlc` rule is the
+cheapest probe" was the right instruction, and it is what found the answer: the
+probe showed the rule's environment, and working backwards showed the shell had
+never had it either.
+
+Worth keeping as a method note: the four candidates were all plausible, all
+downstream, and all wrong, because the question "what drops it?" smuggled in
+the premise that something had it. The probe that settled it was the one that
+made no such assumption.
 
 ## Why it is not urgent, and why it should not simply be closed
 

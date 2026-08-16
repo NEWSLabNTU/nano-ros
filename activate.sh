@@ -75,9 +75,59 @@ fi
 # CMAKE_PREFIX_PATH, ROS_DISTRO, etc. Required by `nros generate-rust`
 # (resolves .msg defs via rosidl_adapter) + the cyclonedds codegen +
 # every rmw_zenoh interop test.
-if [ -f /opt/ros/humble/setup.bash ]; then
-    # shellcheck disable=SC1091
-    . /opt/ros/humble/setup.bash
+#
+# Issue 0639 — pick the file the CURRENT shell can actually read, and then
+# check that it worked.
+#
+# This used to source `setup.bash` unconditionally. `setup.bash` is a bash
+# script: under zsh it sets NOTHING (it reads `${BASH_SOURCE[0]}`, which zsh
+# does not define) and it fails SILENTLY, so a zsh user got an activate.sh that
+# reported success and no ROS environment at all. That is how a fixture lane
+# launched from zsh invoked `/opt/ros/humble/bin/idlc` with no
+# `LD_LIBRARY_PATH` and died `FAILED: [code=127]` on the first `.idl`, which
+# reads as a missing tool rather than a missing environment.
+#
+# Measured on this host:
+#
+#   bash + setup.bash -> ROS_DISTRO=humble, LD_LIBRARY_PATH set
+#   zsh  + setup.bash -> BOTH UNSET
+#   zsh  + setup.sh   -> ROS_DISTRO=humble, LD_LIBRARY_PATH set
+#   bash + setup.sh   -> ROS_DISTRO=humble, LD_LIBRARY_PATH set
+#
+# `setup.sh` is the POSIX one and works in both, so it is the fallback. bash
+# keeps `setup.bash` so a working setup sees no change at all (it also pulls
+# bash completions, which `setup.sh` does not).
+#
+# `activate.fish` has always handled this correctly — it looks for `setup.fish`
+# and, when there is none, says so and names the remedy. This file was the one
+# that assumed its own shell.
+_nros_ros_setup=""
+if [ -n "${BASH_VERSION:-}" ] && [ -f /opt/ros/humble/setup.bash ]; then
+    _nros_ros_setup=/opt/ros/humble/setup.bash
+elif [ -f /opt/ros/humble/setup.sh ]; then
+    _nros_ros_setup=/opt/ros/humble/setup.sh
+elif [ -f /opt/ros/humble/setup.bash ]; then
+    _nros_ros_setup=/opt/ros/humble/setup.bash
+fi
+
+if [ -n "$_nros_ros_setup" ]; then
+    # shellcheck disable=SC1090,SC1091
+    . "$_nros_ros_setup"
+    # Sourcing can succeed and set nothing (the zsh/`setup.bash` case above).
+    # Say so rather than leave a build to discover it as `code=127` later.
+    if [ -z "${ROS_DISTRO:-}" ]; then
+        # Name the SHELL, not `$0` — when a file is sourced, `$0` is the file,
+        # which would point the reader at activate.sh when the shell is the
+        # thing that matters.
+        if [ -n "${ZSH_VERSION:-}" ]; then _nros_shell=zsh
+        elif [ -n "${BASH_VERSION:-}" ]; then _nros_shell=bash
+        else _nros_shell="sh-compatible"; fi
+        echo "activate.sh: sourced $_nros_ros_setup but ROS_DISTRO is still unset —" \
+            "the ROS environment did NOT load (shell: $_nros_shell). ROS-dependent" \
+            "recipes will fail with missing tools or 'error while loading shared" \
+            "libraries'. See issue 0639." >&2
+    fi
+    unset _nros_ros_setup _nros_shell
 else
     # issue 0373 F3 — the bare "ROS-dependent recipes will fail" left a
     # first-time reader unable to tell whether their setup was broken. It is
