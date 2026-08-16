@@ -100,6 +100,20 @@ is a manifest edit:
 Whichever lands, the check is not "it compiles" — that is what hid this for the
 length of W10. It is that the leaf builds with `nros`'s `std` feature OFF.
 
+## Update 2026-08-16 — phase-366 W5 supplies the mechanism, not the fix
+
+W5 landed `panic_to_platform!` in `nros` and moved the lang item onto the IMAGE
+for freertos, nuttx and threadx-qemu-riscv64: "the image declares its ending;
+the board stops". That is the right shape and it is what a fix here should use.
+
+It does not close this by itself. `nros::main!()` — which is where an image
+would invoke it — lives in this leaf's `src/main.rs`, and the target that fails
+is the LIB: `crate-type` includes `staticlib`, so rustc demands the lang items
+while compiling `src/lib.rs`, which invokes no macro and references no board.
+The three shapes below are still the choice; option 3 (drop `staticlib` if
+nothing consumes it) becomes the most attractive now that the bin has a
+sanctioned way to declare its ending.
+
 ## Provenance
 
 Found 2026-08-16 while removing `env`'s `std` grant to close a clause (a)
