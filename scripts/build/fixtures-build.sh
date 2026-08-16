@@ -333,15 +333,15 @@ else
         # `nros generate-rust --force` + per-example .cargo/config.toml
         # [patch.crates-io] chunks. Native rust adopters only — embedded
         # rust fixtures still pre-codegen separately until E.3.d.embedded.
-        if [ -f "$dir/package.xml" ]; then
-            # Phase 214.J.2 — wipe `<dir>/generated/` if the hash of the
-            # trait surface(s) tied to codegen shape (e.g. `RosAction`)
-            # has drifted since the previous `nros sync`. Prevents the
-            # stale-3-type-action shape that Phase 214.J first surfaced.
-            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
-            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
-        fi
+        # issue 0649 — the `nros sync` that used to live HERE is now a pre-pass
+        # in the parent (`nros_presync_row_dirs`, below). It ran per ROW, and a
+        # workspace has many rows: measured over one `lane=native` build, 185
+        # invocations for 69 distinct targets, `examples/workspaces/features`
+        # synced 22 times for its 24 manifest rows. Sync is per-WORKSPACE and
+        # idempotent — its outputs (generated msg crates, the patch config,
+        # resolved models) do not vary by the platform/rmw coordinate that
+        # distinguishes one row from another — so the loop asked the same
+        # question 22 times.
         # Phase 226.D — append the shared fixture-only --target-dir for
         # eligible rows (no-op for rows whose platform isn't migrated yet).
         #
@@ -377,6 +377,50 @@ else
           cargo build $cargo_profile_args $args $tdir_flag --quiet )
     }
     export -f nros_fixture_build_one
+
+    # issue 0649 — sync each row DIRECTORY once, in the parent, before the rows
+    # fan out.
+    #
+    # This is the same move as the Node-pkg pre-pass below and for the same
+    # reason, applied to the rows themselves. The per-row sync it replaces was
+    # not simulating a user procedure: a user runs `nros sync` once and then
+    # builds, where the loop ran it once per manifest ROW — 22 times for
+    # `examples/workspaces/features`, whose 24 rows share one directory. 185
+    # invocations for 69 distinct targets in one `lane=native` build, 63 % of
+    # them repeats.
+    #
+    # Safe to hoist on both axes that could have made it unsafe, and both were
+    # checked rather than assumed:
+    #
+    #   * nothing row-specific reaches sync — the call passed only
+    #     `NROS_REPO_DIR`, which is constant for the run, never the row's
+    #     `envstr` or `args`;
+    #   * concurrent same-directory syncs were already SAFE (8 parallel syncs of
+    #     one workspace, warm and cold: 8/8 exit 0, byte-identical output), so
+    #     this removes waste rather than a race. Hoisting makes it serial
+    #     anyway, which is strictly better than relying on that.
+    #
+    # Dirs the Node-pkg pre-pass already handled are skipped, so the two passes
+    # cannot re-sync the same tree.
+    nros_presync_row_dirs() {
+        local line dir seen=""
+        for line in "${fixture_records[@]}"; do
+            IFS=$'\x1f' read -r dir _ _ <<< "$line"
+            [ -n "$dir" ] || continue
+            [ -f "$dir/package.xml" ] || continue
+            case " $seen " in *" $dir "*) continue ;; esac
+            seen="$seen $dir"
+            echo "  → (row codegen) $dir"
+            # Phase 214.J.2 — wipe `<dir>/generated/` if the hash of the trait
+            # surface(s) tied to codegen shape (e.g. `RosAction`) has drifted
+            # since the previous `nros sync`. Prevents the stale-3-type-action
+            # shape that Phase 214.J first surfaced.
+            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
+            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
+            NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
+        done
+    }
+
     # Phase 244.D1/C5 — Node+Entry split codegen pre-pass. The manifest builds
     # the Entry pkg (`nros::main!()`, NO package.xml), whose [patch.crates-io]
     # resolves the generated msg crates from a sibling Node pkg's gitignored
@@ -400,5 +444,6 @@ else
     # unpruned find descended every build tree AND could pick up a
     # package.xml staged inside build-*/ -> spurious nros sync).
     done < <(git ls-files "examples/$platform/**/package.xml" "examples/$platform/package.xml")
+    nros_presync_row_dirs
     run nros_fixture_build_one
 fi

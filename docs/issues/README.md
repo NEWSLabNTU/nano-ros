@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#649** — `nros sync` ran once per fixture ROW while it is per-WORKSPACE. A
+counting shim on `$NROS_CLI` across `build-test-fixtures lane=native`: **185 invocations for 69 distinct
+targets** (63 % repeats), `examples/workspaces/features` synced **22 times** for its 24 manifest rows — the
+count tracks `fixtures.toml` rows, not work, since sync's outputs (generated msg crates, patch config, resolved
+models) do not vary by the row coordinate. TWO drivers had the pattern independently: `fixtures-build.sh`'s
+`nros_fixture_build_one` and `workspace-fixtures-build.sh`'s `build_workspace`. Checked before hoisting rather
+than assumed: no row-specific env reaches sync (in the workspace driver `export $envstr` is BELOW the sync —
+the comment there records env reaching `codegen-system` was #0257's fix, sync never in that scope), and
+concurrent same-dir syncs are already safe (8 parallel, warm AND cold: 8/8 exit 0, byte-identical output) — so
+this was waste, not a race. Fixed with one pre-pass per driver, mirroring the Node-pkg pre-pass already there;
+the workspace driver reuses its existing `group_dirs`. **185 -> 159 -> 101**, 69 targets throughout, green at
+each step. Remaining 32 repeats are 2-4x ACROSS drivers (each legitimately ensuring its own precondition) and
+need a cross-process freshness stamp — a design step, not a hoist, since a wrong digest leaves a stale
+`generated/` tree, which is what phase-214.J was about. Correction kept: the first fix predicted 185->~69 and
+delivered 159, because only one of the two drivers had been found. See `archived/0649-*`.
+
 Recently resolved (2026-08-16): **#646** — after #0641/#0645, what remained of `nros sync`'s walk was almost
 entirely NOT the workspace: 1590 dirs visited, **20 the workspace and 1570 the nano-ros underlay**, rediscovered
 by each of the 22 syncs `regenerate-bindings.sh` runs. The underlay is load-bearing (49 provisions) and its

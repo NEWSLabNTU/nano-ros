@@ -233,8 +233,17 @@ build_workspace() {
         fi
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
-        echo "     nros sync"
-        "$nros_cli" sync >/dev/null
+        # issue 0649 — the `nros sync` that used to be HERE is a pre-pass over
+        # `group_dirs` now. It ran per ROW while sync is per-WORKSPACE, and the
+        # large workspaces carry many rows: measured over one `lane=native`
+        # build, `examples/workspaces/features` was synced 22 times for its 24
+        # manifest rows.
+        #
+        # Safe to hoist because the row's own `env` cannot reach it: `export
+        # $envstr` is BELOW, deliberately (the comment there records that env
+        # reaching `codegen-system` was the fix for issue 0257 — sync was never
+        # in that scope). Concurrent same-dir syncs were measured safe too, so
+        # this removes waste rather than a race.
 
         # phase-351 W3 — the Phase 225.O re-append of the board's
         # `[patch.crates-io] libc` is GONE: sync no longer strips that row, it
@@ -425,6 +434,23 @@ for record in "${live_records[@]}"; do
     seen=0
     for g in "${group_dirs[@]:-}"; do [ "$g" = "$dir" ] && seen=1 && break; done
     [ "$seen" = "1" ] || group_dirs+=("$dir")
+done
+
+# issue 0649 — one `nros sync` per workspace DIRECTORY, before the rows fan out.
+#
+# `group_dirs` already exists for the shared cargo group, and it is exactly the
+# right set: sync's outputs (generated msg crates, the patch config, resolved
+# models) are per-workspace and do not vary by the row coordinate. Running it
+# per row asked the same question up to 22 times for one directory.
+#
+# Serial and in the parent, mirroring the pre-pass in `fixtures-build.sh`: a
+# user runs `nros sync` once and then builds, which is what this lane is
+# supposed to be simulating.
+for dir in "${group_dirs[@]:-}"; do
+    [ -n "$dir" ] || continue
+    [ -d "$repo_root/$dir" ] || continue
+    echo "  -> nros sync $dir"
+    ( cd "$repo_root/$dir" && "$nros_cli" sync >/dev/null )
 done
 
 pinned_make="$repo_root/third-party/make/make"
