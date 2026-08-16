@@ -1314,28 +1314,8 @@ Verified against the code, not the issue's own summary. Out of scope: no diagnos
 lane, policy not declarable in launch metadata, period/spin quantization silent. See `archived/0505-*`.
 (2026-08-15)
 
-**#0594** (build, open 2026-08-07) — **`alloc` and `std` are turned on implicitly in 34 places, and
-picking a PLATFORM enables the heap.** `nros-c`/`nros-cpp`'s `platform-{zephyr,freertos,nuttx,threadx}`
-and `nros-rmw-zenoh-staticlib`'s five platform features all list `"alloc"` (or `"std"`); nros-cpp's
-manifest states the reason — *"Embedded platforms imply `alloc` so the C++ FFI layer's `extern crate
-alloc` compiles"* — i.e. a nano-ros internal compile is paid for out of the user's image. Nine
-capability features (`param-services`, `lifecycle-services`, `bridge`, `config`, `metadata-mode`,
-`signal-fd-wake`, …) enable what they require instead of requiring it. `global-allocator = ["alloc"]`
-in three crates is gratuitous — all three allocator modules use only `core::alloc::GlobalAlloc`.
-Separately, **`#[panic_handler]` was gated on the ALLOCATOR feature**, so "I need panic" had to be
-spelled `global-allocator` — which is exactly how `compile-check-fixtures.sh:490` died on
-`#[panic_handler] function required` under phase-361 W3, inside a `|| echo` that swallowed it.
-**All 34 sites are now 0** and W8.c cut the
-`#[global_allocator]` count **4 → 1**: `nros-c` and `nros-platform` had defined one under
-IDENTICAL gates (kept apart by a manifest comment, while `nros-c` deps `nros-platform`
-non-optionally), and `nros-platform-mps2-an385` / `zpico-alloc` shipped two more that bypassed
-`nros_platform_alloc`. `nros-platform` is the sole owner; the rest forward to it, so a second cannot
-be spelled. Two things fell out: `extern crate nros_platform` is load-bearing (an unreferenced dep
-is DCE'd before its lang item lands — the FORCE_LINK class), and over-aligned requests now return
-null instead of silently under-aligned memory. **Left open**: nothing GATES any of this — W4's
-`check-feature-contract.sh` is still unwritten, so every figure here is a measurement, not an
-invariant. See `0594-*` and phase-361 W2/W4/W8. (2026-08-07, W8.c 2026-08-10)
-  **Retargeted at phase-359 W10 (2026-08-16):** 34 sites are down to **1** — `nros-tests`' `trigger-test = [… "nros-node/std"]`, a `std` forward W10 deletes. That site was INVISIBLE until today: clause (a) rejected `["std"]` in a feature body but not `["dep/std"]`, so the residual read as 1-and-benign with nothing having ruled on it. The clause now checks both spellings, carving out crates with no `no_std` mode (a hosted crate has no embedded image to protect — the same exemption clause (b) already makes). This one does NOT close with #0591/#0598: those are about `std` and W10 makes them unstateable, while this is about `alloc`, which survives as the remaining axis.
+Recently resolved (2026-08-16): **#0594** — all 34 implicit `alloc`/`std` enables are gone and the gate this issue asked for exists: `check-feature-contract` clause (a/manifest), OK over 209 crates. Verified section by section against the TREE, not just the gate. The last two landed as clause-(a) reds on main rather than as work against the list — `env` and `metadata-mode`, each moved from enabling `std` to REQUIRING it; `metadata-mode = ["std"]` had also made its own `compile_error!` unreachable. The malloc/panic half stays with #0618. See `archived/0594-*`. (2026-08-16)
+
 Recently resolved (2026-08-07): **#0593** — `nros/ffi-size-markers`, the `#[used]` attribute that
 stops `--gc-sections` dropping the `__NROS_SIZE_*` statics the C/C++ opaque-storage macros are
 probed from, was enabled by **exactly one thing**: `nros`'s `default` set. Both consumers dep

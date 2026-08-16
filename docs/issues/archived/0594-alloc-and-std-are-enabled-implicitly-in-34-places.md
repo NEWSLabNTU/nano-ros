@@ -1,7 +1,7 @@
 ---
 id: 594
 title: "`alloc` and `std` are turned on implicitly in 34 places — picking a PLATFORM enables the heap"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0598, issue-0582, issue-0464, rfc-0033, rfc-0034, phase-360]
@@ -42,7 +42,43 @@ assembled by accident from whichever features happened to be on.
 Those two are in tension today, and the workspace resolves the tension the wrong
 way: it makes the *platform* selection enable the *heap*.
 
-## The 34 sites
+## RESOLVED 2026-08-16 — all 34 sites gone, and the gate this issue asked for exists
+
+The ask was a gate: *"no feature body may list `alloc` or `std`, or forward
+`<dep>/alloc` / `<dep>/std`, unless the feature IS `alloc`/`std`"*. That is now
+`check-feature-contract` clause (a/manifest), and it reports **OK over 209
+crates**. The contract itself is normative in
+[ARCHITECTURE.md §2](../design/ARCHITECTURE.md) — "No feature other than `std`
+may enable `alloc`, and none may enable `std`."
+
+Verified against the TREE, not against the gate — a green gate proves the rule
+holds today, not that these particular rows were the ones fixed:
+
+| section | claim | now |
+| --- | --- | --- |
+| A (13) | `platform-<rtos>` enables the heap | `nros-c/platform-zephyr` lists `global-allocator`, `panic-spin`, `critical-section` and forwards — no `alloc`. `nros-cpp` forwards only. The zenoh staticlib's `platform-zephyr-baremetal` forwards `nros-platform/*` and `dep:panic-halt` — no `alloc` |
+| B (9) | capabilities enable what they need | `param-services = ["dep:nros-rcl-interfaces"]`, `lifecycle-services = ["dep:nros-lifecycle-msgs"]`, `signal-fd-wake = ["dep:libc"]` — dependencies, not heap |
+| C (3) | `global-allocator = ["alloc"]` | `nros-platform`: `[]`. `nros-c`: forwards `nros-platform/global-allocator`. Gratuitous implication deleted as this issue predicted |
+| D (6) | backend selection enables the heap | no `rmw-cyclonedds = ["nros/alloc"]` remains; the only hits are `alloc = ["nros/alloc"]`, i.e. the feature IS `alloc`, which the rule permits |
+| E | not a defect | unchanged — the entry was already withdrawn |
+
+The last two arrived while this issue sat open, both as clause-(a) failures on
+main rather than as work against this list: `env` (`03ca659c8`) and
+`metadata-mode` (`32b0ce0f2`), each moved from enabling `std` to REQUIRING it
+via `compile_error!`. `metadata-mode` is worth noting — `= ["std"]` had also made
+its own guard unreachable, so the feature carried a `compile_error!` that could
+never fire.
+
+### What is NOT closed here
+
+The **malloc / panic half** below. Clause (e) asserts exactly one
+`#[global_allocator]`, which is the narrow version of it, but the design
+question this issue raises — that `nros-c` and `nros-platform` define the lang
+item under IDENTICAL gates and are kept apart only by a hand-written rule in a
+manifest comment — is [issue 0618](0618-panic-handler-and-allocator-are-image-singletons-chosen-in-libraries.md)'s
+subject, filed later and specifically for it. Not re-scoped here.
+
+## The 34 sites (as filed, kept for the record)
 
 Every feature that is not `std`/`alloc`/`default` and whose body turns one of
 them on:
