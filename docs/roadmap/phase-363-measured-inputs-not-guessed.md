@@ -127,6 +127,39 @@ unrelated reason and reconfigured every time, so the line appeared in the
 control too. Testing the MECHANISM (VerifyGlobs) rather than a symptom of it is
 what made the result trustworthy.
 
+### Re-swept 2026-08-16 — five more of the same construct, in a sibling file
+
+W2 fixed the ten globs in `nros_generate_interfaces()`. Re-running its own sweep
+found **five it did not reach**, all in `cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`
+— and they are both sub-kinds W2 converted, not a new shape:
+
+| glob | kind |
+| --- | --- |
+| `*/package.xml` (stub emission) | the msg-PACKAGE scan |
+| `*/package.xml` (name-mismatch fallback) | same |
+| `msg/*.msg`, `srv/*.srv`, `action/*.action` | the interface globs |
+
+These matter more than the count suggests: the roots are
+`NROS_INTERFACE_SEARCH_PATH`, i.e. the USER's own msg packages. So the defect
+W2 describes — "adding a message file leaves the build generating the old set
+until an unrelated edit forces a reconfigure" — was still live on the
+user-facing path after W2 declared the class closed.
+
+That is the issue-0196 shape inside this phase's own wave: the fix landed where
+the symptom was seen. Recorded rather than quietly patched, because "the tree
+already uses CONFIGURE_DEPENDS in 26 other places; these six were missed" was
+the same sentence one iteration earlier.
+
+Verified by W2's method — the MECHANISM, not a symptom:
+
+```
+control (no change)   -> 0 GLOB mismatch
+add a msg package     -> 1 GLOB mismatch    (reconfigure forced)
+remove it again       -> 0 GLOB mismatch
+```
+
+No `file(GLOB)` without `CONFIGURE_DEPENDS` remains in that file.
+
 ## W3 — delete both extension allowlists (LANDED)
 
 The two signature scripts enumerate with `git ls-files --cached --others

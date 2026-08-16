@@ -72,7 +72,10 @@ function(_nros_emit_workspace_find_stubs)
         if(NOT IS_DIRECTORY "${_root}")
             continue()
         endif()
-        file(GLOB _pxs RELATIVE "${_root}" "${_root}/*/package.xml")
+        # phase-363 W2 — CONFIGURE_DEPENDS: these roots are the USER's
+        # (`NROS_INTERFACE_SEARCH_PATH`), so a newly added msg PACKAGE is
+        # invisible until something unrelated forces a reconfigure.
+        file(GLOB _pxs CONFIGURE_DEPENDS RELATIVE "${_root}" "${_root}/*/package.xml")
         foreach(_pxrel ${_pxs})
             get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
             nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)
@@ -147,7 +150,7 @@ function(_nros_find_msg_package_root pkg out_var)
         # File-glob fallback: any immediate subdir whose package.xml names <pkg>.
         # Useful when the dir name differs from the pkg name (rare; supported
         # for parity with colcon).
-        file(GLOB _candidates RELATIVE "${_root}" "${_root}/*/package.xml")
+        file(GLOB _candidates CONFIGURE_DEPENDS RELATIVE "${_root}" "${_root}/*/package.xml")
         foreach(_pxrel ${_candidates})
             get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
             nros_read_package_xml_body("${_root}/${_pxrel}" _pxbody)
@@ -287,9 +290,11 @@ function(_nros_find_ros_msg_package pkg)
 
     # Glob IDLs out of the resolved root. Standard ROS layout:
     # <root>/{msg,srv,action}/*.{msg,srv,action}.
-    file(GLOB _msgs "${_pkg_root}/msg/*.msg")
-    file(GLOB _srvs "${_pkg_root}/srv/*.srv")
-    file(GLOB _acts "${_pkg_root}/action/*.action")
+    # phase-363 W2 — same rule as `nros_generate_interfaces()`: a new .msg in a
+    # resolved package must force the reconfigure that regenerates for it.
+    file(GLOB _msgs CONFIGURE_DEPENDS "${_pkg_root}/msg/*.msg")
+    file(GLOB _srvs CONFIGURE_DEPENDS "${_pkg_root}/srv/*.srv")
+    file(GLOB _acts CONFIGURE_DEPENDS "${_pkg_root}/action/*.action")
     set(_ifaces ${_msgs} ${_srvs} ${_acts})
 
     if(NOT _ifaces)
