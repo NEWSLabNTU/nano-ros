@@ -452,11 +452,59 @@ macro_rules! println {
 /// runtime; a pure-Rust image links no `nros-c` and takes this handler. See the
 /// `image-runtime` feature in `Cargo.toml` for why the handler and the
 /// allocator share one flag.
+/// The board's fatal behaviour, as a STRONG `nros_platform_panic` (phase-366
+/// W5), overriding the weak default in `nros-platform-posix` (stderr +
+/// `abort()`). `exit(1)` rather than `abort()` is the point: a NuttX shell sees
+/// the status libstd's abort path produced, which is what the e2e harness
+/// expects.
+///
+/// The rendered line stays byte-identical — `nros: PANIC <info>` — because the
+/// harness greps for it.
+#[cfg(all(target_os = "nuttx", feature = "image-runtime"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
+    let text = if msg.is_null() || len == 0 {
+        ""
+    } else {
+        // SAFETY: the ABI contract is `len` readable bytes at `msg`.
+        core::str::from_utf8(unsafe { core::slice::from_raw_parts(msg, len) }).unwrap_or("<non-utf8>")
+    };
+    println!("nros: PANIC {text}");
+    sys::exit_process(1)
+}
+
+/// Rust's lang item, forwarding to the ABI above.
+///
+/// Still gated exactly as before — `nros-c` supplies one for `no_std` C/C++
+/// images and two would be a duplicate lang item, so those images take this
+/// crate with `default-features = false`. What changed is that the BEHAVIOUR now
+/// lives behind the ABI, so a C or C++ fatal on this board reaches the same
+/// line as a Rust panic instead of `abort()`ing silently.
 #[cfg(all(target_os = "nuttx", feature = "image-runtime"))]
 #[panic_handler]
 fn nros_nuttx_panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    println!("nros: PANIC {info}");
-    sys::exit_process(1)
+    use core::fmt::Write as _;
+
+    struct Buf {
+        bytes: [u8; 192],
+        used: usize,
+    }
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let room = self.bytes.len() - self.used;
+            let n = s.len().min(room);
+            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
+            self.used += n;
+            Ok(())
+        }
+    }
+
+    let mut buf = Buf {
+        bytes: [0u8; 192],
+        used: 0,
+    };
+    let _ = write!(buf, "{info}");
+    nros_platform_panic(buf.bytes.as_ptr(), buf.used)
 }
 
 // phase-359 W7 — `run_entry` carries the same gate as `run_tiers` and as every

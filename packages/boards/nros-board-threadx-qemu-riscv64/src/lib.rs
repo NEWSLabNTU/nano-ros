@@ -368,17 +368,61 @@ pub fn exit_failure() -> ! {
     }
 }
 
-/// Panic handler — prints message and exits QEMU.
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
+/// The board's fatal behaviour — UART, then exit QEMU (phase-366 W5).
+///
+/// This is a STRONG `nros_platform_panic`, overriding the weak default in
+/// `nros-platform-threadx` (which halts, the only thing true on a bare-metal
+/// board it knows nothing about). Exiting QEMU is board knowledge: it is what
+/// makes a panicking fixture report a failure to the harness instead of hanging
+/// until a timeout.
+///
+/// It used to be a `#[panic_handler]`, and UNGATED — the one provider in the
+/// tree that no feature could turn off, so an image linking this board plus
+/// `nros-c` had two candidates for one lang item. Expressed through the ABI it
+/// is reachable from C and C++ as well, and it stops competing for the lang
+/// item, which belongs to the image (RFC-0077).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
     uart_write_str("PANIC: ");
-    {
-        use core::fmt::Write;
-        let mut buf = UartWriter;
-        let _ = write!(buf, "{}", info);
+    if !msg.is_null() && len > 0 {
+        // SAFETY: the ABI contract is `len` readable bytes at `msg`.
+        let bytes = unsafe { core::slice::from_raw_parts(msg, len) };
+        uart_write_str(core::str::from_utf8(bytes).unwrap_or("<non-utf8>"));
     }
     uart_write_str("\n");
     exit_failure()
+}
+
+/// Rust's lang item, forwarding to the ABI above.
+///
+/// Kept here for now because a pure-Rust image on this board links no `nros-c`,
+/// so removing it outright would leave those images with no handler at all —
+/// the W5 window the phase doc calls out. It no longer DECIDES anything: the
+/// behaviour is `nros_platform_panic`'s, shared with C and C++.
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write as _;
+
+    struct Buf {
+        bytes: [u8; 192],
+        used: usize,
+    }
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let room = self.bytes.len() - self.used;
+            let n = s.len().min(room);
+            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
+            self.used += n;
+            Ok(())
+        }
+    }
+
+    let mut buf = Buf {
+        bytes: [0u8; 192],
+        used: 0,
+    };
+    let _ = write!(buf, "{info}");
+    nros_platform_panic(buf.bytes.as_ptr(), buf.used)
 }
 
 /// #131 — bare-metal `__assert_func` override.
