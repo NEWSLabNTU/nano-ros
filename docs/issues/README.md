@@ -101,6 +101,19 @@ records that missing one is the pre-0493 defect; phase-365's switch from a searc
 constructed path reintroduced it, one layout the other way. Found by READING the `via <origin>` line, which
 CLAUDE.md requires. See `0628-*`. (2026-08-16)
 
+Recently resolved (2026-08-16): **#633** — issue 0601's runnability probe could not fire in a build dir that
+had already resolved an unusable `idlc`. The resolved path was cached as `NROS_RMW_CYCLONEDDS_IDLC:INTERNAL`
+and the gate on re-resolving was `NOT EXISTS`, but a binary that cannot LOAD still exists — so the block
+holding both the SDK preference and the `-h` probe was skipped and the stale answer reused. Selection by
+existence where runnability is the property that matters: the class 0601 named, fixed there at the point of
+SELECTION and left standing at the point of REUSE. FIXED: the gate probes the cached tool, every candidate
+rung is probed in order, and `find_program`'s own `_idlc_found` cache is dropped before the search — a fix
+touching one of the two caches would have reported success while staying broken. Reproduced by poisoning
+both caches with a non-executable stub; a flagless reconfigure then re-resolved to the SDK tool by itself
+and left 0 references to the bad one. Corrects a claim in the first version of the issue: iceoryx is NOT
+absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
+so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
+
 **#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
 store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
 for one tool in one configure, only the FetchContent fallback reads the index — and (b) it cannot serve two

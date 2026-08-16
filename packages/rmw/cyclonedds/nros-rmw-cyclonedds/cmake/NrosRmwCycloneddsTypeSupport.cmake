@@ -188,6 +188,22 @@ if(NOT TARGET CycloneDDS::idlc)
     # Phase 186.3: a self-provisioned build with no `just` step resolves idlc
     # from PATH (e.g. a ROS 2 install) or a pre-set IDLC_EXECUTABLE.
     _nros_find_idlc(IDLC_EXECUTABLE)
+    # `find_program` CACHES its hit, and returns it thereafter without
+    # searching. So a build dir that once resolved a broken idlc keeps it even
+    # after a working one is provisioned — the cache answers before the search
+    # does. Probe, and on failure drop the cached hit and search once more
+    # before giving up; otherwise the remedy ("provision one") cannot take
+    # effect in the tree that needs it (issue 0633).
+    if(IDLC_EXECUTABLE)
+        _nros_idlc_runs("${IDLC_EXECUTABLE}" _nros_idlc_why _nros_idlc_env)
+        if(_nros_idlc_why)
+            message(STATUS
+                "nano-ros: cached idlc ${IDLC_EXECUTABLE} cannot run "
+                "(${_nros_idlc_why}); dropping it and searching again (issue 0633)")
+            unset(IDLC_EXECUTABLE CACHE)
+            _nros_find_idlc(IDLC_EXECUTABLE)
+        endif()
+    endif()
     if(IDLC_EXECUTABLE)
         _nros_idlc_runs("${IDLC_EXECUTABLE}" _nros_idlc_why _nros_idlc_env)
         set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_nros_idlc_env}"
@@ -229,9 +245,42 @@ endif()
 # bin/idlc` caches that fail to resolve → `idlc: not found` / exit 127).
 # `NOT EXISTS` forces a fresh resolution from the current layout; the
 # INTERNAL `set` below implies FORCE, so it overwrites the stale value.
-if(NOT NROS_RMW_CYCLONEDDS_IDLC OR NOT EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
-    set(_idlc_loc "")
-    # Prefer the imported target's location (covers per-config suffixes).
+#
+# Issue 0633: the re-resolution gate below asks whether the cached tool RUNS,
+# not whether it EXISTS. `NOT EXISTS` was the original spelling and it covers
+# only a path that vanished; the far more common stale state on a host with ROS
+# is a path that is still there and can no longer LOAD
+# (`libiceoryx_binding_c.so: cannot open shared object file`). That file exists,
+# so the whole block below — which is where BOTH the SDK preference and issue
+# 0601's runnability probe live — was skipped, and the broken answer was reused
+# forever. Measured: a plain reconfigure left 33 references to the unusable
+# binary, and so did `-DIDLC_EXECUTABLE=<working>`, because that variable is
+# consulted two levels INSIDE the block the cache short-circuits. Selection by
+# existence where runnability is the property that matters — the same class
+# 0601 named, fixed there at the point of SELECTION and left standing here at
+# the point of REUSE.
+set(_nros_idlc_reuse OFF)
+if(NROS_RMW_CYCLONEDDS_IDLC AND EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
+    _nros_idlc_runs("${NROS_RMW_CYCLONEDDS_IDLC}" _nros_cached_why _nros_cached_env)
+    if(_nros_cached_why)
+        message(STATUS
+            "nano-ros: cached idlc ${NROS_RMW_CYCLONEDDS_IDLC} no longer runs "
+            "(${_nros_cached_why}); re-resolving (issue 0633)")
+    else()
+        set(_nros_idlc_reuse ON)
+        set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_nros_cached_env}"
+            CACHE INTERNAL "env prefix idlc needs to run (issue 0601)")
+    endif()
+endif()
+
+if(NOT _nros_idlc_reuse)
+    # Candidates in preference order; the first that RUNS wins. Probing every
+    # rung rather than only the one `_nros_find_idlc` returns is what stops a
+    # stale cached value at ANY rung from deciding the build: issue 0633 had
+    # two of them (this variable and `find_program`'s own hit), and a fix that
+    # invalidated one would have reported success while staying broken.
+    set(_idlc_paths "")
+    set(_idlc_origins "")
     if(TARGET CycloneDDS::idlc)
         foreach(_loc_prop
                 IMPORTED_LOCATION
@@ -239,29 +288,61 @@ if(NOT NROS_RMW_CYCLONEDDS_IDLC OR NOT EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
                 IMPORTED_LOCATION_RELWITHDEBINFO
                 IMPORTED_LOCATION_DEBUG
                 IMPORTED_LOCATION_NOCONFIG)
-            if(NOT _idlc_loc)
-                get_target_property(_p CycloneDDS::idlc ${_loc_prop})
-                if(_p)
-                    set(_idlc_loc "${_p}")
-                endif()
+            get_target_property(_p CycloneDDS::idlc ${_loc_prop})
+            if(_p)
+                list(APPEND _idlc_paths "${_p}")
+                list(APPEND _idlc_origins "imported target CycloneDDS::idlc (${_loc_prop})")
             endif()
         endforeach()
     endif()
-    # Fall back to a real on-disk search so far consumers never depend
-    # on the imported target being visible in their scope.
-    if(NOT _idlc_loc)
-        if(IDLC_EXECUTABLE)
-            set(_idlc_loc "${IDLC_EXECUTABLE}")
-        else()
-            _nros_find_idlc(_idlc_found)
-            if(_idlc_found)
-                set(_idlc_loc "${_idlc_found}")
+    if(IDLC_EXECUTABLE)
+        list(APPEND _idlc_paths "${IDLC_EXECUTABLE}")
+        list(APPEND _idlc_origins "IDLC_EXECUTABLE")
+    endif()
+    # A real on-disk search, so far consumers never depend on the imported
+    # target being visible in their scope. The cached hit is dropped first for
+    # the reason in the selection block above: `find_program` answers from its
+    # cache without searching, so a provisioning run that installs a working
+    # tool would otherwise change nothing here.
+    unset(_idlc_found CACHE)
+    _nros_find_idlc(_idlc_found)
+    if(_idlc_found)
+        list(APPEND _idlc_paths "${_idlc_found}")
+        list(APPEND _idlc_origins "search (SDK store, then PATH)")
+    endif()
+
+    set(_idlc_loc "")
+    set(_idlc_env "")
+    set(_idlc_origin "")
+    set(_idlc_idx 0)
+    foreach(_cand IN LISTS _idlc_paths)
+        if(NOT _idlc_loc)
+            list(GET _idlc_origins ${_idlc_idx} _cand_origin)
+            _nros_idlc_runs("${_cand}" _cand_why _cand_env)
+            if(_cand_why)
+                message(STATUS
+                    "nano-ros: idlc candidate ${_cand} "
+                    "(${_cand_origin}) cannot run: ${_cand_why}")
+            else()
+                set(_idlc_loc "${_cand}")
+                set(_idlc_env "${_cand_env}")
+                set(_idlc_origin "${_cand_origin}")
             endif()
         endif()
-    endif()
+        math(EXPR _idlc_idx "${_idlc_idx}+1")
+    endforeach()
+
     if(_idlc_loc)
         set(NROS_RMW_CYCLONEDDS_IDLC "${_idlc_loc}"
             CACHE INTERNAL "Absolute path to Cyclone DDS idlc")
+        set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_idlc_env}"
+            CACHE INTERNAL "env prefix idlc needs to run (issue 0601)")
+        # Say which one was chosen and why. Issue 0500's lesson is that a
+        # provisioning path which "prints success either way" is how the wrong
+        # answer wins silently, and a sticky cache is a second way to win
+        # silently: the reconfigures that changed nothing still printed
+        # `Configuring done` / `Generating done`.
+        message(STATUS "nano-ros: idlc ${_idlc_loc} via ${_idlc_origin}")
     endif()
 endif()
 

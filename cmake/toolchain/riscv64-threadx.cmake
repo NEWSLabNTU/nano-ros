@@ -93,8 +93,17 @@ if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
     set(_riscv_stdcxx "")
     find_program(_NROS_CLI_RV nros)
     if(_NROS_CLI_RV)
+        # WORKING_DIRECTORY for the reason spelled out in
+        # `zephyr/cmake/nros_rmw_cyclonedds.cmake`: `nros sdk-path` reads
+        # `nros-sdk-index.toml` from the CURRENT directory, and a toolchain
+        # file is evaluated with the build dir as cwd, so without this the
+        # command exits 1 and the store is never consulted. Here the failure
+        # is quiet by design — the "no SDK libstdc++" fallback below is a real
+        # configuration — which is precisely why it could sit unnoticed.
+        get_filename_component(_riscv_repo_dir "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
         execute_process(
             COMMAND "${_NROS_CLI_RV}" sdk-path riscv-none-elf-gcc
+            WORKING_DIRECTORY "${_riscv_repo_dir}"
             OUTPUT_VARIABLE _riscv_sdk_dir OUTPUT_STRIP_TRAILING_WHITESPACE
             ERROR_QUIET RESULT_VARIABLE _riscv_rc)
         if(_riscv_rc EQUAL 0)

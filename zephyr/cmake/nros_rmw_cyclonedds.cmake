@@ -291,12 +291,31 @@ else()
     set(_nros_idlc_store_hints "")
     find_program(_NROS_CLI_IDLC nros)
     if(_NROS_CLI_IDLC)
+        # WORKING_DIRECTORY, and it is load-bearing: `nros sdk-path` reads
+        # `nros-sdk-index.toml` relative to the CURRENT DIRECTORY, and cmake
+        # runs this from the BUILD dir, where there is no index. The command
+        # then exits 1 with `failed to read SDK index nros-sdk-index.toml`,
+        # `ERROR_QUIET` swallowed the sentence, the store hints stayed empty,
+        # and the search fell through to a host PATH that has no idlc either —
+        # ending in a FATAL_ERROR advising three remedies that were all already
+        # satisfied. `NanoRosCorrosion.cmake` has always passed one; this site
+        # and the riscv64-threadx toolchain did not.
         execute_process(
             COMMAND "${_NROS_CLI_IDLC}" sdk-path cyclonedds
+            WORKING_DIRECTORY "${NROS_REPO_DIR}"
             OUTPUT_VARIABLE _nros_cyclone_dir OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET RESULT_VARIABLE _nros_cyclone_rc)
+            ERROR_VARIABLE _nros_cyclone_err RESULT_VARIABLE _nros_cyclone_rc)
         if(_nros_cyclone_rc EQUAL 0 AND IS_DIRECTORY "${_nros_cyclone_dir}/bin")
             set(_nros_idlc_store_hints "${_nros_cyclone_dir}/bin")
+        else()
+            # Say so. A store lookup that fails silently is indistinguishable
+            # from a store that has nothing, and only one of those is worth
+            # acting on (issues 0500, 0625).
+            string(STRIP "${_nros_cyclone_err}" _nros_cyclone_err)
+            message(STATUS
+                "nano-ros: SDK store has no usable cyclonedds "
+                "(rc=${_nros_cyclone_rc}: ${_nros_cyclone_err}); "
+                "falling back to PATH for idlc")
         endif()
     endif()
     # issue 0325 — HINTS are searched BEFORE the host PATH, PATHS after. The
@@ -317,7 +336,14 @@ else()
 endif()
 if(NOT NROS_HOST_IDLC)
     message(FATAL_ERROR
-        "host Cyclone idlc not found — install ROS 2 (idlc on PATH), run "
+        "host Cyclone idlc not found.\n"
+        "  searched: SDK store hints [${_nros_idlc_store_hints}], host PATH, "
+        "then ${NROS_REPO_DIR}/build/{cyclonedds,install}/bin\n"
+        "  An EMPTY store-hints list above means the store was never "
+        "consulted, not that it is empty — `nros sdk-path cyclonedds` reads "
+        "the index from the CURRENT directory, so it fails when run from a "
+        "build dir.\n"
+        "  Remedies: install ROS 2 (idlc on PATH), run "
         "`nros setup <board> --rmw cyclonedds`, or set IDLC_EXECUTABLE.")
 endif()
 set(IDLC_EXECUTABLE "${NROS_HOST_IDLC}"
