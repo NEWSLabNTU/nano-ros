@@ -31,7 +31,19 @@ done < <(sed -E 's/#.*//' "$allowlist")
 # Walk owned C/C++/asm, skipping vendored / build / generated trees.
 declare -A actual
 while IFS= read -r f; do
-    n=$(grep -cE '__attribute__\(\(weak\)\)|\.weak ' "$f" 2>/dev/null || true)
+    # Strip comments before counting. The attribute is DISCUSSED in prose next
+    # to nearly every real use — "`__attribute__((weak))` so a C/C++ image can
+    # define this symbol strongly" — and counting those made the gate report
+    # drift that does not exist: phase-366 added one such sentence to the
+    # threadx port and its count went 8 -> 9 with no new weak symbol, while
+    # posix's single weak decl counted as 2. A gate that cries wolf on its own
+    # documentation gets bypassed (issue 0555 makes the same point).
+    #
+    # `cpp -fpreprocessed` removes comments without expanding anything, so
+    # `#include`s and macros are untouched and a `.S` file survives it. Falls
+    # back to the raw file if cpp is unavailable or chokes.
+    stripped=$(cpp -fpreprocessed -dD -P "$f" 2>/dev/null) || stripped=$(cat "$f")
+    n=$(printf '%s\n' "$stripped" | grep -cE '__attribute__\(\(weak\)\)|\.weak ' || true)
     [ "${n:-0}" -gt 0 ] && actual["$f"]="$n"
 done < <(git ls-files 'packages/**' \
             | grep -E '\.(c|cpp|cc|h|hpp|S|s)$' \
