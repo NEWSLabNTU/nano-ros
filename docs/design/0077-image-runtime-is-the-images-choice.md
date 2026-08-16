@@ -631,3 +631,142 @@ policy, and how it says so depends on what the image is written in.** A Rust
 entry says it in a macro; a C/C++ entry says it in the cmake call that builds it.
 Leaving the second unaddressed would close this RFC with the C/C++ half of the
 tree still in exactly the state the RFC describes as wrong.
+
+
+## Decision 2026-08-17 — one policy, two surfaces
+
+The review above is accepted. The invariant does not change: **the image owns the
+panic policy, and exactly one provider reaches the artifact.** What changes is
+that the image says so in the vocabulary it is written in, and that saying
+nothing gets a working default instead of a link error.
+
+### The surfaces
+
+| the image is | says it with | default |
+| --- | --- | --- |
+| a Rust entry crate | `nros::main!(panic = …)` | `platform` |
+| a C/C++ cmake target | `nano_ros_entry(… PANIC …)` | `platform` |
+
+Both accept the same three values, and they mean the same thing on either side:
+
+| value | meaning |
+| --- | --- |
+| `platform` | route panics to `nros_platform_panic` — the board's honest ending |
+| `halt` | the `panic-halt` body: park the core, for images that must not print |
+| `own` | this image supplies its own provider; emit nothing |
+
+`own` is a positive declaration, not the absence of one. That is the whole point
+of the opt-out: an image that brings `esp-backtrace` or `panic-semihosting`
+STATES it, so the build can tell "deliberate" from "forgot" — which is the
+distinction the current design cannot make.
+
+### Why a default is safe here, given there are no weak lang items
+
+Rust has no overridable `#[panic_handler]`; two definitions is a compile error.
+So this default is NOT a link-time fallback. It is a macro/feature-level
+decision resolved before rustc runs:
+
+- the Rust entry's default is resolved when `main!()` expands;
+- the C/C++ entry's default is resolved when cmake computes the staticlib's
+  cargo features.
+
+In both cases exactly one provider is chosen before compilation, and `own`
+suppresses emission at that same point. Nothing is discarded by the linker, and
+the "default versus override" shape that Rust cannot express is never relied on.
+
+### What this replaces on the C/C++ side
+
+`panic-spin` was never a policy anyone chose — it was the body `nros-c` happened
+to carry, and `cmake/NanoRosFeatureSet.cmake` hardcoded `panic-halt` per platform
+beside it. Both are replaced by ONE feature the entry selects:
+
+    nros-c / nros-cpp features
+      panic-platform   emits #[panic_handler] forwarding to nros_platform_panic
+      panic-halt       existing panic-halt body
+      (neither)        PANIC own — the image supplies the provider
+
+Exactly one of the two features is enabled for a `no_std` staticlib build, and
+that is checkable rather than conventional (see the gate below).
+
+**Note the behaviour change this carries.** Today a C/C++ embedded image halts on
+panic, because the table says `panic-halt`. Under `PANIC platform` it will route
+to `nros_platform_panic` and end the way the board ends — printing on ports that
+print, `k_panic()` on Zephyr, exiting QEMU on the ThreadX RV64 board. That is the
+intended ending, but it is a change in what a shipped image does, so it belongs
+in the migration notes rather than in a silent default flip.
+
+## Migration
+
+Ordered so that no commit leaves an image with two providers or none. Each step
+is independently green.
+
+**M1 — add the argument, default `own`.** `main!()` accepts `panic = …` and, for
+now, defaults to `own` (emit nothing). Identical behaviour to today; no image
+changes. The C/C++ `PANIC` argument lands the same way, defaulting to whatever
+`NanoRosFeatureSet.cmake` currently computes for that platform.
+
+**M2 — migrate the Rust images that already opted in.** The ~23 images calling
+`nros::panic_to_platform!()` convert, one commit per family:
+
+```rust
+-nros::panic_to_platform!();
+-nros::main!();
++nros::main!(panic = "platform");
+```
+
+Removing the call and adding the argument in the same edit is what keeps each
+commit self-consistent — do them separately and the image has two providers or
+none in between.
+
+**M3 — declare the images that bring their own.** `qemu-esp32-baremetal`
+(`esp-backtrace`), `logging-smoke-freertos-mps2` and
+`examples/workspaces/rust/src/freertos_entry` (`panic-semihosting`) gain
+`panic = "own"`. Behaviour unchanged; they now SAY what was previously inferred
+from their silence. This step must complete before M5.
+
+**M4 — migrate the C/C++ entries.** Each `nano_ros_entry()` that wants the
+board's ending gains `PANIC platform`; any image depending on halt semantics
+says `PANIC halt` explicitly. The per-platform table stops being consulted for
+this decision.
+
+**M5 — flip both defaults to `platform`.** Only now, with every image either
+migrated or explicitly `own`. An image added after this point gets a working
+ending by saying nothing, which is the ergonomic goal.
+
+**M6 — extend the gate to ABSENCE.** `check-archive-lang-items` counts per link
+line, which catches duplication and cannot catch a missing handler. Counting per
+image COORDINATE lands here — phase-366 already names this as a prerequisite
+rather than a nicety, and M7 is what makes it load-bearing.
+
+## Retirement
+
+**R1 — `panic-spin` is deleted** from `nros-c` and `nros-cpp`, along with the
+`#[panic_handler]` at `nros-c/src/lib.rs:160`. Blocked on M4: it is the only
+provider a C/C++ `no_std` staticlib has today, so deleting it before the entry
+can name a replacement leaves the archive with no lang item — the absence M6
+exists to catch.
+
+**R2 — `panic-halt` stops being a per-platform default.** The hardcoded
+`panic-halt` entries in `cmake/NanoRosFeatureSet.cmake` (lines 120, 126, 140,
+147) are removed; the feature remains, selectable as `PANIC halt`.
+
+**R3 — `panic_to_platform!()` stays, and stops being the documented path.** It
+remains public for entries that do not go through `main!()` (a hand-rolled
+`no_std` binary, `zephyr_component_main!`), and its doc comment changes from
+"invoke this" to "`main!(panic = …)` is the normal way; this is the escape
+hatch". Not deleted — deleting it would strand exactly the images that cannot
+use the macro that replaces it.
+
+**R4 — §2's sentence is amended** (phase-366 W5.f), and now says which surface
+carries the choice, because "the image" is not always a Rust crate.
+
+## Acceptance
+
+- A new Rust entry that writes only `nros::main!()` links and panics through
+  `nros_platform_panic`.
+- A new C/C++ entry that writes only `nano_ros_entry(…)` does the same.
+- An image that supplies its own provider and forgets to say `own` FAILS, and
+  the message names `panic = "own"` / `PANIC own` rather than the lang item.
+- An image that says `own` and supplies nothing FAILS with a missing provider,
+  from the coordinate-level gate rather than from the linker.
+- `grep -rn "panic-spin" packages/ cmake/` is empty.

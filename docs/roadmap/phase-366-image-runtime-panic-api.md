@@ -1,7 +1,7 @@
 # Phase 366 — The panic platform API, and one fatal path per image
 
-**Status (2026-08-16).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W5.e and
-W5.f remain.
+**Status (2026-08-17).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W5.e is
+BLOCKED on W7 (review found it is a Rust-entry-only answer); W5.f and W7 remain.
 
 The lang item now belongs to the image on all three boards. `nros-board-nuttx`,
 `nros-board-threadx-qemu-riscv64` and `nros-board-mps2-an385-freertos` no longer
@@ -181,6 +181,15 @@ once W5.c supplies one. Only now is it safe.
 `panic-halt` stops being a library feature and becomes what it always should
 have been — a dependency the IMAGE names.
 
+> **REVISED 2026-08-17 — BLOCKED, and the sentence above is a Rust-entry answer.**
+> A C/C++ image has no Rust crate to name a dependency in, and
+> `nros-c`/`nros-cpp` are `crate-type = ["staticlib", …]`, so rustc requires the
+> lang item WHEN THE ARCHIVE IS COMPILED — before cmake links anything.
+> `panic-spin` is the only provider such a build has today, so deleting it as
+> written leaves the archive with no handler, which W6's per-link-line gate
+> cannot see. The replacement surface is W7 below; W5.e resumes as R1 of
+> RFC-0077's retirement list once W7.M4 has landed.
+
 **W5.f — amend `ARCHITECTURE.md` §2.** Panic's selector is the image, not
 `platform-<rtos>`. The allocator's sentence stays: its implementation IS
 platform-keyed and its arena must remain shared. Last, so the text lands only
@@ -189,6 +198,54 @@ once the code makes it true.
 **Prerequisite for W5.d, not a nicety.** W6's gate counts per LINK LINE, which
 catches duplication and cannot catch ABSENCE — and absence is precisely what
 W5.d risks. Extending it to count per image COORDINATE should land first.
+
+---
+
+## W7 — the image says it in its own vocabulary (RFC-0077, decided 2026-08-17)
+
+Review found two places where W5 assumed the image is a Rust entry crate. Both
+are accepted; the invariant is unchanged and the surface grows a second half.
+
+**W7.a — `main!()` carries the default.** `nros::main!(panic = "platform" |
+"halt" | "own")`, so a Rust entry gets a working ending by saying nothing.
+Today's mandatory `nros::panic_to_platform!()` beside `main!()` is a second
+obligatory line no other `no_std` crate asks for, and forgetting it fails as a
+missing lang item that names nothing in this framework. The RFC's original
+objection — that emitting from `main!()` would collide with images declaring
+their own — holds only for an UNCONDITIONAL emit; `own` is the opt-out that
+makes it safe, and makes "deliberate" distinguishable from "forgot".
+
+**W7.b — `nano_ros_entry(… PANIC platform|halt|own)`.** The same three values on
+the cmake surface, lowering to ONE cargo feature on the staticlib build
+(`panic-platform` / `panic-halt` / neither). This replaces
+`cmake/NanoRosFeatureSet.cmake`'s hardcoded `panic-halt` at lines 120, 126, 140
+and 147 — a library decision made on the image's behalf by a table its author
+never sees, which is this phase's own defect one language over.
+
+**W7.c — migration, M1-M6 of RFC-0077.** Ordered so no commit leaves an image
+with two providers or none: add the argument defaulting to `own` (behaviour
+identical to today) → migrate the ~23 images that call `panic_to_platform!()`,
+each in ONE commit that removes the call and adds the argument together →
+declare the three images that bring their own (`esp-backtrace`,
+`panic-semihosting`) → migrate the C/C++ entries → only then flip both defaults
+to `platform`.
+
+**W7.d — extend the gate to ABSENCE.** Count per image COORDINATE, not per link
+line. Already named above as a prerequisite for W5.d; W7 is what makes it
+load-bearing, because `own` is a promise the build must be able to check.
+
+**Acceptance.** A new Rust entry writing only `nros::main!()`, and a new C/C++
+entry writing only `nano_ros_entry(…)`, both link and panic through
+`nros_platform_panic`. An image that supplies its own provider without saying
+`own` fails with a message naming `panic = "own"` / `PANIC own`, not the lang
+item. An image that says `own` and supplies nothing fails at the coordinate gate
+rather than at the linker. `grep -rn "panic-spin" packages/ cmake/` is empty.
+
+**Carries a behaviour change, and it is not silent.** A C/C++ embedded image
+halts on panic today because the table says `panic-halt`; under `PANIC platform`
+it ends the way its board ends. That is the intended ending, but it changes what
+a shipped image does, so it is called out in RFC-0077's migration notes rather
+than arriving as a default flip.
 
 ### W6 — the gate
 
