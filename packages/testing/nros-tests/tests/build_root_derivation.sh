@@ -371,9 +371,15 @@ scenario '
 # This file is exempt from both arms ON PURPOSE: it is the test that pins each
 # constant to its expected path, so its expected side MUST spell the literal. A
 # check written with the constant on both sides checks nothing.
+#
+# `export -f`/`declare -f` lines are excluded because they NAME functions rather
+# than call them: `export -f nros_build_dir nros_build_root` reads to this regex
+# as a call passing the bare kind `nros_build_root` (issue 0624 shipped one, and
+# a recipe that ships helpers to its subshells has to write that line).
 scenario '
     hits="$(git grep -nE "nros_build_dir [a-z0-9]" -- scripts just justfile \
-        | grep -v "build-root.sh" | grep -v "build_root_derivation.sh" || true)"
+        | grep -v "build-root.sh" | grep -v "build_root_derivation.sh" \
+        | grep -vE "^[^:]+:[0-9]+: *(export|declare) -f" || true)"
     if [ -n "$hits" ]; then
         echo "  FAIL a shell call site passes a bare-word kind (use \$NROS_KIND_*)"
         echo "$hits" | sed "s/^/        /"

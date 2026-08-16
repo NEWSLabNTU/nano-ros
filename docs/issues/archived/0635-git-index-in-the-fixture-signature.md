@@ -91,3 +91,36 @@ The rule worth keeping: **a signature input must be something a source change
 moves and nothing else moves.** A depfile is evidence of what a build read, not
 of what a build DEPENDS on — a build script may watch a file for its own
 purposes, and inheriting that watch into a signature imports its instability.
+
+## Second half: the gate that should have caught the writers (2026-08-16)
+
+#0624's fix landed upstream concurrently with this work, for the lint lane. What
+neither reached was the SCAN, and it had three blind spots that let two more
+writers sit in plain sight:
+
+* it matched `cargo (build|rustc)` only — `clippy` compiles just as much, which
+  is why the lint lane was invisible to it in the first place. Now every
+  compiling verb, with a `(?<![-\w])` guard so `cargo fmt --check` is not read
+  as `cargo check`;
+* it could not follow a leaf reached through a list file (`git ls-files
+  'examples/**/Cargo.toml' > "$list"` → `read -r toml` → `dirname`). Followed
+  now in a PRE-PASS, because the chain runs backwards in the source: `while
+  read -r toml` precedes the `done < "$list"` that names the file, so a single
+  forward pass marked nothing;
+* it could not see a command emitted as printf text, which is what the
+  jobserver branches actually run. Any emitted `cd … && cargo <verb>` must now
+  carry a `--target-dir`.
+
+And it scanned `just/*.just` + `scripts/` but not the ROOT `justfile`, one
+directory up — where `build-example-extras` runs `cd <leaf> && cargo build` with
+no `--target-dir` at all. Fixed with `nros_example_build_target_dir`: the
+platform's shared group when it has one (so the walk reuses the fixture build
+instead of compiling a second copy), and `build/example-build/<leaf>` when the
+leaf has no coordinate. Its own kind rather than the lint one beside it — a
+different compilation, and sharing a dir would give each lane the other's
+fingerprints to invalidate.
+
+Verified: the walk's 86 units build into the resolved dirs with zero leaf
+`target/` afterwards. It still fails on `examples/bridges/*` with "no matching
+package named `nros`" — pre-existing, measured identical with and without the
+flag (those leaves need `nros sync` on this host).

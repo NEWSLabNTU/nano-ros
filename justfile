@@ -186,6 +186,14 @@ build-example-extras:
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
+    # issue 0635 — the target-dir resolver, sourced and EXPORTED here because
+    # `build_one` is `export -f`'d into subshells that never source these files
+    # (the same reason the profile flags are resolved here).
+    # shellcheck source=scripts/build/fixtures-target-dir.sh
+    source scripts/build/fixtures-target-dir.sh
+    export -f nros_example_build_target_dir nros_fixture_group nros_fixture_group_slug \
+              nros_fixture_platform_is_shared _nros_fixture_variant_sig \
+              nros_build_root nros_build_dir
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         cargo_frontends="$(nros_cargo_frontend_jobs)"
     else
@@ -210,7 +218,14 @@ build-example-extras:
             toolchain="+{{NIGHTLY}}"
         fi
         echo "  build $dir"
-        ( cd "$dir" && eval $env_prefix cargo $toolchain build $cargo_profile_args )
+        # issue 0635 — never the leaf's own `target/` (phase-340 P2). The
+        # resolver answers with the platform's shared group when there is one,
+        # so this walk reuses the fixture build instead of compiling a second
+        # copy, and falls back to `build/example-build/<leaf>` for a leaf with
+        # no coordinate to join.
+        local tdir
+        tdir="$(nros_example_build_target_dir "$dir")"
+        ( cd "$dir" && eval $env_prefix cargo $toolchain build $cargo_profile_args --target-dir "$tdir" )
     }
     export -f build_one
     export NIGHTLY="{{NIGHTLY}}"
@@ -235,7 +250,12 @@ build-example-extras:
                 esp32 | qemu-esp32-baremetal)
                     e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"; tc="+{{NIGHTLY}}" ;;
             esac
-            printf 'cd %s && %s cargo %s build %s\n' "$dir" "$e" "$tc" "$cargo_profile_args"
+            # issue 0635 — the flag spelled in the FORMAT, not folded into a
+            # variable: `check-example-leaf-target-dirs` reads an emitted
+            # command as text and cannot see through a `$flag`.
+            t="$(nros_example_build_target_dir "$dir")"
+            printf 'cd %s && %s cargo %s build %s --target-dir %s\n' \
+                "$dir" "$e" "$tc" "$cargo_profile_args" "$t"
         done < "$list" > "$units"
         nros_pool_run build-all-extras < "$units"
         rm -f "$units"

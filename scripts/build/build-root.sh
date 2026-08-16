@@ -102,6 +102,14 @@ export NROS_KIND_CARGO="cargo"
 # here, but the duplicate UNITS would still be built and cached, which is the
 # cost this kind exists to avoid.
 export NROS_KIND_EXAMPLE_LINT="example-lint"
+# issue 0635 — the sibling for a walk that BUILDS example leaves to prove they
+# still build (`build-example-extras`), rather than to produce a fixture. Its
+# own kind, not the lint one beside it: those artifacts are a different
+# compilation (different flags, and a link) and sharing one dir would give each
+# lane the other's fingerprints to invalidate. Used only when the leaf's
+# platform has no shared group to join — when it has one, the walk builds INTO
+# that group and reuses the fixture build instead of making a second copy.
+export NROS_KIND_EXAMPLE_BUILD="example-build"
 export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
 export NROS_KIND_LINK_DETERMINISM="link-determinism"
 export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"

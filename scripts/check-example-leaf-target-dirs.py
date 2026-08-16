@@ -75,8 +75,27 @@ ALLOWLIST: "list[tuple[str, str]]" = []
 
 SCAN_DIRS = ("just", "scripts")
 SCAN_SUFFIXES = (".just", ".sh")
+# issue 0635 — the ROOT justfile is a scan target too. It was not, so
+# `rust-rtos-link-check`'s two `cd <leaf> && cargo build` calls were as invisible
+# to this gate as `check-examples` was: a recipe living one directory up from the
+# `just/*.just` modules, doing the exact thing the gate exists to forbid. Both
+# halves of #0624 in one file, found the same way — by the artifact, one run
+# late. Extra files, not a directory, since the repo root holds much else.
+SCAN_FILES = ("justfile",)
 
-CARGO_BUILD = re.compile(r"\bcargo\b[^\n]*?\b(build|rustc)\b")
+# Every cargo verb that COMPILES, not just the two that say "build".
+#
+# issue 0635: `just check`'s example walk runs `cargo clippy`, which writes a
+# target dir exactly like `cargo build` does — and the verb list did not name
+# it, so the walk was invisible to this scan while it recreated 39 leaf
+# `target/debug` trees on every run. `check`/`test`/`bench`/`doc` are here for
+# the same reason before someone reaches for them: what matters is that cargo
+# writes artifacts, not what the subcommand is called.
+# The `(?<![-\w])` matters: `cargo fmt --check` contains the word `check` and
+# compiles nothing, so a verb must not be reachable through a flag spelling.
+CARGO_BUILD = re.compile(
+    r"\bcargo\b[^\n]*?(?<![-\w])(build|rustc|clippy|check|test|bench|doc)\b"
+)
 TARGET_DIR_FLAG = re.compile(r"--target-dir\b")
 # A resolver-derived flag variable. Deliberately narrow: the name must end in
 # `tdir_flag`, and `assigns_derived_flag` below still requires the file to
@@ -92,6 +111,29 @@ CD_VAR = re.compile(r"\bcd\s+[\"']?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 CD_ANY = re.compile(r"\bcd\s+\S")
 # Assignment whose value mentions examples/ — VAR=…examples/… or VAR := …
 ASSIGN_EXAMPLE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*:?=\s*[^\n]*examples/")
+# issue 0635 — the example walk reaches its leaves through a FILE, so no
+# assignment ever holds an `examples/` path:
+#
+#     git ls-files 'examples/**/Cargo.toml' … > "$toml_list"   # list of leaves
+#     while read -r toml; do … done < "$toml_list"             # one leaf
+#     dir="$(dirname "$toml")"                                 # its directory
+#
+# Three narrow rules follow that chain. Each only ADDS marked variables, so
+# like the assignment rule above they can make the gate stricter, never looser.
+REDIRECT_EXAMPLE = re.compile(r"examples/[^\n]*>\s*[\"']?\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+READ_VAR = re.compile(r"\bread\s+(?:-r\s+)?([A-Za-z_][A-Za-z0-9_]*)")
+REDIRECT_FROM_VAR = re.compile(r"<\s*[\"']?\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+ASSIGN_DIRNAME = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[\"']?\$\((?:dirname|cd)\s+[\"']?\$\{?([A-Za-z_][A-Za-z0-9_]*)"
+)
+# A command line EMITTED as data (a make unit, a `parallel` input line). The
+# scan cannot follow `%s`, so the rule is stated on the emitted text itself:
+# something that cds and then runs cargo must carry a `--target-dir`, wherever
+# it eventually runs. `just/px4.just` already writes one that does.
+EMITTED_CD_CARGO = re.compile(
+    r"\b(?:printf|echo)\b[^\n]*\bcd\s[^\n]*\bcargo\b[^\n]*?"
+    r"\b(?:build|rustc|clippy|check|test|bench|doc)\b"
+)
 # A `just` recipe head: column 0, `name[ params]:`.
 RECIPE_HEAD = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]*(\s[^\n]*)?:")
 
@@ -124,17 +166,52 @@ def scan_text(text, *, derives_flag):
     """
     violations = []
     example_vars = set()
+    example_lists = set()
     cwd_is_example_leaf = False
-    for lineno, line in join_continuations(text):
+    lines = join_continuations(text)
+
+    # issue 0635 — mark variables in a PRE-PASS, not as the walk goes.
+    #
+    # The chain runs backwards in the source: `while read -r toml` comes before
+    # the `done < "$toml_list"` that says which file it reads. A single forward
+    # pass sees the read first, when nothing is known yet, and marks nothing —
+    # which is how the walk stayed invisible with all three rules present.
+    # Three rounds reach the fixpoint for a chain this long; a fourth changes
+    # nothing (the rules only add).
+    for _ in range(3):
+        for _lineno, line in lines:
+            if line.strip().startswith("#"):
+                continue
+            for rx, group in ((ASSIGN_EXAMPLE, 1), (REDIRECT_EXAMPLE, 1)):
+                m = rx.search(line)
+                if m:
+                    example_vars.add(m.group(group))
+            m = REDIRECT_FROM_VAR.search(line)
+            if m and m.group(1) in example_vars:
+                example_lists.add(m.group(1))
+            m = READ_VAR.search(line)
+            if m and example_lists:
+                example_vars.add(m.group(1))
+            m = ASSIGN_DIRNAME.search(line)
+            if m and m.group(2) in example_vars:
+                example_vars.add(m.group(1))
+
+    for lineno, line in lines:
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
         if RECIPE_HEAD.match(line):
             cwd_is_example_leaf = False
 
-        m = ASSIGN_EXAMPLE.search(line)
-        if m:
-            example_vars.add(m.group(1))
+        if EMITTED_CD_CARGO.search(line) and not TARGET_DIR_FLAG.search(line):
+            violations.append(
+                (
+                    lineno,
+                    stripped,
+                    "emits a `cd … && cargo …` command with no --target-dir: "
+                    "wherever it runs, cargo writes that directory's `target/`",
+                )
+            )
 
         # Does THIS line put us in an example leaf?
         here = bool(CD_LITERAL_EXAMPLE.search(line))
@@ -179,6 +256,20 @@ def self_test():
         ('D="examples/a/b"\n( cd "$D" && cargo build )', "cd through a variable"),
         ('cd "examples/a/b"\ncargo build $args', "bare cd, cargo later"),
         ('cd "examples/a/b" && \\\n    cargo build $args', "line continuation"),
+        # issue 0635 — the two idioms `just check`'s example walk uses.
+        ('( cd "examples/a/b" && cargo clippy --quiet )', "clippy is a build too"),
+        (
+            'git ls-files "examples/**/Cargo.toml" > "$list"\n'
+            'while read -r toml; do\n'
+            'd="$(dirname "$toml")"\n'
+            '( cd "$d" && cargo clippy --quiet )\n'
+            'done < "$list"',
+            "leaf reached through a list file",
+        ),
+        (
+            "printf 'cd %s && cargo clippy --quiet %s\\n' \"$d\" \"$f\"",
+            "an EMITTED cd+cargo command",
+        ),
     ]
     must_pass = [
         ('( cd "examples/a/b" && cargo build --target-dir target-zenoh )', "literal dir"),
@@ -188,6 +279,11 @@ def self_test():
             'cd "examples/a/b"\nrecipe-head:\n    cargo build',
             "cwd resets at a recipe head",
         ),
+        (
+            "printf 'cd %s && cargo build --target-dir %s\\n' \"$d\" \"$t\"",
+            "an emitted command that carries the flag",
+        ),
+        ('( cd "examples/a/b" && cargo fmt --check -p x )', "fmt compiles nothing"),
     ]
     bad = []
     for body, label in must_flag:
@@ -255,23 +351,25 @@ def existing_leaf_target_dirs():
 def main():
     self_test()
     failures = []
+    scanned = [os.path.join(ROOT, f) for f in SCAN_FILES if os.path.isfile(os.path.join(ROOT, f))]
     for d in SCAN_DIRS:
         for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, d)):
             dirnames[:] = [x for x in dirnames if x not in (".git", "third-party")]
             for fn in sorted(filenames):
                 if not fn.endswith(SCAN_SUFFIXES):
                     continue
-                path = os.path.join(dirpath, fn)
-                rel = os.path.relpath(path, ROOT)
-                try:
-                    text = open(path, encoding="utf-8").read()
-                except (OSError, UnicodeDecodeError):
-                    continue
-                derives = bool(DERIVES_FLAG.search(text))
-                for lineno, line, reason in scan_text(text, derives_flag=derives):
-                    if allowlisted(rel, line):
-                        continue
-                    failures.append((rel, lineno, line, reason))
+                scanned.append(os.path.join(dirpath, fn))
+    for path in scanned:
+        rel = os.path.relpath(path, ROOT)
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        derives = bool(DERIVES_FLAG.search(text))
+        for lineno, line, reason in scan_text(text, derives_flag=derives):
+            if allowlisted(rel, line):
+                continue
+            failures.append((rel, lineno, line, reason))
 
     if failures:
         sys.stderr.write(

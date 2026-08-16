@@ -297,3 +297,48 @@ nros_fixture_row_artifact_dir() {
         printf '%s/target' "$leaf"
     fi
 }
+
+# nros_example_build_target_dir_flag <leaf-dir> [<platform>]
+#
+# issue 0635 — the `--target-dir` for a walk that builds example leaves for
+# VERIFICATION rather than to produce a fixture (`build-all-extras`, the
+# embedded link check).
+#
+# Two answers, because such a walk mixes two kinds of leaf:
+#
+#   * the platform HAS a shared group (`nros_fixture_group` answers) — build
+#     into it, so the walk reuses the fixture build's artifacts instead of
+#     compiling a second copy of them;
+#   * it does not — the leaf has no coordinate, so there is no group to join,
+#     and the fallback is `build/check-examples/<leaf>` rather than the leaf's
+#     own `target/`, which phase-340 P2 bans outright.
+#
+# The platform defaults to the leaf's `examples/<platform>/…` component, which
+# is the DIRECTORY vocabulary and only sometimes a manifest platform id
+# (`examples/native/**` is manifest platform `linux`). That mismatch is why the
+# fallback exists and why it must not be a silent leaf-`target/`: a caller that
+# knows the manifest id should pass it.
+nros_example_build_target_dir() {
+    local leaf="${1:?nros_example_build_target_dir: leaf dir}" platform="${2:-}"
+    if [ -z "$platform" ]; then
+        platform="$(printf '%s' "${leaf#examples/}" | cut -d/ -f1)"
+    fi
+    local group
+    group="$(nros_fixture_group "$platform" "" "")" || group=""
+    if [ -n "$group" ]; then
+        nros_build_dir "$NROS_KIND_CARGO_FIXTURES" "$group"
+        return 0
+    fi
+    local coord
+    coord="$(printf '%s' "${leaf#./}" | tr '/' '-')"
+    nros_build_dir "$NROS_KIND_EXAMPLE_BUILD" "$coord"
+}
+
+# The same answer as a ready-to-splice flag. Prefer the DIR form at a call site
+# that can spell `--target-dir` itself: the gate reads commands as text, and a
+# whole `$flag` is opaque to it where `--target-dir "$(…)"` is not.
+nros_example_build_target_dir_flag() {
+    local dir
+    dir="$(nros_example_build_target_dir "$@")" || return $?
+    printf ' --target-dir %s' "$dir"
+}
