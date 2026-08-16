@@ -354,10 +354,10 @@ pub mod riscv64 {
     /// toolchain at all — the caller decides whether that is a skip or an error,
     /// and this function never guesses on its behalf.
     pub fn tool(suffix: &str) -> Option<String> {
-        if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX") {
-            if !prefix.is_empty() {
-                return Some(format!("{prefix}-{suffix}"));
-            }
+        if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX")
+            && !prefix.is_empty()
+        {
+            return Some(format!("{prefix}-{suffix}"));
         }
         if let Some(bin) = store_bin() {
             let p = bin.join(format!("riscv-none-elf-{suffix}"));
