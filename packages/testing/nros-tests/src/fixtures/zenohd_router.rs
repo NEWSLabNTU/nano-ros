@@ -52,6 +52,38 @@ fn kill_listeners_on_port(port: u16) {
     eprintln!("WARNING: port {} still in use after kill attempt", port);
 }
 
+/// phase-362 W1 — build the router command. The router comes from ROS.
+///
+/// `rmw_zenohd` takes NO command-line configuration: it ignores its argv (a
+/// `--help` starts a router) and reads `ZENOH_ROUTER_CONFIG_URI` /
+/// `ZENOH_CONFIG_OVERRIDE` instead. So every `--listen` / `--cfg` this fixture
+/// used to pass becomes an override entry, `;`-separated, with `=` where the
+/// CLI used `:`. Verified against the installed binary rather than inferred:
+/// `listen/endpoints=["tcp/127.0.0.1:17447"]` binds 17447 and NOT the default
+/// 7447.
+///
+/// `scouting/multicast/enabled=false` is stated even though the ROS default
+/// config already sets it: the vendored router needed `--no-multicast-scouting`
+/// explicitly, and a default is a thing that can change under us. This is the
+/// one property these tests actually depend on.
+fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
+    let path = crate::process::ros_zenohd_path().ok_or_else(|| {
+        TestError::RouterUnavailable(format!(
+            "no `rmw_zenoh_cpp/rmw_zenohd` under /opt/ros (ROS_DISTRO={}). \
+             The zenoh lanes run the router a ROS 2 deployment actually runs; \
+             install `ros-<distro>-rmw-zenoh-cpp`, or set NROS_RMW_ZENOHD to \
+             its path. Pairing: {}",
+            std::env::var("ROS_DISTRO").unwrap_or_else(|_| "unset".into()),
+            crate::process::zenoh_pairing_versions(),
+        ))
+    })?;
+    let mut cmd = std::process::Command::new(path);
+    let mut all: Vec<String> = vec!["scouting/multicast/enabled=false".to_string()];
+    all.extend_from_slice(overrides);
+    cmd.env("ZENOH_CONFIG_OVERRIDE", all.join(";"));
+    Ok(cmd)
+}
+
 fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(10);
@@ -154,8 +186,7 @@ impl ZenohRouter {
 
         let locator = format!("tcp/{}:{}", bind_addr, port);
 
-        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
-        cmd.args(["--listen", &locator, "--no-multicast-scouting"]);
+        let mut cmd = router_command(&[format!("listen/endpoints=[\"{locator}\"]")])?;
         // Diagnostic log capture per port — opt-in, unified dir. Enabled by
         // ZENOHD_LOG=trace|debug (also sets RUST_LOG level) or NROS_TEST_LOGS;
         // the file lands in test-logs/fixtures/ (see fixtures::fixture_log_path).
@@ -195,13 +226,14 @@ impl ZenohRouter {
     /// # Arguments
     /// * `pty_paths` - Host PTY device paths (e.g., `/dev/pts/5`)
     pub fn start_serial(pty_paths: &[&str]) -> TestResult<Self> {
-        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
-        cmd.arg("--no-multicast-scouting");
-
-        for pty in pty_paths {
-            let locator = format!("serial/{}#baudrate=115200", pty);
-            cmd.args(["--listen", &locator]);
-        }
+        // phase-362 W1 — one `listen/endpoints` LIST, not a repeated flag: the
+        // CLI took `--listen` once per locator, the config takes an array.
+        let endpoints = pty_paths
+            .iter()
+            .map(|pty| format!("\"serial/{pty}#baudrate=115200\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut cmd = router_command(&[format!("listen/endpoints=[{endpoints}]")])?;
 
         let zenohd_log = std::env::var("ZENOHD_LOG").ok();
         if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
@@ -281,27 +313,23 @@ impl ZenohRouter {
         // address needs a fresh one. Worth fixing in the fork; this makes the
         // harness stop provoking it.
         let listen = format!("tls/[::]:{}", port);
+        // phase-362 W1 — `key=value` for the config override; the retired CLI
+        // spelled the same keys `--cfg key:value`.
         let cert_cfg = format!(
-            "transport/link/tls/listen_certificate:\"{}\"",
+            "transport/link/tls/listen_certificate=\"{}\"",
             cert_path.display()
         );
         let key_cfg = format!(
-            "transport/link/tls/listen_private_key:\"{}\"",
+            "transport/link/tls/listen_private_key=\"{}\"",
             key_path.display()
         );
 
-        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
-        cmd.args([
-            "--listen",
-            &listen,
-            "--no-multicast-scouting",
-            "--cfg",
-            &cert_cfg,
-            "--cfg",
-            &key_cfg,
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+        let mut cmd = router_command(&[
+            format!("listen/endpoints=[\"{listen}\"]"),
+            cert_cfg,
+            key_cfg,
+        ])?;
+        cmd.stdout(Stdio::null()).stderr(Stdio::piped());
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let mut handle = cmd.spawn()?;

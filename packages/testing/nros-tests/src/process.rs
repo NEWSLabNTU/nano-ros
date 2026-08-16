@@ -747,6 +747,87 @@ pub fn zenohd_binary_path() -> std::path::PathBuf {
     std::path::PathBuf::from("zenohd")
 }
 
+/// phase-362 W1 — locate the ROS-shipped `rmw_zenohd`.
+///
+/// `rmw_zenohd` ships with `rmw_zenoh_cpp` and links the SAME `libzenohc.so`
+/// the RMW does, so it cannot drift from it. Our vendored router could, and
+/// did: issue 0609 measured `ros-humble-rmw-zenoh-cpp` 0.1.1 -> 0.1.9 moving
+/// its vendored zenoh 1.2.0 -> 1.8.0 and interop going from zero samples to
+/// 10/10, while our own pin took no part in either outcome (RFC-0075).
+///
+/// The argument that does not depend on a version number: in production a ROS 2
+/// deployment runs `rmw_zenohd`. Testing against ours tested a configuration
+/// nobody deploys.
+///
+/// Resolution order, most explicit first:
+///   1. `NROS_RMW_ZENOHD` — an explicit path, for a non-standard install.
+///   2. `$ROS_DISTRO` — the distro the caller has sourced.
+///   3. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
+///
+/// Returns `None` rather than a fallback path: a caller that cannot find the
+/// ROS router must SKIP (issue 0599), and a `PathBuf` that does not exist would
+/// turn that into a spawn failure several frames away from the cause.
+pub fn ros_zenohd_path() -> Option<std::path::PathBuf> {
+    if let Some(explicit) = std::env::var_os("NROS_RMW_ZENOHD") {
+        let p = std::path::PathBuf::from(explicit);
+        return p.exists().then_some(p);
+    }
+    let relative = std::path::Path::new("lib/rmw_zenoh_cpp/rmw_zenohd");
+    if let Ok(distro) = std::env::var("ROS_DISTRO") {
+        let p = std::path::Path::new("/opt/ros")
+            .join(&distro)
+            .join(relative);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir("/opt/ros")
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path().join(relative))
+        .filter(|p| p.exists())
+        .collect();
+    found.sort();
+    found.pop()
+}
+
+/// phase-362 W2 — the zenoh versions on BOTH sides of the seam.
+///
+/// A convention break currently surfaces as `delivered nothing: 0 data:
+/// samples`, and both numbers that would explain it are one file read away.
+///
+/// Read the HEADER, never `dpkg -l`: the package version is the ROS wrapper's
+/// (`0.1.9`) and says nothing about the zenoh inside it (`1.8.0`). Reading the
+/// package version is exactly what produced a wrong version claim in issue
+/// 0609's first filing, so this helper does not offer that route at all.
+pub fn zenoh_pairing_versions() -> String {
+    let zenoh_c = ros_zenohd_path()
+        .and_then(|p| {
+            // <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd -> <prefix>
+            let prefix = p.parent()?.parent()?.parent()?.to_path_buf();
+            let header = prefix.join("opt/zenoh_cpp_vendor/include/zenoh_configure.h");
+            let text = std::fs::read_to_string(header).ok()?;
+            text.lines().find_map(|l| {
+                // `#define ZENOH_C "1.6.2"` — the macro is ZENOH_C, and the
+                // trailing space matters: `ZENOH_C_MAJOR` sits right below it
+                // and a prefix match without it takes the wrong line.
+                let rest = l.trim().strip_prefix("#define ZENOH_C ")?;
+                Some(rest.trim().trim_matches('"').to_string())
+            })
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let pico = option_env!("CARGO_MANIFEST_DIR")
+        .map(std::path::Path::new)
+        .and_then(|d| d.ancestors().nth(3))
+        .map(|root| root.join("packages/rmw/zenoh/zpico-sys/zenoh-pico/version.txt"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    format!("zenoh-c (ROS) {zenoh_c}, zenoh-pico {pico}")
+}
+
 /// Check if the locally-built zenohd is available.
 pub fn is_zenohd_available() -> bool {
     let path = zenohd_binary_path();

@@ -315,8 +315,16 @@ fn interop(#[case] cell: Cell) {
             assert!(
                 n > 0,
                 "nros → ROS 2 delivered nothing: the ros2 subscriber received 0 `data:` \
-                 samples from the nano talker over rmw_zenoh ({}).\nROS 2 output:\n{out}",
-                cell.note
+                 samples from the nano talker over rmw_zenoh ({}).\n\
+                 Pairing: {}\n\
+                 (phase-362 W2 — a zenoh CONVENTION break looks exactly like this, and \
+                 the two versions above are the first thing to diff. `rmw_zenoh`'s \
+                 conventions carry no version of their own, so the zenoh numbers are \
+                 the closest available proxy; the ROS PACKAGE version is not — it is a \
+                 wrapper version and says nothing about the zenoh inside it.)\n\
+                 ROS 2 output:\n{out}",
+                cell.note,
+                nros_tests::process::zenoh_pairing_versions()
             );
         }
 

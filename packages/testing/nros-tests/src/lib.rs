@@ -220,6 +220,16 @@ pub enum TestError {
 
     #[error("Output parsing error: {0}")]
     OutputParse(String),
+
+    /// phase-362 W3 — the ROS router is not on this host.
+    ///
+    /// A distinct variant, not a `ProcessFailed(String)`, because the honest
+    /// verdict for a lane that needs `rmw_zenohd` and cannot find one is SKIP,
+    /// not fail — and a caller can only make that distinction if the type
+    /// carries it. Issue 0599 is the same rule one level up: a lane that
+    /// cannot run must say so rather than report OK.
+    #[error("ROS router unavailable: {0}")]
+    RouterUnavailable(String),
 }
 
 pub type TestResult<T> = Result<T, TestError>;

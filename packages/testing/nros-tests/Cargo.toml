@@ -109,7 +109,12 @@ nros-log = { path = "../../core/nros-log" }
 # Phase 212.L.5 — top-level init API tests. The `nros` umbrella's
 # `init` module is platform/RMW-independent (no backend pulled), so we
 # depend on it with only `std`.
-nros = { path = "../../api/nros", default-features = false, features = ["std", "macros"] }
+# `env` — phase-359 W10 moved `nros::init` / `ContextSource` behind a
+# capability feature (`1badb6f72`), and `tests/init_api.rs` exercises exactly
+# that API, so the test crate has to name it. Without it the items are
+# "configured out" and the suite fails to COMPILE — which stayed hidden while
+# `check-feature-contract` was red, because ci-matrix stopped before the tests.
+nros = { path = "../../api/nros", default-features = false, features = ["std", "macros", "env"] }
 # Phase 212.N.7 — the `nros::component!()` macro emits a
 # `pub fn register(runtime: &mut ::nros_platform::RuntimeCtx<'_>)`
 # wrapper. Tests that invoke that wrapper directly need `nros-platform`
