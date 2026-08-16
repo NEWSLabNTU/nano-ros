@@ -53,6 +53,36 @@ target, not the user-facing knob.
 
 Normative. Every crate feature table points here rather than restating it.
 
+**Read the direction first, because it decides how the rules below are applied.**
+The terminal state of the core crates is **`core` and `core+alloc`**. `std` is
+being DELETED from them (phase-359) rather than managed: it is not a convenience
+layer over the platform but a second implementation of one, and
+`nros-platform-posix` already provides every primitive it was used for. So
+`alloc` is a permanent axis and **`std` is a transitional one with a scheduled
+end**. Three consequences that come up constantly:
+
+> **New code writes `core::` and `alloc::`, never `std::`.** A `std::` path in a
+> crate that targets embedded is a new site for phase-359 to unwind.
+> `check-std-census` is a ratchet that only turns one way and its target is
+> zero.
+>
+> **A capability the CONSUMER chooses requires `std`; it does not grant it.**
+> `env` is `ExecutorConfig::from_env`, i.e. `std::env` — it emits a
+> `compile_error!` naming the feature to add, and the consumer names `std`.
+> `env = ["std"]` is the spelling phase-359 W10 removed: it puts the standard
+> library into an image through a door nobody declared.
+>
+> **A purely INTERNAL requirement is the other way round, and the distinction is
+> the whole rule.** `metadata-mode` is `["std"]` because `metadata_mode.rs`
+> itself uses `std::sync::Mutex`, `Box::leak` and `format!` — nothing about that
+> is the consumer's choice, so making them name `std` by hand would turn an
+> implementation detail into a consumer-facing flavour. Ask *whose* requirement
+> it is: the caller's, or the code's.
+
+**Corollary worth remembering.** A capability that grants what it needs can never
+reach its own guard — `metadata-mode` carried a `compile_error!` for two phases
+that could not fire, because the manifest edge satisfied the condition it tested.
+
 > **`alloc` is the heap axis, and it is the only spelling of it.** Every
 > heap-gated item is `#[cfg(feature = "alloc")]`. `cfg(any(feature = "alloc",
 > feature = "std"))` is not an alternative spelling — see below.
@@ -87,6 +117,13 @@ heap gate is already in its final form: dropping `std` needs no `cfg` edit.
 `alloc`; it says the crate author writes the implication once. Nor does it
 survive on trust — `check-feature-contract` (W4) asserts each clause, and until
 that gate exists each is a measurement rather than an invariant.
+
+**Where a consumer gets `std` from is not uniform, and that hides sweeps.** The
+seventeen `examples/native/rust/*` reach `nros` through `nros-board-linux`,
+which names `std`; the `nros-tests/bins/*` depend on `nros` directly and must
+name it themselves. A sweep that only READS leaf feature lists therefore looks
+complete while half the tree is red — when `env` became require-not-grant, six
+bins broke and the seventeen examples did not. Build the candidates.
 
 → issue 0598 (the defect that produced the rule), issue 0594 (the 34 implicit
 enables), phase-361, phase-359 (the campaign that removes `std` entirely).

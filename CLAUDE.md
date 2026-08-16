@@ -184,6 +184,17 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   Invariant, enforced by `check-leaf-lockfiles`: **tracked lock ⟺ (no message deps) ∨ (committed
   `generated/`)** — boards/drivers/smoke qualify via the first arm. (The old "track all of them"
   rule predates the shim keying on TRACKED rather than ignored, #386.)
+- **`std` is being DELETED; write `core::`/`alloc::`, never `std::`** (ARCHITECTURE §2, phase-359).
+  Terminal state of the core crates is `core` and `core+alloc` — `std` there is a second
+  implementation of the platform layer, not a convenience over it. Whose requirement it is decides
+  the spelling: a capability the CONSUMER picks REQUIRES `std` (`env` = `std::env` —
+  `compile_error!`, consumer names `std`); a purely INTERNAL one GRANTS it (`metadata-mode`'s own
+  code uses `Mutex`/`format!`, so making callers name `std` would turn an implementation detail
+  into a consumer-facing flavour). Corollary: **a capability that grants what it needs can never
+  reach its own guard** — `metadata-mode` carried an unreachable `compile_error!` for two phases.
+  And where a consumer GETS `std` is not uniform (`examples/native/rust/*` inherit it from
+  `nros-board-linux`; `nros-tests/bins/*` must name it), so a manifest-READING sweep looks complete
+  while half the tree is red — build the candidates. → issues 0632, 0640.
 - **Messages are generated** (`nros generate-rust` from `package.xml`) — never hand-write. Detail
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.

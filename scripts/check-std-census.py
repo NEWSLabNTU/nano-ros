@@ -112,7 +112,11 @@ BASELINE = {
     # Then 14 -> 12, same day, different session: `init` and the `NROS_RMW`
     # read moved off `std` onto `env`, and `ExecutorNodeRuntime::spin`/`halt`
     # lost a gate that described a convention rather than a requirement.
-    "nros": {"cfg": 12, "path": 16},
+    # Met issue 0589 across the 2026-08-16 rebases: `nros`'s node-declaration
+    # diagnostic moved from `std::eprintln!` to `nros_log`. Set from the TREE,
+    # which is what the note above prescribes — three separate merges here have
+    # now produced a number that is neither side's nor their arithmetic.
+    "nros": {"cfg": 11, "path": 15},
     "nros-c": {"cfg": 13, "path": 8},
     "nros-core": {"cfg": 3, "path": 2},
     "nros-cpp": {"cfg": 9, "path": 21},
@@ -135,7 +139,9 @@ BASELINE = {
     # Then 87 -> 85: `Executor`'s halt/wake API was ONE `std`-gated impl block
     # and only its wall-clock spin loops need `std`, so it split three ways and
     # `halt_flag` joined `wake_flag` on `alloc`.
-    "nros-node": {"cfg": 85, "path": 40},
+    # Same rebase, same rule: issue 0589 moved four `cfg(feature = "std")`
+    # diagnostics to `nros_log`. Measured, not derived.
+    "nros-node": {"cfg": 84, "path": 36},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
