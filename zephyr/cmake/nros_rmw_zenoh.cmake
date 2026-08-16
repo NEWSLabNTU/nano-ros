@@ -165,6 +165,11 @@ zephyr_compile_definitions(
     ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_ZPICO_GET_POLL_INTERVAL_MS}
     ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}
     ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}
+    # Issue 0626 — the read/lease task priority, normalized 0-31. Before this
+    # the shim's Zephyr branch configured only a stack size, so the transport
+    # tasks' priority could not be stated at all on this platform.
+    ZPICO_READ_TASK_PRIORITY=${NROS_RESOLVED_ZPICO_READ_TASK_PRIORITY}
+    ZPICO_LEASE_TASK_PRIORITY=${NROS_RESOLVED_ZPICO_LEASE_TASK_PRIORITY}
 )
 
 endfunction()

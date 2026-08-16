@@ -33,6 +33,9 @@
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h> // For printk
 #include <zephyr/random/random.h>
+// Issue 0626 — pthread scheduling attributes for the read/lease tasks.
+#include <pthread.h>
+#include <sched.h>
 #if defined(CONFIG_POSIX_MULTI_PROCESS)
 #include <zephyr/posix/unistd.h>
 #endif
@@ -179,6 +182,21 @@ typedef struct {
 #endif
 #ifndef ZPICO_MAX_LIVELINESS
 #define ZPICO_MAX_LIVELINESS 16
+#endif
+/* Issue 0626 — the transport tasks' priority, on the NORMALISED 0-31 band
+ * (0 = least urgent, larger = more urgent; phase-364 W5). 16 keeps the historic
+ * behaviour of the one platform that already stated a value: it is what the
+ * FreeRTOS board's `zenoh_read_priority` default has always been.
+ *
+ * This is a default, not a policy. Whether transport should outrank the
+ * application's RT tiers is a per-system decision with real costs on both sides
+ * (issues 0506 and 0623) — the point of these knobs is that the decision can be
+ * MADE, which on Zephyr it previously could not be. */
+#ifndef ZPICO_READ_TASK_PRIORITY
+#define ZPICO_READ_TASK_PRIORITY 16
+#endif
+#ifndef ZPICO_LEASE_TASK_PRIORITY
+#define ZPICO_LEASE_TASK_PRIORITY 16
 #endif
 #ifndef ZPICO_GET_REPLY_BUF_SIZE
 #define ZPICO_GET_REPLY_BUF_SIZE 4096
@@ -1086,6 +1104,43 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
     return ZPICO_OK;
 }
 
+#if defined(ZENOH_ZEPHYR)
+/* Issue 0626 — apply a NORMALISED 0-31 priority (0 = least urgent, larger =
+ * more urgent) to a pthread attr, in the one place that knows how.
+ *
+ * The band is phase-364 W5's, chosen so a single authored number does not mean
+ * "run me first" on one kernel and "run me last" on another. It is mapped onto
+ * whatever `sched_get_priority_min/max` reports for the policy rather than
+ * assumed, because that range is a Zephyr build-configuration property
+ * (`CONFIG_NUM_PREEMPT_PRIORITIES`), not a constant.
+ *
+ * SCHED_RR rather than SCHED_FIFO: the transport tasks are not the only
+ * runnable work at their level, and a FIFO thread that never blocks would keep
+ * the CPU indefinitely. Round-robin preserves the priority ORDER, which is what
+ * is being asked for, without turning a busy transport into a starvation
+ * source. */
+static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) {
+    const int policy = SCHED_RR;
+    const int lo = sched_get_priority_min(policy);
+    const int hi = sched_get_priority_max(policy);
+    if (lo < 0 || hi < 0 || hi < lo) {
+        return; /* No usable range: leave the attr at its defaults. */
+    }
+    uint32_t n = normalized > 31u ? 31u : normalized;
+    /* Round-to-nearest across the band, same shape as the FreeRTOS map. */
+    const int span = hi - lo;
+    const int mapped = lo + (int)(((uint32_t)span * n * 2u + 31u) / 62u);
+
+    struct sched_param param;
+    memset(&param, 0, sizeof(param));
+    param.sched_priority = mapped;
+    /* Without EXPLICIT_SCHED the two calls below are silently ignored. */
+    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
+    (void)pthread_attr_setschedpolicy(attr, policy);
+    (void)pthread_attr_setschedparam(attr, &param);
+}
+#endif /* ZENOH_ZEPHYR */
+
 void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
                            uint32_t lease_priority, uint32_t lease_stack_bytes) {
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -1110,18 +1165,47 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
 #elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
        defined(ZENOH_ZEPHYR)) &&                                                                   \
     !defined(ZENOH_THREADX)
-    // POSIX: set stack size via pthread_attr. Priority requires SCHED_FIFO
-    // (root privileges); for now only stack size is configurable.
+    // POSIX: stack size via pthread_attr. A ZERO means "leave the port's
+    // default alone" (the convention `nros_platform_task_attr_t.stack_bytes`
+    // already uses), so a caller that only wants to state a PRIORITY does not
+    // have to invent a stack size to get one.
     pthread_attr_init(&g_default_read_task_attr);
-    pthread_attr_setstacksize(&g_default_read_task_attr, (size_t)read_stack_bytes);
+    if (read_stack_bytes != 0u) {
+        pthread_attr_setstacksize(&g_default_read_task_attr, (size_t)read_stack_bytes);
+    }
     pthread_attr_init(&g_default_lease_task_attr);
-    pthread_attr_setstacksize(&g_default_lease_task_attr, (size_t)lease_stack_bytes);
+    if (lease_stack_bytes != 0u) {
+        pthread_attr_setstacksize(&g_default_lease_task_attr, (size_t)lease_stack_bytes);
+    }
+#if defined(ZENOH_ZEPHYR)
+    // Issue 0626 — priority IS settable here, and used not to be set.
+    //
+    // The comment this replaces said "Priority requires SCHED_FIFO (root
+    // privileges)". That is true of Linux and false of Zephyr, which has no
+    // privilege model: a pthread priority is just a thread priority. The
+    // sentence was written for the POSIX hosts that share this branch and then
+    // applied to an RTOS, so the transport tasks on every Zephyr image ran at
+    // whatever the default happened to be, with no way to state otherwise —
+    // which made issue 0506's question (what preempts the RT tiers?)
+    // unanswerable on this platform.
+    //
+    // PTHREAD_EXPLICIT_SCHED is load-bearing: the default is
+    // PTHREAD_INHERIT_SCHED, under which the policy and param set below are
+    // IGNORED and the new thread silently takes the creator's. A scheduling
+    // attribute that is quietly dropped is the failure this issue is about, so
+    // it must not be reintroduced one layer down.
+    zpico_posix_set_priority(&g_default_read_task_attr, read_priority);
+    zpico_posix_set_priority(&g_default_lease_task_attr, lease_priority);
+#else
+    // Linux / macOS / NuttX: priority needs a policy this process may not be
+    // allowed to request. Stack size only, as before.
+    (void)read_priority;
+    (void)lease_priority;
+#endif
     g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
     g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
     g_default_read_task_configured = true;
     g_default_lease_task_configured = true;
-    (void)read_priority;
-    (void)lease_priority;
 #else
     // ThreadX, generic, and other platforms: z_task_attr_t is void* and
     // zenoh-pico ignores it. Config stored for future platform support.
@@ -1177,6 +1261,19 @@ int32_t zpico_open(zpico_session_t* session) {
     /* issue 0348 / phase-328 — copy the process-wide task-spawn DEFAULTS (set by
      * the board via zpico_set_task_config before any session existed) into this
      * session, and re-point the opts at the session's OWN attr copy. */
+#if defined(ZENOH_ZEPHYR)
+    /* Issue 0626 — Zephyr has no board-side caller for `zpico_set_task_config`
+     * (the FreeRTOS board is its only one in the tree), so before this the
+     * transport tasks got NULL attrs and an unstatable priority. Apply the
+     * compile-time default here when nothing set one explicitly; a board that
+     * DOES call the setter first wins, because that sets `configured`.
+     *
+     * Stacks are passed as 0 deliberately: this path is stating a priority, and
+     * zenoh-pico's own stack default is the one that has been exercised. */
+    if (!g_default_read_task_configured) {
+        zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u, ZPICO_LEASE_TASK_PRIORITY, 0u);
+    }
+#endif
     s->read_task_configured = g_default_read_task_configured;
     s->lease_task_configured = g_default_lease_task_configured;
     s->read_task_attr = g_default_read_task_attr;

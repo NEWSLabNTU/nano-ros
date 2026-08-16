@@ -168,6 +168,16 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(ZPICO_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
         _nros_resolve_knob(ZPICO_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 
+        # Issue 0626 — the transport tasks' priority (normalized 0-31).
+        #
+        # Not a POOL SIZE, so not an 0135 ABI risk: it has ONE consumer, the C
+        # define read by `zpico.c`, and no `build.rs` reads it. It is resolved
+        # here anyway so it behaves like every other ZPICO_* knob — an explicit
+        # environment value wins over Kconfig, a disagreement is reported, and
+        # the value appears in `NROS_RESOLVED_KNOBS` where the others are.
+        _nros_resolve_knob(ZPICO_READ_TASK_PRIORITY "${CONFIG_NROS_ZENOH_READ_PRIORITY}")
+        _nros_resolve_knob(ZPICO_LEASE_TASK_PRIORITY "${CONFIG_NROS_ZENOH_LEASE_PRIORITY}")
+
         # phase-290 (RFC-0049) — tx knob trio, tri-state: always resolved to
         # (0|1) so the cargo-built zpico config header agrees with the zephyr
         # cmake TUs (issue-0135) and an explicit Kconfig `n` overrides the

@@ -128,3 +128,66 @@ Two cautions for whoever takes it:
 Phase-358 W3 → #0623. Asking what "bound the read task priority" means on
 FreeRTOS surfaced the units collision there; checking whether the other RTOSes
 shared it turned up this instead.
+
+
+## 2026-08-16 — Zephyr half implemented; ThreadX untouched; runtime not observed
+
+**Zephyr is now settable.** `CONFIG_NROS_ZENOH_READ_PRIORITY` /
+`CONFIG_NROS_ZENOH_LEASE_PRIORITY` (normalised 0–31, default 16 — the value the
+FreeRTOS board already used) resolve through `_nros_resolve_knob` alongside every
+other `ZPICO_*` knob and reach `zpico.c` as `ZPICO_{READ,LEASE}_TASK_PRIORITY`.
+
+Three things had to change, matching the three drop points above:
+
+* the shim's POSIX branch now sets the priority under `ZENOH_ZEPHYR` —
+  `pthread_attr_setschedpolicy(SCHED_RR)` + `setschedparam`, mapped onto
+  `sched_get_priority_min/max` rather than an assumed range, since that range is
+  a build-configuration property (`CONFIG_NUM_PREEMPT_PRIORITIES`);
+* **`PTHREAD_EXPLICIT_SCHED` with it** — the default is `PTHREAD_INHERIT_SCHED`,
+  under which both calls are silently ignored and the thread takes the creator's
+  priority. A scheduling attribute quietly dropped one layer down is this issue
+  repeating itself, so it is set explicitly;
+* `zpico_open` applies the compile-time default when no board called
+  `zpico_set_task_config`, because on Zephyr none does. A board that DOES call
+  it first still wins.
+
+Stack sizes are passed as 0 on that path, and 0 now means "leave the port
+default alone" — the convention `nros_platform_task_attr_t.stack_bytes` already
+uses. Stating a priority should not require inventing a stack size.
+
+`SCHED_RR` rather than `SCHED_FIFO`: the transport tasks share their level with
+other work, and a FIFO thread that does not block holds the CPU. Round-robin
+keeps the priority ORDER — which is what was being asked for — without making a
+busy transport a starvation source.
+
+### Verified
+
+* the knob reaches the TU: `ZPICO_READ_TASK_PRIORITY=16` on `zpico.c`'s compile
+  line;
+* the branch compiles and links: the object carries undefined refs to
+  `pthread_attr_setinheritsched`, `pthread_attr_setschedpolicy`,
+  `pthread_attr_setschedparam`, `sched_get_priority_{min,max}` and defines
+  `zpico_posix_set_priority`;
+* the Zephyr C workspace entry builds green.
+
+### NOT verified, and it matters
+
+**The priority has not been observed taking effect at runtime.** A bare run of
+`build-ws-c-entry-zenoh/zephyr/zephyr.exe` boots and then dumps core — but that
+is PRE-EXISTING, not this change: the same run with the change stashed and the
+image rebuilt cores identically. That entry needs the harness's launch setup,
+not a bare invocation. `entry_e2e`'s `zephyr_c` cell is the right check and is
+filtered out of this host's default scope (`0 tests run, 1 skipped`).
+
+So what is proven is that the value is plumbed and the code is linked. Whether
+the resulting thread priority is what the number says needs the e2e cell, or a
+one-line log of the resolved value at session open — worth adding, since nothing
+today makes this observable from the outside, which is how it stayed unsettable
+without anyone noticing.
+
+### ThreadX: unchanged
+
+Still `(void)`'d. It needs the `z_task_attr_t` widening described above, which
+touches the generic and bare-metal headers as well, and it has no board caller
+either. Left for a separate change rather than bundled in behind a Zephyr
+verification gap.
