@@ -48,8 +48,23 @@ void nros_zephyr_thread_priority_set(int prio) {
     k_thread_priority_set(k_current_get(), prio);
 }
 
+/* issue 0655 — the gate is `CONFIG_SCHED_CPU_MASK`, NOT
+ * `CONFIG_SCHED_CPU_MASK_PIN_ONLY`.
+ *
+ * `k_thread_cpu_pin` is declared under `#ifdef CONFIG_SCHED_CPU_MASK`
+ * (kernel.h) and implemented in `kernel/cpu_mask.c`; PIN_ONLY is a NARROWER
+ * variant that additionally requires SMP and makes the mask immutable after
+ * start. Gating on PIN_ONLY therefore compiled this call out of every image
+ * nano-ros builds — including any that enabled the API correctly — and no
+ * build could catch a mistake inside a branch the preprocessor deleted.
+ *
+ * NOTE this still returns -EINVAL at runtime for a STARTED thread: see
+ * issue 0655. `cpu_mask_mod` requires `z_is_thread_prevented_from_running`,
+ * and every caller here passes `k_current_get()`. Correcting the gate is what
+ * makes that reachable and therefore diagnosable; the caller-side fix (pin
+ * between `k_thread_create` and `k_thread_start`) is tracked there. */
 int nros_zephyr_thread_cpu_pin(int cpu) {
-#ifdef CONFIG_SCHED_CPU_MASK_PIN_ONLY
+#ifdef CONFIG_SCHED_CPU_MASK
     return k_thread_cpu_pin(k_current_get(), cpu);
 #else
     (void)cpu;

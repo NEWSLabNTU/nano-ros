@@ -352,6 +352,16 @@ leaves `wake_latency` + `component_runtime` 6/6 green). The 0319 class one level
 missing, the TARGET is unreachable, and an unreachable target still reads as coverage. Wants an audit over
 every `required-features` target, not a fix for these two by name. See `0652-*`. (2026-08-17)
 
+**#0655** (bug, open 2026-08-17) — the Zephyr core-pin ACCEPT arm can never succeed: it pins
+`k_current_get()`, and Zephyr's `cpu_mask_mod` returns `-EINVAL` for a RUNNING thread (the cpu mask is
+only settable before start). It was also gated on `CONFIG_SCHED_CPU_MASK_PIN_ONLY` — strictly narrower
+than the `CONFIG_SCHED_CPU_MASK` the API needs — and NO config in the tree sets either, so the call was
+preprocessed out of every image and no build could catch it. Found by asking #260's question. Gate
+corrected + knob enabled on the uniprocessor fixture (SMP not required): the call compiles for the first
+time and yields a real `rc=-22` where the never-compiled `#else` invented `-88`. The caller-side fix
+(pin between `k_thread_create` and `k_thread_start`) is still open, and the BOOT tier may be unfixable
+as posed. See `0655-*`. (2026-08-17)
+
 **#0653** (design, open 2026-08-17) — RFC-0075 accepted one casualty of sourcing the zenoh router from
 ROS: "a ROS-less host cannot run the zenoh interop lanes". The consequence is NOT confined to interop —
 zenoh-pico is a client, so *any* two-process zenoh example needs a router, and a ROS-less host now has

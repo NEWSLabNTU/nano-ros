@@ -94,8 +94,14 @@ static void zephyr_apply_core_pin(const char* name, uint32_t core_plus1) {
          * arm's apply_tier_core_pin ::log::info! — keep all three in lockstep. */
         printk("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
     } else {
+        /* issue 0655 — name the causes that can actually produce each rc; the
+         * old note blamed CONFIG_SCHED_CPU_MASK_PIN_ONLY / a bad cpu, and the
+         * observed -EINVAL is neither. MIRRORS the Rust arm's warn text in
+         * `entry_tiers.rs` — keep in lockstep. */
         printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "
-               "(CONFIG_SCHED_CPU_MASK_PIN_ONLY off, or invalid cpu) — tier runs unpinned\n",
+               "(-22/EINVAL: the thread is already RUNNING and Zephyr only accepts a cpu "
+               "mask before start — issue 0655; -88/ENOSYS: image lacks "
+               "CONFIG_SCHED_CPU_MASK) — tier runs unpinned\n",
                (name != NULL) ? name : "?", cpu, rc);
     }
 }

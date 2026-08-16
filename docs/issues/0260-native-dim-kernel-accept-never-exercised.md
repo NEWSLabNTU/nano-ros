@@ -127,3 +127,53 @@ have". That is not what this issue says, and it is not true of what remains:
 
 So the Direction above stands unchanged and is NOT blocked: add one SMP
 fixture and point a dedicated cell at it.
+
+### Correction (2026-08-17): the accept arms are not "compile-verified", they are NOT COMPILED
+
+This issue records the RTOS core-pin accept arms as "COMPILE-VERIFIED ONLY
+(against headers), never run". That is too generous, and the difference
+matters because it is the whole basis of the "Why it matters" section above.
+
+Every one of the four arms is behind a preprocessor gate, and **no config in
+this tree sets any of those gates**:
+
+| board | gate | set anywhere? |
+| --- | --- | --- |
+| Zephyr | `CONFIG_SCHED_CPU_MASK_PIN_ONLY` | **no** — comments and the `#ifdef` only |
+| NuttX | `CONFIG_SMP` | **no** NuttX defconfig sets it |
+| ThreadX | `TX_THREAD_SMP` | **no** |
+| FreeRTOS | `configUSE_CORE_AFFINITY` | **no** |
+
+(The single `CONFIG_SMP=y` in the tree is the license-gated `fvp-aemv8r-smp`
+Zephyr board, which does not set the Zephyr pin knob either.)
+
+So the bodies are deleted by the preprocessor in every image. They are not
+type-checked, not linked, not run. "A typo would not be caught until someone
+builds an SMP image" is right — and nobody ever builds one, on any of the four.
+
+Acting on that immediately found a real defect, which is the argument for the
+compile gate being worth having on its own:
+**[issue 0655](0655-zephyr-core-pin-cannot-succeed-on-running-thread.md)** —
+the Zephyr arm pins `k_current_get()`, and Zephyr's `cpu_mask_mod` rejects a
+RUNNING thread, so that arm returns `-EINVAL` unconditionally and could never
+have worked even on a correct SMP image. Correcting the gate to the knob the
+API actually needs (`CONFIG_SCHED_CPU_MASK`, which does NOT require SMP) and
+enabling it on the existing uniprocessor fixture made the call compile for the
+first time and produced `rc=-22` where the never-compiled `#else` had been
+inventing `-88`.
+
+**This narrows the Direction.** Two separable pieces, and the cheap one is not
+the fixture:
+
+1. **Make each arm COMPILE somewhere** — cheap, needs no SMP, and catches the
+   API-misuse class this issue exists to worry about. Done for Zephyr; NuttX,
+   ThreadX and FreeRTOS still have never-compiled arms and each needs its own
+   read (do not assume they share 0655's bug, and do not assume they don't).
+2. **Make one arm RUN and be observed accepting** — the SMP fixture. Still
+   wanted, still the only thing that proves multi-core behaviour, and now known
+   to need a REAL SMP board: Zephyr's `native_sim` cannot do it (the POSIX arch
+   has no SMP support at all, so the "cheapest candidate" named in the
+   Direction above is not viable). The viable Zephyr targets are
+   `qemu_cortex_a53_smp` / `qemu_riscv64_smp` — a new board bring-up, not a
+   conf tweak. FreeRTOS SMP needs a multi-core port; `mps2-an385` is a
+   single-core Cortex-M3.

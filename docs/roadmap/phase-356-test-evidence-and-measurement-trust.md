@@ -209,12 +209,44 @@ it, not taken from #260's prose; it is also the cell that gained most, having
 previously tolerated a regression to the fallback while #260 recorded the dim
 as covered.
 
+### What asking "so is the accept path exercised?" turned up
+
+Chasing the full acceptance produced a finding bigger than the acceptance.
+The four RTOS accept arms are not merely unrun — **they are not compiled**.
+Each sits behind a preprocessor gate (`CONFIG_SCHED_CPU_MASK_PIN_ONLY`,
+NuttX `CONFIG_SMP`, `TX_THREAD_SMP`, `configUSE_CORE_AFFINITY`) and **no
+config in the tree sets any of them**, so every body is deleted by the
+preprocessor in every image. #260 called them "COMPILE-VERIFIED ONLY (against
+headers)"; they are not type-checked at all.
+
+Acting on that immediately found a real defect —
+[issue 0655](../issues/0655-zephyr-core-pin-cannot-succeed-on-running-thread.md):
+the Zephyr arm pins `k_current_get()`, and Zephyr's `cpu_mask_mod` returns
+`-EINVAL` for a RUNNING thread, so that arm could never have succeeded even on
+a correct SMP image. It was also gated on a knob strictly narrower than the one
+`k_thread_cpu_pin` needs. Correcting the gate to `CONFIG_SCHED_CPU_MASK` (which
+does NOT require SMP) and enabling it on the existing uniprocessor fixture
+compiled the call for the first time and produced a real `rc=-22` where the
+never-compiled `#else` had been inventing `-88`. `realtime_tiers_e2e` still
+passes and the EDF cell still reports ACCEPT.
+
+That reorders the remaining work. The cheap half was never the fixture:
+
+1. **Make each arm compile somewhere** — no SMP required, and it catches the
+   API-misuse class #260 is actually worried about. Done for Zephyr; the other
+   three still have never-compiled arms.
+2. **Make one arm run and be observed accepting** — the SMP fixture, which now
+   needs a REAL SMP board: Zephyr's `native_sim` cannot do it (the POSIX arch
+   has no SMP support), so #260's "cheapest candidate" is not viable. The
+   viable targets are `qemu_cortex_a53_smp` / `qemu_riscv64_smp`, i.e. a board
+   bring-up, not a conf tweak.
+
 **Acceptance (now).** The suite reports which arm each sched dim took. **MET** —
 and exceeded: the arm is asserted, not only reported.
 **Acceptance (full).** One SMP fixture flips a core-pin cell to the ACCEPT arm.
-Unblocked; #260's Direction specifies it (a separate Zephyr `native_sim` SMP
-variant, or a FreeRTOS `configNUMBER_OF_CORES > 1` build, plus a dedicated
-`*_core_pin_smp` cell). Do not close #260 on the partial.
+Unblocked but re-costed: a new SMP board, per above. Do not close #260 on the
+partial, and note #0655 must be fixed first — otherwise the SMP fixture would
+be built to exercise a call that cannot succeed.
 
 ---
 

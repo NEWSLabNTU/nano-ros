@@ -98,9 +98,18 @@ fn apply_tier_core_pin(tier: &TierSpec<'_>) {
             // arm's `zephyr_apply_core_pin` printk — keep all three in lockstep.
             ::log::info!("nros: core pin tier=`{}` cpu={}", tier.name, cpu);
         } else {
+            // issue 0655 — name the causes that can actually produce each rc.
+            // This note used to say "CONFIG_SCHED_CPU_MASK_PIN_ONLY off, or
+            // invalid cpu"; the observed rc is -EINVAL and NEITHER of those is
+            // why. Zephyr's `cpu_mask_mod` requires
+            // `z_is_thread_prevented_from_running`, and we pass
+            // `k_current_get()` — a running thread — so the kernel refuses.
+            // A fallback note that misnames its own cause sends the next
+            // reader to the Kconfig instead of the call site.
             ::log::warn!(
-                "nros: core pin FAILED tier=`{}` cpu={} rc={} (CONFIG_SCHED_CPU_MASK_PIN_ONLY \
-                 off, or invalid cpu) — tier runs unpinned",
+                "nros: core pin FAILED tier=`{}` cpu={} rc={} (-22/EINVAL: the thread is \
+                 already RUNNING and Zephyr only accepts a cpu mask before start — issue \
+                 0655; -88/ENOSYS: image lacks CONFIG_SCHED_CPU_MASK) — tier runs unpinned",
                 tier.name,
                 cpu,
                 rc
