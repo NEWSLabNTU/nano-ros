@@ -34,6 +34,16 @@ extern crate std;
 #[cfg(feature = "panic-halt")]
 use panic_halt as _;
 
+// issue 0619 — the `posix-c-port` dev-dependency supplies the platform symbols
+// this crate's lib TEST would otherwise leave undefined, but rustc drops a
+// dev-dep that nothing REFERENCES, taking its build script's `-l` with it. The
+// `-L …/nros-platform-cffi-*/out` still lands on the link line, so the wiring
+// looks present while the archive is absent. Hence the explicit reference, the
+// same one `nros-cpp` carries. Verified by removing it: 2 undefined references
+// come straight back.
+#[cfg(test)]
+use nros_platform_cffi as _;
+
 // Phase 241.D3-rev — single-runtime umbrella: force-link the selected RMW backend
 // rlib into this staticlib and auto-register it before `main`. `nros-c` is the
 // staticlib root, so an unreferenced backend rlib is DCE'd entirely; `rmw_backend`

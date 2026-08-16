@@ -1697,6 +1697,7 @@ dependencies = [
  "nros-log",
  "nros-node",
  "nros-platform",
+ "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",

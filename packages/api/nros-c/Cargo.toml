@@ -329,6 +329,19 @@ nros-build-helpers = { workspace = true }
 # …); the featureless configuration is the one nobody built.
 [dev-dependencies]
 nros-c = { path = ".", features = ["std"] }
+# issue 0619 — same reason as `nros-cpp`'s: a lib TEST is a final artifact and
+# links no platform port, so `nros-log`'s `PlatformSink` leaves
+# `nros_platform_log_write` / `_flush` declared and never defined.
+#
+# 0619 recorded this half as fixed in passing and added no dev-dependency. It
+# reproduces at BOTH profiles — the `nros-relwithdebinfo` repro the issue
+# verified as clean, and the dev profile its own new gate line runs — so the
+# measurement that found this dead weight did not hold.
+#
+# `posix-c-port` compiles `nros-platform-posix/src/{platform,net,timer}.c`, the
+# host port every real consumer links. NOT `c-stub-test`: the two are mutually
+# exclusive and a workspace build unifies both on.
+nros-platform-cffi = { workspace = true, features = ["posix-c-port"] }
 
 [package.metadata.docs.rs]
 all-features = true
