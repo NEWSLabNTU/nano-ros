@@ -300,7 +300,7 @@ not reduce contention on a global lock. Remedies: pre-warm + `--offline`, per-la
 invocations; which one works depends on whether anything still WRITES the cache offline, stated as the open
 question rather than assumed. Spotted by the maintainer in `htop`. See `0648-*`.
 
-**#642** (build/testing, RESOLVED 2026-08-17) — `check-archive-lang-items` failed `build-test-fixtures` on
+Recently resolved (2026-08-17): **#642** (build/testing) — `check-archive-lang-items` failed `build-test-fixtures` on
 16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it
 (unbounded `find` over `examples packages build`, pure I/O over millions of object files, paid by every
 fixture build). ONE cause: the walk went everywhere. Fixed by pruning `.git`/`deps`/`incremental`/
