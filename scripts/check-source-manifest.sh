@@ -93,6 +93,24 @@ grep -q "with space.rs\$" <<< "$closure" \
     && ok "an escaped space is one path, not two" \
     || bad "escaped space truncated the closure"
 
+# issue 0635 — VCS state is not a build input. `nros-cli-core/build.rs` watches
+# `.git/index` deliberately (its source stamp reads index blob SHAs), so any row
+# whose closure reaches the CLI inherits a file that `git add`, `git commit` and
+# `git status` rewrite with no source change — three compile-check rows reported
+# STALE forever, across four rebuilds, each separated from its check by a commit.
+printf '%s: %s %s\n' \
+    "$sandbox/leaf/target/debug/x" \
+    "$sandbox/leaf/prj.conf" \
+    "$sandbox/.git/index" > "$sandbox/leaf/target/debug/x.d"
+closure_git="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")" \
+    || bad "closure failed with a .git dep listed"
+grep -q "\.git/" <<< "$closure_git" \
+    && bad "a listed .git/ path reached the closure" \
+    || ok "a listed .git/ path is excluded from the closure"
+grep -q "leaf/prj.conf\$" <<< "$closure_git" \
+    && ok "excluding .git/ keeps the real deps" \
+    || bad ".git/ exclusion dropped a real dep"
+
 # Both of these were REAL defects in the first version of the extractor, found
 # only because a row's closure came back empty when it plainly should not have.
 echo "check-source-manifest: dep-info shapes"

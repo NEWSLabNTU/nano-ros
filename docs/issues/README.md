@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#0635** — `compile-check-signature.sh` hashed the dep-info closure, which
+carries `.git/index`: `nros-cli-core/build.rs` watches it deliberately (its source stamp reads index blob
+SHAs), so every row whose closure reaches the CLI inherited a file that `git add`/`commit`/`status` rewrites
+with no source change. Three compile-check rows were therefore stale FOREVER for anyone who commits — four
+rebuilds could not clear them — while a fresh clone that builds and tests in one go stays green, so CI never
+saw it. `dep-closure.py` now drops `.git/**`; the gitignore filter beside it could never have, since `.git/`
+is outside the tree git reports on. See `archived/0635-*`. (2026-08-16)
+
 Recently resolved (2026-08-16): **#645** — found by re-profiling after #0641: with the subprocess cost gone,
 **I/O was co-dominant** — 34,172 `statx` calls, 86 % ENOENT, 32.7 % of wall-clock. The failing paths named the
 shape at once: `NROS_IGNORE`/`COLCON_IGNORE`/`AMENT_IGNORE`/`package.xml` x **7113 directories**, in a workspace

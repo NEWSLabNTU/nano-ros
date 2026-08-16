@@ -117,6 +117,22 @@ def main() -> int:
             return  # registry / sysroot / another checkout — not ours to watch
         if build_rel is not None and rel.is_relative_to(build_rel):
             return
+        # issue 0635 — VCS state is not a build input, whatever a depfile says.
+        #
+        # `nros-cli-core/build.rs` watches `.git/index` on purpose: its source
+        # stamp reads index blob SHAs, so cargo must rebuild it when the index
+        # moves. Correct for that crate — and poison for a fixture SIGNATURE,
+        # because the index is rewritten by `git add`, `git reset`, `git status`,
+        # every commit and every rebase, with no source change at all. Any row
+        # whose closure reached the CLI therefore reported STALE forever: three
+        # compile-check rows failed `just ci` on this host across four rebuilds,
+        # each rebuild separated from its verification by a commit. Measured: a
+        # bare `git add` + `git reset` of one unchanged file moves the signature.
+        #
+        # The gitignore filter below cannot cover this: `.git/` is not ignored,
+        # it is outside the working tree git reports on at all.
+        if rel.parts and rel.parts[0] == ".git":
+            return
         if not path.is_file():
             return  # listed but gone: a rebuild will settle it
         found.add(str(rel))
