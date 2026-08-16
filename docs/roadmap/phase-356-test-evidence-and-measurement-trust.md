@@ -71,9 +71,29 @@ Fix (2) first and independently: a dead counter must make the run FAIL, not
 produce a zero. That is a small change and it stops bad numbers entering any
 record, including phase-357's.
 
-(1) is a format question and should be settled together with
+~~(1) is a format question and should be settled together with
 [phase-357](phase-357-wcet-as-declared-data.md) W1, so the bench emits what the
-schema wants to consume rather than a second spelling.
+schema wants to consume rather than a second spelling.~~
+
+**Struck 2026-08-16 — that sentence created a deadlock this phase does not
+have.** phase-357 W1 is blocked on #403 emitting an artifact; if #403's format
+in turn waited on W1, neither could ever start. I wrote both halves of that
+circle.
+
+#403 does not have it. Its own Direction specifies the artifact independently:
+
+> 1. **Emit a structured artifact** — JSON or TOML beside the log, carrying per
+>    measurement `min` / `max` / `mean`, `iterations`, and the identity of what
+>    was measured. Prose stays for humans; **the artifact is what any future
+>    declaration (0404) is generated from.**
+> 3. **Record the conditions.** … Cycles convert to the `ms` the mapper wants
+>    only through a clock rate, so an artifact without one is not convertible.
+
+The two are different objects. #403's artifact is a MEASUREMENT RECORD — what
+was measured, under what conditions, with the counter's validity recorded so a
+stale file cannot be re-read as good. #404's schema is a DECLARATION the model
+consumes. The declaration is generated FROM the record, which is why the
+dependency runs one way and why the record can be specified now.
 
 **Acceptance.** A QEMU run with the cycle counter disabled fails with a message
 naming the counter. The bench's output is machine-readable in whatever form
@@ -90,8 +110,15 @@ That the recipe now FAILS on QEMU is the point: QEMU does not implement DWT
 cycle counting, so this bench cannot measure there. It is `[group("debug")]`
 and no CI lane runs it.
 
-**Second half outstanding:** `print_result` still prints prose with no parser,
-schema or consumer. That is the piece phase-357 W1 is waiting on.
+**Second half outstanding, and NOT blocked.** `print_result` still prints prose
+with no parser, schema or consumer. #403 Direction items 1 and 3 already say
+what the artifact must carry — per-measurement `min`/`max`/`mean`, iterations,
+the identity of what was measured, the counter's validity, and the conditions
+(CPU, clock rate, build profile, commit) without which cycles do not convert to
+the mapper's `ms`.
+
+This is the piece phase-357 W1 waits on, and it is the only thing gating two
+phases.
 
 ## W3 — Native sched dims verified only on the FALLBACK arm (#260)
 
