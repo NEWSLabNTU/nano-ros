@@ -95,6 +95,35 @@ steps — so it never had a success claim to make honest. It has one now.
 * `scripts/check-lane-skip-protocol.py` fails on either spelling of a raw
   `exit 0` skip in a lane recipe, with self-tests in both directions.
 
+## Second half: the six CHECK sites (2026-08-17)
+
+The same shape one tier over, and the reason they were not converted with the
+lanes: `check-fast` is documented to run green on *"a pristine detached worktree
+with no CLI, no sources and no `nros sync`"*, so a gate that hard-fails on a
+missing optional tool would break the property that makes the fast tier worth
+running. `check-abi-bindings` (bindgen), `dep-chain` (ROS 2),
+`check-board-projections` (the in-tree CLI), `colcon-parity`, and the two
+doxygen recipes therefore printed a skip and exited 0.
+
+The defect was never the exit code. It was that `just check` then printed
+**"All checks passed!"** — false about the gates that did not run, and the
+sentence a reader keeps.
+
+`scripts/build/check-skip.sh` records a skipped check; `check-fast` and `check`
+close with `nros_check_skip_report`, which prints the success line unchanged
+when the ledger is empty and otherwise qualifies it by name. Exit codes are
+untouched, so the bare-worktree property holds.
+
+Found immediately on this host: `check-abi-bindings` had been skipping every
+run — no `bindgen` installed — so the RFC-0054 gate that keeps
+`generated.rs` honest against the C headers had verified nothing all session.
+Installing the pinned `bindgen-cli 0.72.1` and running it reports
+"ABI bindings match the C-header SSoT", so nothing had drifted; the point is
+that nothing would have said so.
+
+`check-lane-skip-protocol` now recognises both protocols and its exemption list
+for these sites is gone.
+
 ## Adjacent, not fixed here
 
 The RISC-V toolchain mismatch that exposed this: `nros setup` provisions

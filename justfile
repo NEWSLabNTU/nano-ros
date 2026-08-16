@@ -395,7 +395,14 @@ profile dir="." flags="":
 # repeatedly otherwise). See docs/development/ci-workflow-reorg.md.
 [group("main")]
 check: check-fast check-build
-    @echo "All checks passed!"
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — same reason as `check-fast`'s closing line: "All checks
+    # passed!" must not stand for a gate that never ran. The ledger is shared,
+    # so this reports the fast tier's skips plus any from the build tier.
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_skip_report "All checks passed!"
 
 # Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
 # ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test
@@ -411,7 +418,7 @@ check: check-fast check-build
 # 23s. If you add a gate here, check it against that, not against your own
 # provisioned tree, where everything passes for the wrong reason.
 [group("main")]
-check-fast: \
+check-fast: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
@@ -445,7 +452,16 @@ check-fast: \
     check-test-domain-assignment \
     check-zenohd-spawn-sites \
     check-path-env-fingerprints check-retired-platform-clock-symbols
-    @echo "Fast checks passed!"
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — the closing sentence is REPORTED, not asserted. Six gates in
+    # this lane skip on a missing optional tool (bindgen, ROS 2, colcon, the
+    # in-tree CLI), which they must: this tier is documented to run green on a
+    # pristine worktree. What they may not do is let "Fast checks passed!" stand
+    # for gates that never ran.
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_skip_report "Fast checks passed!"
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
 # the fast tier; the ROOT workspace's `fmt --check` was the one left in the build
@@ -827,7 +843,9 @@ check-dep-chain:
         if [ -f /opt/ros/humble/setup.bash ]; then
             source /opt/ros/humble/setup.bash
         else
-            echo "[SKIPPED] dep-chain: ROS 2 not sourced (AMENT_PREFIX_PATH unset)"; exit 0
+            # shellcheck source=scripts/build/check-skip.sh
+            source scripts/build/check-skip.sh
+            nros_check_skip dep-chain "ROS 2 not sourced (AMENT_PREFIX_PATH unset)"; exit 0
         fi
     fi
     source scripts/build/cargo.sh
@@ -847,7 +865,10 @@ check-abi-bindings:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v bindgen >/dev/null 2>&1; then
-        echo "check-abi-bindings SKIP: bindgen-cli not installed (cargo install bindgen-cli --locked --version 0.72.1)"
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip check-abi-bindings \
+            "bindgen-cli not installed (cargo install bindgen-cli --locked --version 0.72.1)"
         exit 0
     fi
     bash scripts/gen-abi-bindings.sh >/dev/null
@@ -1179,7 +1200,10 @@ check-board-cargo-config-applied:
     set -euo pipefail
     nros="packages/cli/target/release/nros"
     if [ ! -x "$nros" ]; then
-        echo "[SKIP] board projections: no in-tree nros at $nros — build it: just setup-cli"
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip check-board-projections \
+            "no in-tree nros at $nros — build it: just setup-cli"
         exit 0
     fi
     fail=0
@@ -2983,7 +3007,9 @@ colcon-parity:
     #!/usr/bin/env bash
     set -e
     if ! command -v colcon >/dev/null 2>&1; then
-        echo "[SKIPPED] colcon not found (apt install python3-colcon-common-extensions)"
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip colcon-parity "colcon not found (apt install python3-colcon-common-extensions)"
         exit 0
     fi
     [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash
@@ -3884,6 +3910,16 @@ check-example-leaf-target-dirs:
 check-lane-skip-protocol:
     @python3 scripts/check-lane-skip-protocol.py
 
+# issue 0650 — clear the check-skip ledger at the head of the lane, so a run in
+# which everything ran is not reported against last run's missing tools.
+[private]
+_check-skip-reset:
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_skip_reset
+
 # issue 0490 — a `cargo:rerun-if-changed` naming a path that does not exist makes
 # cargo treat the unit as permanently dirty, so the build script and everything
 # above it recompile on every invocation, silently and forever. Found in
@@ -4775,7 +4811,9 @@ doc-rmw-cffi:
     #!/usr/bin/env bash
     set -e
     if ! command -v doxygen &>/dev/null; then
-        echo "WARNING: doxygen not found — skipping rmw-cffi docs."
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip docs-rmw-cffi "doxygen not found"
         exit 0
     fi
     mkdir -p target/doxygen/rmw-cffi
@@ -4796,7 +4834,9 @@ doc-platform-cffi:
     #!/usr/bin/env bash
     set -e
     if ! command -v doxygen &>/dev/null; then
-        echo "WARNING: doxygen not found — skipping platform-cffi docs."
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip docs-platform-cffi "doxygen not found"
         exit 0
     fi
     header="packages/platform/nros-platform-cffi/include/nros/platform_vtable.h"

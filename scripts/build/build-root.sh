@@ -114,6 +114,9 @@ export NROS_KIND_EXAMPLE_BUILD="example-build"
 # can refuse to claim it built fixtures. One file per lane; each step is its own
 # `just` invocation, so no shell state survives between them.
 export NROS_KIND_LANE_SKIPS="lane-skips"
+# issue 0650 — the same for CHECKS, which keep their exit code and instead
+# qualify the lane's closing sentence with what did not run.
+export NROS_KIND_CHECK_SKIPS="check-skips"
 export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
 export NROS_KIND_LINK_DETERMINISM="link-determinism"
 export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"

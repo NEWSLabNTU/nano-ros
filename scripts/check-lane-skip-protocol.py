@@ -49,7 +49,7 @@ SCAN_DIR = os.path.join(ROOT, "just")
 ANNOUNCES = re.compile(r"^\s*(echo|printf)\b[^\n]*\bskip", re.IGNORECASE)
 SAME_LINE_EXIT = re.compile(r";\s*exit\s+0\s*$")
 BARE_EXIT_0 = re.compile(r"^\s*exit\s+0\s*$")
-PROTOCOL = re.compile(r"\bnros_lane_skip(_note|_flush|_reset)?\b")
+PROTOCOL = re.compile(r"\bnros_(lane|check)_skip(_note|_flush|_reset|_report)?\b")
 
 # Sites that are NOT a lane precondition, with the reason. A skip line here is
 # about a case inside an already-running step, not about a lane that cannot run.
@@ -66,20 +66,13 @@ EXEMPT_SUBSTRINGS = (
     "not in this lane's coordinates",
 )
 
-# Not fixture lanes: a CHECK or a DOCS recipe that cannot run its tool. These
-# skip green too, which is the same family of hazard — but they claim no
-# artifact, no driver records them as OK, and the remedy is different for each
-# (a missing `bindgen-cli` should probably fail `just check`, a missing
-# `doxygen` should not). Listed rather than silently out of scope, so the
-# distinction is a decision and not an oversight. Residue noted in issue 0650.
-EXEMPT_NON_LANE = (
-    "dep-chain: ROS 2 not sourced",
-    "check-abi-bindings SKIP",
-    "board projections: no in-tree nros",
-    "colcon not found",
-    "skipping rmw-cffi docs",
-    "skipping platform-cffi docs",
-)
+# Previously an exemption list. The six sites it held — `check-abi-bindings`
+# without bindgen, `dep-chain` without ROS 2, `check-board-projections` without
+# the in-tree CLI, `colcon-parity`, and the two doxygen recipes — now go through
+# `nros_check_skip`, the CHECK-side ledger (scripts/build/check-skip.sh). They
+# keep their exit code, because `check-fast` is documented to run green on a
+# pristine worktree; what changed is that the lane's closing sentence names them
+# instead of letting "All checks passed!" stand for gates that never ran.
 
 
 def offenders(text):
@@ -93,7 +86,7 @@ def offenders(text):
             continue
         if PROTOCOL.search(line):
             continue
-        if any(frag in line for frag in EXEMPT_SUBSTRINGS + EXEMPT_NON_LANE):
+        if any(frag in line for frag in EXEMPT_SUBSTRINGS):
             continue
         if SAME_LINE_EXIT.search(line):
             out.append((i, line.strip(), "announces a skip and exits 0 on the same line"))
