@@ -364,6 +364,47 @@ asserting the probe FAILS when an input it claims to watch is changed.
 
 ---
 
+## Next W5-class site — `zpico_c_source_newer` (specified 2026-08-17, NOT implemented)
+
+Found by sweeping the W5 class the way W2 and W3 were swept. It is the same
+shape three times over, in one function:
+
+* a hand-authored ROOT — `packages/rmw/zenoh/zpico-sys/c`, a candidate list of
+  size one, chosen because it is "the one purely-cargo C surface these fixtures
+  link";
+* an extension ALLOWLIST — `.c/.h/.cpp/.hpp/.cc/.hh`, the class W3 deleted twice
+  elsewhere;
+* MTIME rather than content, which W5 and `source_stamp.rs` both moved away from.
+
+It exists for a good reason: corrosion invokes cargo as one opaque custom
+command, so `ninja -t deps` cannot see anything cargo compiled, and issue 0391
+is the museum binary that produced. The compensation is sound in intent and
+guessed in construction.
+
+**The measured answer is already on disk.** The `cc` crate emits
+`cargo:rerun-if-changed` for everything it read, and cargo stores it:
+
+```
+build/cargo-fixtures/nuttx-*/…/build/zpico-sys-*/output   37 rerun-if-changed entries
+  …/packages/platform/nros-platform-api/include
+  …/config/bare-metal/nros-platform.toml
+  …/config/freertos/nros-platform.toml
+```
+
+That set is BROADER than the walk. `nros-platform-api/include` is not under
+`zpico-sys/c`, and `config/*/nros-platform.toml` is neither under it nor a
+`.c`/`.h` file — so **editing a platform config does not stale a zpico fixture
+today**, though cargo names it an input. CLAUDE.md separately records those
+files as carrying the `rerun_if_env_changed` lists of issue 0491, which is the
+same class in the env dimension.
+
+**Deliberately left unimplemented here.** This probe gates every zenoh cmake
+fixture; getting it wrong yields either mass false-STALE or mass museum
+binaries, and this phase's own W4 found two silent-shrink defects in its
+extractor when it did the equivalent work. It wants its own change with mutation
+tests, not an end-of-sweep edit. The finding is recorded with the evidence so
+the next pass starts from a measurement rather than a re-sweep.
+
 ## Deliberately not doing
 
 * **Not adopting a new build system.** Bazel/Buck2/Nix solve this by making
