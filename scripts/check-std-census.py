@@ -101,7 +101,7 @@ BASELINE = {
     # ENABLE `std`; it now REQUIRES it and says so. A guard must NAME the
     # feature it checks, so making an implicit enable explicit costs one
     # counted site and removes one implicit enable. Same shape as nros-node.
-    "nros": {"cfg": 26, "path": 16},
+    "nros": {"cfg": 13, "path": 16},
     "nros-c": {"cfg": 13, "path": 8},
     # phase-361 W2.a: 5 -> 3. The heap gate is `cfg(feature = "alloc")` alone,
     # `std` reaching it through `std = ["alloc", …]` in the manifest; the two
