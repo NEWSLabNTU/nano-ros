@@ -2113,22 +2113,27 @@ announced up front by `nros setup` and the book no longer promises unconditional
 remains is out-of-repo — publish `1.7.2-nros2` assets on `nano-ros-sdk` so the dist rows return.
 See `0374-*`. (2026-08-01)
 
-**#403** — the WCET bench emits prose nothing parses, and a QEMU run with a dead cycle counter reports
-zeros as if measured. `nros-bench/wcet-cycles-qemu` prints `min=/max=/avg= cycles` to a semihosting log
-with no parser, no schema and no consumer, in the `debug` group so no lane runs it. On QEMU the DWT
-never increments: the bench detects this, prints a NOTE, then measures anyway and exits 0 — warning and
-data on the same stream, and only the data is machine-shaped. Same failure as 0259 one layer earlier
-(a non-measurement entering as zero, the most optimistic WCET there is). Direction: structured artifact
-with conditions recorded, and a dead counter is a HARD failure emitting no numbers at all. See
-`0403-*`. (2026-08-03)
+Recently resolved (2026-08-16): **#403** — the WCET bench emitted prose nothing parses, and zeros from a
+dead cycle counter. Fixed in phase-356 W2, both halves. A dead DWT is now a HARD failure: the bench
+refuses, emits no table and exits `EXIT_FAILURE`, so a run that could not measure produces no zeros to
+mistake for measurements. And the machine half exists — the `no_std` image cannot open a file, so it
+prints `NROS_WCET_V1` TSV records beside the prose (per-measurement min/max/mean/iterations, plus
+`counter_valid`/`cpu`/`profile`/`commit`) and `scripts/bench/wcet-log-to-json.py` lifts them into a
+`nros.wcet.measurements/1` artifact (`just qemu wcet-artifact`). No measurements means no file, never an
+empty one; no `clock_hz` means `convertible_to_time: false` rather than a plausible invented rate.
+CAVEAT, stated rather than implied: the emitter has never been observed emitting — QEMU refuses before
+the first marker line and this tree has no hardware lane — so it is compile- and drift-checked (the
+parser reads the bench's real format string), not executed. See `archived/0403-*`. (2026-08-16)
 
 **#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
 outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
 reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
 named measurement profile — a WCET belongs to a context, not to code), unit (mapper wants ms, the bench
 measures cycles, converting needs a clock rate), granularity (mapper wants a whole callback, the bench
-measures primitives), and provenance/staleness. Blocked on 0403 — designing the schema before a
-producer emits an artifact answers the keying question by guess. Invariant: absent stays representable
+measures primitives), and provenance/staleness. UNBLOCKED 2026-08-16: 0403 now emits
+`nros.wcet.measurements/1`, so the schema can be designed against a real artifact instead of guessing
+the keying. That artifact carries no `clock_hz` and says so, which makes the unit question concrete
+rather than theoretical — a declaration in `ms` cannot be derived from it as it stands. Invariant: absent stays representable
 and stays the DEFAULT, else zeros get written in by hand. See `0404-*`. (2026-08-03)
 
 Recently resolved (2026-08-10): **#415** — `nros::main!`'s framework table was deploy-keyed, so an

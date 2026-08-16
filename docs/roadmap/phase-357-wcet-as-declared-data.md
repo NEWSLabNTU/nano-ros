@@ -1,16 +1,21 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-08-16). W3 DONE; W1 BLOCKED, W2 blocked behind it — nothing in
-this phase is actionable until [phase-356](phase-356-test-evidence-and-measurement-trust.md)
-W2 emits a machine-readable WCET artifact (#403).** Three orchestration
-issues that are one dependency chain, not three tasks.
+**Status (2026-08-16). W3 DONE; W1 UNBLOCKED 2026-08-16 but not started; W2
+blocked behind W1.** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
+W2 landed the artifact (#403 resolved), which was the only thing holding W1.
+Three orchestration issues that are one dependency chain, not three tasks.
 
-* **W1 (#404, the WCET schema)** — **BLOCKED on #403**, which this phase failed
-  to record when it was opened. #404's own Direction section is explicit:
-  "Nothing here should be designed before 0403 produces an artifact … Doing it
-  in the other order would produce a schema shaped around a hypothetical
-  measurement, which is how the keying question gets answered by guess."
-  So W1 is not merely "wants an RFC first" — it cannot be written yet.
+* **W1 (#404, the WCET schema)** — was **BLOCKED on #403**, which this phase
+  failed to record when it was opened. #404's Direction was explicit: "Nothing
+  here should be designed before 0403 produces an artifact … Doing it in the
+  other order would produce a schema shaped around a hypothetical measurement,
+  which is how the keying question gets answered by guess."
+  **Unblocked 2026-08-16**: #403 emits `nros.wcet.measurements/1`. Read the
+  caveat with it — no run has produced one yet (QEMU cannot measure, and there
+  is no hardware lane), so W1 designs against a real FORMAT, not against real
+  numbers. The format answers the keying question concretely in one respect
+  already: the artifact carries no `clock_hz` and says `convertible_to_time:
+  false`, so a declaration in `ms` cannot be derived from it as it stands.
 * **W2 (#259, quantitative scheduling)** — blocked on W1, by construction.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
@@ -67,18 +72,27 @@ before implementing.
 **Acceptance.** An RFC in `docs/design/` that answers all three questions, and a
 worked example carrying one real measured callback end-to-end.
 
-**BLOCKED, and the blocker is load-bearing rather than procedural.** #404 says
-not to design this before #403 emits an artifact, because a schema written
-against a hypothetical measurement answers the keying question by guess — and
-keying is the question that decides whether a number measured on an STM32F407 at
-168 MHz can be applied to a Cortex-M3 in QEMU.
+**UNBLOCKED 2026-08-16 — and one half of the acceptance still cannot be met
+here.** #404 said not to design this before #403 emits an artifact, because a
+schema written against a hypothetical measurement answers the keying question by
+guess, and keying decides whether a number measured on an STM32F407 at 168 MHz
+may be applied to a Cortex-M3 in QEMU. #403 now emits
+`nros.wcet.measurements/1`, carrying per-measurement min/max/mean/iterations
+plus `counter_valid`, `cpu`, `profile` and `commit` — the conditions the keying
+question is about. Design against that.
 
-The "worked example carrying one real measured callback" in the acceptance above
-cannot exist until a producer emits one. That is phase-356 W2 (#403), whose
-first item landed 2026-08-16: the bench now REFUSES to emit zeros from a run
-that could not measure, so whatever it eventually produces will not be a table
-of the most optimistic value a WCET can take. The remaining half — a
-machine-readable artifact instead of prose — is what unblocks this.
+Two facts to design WITH rather than around:
+
+* **The artifact declares its own non-convertibility.** The bench cannot read
+  the part's clock, so `clock_hz` is null and `convertible_to_time` is false. The
+  mapper wants `ms`. A schema must either carry the clock rate from somewhere
+  else or accept cycles as a first-class unit; it must not let a consumer pick a
+  rate, which is the manufactured-WCET failure #404 exists to prevent.
+* **No run has produced an artifact.** QEMU refuses (no DWT), and this tree has
+  no hardware lane. So "a worked example carrying one REAL measured callback"
+  remains unmeetable here — the schema can be designed and validated against the
+  format, but the worked example needs hardware. Say which of the two a piece of
+  work delivered; they are not the same claim.
 
 ## W2 — Make derived scheduling quantitative (#259)
 

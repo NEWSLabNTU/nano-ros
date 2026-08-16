@@ -384,6 +384,26 @@ fn print_result(name: &str, stats: &Stats) {
         stats.max,
         stats.avg()
     );
+    // Issue 0403 item 1 — the same numbers again, in a shape a tool can read.
+    //
+    // The prose above stays for humans; this line is what the artifact is built
+    // from. A no_std semihosting binary cannot write a file, so the machine
+    // half rides the SAME stream under a marker and a host-side step
+    // (`scripts/bench/wcet-log-to-json.py`) lifts it out. That keeps the
+    // embedded side to a `hprintln!` and puts the parsing — the part that can
+    // actually be tested on this host — where it can be tested.
+    //
+    // `iters` is emitted per measurement rather than once, so a truncated log
+    // still yields self-describing records instead of rows whose denominator
+    // lives in a header that may not have survived.
+    hprintln!(
+        "NROS_WCET_V1\tmeasurement\t{}\t{}\t{}\t{}\t{}",
+        name,
+        stats.min,
+        stats.max,
+        stats.avg(),
+        stats.count
+    );
 }
 
 #[entry]
@@ -436,6 +456,21 @@ fn main() -> ! {
     }
 
     hprintln!("Iterations per benchmark: {}", ITERATIONS);
+    hprintln!("");
+
+    // Issue 0403 item 3 — the conditions, without which the numbers do not
+    // convert. Cycles become the mapper's `ms` only through a clock rate, so an
+    // artifact that omits one is not convertible and must not pretend to be.
+    //
+    // `clock_hz` is deliberately absent rather than guessed: this binary has no
+    // way to read the part's actual clock, and inventing one would reintroduce
+    // exactly the "a number carries more authority than an absence" failure
+    // that issue 0404 warns about. The host step records it as null and the
+    // artifact is marked non-convertible until a producer supplies it.
+    hprintln!("NROS_WCET_V1\tcounter_valid\ttrue");
+    hprintln!("NROS_WCET_V1\tcpu\tcortex-m3");
+    hprintln!("NROS_WCET_V1\tprofile\t{}", env!("NROS_WCET_PROFILE"));
+    hprintln!("NROS_WCET_V1\tcommit\t{}", env!("NROS_WCET_COMMIT"));
     hprintln!("");
 
     hprintln!("--- CDR Serialization ---");

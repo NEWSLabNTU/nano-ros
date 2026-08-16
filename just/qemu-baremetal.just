@@ -244,6 +244,18 @@ test-wcet verbose="": _require-profile-dir build-fixtures
             -semihosting-config enable=on,target=native \
             -kernel {{FIXTURE_TARGET}}/qemu-rs-wcet-bench
 
+# Lift the WCET bench's machine-readable half out of its log (issue 0403).
+#
+# Separate from `test-wcet` because the two answer different questions: the
+# bench answers "did a measurement happen", this answers "where did it go".
+# Keeping them apart also means a refused run — which is EVERY run on QEMU,
+# since the DWT does not count there — reports its own reason rather than
+# being swallowed by a conversion step.
+[group("debug")]
+wcet-artifact log=(LOG_DIR / "latest/qemu-wcet-bench.log"):
+    python3 scripts/bench/wcet-log-to-json.py "{{log}}" \
+        "$(dirname "{{log}}")/qemu-wcet-bench.json"
+
 # Run LAN9118 Ethernet driver test (mps2-an385)
 [group("debug")]
 test-lan9118 verbose="": _require-profile-dir build-fixtures

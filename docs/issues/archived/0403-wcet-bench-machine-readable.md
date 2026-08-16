@@ -2,7 +2,7 @@
 id: 403
 title: The WCET bench emits prose nothing parses, and a QEMU run with a dead
   cycle counter reports zeros as if they were measurements
-status: open
+status: resolved
 type: enhancement
 area: testing
 related: [0259, 0404, rfc-0047]
@@ -116,11 +116,86 @@ no CI lane runs it, so nothing that gates a change goes red; `just qemu
 test-all` aggregates it and will now report the failure, which is correct — it
 was previously reporting a pass for a run that measured nothing.
 
-### What is still open here: the machine-readable half
+## The first half is DONE 2026-08-16 — the machine-readable artifact
 
-`print_result` still prints prose (`name: min=… max=… avg=… cycles`) with no
-parser, no schema and no consumer. That is the half issue 0404 is waiting on —
-it cannot design a schema against a producer that emits nothing structured. The
-refusal above is a precondition for that work rather than a substitute: it
-guarantees that whatever the producer eventually emits, it will not be zeros
-from a run that could not measure.
+### Why it is split across a binary and a script
+
+`wcet-cycles-qemu` is `no_std` on Cortex-M and its only output channel is
+semihosting stdout: it cannot open a file, so it cannot write an artifact
+itself. What it can do is print each number twice — once as prose for a human,
+once as an `NROS_WCET_V1`-marked TSV record for a tool. A host-side script turns
+the marked records into JSON.
+
+That split is also what makes the work testable. The producer needs hardware,
+and there is none here; the parser needs only text.
+
+* `packages/testing/nros-bench/wcet-cycles-qemu/src/main.rs` — emits
+  `NROS_WCET_V1` records: one `measurement` per benchmark (name, min, max, mean,
+  iterations) and the conditions `counter_valid` / `cpu` / `profile` / `commit`.
+* `.../build.rs` — bakes `NROS_WCET_PROFILE` and `NROS_WCET_COMMIT`, each
+  falling back to `"unknown"` rather than failing a build outside a checkout.
+* `scripts/bench/wcet-log-to-json.py` — parses those out of the log into a
+  `nros.wcet.measurements/1` artifact.
+* `just qemu wcet-artifact [log]` — runs it against `test-logs/latest/`.
+
+Direction items 1 and 3 are covered: per-measurement min/max/mean/iterations and
+identity, plus the conditions. `counter_valid` is carried into the artifact, so
+"a stale file cannot be re-read as good" holds on the consumer side too.
+
+### The two absences it refuses to paper over
+
+**A refused run gets no artifact.** A log with no measurements is not an
+artifact with zero measurements — that is this issue's own second half, one
+layer further out. The script exits non-zero and writes nothing.
+
+**No clock rate means not convertible.** The bench cannot read the part's real
+clock, so it emits none; `clock_hz` stays `null` and the artifact says
+`convertible_to_time: false` beside it. A consumer needing `ms` must refuse such
+a file rather than pick a plausible rate. Inventing one is precisely the
+manufactured-WCET failure 0404 exists to prevent.
+
+### Verification, and the part that is NOT verified
+
+Tested: `--self-test` covers 8 cases — a well-formed log, the absence of
+`clock_hz` suppressing the convertibility claim, a refused run yielding no
+measurements, prose containing the text `min=0 max=0 avg=0` NOT being parsed as
+data, a malformed record raising rather than being skipped, and an unknown
+record kind raising. The self-test runs on every conversion, not only when asked
+for. Run against the real refused QEMU log, the script exits 1 and writes no
+file.
+
+**The emitter has never been observed emitting.** On QEMU the bench refuses
+before it reaches any marker line — the observed run produced **0** of them —
+and this host has no hardware lane, so no run anywhere in this tree can
+currently produce an artifact. The producer is therefore compile-checked and
+format-checked, not executed.
+
+Format-checked means: `producer_format_drift()` reads the bench's actual source
+and asserts the marker and the measurement record's field count still match what
+the parser expects. Without that, both sides could agree with a hand-written
+fixture forever while drifting from each other — the mirror-drift class this
+tree has been bitten by repeatedly (the sizes-header mirror 0088→0268, the FFI
+struct mirrors 0160). It does not substitute for a real run; it removes the one
+failure mode a real run would otherwise be the only way to catch.
+
+That guard was proven by sabotage rather than assumed to work — a guard nobody
+has seen fire is a comment. Dropping one field from the bench's measurement
+record: `the measurement line emits 4 values, but this parser expects 5`.
+Renaming the marker: `no longer emits NROS_WCET_V1 — the producer and this
+parser have diverged, so every future log will parse as empty`. Both exit 2.
+The self-test was also re-run AFTER `just format`, because a formatter that
+rewraps the producer's line is exactly what would silently unhook a check that
+reads source text.
+
+**What a hardware owner should confirm:** that a run on a part with a live DWT
+produces marker lines, that `just qemu wcet-artifact` converts them, and that
+`clock_hz` gets a real value from somewhere — the bench cannot read it, so
+convertibility to `ms` remains unproven end-to-end.
+
+### What this does NOT do
+
+It does not populate 0259's mapper. The granularity caveat above stands: this
+bench measures primitives, the mapper wants a whole callback's `exec_ms`, and
+primitives do not sum to a callback without a model of one. 0404 now has a
+producer to design a schema against, which is what it was waiting for — not a
+finished input.

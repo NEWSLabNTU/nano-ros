@@ -66,6 +66,31 @@ does not yet emit one. Doing it in the other order would produce a schema
 shaped around a hypothetical measurement, which is how the keying question
 gets answered by guess.
 
+### Unblocked 2026-08-16 — the producer exists (0403 resolved)
+
+0403 now emits `nros.wcet.measurements/1`: per measurement `min`/`max`/`mean`,
+`iterations` and the identity of what was measured, plus the conditions
+`counter_valid`, `cpu`, `profile` and `commit`. Design against that.
+
+Two properties of it bear directly on the questions above, and both should be
+designed WITH rather than around:
+
+* **The artifact states that it is not convertible to time.** The bench cannot
+  read the part's clock, so `clock_hz` is null and `convertible_to_time` is
+  false. That is the UNIT question, made concrete: this schema either carries a
+  clock rate obtained elsewhere, or treats cycles as a first-class unit. What it
+  must not do is let a consumer supply a plausible rate — a manufactured `ms` is
+  the same failure as a manufactured zero, dressed better.
+* **No run has produced an artifact yet.** QEMU cannot measure and there is no
+  hardware lane, so the format is real and the numbers are not. A schema
+  validated against the format is a genuine result; a claim that a measurement
+  flowed end-to-end is not available yet. Keep the two apart when reporting.
+
+The KEYING question is untouched by this and remains the hard one: the artifact
+records `cpu`/`profile`/`commit` for the run that produced it, but says nothing
+about which OTHER contexts that number may be applied to. That judgement is this
+schema's to make.
+
 The invariant to preserve, whatever the shape: **absent must remain
 representable and must remain the default.** A schema that requires every
 boundary to carry a WCET will get zeros written into it, and the tree will be

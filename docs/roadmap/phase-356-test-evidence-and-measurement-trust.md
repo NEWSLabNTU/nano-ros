@@ -1,18 +1,19 @@
 # Phase 356 — Test evidence: a sweep you can read afterwards, and numbers you can believe
 
-**Status (2026-08-16). W2 half done; W1 and W3 not started.** Three issues about
+**Status (2026-08-16). W2 DONE; W1 and W3 not started.** Three issues about
 the same failure: a test run that reports something which cannot be checked, or
 which is not what it appears to be.
 
-* **W2 (#403)** — the dangerous half is FIXED: the WCET bench no longer prints a
-  table of zeros from a run whose cycle counter never counted. It refuses and
-  exits FAILURE. The machine-readable half remains, and it is what unblocks
-  [phase-357](phase-357-wcet-as-declared-data.md) W1 — #404 will not design a
-  schema against a producer that emits nothing structured.
+* **W2 (#403)** — DONE, both halves. The bench no longer prints a table of zeros
+  from a run whose cycle counter never counted: it refuses and exits FAILURE.
+  And it now emits `NROS_WCET_V1` marker records beside the prose, which
+  `scripts/bench/wcet-log-to-json.py` lifts into a `nros.wcet.measurements/1`
+  artifact. That unblocks [phase-357](phase-357-wcet-as-declared-data.md) W1 —
+  #404 has a real artifact to design a schema against instead of guessing.
 * **W1 (#527)** and **W3 (#260)** — not started.
 
 **Owns:** [issue 0527](../issues/0527-doctest-run-overwrites-rewritten-junit.md),
-[issue 0403](../issues/0403-wcet-bench-machine-readable.md),
+[issue 0403](../issues/archived/0403-wcet-bench-machine-readable.md) (resolved),
 [issue 0260](../issues/0260-native-dim-kernel-accept-never-exercised.md).
 
 **Related:** [RFC-0051](../design/0051-test-matrix-architecture.md) (`matrix::CELLS` /
@@ -110,15 +111,30 @@ That the recipe now FAILS on QEMU is the point: QEMU does not implement DWT
 cycle counting, so this bench cannot measure there. It is `[group("debug")]`
 and no CI lane runs it.
 
-**Second half outstanding, and NOT blocked.** `print_result` still prints prose
-with no parser, schema or consumer. #403 Direction items 1 and 3 already say
-what the artifact must carry — per-measurement `min`/`max`/`mean`, iterations,
-the identity of what was measured, the counter's validity, and the conditions
-(CPU, clock rate, build profile, commit) without which cycles do not convert to
-the mapper's `ms`.
+**Second half DONE 2026-08-16.** The producer is split across a binary and a
+script, because the binary cannot be the whole answer: `wcet-cycles-qemu` is
+`no_std` on Cortex-M with semihosting stdout as its only output channel, so it
+cannot open a file. It prints each number twice instead — prose for a human, an
+`NROS_WCET_V1` TSV record for a tool — and `scripts/bench/wcet-log-to-json.py`
+turns the records into a `nros.wcet.measurements/1` artifact
+(`just qemu wcet-artifact`). Direction items 1 and 3 are both covered: per
+measurement `min`/`max`/`mean`/iterations and identity, plus `counter_valid`,
+`cpu`, `profile` and `commit` (the last two baked by `build.rs`).
 
-This is the piece phase-357 W1 waits on, and it is the only thing gating two
-phases.
+The split is also what made the work testable here. Two absences stay absences:
+a log with no measurements produces NO file rather than an empty one, and a
+missing `clock_hz` sets `convertible_to_time: false` rather than letting a
+consumer assume a plausible rate — inventing one is the manufactured-WCET
+failure #404 exists to prevent, one layer earlier.
+
+**What is NOT verified, stated rather than implied.** The emitter has never been
+observed emitting. QEMU refuses before the first marker line (the run produced 0
+of them) and this tree has no hardware lane, so no run anywhere can currently
+produce an artifact. The parser is tested — 8 self-test cases, run on every
+conversion, including prose containing `min=0 max=0 avg=0` NOT parsing as data —
+and the emitter is drift-checked against its real format string rather than
+against a hand-written fixture, which is the mirror-drift class this tree keeps
+hitting. Neither is a substitute for a run on a part with a live DWT.
 
 ## W3 — Native sched dims verified only on the FALLBACK arm (#260)
 
