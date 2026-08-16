@@ -294,12 +294,12 @@ where
         unsafe { nros_platform_freertos_seed_rng(seed) };
     }
 
-    let poll_pri = Config::to_freertos_priority(config.poll_priority);
+    let poll_pri = config.poll_priority as u32; // issue 0623 — already raw
 
     #[cfg(feature = "rmw-zenoh")]
     {
-        let read_pri = Config::to_freertos_priority(config.zenoh_read_priority);
-        let lease_pri = Config::to_freertos_priority(config.zenoh_lease_priority);
+        let read_pri = config.zenoh_read_priority as u32; // issue 0623 — already raw
+        let lease_pri = config.zenoh_lease_priority as u32; // issue 0623 — already raw
         unsafe extern "C" {
             fn zpico_set_task_config(
                 read_priority: u32,
@@ -711,7 +711,7 @@ where
 
     report_tiers_above_transport::<B>(&config, tiers);
 
-    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_pri = config.app_priority as u32; // issue 0623 — already raw
     let app_stack_words = config.app_stack_bytes / 4;
 
     let ctx_ptr = unsafe {
@@ -754,12 +754,13 @@ where
 /// Report tiers that will PREEMPT the transport band, naming both numbers in
 /// FreeRTOS units (issue 0623).
 ///
-/// Two vocabularies meet in one scheduler and nothing said so. A tier priority
-/// is authored RAW — `[tiers.high.freertos] priority = 5` is FreeRTOS 5 — while
-/// the transport knobs are on the normalised 0–31 band and the board maps them
-/// down: `zenoh_read_priority = 16` becomes FreeRTOS **4**. So an author who
-/// writes 5 against a transport that reads "16" gets a tier ABOVE the transport
-/// band, having reasonably concluded the opposite.
+/// Tier and transport priorities now share ONE vocabulary — raw FreeRTOS — so
+/// this compares two numbers written in the same units (issue 0623). It used to
+/// have to explain a mapping: a tier priority was authored RAW while the
+/// transport knobs were on a normalised 0–31 band that the board mapped down
+/// (`zenoh_read_priority = 16` became FreeRTOS **4**), so an author who wrote 5
+/// against a transport that read "16" got a tier ABOVE the transport band,
+/// having reasonably concluded the opposite.
 ///
 /// That is not a hypothetical. `nano-ros-rt-eval` ran tiers at 5/4/2 for
 /// exactly this reason; the starved RX drain dropped frames, every publisher
@@ -774,9 +775,9 @@ where
 fn report_tiers_above_transport<B: BoardPrint>(config: &Config, tiers: &'static [TierSpec<'static>]) {
     // The band's FLOOR: the lowest-priority transport task is the first to be
     // starved, so it decides whether transport makes progress at all.
-    let read = Config::to_freertos_priority(config.zenoh_read_priority);
-    let lease = Config::to_freertos_priority(config.zenoh_lease_priority);
-    let poll = Config::to_freertos_priority(config.poll_priority);
+    let read = config.zenoh_read_priority as u32;
+    let lease = config.zenoh_lease_priority as u32;
+    let poll = config.poll_priority as u32;
     let floor = read.min(lease).min(poll);
 
     let mut offenders = 0usize;
@@ -800,10 +801,11 @@ fn report_tiers_above_transport<B: BoardPrint>(config: &Config, tiers: &'static 
     }
     if offenders > 0 {
         B::println(format_args!(
-            "  Intended? then nothing to do. If not: tier priorities are RAW FreeRTOS \
-             units, transport priorities are normalised 0-31 mapped DOWN (16 -> {floor}). \
-             Starving the RX drain stalls publishers on lwIP retransmission, which \
-             costs far more than the deadline it was meant to protect (issue 0623)."
+            "  Intended? then nothing to do. Both numbers above are RAW FreeRTOS \
+             units, the same ones a `[tiers.<name>.freertos] priority` is written in. \
+             If NOT intended: starving the RX drain stalls publishers on lwIP \
+             retransmission, which costs far more than the deadline it was meant to \
+             protect (issues 0506, 0623)."
         ));
     }
 }
@@ -904,7 +906,7 @@ where
     // own `pub const` / `pub static` rather than a passed-in arg.
     B::init_hardware();
 
-    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_pri = config.app_priority as u32; // issue 0623 — already raw
     let app_stack_words = config.app_stack_bytes / 4;
 
     // Heap-allocate the app context. Pre-scheduler MSP stack is
@@ -975,7 +977,7 @@ where
 
     B::init_hardware();
 
-    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_pri = config.app_priority as u32; // issue 0623 — already raw
     let app_stack_words = config.app_stack_bytes / 4;
 
     // Heap-allocate the app context (same MSP-reclaim rationale as `run_entry`).

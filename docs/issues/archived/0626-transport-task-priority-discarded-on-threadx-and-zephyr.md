@@ -2,7 +2,7 @@
 id: 626
 title: "The zenoh transport tasks' priority is unsettable on ThreadX and Zephyr —
   the board never asks, and two of the three layers would drop it if it did"
-status: open
+status: resolved
 type: bug
 area: boards, rmw-zenoh, platform
 related: [issue-0623, issue-0506, issue-0579, phase-358, phase-364]
@@ -275,3 +275,28 @@ library -lnosys`, from `cmake/toolchain/riscv64-threadx.cmake`'s
 `if(EXISTS .../libnosys.a)` conditional. This change adds no link flags and the
 Rust examples link fine, so it is not from here — but no clean control was run
 for it, and it wants its own issue.
+
+
+## 2026-08-16 — closed
+
+Both platforms can state a transport-task priority, which is what this issue
+asked for:
+
+| | before | now |
+| --- | --- | --- |
+| Zephyr | POSIX branch set stack only; priority `(void)`'d | `CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY` → `SCHED_RR` + explicit sched, `PTHREAD_EXPLICIT_SCHED` |
+| ThreadX | `(void)attr;`, one `Z_TASK_PRIORITY` for every zenoh task | attr honoured, band inverted, `preempt_threshold` tracks the priority, knob in the platform manifest |
+
+Both defaults preserve the schedule that was already running (Zephyr 16;
+ThreadX 17, the band value that maps back to its old raw 14).
+
+**Residual, stated rather than closed over:** ThreadX is verified at RUNTIME (the
+RISC-V talker opens a session and publishes), Zephyr only at BUILD level — its
+`entry_e2e` `zephyr_c` cell is filtered out of this host's default scope, and a
+bare run of that entry cores for a pre-existing reason (shown by a
+stash-and-rebuild control). Nothing prints the resolved priority on either
+platform, so neither is observable from outside; a one-line log at session open
+would fix that and is worth doing the next time someone is in here.
+
+`-lnosys`, found while building the ThreadX lane for this, is issue **#0634** —
+filed, fixed and verified separately (6 link failures → 0).

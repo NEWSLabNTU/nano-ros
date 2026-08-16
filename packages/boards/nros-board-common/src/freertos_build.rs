@@ -25,7 +25,7 @@ use std::{
 use crate::{
     arch_flags,
     base_config::BaseConfig,
-    freertos_config::{FreertosScheduling, app_stack_bytes, to_freertos_priority},
+    freertos_config::{FreertosScheduling, app_stack_bytes},
 };
 
 /// The platform whose `[arch.*]` profiles supply this family's cflags —
@@ -201,19 +201,21 @@ const nros_app_config_t NROS_APP_CONFIG = {{
         nm2 = nm[2],
         nm3 = nm[3],
         prefix = base.prefix(),
-        // Issue 0623 — emit RAW FreeRTOS priorities, converted HERE and only
-        // here. The struct used to carry the normalized 0–31 values and each
-        // consumer converted for itself, which is how the C entry's saturating
-        // `clamp_prio` came to disagree with the Rust entry's proportional map
-        // (16 → 7 vs 16 → 4; every C-path default saturated to 7, flattening
-        // app/transport/poll into one priority). The generated TU now holds the
-        // numbers that actually reach `xTaskCreate`, in the same units a
-        // `[tiers.*.freertos] priority` is written in — so the two are
-        // comparable by eye, which is the whole of issue 0623.
-        app_priority = to_freertos_priority(sched.app_priority),
-        zenoh_read_priority = to_freertos_priority(sched.zenoh_read_priority),
-        zenoh_lease_priority = to_freertos_priority(sched.zenoh_lease_priority),
-        poll_priority = to_freertos_priority(sched.poll_priority),
+        // Issue 0623 — the struct already holds RAW FreeRTOS priorities, so
+        // this emits them verbatim.
+        //
+        // It converted here for one commit, while the struct was still
+        // normalized; the conversion has since moved to the only place that can
+        // know which scale a number is on — the parser that reads it from a
+        // `[node.rt]` (normalized, legacy) or `[node.rt.freertos]` (raw)
+        // section. Converting at the emitter meant every OTHER consumer had to
+        // convert too, which is how the C entry's saturating `clamp_prio` came
+        // to disagree with the Rust entry's proportional map (16 -> 7 vs
+        // 16 -> 4, flattening app/transport/poll into one priority).
+        app_priority = sched.app_priority,
+        zenoh_read_priority = sched.zenoh_read_priority,
+        zenoh_lease_priority = sched.zenoh_lease_priority,
+        poll_priority = sched.poll_priority,
         app_stack_bytes = sched.app_stack_bytes,
         zenoh_read_stack_bytes = sched.zenoh_read_stack_bytes,
         zenoh_lease_stack_bytes = sched.zenoh_lease_stack_bytes,

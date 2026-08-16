@@ -163,56 +163,46 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 `packages/cli` is a separate workspace inside the repo), plus a configure-time FATAL_ERROR when two roots
 claim one directory. See `archived/0616-*`.
 
-**#626** (boards/rmw-zenoh/platform, open 2026-08-16) — the zenoh read/lease task priority is UNSETTABLE on
-ThreadX and Zephyr. Not "the knob is ignored": there is no knob, and three layers would each drop one.
-(1) `zpico_set_task_config` has exactly ONE caller in the tree, the FreeRTOS board — elsewhere
-`task_attributes` stays NULL, so stack size is defaulted too. (2) The shim would discard it anyway: Zephyr
-takes the POSIX branch (`pthread_attr` stack only; priority needs `SCHED_FIFO`), ThreadX the `#else` that
-`(void)`s everything. (3) On NATIVE Zephyr the PORT drops it too — `nros_platform_task_init` under
-`CONFIG_DYNAMIC_THREAD` does `(void) attr;` and hardcodes `K_PRIO_PREEMPT(5)`, so no configuration anywhere
-can move it. So #0506's question — what preempts the RT tiers under inbound load — cannot be ASKED on two of
-four RTOSes. The ABI half already exists and is going unused: phase-364 W3/W5 gave
-`nros_platform_task_attr_t` a normalised `priority` that BOTH the ThreadX port and Zephyr's POSIX port
-already honour; only the shim→ABI wiring is missing, and since no value exists to reinterpret, this is where
-#0623's unified vocabulary could be adopted for free. Corrects two claims in #0623: these platforms do NOT
-share its units collision (this is #0579's ignored-value class), and the three `z_task_attr_t` definitions
-are IDENTICAL `void *` — they agree, and the problem is what they agree on. See `0626-*`. (2026-08-16)
+**#626** (boards/rmw-zenoh/platform, RESOLVED 2026-08-16) — the zenoh read/lease task priority was
+UNSETTABLE on ThreadX and Zephyr: no knob, and three layers that would each drop one
+(`zpico_set_task_config` has only the FreeRTOS board as caller; the shim's Zephyr POSIX branch set stack
+only and ThreadX's `#else` `(void)`'d everything; native Zephyr's `nros_platform_task_init` hardcodes
+`K_PRIO_PREEMPT(5)`). So #0506's question — what preempts the RT tiers — could not be ASKED on two of four
+RTOSes. Fixed both: Zephyr via `CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY` -> `SCHED_RR` + explicit sched
+(with `PTHREAD_EXPLICIT_SCHED`, without which both calls are silently ignored); ThreadX by widening
+`z_task_attr_t` to `nros_platform_task_attr_t` in BOTH headers a ThreadX build sees (task.c `#undef`s
+`NROS_PLATFORM_ALIASES` to reach the concrete TX struct — one header alone is 0135's shape), honouring the
+attr with the band INVERTED (ThreadX 0 = highest) and `preempt_threshold` tracking the priority (a fixed
+threshold makes an attr priority below it fail with TX_PRIORITY_ERROR). Defaults preserve each platform's
+existing schedule. ThreadX verified at RUNTIME (talker publishes); Zephyr only at BUILD level — residual
+stated in the issue, along with the fact that nothing prints the resolved priority on either platform. See
+`archived/0626-*`. (2026-08-16)
 
-**#634** (build/boards, open 2026-08-16) — every C fixture on the ThreadX RISC-V lane fails with
-`rust-lld: error: unable to find library -lnosys`, while the Rust examples of the SAME lane link fine. One
-`if()` block in `cmake/toolchain/riscv64-threadx.cmake`, two halves that travel differently:
-`CMAKE_C_STANDARD_LIBRARIES "-lnosys"` is a CACHE var and reaches every target, while the matching
-`add_link_options("-L${_riscv_stdcxx_dir}")` is a DIRECTORY-scope command in a TOOLCHAIN FILE and does not
-propagate to the project's targets. The failing link line proves it — ends in `-lnosys`, carries only the
-picolibc `-L`. `libnosys.a` exists (SDK `riscv-none-elf-gcc/14.2-nros1/.../rv64iafd_zicsr/lp64d/`); the
-linker is just never told where. Fix: carry the search path in the SAME cache variable as the library, or
-use `CMAKE_EXE_LINKER_FLAGS_INIT` (the sanctioned toolchain-file mechanism) — a library reference and its
-search path are ONE fact and must not live in two mechanisms with different lifetimes. Do NOT drop
-`-lnosys`: it stubs the reent syscalls the SDK's newlib-built libstdc++ needs. Verify on the LINK LINE, not
-a green build. NOT from #0626 (that diff adds no link flags) — though no clean control was run, so that is
-reasoned rather than measured. See `0634-*`. (2026-08-16)
+**#634** (build/boards, RESOLVED 2026-08-16) — every C fixture on the ThreadX RISC-V lane failed with
+`rust-lld: error: unable to find library -lnosys` while the Rust examples of the SAME lane linked fine. One
+`if()` block, two halves that travel differently: `CMAKE_C_STANDARD_LIBRARIES "-lnosys"` is a CACHE var and
+reaches every target, `add_link_options("-L…")` is DIRECTORY-scope in a TOOLCHAIN FILE and does not
+propagate. Fixed by carrying the `-L` in the SAME string as the `-l` — a library reference and its search
+path are ONE fact. NOTE existing build dirs keep the stale cache: the first rebuild after the fix still
+failed and looked like the fix not working; wiping one leaf took failures 6 -> 5, wiping all 22 took them to
+**0**. Also corrected a guess in the issue as filed — `libnosys.a` and `libstdc++.a` ARE in the same multilib
+dir, so the `EXISTS` guard was right (the doubt came from a `find | head` that truncated). See
+`archived/0634-*`. (2026-08-16)
 
-**#623** (boards/platform, open 2026-08-16) — tier priorities are **RAW per-RTOS** and transport priorities
-are **NORMALISED 0-31**, and both reach `xTaskCreate` in one priority space with nothing saying so.
-`[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS 4. Cost is
-recorded in a CONSUMER's config, not here: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, and every
-publisher stalled on lwIP retransmission — 1-3 s island-wide freezes. NOT "lower the read task below the
-tiers": that IS the config that froze; the two failure modes sit on opposite sides (#0506 is the other one).
-**The concrete bug inside it: the conversion existed TWICE and the copies disagreed** — Rust
-`to_freertos_priority` scales (16 -> 4), C `clamp_prio` saturates (16 -> 7). One config, two schedules,
-decided by which entry the image used — and since EVERY default was >= configMAX_PRIORITIES (12/16/16/16),
-the C path saturated all four to 7, so app, both zenoh tasks and net-poll ran at ONE priority and the
-intended ordering did not exist. Same silent-drift class as the numbers themselves (`freertos_config.rs`
-exists because `app_stack_bytes` had drifted three ways); a THIRD copy sat in
-`cmake/templates/freertos_app_config.c.in`. Fixed by converting ONCE at emit:
-`nros_board_common::freertos_config::to_freertos_priority` is the one conversion, the generated
-`NROS_APP_CONFIG` now carries RAW values (verified 3/4/4/4 in the emitted TU), the template matches, and
-`clamp_prio` is a bounds guard that says so. Boot also reports any tier meeting the band
-(`report_tiers_above_transport`, verified on the QEMU guest: tier 5 fires, tier 3 silent). CORRECTED: an
-earlier draft claimed ThreadX/Zephyr share this collision — they do not; there the transport priority is not
-settable at all (ThreadX `(void)`s it, Zephyr has no knob), which is #0579's class and wants its own issue.
-Still open: the AUTHORING surfaces still differ, and unifying them reinterprets numbers in existing files
-either way, so it needs a migration. See `0623-*`. (2026-08-16)
+**#623** (boards/platform, RESOLVED 2026-08-16) — tier priorities were RAW per-RTOS and transport
+priorities NORMALISED 0-31, both reaching `xTaskCreate` in ONE priority space with nothing saying so, so
+`[tiers.high.freertos] priority = 5` sat ABOVE a transport band that read "16" (= FreeRTOS 4). Cost is
+recorded in a CONSUMER's config: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, 1-3 s island freezes on
+lwIP retransmission. Two fixes: (1) the normalized->raw CONVERSION existed TWICE and disagreed — Rust
+`to_freertos_priority` scaled (16->4), C `clamp_prio` saturated (16->7), and since every default was >=
+configMAX_PRIORITIES the C path flattened app/transport/poll to ONE priority; now converted once, at emit.
+(2) the AUTHORING surfaces are unified — the board's values are RAW FreeRTOS like a tier's, `[node.rt]`
+still accepts the legacy normalized scale and converts on read, `[node.rt.freertos]` is raw and mirrors
+`[tiers.<name>.freertos]`. Direction chosen because moving TIERS to the band would silently rewrite every
+existing system.toml (rt-eval's 3/2/1 -> raw 0/0/0), while the board knobs had no in-tree setter and their
+defaults convert exactly (12->3, 16->4) — behaviour unchanged by construction. Verified on the QEMU guest:
+6793 ctrl ticks, report silent for 3/2/1 vs floor 4, now a direct comparison. See `archived/0623-*`.
+(2026-08-16)
 
 RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
 package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies

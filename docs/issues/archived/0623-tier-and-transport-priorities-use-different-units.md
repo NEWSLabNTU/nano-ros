@@ -2,7 +2,7 @@
 id: 623
 title: "Tier priorities are RAW per-RTOS and transport priorities are NORMALISED
   0-31, and they land in the same FreeRTOS scheduler with nothing saying so"
-status: open
+status: resolved
 type: bug
 area: boards, platform
 related: [issue-0506, phase-358, phase-364, issue-0579]
@@ -201,3 +201,62 @@ numbers already written in existing files, in whichever direction it is done —
 `rt-eval`'s `3/2/1` read as normalised would become raw `0/0/0` — so it needs a
 migration and an explicit version gate, not a quiet change. Deliberately not
 done here.
+
+## 2026-08-16 (later) — the authoring surfaces are unified; issue closed
+
+The remaining half — "the AUTHORING surfaces still differ" — is done, in the
+direction that cannot silently reinterpret anything already written.
+
+**The board's scheduling values are RAW FreeRTOS now**, the same units a
+`[tiers.<name>.freertos] priority` is written in. `FreertosScheduling`, `Config`,
+the generated `NROS_APP_CONFIG` and the CMake template all carry
+`0..configMAX_PRIORITIES-1`, and no consumer converts. The two numbers that meet
+in one scheduler are finally in one vocabulary.
+
+Behaviour is unchanged by construction: the new defaults are exactly what the
+old normalized ones resolved to — `to_freertos_priority(12) == 3`,
+`(16) == 4` — so app 3, read/lease 4, poll 4 is the schedule that was already
+running, now written down instead of computed.
+
+### Why this direction, and not the other
+
+Moving TIER priorities onto the normalized band was the alternative and it is
+unsafe: `[tiers.X.<rtos>] priority` is authored raw and per-RTOS by design, and
+reinterpreting it would silently rewrite every existing `system.toml` —
+`nano-ros-rt-eval`'s `3/2/1` would become raw `0/0/0`. The board knobs were the
+odd surface out, they had NO in-tree setter (verified: no `config.toml` in this
+repo sets any of them), and their defaults convert exactly.
+
+### The migration, which is what made it safe
+
+A `[node.rt]` section still means the LEGACY normalized 0–31 scale and is
+converted on read. A new `[node.rt.freertos]` section means RAW — mirroring
+`[tiers.<name>.freertos]`, so the two sections that set priorities for one image
+now have the same shape and the same units:
+
+```toml
+[node.rt]                  # legacy: normalized 0-31, converted on read
+zenoh_read_priority = 16
+[node.rt.freertos]         # raw FreeRTOS, same units as a tier priority
+zenoh_read_priority = 4
+```
+
+Old configs keep their schedule; new ones are readable next to their tiers. The
+conversion now lives in the ONE place that can know which scale a number is on —
+the parser that reads it from a section that says so — rather than in each
+consumer, which is what let the Rust and C entries disagree in the first place.
+
+The boot report drops its explanation of the mapping, because there is no longer
+a mapping to explain: it prints two numbers in one unit.
+
+### Verified
+
+* FreeRTOS island builds; the emitted TU still holds
+  `.app_priority = 3, .zenoh_read_priority = 4, .zenoh_lease_priority = 4,
+  .poll_priority = 4` — identical to before the change, which is the point;
+* **runtime**: 70 s on the QEMU mps2-an385 guest, 6793 `[ctrl]` ticks across
+  13705 lines, and the tier-vs-transport report correctly SILENT for the
+  harness's 3/2/1 against a floor of 4 — now a direct comparison rather than one
+  that needed the mapping;
+* `cargo test -p nros-board-common --features build-helpers` green;
+* `just format`.

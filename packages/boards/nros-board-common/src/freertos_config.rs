@@ -43,23 +43,36 @@ pub const fn to_freertos_priority(normalized: u8) -> u32 {
     (n as u32 * (FREERTOS_MAX_PRIORITY - 1) * 2 + 31) / 62
 }
 
-/// Priorities are on a normalized 0–31 scale (higher = more important); the
-/// board maps them onto FreeRTOS's `0..configMAX_PRIORITIES` range.
+/// Priorities are **RAW FreeRTOS** — `0..configMAX_PRIORITIES-1`, higher = more
+/// urgent — the same units a `[tiers.<name>.freertos] priority` is written in
+/// (issue 0623).
+///
+/// They were on a normalized 0–31 scale, and that was the defect: a tier and a
+/// transport task both end up at `xTaskCreate` in ONE priority space, so an
+/// author comparing `priority = 5` against a transport band that read "16"
+/// concluded the tier was below it when it was above. Two numbers that are
+/// compared must be in one unit.
+///
+/// The normalized band still exists as an INPUT spelling — see
+/// [`to_freertos_priority`] and the `[node.rt]` arm of the board's TOML parser
+/// — so configs written against the old scale keep working. What no longer
+/// exists is a normalized value living in this struct, where the thing reading
+/// it cannot tell which scale it is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FreertosScheduling {
-    /// Application task priority (normalized 0–31).
+    /// Application task priority (RAW FreeRTOS).
     pub app_priority: u8,
     /// Application task stack size in bytes.
     pub app_stack_bytes: u32,
-    /// zenoh-pico read task priority (normalized 0–31).
+    /// zenoh-pico read task priority (RAW FreeRTOS).
     pub zenoh_read_priority: u8,
     /// zenoh-pico read task stack size in bytes.
     pub zenoh_read_stack_bytes: u32,
-    /// zenoh-pico lease task priority (normalized 0–31).
+    /// zenoh-pico lease task priority (RAW FreeRTOS).
     pub zenoh_lease_priority: u8,
     /// zenoh-pico lease task stack size in bytes.
     pub zenoh_lease_stack_bytes: u32,
-    /// Network poll task priority (normalized 0–31).
+    /// Network poll task priority (RAW FreeRTOS).
     pub poll_priority: u8,
     /// Network poll interval in milliseconds.
     pub poll_interval_ms: u32,
@@ -72,18 +85,23 @@ pub const DEFAULT_APP_STACK_BYTES: u32 = 393216;
 impl Default for FreertosScheduling {
     fn default() -> Self {
         Self {
-            // The old hardcoded constants, normalized: APP_TASK_PRIORITY=3 →
-            // 12 (12*7/31 ≈ 2.7 → 3); POLL_TASK_PRIORITY=4 → 16 (16*7/31 ≈ 3.6
-            // → 4). zenoh read/lease default to 4 in zenoh-pico
-            // (configMAX_PRIORITIES/2). CLAUDE.md's FreeRTOS pitfall entry
-            // requires the poll task to land at >= 4.
-            app_priority: 12,
+            // Issue 0623 — RAW FreeRTOS now, and these are EXACTLY what the
+            // normalized values resolved to, so the schedule is unchanged:
+            // `to_freertos_priority(12) == 3`, `(16) == 4`. The historical
+            // chain was APP_TASK_PRIORITY=3 -> normalized 12 -> back to 3, and
+            // POLL_TASK_PRIORITY=4 -> 16 -> back to 4; the round trip is gone
+            // and the constants are the ones that reach `xTaskCreate`.
+            //
+            // CLAUDE.md's FreeRTOS pitfall entry requires the poll task at
+            // >= 4, which is now literally what is written here rather than
+            // something a reader has to compute.
+            app_priority: 3,
             app_stack_bytes: DEFAULT_APP_STACK_BYTES,
-            zenoh_read_priority: 16,
+            zenoh_read_priority: 4,
             zenoh_read_stack_bytes: 5120,
-            zenoh_lease_priority: 16,
+            zenoh_lease_priority: 4,
             zenoh_lease_stack_bytes: 5120,
-            poll_priority: 16,
+            poll_priority: 4,
             poll_interval_ms: 5,
         }
     }

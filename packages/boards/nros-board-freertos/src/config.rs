@@ -24,21 +24,24 @@ pub struct Config {
     pub base: BaseConfig,
 
     // ── Scheduling ─────────────────────────────────────────────────────
-    // Normalized 0–31 scale (higher = more important). Board crate maps
-    // to FreeRTOS 0–(configMAX_PRIORITIES-1) via `to_freertos_priority()`.
-    /// Application task priority (normalized 0–31, default 12).
+    // RAW FreeRTOS priorities (0..configMAX_PRIORITIES-1, higher = more
+    // urgent) — the same units a `[tiers.<name>.freertos] priority` is written
+    // in, so the two can be compared without knowing a mapping (issue 0623).
+    // A `[node.rt]` section still accepts the legacy normalized 0-31 scale and
+    // converts on read; `[node.rt.freertos]` is raw.
+    /// Application task priority (raw FreeRTOS, default 3).
     pub app_priority: u8,
     /// Application task stack size in bytes (default 393216).
     pub app_stack_bytes: u32,
-    /// Zenoh-pico read task priority (normalized 0–31, default 16).
+    /// Zenoh-pico read task priority (raw FreeRTOS, default 4).
     pub zenoh_read_priority: u8,
     /// Zenoh-pico read task stack size in bytes (default 5120).
     pub zenoh_read_stack_bytes: u32,
-    /// Zenoh-pico lease task priority (normalized 0–31, default 16).
+    /// Zenoh-pico lease task priority (raw FreeRTOS, default 4).
     pub zenoh_lease_priority: u8,
     /// Zenoh-pico lease task stack size in bytes (default 5120).
     pub zenoh_lease_stack_bytes: u32,
-    /// Network poll task priority (normalized 0–31, default 16).
+    /// Network poll task priority (raw FreeRTOS, default 4).
     pub poll_priority: u8,
     /// Network poll interval in milliseconds (default 5).
     pub poll_interval_ms: u32,
@@ -260,9 +263,21 @@ impl Config {
                             config.base.domain_id = d;
                         }
                     }
+                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+                    // spelling and is converted on read, so configs written
+                    // before the units were unified keep their schedule.
                     ("node.rt", "app_priority") => {
                         if let Some(v) = parse_u32(value) {
-                            config.app_priority = v.min(31) as u8;
+                            config.app_priority =
+                                Self::to_freertos_priority(v.min(31) as u8) as u8;
+                        }
+                    }
+                    // ...and `[node.rt.freertos]` is RAW, mirroring
+                    // `[tiers.<name>.freertos] priority`. One vocabulary for
+                    // the two numbers that meet in one scheduler.
+                    ("node.rt.freertos", "app_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.app_priority = v as u8;
                         }
                     }
                     ("node.rt", "app_stack_bytes") => {
@@ -270,9 +285,21 @@ impl Config {
                             config.app_stack_bytes = v;
                         }
                     }
+                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+                    // spelling and is converted on read, so configs written
+                    // before the units were unified keep their schedule.
                     ("node.rt", "zenoh_read_priority") => {
                         if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_priority = v.min(31) as u8;
+                            config.zenoh_read_priority =
+                                Self::to_freertos_priority(v.min(31) as u8) as u8;
+                        }
+                    }
+                    // ...and `[node.rt.freertos]` is RAW, mirroring
+                    // `[tiers.<name>.freertos] priority`. One vocabulary for
+                    // the two numbers that meet in one scheduler.
+                    ("node.rt.freertos", "zenoh_read_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_read_priority = v as u8;
                         }
                     }
                     ("node.rt", "zenoh_read_stack_bytes") => {
@@ -280,9 +307,21 @@ impl Config {
                             config.zenoh_read_stack_bytes = v;
                         }
                     }
+                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+                    // spelling and is converted on read, so configs written
+                    // before the units were unified keep their schedule.
                     ("node.rt", "zenoh_lease_priority") => {
                         if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_priority = v.min(31) as u8;
+                            config.zenoh_lease_priority =
+                                Self::to_freertos_priority(v.min(31) as u8) as u8;
+                        }
+                    }
+                    // ...and `[node.rt.freertos]` is RAW, mirroring
+                    // `[tiers.<name>.freertos] priority`. One vocabulary for
+                    // the two numbers that meet in one scheduler.
+                    ("node.rt.freertos", "zenoh_lease_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_lease_priority = v as u8;
                         }
                     }
                     ("node.rt", "zenoh_lease_stack_bytes") => {
@@ -290,9 +329,21 @@ impl Config {
                             config.zenoh_lease_stack_bytes = v;
                         }
                     }
+                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+                    // spelling and is converted on read, so configs written
+                    // before the units were unified keep their schedule.
                     ("node.rt", "poll_priority") => {
                         if let Some(v) = parse_u32(value) {
-                            config.poll_priority = v.min(31) as u8;
+                            config.poll_priority =
+                                Self::to_freertos_priority(v.min(31) as u8) as u8;
+                        }
+                    }
+                    // ...and `[node.rt.freertos]` is RAW, mirroring
+                    // `[tiers.<name>.freertos] priority`. One vocabulary for
+                    // the two numbers that meet in one scheduler.
+                    ("node.rt.freertos", "poll_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.poll_priority = v as u8;
                         }
                     }
                     ("node.rt", "poll_interval_ms") => {
