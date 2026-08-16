@@ -454,9 +454,18 @@ impl ExecutorNodeRuntime {
         }
     }
 
-    /// Spin until the executor's halt flag is raised. Hosted-only; on
-    /// bare-metal the BSP wraps `spin_once` in its own loop.
-    #[cfg(feature = "std")]
+    /// Spin until the executor's halt flag is raised.
+    ///
+    /// phase-359 W10 — this used to be `#[cfg(feature = "std")]` and described
+    /// itself as hosted-only, but the body is `Duration` + `spin_once` +
+    /// `is_halted`, none of which need an OS. The gate was describing a
+    /// CONVENTION (a BSP usually wants its own loop so it can interleave
+    /// board work) as if it were a requirement, and a bare-metal image that
+    /// wants exactly this loop had to hand-roll it to get it.
+    ///
+    /// It does need `alloc`: the halt flag is an `Arc`, so a core-only image
+    /// has no flag to poll.
+    #[cfg(feature = "alloc")]
     pub fn spin(&mut self) -> Result<(), ExecutorError> {
         // 10 ms tick cadence — matches the existing executor spin
         // budgeting (see `Executor::spin_default`); short enough that
@@ -470,7 +479,7 @@ impl ExecutorNodeRuntime {
     }
 
     /// Halt a running [`spin`](Self::spin). Idempotent.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub fn halt(&self) {
         self.executor.halt();
     }

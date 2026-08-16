@@ -553,6 +553,30 @@ dependency no longer has is the same resolution error, just deferred to the next
 `nros sync`. Template, generated crates, and core feature tables move in ONE
 commit, and the two template copies move together.
 
+#### The final commit's exact file set (2026-08-16)
+
+After the consumer sweep (d48e78ea0), the crates that still name a core `std`
+are a closed set of **20 tracked manifests plus the 2 codegen template copies**
+— not an open-ended discovery. `git grep -l -E '"nros-(core|serdes|rmw|node|params|log|platform|prelude)/std"|"nros/std"' -- '*Cargo.toml'`
+reproduces it:
+
+- 6 core/api crates — `nros`, `nros-c`, `nros-cpp`, `nros-core`, `nros-node`, `nros-rmw`
+- 8 committed generated message crates under `packages/interfaces/**`
+- 3 backend/support crates — `nros-rmw-zenoh`, `nros-rmw-cffi` (`packages/rmw/cffi`), `nros-bridge`
+- `packages/testing/nros-tests`
+- 2 node packages in `tests/simple-workspace`
+
+The backend three are the reason the campaign is not done when the examples
+stop saying `std`. `nros-rmw-zenoh`'s own `std = ["alloc", "zpico-sys/std",
+"nros-rmw/std", "log"]` keeps `nros-core/std` ON in every resolved native
+graph, whatever the leaf asked for. A backend may legitimately keep a `std`
+feature of its own — `zpico-sys/std` is a real POSIX shim — but it must stop
+FORWARDING to a core crate's.
+
+The untracked `bins/*/generated/` trees need no entry here: `git ls-files`
+reports zero tracked files under them, so they are re-emitted from the template
+on the next `nros sync` and follow it automatically.
+
 ### W8 — make `alloc` explicit — **STARTED 2026-08-15**
 
 `alloc` is a separate feature (`std = ["alloc", ...]`), so the real flavours are

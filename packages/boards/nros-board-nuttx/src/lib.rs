@@ -230,12 +230,36 @@ pub mod sys {
     ///
     /// Returns 0 on success, else the platform return code (`NOMEM` for a
     /// transient refusal — issue 0246's case — which the caller retries).
+    ///
+    /// `priority` is the tier's DECLARED NuttX priority (0 = undeclared). It is
+    /// passed in the attribute rather than left to the tier's self-apply at
+    /// entry, because those two are not equivalent under SCHED_FIFO: a task
+    /// born with `INHERIT` starts at the SPAWNING tier's priority, and the
+    /// spawner here is the boot tier — the highest-priority one. On a
+    /// single-core guest an equal-priority FIFO peer does not preempt, so the
+    /// new tier ran only when the boot tier's spin happened to block, and its
+    /// self-apply (with the marker RFC-0052 requires) was reached late or not
+    /// within the cell's window. Measured 1 of 5 runs passing before this, 
+    /// which read as a flake and was a priority inversion for the whole
+    /// interval between spawn and self-apply.
     pub(crate) fn spawn_tier(
         name: &str,
         stack_bytes: usize,
+        priority: i64,
         entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
         arg: *mut c_void,
     ) -> i32 {
+        /// `NROS_PLATFORM_PRIORITY_RAW(n)` from `<nros/platform.h>` — the band's
+        /// escape hatch for "this number is already in the kernel's own units",
+        /// which a `[tiers.<name>.nuttx] priority` is by construction.
+        const fn raw(n: i32) -> i32 {
+            -0x4000_0000 - n
+        }
+        // `TierSpec::priority` is `i64` (one field for every kernel's range);
+        // NuttX's is 1..=255, so anything outside that is not a priority this
+        // port can express and falls back to INHERIT rather than wrapping into
+        // some other tier's band.
+        let priority = i32::try_from(priority).ok().filter(|p| (1..=255).contains(p));
         /// Mirrors `nros_platform_task_attr_t` from `<nros/platform.h>`.
         #[repr(C)]
         struct TaskAttr {
@@ -282,7 +306,11 @@ pub mod sys {
             name: name_buf.as_ptr() as *const c_char,
             stack_bytes,
             stack_mem: core::ptr::null_mut(),
-            priority: i32::MIN,
+            // `i32::MIN` is `NROS_PLATFORM_PRIORITY_INHERIT`.
+            priority: match priority {
+                Some(p) => raw(p),
+                None => i32::MIN,
+            },
             core: -1,
             flags: DETACHED,
         };
@@ -1016,6 +1044,7 @@ where
                 let rc = sys::spawn_tier(
                     tier.name,
                     stack_bytes,
+                    tier.priority,
                     nuttx_tier_trampoline::<F, E>,
                     ctx_ptr,
                 );
@@ -1091,6 +1120,22 @@ where
         // sorting so tiers[0] is the numerically-largest = lowest-priority tier
         // and never needs to outrank anything (issue 0251). Two answers exist;
         // this board now has one of them rather than neither.
+        // Hand the CPU to the tiers just spawned BEFORE raising this one above
+        // them. The guest is uniprocessor and every tier is SCHED_FIFO: once
+        // the owner sits at the highest declared priority in a spin loop, a
+        // lower tier runs only in whatever gap the owner's `spin_once` leaves,
+        // so a tier's own entry work — including the priority marker RFC-0052
+        // requires it to print — was reached only when that gap happened to
+        // arrive first. Measured 1 of 5 runs before this yield (and before the
+        // spawn attr carried the priority), 3 of 5 with the attr alone.
+        //
+        // `yield_now`, not a sleep: at this point the owner still holds its
+        // INHERITED priority, so it and the new tiers are peers and a yield is
+        // enough to run each one to its first blocking point. The count is the
+        // tier count — one yield per tier that has to get there.
+        for _ in 0..tiers.len() {
+            sys::yield_now();
+        }
         apply_tier_priority(boot_tier);
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
     }

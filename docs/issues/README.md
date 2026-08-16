@@ -217,6 +217,17 @@ defaults convert exactly (12->3, 16->4) — behaviour unchanged by construction.
 6793 ctrl ticks, report silent for 3/2/1 vs floor 4, now a direct comparison. See `archived/0623-*`.
 (2026-08-16)
 
+OPEN — **#0636** the NuttX boot tier holds the HIGHEST declared priority and spins, so on the uniprocessor
+`arm-virt` guest every lower tier is starved. `sched_dims_applied_e2e`'s `TierPriority/nuttx/rust` cell
+measured 1 of 5 solo runs passing: the spawned `low` tier prints nothing at all — the console stops at
+`tier 'high' entering spin` — and the guest runs a full 12 s, so this is starvation, not a startup race
+(the cell's own timeout is 90 s). Two partial fixes landed and are worth keeping: the spawn attribute now
+carries the tier's declared priority (phase-364 W5 taught the POSIX port to honour `attr->priority`; this
+call site still passed `PRIORITY_INHERIT`, so a tier was BORN at the spawner's priority) → 1/5 → 3/5, and
+the owner yields once per tier before raising itself above them → 3/5 → 4/6. Converging slowly is the
+evidence: they shorten an unbounded window. Sibling of #0623 one layer over — the author's ordering is
+applied exactly and the outcome is still wrong. See `0636-*`. (2026-08-16)
+
 RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
 package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies
 on the first duplicate — `demo_bringup`, naming two directories inside the dependency for a package the

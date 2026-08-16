@@ -1200,11 +1200,13 @@ pub struct Executor<'s> {
     /// degrades to "always miss" (today's behaviour).
     pub(crate) primary_rmw_name: heapless::String<32>,
     pub(crate) primary_locator: heapless::String<128>,
-    #[cfg(feature = "std")]
     // phase-359 W3 — `portable_atomic_util::Arc`, not `std::sync::Arc`. Same
     // atomically-refcounted pointer, available without `std`, and it compiles on
-    // std too. The public `halt_flag()` returns it, which is why this could not
-    // move in W2.
+    // std too. W3 left the GATE on `std` because the public `halt_flag()` getter
+    // was std-gated; W10 split that impl, so the field joins `wake_flag` on
+    // `alloc` — the allocator is the real requirement, and without this a no_std
+    // executor had no halt flag at all and so could not be stopped.
+    #[cfg(feature = "alloc")]
     pub(crate) halt_flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// Phase 104.C.6 — shared executor wake flag. Any source of work
     /// (foreign thread handing off a callback, signal handler, future
@@ -1407,7 +1409,7 @@ impl<'s> Executor<'s> {
                 let _ = ns.push_str("/");
                 ns
             },
-            #[cfg(feature = "std")]
+            #[cfg(feature = "alloc")]
             halt_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(feature = "alloc")]
             wake_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
@@ -6521,6 +6523,13 @@ impl<'s> Executor<'s> {
 // std-gated spin and halt methods
 // ============================================================================
 
+// phase-359 W10 — this impl used to be ONE `#[cfg(feature = "std")]` block.
+// Only the wall-clock spin loops in it need `std` (`Instant`, `thread::sleep`,
+// `thread::spawn`); `halt` / `is_halted` / `wake` are plain atomic stores on
+// flags the struct already owns, and `halt_flag` / `wake_handle` only need
+// `Arc`. Gating the BLOCK rather than the items made a no_std image unable to
+// stop its own executor — `ExecutorNodeRuntime::spin` carried a matching `std`
+// gate for no reason but this one.
 #[cfg(feature = "std")]
 impl<'s> Executor<'s> {
     /// Blocking spin loop with configurable exit conditions.
@@ -6580,6 +6589,7 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
+
     /// Execute one period with wall-clock overrun detection.
     ///
     /// Calls [`spin_once()`](Self::spin_once), measures wall-clock time, sleeps
@@ -6611,6 +6621,7 @@ impl<'s> Executor<'s> {
             elapsed,
         }
     }
+
 
     /// Spin at a fixed rate with drift compensation. Blocks until halted.
     ///
@@ -6646,22 +6657,6 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
-    /// Request the executor to stop spinning.
-    ///
-    /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
-    /// [`spin_period()`](Self::spin_period) to exit on the next iteration.
-    /// Safe to call from another thread or signal handler.
-    ///
-    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already
-    /// blocked inside a backend's `drive_io` falls through to the halt
-    /// check on its next loop iteration instead of waiting out its full
-    /// `timeout_ms` first.
-    pub fn halt(&self) {
-        self.halt_flag
-            .store(true, core::sync::atomic::Ordering::SeqCst);
-        self.wake_flag
-            .store(true, core::sync::atomic::Ordering::SeqCst);
-    }
 
     /// Phase 110.D.b — move this Executor onto a fresh OS thread,
     /// apply a per-thread scheduling policy via the caller-supplied
@@ -6723,11 +6718,50 @@ impl<'s> Executor<'s> {
             halt,
         }
     }
+}
+
+#[cfg(feature = "alloc")]
+impl<'s> Executor<'s> {
+    /// Request the executor to stop spinning.
+    ///
+    /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
+    /// [`spin_period()`](Self::spin_period) to exit on the next iteration.
+    /// Safe to call from another thread or signal handler.
+    ///
+    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already
+    /// blocked inside a backend's `drive_io` falls through to the halt
+    /// check on its next loop iteration instead of waiting out its full
+    /// `timeout_ms` first.
+    pub fn halt(&self) {
+        self.halt_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+        self.wake_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+
 
     /// Check if halt has been requested.
     pub fn is_halted(&self) -> bool {
         self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
     }
+
+
+    /// Phase 104.C.6 — wake the executor from another thread / ISR /
+    /// signal handler.
+    ///
+    /// Sets the shared `wake_flag`. The next `spin_once` swap-clears the
+    /// flag, skips the blocking wait on the primary session, and polls
+    /// every session non-blockingly so whatever queued the wake is
+    /// observed in a single iteration. Idempotent — multiple `wake()`
+    /// calls collapse into one observed wake per `spin_once`.
+    pub fn wake(&self) {
+        self.wake_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'s> Executor<'s> {
 
     /// Get a clone of the halt flag for use in signal handlers or other threads.
     ///
@@ -6745,18 +6779,6 @@ impl<'s> Executor<'s> {
         self.halt_flag.clone()
     }
 
-    /// Phase 104.C.6 — wake the executor from another thread / ISR /
-    /// signal handler.
-    ///
-    /// Sets the shared `wake_flag`. The next `spin_once` swap-clears the
-    /// flag, skips the blocking wait on the primary session, and polls
-    /// every session non-blockingly so whatever queued the wake is
-    /// observed in a single iteration. Idempotent — multiple `wake()`
-    /// calls collapse into one observed wake per `spin_once`.
-    pub fn wake(&self) {
-        self.wake_flag
-            .store(true, core::sync::atomic::Ordering::SeqCst);
-    }
 
     /// Phase 104.C.6 — clone of the shared wake flag for cross-thread
     /// use (signal handlers, foreign threads, future per-backend vtable
