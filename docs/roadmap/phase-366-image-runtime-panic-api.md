@@ -111,6 +111,24 @@ where the handler currently lives and proves the funnel works end to end.
 **Acceptance:** a panic in a fixture prints through the port's path, not
 `nros-c`'s silent spin.
 
+> **NOT MET on C/C++ images, and W7 is what fixes it (measured 2026-08-17).**
+> The forwarding body is gated `all(panic-spin, not(std), not(panic-halt))`, and
+> `nros_feature_set()` appends `panic-halt` on every embedded C/C++ coordinate
+> (freertos, esp-idf, threadx-rv64, generic cross) while `platform-*` supplies
+> `panic-spin`. So `panic-halt` ALWAYS wins there: W4 is live on pure-Rust and
+> dead on exactly the images it was written for, which is why the acceptance
+> reads as satisfied — someone checked a Rust fixture.
+>
+> This is the same fact W7 records as its behaviour change ("a C/C++ embedded
+> image halts on panic today"), stated from the other end: it is not merely that
+> those images halt, it is that a work item already marked landed does not reach
+> them. Verified by building `qemu-riscv64-threadx/c/listener` and reading the
+> ELF — one `rust_begin_unwind`, and with the table's `panic-halt` removed
+> `nros_platform_panic` resolves into the image where it otherwise does not.
+>
+> No action here: retiring the table is W7.b and the flip is W7.c/M6. Recorded so
+> the W4 row is not read as covering both languages.
+
 ### W5 — migrate the providers, then move ownership to the entry
 
 The order is FORCED, and the reason is issue 0617 from the opposite direction:
