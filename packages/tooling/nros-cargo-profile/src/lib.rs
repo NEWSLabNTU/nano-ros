@@ -190,6 +190,26 @@ pub fn carve_out(name: &str) -> Option<&'static str> {
     CARVE_OUTS.iter().find(|(n, _)| *n == name).map(|(_, p)| *p)
 }
 
+/// The profile a PLATFORM's cargo fixtures are built at, when it is not the
+/// ambient one. The Rust twin of `nros_cargo_platform_profile` in
+/// `scripts/build/cargo.sh`, keyed on the same coordinate `platform` values the
+/// fixture manifest emits (`freertos`, `nuttx`, `nuttx-riscv`).
+///
+/// Issue 0608 — `CARVE_OUTS` is keyed by carve-out NAME (`nuttx-rust`), which no
+/// caller holds; what a resolver has is the row's coordinate. Each site
+/// therefore rebuilt the platform→profile mapping itself, and the group-row
+/// resolver simply never did — so every group-built NuttX row was looked up
+/// under `nros-relwithdebinfo` while the builder wrote `nros-minsizerel`.
+/// CLAUDE.md's rule for a platform's fixture profile already says there is ONE
+/// derivation; this is it, on the Rust side.
+pub fn platform_profile(platform: &str) -> Option<&'static str> {
+    match platform {
+        "freertos" => Some(FREERTOS_QEMU_PROFILE),
+        "nuttx" | "nuttx-riscv" => Some(NUTTX_RUST_PROFILE),
+        _ => None,
+    }
+}
+
 /// The profile used when nothing selects one.
 pub const DEFAULT_PROFILE: &str = RELWITHDEBINFO.name;
 
@@ -354,6 +374,77 @@ pub fn toml_value(setting: &Setting) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 0608 — `platform_profile` mirrors `nros_cargo_platform_profile` in
+    /// `scripts/build/cargo.sh`, and a mirror that nobody compares is how the
+    /// builder and the resolver came to disagree in the first place. So READ the
+    /// shell's switch and assert the Rust table answers the same for every arm,
+    /// rather than restating the constants here (which would agree with itself
+    /// forever).
+    #[test]
+    fn platform_profile_agrees_with_the_shell_builder() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let sh = root.join("scripts/build/cargo.sh");
+        let text = std::fs::read_to_string(&sh)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", sh.display()));
+
+        let body = text
+            .split_once("nros_cargo_platform_profile() {")
+            .expect(
+                "nros_cargo_platform_profile is gone from cargo.sh — this test \
+                     guards a mirror; find where the rule moved and re-point it",
+            )
+            .1
+            .split_once('}')
+            .expect("unterminated function body")
+            .0;
+
+        let mut arms = 0usize;
+        for line in body.lines() {
+            let line = line.trim();
+            let Some((pats, action)) = line.split_once(')') else {
+                continue;
+            };
+            if !action.contains(";;") {
+                continue;
+            }
+            for pat in pats.split('|').map(str::trim) {
+                if pat.is_empty() {
+                    continue;
+                }
+                if pat == "*" {
+                    // the ambient default — Rust spells it `None`
+                    assert_eq!(
+                        super::platform_profile("some-platform-with-no-carve-out"),
+                        None,
+                        "shell falls through to the ambient profile; Rust must too"
+                    );
+                    continue;
+                }
+                arms += 1;
+                let want = if action.contains("nuttx") {
+                    super::NUTTX_RUST_PROFILE
+                } else if action.contains("freertos") {
+                    super::FREERTOS_QEMU_PROFILE
+                } else {
+                    panic!("cargo.sh arm {pat:?} -> {action:?} has no Rust counterpart");
+                };
+                assert_eq!(
+                    super::platform_profile(pat),
+                    Some(want),
+                    "cargo.sh maps platform {pat:?} to {action:?}; platform_profile disagrees"
+                );
+            }
+        }
+        assert!(
+            arms >= 3,
+            "parsed only {arms} carve-out arms from cargo.sh — the switch shape \
+             changed and this test stopped checking anything"
+        );
+    }
+
     use super::*;
 
     #[test]

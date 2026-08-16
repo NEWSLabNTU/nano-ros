@@ -109,6 +109,29 @@ pub struct GroupRow {
     pub coord: crate::fixtures::lane::Coord,
 }
 
+#[cfg(test)]
+impl GroupRow {
+    /// A row carrying only the coordinate — enough for the resolvers that key
+    /// on `coord` alone (issue 0608's profile rewrite). Not a general fixture:
+    /// every other field is left at its default on purpose, so a test that
+    /// needs one has to say so.
+    pub fn for_test(platform: &str) -> Self {
+        Self {
+            artifact_root: String::new(),
+            platform: platform.to_string(),
+            slug: String::new(),
+            shared: true,
+            dir: String::new(),
+            selector: Selector::default(),
+            coord: (
+                platform.to_string(),
+                "rust".to_string(),
+                "zenoh".to_string(),
+            ),
+        }
+    }
+}
+
 /// A row's authored configuration, as [`FixtureVariant`] must name it to select
 /// that row. Ordered/normalised by the exporter, never here.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]

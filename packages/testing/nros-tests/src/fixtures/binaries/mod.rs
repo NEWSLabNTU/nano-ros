@@ -455,12 +455,52 @@ fn build_failure_marker(binary_path: &Path) -> Option<String> {
 ///
 /// `rel` is what cargo writes BELOW the artifact root (`[<triple>/]<profile>/
 /// <bin>`) — the redirect is a root rewrite and never touches those components.
+/// Issue 0608 — rewrite `rel`'s PROFILE component to the one the row's platform
+/// is actually built at.
+///
+/// Every caller builds `rel` from `cargo_target_profile_dir()`, the AMBIENT
+/// profile, because that is all a caller knows. But NuttX and FreeRTOS-QEMU
+/// cargo fixtures carry a profile carve-out (`nros-minsizerel`), so a
+/// group-built row for those platforms lives under a directory the ambient name
+/// never spells — the binary was right there, one directory over, reported as
+/// MISSING.
+///
+/// Done here rather than at the nine call sites for the reason the comment in
+/// `require_prebuilt_binary` gives about its own redirect: the funnels are not
+/// the whole class, and fixing a subset of resolvers is the #328 shape. The
+/// leaf resolver and the staleness probe already apply the carve-out; this is
+/// the third consumer that has to, and the last one that did not.
+fn rel_at_row_profile(row: &crate::fixtures::groups::GroupRow, rel: &Path) -> PathBuf {
+    let (platform, _lang, _rmw) = &row.coord;
+    let Some(profile) = nros_cargo_profile::platform_profile(platform) else {
+        return rel.to_path_buf();
+    };
+    let want = nros_cargo_profile::target_dir(profile);
+    let ambient = cargo_target_profile_dir();
+    if want == ambient {
+        return rel.to_path_buf();
+    }
+    // Replace only the component that IS the ambient profile dir. A blind
+    // string replace would also rewrite a binary or triple that happened to
+    // share the name.
+    rel.iter()
+        .map(|c| {
+            if c == std::ffi::OsStr::new(&ambient) {
+                std::ffi::OsString::from(&want)
+            } else {
+                c.to_os_string()
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn require_prebuilt_row_binary(
     row: &crate::fixtures::groups::GroupRow,
     rel: &Path,
 ) -> TestResult<PathBuf> {
     crate::fixtures::lane::require_coord_in_lane(&row.coord, &row.dir)?;
-    let binary_path = crate::fixtures::groups::row_resolved_dir(row).join(rel);
+    let rel = rel_at_row_profile(row, rel);
+    let binary_path = crate::fixtures::groups::row_resolved_dir(row).join(&rel);
     require_prebuilt_binary_checks(&binary_path)
 }
 
@@ -5536,6 +5576,102 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 0608 — a group-built row must be looked up at its PLATFORM's
+    /// profile, not the ambient one. The NuttX carve-out is the case that
+    /// failed: the builder wrote `nros-minsizerel` and the resolver asked for
+    /// `nros-relwithdebinfo`, so a binary that existed reported as MISSING.
+    ///
+    /// Asserts the AGREEMENT (what `platform_profile` says) rather than the
+    /// constant, per #393 — restating `nros-minsizerel` here would keep passing
+    /// if the carve-out moved.
+    #[test]
+    fn a_row_is_resolved_at_its_platforms_profile() {
+        let ambient = cargo_target_profile_dir();
+
+        for platform in ["nuttx", "nuttx-riscv", "freertos"] {
+            let want = nros_cargo_profile::target_dir(
+                nros_cargo_profile::platform_profile(platform)
+                    .unwrap_or_else(|| panic!("{platform} lost its carve-out")),
+            );
+            let row = crate::fixtures::groups::GroupRow::for_test(platform);
+            let rel = PathBuf::from(format!("armv7a-nuttx-eabihf/{ambient}/listener"));
+            let got = rel_at_row_profile(&row, &rel);
+            assert_eq!(
+                got,
+                PathBuf::from(format!("armv7a-nuttx-eabihf/{want}/listener")),
+                "{platform}: the profile component must become the carve-out"
+            );
+        }
+
+        // A platform with no carve-out is left exactly as it was — the rewrite
+        // must not invent a redirect for the 190+ `linux` rows.
+        let row = crate::fixtures::groups::GroupRow::for_test("linux");
+        let rel = PathBuf::from(format!("{ambient}/talker"));
+        assert_eq!(rel_at_row_profile(&row, &rel), rel);
+
+        // Only the profile COMPONENT moves. A binary that happens to be named
+        // like the ambient profile stays put.
+        let row = crate::fixtures::groups::GroupRow::for_test("nuttx");
+        let rel = PathBuf::from(format!("{ambient}/{ambient}"));
+        let got = rel_at_row_profile(&row, &rel);
+        let want = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
+        assert_eq!(got, PathBuf::from(format!("{want}/{want}")));
+    }
+
+    /// Issue 0608 — and the RESOLVER must actually call it.
+    ///
+    /// The test above passes with the chokepoint bypassed, because it exercises
+    /// `rel_at_row_profile` directly. That is the gap this codebase keeps
+    /// finding in gates (issue 0196): the rule is right and the wiring is not
+    /// checked. So drive `require_prebuilt_row_binary` for real and assert on
+    /// the path it went looking for.
+    #[test]
+    fn the_row_resolver_uses_the_carve_out_profile() {
+        let ambient = cargo_target_profile_dir();
+        let want = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
+        assert_ne!(
+            want, ambient,
+            "the carve-out must differ or this proves nothing"
+        );
+
+        // `shared: false` routes `row_resolved_dir` through `artifact_root`,
+        // repo-relative — so point it at a directory that does not exist and
+        // read which profile the lookup asked for.
+        let mut row = crate::fixtures::groups::GroupRow::for_test("nuttx");
+        row.shared = false;
+        row.artifact_root = "tmp/issue-0608-probe".to_string();
+
+        let rel = PathBuf::from(format!("armv7a-nuttx-eabihf/{ambient}/listener"));
+
+        // `catch_unwind`, not `expect_err`: a missing IN-LANE fixture is a
+        // "broken promise" PANIC, not an `Err` — a gated run already asserted
+        // the lane was built. Either way the diagnostic names the path it went
+        // looking for, which is what this test reads.
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(|| require_prebuilt_row_binary(&row, &rel));
+        std::panic::set_hook(prev);
+
+        let msg = match outcome {
+            Err(payload) => payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic>".to_string()),
+            Ok(Err(e)) => format!("{e:?}"),
+            Ok(Ok(p)) => panic!("no such fixture exists, yet it resolved: {}", p.display()),
+        };
+
+        assert!(
+            msg.contains(&format!("armv7a-nuttx-eabihf/{want}/listener")),
+            "resolver looked somewhere other than the carve-out profile: {msg}"
+        );
+        assert!(
+            !msg.contains(&format!("armv7a-nuttx-eabihf/{ambient}/listener")),
+            "resolver still used the AMBIENT profile — this is issue 0608: {msg}"
+        );
+    }
 
     #[test]
     fn test_project_root_has_examples() {
