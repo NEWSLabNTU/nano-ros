@@ -426,6 +426,77 @@ mod tests {
     /// half had a test, because a walk's closure is only checkable against
     /// cargo — which is now `check-cli-source-dirs`' job, and this is the other
     /// half: that the list is actually obeyed.
+    /// phase-363 — the membership rule is ASSERTED, not trusted.
+    ///
+    /// `source-manifest.sh`'s self-test opens by saying its properties "are
+    /// asserted rather than trusted", and lists NO TYPE FILTER first. This
+    /// predicate is the opposite case — it watches whole crate dirs, so it MUST
+    /// filter or a `tests/fixtures/**` edit would stale the CLI — which makes
+    /// the filter itself the thing that needs asserting. It had never been
+    /// tested, and `askama.toml` was missing from it.
+    #[test]
+    fn the_input_filter_covers_what_the_build_consumes() {
+        for watched in [
+            "packages/cli/nros-cli-core/src/cmd/ws.rs",
+            "packages/cli/rosidl-bindgen/templates/msg.rs.jinja",
+            "packages/cli/rosidl-bindgen/Cargo.toml",
+            "packages/cli/Cargo.lock",
+            CLI_SOURCE_DIRS_FILE,
+            // decides WHICH templates askama compiles in — the `.jinja`
+            // argument one file over.
+            "packages/cli/rosidl-bindgen/askama.toml",
+        ] {
+            assert!(is_cli_input(watched), "should be a CLI input: {watched}");
+        }
+
+        for ignored in [
+            // fixture DATA: a blanket `.toml`/`.json` clause would pull these
+            // in, and a fixture edit would then force a CLI rebuild for nothing.
+            "packages/cli/nros-cli-core/tests/fixtures/orchestration/plan_pub_sub.json",
+            "packages/cli/nros-cli-core/tests/fixtures/board-workspace/packages/boards/posix/nros-board.toml",
+            // vendored + CLI-test trees: a parallel session touching them must
+            // not read as CLI staleness.
+            "packages/cli/third-party/play_launch/src/lib.rs",
+            "packages/cli/testing_workspaces/ros2_rust_examples/Cargo.toml",
+        ] {
+            assert!(
+                !is_cli_input(ignored),
+                "should NOT be a CLI input: {ignored}"
+            );
+        }
+    }
+
+    /// The literal above would agree with itself forever if the rule changed
+    /// shape. This one reads the TREE: every tracked `askama.toml` under a
+    /// watched dir must be an input, so a second one added elsewhere — or a
+    /// rule rewritten to match by path rather than basename — fails here.
+    #[test]
+    fn every_tracked_askama_config_is_watched() {
+        // <root>/packages/cli/nros-cli-core -> <root>
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let Some(listing) = git(&root, &["ls-files", "--", "packages/cli"]) else {
+            return; // not a git checkout (vendored source tree); nothing to assert
+        };
+        let mut seen = 0usize;
+        for rel in listing.lines().filter(|l| l.ends_with("askama.toml")) {
+            if rel.contains("/third-party/") || rel.contains("/testing_workspaces/") {
+                continue;
+            }
+            assert!(
+                is_cli_input(rel),
+                "tracked askama config not watched: {rel}"
+            );
+            seen += 1;
+        }
+        assert!(
+            seen > 0,
+            "no tracked askama.toml found — did the rule move?"
+        );
+    }
+
     #[test]
     fn the_closure_list_decides_what_is_watched() {
         let tmp = tempfile::tempdir().unwrap();
