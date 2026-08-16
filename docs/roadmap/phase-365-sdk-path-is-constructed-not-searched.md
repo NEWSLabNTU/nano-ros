@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1–W5 LANDED + W3a.2 (stale-cache self-heal). Owed: the `lane=all` re-measurement, now expected to reach zero.** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). COMPLETE — W1–W5 + W3a.2 landed, and the `lane=all` re-measurement reached zero.** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -319,3 +319,44 @@ cache after  : 0.6.1-nros1
 --include=CMakeCache.txt` that silently returned nothing — it also reported zero
 caches on 0.6.1, which a single known counter-example would have contradicted.
 A negative result whose positive control is also absent is not evidence.
+
+## MEASURED 2026-08-16 — acceptance met at lane scale
+
+`build-test-fixtures lane=all`, all nine families built, counts scoped to that
+run's own log directory:
+
+| metric | before | after |
+| --- | --- | --- |
+| Corrosion 0.5.1 resolutions | **155** | **0** |
+| Corrosion 0.6.1 resolutions | 28 | **97** |
+| legacy-topology warnings | 64 | **0** |
+| stale caches self-healed | — | **73** |
+
+**The 73 is the number that makes the zero mean something.** 139 build dirs held
+a legacy `Corrosion_DIR`; had 0.5.1 reached zero with no self-heals, the caches
+would simply not have been exercised and the result would prove nothing. They
+were exercised, and they healed in place — no build directory was deleted to get
+this.
+
+### What it took, and the part worth remembering
+
+Constructing the path was necessary and not sufficient. Four routes had to be
+closed, and only the first was suspected at the outset:
+
+1. the cmake prefix glob (`APPEND`, so the environment's entry won anyway);
+2. `cmake-prefix.sh`'s `sort -Vr`, which ranked the legacy install's `lib/` and
+   `share/` — not versions — ahead of the numeric names;
+3. three more consumers enumerating other tools (zenohd, riscv gcc, cyclonedds),
+   two of them found by the gate rather than by survey;
+4. a cached `Corrosion_DIR`, which outranks `PATHS` and `NO_DEFAULT_PATH`
+   entirely — found by instrumentation after three rounds of narrowing by
+   inspection had each eliminated a plausible route and left the count standing.
+
+### Note on the run's exit code
+
+`rc=1` with all nine families OK: the identity-budget gate then reported
+`nros_rmw_zenoh: 6` and `nros: 10` identities in
+`examples/workspaces/mixed/build-workspace-fixtures`, over its ceiling of 5.
+That tree is an accumulated one (issue 0499's shape) and the duplication is
+issue 0616's, not this phase's — the resolutions above are all one version. Not
+folded in here; recorded so the next reader does not attribute it to phase-365.
