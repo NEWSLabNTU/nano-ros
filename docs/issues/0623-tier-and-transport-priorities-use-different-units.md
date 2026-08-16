@@ -127,13 +127,15 @@ examined, and the guess was wrong — they have a different defect:
 
 So on those two the transport priority is not settable at all, which is the
 "declared value silently ignored" class (#0579), not the units class. Worth its
-own issue rather than a sentence here: the `(void)` branch's comment ("zenoh-pico
-ignores it") stopped being true when phase-364 W3 gave
-`nros_platform_task_attr_t` a real normalised `priority` field that
-`nros_platform_task_init` honours — the generic path can carry one now. Note
-`z_task_attr_t` currently has THREE definitions in this tree (generic,
-bare-metal, threadx), so implementing it is a fix-the-class change, not a
-one-liner.
+own issue: **#0626**, now filed, with the layer-by-layer detail.
+
+One thing said here was wrong and is corrected there: the three `z_task_attr_t`
+definitions (generic, bare-metal, threadx) are **identical** —
+`typedef void *z_task_attr_t;` in all three. They agree; the problem is what
+they agree on. There is no ABI split, and the fix is smaller than "fix-the-class"
+implied. #0626 also records a third drop point neither issue had noticed: on
+native Zephyr `nros_platform_task_init` itself `(void)`s the attr and hardcodes
+`K_PRIO_PREEMPT(5)`, so wiring the shim alone would not be enough there.
 
 ## Found by
 

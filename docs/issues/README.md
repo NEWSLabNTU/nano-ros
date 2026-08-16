@@ -143,6 +143,21 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 `packages/cli` is a separate workspace inside the repo), plus a configure-time FATAL_ERROR when two roots
 claim one directory. See `archived/0616-*`.
 
+**#626** (boards/rmw-zenoh/platform, open 2026-08-16) — the zenoh read/lease task priority is UNSETTABLE on
+ThreadX and Zephyr. Not "the knob is ignored": there is no knob, and three layers would each drop one.
+(1) `zpico_set_task_config` has exactly ONE caller in the tree, the FreeRTOS board — elsewhere
+`task_attributes` stays NULL, so stack size is defaulted too. (2) The shim would discard it anyway: Zephyr
+takes the POSIX branch (`pthread_attr` stack only; priority needs `SCHED_FIFO`), ThreadX the `#else` that
+`(void)`s everything. (3) On NATIVE Zephyr the PORT drops it too — `nros_platform_task_init` under
+`CONFIG_DYNAMIC_THREAD` does `(void) attr;` and hardcodes `K_PRIO_PREEMPT(5)`, so no configuration anywhere
+can move it. So #0506's question — what preempts the RT tiers under inbound load — cannot be ASKED on two of
+four RTOSes. The ABI half already exists and is going unused: phase-364 W3/W5 gave
+`nros_platform_task_attr_t` a normalised `priority` that BOTH the ThreadX port and Zephyr's POSIX port
+already honour; only the shim→ABI wiring is missing, and since no value exists to reinterpret, this is where
+#0623's unified vocabulary could be adopted for free. Corrects two claims in #0623: these platforms do NOT
+share its units collision (this is #0579's ignored-value class), and the three `z_task_attr_t` definitions
+are IDENTICAL `void *` — they agree, and the problem is what they agree on. See `0626-*`. (2026-08-16)
+
 **#623** (boards/platform, open 2026-08-16) — tier priorities are **RAW per-RTOS** and transport priorities
 are **NORMALISED 0-31**, and both reach `xTaskCreate` in one priority space with nothing saying so.
 `[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS 4. Cost is
