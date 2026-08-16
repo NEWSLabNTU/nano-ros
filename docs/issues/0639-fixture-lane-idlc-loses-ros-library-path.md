@@ -76,6 +76,78 @@ That masking is the reason to file rather than drop it:
   environment then fails at `code=127` with nothing recording that the
   configure had made an assumption. That shape is worth checking on its own.
 
+## Which `idlc` SHOULD be used — measured 2026-08-17
+
+The question behind this issue is whether to keep preferring the
+SDK-provisioned `idlc` or simply use the one ROS ships. Two sub-questions were
+asked, and both were measured rather than reasoned about.
+
+### Is the Cyclone DDS version guaranteed per ROS edition? No.
+
+From the ROS apt indexes (`packages.ros.org/ros2/ubuntu/dists/<codename>/main/binary-amd64/Packages.gz`):
+
+| edition | `ros-<distro>-cyclonedds` |
+| --- | --- |
+| humble | `0.10.5-2jammy.20260226` |
+| iron | `0.10.5-1jammy.20241108` |
+| jazzy | `0.10.5-1noble.20260225` |
+| kilted | `0.10.5-2noble.20260410` |
+| **rolling** | **`11.0.1-1noble.20260424`** |
+
+Every RELEASED edition currently ships upstream 0.10.5 — the version this tree
+pins as `0.10.5-nros1` — so the pin has been trouble-free. That convergence is
+a coincidence of timing, not a contract:
+
+* the debian revisions and build dates differ (`-1` vs `-2`, 2024-11 through
+  2026-04), so each distro re-releases on its own schedule and the upstream
+  version a distro carries can move during its life;
+* **rolling has already moved to 11.0.1**, a major bump. The next distro cut
+  from rolling will not be 0.10.5, and on that day "the version ROS used" stops
+  being a single answer.
+
+### Does idlc behaviour differ per edition? Not per EDITION — per VERSION.
+
+Because all four released editions ship the same upstream 0.10.5, they ship the
+same `idlc`. Verified rather than assumed: 8 real generated IDLs from
+`cyclonedds-ts/_idlroot` (messages plus the Fibonacci action) compiled with
+`-t -l c` by both `~/.nros/sdk/cyclonedds/0.10.5-nros1/bin/idlc` and
+`/opt/ros/humble/bin/idlc` produce 16 generated files each, **byte-identical**.
+Run WITHOUT `-t`, both emit the same `@verbatim … not supported` warnings, so
+the XTypes limitation the `-t` flag works around is upstream 0.10.5's and not
+something this fork introduced.
+
+That is consistent with what the fork actually contains: its commits are all
+`ddsrt` / `ddsi` — RTOS sync ports, multicast/socket fixes, addrset lock
+striping. It does not touch the IDL compiler.
+
+### So: keep using ours
+
+Not because it compiles better — today the two are the same compiler. Because
+the correctness constraint is that idlc's output must match **the `ddsc` the
+image LINKS**, and the native cyclone examples build CycloneDDS FROM SOURCE
+in-tree (`…/nros-rmw-cyclonedds/_cyclonedds`), so the runtime is
+`0.10.5-nros1`. ROS's idlc satisfies that only while the versions coincide.
+
+Taking ROS's copy would make descriptor generation a function of the host's ROS
+edition — precisely the axis that is already diverging. On a rolling-derived
+host an 11.x compiler would emit descriptors into a 0.10.5 runtime, silently:
+the museum-compiler / `find_descriptor() -> nullptr` class issue 0325 already
+describes. Preferring ours also sidesteps this issue entirely, since the SDK
+binary has no ROS loader dependency.
+
+The preference order 0633 restored (SDK store first, `-h`-probed, then PATH) is
+therefore the right one, and this issue's `LD_LIBRARY_PATH` question stays a
+question about the FALLBACK path rather than about the normal one.
+
+### What this does not establish
+
+* Only humble's `idlc` binary exists on this host. iron / jazzy / kilted are
+  inferred from identical upstream version strings, not executed.
+* The comparison covered 8 message/action IDLs — not unions, `@key`, or deeper
+  module nesting.
+* It says nothing about the boundary that drops `LD_LIBRARY_PATH`, which is
+  still the open part of this issue.
+
 ## Provenance
 
 Split out of issue 0633 on 2026-08-16. 0633's first draft asserted that

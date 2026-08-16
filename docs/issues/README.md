@@ -232,7 +232,7 @@ NOT "it compiles" — that is what hid it for the length of W10. See `0644-*`. (
 whether the make driver, a `cmake -E env` launcher, ninja's raw command or a `just` boundary strips it —
 deliberately not guessed. MASKED now (#633 routes idlc to the SDK copy); filed rather than closed because
 the gap is not idlc-specific, and because `_nros_idlc_runs`'s `LD_LIBRARY_PATH` launcher has never been
-exercised — #633's cache is exactly what stopped the probe running. See `0639-*`. (2026-08-16)
+exercised — #633's cache is exactly what stopped the probe running. Also records the 2026-08-17 measurement behind KEEPING the SDK idlc: every RELEASED edition (humble/iron/jazzy/kilted) ships upstream 0.10.5 today and their idlc output is byte-identical to ours over 8 real IDLs, but ROLLING already ships 11.0.1 — so "the version ROS used" is a coincidence of timing, not a contract, and the constraint that matters is matching the `ddsc` the image LINKS (built from source in-tree). See `0639-*`. (2026-08-17)
 
 Recently resolved (2026-08-16): **#638** — the generated Zephyr entry TU had only a TARGET edge to the
 nros-cpp cargo build, so it raced the header it includes and fell through to the in-tree `#error` stub.
