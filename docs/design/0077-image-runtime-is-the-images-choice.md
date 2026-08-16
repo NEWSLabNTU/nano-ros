@@ -37,6 +37,14 @@ stay the platform arena, because zenoh-pico's `z_malloc`, CycloneDDS's
 `ddsrt_malloc` and the RTOS all allocate from the same heap and a second arena
 would fragment memory nothing can measure.
 
+nano-ros images also mix three languages, and the ABI is why they cannot agree:
+`<nros/platform.h>` has **allocation** and no fatal path at all, so C and Rust
+share one arena through `nros_platform_alloc` while each language invented its
+own ending. This RFC adds the missing half — `nros_platform_panic` — so a Rust
+panic, a C precondition failure and a C++ terminate converge on one symbol the
+image controls. That is the same weak-default-the-application-overrides shape
+Zephyr, FreeRTOS, NuttX and ESP-IDF all settled on independently.
+
 Proposed, in one rule with three shapes: **the package that declares the entry
 owns the image runtime** — the `*_entry` package in a workspace, the example
 package itself when standalone, `nano_ros_entry()`'s generated TU for a C/C++
@@ -219,6 +227,109 @@ So the proposed UX is not hypothetical and needs no new mechanism. It is what
 one platform does today, what every embedded Rust project does, and what the
 other platforms are prevented from doing.
 
+## Three languages, one handler
+
+nano-ros images mix C, C++ and Rust, and each language has its own idea of
+"fatal". Today they do not meet:
+
+| language | fatal path today | reaches |
+| --- | --- | --- |
+| Rust | `#[panic_handler]` | whichever library won the feature negotiation |
+| C | nothing in the ABI — a port's own `assert`/`abort`, or nothing | the RTOS, or a silent spin |
+| C++ | `static_assert` at compile time; no runtime fatal surface | — |
+
+An image is one artifact, so one fatal path is the only coherent answer: a Rust
+panic in the executor, a C precondition failure in a port, and a C++ terminate
+must all end in the same place, because the operator debugging the board only
+has one place to look.
+
+**Four behaviours already exist, each hardcoded in a library**, which is the
+same evidence from the other direction:
+
+| provider | what it does |
+| --- | --- |
+| `nros-c` | `loop { spin_loop() }` — silent |
+| `nros-board-nuttx` | `println!("nros: PANIC {info}")` then `exit(1)` |
+| `nros-board-threadx-qemu-riscv64` | UART "PANIC: …" then exit QEMU |
+| `nros-board-mps2-an385-freertos` | semihosting message, `bkpt #0`, then spin |
+
+Those are four reasonable answers to four different questions ("is a human
+watching?", "is a debugger attached?", "is a harness grepping stdout?"), which
+is exactly why the choice cannot live in a library.
+
+## The platform ABI has allocation and no fatal path
+
+`<nros/platform.h>` exposes clock, **allocation**, atomics, sleep, yield,
+random, wall clock, tasks, mutexes, condvars, wake, critical section and
+logging. There is no section for "the world ended".
+
+That asymmetry is the concrete defect behind the language split above. The
+allocator is expressible as a platform fact — `nros_platform_alloc` — so C and
+Rust already share one arena through it. Panic is not expressible at all, so
+each language invented its own ending.
+
+**Proposal — the ABI gains a fatal entry point, in the shape it already uses for
+allocation:**
+
+```c
+/* ---- Fatal error ---- */
+
+/** Terminate the image. Never returns.
+ *
+ *  `msg` is a diagnostic, NOT a C string: `len` bytes, no NUL required, and
+ *  possibly empty. A port must tolerate being called from any context —
+ *  interrupt, scheduler-locked, or before the kernel starts. */
+_Noreturn void nros_platform_panic(const char *msg, size_t len);
+```
+
+Each port maps it to the native fatal path it already has, which is where the
+per-RTOS knowledge belongs:
+
+| port | native mapping |
+| --- | --- |
+| posix / threadx-linux | write to stderr, `abort()` |
+| Zephyr | `k_panic()`, or `k_sys_fatal_error_handler` if the image installs one |
+| NuttX | `PANIC()` / `up_assert`, `board_crashdump()` where configured |
+| FreeRTOS | the existing hook body — message, `bkpt`, halt |
+| ESP-IDF | `esp_system_abort()`, which honours `CONFIG_ESP_SYSTEM_PANIC_*` |
+| bare-metal | message over the port's console, `bkpt`, then halt or reset |
+
+**Rust then stops being special.** The entry's `#[panic_handler]` — the default
+one nano-ros scaffolds — formats `PanicInfo` and calls `nros_platform_panic`. A
+C caller reaches it directly. A C++ terminate handler forwards to it. All three
+languages converge on one symbol, and the image decides what that symbol does.
+
+## What real MCU and RTOS practice does
+
+The proposal is deliberately unoriginal: every RTOS here already settled this,
+and settled it the same way — **a weak default the application overrides**.
+
+- **Zephyr** — `k_sys_fatal_error_handler(reason, esf)` is `__weak`; the default
+  halts, and applications override it to log, reboot, or enter a safe state. The
+  reason code distinguishes CPU exception, kernel oops, kernel panic and stack
+  check failure.
+- **FreeRTOS** — `configASSERT`, `vApplicationMallocFailedHook` and
+  `vApplicationStackOverflowHook` are all application-supplied. nano-ros already
+  implements two of them, in a board crate, hardcoded.
+- **NuttX** — `PANIC()` routes to `up_assert()`, with `board_crashdump()` as the
+  weak board hook for persisting state before reset.
+- **ESP-IDF** — a panic handler that prints a backtrace, with the *policy*
+  exposed as configuration: print-and-reboot, halt, or hand over to a GDB stub.
+
+Two things are consistent across all four and belong in nano-ros's default:
+
+1. **Say something before dying.** Every one of them emits a diagnostic first.
+   A silent `loop {}` — which is `nros-c`'s current default, on the platform
+   least likely to have a debugger attached — is the one behaviour none of them
+   chose.
+2. **Trap for the debugger, then halt or reset — deliberately.** `bkpt` on ARM
+   when a debugger may be attached; reset on a shipped board, because a hung
+   controller is usually worse than a restarted one. Which of halt or reset is
+   right is a product decision, which is precisely why it is the image's.
+
+ESP-IDF's shape is the closest fit for nano-ros: the *mechanism* is the
+platform's, the *policy* is configuration, and the default is safe and loud.
+
 ## The proposed UX
 
 ### Which package configures it
@@ -269,6 +380,52 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     board::reboot()
 }
 ```
+
+### Configuring it, per language
+
+The entry package owns it in all three, and each language uses its own native
+override mechanism rather than a nano-ros invention:
+
+**Rust entry** — a dependency and one `use`, which is what every embedded Rust
+project already writes:
+
+```rust
+#![no_std]
+use panic_halt as _;     // or esp_backtrace, panic_semihosting, panic_probe…
+nros::main!();
+```
+
+Take nano-ros's default instead by writing nothing: the scaffolded entry carries
+a handler that formats the message and calls `nros_platform_panic`, so the port
+decides how to die and the image still gets the diagnostic.
+
+**C / C++ entry** — define the symbol; the port's definition is weak:
+
+```c
+/* my_entry.c — overrides the port's default */
+_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+    nvm_record(msg, len);
+    board_reset();
+}
+```
+
+**Neither, via configuration** — for the common cases, so a user does not write
+code to pick a stock behaviour:
+
+```cmake
+nano_ros_entry(... PANIC halt)      # halt | reset | trap | custom
+```
+
+```toml
+# the board's recommendation, which `nros new` writes into the entry
+[board.image_runtime]
+recommended_panic = "panic-halt"
+```
+
+**The allocator has no equivalent knob, deliberately.** There is nothing to
+choose: the entry installs `PlatformGlobalAllocator`, it forwards to
+`nros_platform_alloc`, and that is the arena the C side is already using. A
+`PANIC`-style option for it would only offer ways to be wrong.
 
 ### What `nros new` scaffolds
 
