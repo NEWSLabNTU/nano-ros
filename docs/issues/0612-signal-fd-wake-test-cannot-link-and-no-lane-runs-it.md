@@ -77,3 +77,61 @@ Two halves, and the first is the one that decides the second:
 Do not "fix" this by loosening the test's `#![cfg]` until it compiles — that
 would restore the appearance of coverage without the substance, which is what
 the current state already provides.
+
+## Update 2026-08-16 — cause 1 fixed, and a THIRD cause it was hiding
+
+**Cause 1 (cannot link) is fixed.** `nros-node` gains
+`nros-platform-cffi = { features = ["posix-c-port"] }` in its target-scoped
+dev-dependency table, and the test carries `use nros_platform_cffi as _;`.
+
+That second line is load-bearing and not optional: rustc drops a dev-dependency
+no code references, taking its build script's `cargo:rustc-link-lib` with it, so
+the undefined symbols return looking exactly as they did before the fix. Same
+lesson as issue 0619, one crate over.
+
+**With the link fixed, the test runs — and both cases silently SKIPPED and
+reported PASS:**
+
+```
+nros: cannot select an RMW backend — no RMW backend is registered
+[SKIPPED] Executor::open failed — no transport. …
+test signal_fd_wake_unblocks_spin_once ... ok
+test result: ok. 2 passed; 0 failed
+```
+
+`eprintln!` + `return` — the shape CLAUDE.md prohibits outright. Both `Err`
+branches now `panic!` with the diagnosis, so the suite states the truth.
+
+### Cause 3 — the gating makes the wake path unreachable by any invocation
+
+Not "no transport is available". The two cfgs are mutually exclusive:
+
+| | gate |
+| --- | --- |
+| `NodeWake` (the code under test) | `all(feature = "alloc", feature = "rmw-cffi")` |
+| `nros_node::mock` (the only session a bare `cargo test` can open) | `all(test, not(feature = "rmw-cffi"))` |
+
+The feature set that makes the wake path live is exactly the one that removes
+the session, and `nros-node` registers no cffi backend of its own. So no
+invocation both compiles the code under test and opens a session. The
+documented command in the test header cannot work even now that it links.
+
+This is why the runtime behaviour has never been verified, and it is a
+structural gap rather than a missing dependency — worth separating from cause 1,
+because fixing the link makes the test *runnable* without making it *meaningful*.
+
+### Deliberately NOT done: giving it a lane
+
+Cause 2 (nothing runs it) stays open on purpose. Adding a lane now would only
+add a red, since cause 3 means the test cannot pass. The ordering has to be:
+resolve the gating, then add the lane. Adding the lane first would put pressure
+on whoever hits the red to reach for the fix this issue already warns against —
+loosening the `#![cfg]` until it compiles, restoring the appearance of coverage
+without the substance.
+
+### Also worth noting for the class
+
+The assertions are upper-bound only (`elapsed < TRIGGER_DELAY_MS + 100`). A
+`spin_once` that never blocks at all passes them. Whoever resolves cause 3
+should add the lower bound (`elapsed >= TRIGGER_DELAY_MS`) — otherwise the test
+still cannot distinguish "woke on the eventfd" from "never waited".

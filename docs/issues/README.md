@@ -51,7 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-16): **#624** (build, open 2026-08-16) — `check-examples` (`just/native.just` ~495) runs `cd <leaf> && cargo clippy`
+**#0624** (build, open 2026-08-16) — `check-examples` (`just/native.just` ~495) runs `cd <leaf> && cargo clippy`
 with no `--target-dir`, re-creating the 37 per-leaf `examples/**/target/` dirs that #0488 declared empty and
 gated. Not a regression of 0488 — a site its sweep never reached, in the population it closed. The gate runs
 BEFORE the examples lane, so each run passes, writes the dirs, and fails the NEXT run: the failure is always
@@ -59,7 +59,7 @@ misattributed to whatever else changed, and clearing "fixes" it for exactly one 
 run a green `just check`, all 37 return. Both branches (jobserver pool and `SERIAL=1`) write them. See
 `0624-*`. (2026-08-16)
 
-**#620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
+Recently resolved (2026-08-16): **#0620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
 port ("~232 B on 32-bit"), while ThreadX-Linux is a HOSTED port whose `TX_THREAD` measures 352 B — so the
 `_Static_assert` fired and took out the threadx-linux family. Fixed upstream CONCURRENTLY by `199c8b0d3`
 (phase-364 W2/W3), which raised the shared bound to 512; `lane=tier2` now reports `== threadx_linux == OK`
@@ -261,7 +261,13 @@ Independently, `grep -rn signal-fd-wake just/ .github/ scripts/` finds one comme
 0577's class, and the instance phase-359's doc says to budget for — it surfaced when W10 ported the
 forwarder off `std::thread`, which is therefore compile-verified only. Fix needs BOTH a platform in
 dev-deps and a lane; loosening the test's `#![cfg]` until it compiles would restore the appearance of
-coverage without the substance. See `0612-*`. (2026-08-16)
+coverage without the substance. See `0612-*`. (2026-08-16) UPDATE 2026-08-16: cause 1 (cannot link) FIXED — a
+`posix-c-port` dev-dep plus an explicit `use nros_platform_cffi as _;`, since rustc drops an unreferenced
+dev-dep and its `-l` with it (same lesson as #0619). That exposed a THIRD cause the link error was hiding:
+both tests silently SKIPPED and reported PASS, and the gating makes the wake path unreachable by ANY
+invocation — `NodeWake` needs `rmw-cffi`, which is exactly what excludes `nros_node::mock`, the only session
+a bare `cargo test` can open. Skips now panic. Lane deliberately NOT added yet: it would only add a red, and
+pressure the next person toward loosening the `#![cfg]`. (2026-08-16)
 
 **#608** (testing, open 2026-08-15) — a fixture row built into a phase-340 shared cargo GROUP is
 resolved at the AMBIENT cargo profile, discarding the platform carve-out the caller just applied. NuttX
