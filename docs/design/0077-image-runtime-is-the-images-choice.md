@@ -29,16 +29,20 @@ at all — which is why a fixture that wants print-and-exit and a controller tha
 wants log-then-reboot get the same spin loop, and why issue 0617 has both an
 image with two providers and an image with none.
 
-The asymmetry is the crux: **for the allocator, implementation IS policy** —
-"use this platform's heap" is the only sensible answer, so keying it on the
-platform costs nothing. **For panic they are different facts**, every behaviour
-is implementable everywhere, and keying it on the platform costs the choice
-itself.
+The asymmetry is the crux. **The panic handler is a free choice** — every
+behaviour is implementable everywhere, so keying it on the platform costs the
+choice itself. **The allocator is not a choice, only a placement** — the image
+decides where the static lives so there is exactly one, but what backs it must
+stay the platform arena, because zenoh-pico's `z_malloc`, CycloneDDS's
+`ddsrt_malloc` and the RTOS all allocate from the same heap and a second arena
+would fragment memory nothing can measure.
 
-Proposed: keep implementation platform-keyed; keep installation coupled and
-owned by one link root, exactly as `nros-board-nuttx` argues; and let the IMAGE
-name its panic policy in its own crate, the way `examples/qemu-esp32-baremetal`
-already does with `use esp_backtrace as _;`.
+Proposed, in one rule with three shapes: **the package that declares the entry
+owns the image runtime** — the `*_entry` package in a workspace, the example
+package itself when standalone, `nano_ros_entry()`'s generated TU for a C/C++
+image. A panic raised anywhere in core, board, RMW or user code then reaches the
+one handler that image declared, the way `examples/qemu-esp32-baremetal` already
+works with `use esp_backtrace as _;`.
 
 ## Where the design already is — this completes it, it does not oppose it
 
@@ -102,19 +106,39 @@ what 0616 had to discover the hard way. And it has no place at all for
 This is the part neither §2 nor 0616 nor `nros-board-nuttx` separates, and it is
 why panic is the harder half.
 
-**For the allocator, implementation IS policy.** "Use this platform's heap" is
-the only sensible answer; there is no second reasonable choice for an image to
-make. So keying the allocator on the platform loses nothing.
-
-**For the panic handler they are different facts.** Spin, halt, print-and-exit,
-log-to-NVM-then-reboot are all implementable on every platform, and which one is
+**The panic handler is a free choice.** Spin, halt, print-and-exit,
+log-to-NVM-then-reboot are all implementable on every platform, and which is
 right depends on what the image IS — a fixture whose harness greps the message,
-a shipped controller, a bring-up image with a debugger attached. Keying panic on
-the platform therefore does lose something: the choice itself.
+a shipped controller, a bring-up image with a debugger attached. Nothing
+constrains the image here beyond "exactly one".
 
-Treating them as one decision is correct for **installation** and wrong for
-**policy**. That distinction is what the current design is missing, and stating
-it is this RFC's actual contribution — the allocator half is already settled.
+**The allocator is not a choice at all — only a placement.** The image decides
+WHERE the `#[global_allocator]` static lives (the link root, so there is exactly
+one); it does not get to decide what backs it. The backing must stay the
+platform arena, because the image's memory is not only Rust's:
+
+- zenoh-pico allocates through `z_malloc` on the C side,
+- CycloneDDS through `ddsrt_malloc` (CLAUDE.md: never libc — "RTOS heap is
+  separate"),
+- the RTOS itself through `k_malloc` / `pvPortMalloc` / `tx_byte_allocate`.
+
+If the Rust side installed its own arena, an image would carry two heaps that
+cannot see each other: fragmentation nothing can measure, and
+`nros_platform_heap_used_bytes` — RFC-0034 D7's "true unified figure where the
+platform owns one kernel heap shared by the C side and the Rust
+`#[global_allocator]`" — silently stops being true.
+
+The tree already builds it correctly, and says so:
+
+> every `platform-*` feature resolves `ConcretePlatform` to `CffiPlatform`,
+> whose `PlatformAlloc` impl IS `nros_platform_alloc`, and the bare-metal Rust
+> crates reach their own arena through the same trait. **One API, one arena, per
+> RFC-0034 D6.**
+
+So the correction to make is narrow: move WHERE `PlatformGlobalAllocator` is
+installed, never WHAT it forwards to. "Share the arena" is the invariant that
+survives the move, and it is the reason the allocator gets an installation site
+from the image and a policy from nobody.
 
 ## The evidence
 
@@ -197,6 +221,30 @@ other platforms are prevented from doing.
 
 ## The proposed UX
 
+### Which package configures it
+
+One rule, three shapes: **the package that declares the entry owns the image
+runtime**, because that package is what the final artifact is built from.
+
+| image shape | the entry, and where the panic line goes |
+| --- | --- |
+| workspace | the `*_entry` package (`src/threadx_entry`, `src/esp32_entry`, …) — the one carrying `nros::main!()` |
+| standalone example | the example package itself (`examples/<plat>/rust/<case>`), which carries `nros::main!()` directly |
+| C/C++ image | `nano_ros_entry()`'s generated TU — the CMake analogue, where the staticlib IS the deliverable |
+
+No other package says anything about it. A Node package, a board crate, an RMW
+backend and `nros-core` are all libraries linked INTO the image, and none of
+them claims the lang item.
+
+### What that buys
+
+Once the entry owns it, a panic raised **anywhere** — in `nros-core`'s executor,
+in a board crate's bring-up, inside the RMW backend, in a user node — unwinds to
+the one handler the image declared. That is the property the current design
+cannot state: today the handler an image gets depends on which crate won the
+feature negotiation, so the same panic in the same code reaches a spin loop in
+one image and libstd's abort in another, for reasons the author never wrote down.
+
 ### What a user writes
 
 The image's own crate declares its runtime, in one visible line:
@@ -263,9 +311,13 @@ Stated per layer, because the layers have different owners:
    `install_global_allocator!()`, so "one per image" means "one root" — which
    the build system controls — rather than "one unit", which it does not.
 
-3. **Policy is the image's, and only for panic.** The image names what a panic
-   does, in its own crate. The allocator needs no equivalent because its
-   implementation is its policy.
+3. **Policy is the image's, and only for panic.** The entry package names what
+   a panic does. The allocator gets no policy knob: the image chooses only the
+   installation SITE, and what is installed stays `PlatformGlobalAllocator`
+   forwarding to `nros_platform_alloc`. That constraint is not incidental — it
+   is what keeps ONE arena shared with the C side (`z_malloc`, `ddsrt_malloc`,
+   the RTOS's own), and what keeps `nros_platform_heap_used_bytes` a true
+   figure rather than half of one.
 
 4. **The entry layer materialises the default.** `nros::main!` and
    `nano_ros_entry()` generate code that IS part of the final artifact — the only
