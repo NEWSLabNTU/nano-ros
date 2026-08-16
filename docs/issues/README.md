@@ -1182,86 +1182,13 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
 
-**#532** (embedded, open 2026-08-13) — the platform clock ABI fixes a UNIT (`clock_ms` + `clock_us`) but
-cannot express RESOLUTION, so every port either lies or truncates: microseconds are a lie on ThreadX
-(100 Hz tick = 10 ms steps) and the mps2 bare-metal port (`clock_ms() * 1000`), while nanoseconds are
-discarded on POSIX and on boards whose hardware resolves 40 ns (mps2 SysTick, measured) or 6 ns (STM32F4
-DWT). The same header already advertises ns for the WALL clock while monotonic stops at us. Issues 0502,
-0515 and 0531 are three symptoms of the one missing fact. Surveyed all six backends: a Linux-style
-clock-id interface is un-implementable with fidelity on four of them (no ids at all on
-FreeRTOS/ThreadX/ESP-IDF; NuttX's `clock_getres` returns the same tick number for every id), and
-resolution is a per-board, sometimes per-BOOT value (Zephyr runtime cycle rate, ESP-IDF APB rescale), so a
-compile-time constant cannot carry it. Proposes one `clock_ns` symbol plus `clock_resolution_ns`, with
-`clock_ms`/`clock_us` as header wrappers. See `0532-*`.
-
-RESOLVED 2026-08-13 — **#535** the 74 west fixtures are manifest rows (70 zephyr leaves + the four
-`west-fixtures.sh` ones), the emitter reads them, and the lane narrows by coordinate: tier 2 builds 7
-instead of 70, measured 592 s → 76 s. The two literal-path fixtures this issue also named are fixed by a
-different mechanism than a row: neither IS a fixture in the manifest's sense — each is a postprocess of
-another row's artifact — so what they shared with their consumers was a PATH, and the fix is the KIND.
-`target-zenoh-fixture-posix/` moved out of the repo root to `build/zenoh-fixture-posix` (RFC-0070 R1) and
-the esp32 `.bin` literals in seven places became `kind::ESP32_QEMU`. The filing's list was incomplete —
-three tests read the zenoh fixture, not two; seven esp32 sites, not two — and one bug was caught before
-landing: `just esp32 clean` had been routed onto the ARM zenoh-pico constant and would have deleted the
-wrong tree. See `archived/0535-*`. (2026-08-13)
-
-RESOLVED 2026-08-13 — **#536** the four `west-fixtures.sh` fixtures are `[[compile_check_fixture]]` rows with
-two builders (`west-build`, `west-configure`), `output` as the stamp gate, and the builder recorded in the
-stamp. Three build with `--cmake-only` now. The filing's cost claim did NOT survive measurement: "pay for a
-full kernel build" is true of DISK and only for one fixture (93 MB → 7.3 MB); the self-pkg pair costs
-nothing to stop because it fails at cmake GENERATE, before any compilation. See `archived/0536-*`.
-
-RESOLVED 2026-08-13 — **#538** `fixture-inventory.py` is gated (`--check`) and its four stale rows are
-deleted. The open half — whether the file survives at all — is decided: KEPT. Its hand-authored half is now
-redundant and down to one true entry, but `prerequisite_rows()` models 22 SDK-prerequisite / preflight /
-`shared_mutation` facts no manifest row carries, and phase-339 treated that model as an obligation ("a stale
-`shared_mutation` is worse than none"). See `archived/0538-*`.
-
-RESOLVED 2026-08-13 — **#540** `bins/int32-observer` deleted, and the CLASS it hid in is now enforced:
-`fixture_source_coverage.rs` asserts every crate under `bins/` is a manifest row or a tracked exception,
-failing in three directions (each verified red first). The two live bins this issue named as unrowed are
-handled — `logging-smoke-zephyr-native-sim` has a west row (0549 removed its duplicate builder) and
-`ros-edition-pose-pub` is an allowlisted RFC-0058 exception. See `archived/0540-*`.
-
-RESOLVED 2026-08-15 — **#580** every cyclone interop test named its DDS domain with a LITERAL (117/118 in
-the two shell scripts; 99 ×6, 88, 42 across the C++ binaries), so two concurrent runs joined one bus and
-the collision presented as wrong DATA: a tier-2 sweep showed `nros sub captured 'hello-from-nros'` — case
-A.1's own publisher payload — while solo runs passed 17/17 twice. Fixed with ONE scheme in three languages
-(`ros2_e2e_common.sh`, `nros_test_domain.h`, both mirroring `nros_tests::unique_ros_domain_id`):
-`ROS_DOMAIN_ID` when set, else a per-process domain in 1..=232. Note for the next person: two concurrent
-copies of the FAILING TEST passed — the collision needs one suite's A.1 publisher alive during the other's
-A.2 window, so only two concurrent full SUITES reproduce it. A failed repro at the wrong granularity is not
-evidence of absence. And fixing only the shell half moved the failure to `service_roundtrip`, one file over.
-See `archived/0580-*`.
-
-RESOLVED 2026-08-15 — **#576** the four west-built compile-checks (`west_bringup_zephyr`,
-`west_board_import`, `zephyr_self_pkg_rust`, `zephyr_self_pkg_sibling`) never wrote the `.inputsig` the
-staleness gate reads, so tier 2 and tier 3 died at the gate right after a fully green
-`build-test-fixtures lane=all`. Build side wrote `.compile-ok` under `build/west-fixtures/<id>/`; the gate
-read `.inputsig` under `build/compile-check-fixtures/<id>/` — the issue-0196 rule, in the compile-check
-inventory. #0554 dropped these rows for `SCOPE=native` and rightly KEPT them for `all`/`coords`; this was
-its missing half, since keeping the demand is only sound if the building lane writes what the gate reads.
-`west-fixtures.sh` now stamps the sig on the same success condition, passing the RAW manifest line —
-the signature hashes the record verbatim, so an 8-field reconstruction of an 11-field line would have
-turned "missing" into a permanent "stale". See `archived/0576-*`.
-
-RESOLVED 2026-08-15 (phase-353) — **#509** the Zephyr lane was per-leaf-overhead bound, and every
-direction is now closed or refuted. FIXED: sync restamping byte-identical files (#562), and
-`west-fixtures.sh` wiping its build dir every invocation so a no-op replayed 1244 ninja edges — 1207 of
-them C compiles — plus a 129-crate rebuild (phase-353 W2; no-op edges 1244 -> 0). REFUTED by measurement:
-storage (iowait 0.25 % HDD vs 0.03 % NVMe, host since doubled to 125 GB RAM with the Zephyr build root
-already on SSD) and concurrency (the `/8` divisor is inert under the fifo jobserver; box 76 % idle). The
-title's numbers are all superseded — the 40 min was mid-sweep with eight families competing. Carry
-forward: **wall-clock is not a usable instrument on this host** (50–695 s for provably identical work) —
-count edges and leaves. Direction (3), fewer COLD leaves, continues as #604. See `archived/0509-*`.
-
-**Re-measured 2026-08-13 (phase-350):** a fully warm lane is **592 s (9 m 52 s)**, not 40 min — the
-original figure was taken MID-SWEEP with seven other families competing, so it should not be quoted as the
-lane's standalone cost. The narrowing this issue asked for now exists (phase-350 W1.b): tier 2 builds 7
-leaves instead of 70, **7.8×**, not the 10× the leaf count implies — per-leaf is 8.5 s over the full lane
-vs 10.9 s over tier 2's seven, because lane-level fixed cost does not shrink with the leaf set. That
-CONFIRMS this issue's core claim from the other direction. Its closing question ("can the cover retire
-some leaves?") is answered NO in W4: the 26 leaves no lane selects sit on coordinates with Runtime cells.
+**#532** (embedded, open 2026-08-13, RESTATED 2026-08-16) — the MONOTONIC half shipped as RFC-0073 /
+phase-352: `clock_ns` + `clock_resolution_ns` exist, `clock_ms`/`clock_us` were retired outright (not
+merely wrapped) and are gated, the coarse variant is a recorded deferral with a named trigger, and the
+"may resolution change after init" question is answered in the header. What REMAINS is the wall clock —
+`time_now_ms` + `time_since_epoch_secs` + `time_since_epoch_nanos`, three symbols for one fact, which
+RFC-0073 cites only as evidence and never scopes; the `secs`/`nanos` split also caps seconds at `uint32_t`.
+Checked against `platform.h`, not against the phase doc (phase-354 W4). See `0532-*`. (2026-08-16)
 
 **#507** (rmw, open 2026-08-10) — the cyclonedds fork carries TWO nano-ros-only lock changes
 upstream lacks: striped addrset locks (`942dda3c`) and the Zephyr-native ddsrt sync backend

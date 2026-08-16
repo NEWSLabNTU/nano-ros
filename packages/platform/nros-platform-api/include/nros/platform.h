@@ -545,8 +545,17 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv);
  *  before this function returns. */
 int8_t nros_platform_condvar_wait(void *cv, void *m);
 
-/** Like `condvar_wait`, but with an absolute monotonic deadline (in
- *  `clock_ms` units). Returns non-zero on timeout. */
+/** Like `condvar_wait`, but with an absolute monotonic deadline in
+ *  MILLISECONDS on the `nros_platform_clock_ns()` epoch — i.e.
+ *  `clock_ns() / 1000000`. Returns non-zero on timeout.
+ *
+ *  Spelt out because this said "`clock_ms` units" after RFC-0073 /
+ *  phase-352 W6 retired `nros_platform_clock_ms`: it named a function
+ *  that no longer exists, leaving a port author no way to resolve the
+ *  unit from this header. The unit itself never changed — every port
+ *  names the parameter `abstime_ms` and the Rust trait says
+ *  milliseconds — so this is the wording catching up, not an ABI
+ *  change. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
 /* ---- Threading: wake primitive (Phase 130) ----

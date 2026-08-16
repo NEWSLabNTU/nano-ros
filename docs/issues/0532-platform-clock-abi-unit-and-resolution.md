@@ -1,11 +1,57 @@
 ---
 id: 532
-title: "The platform clock ABI fixes a unit but cannot express resolution, so every port either lies or truncates"
+title: "The WALL clock still spreads one fact over three symbols — the monotonic half of this issue shipped as RFC-0073 / phase-352"
 status: open
 type: enhancement
 area: embedded
-related: [issue-0502, issue-0504, issue-0515, issue-0531]
+related: [issue-0502, issue-0504, issue-0515, issue-0531, rfc-0073, phase-352, phase-354]
 ---
+
+## Scope, restated 2026-08-16 (phase-354 W4)
+
+**Most of this issue shipped.** W4 of phase-354 exists to check exactly that
+before anyone plans work here, because phase-352 is titled "one nanosecond
+symbol, plus the resolution nobody could ask for" — on its face this issue's
+subject. Checked against the header rather than against the phase doc:
+
+| this issue's proposed direction | status |
+| --- | --- |
+| 1. `nros_platform_clock_ns` as the one monotonic symbol | **DONE** (`platform.h:164`) |
+| 2. `nros_platform_clock_resolution_ns` | **DONE** (`platform.h:178`) |
+| 3. `clock_ms` / `clock_us` stop being per-port symbols | **DONE, and further** — phase-352 W6 retired them outright rather than keeping wrappers; `check-retired-platform-clock-symbols` gates their return |
+| 4. keep a coarse path only if measurement justifies it | **DECIDED: deferred, not refused.** RFC-0073 names the trigger — "no caller has yet been shown to read the clock often enough to care. Add it when one is" |
+| 5. wall clock collapses to one `time_now_ns` | **NOT COVERED — this is what remains** |
+| open q: may `resolution_ns` change after init? | **ANSWERED** in the header: constant after platform init, and a port whose rate can change reports its COARSEST value. RFC-0073 keeps the liberalisation as an open question |
+
+So this issue is not "already resolved and never closed", and it is also not
+open as written. **What is left is item 5 alone**, and the rest of this document
+is the monotonic argument that has already been acted on — kept because it is
+the reasoning item 5 inherits.
+
+## What remains: the wall clock
+
+Unchanged since this was filed:
+
+```c
+uint64_t nros_platform_time_now_ms(void);         /* platform.h:286 */
+uint32_t nros_platform_time_since_epoch_secs(void);
+uint32_t nros_platform_time_since_epoch_nanos(void);
+```
+
+Three symbols for one fact, with the same defect the monotonic side had — and
+the `secs`/`nanos` split additionally caps the seconds field at `uint32_t`,
+which is a 2106 problem in a tree that just moved its monotonic clock to `u64`
+ns for range. RFC-0073 mentions the wall clock only as EVIDENCE of the
+inconsistency ("the wall clock advertises `time_since_epoch_nanos()` while
+monotonic stops at µs"), never as scope, so nothing here has been designed.
+
+The monotonic collapse is the worked example: one `u64` ns symbol, ports convert
+from whatever they have, and the multi-symbol epoch-agreement question stops
+existing. ~68 in-tree references across C and Rust, so a deprecation window is
+needed as it was for `clock_ms`.
+
+Not urgent, and deliberately not scheduled here — phase-354 W4's acceptance is
+this restatement, not the work.
 
 ## Problem
 

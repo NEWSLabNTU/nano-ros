@@ -1,6 +1,6 @@
 # Phase 354 — Contract seams: the places two sides disagree about one fact
 
-**Status (2026-08-16). W1 and W2 DONE; W3 and W4 open.** This header said
+**Status (2026-08-16). W1, W2 and W4 DONE; W3 open.** This header said
 "PLANNING — nothing implemented" after work had landed — corrected here.
 
 * **W1 (#493, two workspace roots / one corrosion dir)** — **DONE.** Both halves
@@ -9,8 +9,10 @@
   finding (a): one gate joins the precondition batch, one is declined WITH
   evidence. #466 resolved.
 * **W3 (#454, `*_send_goal_raw` does not strip the CDR header)** — OPEN.
-* **W4 (#532, clock ABI resolution)** — OPEN; still wants the staleness check
-  against phase-352 before any design work.
+* **W4 (#532, clock ABI resolution)** — **DONE.** The check ran: phase-352
+  covers items 1-3 and answers the open question; item 4 is a recorded
+  deferral; item 5 (the wall clock) is untouched. #532 restated to that
+  remainder — see the W4 section.
 
 **Owns:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md),
 [issue 0466](../issues/0466-tier1-setup-contract-unstated.md),
@@ -162,6 +164,35 @@ determine whether #532 is already resolved and simply never closed.
 **Acceptance.** #532 is either closed against phase-352 with the specific
 mechanism named, or restated to say what phase-352 did NOT cover. Do not plan
 work on it before that check.
+
+### DONE 2026-08-16 — restated, not closed
+
+Checked against `platform.h` rather than against the phase doc, which is the
+point of the wave:
+
+| #532's proposed direction | verdict |
+| --- | --- |
+| 1. `clock_ns` as the one monotonic symbol | DONE — `platform.h:164` |
+| 2. `clock_resolution_ns` | DONE — `platform.h:178` |
+| 3. `clock_ms`/`clock_us` stop being per-port symbols | DONE **and further** — W6 retired them outright instead of keeping wrappers, gated by `check-retired-platform-clock-symbols` |
+| 4. coarse path only if measured | DECIDED — RFC-0073 defers it "not refused" and names the trigger |
+| 5. wall clock collapses to one `time_now_ns` | **NOT COVERED** |
+| open q: may `resolution_ns` change after init? | ANSWERED in the header (constant after init; a scaling port reports its coarsest) |
+
+So #532 was neither "already resolved and never closed" nor open as written. It
+is restated to item 5 alone: `time_now_ms` + `time_since_epoch_secs` +
+`time_since_epoch_nanos` are still three symbols for one fact, and RFC-0073
+mentions the wall clock only as EVIDENCE of the inconsistency, never as scope.
+The `secs`/`nanos` split also caps seconds at `uint32_t` — a 2106 problem in a
+tree that just moved monotonic to `u64` ns for range.
+
+Per this wave's own instruction, the remaining work is NOT planned here.
+
+**One defect found by the check.** `condvar_wait_until`'s deadline was
+documented in "`clock_ms` units" — a symbol W6 retired, so the C header
+specified a parameter in terms of a function that no longer exists. The unit
+never changed (every port names it `abstime_ms`; the Rust trait says
+milliseconds), so this is wording catching up, not an ABI change. Fixed.
 
 ---
 

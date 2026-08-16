@@ -243,7 +243,7 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_wait(cv: *mut core::ffi::c_void, m: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
-    #[doc = " Like `condvar_wait`, but with an absolute monotonic deadline (in\n  `clock_ms` units). Returns non-zero on timeout."]
+    #[doc = " Like `condvar_wait`, but with an absolute monotonic deadline in\n  MILLISECONDS on the `nros_platform_clock_ns()` epoch — i.e.\n  `clock_ns() / 1000000`. Returns non-zero on timeout.\n\n  Spelt out because this said \"`clock_ms` units\" after RFC-0073 /\n  phase-352 W6 retired `nros_platform_clock_ms`: it named a function\n  that no longer exists, leaving a port author no way to resolve the\n  unit from this header. The unit itself never changed — every port\n  names the parameter `abstime_ms` and the Rust trait says\n  milliseconds — so this is the wording catching up, not an ABI\n  change."]
     pub fn nros_platform_condvar_wait_until(
         cv: *mut core::ffi::c_void,
         m: *mut core::ffi::c_void,
