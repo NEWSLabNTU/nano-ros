@@ -37,6 +37,22 @@ pub struct ShimConfig {
     /// the spin-driven fallback flush. Bounds the extra publish latency the
     /// batch adds. Only meaningful with `tx_batch`.
     pub tx_batch_flush_ms: usize,
+    /// issue 0626 / 0460 — priority of zenoh-pico's read task
+    /// (`ZPICO_READ_TASK_PRIORITY`, default 16, from
+    /// `CONFIG_NROS_ZENOH_READ_PRIORITY`).
+    ///
+    /// Here rather than only in `nros_rmw_zenoh.cmake` because that file is the
+    /// C lane, and a Zephyr RUST image inherits none of cmake's
+    /// `set(ENV{...})` exports — issue 0460's class, where the two lanes
+    /// disagreed on `MAX_QUERYABLES` and the ABI split silently. The value is
+    /// NORMALISED 0–31 and mapped down onto the platform's own range, not a
+    /// raw RTOS priority; CLAUDE.md records the collision that follows from
+    /// confusing the two units (issue 0623).
+    pub read_task_priority: usize,
+    /// issue 0626 / 0460 — priority of zenoh-pico's lease task
+    /// (`ZPICO_LEASE_TASK_PRIORITY`, default 16, from
+    /// `CONFIG_NROS_ZENOH_LEASE_PRIORITY`). See [`ShimConfig::read_task_priority`].
+    pub lease_task_priority: usize,
 }
 
 impl ShimConfig {
@@ -64,43 +80,56 @@ impl ShimConfig {
         )
     }
 
+    /// The `-D` flags the C shim must be compiled with, as data.
+    ///
+    /// Split out from [`ShimConfig::apply_to_cc`] so it is testable: `cc::Build`
+    /// exposes no way to read back what was defined on it, so a test written
+    /// against the builder can only assert that the call did not panic. Issue
+    /// 0626's knobs reached the C lane and not this one for exactly as long as
+    /// nobody could write that assertion.
+    pub fn defines(&self) -> Vec<(&'static str, String)> {
+        let mut out = vec![
+            ("ZPICO_MAX_PUBLISHERS", self.max_publishers.to_string()),
+            ("ZPICO_MAX_SUBSCRIBERS", self.max_subscribers.to_string()),
+            ("ZPICO_MAX_QUERYABLES", self.max_queryables.to_string()),
+            ("ZPICO_MAX_LIVELINESS", self.max_liveliness.to_string()),
+            ("ZPICO_MAX_PENDING_GETS", self.max_pending_gets.to_string()),
+            ("ZPICO_MAX_SESSIONS", self.max_sessions.to_string()),
+            (
+                "ZPICO_GET_REPLY_BUF_SIZE",
+                self.get_reply_buf_size.to_string(),
+            ),
+            (
+                "ZPICO_GET_POLL_INTERVAL_MS",
+                self.get_poll_interval_ms.to_string(),
+            ),
+        ];
+        if self.tx_batch {
+            out.push(("ZPICO_TX_BATCH", "1".to_string()));
+            out.push((
+                "ZPICO_TX_BATCH_FLUSH_MS",
+                self.tx_batch_flush_ms.to_string(),
+            ));
+        }
+        // Unconditional, matching the C lane in `nros_rmw_zenoh.cmake`: the
+        // shim `#define`s its own 16/16 fallback, so omitting these is not "no
+        // opinion" — it is the C default silently winning over Kconfig, on the
+        // Rust lane only. Issue 0460's shape (issue 0626's knobs).
+        out.push((
+            "ZPICO_READ_TASK_PRIORITY",
+            self.read_task_priority.to_string(),
+        ));
+        out.push((
+            "ZPICO_LEASE_TASK_PRIORITY",
+            self.lease_task_priority.to_string(),
+        ));
+        out
+    }
+
     /// Add `-D` flags to a `cc::Build` so the C shim picks up the same values.
     pub fn apply_to_cc(&self, build: &mut cc::Build) {
-        build.define(
-            "ZPICO_MAX_PUBLISHERS",
-            self.max_publishers.to_string().as_str(),
-        );
-        build.define(
-            "ZPICO_MAX_SUBSCRIBERS",
-            self.max_subscribers.to_string().as_str(),
-        );
-        build.define(
-            "ZPICO_MAX_QUERYABLES",
-            self.max_queryables.to_string().as_str(),
-        );
-        build.define(
-            "ZPICO_MAX_LIVELINESS",
-            self.max_liveliness.to_string().as_str(),
-        );
-        build.define(
-            "ZPICO_MAX_PENDING_GETS",
-            self.max_pending_gets.to_string().as_str(),
-        );
-        build.define("ZPICO_MAX_SESSIONS", self.max_sessions.to_string().as_str());
-        build.define(
-            "ZPICO_GET_REPLY_BUF_SIZE",
-            self.get_reply_buf_size.to_string().as_str(),
-        );
-        build.define(
-            "ZPICO_GET_POLL_INTERVAL_MS",
-            self.get_poll_interval_ms.to_string().as_str(),
-        );
-        if self.tx_batch {
-            build.define("ZPICO_TX_BATCH", "1");
-            build.define(
-                "ZPICO_TX_BATCH_FLUSH_MS",
-                self.tx_batch_flush_ms.to_string().as_str(),
-            );
+        for (name, value) in self.defines() {
+            build.define(name, value.as_str());
         }
     }
 }
@@ -781,6 +810,8 @@ int32_t zpico_init(void);\n";
             get_poll_interval_ms: 7,
             tx_batch: false,
             tx_batch_flush_ms: 50,
+            read_task_priority: 11,
+            lease_task_priority: 12,
         };
 
         let body = cfg.rust_consts();
@@ -788,6 +819,53 @@ int32_t zpico_init(void);\n";
         assert!(body.contains("ZPICO_MAX_PENDING_GETS: usize = 5;"));
         assert!(body.contains("ZPICO_MAX_SESSIONS: usize = 9;"));
         assert!(!body.contains("get_reply_buf_size"));
+    }
+
+    /// issue 0626 / 0460 — the transport-task priorities must reach the C shim
+    /// from the RUST lane too.
+    ///
+    /// `nros_rmw_zenoh.cmake` passes them as compile definitions on the C lane,
+    /// and `zpico.c` `#define`s its own 16/16 fallback, so a Rust lane that
+    /// omitted them did not "leave the priority unset" — it silently took the C
+    /// default while Kconfig said otherwise, on the one platform where the
+    /// setting exists at all. That is issue 0460's shape, and it is why these
+    /// are emitted unconditionally rather than under a feature test.
+    #[test]
+    fn transport_task_priorities_reach_the_c_shim() {
+        for tx_batch in [false, true] {
+            let cfg = ShimConfig {
+                max_publishers: 1,
+                max_subscribers: 2,
+                max_queryables: 3,
+                max_liveliness: 4,
+                max_pending_gets: 5,
+                max_sessions: 1,
+                get_reply_buf_size: 6,
+                get_poll_interval_ms: 7,
+                tx_batch,
+                tx_batch_flush_ms: 50,
+                read_task_priority: 11,
+                lease_task_priority: 12,
+            };
+            let defines = cfg.defines();
+            let get = |name: &str| {
+                defines
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .unwrap_or_else(|| panic!("{name} not defined (tx_batch={tx_batch})"))
+                    .1
+                    .clone()
+            };
+            assert_eq!(get("ZPICO_READ_TASK_PRIORITY"), "11");
+            assert_eq!(get("ZPICO_LEASE_TASK_PRIORITY"), "12");
+            // The knobs that were already correct stay correct in both states —
+            // the point of the loop is that `tx_batch` gates only its own pair.
+            assert_eq!(get("ZPICO_MAX_QUERYABLES"), "3");
+            assert_eq!(
+                defines.iter().any(|(k, _)| *k == "ZPICO_TX_BATCH"),
+                tx_batch
+            );
+        }
     }
 
     #[test]

@@ -52,6 +52,11 @@ fn shim_config_from_env() -> ShimConfig {
         get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
         tx_batch: env_usize("ZPICO_TX_BATCH", 0) != 0,
         tx_batch_flush_ms: env_usize("ZPICO_TX_BATCH_FLUSH_MS", 50),
+        // Defaults MIRROR the `#define` fallbacks in
+        // `zpico-sys/c/zpico/zpico.c` (16 / 16). A different number here would
+        // not be a tuning choice, it would be the two lanes disagreeing.
+        read_task_priority: env_usize("ZPICO_READ_TASK_PRIORITY", 16),
+        lease_task_priority: env_usize("ZPICO_LEASE_TASK_PRIORITY", 16),
     }
 }
 
@@ -113,6 +118,17 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
     (
         "ZPICO_TX_BATCH_FLUSH_MS",
         "CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS",
+    ),
+    // issue 0626's knobs. The cmake side forwarded them from the day the
+    // feature landed; without these rows only the C lane saw them, which is
+    // issue 0460 exactly.
+    (
+        "ZPICO_READ_TASK_PRIORITY",
+        "CONFIG_NROS_ZENOH_READ_PRIORITY",
+    ),
+    (
+        "ZPICO_LEASE_TASK_PRIORITY",
+        "CONFIG_NROS_ZENOH_LEASE_PRIORITY",
     ),
 ];
 

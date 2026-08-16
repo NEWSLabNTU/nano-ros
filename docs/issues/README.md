@@ -93,6 +93,19 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
+Recently resolved (2026-08-16): **#631** — `just check` was RED on main: #626 made the zenoh read/lease task
+priorities settable on Zephyr but wired them into the C lane only, so a Zephyr RUST image compiled the shim
+with `zpico.c`'s own `#define` fallback of 16 while Kconfig said otherwise. `nros_cargo_build.cmake` publishes
+knobs with `set(ENV{…})`, which touches only the configure-time process, and zephyr-lang-rust's
+`rust_cargo_application` inherits nothing — **issue 0460 exactly**, and `check-kconfig-knob-forwarding` (0460's
+remedy) fired the moment the feature landed. Silent, because 16 is a plausible priority, and it is a SCHEDULING
+parameter, so the two lanes produce images that behave differently under load rather than crash — the precise
+question #626 exists to let people ask. Fixed with two `KCONFIG_KNOBS` rows, two `ShimConfig` fields and two
+unconditional `-D`s (defaults 16/16, mirroring the C `#ifndef`). Root of why it could happen: `cc::Build`
+exposes no getter for its defines, so `apply_to_cc` was untestable — the list is now a pure `defines()` and the
+assertion exists, mutation-tested by reconstructing the pre-fix state. Reproduced in a clean worktree at
+`e228a8e80` with no other commits. See `archived/0631-*`.
+
 Recently resolved (2026-08-16): **#630** — tier 1 could not go GREEN on a host with no Zephyr workspace, so
 "the tier anyone can afford per task" had no baseline there. `CiLane::Tier1 => RunScope::Native` narrows by test
 NAME; `sched_dims_applied` is ONE test over `matrix::SCHED_CELLS`, which spans every platform by construction
