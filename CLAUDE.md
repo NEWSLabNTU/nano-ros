@@ -404,7 +404,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   re-creating `examples/**/target/` two minutes after the group dir was written, on a platform
   already migrated. Give such a build a row (preferred) or derive its dir from
   `nros_fixture_target_dir_flag` + `nros_fixture_row_artifact_dir` — **never a literal, and move
-  the test-side locator in the SAME commit** (#393). `examples/**/target-*/` is globally ignored;
+  the test-side locator in the SAME commit** (#393). `examples/**/target-*/` is ignored per-LEAF (`/target*/` or a named entry in the leaf's own `.gitignore`), NOT globally — a new sibling dir needs its leaf's rule added;
   a plain `target/` is not, so it is gated: `check-example-leaf-target-dirs`. A PLATFORM's fixture
   profile is `nros_cargo_platform_profile` — the staleness probe must use it too, or it rebuilds
   into a second profile dir and reports permanent false-STALE. Residue → issue 0488.

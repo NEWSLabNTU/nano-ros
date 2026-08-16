@@ -2565,6 +2565,18 @@ rust-rtos-link-check: _require-leaf-includes
     # Building what the platform ships also stops this lane writing a SECOND
     # profile directory beside the fixtures — the shape phase-340 P2 names as a
     # permanent false-STALE source when a probe and a builder disagree.
+    # These two wrote `examples/<leaf>/target/` — a plain `cd <leaf> && cargo
+    # build`, which is verbatim the second build path phase-340 P2 names. The
+    # gate `check-example-leaf-target-dirs` calls that shape either residue or
+    # "a writer this gate cannot see"; it was the latter, found by deleting the
+    # dirs and watching exactly these two come back during `just ci`.
+    #
+    # NOT the shared fixture group: `nros_fixture_target_dir_flag` defers RTOS
+    # rows, so it returns empty for both platforms and the build would fall
+    # straight back to the leaf `target/`. A per-leaf `target-*` sibling is what
+    # the threadx line below already uses, it is globally gitignored, and it
+    # keeps ONE workspace root per target dir — which is the constraint issue
+    # 0616 is about, and the reason these must not simply share a directory.
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
@@ -2572,10 +2584,10 @@ rust-rtos-link-check: _require-leaf-includes
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
         # crate). Build with default features, mirroring the nuttx talker below.
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
-        ( cd examples/qemu-arm-freertos/rust/talker && cargo build "${freertos_profile[@]}" ) >/dev/null
+        ( cd examples/qemu-arm-freertos/rust/talker && cargo build "${freertos_profile[@]}" --target-dir target-link-check ) >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
-        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" ) >/dev/null
+        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi

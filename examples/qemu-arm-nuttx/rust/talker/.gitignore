@@ -1,3 +1,7 @@
 /target/
+# `rust-rtos-link-check` builds here rather than into `target/`, which the
+# gate check-example-leaf-target-dirs forbids (phase-340 P2's second build
+# path). Per-leaf, not shared: one workspace root per target dir (issue 0616).
+/target-link-check/
 /generated/
 /build/
