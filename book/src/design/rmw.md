@@ -208,4 +208,37 @@ Blocking waits are composed above the RMW by the executor (which keeps driving `
 
 The core difference is that ROS 2 rmw is a **C plugin interface** designed for desktop systems with dynamic linking, heap allocation, and OS threading. nros-rmw is a **Rust trait hierarchy** designed for MCUs with static dispatch, stack allocation, and cooperative scheduling. The trade-off is flexibility (ROS 2 can swap backends at runtime) vs efficiency (nros eliminates all abstraction overhead at compile time).
 
-Despite these differences, the two are **wire-compatible** when using the same transport. An nros node using `nros-rmw-zenoh` communicates with a ROS 2 node using `rmw_zenoh_cpp` through the same `zenohd` router, with matching QoS profiles and CDR encoding.
+Despite these differences, the two are **wire-compatible** when using the same transport. An nros node using `nros-rmw-zenoh` communicates with a ROS 2 node using `rmw_zenoh_cpp` through the same router, with matching QoS profiles and CDR encoding.
+
+### The zenoh pairing (phase-362 / RFC-0075)
+
+The router is **the one ROS ships** — `ros2 run rmw_zenoh_cpp rmw_zenohd`. It
+links the same `libzenohc.so` that `rmw_zenoh_cpp` does, so it cannot drift from
+the RMW you are actually talking to, and it is what a ROS 2 deployment runs.
+nano-ros no longer ships a router of its own.
+
+The table below is **data to diff a future failure against, not a constraint we
+enforce**. `rmw_zenoh_cpp` lives on your machine, installed by your distro; we
+cannot pin it, and the interesting number is not the ROS package version anyway.
+
+| side | component | observed |
+| --- | --- | --- |
+| host | `rmw_zenoh_cpp` router + RMW | zenoh-c **1.6.2** (ROS 2 Humble, measured 2026-08-16) |
+| firmware | `zenoh-pico` | **1.7.2** |
+
+Read the zenoh version from the header, never from the package manager:
+
+```
+/opt/ros/<distro>/opt/zenoh_cpp_vendor/include/zenoh_configure.h   #define ZENOH_C "…"
+packages/rmw/zenoh/zpico-sys/zenoh-pico/version.txt
+```
+
+The ROS package version (`ros-humble-rmw-zenoh-cpp 0.1.9`) is a **wrapper**
+version and says nothing about the zenoh inside it — issue 0609 measured that
+same package moving its vendored zenoh 1.2.0 → 1.8.0 in a patch-level bump, and
+reading the package version instead of the header is what produced a wrong
+version claim in that issue's first filing.
+
+The two sides need not match. Under zenoh's 1.x wire guarantee a firmware pin
+should move for its own reasons — footprint, features, fixes — rather than to
+chase a host package.
