@@ -195,17 +195,25 @@ absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_id
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
 **#642** (build/testing, open 2026-08-16) — `check-archive-lang-items` fails `build-test-fixtures` AFTER all
-eight platform families report OK, on `link.txt` files under
-`examples/workspaces/*/build/nros-metadata/metadata-probe-cmake/` — metadata-PROBE residue dated **Jul 31**
-and **gitignored** (`examples/workspaces/c/.gitignore:2:/build/`). Deleting those dirs makes the gate pass
-with no source change. The RULE (one allocator per link line, #0616/#0436) is right; the SCOPE is not — a
-probe's link line is not an image's, and a 16-day-old one is not evidence about this tree. Second problem:
-the scan runs unbounded `find <dir> -name link.txt -path '*CMakeFiles*'` over `examples`, `packages` and
-`build`, measured at 22 min elapsed against 15 s CPU (pure I/O over every leaf build tree) — paid by every
-fixture build. Fix: scope to real artifacts (skip `*/nros-metadata/*`, or take the set from the fixture
-manifest), respect gitignore, prune build dirs, or apply a freshness rule (#0445's reasoning). Gate landed
-2026-08-16 in `fb5ef2521` / `133aaa61a`. NOTE #0645 and #0641 landed perf fixes to OTHER scans the same day;
-this one was not among them. See `0642-*`. (2026-08-16)
+eight platform families report OK, on `link.txt` under
+`examples/workspaces/*/build/nros-metadata/metadata-probe-cmake/` — metadata-PROBE residue dated **Jul 31**,
+**gitignored** (`examples/workspaces/c/.gitignore:2:/build/`). Deleting those dirs makes the gate pass with
+no source change. The RULE (one allocator per link line, #0616/#0436) is right; the SCOPE is not — a probe's
+link line is not an image's, and a 16-day-old one is not evidence about this tree. Second problem: unbounded
+`find <dir> -name link.txt -path '*CMakeFiles*'` over `examples`, `packages`, `build` — 22 min elapsed
+against 15 s CPU, paid by every fixture build. Fix: scope to real artifacts (skip `*/nros-metadata/*`, or
+take the set from the fixture manifest), respect gitignore, prune build dirs, or apply a freshness rule
+(#0445). NOTE #0645/#0641 landed perf fixes to OTHER scans the same day; this one was not among them.
+See `0642-*`. (2026-08-16)
+
+**#643** (core/build, open 2026-08-16) — `just ci-matrix` fails `check-feature-contract`: `nros-node`'s
+`env = ["std"]` (from `1badb6f72`, phase-359 W10, *"`env` is a capability, not the `std` flavour"*) trips the
+gate's own rule that a capability REQUIRES the heap and must not GRANT it. The tension is real, not a typo —
+`env` needs `std::env`, and the contract exists so a capability cannot pull `std` into an image that never
+asked. Three non-equivalent fixes (compile_error! naming the feature; read the environment through a platform
+capability; or exempt hosted capabilities and weaken the gate) — a design call inside an ACTIVE phase, so
+recorded rather than patched. Everything before it passes, including contract clauses (a/source)(b)(c)(d)(e)
+and "exactly one `#[global_allocator]`". Found by a tier-2 sweep. See `0643-*`. (2026-08-16)
 
 **#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
 store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
