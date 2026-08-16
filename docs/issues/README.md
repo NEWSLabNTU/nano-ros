@@ -267,6 +267,20 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
+**#651** (build/zephyr, open 2026-08-16) — nothing runnable before a push touches Zephyr **4.4**.
+`NROS_ZEPHYR_VERSION` defaults to `3.7` and no tier sets it, so tiers 1–3 all resolve `west.yml`; the 4.4
+line lives only in `nightly.yml` (10 of 20 matrix cells, plus `ci-both` and a copy-out check), behind a
+path filter and a `0 5 * * *` schedule. 3.7 is a poor proxy — the lines differ in Kconfig option sets (a
+`select` of a symbol absent in the other line is a WARNING, not an error), in patch set
+(`patches/4.4.sh`: three NSOS re-anchors + a `pthread_mutex_unlock` relaxation for 4.x owner-only-unlock
+`k_mutex`), and in workspace (separate sibling dir, py312 floor) — and `ci-both` SKIPS an unprovisioned
+line, so one workspace reads the same colour as two. Surfaced by #626's
+`select POSIX_PRIORITY_SCHEDULING`: verified on 3.7, unverifiable on 4.4 without a full west fetch.
+Checked the "a feature requires 4.4" recollection against the record — phase-199 says the rolling line is a
+POLICY slot (LTS + ≤1 rolling, floor set by `zephyr-lang-rust`), `65c1998a4` names no feature, and all
+4.4-specific issue history (0058, 0078) is keeping the line building rather than a capability 3.7 lacks;
+correct that section if a counter-example predates it, because it changes the priority. See `0651-*`.
+
 **#648** (build, open 2026-08-16) — the fixture fan-out serialises on cargo's MACHINE-WIDE package-cache
 lock (`$CARGO_HOME/.package-cache`), not on a build dir. Sampled mid-`lane=all`: 23 cargo processes, 22
 sleeping, **4** rustc actually compiling, **274** `Blocking waiting for file lock on package cache`, and
