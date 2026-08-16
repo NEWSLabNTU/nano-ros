@@ -32,4 +32,9 @@
 #![no_std]
 #![no_main]
 
+// phase-366 W5.c — this image's ending, declared by the image (the board no
+// longer supplies it). Forwards to the board's `nros_platform_panic`:
+// `nros: PANIC <msg>` then exit(1), the status the e2e harness expects.
+nros::panic_to_platform!();
+
 nros::main!(launch = "demo_bringup");

@@ -13,11 +13,48 @@
 //! link args.
 
 // phase-359 W7 — the NuttX family is `no_std`; the board crate supplies this
-// image's `#[panic_handler]` and `#[global_allocator]`, and `nros::main!` is not
-// used here, so this bin spells out the `extern "C" fn main` that `nsh_main`
-// calls (libstd's `lang_start` used to supply that symbol).
+// image's `#[global_allocator]`, and `nros::main!` is not used here, so this bin
+// spells out the `extern "C" fn main` that `nsh_main` calls (libstd's
+// `lang_start` used to supply that symbol).
+//
+// phase-366 W5.c/W5.d — the `#[panic_handler]` is no longer the board's. This
+// image declares it below, forwarding to the board's `nros_platform_panic`
+// (`nros: PANIC <msg>`, then exit(1) — the status the harness expects). Written
+// out rather than `nros::panic_to_platform!()` because this bin does not dep the
+// `nros` facade.
 #![no_std]
 #![no_main]
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write as _;
+
+    struct Buf {
+        bytes: [u8; 192],
+        used: usize,
+    }
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let room = self.bytes.len() - self.used;
+            let n = s.len().min(room);
+            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
+            self.used += n;
+            Ok(())
+        }
+    }
+
+    let mut buf = Buf {
+        bytes: [0u8; 192],
+        used: 0,
+    };
+    let _ = write!(buf, "{info}");
+
+    unsafe extern "C" {
+        fn nros_platform_panic(msg: *const u8, len: usize) -> !;
+    }
+    // SAFETY: `buf.bytes[..used]` is initialised and outlives the diverging call.
+    unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
+}
 
 // Link-anchor the board crate: its `entry.rs` `nsh_main` (the NuttX
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link

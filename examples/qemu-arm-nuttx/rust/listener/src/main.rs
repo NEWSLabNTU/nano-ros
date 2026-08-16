@@ -11,4 +11,14 @@
 #![no_std]
 #![no_main]
 
+// phase-366 W5.c — this image's ending, declared by the image. Forwards to the
+// board's `nros_platform_panic` (`nros: PANIC <msg>`, then exit(1), which is the
+// status the e2e harness expects). Swap for `use panic_halt as _;` or a handler
+// that logs and reboots.
+//
+// In `main.rs` here, not `lib.rs`: these packages are `crate-type = ["rlib"]`
+// only — phase-359 W7 dropped `staticlib` precisely because a staticlib is a
+// FINAL artifact needing its own lang item. The bin is the final artifact.
+nros::panic_to_platform!();
+
 nros::main!();
