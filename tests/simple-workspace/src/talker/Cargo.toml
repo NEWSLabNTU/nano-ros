@@ -21,7 +21,7 @@ path = "src/lib.rs"
 # behalf. What remains is the message crate's own `std`, which is that crate's
 # decision to make.
 default = []
-std = ["std_msgs/std"]
+# (the message crate no longer has a `std` feature to forward — W10.)
 
 [dependencies]
 # Message bindings (patched to local generated via .cargo/config.toml)

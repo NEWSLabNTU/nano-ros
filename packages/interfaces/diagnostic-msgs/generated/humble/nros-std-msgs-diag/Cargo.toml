@@ -12,7 +12,11 @@ ament_version = "4.9.1"
 
 [features]
 default = []
-std = ["nros-core/std", "nros-serdes/std", "nros-builtin-interfaces-diag/std"]
+# phase-359 W10 — the `std` feature is GONE from this crate. It never gated
+# anything here: this crate's own sources contain no `std::` path and no
+# `feature = "std"` arm, so the feature existed purely to hand the flavour down
+# to nros-core / nros-serdes on a consumer's behalf. A message crate has no
+# business deciding whether the runtime under it is hosted.
 
 [dependencies]
 # nros crates (patched to local via .cargo/config.toml during development)

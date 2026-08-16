@@ -544,16 +544,19 @@ fn generate_cargo_toml(
     dependencies: &HashSet<String>,
     has_actions: bool,
 ) -> Result<()> {
-    // Build std feature list including all dependencies
-    let mut std_features = vec![
-        "\"nros-core/std\"".to_string(),
-        "\"nros-serdes/std\"".to_string(),
-    ];
-    for dep in dependencies {
-        let crate_name = dep.replace('-', "_");
-        std_features.push(format!("\"{}/std\"", crate_name));
-    }
-    let std_feature_list = std_features.join(", ");
+    // phase-359 W10 — no `std` feature is emitted any more.
+    //
+    // A generated message crate has no `std::` path and no `feature = "std"`
+    // arm of its own; the feature was built here purely to forward the flavour
+    // to nros-core / nros-serdes (and, transitively, to every message crate it
+    // depends on). That is how a leaf asking for `alloc` still ended up with a
+    // hosted core — the same defect the RMW backends had, one tier down and
+    // multiplied by every regenerated crate on every host.
+    //
+    // The two `cargo_nros.toml.jinja` copies carry the matching comment. They
+    // are DORMANT — this function is the live emitter, which is exactly what
+    // their own header warns about — so they are kept in step rather than
+    // trusted.
 
     // Use crates.io version specifiers for nros crates.
     // For development, use .cargo/config.toml [patch.crates-io] to point to local paths.
@@ -586,7 +589,6 @@ ament_version = "{}"
 
 [features]
 default = []
-std = [{std_features}]
 
 [dependencies]
 {nros_core_dep}
@@ -595,7 +597,6 @@ heapless = "0.8"
 "#,
         package_name,
         ament_version,
-        std_features = std_feature_list,
         nros_core_dep = nros_dep_line("nros-core", output_dir),
         nros_serdes_dep = nros_dep_line("nros-serdes", output_dir),
     );

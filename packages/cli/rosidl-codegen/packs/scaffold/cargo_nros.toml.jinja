@@ -58,7 +58,11 @@ ament_version = "{{ package_version }}"
 # `std` implies `alloc` (issue 0598): no supported configuration has the
 # standard library present and no allocator.
 default = []
-std = ["alloc", "nros-core/std", "nros-serdes/std"]
+# phase-359 W10 — no `std` feature is emitted. A generated message crate has no
+# `std::` path and no `feature = "std"` arm of its own, so the feature could only
+# ever forward the flavour to nros-core / nros-serdes on the consumer's behalf —
+# which is how a leaf that asked for `alloc` still got a hosted core. `alloc` is
+# emitted below because generated types genuinely use it.
 alloc = ["nros-core/alloc", "nros-serdes/alloc"]
 
 [dependencies]

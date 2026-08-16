@@ -653,6 +653,45 @@ The count only moved 16 -> 14 once the comment was reworded.
 **Forwarders: 17 -> 14.** What remains is 6 core/api crates and 8 committed
 generated message crates — no test crate, no fixture workspace, no backend.
 
+#### The message-crate tier — **DONE 2026-08-17**
+
+The 8 committed generated message crates declared `std = ["nros-core/std",
+"nros-serdes/std", …]`. Measured: all 8 contain **zero** `std::` paths and
+**zero** `feature = "std"` arms in their own sources, and none declares an
+`alloc` feature either. The feature was pure pass-through — a message crate
+deciding, on its consumer's behalf, whether the runtime beneath it is hosted.
+Deleted, along with `nros-diagnostics`'s forward of one of them (same shape,
+same zero own-usage) and the `std_msgs/std` forward left in the two
+`tests/simple-workspace` leaves.
+
+**The plan's "2 codegen template copies" were the wrong file.** Both
+`cargo_nros.toml.jinja` copies are DORMANT — their own header warns that "a
+dormant template that disagrees with the live emitter is how the next `default`
+regression gets in", and that is exactly what happened here: editing both and
+regenerating produced a crate that still had `std`. The live emitter is
+`rosidl-bindgen/src/generator.rs::generate_cargo_toml`, which BUILDS the feature
+list in Rust. Fixed there; the jinja copies keep the matching comment so they do
+not drift back.
+
+Consumers that named the deleted feature: four dep-lines in
+`nros-tests/bins/contract-monitor` (`features = ["std"]` on three message crates
+and on `nros-diagnostics`). A dep-site naming a feature that no longer exists is
+a hard resolution error, so those had to move in the same commit.
+
+Verified by regenerating through the live emitter into a `tmp/` copy of
+`tests/simple-workspace` — the emitted `[features]` block is now `default = []`
+and nothing else — then building and RUNNING both binaries (`Publishing: 0
+(serialized 8 bytes)`; listener receives). Plus `just check`,
+`build-test-fixtures lane=native`, and 5/5 on `roundtrip_xprocess` +
+`contract_monitor_parity` + `diagnostic_verbatim`.
+
+**Forwarders: 14 -> 6.** What remains is exactly the six crates that DEFINE the
+feature — `nros`, `nros-c`, `nros-cpp`, `nros-core`, `nros-node`, `nros-rmw` —
+whose forwards are the flavour's own internal plumbing, not a grant made on
+someone else's behalf. Deleting those is not a manifest change: it is the ~91
+`cfg` sites still in `nros-node` plus 60 across the others, which is the body of
+W10 that remains.
+
 #### The final commit's exact file set (2026-08-16)
 
 After the consumer sweep (d48e78ea0), the crates that still name a core `std`
