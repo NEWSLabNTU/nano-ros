@@ -38,10 +38,12 @@ nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
 # fails first with "no global memory allocator found", and once the board
 # supplies one, with "`#[panic_handler]` function required". Today `std`
 # supplies both. Giving the board an `image-runtime` feature (the pair bound
-# together, as `nros-board-nuttx` does since W7) is the fix, and it lands in
-# phase-366's territory — that wave is currently moving board panic paths onto
-# `nros_platform_panic`, so a third board growing its own handler here would
-# collide with it.
+# together, as `nros-board-nuttx` does since W7) is the fix. Owned by issue
+# 0618, which is about exactly this — the lang items are per-IMAGE singletons
+# decided in libraries, so an image gets two or none; this is a "none" — and it
+# lands in phase-366's territory, which is currently moving board panic paths
+# onto `nros_platform_panic`, so a third board growing its own handler here
+# would collide with that wave.
 nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "macros"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }

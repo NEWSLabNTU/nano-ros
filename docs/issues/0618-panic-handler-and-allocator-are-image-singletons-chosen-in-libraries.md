@@ -135,6 +135,45 @@ image singleton, and *"a dev-dependency is a library-level lever — it cannot
 express 'supply these only when nobody else does'."* Three singletons, one
 missing concept.
 
+## A "none" instance, measured 2026-08-16 (phase-359 W10)
+
+The examples above are the "two" half. Here is the "none" half, from a routine
+manifest change rather than a link failure.
+
+phase-359 W10 moved `examples/threadx-linux/rust/*` from `std` to `alloc` — the
+right call on the merits, since ThreadX-Linux is a no_std board that happens to
+run as a Linux process. `rust-rtos-link-check` then failed:
+
+```
+error: no global memory allocator found but one is required
+```
+
+and, once `nros-board-threadx-linux` was given
+`image-runtime = ["nros-platform/global-allocator"]`:
+
+```
+error: `#[panic_handler]` function required, but not found
+```
+
+Both items had been arriving from libstd purely because the leaf's feature list
+happened to say `std`. Nothing in the platform selection supplied them: this
+image names `nros-platform/platform-threadx`, which per §2 is supposed to be
+what selects the pair, and it selected neither. That is the clause this issue
+disputes, failing in the direction the other instances do not show.
+
+Two further points for the fix's design:
+
+- The two errors appear ONE AT A TIME. Supplying the allocator is what reveals
+  the panic handler is missing too, so any migration doing this per-crate pays
+  two round trips per image and a reviewer sees only the first.
+- `just check` is blind to it. A missing lang item is only an error in a FINAL
+  artifact, and the fast lane never builds these leaves as one — this was green
+  through three `just check` runs before `rust-rtos-link-check` caught it. The
+  gate suggested below wants that property: it must look at images, not crates.
+
+The six leaves are reverted to `std` with the reason recorded at each, pending
+this issue and phase-366's move of board panic paths onto `nros_platform_panic`.
+
 ## Suggested gate
 
 Half of it is now checked: `check-archive-lang-items` enforces "at most ONE Rust
