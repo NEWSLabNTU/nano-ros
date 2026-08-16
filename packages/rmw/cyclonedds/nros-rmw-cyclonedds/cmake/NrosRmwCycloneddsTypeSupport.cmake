@@ -131,9 +131,50 @@ function(_nros_idlc_runs _path _out_why _out_env)
     set(${_out_env} "" PARENT_SCOPE)
 endfunction()
 
+# Issue 0601 — `$NROS_HOME/sdk/cyclonedds/<version>/bin`, NEWEST VERSION FIRST.
+#
+# The SDK store is what `nros setup --tool cyclonedds` provisions, and it is the
+# copy THIS BUILD controls. Without it on the hint list, `find_program` takes the
+# first `idlc` on PATH, which on any host with ROS installed is
+# `/opt/ros/humble/bin/idlc` — a binary that cannot load its own libraries
+# unless ROS's `setup.bash` reached the build's environment. Selection was by
+# EXISTENCE where the property that matters is RUNNABILITY.
+#
+# NEWEST-first for the same reason issue 0500 orders the Corrosion prefixes: the
+# store ACCUMULATES, `find_program` takes the first hit, and a provisioning run
+# that installs a new version while an old one still wins is the worst shape a
+# setup step can have — it reports success and changes nothing.
+#
+# HINTS, not PATHS: HINTS are searched BEFORE the system PATH and PATHS after
+# (CLAUDE.md's `find_program` note). Preferring the provisioned tool is the
+# entire point, so it has to be HINTS.
+function(_nros_cyclonedds_sdk_bins _out)
+    if(DEFINED ENV{NROS_HOME})
+        set(_store "$ENV{NROS_HOME}/sdk")
+    else()
+        set(_store "$ENV{HOME}/.nros/sdk")
+    endif()
+    set(_dirs "")
+    file(GLOB _versioned LIST_DIRECTORIES true "${_store}/cyclonedds/*")
+    foreach(_d IN LISTS _versioned)
+        if(IS_DIRECTORY "${_d}/bin")
+            list(APPEND _dirs "${_d}/bin")
+        endif()
+    endforeach()
+    list(SORT _dirs COMPARE NATURAL ORDER DESCENDING)
+    # The flat layout stays LAST — it is the fallback, and a versioned entry is
+    # what a provisioning run just wrote (same rule as the Corrosion prefixes).
+    if(IS_DIRECTORY "${_store}/cyclonedds/bin")
+        list(APPEND _dirs "${_store}/cyclonedds/bin")
+    endif()
+    set(${_out} "${_dirs}" PARENT_SCOPE)
+endfunction()
+
 function(_nros_find_idlc _out)
+    _nros_cyclonedds_sdk_bins(_sdk_bins)
     find_program(${_out} idlc
         HINTS
+            ${_sdk_bins}
             "${CycloneDDS_DIR}/../../../bin"
             "${CMAKE_INSTALL_PREFIX}/bin"
             "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
