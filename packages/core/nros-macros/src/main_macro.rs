@@ -97,7 +97,7 @@ struct MainArgs {
 }
 
 /// What ends this image (RFC-0077's three values, identical on the cmake side).
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
 enum PanicPolicy {
     /// Route to `nros_platform_panic` — the board's honest ending.
     Platform,
@@ -108,17 +108,14 @@ enum PanicPolicy {
     /// A POSITIVE declaration, not an absence: an image bringing
     /// `esp-backtrace` or `panic-semihosting` states it, so the build can tell
     /// "deliberate" from "forgot".
+    ///
+    /// M1 makes this the DEFAULT, which is what keeps this step behaviour-
+    /// identical while the images that call `panic_to_platform!()` migrate.
+    /// Moving `#[default]` to `Platform` is M5, and only once every image is
+    /// migrated or explicitly `own` — doing it earlier gives those images two
+    /// providers, which is a compile error four crates from the cause.
+    #[default]
     Own,
-}
-
-impl Default for PanicPolicy {
-    fn default() -> Self {
-        // M1 — `own` while the ~23 images that call `panic_to_platform!()`
-        // migrate. Flipping this to `Platform` is M5, and only once every image
-        // is migrated or explicitly `own`; doing it earlier gives those images
-        // two providers.
-        Self::Own
-    }
 }
 
 impl Parse for MainArgs {
