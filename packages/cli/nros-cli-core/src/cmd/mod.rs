@@ -33,6 +33,7 @@ pub mod new_system;
 pub mod plan;
 pub mod profile;
 pub mod scaffold_deploy;
+pub mod sdk_path;
 pub mod setup;
 pub mod version;
 pub mod ws;
@@ -104,6 +105,12 @@ pub enum Cmd {
     /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.
     #[command(name = "model-path")]
     ModelPath(model_path::Args),
+
+    /// phase-365 W2 — print the CONSTRUCTED install path of a provisioned tool.
+    /// The cmake/just/shell bridge to `sdk_store::tool_dir`, so the store is
+    /// never searched (issue 0625).
+    #[command(name = "sdk-path")]
+    SdkPath(sdk_path::Args),
 
     /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
     /// flags, artifact dir, env-injected definitions). The bridge cmake/bash

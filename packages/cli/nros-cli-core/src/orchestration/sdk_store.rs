@@ -40,6 +40,33 @@ pub fn tool_prefix(root: &Path, tool: &str, version: &str) -> PathBuf {
     root.join(tool).join(version)
 }
 
+/// The pinned install prefix for a tool — phase-365 W1, the ONE constructor.
+///
+/// nano-ros decides where a provisioned tool goes: `nros setup` writes
+/// `<store>/<tool>/<version>` because the index named that version. The layout
+/// is our own OUTPUT, not a fact about the environment, so a consumer must
+/// CONSTRUCT the path from the same two inputs that produced it rather than
+/// search the store for it.
+///
+/// A search can return something we did not install (the legacy unversioned
+/// `corrosion/{lib,share}` prefix), something a DIFFERENT project installed (a
+/// newer version, since the store is shared and the pin is per-project), or
+/// nothing — three wrong answers to a question with a known right one. Measured
+/// on 2026-08-16 in a tree pinning `corrosion 0.6.1-nros1`: 155 resolutions of
+/// 0.5.1 against 28 of 0.6.1, with the search's own ordering verified correct
+/// (issue 0625).
+///
+/// This is the same rule CLAUDE.md already states one layer up for SystemModels
+/// — locate through `nros_orchestration_ir::model_location`, never a
+/// hand-derived path.
+///
+/// Returns `None` when the index has no such tool; the caller reports it with
+/// the provisioning command, and must NEVER substitute another version.
+pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
+    let version = &index.tool.get(tool)?.version;
+    Some(tool_prefix(&store_root(), tool, version))
+}
+
 /// How a tool was installed; persisted to `<prefix>/.nros-provenance`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -609,6 +636,54 @@ fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
         bail!("`{}` failed ({})", args.join(" "), out.status);
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+#[cfg(test)]
+mod phase365_tool_dir_tests {
+    use super::*;
+    use crate::orchestration::sdk_index::SdkIndex;
+
+    fn repo_index() -> SdkIndex {
+        // The real index, so this test tracks the shipped pins rather than a
+        // fixture that can agree with a stale copy of them.
+        let idx =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        SdkIndex::load(&idx).expect("load nros-sdk-index.toml")
+    }
+
+    /// phase-365 W1 — the constructor and the INSTALLER must be one function.
+    ///
+    /// `nros setup` computes its destination as
+    /// `tool_prefix(&store_root(), name, &tool.version)`. If `tool_dir` ever
+    /// derives anything else, consumers look where nothing was installed — the
+    /// two-spellings failure this phase exists to remove, reintroduced at its
+    /// own root.
+    #[test]
+    fn tool_dir_matches_where_setup_installs_for_every_pinned_tool() {
+        let index = repo_index();
+        let root = store_root();
+        assert!(!index.tool.is_empty(), "index declares no tools");
+        for (name, tool) in &index.tool {
+            let installed = tool_prefix(&root, name, &tool.version);
+            let resolved = tool_dir(&index, name)
+                .unwrap_or_else(|| panic!("tool_dir returned None for pinned tool `{name}`"));
+            assert_eq!(
+                installed,
+                resolved,
+                "`{name}`: setup installs to {} but tool_dir resolves {}",
+                installed.display(),
+                resolved.display()
+            );
+        }
+    }
+
+    /// A miss is `None`, never a fallback. Substituting a different version is
+    /// exactly how a store shared between two projects hands the wrong one to
+    /// the older checkout (issue 0625).
+    #[test]
+    fn an_unpinned_tool_resolves_to_nothing() {
+        assert!(tool_dir(&repo_index(), "no-such-tool-in-the-index").is_none());
+    }
 }
 
 #[cfg(test)]

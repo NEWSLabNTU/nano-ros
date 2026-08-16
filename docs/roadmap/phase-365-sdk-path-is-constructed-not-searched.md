@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1 starting.** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). W1 + W2 LANDED; W3a next.** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -97,23 +97,37 @@ visible at all.
 
 ## Waves
 
-### W1 — the constructor, in the producer
+### W1 — the constructor, in the producer — LANDED
 
 `sdk_store::tool_dir(tool)`, reading the index pin. `nros setup` writes exactly
 there (it already does; this makes the two the same function rather than two
 spellings that agree).
 
-**Acceptance.** A test asserts install-path == `tool_dir()` for all 14 tools, so
-producer and consumer cannot drift.
+**Acceptance — met.** `sdk_store::tool_dir()` reads the pin and reuses the
+installer's own `tool_prefix()`. `phase365_tool_dir_tests` loads the REAL index
+(not a fixture, which could agree with a stale copy of the pins) and asserts
+install-path == `tool_dir()` for every pinned tool, plus that an unpinned tool
+resolves to `None` rather than to a fallback.
 
-### W2 — expose it to the other three mechanisms
+### W2 — expose it to the other three mechanisms — LANDED
 
 `nros sdk-path <tool>` prints the constructed path; `--require` exits non-zero
 with the provisioning command when it does not exist.
 
-**Acceptance.** `nros sdk-path corrosion` prints
-`~/.nros/sdk/corrosion/0.6.1-nros1`; with the directory renamed away,
-`--require` fails naming the pin and `nros setup --tool corrosion`.
+**Acceptance — met.**
+
+```
+$ nros sdk-path corrosion
+/home/aeon/.nros/sdk/corrosion/0.6.1-nros1
+
+$ nros sdk-path corrosion --require          # with the pinned dir renamed away
+Error: corrosion is pinned to 0.6.1-nros1 but …/0.6.1-nros1 does not exist.
+Provision it:  nros setup --tool corrosion
+exit 1
+```
+
+The load-bearing detail: `0.5.1-nros1` was present in the store throughout, and
+`--require` still failed. A search would have returned it.
 
 ### W3a — Corrosion, the caught case
 

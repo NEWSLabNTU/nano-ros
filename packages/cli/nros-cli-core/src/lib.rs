@@ -58,6 +58,7 @@ fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
         cmd::Cmd::Codegen(_) => "codegen",
         cmd::Cmd::CodegenSystem(_) => "codegen-system",
         cmd::Cmd::ModelPath(_) => "model-path",
+        cmd::Cmd::SdkPath(_) => "sdk-path",
         cmd::Cmd::GenerateRust(_) => "generate-rust",
         cmd::Cmd::Setup(_) => "setup",
         // Everything else stays runnable on a stale binary ON PURPOSE —
@@ -102,6 +103,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Codegen(args) => cmd::codegen::run(args),
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
+        cmd::Cmd::SdkPath(args) => cmd::sdk_path::run(args),
         cmd::Cmd::Profile(args) => cmd::profile::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
