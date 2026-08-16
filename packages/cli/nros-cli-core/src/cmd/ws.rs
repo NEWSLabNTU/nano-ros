@@ -6124,6 +6124,43 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             "in-repo managed entry must stay in config.toml:\n{out}"
         );
 
+        // Why a leaf's `include` spelling changes on sync — and why only SOME
+        // leaves churn. `retain` evicts the sync-managed entries and
+        // `insert(0, …)` puts the central one back. When retain EMPTIES the
+        // array, the leading decor dies with the last element and the
+        // re-inserted value carries toml_edit's default (tight) form; when a
+        // survivor remains — `nros-board.toml`, which retain does not evict —
+        // the decor rides on it and the spaced form is preserved.
+        //
+        // That is the whole rule, and it is not "one entry versus two": it is
+        // whether anything survives retain. Pinned here because a toml_edit
+        // upgrade could change it silently, and because a tree-wide "canonical
+        // spelling" gate was written and reverted on the strength of guessing
+        // it.
+        let only_managed = render_patch_config_with(
+            "include = [ \"../nros-patch.toml\"]\n",
+            &mng(&[]),
+            Some("../nros-patch.toml"),
+            false,
+        )
+        .unwrap();
+        assert!(
+            only_managed.starts_with("include = [\"../nros-patch.toml\"]"),
+            "retain emptied the array, so the re-inserted entry is tight:\n{only_managed}"
+        );
+
+        let with_survivor = render_patch_config_with(
+            "include = [ \"../nros-patch.toml\", \"nros-board.toml\"]\n",
+            &mng(&[]),
+            Some("../nros-patch.toml"),
+            false,
+        )
+        .unwrap();
+        assert!(
+            with_survivor.starts_with("include = [ \"../nros-patch.toml\", \"nros-board.toml\"]"),
+            "a survivor keeps the array's decor, so this leaf never churns:\n{with_survivor}"
+        );
+
         // Same input, out-of-tree: merged in place, into the SAME quoted table.
         let ext = render_patch_config_with(
             existing,

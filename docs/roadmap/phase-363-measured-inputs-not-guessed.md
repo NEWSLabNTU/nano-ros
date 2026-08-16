@@ -405,6 +405,34 @@ extractor when it did the equivalent work. It wants its own change with mutation
 tests, not an end-of-sweep edit. The finding is recorded with the evidence so
 the next pass starts from a measurement rather than a re-sweep.
 
+### Why some leaves churned on every sync, and why a gate on it was wrong
+
+Recorded because a tree-wide "canonical `include` spelling" gate was written,
+pushed, and reverted here on the strength of guessing this mechanism.
+
+`render_patch_config_with` evicts the sync-managed entries with `retain` and
+puts the central one back with `insert(0, …)`. What happens to the array's
+leading whitespace depends on whether anything SURVIVES the retain:
+
+| leaf's include | after retain | result |
+| --- | --- | --- |
+| only `nros-patch.toml` | EMPTY — decor died with the last element | re-inserted tight: `["…"]` |
+| plus `nros-board.toml` | survivor keeps the array's decor | preserved: `[ "…", "…"]` |
+
+`retain` evicts only the central and managed patch entries, so `nros-board.toml`
+survives. The predicate is therefore "does retain empty the array", NOT "how
+many entries are there" — which is what the reverted gate assumed, and why it
+failed three leaves that had never churned.
+
+Isolated in a scratch toml_edit program before being believed, then pinned in
+`config_writer_quoted_user_header_no_duplicate` so a toml_edit upgrade cannot
+change it silently. Both halves mutation-tested.
+
+The practical consequence is small and worth stating: leaves whose include holds
+only sync-managed entries are rewritten by every sync unless they are stored in
+the tight form. Those are the ones that churned, and normalising them is what
+stopped it.
+
 ## Deliberately not doing
 
 * **Not adopting a new build system.** Bazel/Buck2/Nix solve this by making
