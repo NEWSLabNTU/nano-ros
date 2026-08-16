@@ -162,6 +162,20 @@ if NROS_RMW_ZENOH
 config NROS_ZENOH_MULTI_THREAD
     bool "Zenoh-pico multithreading"
     default y
+    # sched_get_priority_min/max are defined in lib/posix/options/sched.c,
+    # which is compiled only under POSIX_PRIORITY_SCHEDULING. CONFIG_POSIX_API
+    # does NOT select it -- it is its own option group -- so declaring POSIX_API
+    # gets the declarations from <sched.h> and no definitions, and the failure
+    # lands at LINK time in zpico.c rather than as a missing-config diagnostic.
+    #
+    # The dependency is stated here, on the symbol that both spawns the tasks
+    # and compiles the call: zpico_set_task_config's body is behind
+    # Z_FEATURE_MULTI_THREAD, which this symbol maps to. It cannot be stated in
+    # zpico.c instead -- zpico-sys/build.rs forwards no CONFIG_* defines to the
+    # shim, so an #ifdef there would read as permanently false and silently
+    # discard the priority the user configured, which is the failure issue 0626
+    # set out to remove.
+    select POSIX_PRIORITY_SCHEDULING
     help
       Enable multithreading in zenoh-pico. Uses Zephyr threads for
       background read/lease tasks. Required for non-blocking operation.
