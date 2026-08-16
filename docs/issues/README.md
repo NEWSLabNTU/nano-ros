@@ -76,6 +76,19 @@ STILL OPEN and now unowned: `SchedContext.period_ms`/`budget_ms`/`deadline_ms` c
 this issue deferred that to #505, which resolved without moving them. Carried to phase-357 W1, where the
 unit for declared timing is settled once rather than per-field. See `archived/0519-*`.
 
+**#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
+store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
+for one tool in one configure, only the FetchContent fallback reads the index — and (b) it cannot serve two
+projects: "newest in the store" is a global answer to a per-project question, so a store provisioned by a
+newer checkout silently hands that version to an older one. Measured: one `lane=all` produced 155
+resolutions of Corrosion 0.5.1 against 28 of 0.6.1 in a tree pinning `0.6.1-nros1`, via an
+`add_subdirectory` route that never consults the prefix list (the list's own ordering is correct). Both
+halves of the fix already exist — the pin is per-project in `nros-sdk-index.toml`, the store is
+version-keyed `~/.nros/sdk/<tool>/<version>/` — what is missing is the join. Proposal: resolve the pin
+exactly, fail with the provisioning command on a miss, accept an already-loaded copy only if it EQUALS the
+pin, and delete the ordering heuristic (and #0500's gate that keeps its two implementations agreeing).
+General to every tool, so filed as a DESIGN change against RFC-0014. See `0625-*`.
+
 **#622** (build, open 2026-08-16) — the legacy-Corrosion `FATAL_ERROR`'s remedy clears only the WORKSPACE
 build trees, so following it verbatim reproduces the same error from the same line. The stale resolution is
 ALSO cached in every example LEAF build dir — 62 of them on the host that found this — and a `CMakeCache.txt`
