@@ -5,7 +5,7 @@ status: Draft
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [issue-0618, issue-0617, issue-0615]
-amends: [ARCHITECTURE.md#2-the-std-alloc-contract]
+amends: [ARCHITECTURE.md#2-the-std-alloc-contract]  # §2 predates issue-0616; see "Where the design already is"
 supersedes: []
 superseded-by: null
 ---
@@ -15,63 +15,106 @@ superseded-by: null
 ## Summary
 
 `#[panic_handler]` and `#[global_allocator]` are link-time singletons of the
-FINAL ARTIFACT. nano-ros selects them in LIBRARY crates, keyed on the PLATFORM,
-and every candidate provider defaults ON — so an image is correct only if its
-author turns off the N−1 providers it did not want, by hand, differently for
-each shape of image.
+FINAL ARTIFACT. The tree has already accepted that for the ALLOCATOR — issue
+0616 established it, and `check-archive-lang-items` now enforces one per link
+line. **This RFC finishes the job for the PANIC HANDLER, which is the harder
+half, and says why it is harder.**
 
-That is not a naming problem. It is why issue 0617 has both failure modes at
-once: an image with **two** providers (`#[global_allocator] in nros_platform
-conflicts with global allocator in: nros_platform`) and an image with **none**
-(`#[panic_handler] function required, but not found`). Issue 0615 is the same
-defect one level up — a gate concluded a `default = ["panic-spin"]` was
-unreachable, and acting on it would have removed a provider a staticlib needs.
+Three concerns are collapsed into one rule today: the IMPLEMENTATION (how malloc
+and panic work on this port), the INSTALLATION (which artifact carries the lang
+item), and the POLICY (what a panic should actually do). The first is the
+platform's and `ARCHITECTURE.md` §2 has it right. The second is the link root's
+and 0616 settled it. The third belongs to the image and currently has no owner
+at all — which is why a fixture that wants print-and-exit and a controller that
+wants log-then-reboot get the same spin loop, and why issue 0617 has both an
+image with two providers and an image with none.
 
-The concept nano-ros needs already exists in the tree, under the right name.
-`nros-board-nuttx` calls it `image-runtime` and states the invariant exactly:
+The asymmetry is the crux: **for the allocator, implementation IS policy** —
+"use this platform's heap" is the only sensible answer, so keying it on the
+platform costs nothing. **For panic they are different facts**, every behaviour
+is implementable everywhere, and keying it on the platform costs the choice
+itself.
 
-> Both live behind ONE feature on purpose. They are not two decisions — an image
-> that gets its allocator from `nros-c` gets its panic handler from there too,
-> and splitting them into two flags would let a build pick one of each and
-> duplicate a lang item.
+Proposed: keep implementation platform-keyed; keep installation coupled and
+owned by one link root, exactly as `nros-board-nuttx` argues; and let the IMAGE
+name its panic policy in its own crate, the way `examples/qemu-esp32-baremetal`
+already does with `use esp_backtrace as _;`.
 
-**This RFC does not introduce that idea. It inverts its direction:** stop
-defaulting every candidate ON and negating the losers, and let the IMAGE name
-its one owner, once.
+## Where the design already is — this completes it, it does not oppose it
 
-## What this contradicts, and who owns it today
+An earlier draft of this RFC framed the problem as a disagreement with
+`ARCHITECTURE.md` §2. That framing was wrong, and correcting it is most of the
+argument.
 
-This is not a gap in the design. It is a disagreement with a rule that is
-already normative, and adopting this RFC means amending `ARCHITECTURE.md` §2
-("The `std` / `alloc` contract"), which says:
+§2 says:
 
 > Orthogonally: **`malloc` and `panic` are unified per platform.** Exactly one
 > `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
 > `platform-<rtos>` feature — which selects the provider and nothing else.
 
-Owner: that section, implemented by **phase-361** (which quotes it verbatim as
-the rule every crate feature table points at).
+That text landed with phase-360 W1/W4 (`d56ed1fe3`) and **predates issue 0616**,
+which then established the opposite of its unstated premise. 0616's own words:
 
-Two of its three clauses are right and this RFC keeps them. *Exactly one per
-image* is the invariant; *malloc and panic move together* is the coupling
-`nros-board-nuttx` independently re-derived. The clause this RFC rejects is the
-third — **selected by the `platform-<rtos>` feature** — on the grounds that the
-platform is the one participant that cannot know the answer, and that the two
-observed failure modes follow from putting the choice there.
+> `#[global_allocator]` is a lang item: **unique per LINKED ARTIFACT**. nano-ros
+> declares it in `nros-platform`, a mid-graph library, gated on a feature — and
+> issue 0594's guarantee, "cargo unifies one crate's one feature into one unit",
+> is a property of ONE graph. A staticlib is not a graph; it is a sealed copy of
+> one. Four sealed copies can each contain the item and each be individually
+> correct.
 
-Read narrowly, §2 is also already falsified by the tree it governs: it says
-exactly one provider per image "selected by the `platform-<rtos>` feature", and
-`nros-board-threadx-qemu-riscv64` defines an **ungated** `#[panic_handler]`
-that no platform feature selects. That is a bug against §2, not evidence for
-this RFC — but it shows the rule is not self-enforcing, which is why the gate
-below matters whichever way the selection clause is settled.
+and its fix options are this RFC's design, written first and independently:
 
-**Credit where the mechanism already exists.** `check-archive-lang-items`
-("at most ONE Rust archive per LINK LINE may define the global allocator")
-already implements this RFC's gate for the allocator half, per link line. The
-gate proposed here is that check extended to `#[panic_handler]` and reasoned per
-image coordinate rather than per archive — a smaller step than it first appears,
-and evidence the enforcement shape is workable.
+> **One link root per image, enforced** … those lang items belong to whoever owns
+> the image, and a backend does not.
+>
+> **Move the item to the root crate** … the `#[global_allocator]` STATIC is
+> installed by the link root through a macro. "One per image" then means "one
+> root", which the build system already controls, rather than "one unit", which
+> it does not.
+>
+> **A link-side gate** … `nm` the produced archives and assert at most one
+> defines `___rust_alloc` per image.
+
+The third has landed as `check-archive-lang-items` ("at most ONE Rust archive per
+LINK LINE may define the global allocator"). So the tree has already moved to a
+per-image model **for the allocator**. What has not moved is the panic handler,
+and §2's text, which still describes the pre-0616 world.
+
+## The distinction §2 conflates
+
+Three separable concerns are collapsed into one sentence, and separating them
+dissolves the apparent conflict:
+
+| concern | question | belongs to | today |
+| --- | --- | --- | --- |
+| **implementation** | *how* does malloc/panic work here? | the PLATFORM | §2, correct |
+| **installation** | which artifact carries the lang item? | the LINK ROOT | 0616, gate landed for alloc |
+| **policy** | what should a panic DO? | the IMAGE | nobody |
+
+§2's "selected by the `platform-<rtos>` feature" is right about
+**implementation** — a platform genuinely does determine that `k_malloc` rather
+than `pvPortMalloc` backs the heap. It is silent on **installation**, which is
+what 0616 had to discover the hard way. And it has no place at all for
+**policy**, which is the gap this RFC exists to fill.
+
+## Why the allocator and the panic handler are not symmetric
+
+This is the part neither §2 nor 0616 nor `nros-board-nuttx` separates, and it is
+why panic is the harder half.
+
+**For the allocator, implementation IS policy.** "Use this platform's heap" is
+the only sensible answer; there is no second reasonable choice for an image to
+make. So keying the allocator on the platform loses nothing.
+
+**For the panic handler they are different facts.** Spin, halt, print-and-exit,
+log-to-NVM-then-reboot are all implementable on every platform, and which one is
+right depends on what the image IS — a fixture whose harness greps the message,
+a shipped controller, a bring-up image with a debugger attached. Keying panic on
+the platform therefore does lose something: the choice itself.
+
+Treating them as one decision is correct for **installation** and wrong for
+**policy**. That distinction is what the current design is missing, and stating
+it is this RFC's actual contribution — the allocator half is already settled.
 
 ## The evidence
 
@@ -202,45 +245,66 @@ choice moves to the image.
 
 ## The design
 
-1. **Libraries provide nothing.** `nros-c`'s spin loop and the board crates'
-   handlers leave the rlib path. A crate that is only ever linked INTO an image
-   never claims a lang item.
+Stated per layer, because the layers have different owners:
 
-2. **The image names one owner, positively.** `image-runtime` stops being a
-   default-ON feature on several crates that consumers negate, and becomes a
-   single statement made once per image. Panic and allocator stay behind that
-   one flag, for the reason `nros-board-nuttx` already gives: they are one
-   decision, and two flags would let a build take one of each.
+1. **Implementation stays platform-keyed.** `platform-<rtos>` continues to name
+   the port that supplies malloc and panic mechanics. §2 is right here, and
+   `check-platform-provider-features.py` (issue 0617) already enforces that
+   every RTOS row names one — including that `platform-posix` must NOT, because
+   libstd supplies both.
 
-3. **The entry layer materialises it.** `nros::main!` and `nano_ros_entry()`
-   generate code that IS part of the final artifact, which is the only place in
-   nano-ros that can legitimately supply a default. A dependency cannot.
+2. **Installation is the link root's, and stays coupled.** One artifact per
+   image carries both lang items. This is `nros-board-nuttx`'s argument, kept
+   intact: one owner, one switch, so no build can take one of each. What changes
+   is direction — `image-runtime` stops being a default-ON feature on several
+   crates that consumers must negate, and becomes a single positive statement
+   made once per image. 0616's option (2) is the stronger form: `nros-platform`
+   keeps providing the `GlobalAlloc` TYPE and the root installs the STATIC via
+   `install_global_allocator!()`, so "one per image" means "one root" — which
+   the build system controls — rather than "one unit", which it does not.
 
-4. **The staticlib qualification — why the naive rule is not enough.**
-   `nros-c` and `nros-cpp` build `crate-type = ["staticlib"]`, and rustc treats
-   a staticlib as a final artifact. When the staticlib IS the deliverable (a
-   C/C++ image links it and nothing else) it genuinely needs a provider; when it
-   is one input among several Rust crates it must not have one. That is exactly
-   what issue 0615 discovered, and it is knowable at the dep-site: the C/C++
-   build path knows it is producing the image. So the flag is set by the entry
-   layer for that path, not by `platform-*` for all paths.
+3. **Policy is the image's, and only for panic.** The image names what a panic
+   does, in its own crate. The allocator needs no equivalent because its
+   implementation is its policy.
+
+4. **The entry layer materialises the default.** `nros::main!` and
+   `nano_ros_entry()` generate code that IS part of the final artifact — the only
+   place in nano-ros that can legitimately supply a default. A dependency cannot.
+
+5. **The staticlib qualification.** `nros-c`/`nros-cpp` build
+   `crate-type = ["staticlib"]`, and rustc treats a staticlib as a final
+   artifact. When the staticlib IS the deliverable (a C/C++ image links it and
+   nothing else) it needs a provider; when it is one input among several Rust
+   crates it must not have one. That is what issue 0615 discovered, and it is
+   knowable at the dep-site — the C/C++ build path knows it is producing the
+   image. 0616 makes the same point from the other side: "a staticlib is not a
+   graph; it is a sealed copy of one."
 
 ## The gate
 
-Half of this already exists: `check-archive-lang-items` enforces "at most ONE
-Rust archive per link line may define the global allocator". What is missing is
-the panic half, and a coordinate-level view. Per buildable image coordinate: count the crates in the resolved graph that can
-emit `#[panic_handler]` (or `#[global_allocator]`) under the selected features,
-and require exactly one.
+The allocator half exists: `check-archive-lang-items` asserts at most one
+archive per LINK LINE defines `__rust_alloc`. Two things are missing.
 
-Two constraints on that gate, both learned the hard way:
+**The panic half.** The same script, the same link lines, `__rust_begin_short_backtrace`
+being the wrong symbol to key on — `rust_begin_unwind` is the panic lang item's
+external name and is what `nm` can see. Extending the existing check is a smaller
+change than writing a new one.
 
-- It must reason about **final artifacts**, not dep-sites — clause (d) of
-  `check-feature-contract` reasoned about dep-sites and asked for a provider to
-  be deleted (issue 0615).
-- It must run against **embedded coordinates**. `std` supplies both singletons,
-  so every defect in this class is invisible on a host lane — the same asymmetry
-  recorded in 0582 and 0617.
+**A coordinate-level view.** Per link line catches duplicates; it cannot catch
+ABSENCE, because an image with no provider has no archive to count. Issue 0617's
+`#[panic_handler] function required` was exactly that, and it is caught today
+only by the build failing. Per buildable image coordinate, the count must be
+exactly one — not at most one.
+
+Two constraints, both learned here:
+
+- Reason about **final artifacts**, not dep-sites — `check-feature-contract`
+  clause (d) reasoned about dep-sites and asked for a provider a staticlib needs
+  to be deleted (0615), and clause (e) counts source definitions when "the count
+  it should be making is per produced archive" (0616's words).
+- Run against **embedded** coordinates. `std` supplies both singletons, so the
+  whole class is invisible on a host lane — 0617 records that NuttX's missing
+  provider "was invisible for as long as NuttX images linked `std`".
 
 ## Migration
 
@@ -268,7 +332,13 @@ cause.
 wrong for the same reason: it is a policy, and policies belong to the image.
 It also cannot serve ESP32, whose ecosystem supplies its own.
 
-**Split panic and allocator into separate image flags.** Rejected on the
-evidence already in the tree: `nros-board-nuttx` explains that they are one
-decision and two flags would let a build take one of each and duplicate a lang
-item.
+**Split panic and allocator into separate image flags.** An earlier draft
+rejected this, citing `nros-board-nuttx`: "two flags would let a build take one
+of each and duplicate a lang item." That rejection was wrong, and the error is
+instructive — it applies an INSTALLATION argument to a POLICY question. The
+board's reasoning is sound about installation: one owner should install both,
+or two crates can each install one. It says nothing about who chooses what a
+panic does. So the answer is to couple INSTALLATION (one owner, one switch,
+exactly as the board argues) and decouple POLICY (the image names the panic
+behaviour; the allocator has only one sensible answer and stays with the
+platform).
