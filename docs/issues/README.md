@@ -166,6 +166,20 @@ already honour; only the shim→ABI wiring is missing, and since no value exists
 share its units collision (this is #0579's ignored-value class), and the three `z_task_attr_t` definitions
 are IDENTICAL `void *` — they agree, and the problem is what they agree on. See `0626-*`. (2026-08-16)
 
+**#634** (build/boards, open 2026-08-16) — every C fixture on the ThreadX RISC-V lane fails with
+`rust-lld: error: unable to find library -lnosys`, while the Rust examples of the SAME lane link fine. One
+`if()` block in `cmake/toolchain/riscv64-threadx.cmake`, two halves that travel differently:
+`CMAKE_C_STANDARD_LIBRARIES "-lnosys"` is a CACHE var and reaches every target, while the matching
+`add_link_options("-L${_riscv_stdcxx_dir}")` is a DIRECTORY-scope command in a TOOLCHAIN FILE and does not
+propagate to the project's targets. The failing link line proves it — ends in `-lnosys`, carries only the
+picolibc `-L`. `libnosys.a` exists (SDK `riscv-none-elf-gcc/14.2-nros1/.../rv64iafd_zicsr/lp64d/`); the
+linker is just never told where. Fix: carry the search path in the SAME cache variable as the library, or
+use `CMAKE_EXE_LINKER_FLAGS_INIT` (the sanctioned toolchain-file mechanism) — a library reference and its
+search path are ONE fact and must not live in two mechanisms with different lifetimes. Do NOT drop
+`-lnosys`: it stubs the reent syscalls the SDK's newlib-built libstdc++ needs. Verify on the LINK LINE, not
+a green build. NOT from #0626 (that diff adds no link flags) — though no clean control was run, so that is
+reasoned rather than measured. See `0634-*`. (2026-08-16)
+
 **#623** (boards/platform, open 2026-08-16) — tier priorities are **RAW per-RTOS** and transport priorities
 are **NORMALISED 0-31**, and both reach `xTaskCreate` in one priority space with nothing saying so.
 `[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS 4. Cost is
