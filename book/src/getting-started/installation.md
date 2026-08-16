@@ -309,7 +309,7 @@ board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 > PATH once and run it:
 >
 > ```bash
-> export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
+> export PATH="$(nros sdk-path zenohd)/bin:$PATH"
 > zenohd        # leave running for the whole session
 > ```
 >

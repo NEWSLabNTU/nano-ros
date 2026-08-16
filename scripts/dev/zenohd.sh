@@ -18,9 +18,17 @@ nros_zenohd_bin() {
         printf '%s\n' "$root/build/zenohd/zenohd"
         return 0
     fi
-    newest="$(ls -1 "${NROS_HOME:-$HOME/.nros}"/sdk/zenohd/*/bin/zenohd 2>/dev/null | sort -V | tail -1 || true)"
-    if [ -n "$newest" ] && [ -x "$newest" ]; then
-        printf '%s\n' "$newest"
+    # phase-365 W3b — the PINNED zenohd, not the newest installed.
+    #
+    # This was `ls .../sdk/zenohd/*/bin/zenohd | sort -V | tail -1`: the same
+    # newest-wins search that gave Corrosion the wrong version 155 times in one
+    # configure (issue 0625). The store is shared between checkouts while the
+    # pin is per-project, so "newest installed" answers a question this project
+    # did not ask — and zenohd is version-sensitive (rmw_zenoh_cpp compat pins
+    # it to 1.7.2, per CLAUDE.md).
+    pinned="$(nros sdk-path zenohd 2>/dev/null || true)"
+    if [ -n "$pinned" ] && [ -x "$pinned/bin/zenohd" ]; then
+        printf '%s\n' "$pinned/bin/zenohd"
         return 0
     fi
     if command -v zenohd >/dev/null 2>&1; then

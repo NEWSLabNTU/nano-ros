@@ -420,6 +420,7 @@ check-fast: \
     check-workspace-order \
     check-atomic-sync-writes \
     check-platform-provider-features \
+    check-sdk-store-not-enumerated \
     check-test-domain-assignment \
     check-zenohd-spawn-sites \
     check-path-env-fingerprints check-retired-platform-clock-symbols
@@ -1458,6 +1459,13 @@ check-atomic-sync-writes:
 # `std` supplies both, which is how NuttX shipped with neither.
 check-platform-provider-features:
     @python3 scripts/check-platform-provider-features.py
+
+# phase-365 W4 / issue 0625 — the SDK store is CONSTRUCTED from the project's
+# pin, never enumerated. A wildcard where the version belongs means a consumer
+# is picking a version by searching a store SHARED between projects, to answer a
+# pin that is PER-PROJECT.
+check-sdk-store-not-enumerated:
+    @python3 scripts/check-sdk-store-not-enumerated.py
 
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA

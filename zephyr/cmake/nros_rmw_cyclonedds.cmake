@@ -280,10 +280,24 @@ zephyr_compile_definitions(
 if(DEFINED ENV{IDLC_EXECUTABLE} AND EXISTS "$ENV{IDLC_EXECUTABLE}")
     set(NROS_HOST_IDLC "$ENV{IDLC_EXECUTABLE}" CACHE FILEPATH "host Cyclone idlc")
 else()
-    if(DEFINED ENV{NROS_HOME})
-        file(GLOB _nros_idlc_store_hints "$ENV{NROS_HOME}/sdk/cyclonedds/*/bin")
-    else()
-        file(GLOB _nros_idlc_store_hints "$ENV{HOME}/.nros/sdk/cyclonedds/*/bin")
+    # phase-365 W3b — the PINNED cyclonedds, not whatever versions are installed.
+    #
+    # This globbed `<store>/cyclonedds/*/bin` and handed every match to HINTS,
+    # so a second installed version could supply `idlc` — a search over a store
+    # SHARED between checkouts answering a pin that is PER-PROJECT. Same shape
+    # that resolved Corrosion wrongly 155 times in one configure (issue 0625),
+    # and here it selects the IDL compiler that emits type-support, which is
+    # exactly the museum-compiler failure the comment below already describes.
+    set(_nros_idlc_store_hints "")
+    find_program(_NROS_CLI_IDLC nros)
+    if(_NROS_CLI_IDLC)
+        execute_process(
+            COMMAND "${_NROS_CLI_IDLC}" sdk-path cyclonedds
+            OUTPUT_VARIABLE _nros_cyclone_dir OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _nros_cyclone_rc)
+        if(_nros_cyclone_rc EQUAL 0 AND IS_DIRECTORY "${_nros_cyclone_dir}/bin")
+            set(_nros_idlc_store_hints "${_nros_cyclone_dir}/bin")
+        endif()
     endif()
     # issue 0325 — HINTS are searched BEFORE the host PATH, PATHS after. The
     # comment above documents "SDK store, host PATH …, then the legacy in-tree

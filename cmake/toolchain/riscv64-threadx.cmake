@@ -83,12 +83,27 @@ execute_process(
             --print-file-name=libstdc++.a
     OUTPUT_VARIABLE _riscv_stdcxx OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
-    file(GLOB _riscv_sdk_stdcxx
-        "$ENV{HOME}/.nros/sdk/riscv-none-elf-gcc/*/riscv-none-elf/lib/rv64imafdc_zicsr/lp64d/libstdc++.a")
-    if(_riscv_sdk_stdcxx)
-        list(GET _riscv_sdk_stdcxx -1 _riscv_stdcxx)
-    else()
-        set(_riscv_stdcxx "")
+    # phase-365 W3b — construct from the PIN, do not glob the store.
+    #
+    # This globbed `riscv-none-elf-gcc/*/…` and took `list(GET … -1)`, i.e.
+    # whichever version sorted last — a search over a SHARED store answering a
+    # PER-PROJECT question, and the exact shape that gave Corrosion the wrong
+    # version 155 times in one configure (issue 0625). Silence on failure keeps
+    # the existing "no SDK libstdc++" fallback.
+    set(_riscv_stdcxx "")
+    find_program(_NROS_CLI_RV nros)
+    if(_NROS_CLI_RV)
+        execute_process(
+            COMMAND "${_NROS_CLI_RV}" sdk-path riscv-none-elf-gcc
+            OUTPUT_VARIABLE _riscv_sdk_dir OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _riscv_rc)
+        if(_riscv_rc EQUAL 0)
+            set(_cand
+                "${_riscv_sdk_dir}/riscv-none-elf/lib/rv64imafdc_zicsr/lp64d/libstdc++.a")
+            if(EXISTS "${_cand}")
+                set(_riscv_stdcxx "${_cand}")
+            endif()
+        endif()
     endif()
 endif()
 if(_riscv_stdcxx)

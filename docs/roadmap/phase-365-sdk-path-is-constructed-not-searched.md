@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1, W2, W3a LANDED (+ the corrosion half of W3b); W3b-rest, W4, W5 open.** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). W1, W2, W3a, W3b, W4 LANDED; W5 open.** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -178,19 +178,50 @@ Still open: ~10 files spelling the store directly (`just/workspace.just` ×8,
 `doctor.rs`). W4's gate lands with them, not before — a gate against a rule the
 tree still breaks in ten places is a red nobody can act on.
 
+### W3b — the other tools — LANDED
+
+Converted the two consumers that enumerated: `scripts/dev/zenohd.sh`
+(`ls …/sdk/zenohd/*/bin/zenohd | sort -V | tail -1`) and
+`cmake/toolchain/riscv64-threadx.cmake` (`file(GLOB …/riscv-none-elf-gcc/*/…)`
+plus `list(GET … -1)`). Both are the corrosion defect in another tool, and both
+were found by the rule rather than by a failure — zenohd especially matters,
+since CLAUDE.md pins it to 1.7.2 for `rmw_zenoh_cpp` compatibility.
+
 ### W3b-rest — the other tools
 
 cmake toolchain files, `just` recipes, shell scripts, in that order.
 
 **Acceptance.** Zero raw `.nros/sdk` outside the constructor and the W2 command.
 
-### W4 — make the class uncommittable
+### W4 — make the class uncommittable — LANDED
 
-A gate: `.nros/sdk` may be spelled in exactly ONE place per language. Same shape
-as `check-atomic-sync-writes` — the discipline exists, so the gate is what stops
-the second spelling.
+**The rule changed once the survey was done, and the survey was right.** The
+planned rule was "one spelling of `.nros/sdk` per language". The 18 sites in the
+tree are three populations and only one is wrong:
 
-**Acceptance.** Self-tested red on a reintroduced literal, in both languages.
+* INSTALLERS legitimately write the store — they are the producer;
+* `.nros/sdks/arm-fvp` is a different tree (`sdks`, not `sdk`);
+* the defect is a CONSUMER enumerating versions and picking one.
+
+So `check-sdk-store-not-enumerated` bans the SHAPE — a wildcard where the
+version belongs (`/sdk/<tool>/*`) — not the mention. A rule that fired on
+correct installers would have been edited away within a week.
+
+**Acceptance — met**, and the gate paid for itself on its first correct run by
+finding two sites the manual survey missed:
+
+* `zephyr/cmake/nros_rmw_cyclonedds.cmake` globbed `<store>/cyclonedds/*/bin`
+  into `HINTS` — selecting the IDL compiler that emits type-support, i.e. the
+  museum-compiler failure the surrounding comment already warns about;
+* `book/src/getting-started/installation.md` told USERS to run
+  `ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1` by hand.
+
+**And the gate was vacuous in its first draft** — it anchored on `.nros`
+immediately preceding `/sdk/`, while the real spelling is
+`"${NROS_HOME:-$HOME/.nros}"/sdk/zenohd/*` with `}"` in between. It reported OK
+on a deliberately reintroduced search. That is why the self-test is part of the
+gate and not a formality: this is the second gate today that would have shipped
+green and blind.
 
 ### W5 — retire the unversioned prefix
 
