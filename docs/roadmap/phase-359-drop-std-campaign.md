@@ -525,6 +525,31 @@ removing it touches the SDK index, `nros-sizes-build` and the CLI's patch
 emission. That belongs after this is proven on hardware, not bundled ahead of
 it.
 
+#### Correction: `env` REQUIRES `std`, it does not grant it (2026-08-16)
+
+The first cut of the `env` capability was `env = ["std"]`, and the first cut of
+`metadata-mode` was changed the same way. Both are wrong, and
+`check-feature-contract` clause (a) says so: *a capability/backend/platform
+feature REQUIRES the heap, it does not grant it — emit `compile_error!` naming
+the feature the user must add.*
+
+`metadata-mode = []` plus a `compile_error!` was already the sanctioned shape in
+this repo; changing it to `["std"]` looked like tightening an unenforced doc
+comment and was actually a contract violation. Both now carry the guard
+instead, in `nros` and in `nros-node`.
+
+The consequence is worth stating plainly rather than hiding: **28 dep-sites
+that name `env` name `std` again.** `env` reads `std::env::var`, so a hosted
+consumer of `from_env` / `nros::init*` cannot be a `std`-free build today, and
+pretending otherwise by having the capability switch the flavour on is exactly
+the implicit-flavour problem this campaign exists to remove.
+
+What the campaign still buys, unchanged: a target build names neither and never
+compiles either item, and the ~39 `from_env` call sites keep working. What it
+does NOT yet buy: those hosted consumers moving off `std`. That needs `env` to
+reach the environment without the `std` FEATURE — an OS-detection path, or the
+capability accepting that it is hosted-only — and it is not done here.
+
 #### The `std` forward chain, mapped (2026-08-16)
 
 The last step — deleting `std` from the nine crates — fails at RESOLUTION, not

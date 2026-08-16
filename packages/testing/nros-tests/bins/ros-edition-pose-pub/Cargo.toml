@@ -22,7 +22,7 @@ deploy = ["native"]
 # `nros/rmw-cyclonedds` is the typed-descriptor marker the Cyclone path needs
 # (native rust typed create_publisher::<M> fails PublisherCreationFailed
 # without it — see project memory).
-nros = { version = "*", default-features = false, features = ["alloc", "env", "rmw-cffi", "ros-humble", "rmw-cyclonedds"] }
+nros = { version = "*", default-features = false, features = ["std", "alloc", "env", "rmw-cffi", "ros-humble", "rmw-cyclonedds"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 nros-board-linux = { version = "*", default-features = false, features = ["rmw-cyclonedds"] }
 nros-rmw-cyclonedds-sys = { version = "*", features = ["platform-posix"] }

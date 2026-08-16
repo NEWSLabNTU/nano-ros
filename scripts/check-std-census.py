@@ -108,7 +108,11 @@ BASELINE = {
     # the feature it checks, so the count goes up by one while an implicit
     # enable goes away. Same trade phase-361 W8.e made for `metadata-mode`
     # directly above.
-    "nros": {"cfg": 14, "path": 16},
+    #
+    # Then 14 -> 12, same day, different session: `init` and the `NROS_RMW`
+    # read moved off `std` onto `env`, and `ExecutorNodeRuntime::spin`/`halt`
+    # lost a gate that described a convention rather than a requirement.
+    "nros": {"cfg": 12, "path": 16},
     "nros-c": {"cfg": 13, "path": 8},
     # phase-361 W2.a: 5 -> 3. The heap gate is `cfg(feature = "alloc")` alone,
     # `std` reaching it through `std = ["alloc", …]` in the manifest; the two
@@ -131,7 +135,11 @@ BASELINE = {
     # it — the implicit flavour this campaign exists to remove, and a clause
     # (a) violation that sat red on main. Requiring it costs one counted site
     # and removes one silent enable.
-    "nros-node": {"cfg": 87, "path": 40},
+    #
+    # Then 87 -> 85: `Executor`'s halt/wake API was ONE `std`-gated impl block
+    # and only its wall-clock spin loops need `std`, so it split three ways and
+    # `halt_flag` joined `wake_flag` on `alloc`.
+    "nros-node": {"cfg": 85, "path": 40},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

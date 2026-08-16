@@ -24,7 +24,7 @@ unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "alloc", "env",
+    "std", "alloc", "env",
     "rmw-cffi",
     "ros-humble",
 ] }

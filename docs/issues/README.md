@@ -176,7 +176,7 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 `packages/cli` is a separate workspace inside the repo), plus a configure-time FATAL_ERROR when two roots
 claim one directory. See `archived/0616-*`.
 
-**#626** (boards/rmw-zenoh/platform, RESOLVED 2026-08-16) — the zenoh read/lease task priority was
+Recently resolved (2026-08-16): **#0626** — the zenoh read/lease task priority was
 UNSETTABLE on ThreadX and Zephyr: no knob, and three layers that would each drop one
 (`zpico_set_task_config` has only the FreeRTOS board as caller; the shim's Zephyr POSIX branch set stack
 only and ThreadX's `#else` `(void)`'d everything; native Zephyr's `nros_platform_task_init` hardcodes
@@ -191,7 +191,7 @@ existing schedule. ThreadX verified at RUNTIME (talker publishes); Zephyr only a
 stated in the issue, along with the fact that nothing prints the resolved priority on either platform. See
 `archived/0626-*`. (2026-08-16)
 
-**#634** (build/boards, RESOLVED 2026-08-16) — every C fixture on the ThreadX RISC-V lane failed with
+Recently resolved (2026-08-16): **#0634** — every C fixture on the ThreadX RISC-V lane failed with
 `rust-lld: error: unable to find library -lnosys` while the Rust examples of the SAME lane linked fine. One
 `if()` block, two halves that travel differently: `CMAKE_C_STANDARD_LIBRARIES "-lnosys"` is a CACHE var and
 reaches every target, `add_link_options("-L…")` is DIRECTORY-scope in a TOOLCHAIN FILE and does not
@@ -202,7 +202,7 @@ failed and looked like the fix not working; wiping one leaf took failures 6 -> 5
 dir, so the `EXISTS` guard was right (the doubt came from a `find | head` that truncated). See
 `archived/0634-*`. (2026-08-16)
 
-**#623** (boards/platform, RESOLVED 2026-08-16) — tier priorities were RAW per-RTOS and transport
+Recently resolved (2026-08-16): **#0623** — tier priorities were RAW per-RTOS and transport
 priorities NORMALISED 0-31, both reaching `xTaskCreate` in ONE priority space with nothing saying so, so
 `[tiers.high.freertos] priority = 5` sat ABOVE a transport band that read "16" (= FreeRTOS 4). Cost is
 recorded in a CONSUMER's config: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, 1-3 s island freezes on
@@ -217,7 +217,7 @@ defaults convert exactly (12->3, 16->4) — behaviour unchanged by construction.
 6793 ctrl ticks, report silent for 3/2/1 vs floor 4, now a direct comparison. See `archived/0623-*`.
 (2026-08-16)
 
-OPEN — **#0636** the NuttX boot tier holds the HIGHEST declared priority and spins, so on the uniprocessor
+**#0636** (boards/platform, open 2026-08-16) — the NuttX boot tier holds the HIGHEST declared priority and spins, so on the uniprocessor
 `arm-virt` guest every lower tier is starved. `sched_dims_applied_e2e`'s `TierPriority/nuttx/rust` cell
 measured 1 of 5 solo runs passing: the spawned `low` tier prints nothing at all — the console stops at
 `tier 'high' entering spin` — and the guest runs a full 12 s, so this is starvation, not a startup race

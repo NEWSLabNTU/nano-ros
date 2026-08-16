@@ -23,7 +23,7 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "alloc", "env",
+    "std", "alloc", "env",
     "rmw-cffi",
     "ros-humble",
 ] }

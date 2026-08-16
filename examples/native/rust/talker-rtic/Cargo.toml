@@ -25,7 +25,7 @@ rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-bo
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "env"] }
+nros = { version = "*", default-features = false, features = ["std", "alloc", "rmw-cffi", "ros-humble", "env"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's
