@@ -293,6 +293,9 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
     if [ -n "$rlibs" ] \
         && ! printf '%s\n' "$rlibs" | grep -q "/lib${BUDGET_CRATE}-" \
         && printf '%s\n' "$_all" | grep -q "/lib${BUDGET_CRATE}-"; then
+        # issue 0647 — keep THIS build's writes for the tree-wide axes; only
+        # the named-budget question needs the wider set (see the note there).
+        _rlibs_era="$rlibs"
         rlibs="$_all"
         IDENTITY_ERA_NOTE="  $BUDGET_CRATE was NOT rebuilt since started_at=$_started (an incremental
   build with nothing to do for it), so this counts ALL $_n_all rlib(s) in the
@@ -313,6 +316,11 @@ fi
 # crate<space>hash<space>path, one per artifact.
 triples="$(printf '%s\n' "$rlibs" \
     | sed -nE 's|^(.*/lib([A-Za-z0-9_]+)-([0-9a-f]{8,})\.rlib)$|\2 \3 \1|p')"
+# issue 0647 — the era-only view, when widening replaced `rlibs` above.
+if [ -n "${_rlibs_era:-}" ]; then
+    triples_era="$(printf '%s\n' "$_rlibs_era" \
+        | sed -nE 's|^(.*/lib([A-Za-z0-9_]+)-([0-9a-f]{8,})\.rlib)$|\2 \3 \1|p')"
+fi
 
 if [ -z "$triples" ]; then
     echo "artifact-identity budget: FAIL" >&2
@@ -465,6 +473,21 @@ if [ -n "${_started:-}" ] && [ -n "$_all" ] \
     _all_triples="$(printf '%s\n' "$_all" \
         | sed -nE 's|^(.*/lib([A-Za-z0-9_]+)-([0-9a-f]{8,})\.rlib)$|\2 \3 \1|p')"
     if printf '%s\n' "$_all_triples" | awk -v c="$BUDGET_CRATE" '$1 == c {found=1} END {exit !found}'; then
+        # issue 0647 — widening answers the NAMED-BUDGET question only.
+        #
+        # The two tree-wide axes below ask a different one: "how many identities
+        # / copies did THIS BUILD produce?" Answering that from an accumulated
+        # tree is a false red, and a routine one — a clean build of the mixed
+        # workspace lands exactly ON the ceiling (5/5), so the first incremental
+        # rebuild that changes any fingerprint puts a crate at 6 and fails the
+        # gate, with `rm -rf` + a 7-minute rebuild as the only remedy. Hit twice
+        # in one session, both times on a correct tree.
+        #
+        # Keeping the era set for those axes cannot create a false GREEN: a
+        # build that really compiles six units of a crate writes all six INSIDE
+        # the window. What it drops is crates this build never compiled, which
+        # is exactly what it has nothing to say about.
+        triples_era="$triples"
         triples="$_all_triples"
         identity_counts="$(printf '%s\n' "$triples" | count_identities)"
         _era_filtered=0
@@ -511,7 +534,18 @@ if [ "$budgeted_n" -gt "$BUDGET_IDENTITIES" ]; then
     fail=1
 fi
 
-over_ceiling="$(printf '%s\n' "$identity_counts" \
+# issue 0647 — the tree-wide axes read THIS BUILD's writes whenever a window
+# exists, even when the named-budget crate forced the widening above.
+_tree_triples="${triples_era:-$triples}"
+_tree_counts="$(printf '%s\n' "$_tree_triples" | count_identities)"
+if [ -n "${triples_era:-}" ]; then
+    _dropped=$(printf '%s\n' "$triples" | awk '{print $1}' | sort -u | wc -l)
+    _kept=$(printf '%s\n' "$_tree_triples" | awk '{print $1}' | sort -u | wc -l)
+    echo "  tree-wide axes read the $_n_cur rlib(s) THIS build wrote ($_kept crate(s));" \
+         "$((_dropped - _kept)) crate(s) it did not compile are not judged here (issue 0647)."
+fi
+
+over_ceiling="$(printf '%s\n' "$_tree_counts" \
     | awk -v k="$CEILING_IDENTITIES" '$1 > k {print $2, $1}')"
 if [ -n "$over_ceiling" ]; then
     echo "artifact-identity budget: FAIL" >&2
@@ -536,7 +570,7 @@ fi
 # after any sort, in any locale. The axis-1 bug needed two DIFFERENT lines to be
 # reduced to a common key first. Left as a pipeline on purpose, with the reason
 # stated, so nobody "fixes" a correct site — or copies the broken idiom.
-over_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c \
+over_copies="$(printf '%s\n' "$_tree_triples" | awk '{print $1, $2}' | sort | uniq -c \
     | awk -v k="$CEILING_COPIES" '$1 > k {print $2, $3, $1}')"
 if [ -n "$over_copies" ]; then
     echo "artifact-identity budget: FAIL" >&2
@@ -544,7 +578,7 @@ if [ -n "$over_copies" ]; then
     echo "  identities written into more than $CEILING_COPIES target dirs in $TREE:" >&2
     while read -r crate hash n; do
         echo "  $crate $hash: $n copies" >&2
-        printf '%s\n' "$triples" | awk -v h="$hash" '$2 == h {print "    " $3}' >&2
+        printf '%s\n' "$_tree_triples" | awk -v h="$hash" '$2 == h {print "    " $3}' >&2
     done <<< "$over_copies"
     echo "  Cargo already judged these interchangeable; they are the same" >&2
     echo "  compilation repeated per directory (phase-340 R1)." >&2
@@ -555,8 +589,8 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-max_ids="$(printf '%s\n' "$identity_counts" | awk '{print $1}' | sort -rn | head -1)"
-max_copies="$(printf '%s\n' "$triples" | awk '{print $1, $2}' | sort | uniq -c \
+max_ids="$(printf '%s\n' "$_tree_counts" | awk '{print $1}' | sort -rn | head -1)"
+max_copies="$(printf '%s\n' "$_tree_triples" | awk '{print $1, $2}' | sort | uniq -c \
     | awk '{print $1}' | sort -rn | head -1)"
 echo "artifact-identity budget OK ($TREE): $BUDGET_CRATE $budgeted_n/$BUDGET_IDENTITIES identities;" \
      "worst crate $max_ids/$CEILING_IDENTITIES; worst identity $max_copies/$CEILING_COPIES copies."

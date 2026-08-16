@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#0647** — the identity budget's TREE-WIDE ceiling counted rlibs from
+earlier builds. #0513's widening (when a build rebuilds nothing for the named crate, the `started_at` window
+cannot answer for it, so count the whole tree) replaced the artifact list globally — correct for the named
+budget, wrong for the ceiling, which asks what a build PRODUCED. Cargo never collects old rlibs and a clean
+build of the mixed workspace sits at exactly 5/5, so one incremental rebuild fails the gate with `rm -rf` +
+7 minutes as the only remedy; measured twice on correct trees. The tree-wide axes now read the era set and
+report how many crates they therefore do not judge. Cannot false-green: a build that compiles six units
+writes all six inside the window. See `archived/0647-*`. (2026-08-16)
+
+Recently resolved (2026-08-16): **#0050 (twin)** — `weak_symbol_audit.rs` re-implemented the weak-decl scan
+beside `scripts/check-weak-symbols.sh`, sharing only the allowlist. `35c603308` taught the SHELL scanner to
+strip comments (the attribute is discussed in prose beside nearly every real use, so phase-366's new
+sentences moved three counts with no new symbol) and lowered the allowlist to match — leaving the Rust copy
+counting comments, so one tree passed `just check` and failed `test-all`. The test now RUNS the shell gate
+instead of mirroring it: one scanner, identical coverage by construction. (2026-08-16)
+
 Recently resolved (2026-08-16): **#649** — `nros sync` ran once per fixture ROW while it is per-WORKSPACE. A
 counting shim on `$NROS_CLI` across `build-test-fixtures lane=native`: **185 invocations for 69 distinct
 targets** (63 % repeats), `examples/workspaces/features` synced **22 times** for its 24 manifest rows — the

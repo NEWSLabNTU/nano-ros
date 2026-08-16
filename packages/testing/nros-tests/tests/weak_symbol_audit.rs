@@ -25,153 +25,60 @@
 //! defaults to define-once / explicit-registration (RFC-0042 D3). The
 //! allowlist below is the audit those phases build on.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+//! ## One scanner, not two (2026-08-16)
+//!
+//! This file used to re-implement the scan in Rust beside
+//! `scripts/check-weak-symbols.sh`, with the allowlist as the only shared
+//! artifact. Two spellings of one rule drift the moment either is fixed, and
+//! that is exactly what happened: `35c603308` taught the SHELL scanner to strip
+//! comments (the attribute is discussed in prose beside nearly every real use,
+//! so phase-366's new sentences moved three counts with no new symbol) and
+//! lowered the allowlist to the corrected numbers. The Rust copy still counted
+//! comments, so the same tree passed `just check` and failed `test-all` —
+//! a red that looks like a code regression and is a gate disagreement.
+//!
+//! So the test RUNS the shell gate rather than mirroring it. Coverage is
+//! identical by construction (unaudited new site, drifted count, stale entry),
+//! and there is one place left to fix when the rule changes.
+
+use std::{path::PathBuf, process::Command};
 
 use nros_tests::project_root;
 
-/// Path to the single source-of-truth allowlist, shared with the shell gate
-/// `scripts/check-weak-symbols.sh` (run from `just check`). Each line:
-/// `<expected weak-decl count> <repo-relative path>  # classification`
-/// (override-default = a strong def is guaranteed elsewhere; optional-hook =
-/// the weak no-op IS the intended fallback).
-const ALLOWLIST_FILE: &str = "scripts/weak-symbols-allowlist.txt";
-
-/// Parse `scripts/weak-symbols-allowlist.txt` → `path → expected-count`. Lines
-/// are `<count> <repo-relative-path>  # classification`; `#` comments + blanks
-/// are skipped.
-fn load_allowlist(root: &Path) -> std::collections::HashMap<String, usize> {
-    let raw = fs::read_to_string(root.join(ALLOWLIST_FILE))
-        .unwrap_or_else(|e| panic!("read {ALLOWLIST_FILE}: {e}"));
-    let mut map = std::collections::HashMap::new();
-    for line in raw.lines() {
-        let line = line.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-        let mut it = line.split_whitespace();
-        let (Some(count), Some(path)) = (it.next(), it.next()) else {
-            continue;
-        };
-        let count: usize = count
-            .parse()
-            .unwrap_or_else(|_| panic!("{ALLOWLIST_FILE}: bad count in line: {line}"));
-        map.insert(path.to_string(), count);
-    }
-    map
-}
-
-/// Recursively collect owned C/C++/asm sources under `packages/`, skipping
-/// vendored / build / generated trees.
-fn owned_sources(root: &Path) -> Vec<PathBuf> {
-    fn skip_dir(name: &str) -> bool {
-        matches!(
-            name,
-            "target" | "build" | "generated" | "zenoh-pico" | "mbedtls" | "third-party" | ".git"
-        )
-    }
-    let mut out = Vec::new();
-    let mut stack = vec![root.join("packages")];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if path.is_dir() {
-                if !skip_dir(&name) {
-                    stack.push(path);
-                }
-            } else if matches!(
-                path.extension().and_then(|e| e.to_str()),
-                Some("c")
-                    | Some("cpp")
-                    | Some("cc")
-                    | Some("h")
-                    | Some("hpp")
-                    | Some("S")
-                    | Some("s")
-            ) {
-                out.push(path);
-            }
-        }
-    }
-    out
-}
-
-/// Count lines bearing a weak declaration / directive.
-fn weak_decl_count(text: &str) -> usize {
-    text.lines()
-        .filter(|l| l.contains("__attribute__((weak))") || l.contains(".weak "))
-        .count()
-}
+/// The one scanner. `just check` runs it directly; this test runs the same
+/// file, so the two lanes cannot disagree about what a weak declaration is.
+const SCANNER: &str = "scripts/check-weak-symbols.sh";
 
 #[test]
 fn owned_weak_symbols_are_audited() {
     let root = project_root();
-    let allow = load_allowlist(&root);
+    let scanner: PathBuf = root.join(SCANNER);
+    // An unmet precondition FAILS — a test that returns early on a missing
+    // scanner reports PASS for a check that never ran.
+    assert!(
+        scanner.is_file(),
+        "weak-symbol scanner missing: {}",
+        scanner.display()
+    );
 
-    let mut unexpected: Vec<String> = Vec::new();
-    let mut drifted: Vec<String> = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let out = Command::new("bash")
+        .arg(&scanner)
+        .current_dir(&root)
+        .output()
+        .unwrap_or_else(|e| panic!("cannot run {}: {e}", scanner.display()));
 
-    for path in owned_sources(&root) {
-        let Ok(text) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let count = weak_decl_count(&text);
-        if count == 0 {
-            continue;
-        }
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        seen.insert(rel.clone());
-        match allow.get(rel.as_str()) {
-            Some(expected) if *expected == count => {}
-            Some(expected) => drifted.push(format!(
-                "  {rel}: weak-decl count {count}, allowlist expects {expected} \
-                 — a weak symbol was added/removed; re-audit + update {ALLOWLIST_FILE}."
-            )),
-            None => unexpected.push(format!(
-                "  {rel}: {count} weak decl(s) — NEW unaudited weak-symbol site. \
-                 Audit it (override-default vs optional-hook, where the strong def \
-                 comes from), then add it to {ALLOWLIST_FILE}."
-            )),
-        }
-    }
-
-    // Stale allowlist entries (file moved / weak removed) — also forces review.
-    let mut stale: Vec<String> = Vec::new();
-    for p in allow.keys() {
-        if !seen.contains(p) {
-            stale.push(format!(
-                "  {p}: allowlisted but no weak decl found (file moved/deleted, or \
-                 weak removed) — drop it from {ALLOWLIST_FILE}."
-            ));
-        }
-    }
-
-    let mut msg = String::new();
-    if !unexpected.is_empty() {
-        msg.push_str("UNEXPECTED weak-symbol sites (issue 0050):\n");
-        msg.push_str(&unexpected.join("\n"));
-        msg.push('\n');
-    }
-    if !drifted.is_empty() {
-        msg.push_str("DRIFTED weak-decl counts:\n");
-        msg.push_str(&drifted.join("\n"));
-        msg.push('\n');
-    }
-    if !stale.is_empty() {
-        msg.push_str("STALE allowlist entries:\n");
-        msg.push_str(&stale.join("\n"));
-        msg.push('\n');
-    }
-    assert!(msg.is_empty(), "{msg}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "weak-symbol audit FAILED (issue 0050) — `bash {SCANNER}` exited {}:\n{stderr}{stdout}",
+        out.status.code().unwrap_or(-1)
+    );
+    // Say what was covered: a scanner that silently matched zero files would
+    // otherwise pass exactly like one that checked everything.
+    print!("{stdout}");
+    assert!(
+        stdout.contains("audited weak-symbol files OK"),
+        "scanner produced no coverage line — did it check anything?\n{stdout}{stderr}"
+    );
 }
