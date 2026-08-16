@@ -258,8 +258,18 @@ if [ -n "$new" ]; then
     printf '%s\n' "$new" | sed 's/^/       /' >&2
     echo "       Their manifest changed and the lock was not regenerated, so the lock" >&2
     echo "       pins nothing and the crate resolves fresh on every build (issue 0359)." >&2
-    echo "       Fix: cd <dir> && cargo generate-lockfile, then REVIEW the diff — if it" >&2
-    echo "       adds registry packages, that is a dependency change, not a refresh." >&2
+    # The remedy must not tell the reader to break the lockfile rule. A bare
+    # `cargo generate-lockfile` RUNS here (the `--locked` shim does not block
+    # it) and re-resolves EVERY package to latest-compatible — measured on
+    # `qos-override-pubsub`: "Locking 104 packages to latest Rust 1.97.1
+    # compatible versions" where the actual drift was one removed entry. That
+    # is how 26 leaf locks once moved 5388 lines as a "cleanup". Same wording
+    # as `check-submodule-pinned-locks.py` on purpose: one spelling of the
+    # sanctioned move, not a second.
+    echo "       Update it the sanctioned way — never a bare \`cargo generate-lockfile\`:" >&2
+    echo "           just lock-update \"\" \"\" <leaf-dir>" >&2
+    echo "       then REVIEW the diff — if it adds registry packages, that is a" >&2
+    echo "       dependency change, not a refresh." >&2
     fail=1
 fi
 if [ -n "$fixed" ]; then
