@@ -94,15 +94,7 @@ exactly, fail with the provisioning command on a miss, accept an already-loaded 
 pin, and delete the ordering heuristic (and #0500's gate that keeps its two implementations agreeing).
 General to every tool, so filed as a DESIGN change against RFC-0014. See `0625-*`.
 
-**#622** (build, open 2026-08-16) — the legacy-Corrosion `FATAL_ERROR`'s remedy clears only the WORKSPACE
-build trees, so following it verbatim reproduces the same error from the same line. The stale resolution is
-ALSO cached in every example LEAF build dir — 62 of them on the host that found this — and a `CMakeCache.txt`
-is authoritative for that tree's next configure. `nros setup --tool corrosion` meanwhile reports
-`present 0.6.1-nros1 (skip)`: the pin was never missing, the caches were. Issue 0500's shape one layer up —
-"having run the installer" says nothing, and neither does "having run the remedy". Fixed the message in place
-(add the leaf-cache sweep; deleting just the `CMakeCache.txt` suffices, the trees need not go) and filed the
-reasoning, including the better version: the gate already knows the path it rejected and could LIST the stale
-trees instead of handing out a glob. See `0622-*`. (2026-08-16)
+Recently resolved (2026-08-16): **#0622** — the legacy-Corrosion remedy named only the WORKSPACE trees, so following it verbatim reproduced the error. The fix had landed in the FATAL arm only, while the WARNING arm — the one readers actually reach, since fatal became opt-in — still said "remove its build dir". Both arms now print a MEASURED list of the caches naming a legacy prefix (and say so explicitly when there are none, since the 155-vs-28 split was an `add_subdirectory` bypass, not stale caches). See `archived/0622-*`. (2026-08-16)
 
 **#618** (build/api, open 2026-08-16) — **OWNER: `ARCHITECTURE.md` §2, implemented by phase-361** — this is a
 disagreement with normative architecture, not a gap in it. §2 says `malloc` and `panic` are "unified per

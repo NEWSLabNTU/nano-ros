@@ -2,7 +2,7 @@
 id: 622
 title: "The legacy-Corrosion FATAL_ERROR's remedy clears only the WORKSPACE build
   trees, so following it verbatim leaves the build failing identically"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0616, issue-0500, issue-0493, phase-364]
@@ -92,3 +92,60 @@ Found on 2026-08-16 while running tier 1 for phase-364, on a host where
 `0.6.1-nros1` and `0.5.1-nros1` both sit in the SDK store. The gate itself is
 correct and caught a real topology hazard — this is only about the instructions
 it prints.
+
+## Resolution 2026-08-16
+
+The `Fix` above had already landed in the **`FATAL_ERROR`** arm by the time this
+was picked up — the grep line and the 0622 citation are both in it. What had not
+happened is the rest of the class:
+
+**The `WARNING` arm still said "remove its build dir".** That arm is the one a
+reader actually reaches: the fatal branch was downgraded to opt-in
+(`NROS_STRICT_CORROSION`) hours after landing, because as a hard failure it took
+out four fixture families. So the incomplete remedy this issue was filed about
+was still live — it had moved, not gone. Fixing the reported site and not the
+class, one arm apart.
+
+Both arms now share one report, and it is the *"worth considering alongside"*
+from this issue rather than the glob: `_nros_corrosion_stale_caches()` scans the
+workspace trees **and** the example leaves and prints what it found —
+
+```
+  12 CMakeCache.txt in this checkout still name a legacy prefix. A cache
+  is authoritative for the next configure of its tree, so these must go —
+  deleting the CMakeCache.txt is enough, the trees themselves need not:
+    examples/native/c/talker/build-0622probe1/CMakeCache.txt
+    …
+    … and 2 more
+```
+
+and, when it finds none:
+
+```
+  No CMakeCache.txt in this checkout names a legacy prefix, so a stale
+  cache is NOT what is pinning this resolution — look at the resolution
+  path itself (an `add_subdirectory` import never consults the SDK prefixes).
+```
+
+That negative branch matters as much as the positive one, and it is what the
+module's own comment already measured: the 155-vs-28 split was *not* stale
+caches, it was an `add_subdirectory` import bypassing `_nros_corrosion_prefixes`.
+A remedy that only knows how to say "clear your caches" sends that reader to
+delete 62 files and come back no better off. Now the message distinguishes the
+two.
+
+Verified by exercising all three paths against real files (no caches / 12 caches
+listed / truncation at 10), not by reading the code.
+
+### One defect found by running it
+
+The first cut passed several arguments to `set()`, which makes a **list**, and
+`message()` renders a list joined by `;` — so the remedy printed `;` between
+every line, mid-sentence. Fixed to a single quoted string. Worth recording
+because it is invisible in the source and obvious in the output.
+
+### Still open, and NOT this issue
+
+The underlying `add_subdirectory` resolution path still bypasses the newest-first
+ordering; the module's comment says the fatal arm can be promoted back once that
+is fixed. This issue was only ever about the instructions.

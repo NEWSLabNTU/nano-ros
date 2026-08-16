@@ -42,6 +42,74 @@
 
 include_guard(GLOBAL)
 
+# CACHE INTERNAL, not a plain `set`: this module is `include()`d from inside
+# functions, and a normal variable set at file scope is gone when that frame
+# pops (the `_NROS_ENTRY_DIR` pattern — it broke every freertos workspace
+# member's `configure_file` once already).
+set(_NROS_CORROSION_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "directory holding NanoRosCorrosion.cmake")
+
+# _nros_corrosion_stale_caches(out_var)
+#
+# Issue 0622 — every `CMakeCache.txt` in this checkout that recorded a legacy
+# Corrosion prefix. A cache is authoritative for the NEXT configure of its tree,
+# so these are what keep a stale resolution alive after the pin is installed.
+#
+# This exists because the remedy used to hand the reader a glob to run. The gate
+# already knows what it rejected and can look, so it should: 0622's own words
+# are that an incomplete remedy at that moment "converts 'I do not know what to
+# do' into 'I did what it said and it is still broken'". A LIST can be checked
+# off; a glob has to be trusted.
+#
+# Both populations, deliberately: the workspace fixture trees AND the example
+# leaves. The first version of the remedy named only the workspace trees, which
+# is how 0622 was filed at all.
+function(_nros_corrosion_stale_caches out_var)
+    set(_root "${_NROS_CORROSION_MODULE_DIR}/..")
+    set(_caches "")
+    file(GLOB _found
+        "${_root}/examples/workspaces/*/build*/CMakeCache.txt"
+        "${_root}/examples/*/*/*/build*/CMakeCache.txt")
+    foreach(_c IN LISTS _found)
+        # LIMIT_COUNT 1 — presence is the question, and these files are large.
+        file(STRINGS "${_c}" _hit REGEX "corrosion/v?0\\.[0-5]\\." LIMIT_COUNT 1)
+        if(_hit)
+            file(RELATIVE_PATH _rel "${_root}" "${_c}")
+            list(APPEND _caches "${_rel}")
+        endif()
+    endforeach()
+    set(${out_var} "${_caches}" PARENT_SCOPE)
+endfunction()
+
+# _nros_corrosion_stale_cache_report(out_var)
+# The stale-cache paragraph for a remedy message: an explicit list when there is
+# one, and an explicit "none" when there is not — so a reader whose problem is
+# NOT a stale cache learns that here rather than after deleting 62 files.
+function(_nros_corrosion_stale_cache_report out_var)
+    _nros_corrosion_stale_caches(_stale)
+    list(LENGTH _stale _n)
+    if(_n EQUAL 0)
+        # ONE quoted argument. Several arguments make a LIST, and `message()`
+        # renders a list joined by `;` — which is what the first cut of this
+        # printed, mid-sentence, in the middle of the remedy.
+        set(${out_var}
+            "  No CMakeCache.txt in this checkout names a legacy prefix, so a stale\n  cache is NOT what is pinning this resolution — look at the resolution\n  path itself (an `add_subdirectory` import never consults the SDK\n  prefixes).\n"
+            PARENT_SCOPE)
+        return()
+    endif()
+    set(_shown "${_stale}")
+    set(_tail "")
+    if(_n GREATER 10)
+        list(SUBLIST _shown 0 10 _shown)
+        math(EXPR _rest "${_n} - 10")
+        set(_tail "    … and ${_rest} more\n")
+    endif()
+    string(REPLACE ";" "\n    " _lines "${_shown}")
+    set(${out_var}
+        "  ${_n} CMakeCache.txt in this checkout still name a legacy prefix. A cache\n  is authoritative for the next configure of its tree, so these must go —\n  deleting the CMakeCache.txt is enough, the trees themselves need not:\n    ${_lines}\n${_tail}"
+        PARENT_SCOPE)
+endfunction()
+
 # The store root — the same `$NROS_HOME` the CLI writes (`sdk_store.rs`).
 function(_nros_corrosion_store out_var)
     if(DEFINED ENV{NROS_HOME})
@@ -200,6 +268,11 @@ function(nros_report_corrosion origin version location)
     #
     # Promote back to FATAL_ERROR once the `add_subdirectory` path resolves
     # newest-first; `-DNROS_STRICT_CORROSION=ON` opts in meanwhile.
+    # Computed once for whichever arm fires; the scan only runs on the legacy
+    # version, so a healthy configure never pays for it.
+    if(version MATCHES "^v?0\\.[0-5]\\.")
+        _nros_corrosion_stale_cache_report(_stale_report)
+    endif()
     if(version MATCHES "^v?0\\.[0-5]\\." AND NROS_STRICT_CORROSION
             AND NOT NROS_ALLOW_LEGACY_CORROSION)
         message(FATAL_ERROR
@@ -210,23 +283,24 @@ function(nros_report_corrosion origin version location)
             "`deps/`, so every `#[no_mangle]` export collides at link and "
             "`nros-platform`'s single `#[global_allocator]` is defined twice "
             "(issues 0493, 0616).\n"
-            "Fix: provision the pinned copy and clear EVERY tree that cached the "
+            "Fix: provision the pinned copy, then clear EVERY tree that cached the "
             "old topology in its CMakeCache —\n"
             "    nros setup --tool corrosion\n"
-            "    rm -rf examples/workspaces/*/build-workspace-fixtures*\n"
-            "    grep -rl 'corrosion/0\\.[0-5]' examples/*/*/*/build*/CMakeCache.txt "
-            "| xargs -r rm -f\n"
-            "  (issue 0622 — the example LEAF caches hold the resolved path too, 62 of "
-            "them on the host that found this, and clearing only the workspace trees "
-            "reproduces this error verbatim. Deleting the CMakeCache.txt is enough; the "
-            "trees themselves need not go.)\n"
+            "${_stale_report}"
             "Override for a deliberate experiment: -DNROS_ALLOW_LEGACY_CORROSION=ON")
     elseif(version MATCHES "^v?0\\.[0-5]\\.")
+        # Issue 0622 fixed the remedy in the FATAL arm only — and this arm is the
+        # one a reader actually reaches, since the fatal branch became opt-in
+        # (`NROS_STRICT_CORROSION`) hours after landing. "Remove its build dir"
+        # is the same incomplete instruction 0622 was filed about, so it gets
+        # the same measured list rather than a second, shorter spelling of the
+        # advice. Fix the CLASS, not the reported site.
         message(WARNING
             "nano-ros: Corrosion ${version} shares ONE cargo target-dir across workspace "
             "roots (issues 0493, 0616). Harmless for a single-root configure; a link "
-            "with two roots duplicates every nros crate. Provision the pin and clear "
-            "the tree: `nros setup --tool corrosion` then remove its build dir. "
+            "with two roots duplicates every nros crate.\n"
+            "Provision the pin: `nros setup --tool corrosion`\n"
+            "${_stale_report}"
             "Make this fatal with -DNROS_STRICT_CORROSION=ON.")
     endif()
 endfunction()
