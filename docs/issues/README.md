@@ -194,6 +194,17 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
+**#648** (build, open 2026-08-16) — the fixture fan-out serialises on cargo's MACHINE-WIDE package-cache
+lock (`$CARGO_HOME/.package-cache`), not on a build dir. Sampled mid-`lane=all`: 23 cargo processes, 22
+sleeping, **4** rustc actually compiling, **274** `Blocking waiting for file lock on package cache`, and
+**0 downloads** — every crate already fetched, so the queue buys nothing. 68 of 89 zephyr leaf logs blocked
+at least once; each block sits at INVOCATION START, immediately before the first `Compiling` line. Explains
+a second component of #509's "76 % idle, ~0 compilers" that the storage A/B (iowait ~0 on both disks) had
+ruled out without naming, and bounds what phase-340's shared cargo groups can buy — fewer target dirs do
+not reduce contention on a global lock. Remedies: pre-warm + `--offline`, per-lane `CARGO_HOME`, or fewer
+invocations; which one works depends on whether anything still WRITES the cache offline, stated as the open
+question rather than assumed. Spotted by the maintainer in `htop`. See `0648-*`.
+
 **#642** (build/testing, open 2026-08-16) — `check-archive-lang-items` fails `build-test-fixtures` AFTER all
 eight platform families report OK, on `link.txt` under
 `examples/workspaces/*/build/nros-metadata/metadata-probe-cmake/` — metadata-PROBE residue dated **Jul 31**,
@@ -206,7 +217,7 @@ take the set from the fixture manifest), respect gitignore, prune build dirs, or
 (#0445). NOTE #0645/#0641 landed perf fixes to OTHER scans the same day; this one was not among them.
 See `0642-*`. (2026-08-16)
 
-**#643** (core/build, RESOLVED 2026-08-16) — `just ci-matrix` failed `check-feature-contract`: `nros-node`'s
+RESOLVED 2026-08-16 — **#0643** `just ci-matrix` failed `check-feature-contract`: `nros-node`'s
 `env = ["std"]` (from `1badb6f72`, phase-359 W10, *"`env` is a capability, not the `std` flavour"*) tripped
 the gate's own rule that a capability REQUIRES the heap and must not GRANT it. Real tension, not a typo:
 `env` needs `std::env`, and the contract exists so a capability cannot pull `std` into an image that never
