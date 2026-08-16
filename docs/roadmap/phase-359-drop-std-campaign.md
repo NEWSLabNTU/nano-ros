@@ -578,6 +578,49 @@ dependency no longer has is the same resolution error, just deferred to the next
 `nros sync`. Template, generated crates, and core feature tables move in ONE
 commit, and the two template copies move together.
 
+#### The backend tier — **DONE 2026-08-16**
+
+`nros-rmw-zenoh`, `nros-rmw-cffi` and `nros-bridge` each forwarded a core
+crate's `std` (`nros-rmw/std` twice, `nros-node/std` once). That is why the
+consumer sweep did not move the goal: measured on
+`bins/qos-override-pubsub`, a leaf asking for `alloc` still resolved
+`nros-core/std` ON, and `cargo tree -e features -i nros-core` named the reason —
+
+    nros-core feature "std" <- nros-rmw feature "std" <- nros-rmw-zenoh feature "std" <- the leaf
+
+The forward existed for exactly ONE thing: `Clock::system()`. `nros-core/std`
+gates `extern crate std` and a wall-clock arm of `Clock::now()`, and nothing
+else — without it, `ClockType::SystemTime` fell back to the STEADY counter,
+which is not a degraded wall clock but a different quantity presented as time
+since the Unix epoch.
+
+So the fix is a clock, not a manifest edit. `nros-core` gained
+`platform-clock`: the port's `nros_platform_time_since_epoch_{secs,nanos}`,
+declared as a direct `extern` exactly as `nros-node` already declares
+`nros_platform_clock_ns` ("every platform port exports it through the same
+linkage contract" — nros-core sits BELOW nros-platform and cannot depend on
+it). `nros-rmw-cffi/alloc` forwards it, since a C-ABI build always has a port.
+
+Two details worth keeping:
+
+* The ABI spends one instant over TWO symbols, and each call samples the clock
+  separately. A second boundary landing between them pairs the old second with
+  the new sub-second remainder — a timestamp that jumps a full second
+  BACKWARDS, rarely and silently. The reader retries on a seconds re-read,
+  bounded at three attempts. This is the concrete cost of the split that issue
+  0532's remaining half removes; when it collapses to one `time_now_ns`, that
+  loop is what goes away.
+* A port with no wall clock answers `0/0`. That returns `None` rather than the
+  Unix epoch, so the counter fallback stands instead of a wrong answer stated
+  confidently.
+
+Cost: `nros-core` cfg 3 -> 5, both arms selecting the clock. Bought: three
+backends stop granting `std` to every graph that links them.
+
+**Forwarders: 20 -> 17.** What remains is 6 core/api crates, 8 committed
+generated message crates, `nros-tests`, and the 2 `tests/simple-workspace` node
+packages — no backend among them.
+
 #### The final commit's exact file set (2026-08-16)
 
 After the consumer sweep (d48e78ea0), the crates that still name a core `std`

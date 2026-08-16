@@ -18,7 +18,13 @@ default = []
 # phase-361 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
-std = ["alloc", "nros-node/std"]
+# phase-359 W10 (backend tier) — this used to forward `nros-node/std`, which made
+# THIS crate the reason `nros-core/std` was on in every native graph: a leaf
+# that asked for `alloc` still got the std flavour of the core because a
+# backend it linked asked for it. `Clock::system()` was the one thing that
+# depended on it, and it now reaches the platform's wall clock instead
+# (`nros-core/platform-clock`), so the forward has nothing left to carry.
+std = ["alloc"]
 alloc = ["nros-node/alloc"]
 # Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +

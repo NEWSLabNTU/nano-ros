@@ -164,6 +164,66 @@ impl Default for Clock {
     }
 }
 
+/// The platform's wall clock, or `None` when this build has no port to ask.
+///
+/// phase-359 W10 (backend tier). `nros-core` sits BELOW `nros-platform`, so it
+/// cannot depend on it — it declares the two ABI symbols directly, exactly as
+/// `nros-node` already does for `nros_platform_clock_ns` ("every platform port
+/// exports it through the same linkage contract"). The feature is what promises
+/// a port is linked; without it this is `None` and the caller keeps the counter
+/// it had.
+///
+/// Two symbols rather than one because that is what the ABI has today; issue
+/// 0532's remaining half is collapsing them into a single `time_now_ns`, and
+/// this function is then the one place that changes.
+#[cfg(all(not(feature = "std"), feature = "platform-clock"))]
+fn platform_wall_clock() -> Option<Time> {
+    unsafe extern "C" {
+        fn nros_platform_time_since_epoch_secs() -> u32;
+        fn nros_platform_time_since_epoch_nanos() -> u32;
+    }
+    // SAFETY (all three calls): bare queries of the platform's wall clock,
+    // guaranteed by whichever port linked the binary — the same contract
+    // `nros_platform_clock_ns` and `nros_platform_wake_*` rely on. Both are
+    // documented never to error; a port with no clock returns 0.
+    //
+    // Read seconds, nanoseconds, then seconds AGAIN, and retry while the two
+    // second-reads disagree. The ABI spends one instant over two symbols and
+    // each call samples the clock separately (the POSIX port issues its own
+    // `clock_gettime` in each), so a second boundary landing between them
+    // pairs the OLD second with the NEW sub-second remainder — a timestamp
+    // that jumps a full second BACKWARDS, rarely and silently. This is the
+    // concrete cost of the split issue 0532's remaining half is about; when it
+    // collapses to one `time_now_ns`, this loop is what goes away.
+    //
+    // Bounded, not `loop`: at most three attempts, then accept the last pair.
+    // A clock that changes second between every adjacent pair of calls is not
+    // a clock this can outrun, and a hot loop in a time query is worse than a
+    // rare 1 s error.
+    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
+    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
+    for _ in 0..2 {
+        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
+        if recheck == secs {
+            break;
+        }
+        secs = recheck;
+        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
+    }
+    // A port with no wall clock answers 0/0. Reporting the Unix epoch as "now"
+    // would be a wrong answer stated confidently, so say nothing instead and
+    // let the counter fallback stand.
+    if secs == 0 && nanos == 0 {
+        return None;
+    }
+    Some(Time::new(secs as i32, nanos))
+}
+
+#[cfg(all(not(feature = "std"), not(feature = "platform-clock")))]
+fn platform_wall_clock() -> Option<Time> {
+    None
+}
+
 impl Clock {
     /// Create a new clock of the specified type
     pub const fn new(clock_type: ClockType) -> Self {
@@ -238,12 +298,28 @@ impl Clock {
 
     /// Get the current time from this clock (no_std version)
     ///
-    /// Returns time based on internal counters. You must call
-    /// `update_steady_time()` periodically to advance steady time.
+    /// `SystemTime` reads the platform's wall clock when the `platform-clock`
+    /// feature is on (see [`platform_wall_clock`]); otherwise, and for
+    /// `SteadyTime`, this is the internal counter, which the caller advances
+    /// with `update_steady_time()`.
     #[cfg(not(feature = "std"))]
     pub fn now(&self) -> Time {
         match self.clock_type {
-            ClockType::SystemTime | ClockType::SteadyTime => {
+            ClockType::SystemTime => {
+                // phase-359 W10 (backend tier) — a wall clock that does not
+                // need the `std` FEATURE. Before this, `SystemTime` here fell
+                // back to the STEADY counter: the same value a monotonic clock
+                // returns, presented as time since the Unix epoch. That is not
+                // a degraded wall clock, it is a different quantity, and the
+                // only thing standing between a build and it was whether some
+                // crate in the graph happened to name `std`.
+                if let Some(t) = platform_wall_clock() {
+                    return t;
+                }
+                let nanos = atomic_time::get_steady();
+                Time::from_nanos(nanos)
+            }
+            ClockType::SteadyTime => {
                 let nanos = atomic_time::get_steady();
                 Time::from_nanos(nanos)
             }

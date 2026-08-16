@@ -46,8 +46,14 @@ default = []
 # phase-361 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
-std = ["alloc", "nros-rmw/std"]
-alloc = ["nros-rmw/alloc"]
+# phase-359 W10 (backend tier) — this used to forward `nros-rmw/std`, which made
+# THIS crate the reason `nros-core/std` was on in every native graph: a leaf
+# that asked for `alloc` still got the std flavour of the core because a
+# backend it linked asked for it. `Clock::system()` was the one thing that
+# depended on it, and it now reaches the platform's wall clock instead
+# (`nros-core/platform-clock`), so the forward has nothing left to carry.
+std = ["alloc"]
+alloc = ["nros-rmw/alloc", "nros-rmw/platform-clock"]
 safety-e2e = ["nros-rmw/safety-e2e"]
 # Phase 124.A — enables `CffiPublisher: SlotLending` +
 # `CffiSubscriber: SlotBorrowing`. The vtable carries the slots either

@@ -118,7 +118,15 @@ BASELINE = {
     # now produced a number that is neither side's nor their arithmetic.
     "nros": {"cfg": 11, "path": 15},
     "nros-c": {"cfg": 13, "path": 8},
-    "nros-core": {"cfg": 3, "path": 2},
+    #
+    # phase-359 W10 (backend tier): 3 -> 5. Two arms select the WALL CLOCK —
+    # the platform's `time_since_epoch_*` when a port is linked, the steady
+    # counter otherwise. They mention `std` only to say "not std", and they are
+    # what let `nros-rmw-zenoh`, `nros-rmw-cffi` and `nros-bridge` stop
+    # forwarding `nros-core/std`: `Clock::system()` was the single thing that
+    # forward carried. Two counted sites here, three backends' worth of
+    # implicit `std` removed from every native graph.
+    "nros-core": {"cfg": 5, "path": 2},
     "nros-cpp": {"cfg": 9, "path": 21},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the

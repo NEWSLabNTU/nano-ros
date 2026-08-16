@@ -28,6 +28,14 @@ default = []
 # was tried and reverted; see `src/lib.rs` and phase-361's phase-359 overlap
 # section for why the manifest edge is the spelling that survives.
 std = ["alloc", "nros-serdes/std"]
+# phase-359 W10 (backend tier) — "a platform port is linked, so its wall-clock
+# symbols resolve". Off by default: a pure-core build (no port) would fail to
+# link. `nros-rmw-cffi` forwards it, because a C-ABI build always has a port.
+#
+# This exists so `Clock::system()` stops being a thing you get by naming `std`.
+# The RMW backends used to forward `nros-core/std` purely to keep that working
+# on native, which made every backend a `std` grantor for the whole graph.
+platform-clock = []
 alloc = ["nros-serdes/alloc"]
 
 [dependencies]

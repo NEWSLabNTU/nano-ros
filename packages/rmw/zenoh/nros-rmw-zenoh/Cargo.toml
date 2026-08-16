@@ -81,7 +81,13 @@ link-tls = ["zpico-sys/link-tls"]
 # vtable via `nros_rmw::set_custom_transport(...)` BEFORE opening
 # the session.
 link-custom = ["zpico-sys/link-custom"]
-std = ["alloc", "zpico-sys/std", "nros-rmw/std", "log"]
+# phase-359 W10 (backend tier) — this used to forward `nros-rmw/std`, which made
+# THIS crate the reason `nros-core/std` was on in every native graph: a leaf
+# that asked for `alloc` still got the std flavour of the core because a
+# backend it linked asked for it. `Clock::system()` was the one thing that
+# depended on it, and it now reaches the platform's wall clock instead
+# (`nros-core/platform-clock`), so the forward has nothing left to carry.
+std = ["alloc", "zpico-sys/std", "log"]
 alloc = ["nros-rmw/alloc"]
 rtic = []
 polling = []
