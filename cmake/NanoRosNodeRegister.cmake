@@ -932,6 +932,30 @@ function(nano_ros_node_register)
         # marker is per-pkg, not per-app.
         add_custom_target(${PROJECT_NAME}_nros_zephyr_entry)
         target_sources(app PRIVATE "${_zephyr_entry_src}")
+        # issue 0638 — the entry TU needs the FILE-level edge too, and the
+        # block above says why while exempting this very case: "a C node / the
+        # single-node carrier compiles into `app`, which already depends on the
+        # cargo build, so neither hits this". But three lines earlier the same
+        # comment records that a target edge "orders the target [while] ninja
+        # can still start the object compile early (issue 0090)" — which is
+        # exactly what `app` gives this source. The exemption assumes a target
+        # dependency does something it explicitly does not do.
+        #
+        # Measured: in one `just zephyr build-fixtures`, `build-c-talker-
+        # cyclonedds` compiled this TU after the cargo build and linked, while
+        # `build-c-listener-cyclonedds` compiled it before and fell through the
+        # include path to the in-tree stub — `#error
+        # "nros_cpp_config_generated.h must be supplied per-build"`. Same
+        # platform, same language, same RMW, same configure run: the only
+        # difference was scheduling, which is the signature of a race rather
+        # than a missing feature.
+        #
+        # APPEND for the reason the sibling site gives: the Zephyr
+        # interface-codegen module stamps OBJECT_DEPENDS on sources too, and a
+        # plain set CLOBBERS whichever side ran first.
+        set_property(SOURCE "${_zephyr_entry_src}" APPEND PROPERTY OBJECT_DEPENDS
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
         target_link_libraries(app PRIVATE ${_lib})
     endif()
 
