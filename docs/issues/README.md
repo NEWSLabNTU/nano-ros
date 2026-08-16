@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#0650** — a fixture lane that skipped every step still printed
+`<platform> test fixtures built.` and exited 0, so `build-test-fixtures` recorded OK. #0599 built the SKIPPED
+verdict (rc 78) and converted three lanes; 21 sites in five others kept `exit 0`, in two spellings one grep
+would not catch together. Measured cost: phase-366 W5.c's six diverged riscv64 examples reached main because
+the lane that compiles them reported OK on every host without the toolchain. Fixed with a partial-skip shape
+beside 0599's — a STEP notes its skip and the lane keeps building what it can; the terminal recipe FLUSHES,
+and is now the only place a lane claims success. `nuttx build-fixtures` had no body at all. Gated by
+`check-lane-skip-protocol`. See `archived/0650-*`. (2026-08-16)
+
 Recently resolved (2026-08-16): **#0647** — the identity budget's TREE-WIDE ceiling counted rlibs from
 earlier builds. #0513's widening (when a build rebuilds nothing for the named crate, the `started_at` window
 cannot answer for it, so count the whole tree) replaced the artifact list globally — correct for the named

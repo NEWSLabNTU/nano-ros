@@ -86,7 +86,7 @@ build-examples:
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$NUTTX_DIR/include" ]; then
-        echo "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
+        nros_lane_skip_note nuttx "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
         exit 0
     fi
     # Provision the NuttX kernel export (idempotent — locked, up-to-date short-
@@ -153,6 +153,14 @@ build-examples:
 # Build every NuttX test fixture the run's lane needs (arm, then riscv).
 [group("full-matrix")]
 build-fixtures: build-fixtures-arm build-fixtures-riscv
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — this lane had NO body at all, so it inherited `just`'s exit 0
+    # from its two steps and reported success whether or not either built
+    # anything. Both halves note their skips; this is where that is answered.
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_flush nuttx "NuttX test fixtures built (arm + riscv)."
 
 # `just nuttx test` depends on THIS rather than on `build-fixtures`: the
 # `nuttx_qemu` suite is arm-only, and pulling the riscv half in would make the
@@ -162,7 +170,12 @@ build-fixtures: build-fixtures-arm build-fixtures-riscv
 [group("full-matrix")]
 build-fixtures-arm:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
+    # issue 0650 — first step of the lane: clear last run's skip notes, so a
+    # lane that is complete this time is not reported SKIPPED from history.
+    nros_lane_skip_reset nuttx
     source scripts/build/cargo.sh
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
@@ -178,10 +191,10 @@ build-fixtures-arm:
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
+        nros_lane_skip_note nuttx "arm-none-eabi-gcc not found"; exit 0
     fi
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     # Issue 0583 — drop the build-std artifacts when the vendored NuttX libc
     # pin moves. `workspace-fixture-signature.sh` hashes the pin so the STAMP
@@ -281,7 +294,7 @@ build-fixtures-riscv:
     set -e
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform nuttx-riscv; then
-        echo "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
+        nros_lane_skip_note nuttx "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
         exit 0
     fi
     # Issue 0583 — same build-std/vendored-libc coupling as the arm half; the
@@ -309,13 +322,15 @@ build-fixtures-riscv:
 [group("full-matrix")]
 build-riscv-c:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
@@ -346,13 +361,15 @@ build-riscv-c:
 [group("full-matrix")]
 build-riscv-c-workspaces:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
@@ -378,13 +395,15 @@ build-riscv-c-workspaces:
 [group("full-matrix")]
 build-riscv-rust:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        echo "NuttX riscv skip: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        echo "NuttX riscv skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"

@@ -57,6 +57,11 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    # issue 0650 — first step of the lane: clear last run's skip notes, so a
+    # lane that is complete this time is not reported SKIPPED from history.
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_reset freertos
     source scripts/build/cargo.sh
     # Phase 214.J.2 — guard `nros sync` against stale `generated/` after trait
     # surface drift (see scripts/build/codegen-stamp.sh).
@@ -123,7 +128,14 @@ build-examples:
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
-    @echo "FreeRTOS test fixtures built."
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — the ONE place this lane says it built its fixtures, and it
+    # refuses to when a step was skipped. Before this the claim was an
+    # unconditional echo, so a lane with no toolchain printed it anyway.
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_flush freertos "FreeRTOS test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`.
@@ -131,6 +143,8 @@ build-fixtures: build-examples build-fixture-extras
 build-fixture-extras:
     #!/usr/bin/env bash
     set -e
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     source scripts/build/cargo.sh
     # Phase 214.J.2 — codegen-stamp helpers for `nros sync` invocations below.
     source scripts/build/codegen-stamp.sh
@@ -143,7 +157,7 @@ build-fixture-extras:
     nros_require_sync "$nros_cli"
     export cargo_profile_args
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-        echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
+        nros_lane_skip_note freertos "arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building FreeRTOS test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.

@@ -432,6 +432,7 @@ check-fast: \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
+    check-lane-skip-protocol \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-board-facts-delivery check-deploy-board-resolves \
@@ -3868,6 +3869,14 @@ check-fixture-groups:
 [private]
 check-example-leaf-target-dirs:
     @python3 scripts/check-example-leaf-target-dirs.py
+
+# issue 0650 — a fixture lane that cannot run must report SKIPPED (rc 78), never
+# build nothing and print "<platform> test fixtures built." with exit 0. That
+# false OK is how six diverged riscv64 examples reached main: every host without
+# the toolchain reported the lane green. Self-tests its own classifier.
+[private]
+check-lane-skip-protocol:
+    @python3 scripts/check-lane-skip-protocol.py
 
 # issue 0490 — a `cargo:rerun-if-changed` naming a path that does not exist makes
 # cargo treat the unit as permanently dirty, so the build script and everything

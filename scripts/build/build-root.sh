@@ -110,6 +110,10 @@ export NROS_KIND_EXAMPLE_LINT="example-lint"
 # platform has no shared group to join — when it has one, the walk builds INTO
 # that group and reuses the fixture build instead of making a second copy.
 export NROS_KIND_EXAMPLE_BUILD="example-build"
+# issue 0650 — where a lane records the steps it skipped, so its terminal recipe
+# can refuse to claim it built fixtures. One file per lane; each step is its own
+# `just` invocation, so no shell state survives between them.
+export NROS_KIND_LANE_SKIPS="lane-skips"
 export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
 export NROS_KIND_LINK_DETERMINISM="link-determinism"
 export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"

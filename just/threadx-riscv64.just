@@ -96,14 +96,19 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    # issue 0650 — first step of the lane: clear last run's skip notes, so a
+    # lane that is complete this time is not reported SKIPPED from history.
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_reset threadx-riscv64
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
-        echo "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just threadx-linux setup"
+        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just threadx-linux setup"
         exit 0
     fi
     if ! command -v riscv64-unknown-elf-gcc &>/dev/null; then
-        echo "Skipping ThreadX QEMU RISC-V examples (riscv64-unknown-elf-gcc not found)"
+        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (riscv64-unknown-elf-gcc not found)"
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
@@ -118,7 +123,14 @@ build-examples:
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
-    @echo "ThreadX-RV64 test fixtures built."
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — the ONE place this lane says it built its fixtures, and it
+    # refuses to when a step was skipped. Before this the claim was an
+    # unconditional echo, so a lane with no toolchain printed it anyway.
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_flush threadx-riscv64 "ThreadX-RV64 test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`. Mirrors the cmake -D set used by the test fixture builders
@@ -126,6 +138,8 @@ build-fixtures: build-examples build-fixture-extras
 [group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     source scripts/build/cargo.sh
     source scripts/build/fixture-matrix.sh
@@ -134,7 +148,7 @@ build-fixture-extras:
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
-        echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
+        nros_lane_skip_note threadx-riscv64 "riscv64-unknown-elf-gcc not found"; exit 0
     fi
     echo "Building ThreadX-RV64 test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.

@@ -115,18 +115,19 @@ build-fvp-all: build-fvp-ws-entry
 [group("examples")]
 build-fvp-ws-entry:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/FVP-ws-entry skip: west not found"; exit 0
+        nros_lane_skip "west not found"
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/FVP-ws-entry skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
     sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
-        echo "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
-        exit 0
+        nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
     fi
     nros_root="$(pwd)"
     echo "  → host nros-codegen (cargo)"
@@ -163,6 +164,8 @@ build-fvp-ws-entry:
 [group("examples")]
 run-fvp-ws-entry:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
     # so its absence is a skip, not a failure. Without this the recipe reached
@@ -171,18 +174,17 @@ run-fvp-ws-entry:
     # "skip with a clear hint". Same resolver the runner uses, so there is one
     # spelling of "where is the FVP", not two.
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
-        echo "Zephyr/FVP ws-entry run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+        nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
     fi
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/FVP-ws-entry run skip: west not found"; exit 0
+        nros_lane_skip "west not found"
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/FVP-ws-entry run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
     if [ ! -f "$workspace/build-fvp-ws-entry/zephyr/zephyr.elf" ]; then
-        echo "Zephyr/FVP-ws-entry run skip: build-fvp-ws-entry/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-ws-entry\` first"
-        exit 0
+        nros_lane_skip "Zephyr/FVP-ws-entry run skip: build-fvp-ws-entry/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-ws-entry\` first"
     fi
     nros_root="$(pwd)"
     cd "$workspace"
@@ -215,18 +217,19 @@ verify-fvp-runtime:
 [group("examples")]
 build-fvp-board-import:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/FVP board-import skip: west not found"; exit 0
+        nros_lane_skip "west not found"
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/FVP board-import skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
     sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
-        echo "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
-        exit 0
+        nros_lane_skip "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
     fi
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
@@ -266,6 +269,8 @@ build-fvp-board-import:
 [group("examples")]
 run-fvp-board-import:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     set -e
     # phase-320 W1.d/W1.f — the model itself is license-walled and USER-SUPPLIED,
     # so its absence is a skip, not a failure. Without this the recipe reached
@@ -274,18 +279,17 @@ run-fvp-board-import:
     # "skip with a clear hint". Same resolver the runner uses, so there is one
     # spelling of "where is the FVP", not two.
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
-        echo "Zephyr/FVP board-import run skip: ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"; exit 0
+        nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
     fi
     if ! command -v west >/dev/null 2>&1; then
-        echo "Zephyr/FVP board-import run skip: west not found"; exit 0
+        nros_lane_skip "west not found"
     fi
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
-        echo "Zephyr/FVP board-import run skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+        nros_lane_skip "{{ZEPHYR_WORKSPACE}} not set up"
     fi
     if [ ! -f "$workspace/build-fvp-board-import/zephyr/zephyr.elf" ]; then
-        echo "Zephyr/FVP board-import run skip: build-fvp-board-import/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-board-import\` first"
-        exit 0
+        nros_lane_skip "Zephyr/FVP board-import run skip: build-fvp-board-import/zephyr/zephyr.elf missing — run \`just zephyr build-fvp-board-import\` first"
     fi
     nros_root="$(pwd)"
     cd "$workspace"
