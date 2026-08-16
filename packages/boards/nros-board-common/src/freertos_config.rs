@@ -12,6 +12,37 @@
 //! `build.rs` emitter can share it — the emitter itself is in
 //! [`crate::freertos_build`], behind `build-helpers`.
 
+/// FreeRTOS's `configMAX_PRIORITIES` in the shared `FreeRTOSConfig.h`. Usable
+/// task priorities are `0..=FREERTOS_MAX_PRIORITY - 1`; `xTaskCreate` asserts
+/// on anything higher.
+pub const FREERTOS_MAX_PRIORITY: u32 = 8;
+
+/// THE normalized-0–31 → raw-FreeRTOS priority conversion (issue 0623).
+///
+/// This is the one place the mapping exists. It used to exist in two, and they
+/// did not agree — which is the same silent-drift class as the numbers above,
+/// one level up in the abstraction:
+///
+/// | path | normalized 16 became |
+/// | --- | --- |
+/// | `Config::to_freertos_priority` (Rust entry) | **4** — proportional |
+/// | `clamp_prio` (C entry, `freertos_c_entry.c`) | **7** — saturating |
+///
+/// So one config produced two different schedules depending on which entry the
+/// image used. Worse on the C side: every default was ≥ 8 (`app_priority` 12,
+/// zenoh read/lease and poll 16), so all four SATURATED to 7 and the intended
+/// ordering — app below transport — collapsed into "everything equal".
+///
+/// The conversion is proportional rather than saturating because the scale is a
+/// *band*, not a range to be clipped: `31` means "most urgent available" on
+/// whatever port, and clipping maps most of the band onto one value.
+pub const fn to_freertos_priority(normalized: u8) -> u32 {
+    let n = if normalized > 31 { 31 } else { normalized };
+    // Round-to-nearest over the 0-31 → 0-7 span: (n * 7 / 31), doubled and
+    // offset so integer division rounds instead of truncating.
+    (n as u32 * (FREERTOS_MAX_PRIORITY - 1) * 2 + 31) / 62
+}
+
 /// Priorities are on a normalized 0–31 scale (higher = more important); the
 /// board maps them onto FreeRTOS's `0..configMAX_PRIORITIES` range.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

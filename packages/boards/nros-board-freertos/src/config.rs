@@ -170,9 +170,13 @@ impl Config {
     /// so under inbound load the RX drain starved, the LAN9118 path
     /// dropped frames, and every publisher stalled on lwIP's
     /// retransmission timeout (observed as 1-3 s island-wide stalls).
+    ///
+    /// Issue 0623 — the body moved to `nros_board_common::freertos_config`, so
+    /// the build-script emitter and this runtime path share ONE conversion.
+    /// They did not before, and the C entry's `clamp_prio` disagreed with this
+    /// one on every default.
     pub fn to_freertos_priority(normalized: u8) -> u32 {
-        let n = if normalized > 31 { 31 } else { normalized };
-        (n as u32 * 7 * 2 + 31) / 62
+        nros_board_common::freertos_config::to_freertos_priority(normalized)
     }
 
     /// Parse configuration from a TOML string.

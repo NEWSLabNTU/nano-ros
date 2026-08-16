@@ -46,10 +46,19 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .prefix  = 24,
     },
     .scheduling = {
-        .app_priority            = 12,
-        .zenoh_read_priority     = 16,
-        .zenoh_lease_priority    = 16,
-        .poll_priority           = 16,
+        /* RAW FreeRTOS priorities (issue 0623). These were the normalized 0-31
+         * values (12 / 16 / 16 / 16), which every consumer converted for
+         * itself — and the C entry's saturating clamp turned all four into 7,
+         * flattening app, transport and net-poll into one priority. The band
+         * conversion now happens once, in
+         * `nros_board_common::freertos_config::to_freertos_priority`; these are
+         * its outputs (12 -> 3, 16 -> 4) so this template agrees with the TU
+         * the build script emits, and reads in the same units as a
+         * `[tiers.*.freertos] priority`. */
+        .app_priority            = 3,
+        .zenoh_read_priority     = 4,
+        .zenoh_lease_priority    = 4,
+        .poll_priority           = 4,
         .app_stack_bytes         = 524288u,
         .zenoh_read_stack_bytes  = 5120u,
         .zenoh_lease_stack_bytes = 5120u,

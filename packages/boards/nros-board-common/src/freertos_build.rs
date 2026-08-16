@@ -25,7 +25,7 @@ use std::{
 use crate::{
     arch_flags,
     base_config::BaseConfig,
-    freertos_config::{FreertosScheduling, app_stack_bytes},
+    freertos_config::{FreertosScheduling, app_stack_bytes, to_freertos_priority},
 };
 
 /// The platform whose `[arch.*]` profiles supply this family's cflags —
@@ -201,10 +201,19 @@ const nros_app_config_t NROS_APP_CONFIG = {{
         nm2 = nm[2],
         nm3 = nm[3],
         prefix = base.prefix(),
-        app_priority = sched.app_priority,
-        zenoh_read_priority = sched.zenoh_read_priority,
-        zenoh_lease_priority = sched.zenoh_lease_priority,
-        poll_priority = sched.poll_priority,
+        // Issue 0623 — emit RAW FreeRTOS priorities, converted HERE and only
+        // here. The struct used to carry the normalized 0–31 values and each
+        // consumer converted for itself, which is how the C entry's saturating
+        // `clamp_prio` came to disagree with the Rust entry's proportional map
+        // (16 → 7 vs 16 → 4; every C-path default saturated to 7, flattening
+        // app/transport/poll into one priority). The generated TU now holds the
+        // numbers that actually reach `xTaskCreate`, in the same units a
+        // `[tiers.*.freertos] priority` is written in — so the two are
+        // comparable by eye, which is the whole of issue 0623.
+        app_priority = to_freertos_priority(sched.app_priority),
+        zenoh_read_priority = to_freertos_priority(sched.zenoh_read_priority),
+        zenoh_lease_priority = to_freertos_priority(sched.zenoh_lease_priority),
+        poll_priority = to_freertos_priority(sched.poll_priority),
         app_stack_bytes = sched.app_stack_bytes,
         zenoh_read_stack_bytes = sched.zenoh_read_stack_bytes,
         zenoh_lease_stack_bytes = sched.zenoh_lease_stack_bytes,

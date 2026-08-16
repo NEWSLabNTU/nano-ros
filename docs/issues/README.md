@@ -138,19 +138,26 @@ compile-time error instead of a link-time duplicate symbol — louder, not newer
 claim one directory. See `archived/0616-*`.
 
 **#623** (boards/platform, open 2026-08-16) — tier priorities are **RAW per-RTOS** and transport priorities
-are **NORMALISED 0-31**, and both are passed to `xTaskCreate` in one priority space with nothing saying so.
-`[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS **4**
-(`(n*7*2+31)/62`). So an author who writes 5 against a transport that reads "16" puts the tier ABOVE the
-transport band having concluded the opposite — and the defaults ship that collision (`app_priority: 12` -> 3
-vs `zenoh_read_priority: 16` -> 4, three unrelated provenances, never compared). Cost is recorded in a
-CONSUMER's config file, not here: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, and every publisher
-stalled on lwIP retransmission — 1-3 s island-wide freezes. NOT "lower the read task below the tiers": that
-IS the configuration that froze, and the two failure modes sit on opposite sides (transport above tiers
-misses deadlines = #0506; tiers above transport freezes the island). Same defect phase-364 W5 fixed one layer
-down in the platform ABI. Fixed HERE only as a report — `report_tiers_above_transport` prints both effective
-values in FreeRTOS units at boot, verified both ways on the QEMU guest (tier 5 -> fires, tier 3 -> silent).
-Still open: one vocabulary for both, and ThreadX/Zephyr have the same two-vocabulary collision unexamined.
-See `0623-*`. (2026-08-16)
+are **NORMALISED 0-31**, and both reach `xTaskCreate` in one priority space with nothing saying so.
+`[tiers.high.freertos] priority = 5` is FreeRTOS 5; `zenoh_read_priority = 16` is FreeRTOS 4. Cost is
+recorded in a CONSUMER's config, not here: `nano-ros-rt-eval` ran 5/4/2, starved the RX drain, and every
+publisher stalled on lwIP retransmission — 1-3 s island-wide freezes. NOT "lower the read task below the
+tiers": that IS the config that froze; the two failure modes sit on opposite sides (#0506 is the other one).
+**The concrete bug inside it: the conversion existed TWICE and the copies disagreed** — Rust
+`to_freertos_priority` scales (16 -> 4), C `clamp_prio` saturates (16 -> 7). One config, two schedules,
+decided by which entry the image used — and since EVERY default was >= configMAX_PRIORITIES (12/16/16/16),
+the C path saturated all four to 7, so app, both zenoh tasks and net-poll ran at ONE priority and the
+intended ordering did not exist. Same silent-drift class as the numbers themselves (`freertos_config.rs`
+exists because `app_stack_bytes` had drifted three ways); a THIRD copy sat in
+`cmake/templates/freertos_app_config.c.in`. Fixed by converting ONCE at emit:
+`nros_board_common::freertos_config::to_freertos_priority` is the one conversion, the generated
+`NROS_APP_CONFIG` now carries RAW values (verified 3/4/4/4 in the emitted TU), the template matches, and
+`clamp_prio` is a bounds guard that says so. Boot also reports any tier meeting the band
+(`report_tiers_above_transport`, verified on the QEMU guest: tier 5 fires, tier 3 silent). CORRECTED: an
+earlier draft claimed ThreadX/Zephyr share this collision — they do not; there the transport priority is not
+settable at all (ThreadX `(void)`s it, Zephyr has no knob), which is #0579's class and wants its own issue.
+Still open: the AUTHORING surfaces still differ, and unifying them reinterprets numbers in existing files
+either way, so it needs a migration. See `0623-*`. (2026-08-16)
 
 RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
 package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies

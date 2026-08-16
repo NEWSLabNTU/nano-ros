@@ -114,11 +114,26 @@ exist for authors who want it).
 That is a config-schema change across every RTOS board and their `system.toml`
 files, so it wants its own work item rather than riding on a diagnostic.
 
-Related: **only the FreeRTOS board is covered here.** ThreadX (0–31,
-lower = more urgent) and Zephyr (negative = cooperative) have the same two
-vocabularies meeting in one scheduler, and the same report would apply. Not
-written blind — those boards' transport-priority paths were not examined for
-this commit.
+### Correction: ThreadX and Zephyr do NOT have this collision
+
+The first version of this issue said they did, hedged as "not examined". Now
+examined, and the guess was wrong — they have a different defect:
+
+| RTOS | transport priority |
+| --- | --- |
+| FreeRTOS | knob exists, normalised, **honoured** — this issue |
+| ThreadX | `zenoh_read_priority = 0` hardcoded in the emitter, then **discarded**: `zpico_set_task_config`'s `#else` branch `(void)`s it because `z_task_attr_t` is `void *` there |
+| Zephyr | **no knob** — the POSIX branch sets stack size only; priority needs `SCHED_FIFO` |
+
+So on those two the transport priority is not settable at all, which is the
+"declared value silently ignored" class (#0579), not the units class. Worth its
+own issue rather than a sentence here: the `(void)` branch's comment ("zenoh-pico
+ignores it") stopped being true when phase-364 W3 gave
+`nros_platform_task_attr_t` a real normalised `priority` field that
+`nros_platform_task_init` honours — the generic path can carry one now. Note
+`z_task_attr_t` currently has THREE definitions in this tree (generic,
+bare-metal, threadx), so implementing it is a fix-the-class change, not a
+one-liner.
 
 ## Found by
 
@@ -127,3 +142,60 @@ establishing that the drain-budget premise did not survive contact with the
 image (#506). The answer turned out to be that the priority is already bounded
 and configurable — and that the number authors compare it against is quoted in
 a different unit.
+
+
+## 2026-08-16 — the two conversions disagreed, and that is now the concrete bug
+
+Looking for the durable fix turned up something sharper than a documentation
+gap: the normalised→raw conversion existed **twice, and the copies did not
+agree.**
+
+| path | normalised 16 becomes |
+| --- | --- |
+| `Config::to_freertos_priority` (Rust entry) | **4** — proportional, `(n*7*2+31)/62` |
+| `clamp_prio` (C entry, `freertos_c_entry.c`) | **7** — saturating at `configMAX_PRIORITIES-1` |
+
+One config, two schedules, decided by which entry the image happens to use.
+
+The C side is the worse half. Every default is ≥ `configMAX_PRIORITIES` (8):
+`app_priority` 12, `zenoh_read_priority` 16, `zenoh_lease_priority` 16,
+`poll_priority` 16. All four saturate to **7** — so on the C path the
+application, both zenoh tasks and the network poll all ran at ONE priority, and
+the ordering those four numbers were written to express did not exist at all.
+
+Same silent-drift class as the numbers themselves: `freertos_config.rs`'s own
+module docs open by explaining that `app_stack_bytes` had already drifted three
+ways (393216 / 262144 / 524288) and that "the numbers live here and the emitters
+read them". The numbers were unified; the CONVERSION applied to them was not,
+and it drifted the same way — including a THIRD copy of the values in
+`cmake/templates/freertos_app_config.c.in`, still holding the normalised 12/16.
+
+### Fix
+
+Convert once, at the point the values are emitted:
+
+* `nros_board_common::freertos_config::to_freertos_priority` is now THE
+  conversion (with `FREERTOS_MAX_PRIORITY` beside it);
+  `Config::to_freertos_priority` delegates to it.
+* `emit_app_config_tu` applies it, so the generated `NROS_APP_CONFIG` carries
+  **raw FreeRTOS priorities** — the numbers that actually reach `xTaskCreate`.
+* `cmake/templates/freertos_app_config.c.in` holds the converted values (3/4/4/4)
+  so the template agrees with the emitted TU.
+* `clamp_prio` stays as a bounds GUARD, not a conversion, and says so. Deleting
+  it would send an out-of-tree board that still writes a normalised value into
+  `configASSERT(uxPriority < configMAX_PRIORITIES)` inside `xTaskCreate`, which
+  names neither the field nor the file.
+
+This also closes the readability half of the issue for free: the generated
+config now reads in the SAME units as `[tiers.*.freertos] priority`, so the two
+can be compared by eye with no mapping to know about — which is what the boot
+report had to explain in prose.
+
+### What is still open
+
+The authoring surfaces still differ: `[node.rt] *_priority` is normalised 0–31,
+`[tiers.*.<rtos>] priority` is raw per-RTOS. Unifying THOSE means reinterpreting
+numbers already written in existing files, in whichever direction it is done —
+`rt-eval`'s `3/2/1` read as normalised would become raw `0/0/0` — so it needs a
+migration and an explicit version gate, not a quiet change. Deliberately not
+done here.

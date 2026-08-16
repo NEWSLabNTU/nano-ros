@@ -140,10 +140,22 @@ __attribute__((weak, used)) void zpico_set_task_config(uint32_t read_priority,
     (void)lease_stack_bytes;
 }
 
-/* Clamp NROS_APP_CONFIG's normalized 0–31 scheduling priority to the FreeRTOS
- * port's `configMAX_PRIORITIES` range. Without this, the default 12 / 16
- * priorities trip `configASSERT(uxPriority < configMAX_PRIORITIES)` in
- * `xTaskCreate` (the shared FreeRTOSConfig.h sets `configMAX_PRIORITIES = 8`). */
+/* NROS_APP_CONFIG's scheduling priorities are RAW FreeRTOS values as of issue
+ * 0623 — `nros_board_common::freertos_build` converts the normalized 0–31 band
+ * ONCE, when it emits this TU. This is now only a bounds guard.
+ *
+ * It used to be the C half of the conversion, and it disagreed with the Rust
+ * half: this clamp SATURATES while `to_freertos_priority` scales
+ * proportionally, so normalized 16 became 7 here and 4 there. Every default was
+ * >= configMAX_PRIORITIES (app 12, zenoh read/lease 16, poll 16), so on this
+ * path all four saturated to 7 — one priority for the app, the transport tasks
+ * and the net poll, with the ordering they were written to express gone.
+ *
+ * Kept, rather than deleted, because an out-of-tree board that still writes a
+ * normalized value into the struct would otherwise trip
+ * `configASSERT(uxPriority < configMAX_PRIORITIES)` inside `xTaskCreate`, which
+ * names neither the field nor the file. A clamp that never fires for in-tree
+ * configs is cheap; the assert it replaces is not. */
 static inline UBaseType_t clamp_prio(uint32_t p) {
     if (p >= (uint32_t)configMAX_PRIORITIES) {
         return (UBaseType_t)(configMAX_PRIORITIES - 1);
