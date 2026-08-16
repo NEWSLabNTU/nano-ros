@@ -12,7 +12,10 @@ tech-debt items about dependencies the tree owns rather than consumes. None is
 urgent; all three get worse silently, which is why they want a phase rather than
 a backlog line.
 
-**Owns:** [issue 0374](../issues/0374-zenohd-has-no-prebuilt-so-nros-setup-native-source-builds-it.md),
+**Owns:** [issue 0374](../issues/archived/0374-zenohd-has-no-prebuilt-so-nros-setup-native-source-builds-it.md)
+(**RESOLVED 2026-08-17** — its last item was "seed the `1.7.2-nros2` asset", which
+[phase-362](archived/phase-362-zenoh-router-from-ros-not-vendored.md) made moot by
+retiring the vendored router; the fork-debt framing below no longer applies to it),
 [issue 0507](../issues/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md),
 [issue 0524](../issues/0524-anyhow-unmaintained-transitive-deps-remain.md).
 

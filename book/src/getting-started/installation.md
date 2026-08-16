@@ -88,17 +88,30 @@ the [Rust-only consumers](#rust-only-consumers) path dependency. See
 
 ## Do I need ROS 2 installed?
 
-**For the getting-started path, no.** Verified on a host with no ROS 2 at
-all: `nros sync` generates the message bindings from the interface
-sources vendored in `packages/cli/interfaces/`, and the Rust/C/C++ first
-node builds and publishes against the in-tree `zenohd`.
+**Building, no. Running two zenoh nodes, yes — or use Cyclone.** `nros
+sync` generates the message bindings from the interface sources vendored
+in `packages/cli/interfaces/`, so nothing about setup, codegen or
+compilation needs ROS 2.
+
+Running is where it splits, and the reason is the **router**. zenoh-pico
+connects in client mode, so any two-process example needs a zenoh router
+— and since [RFC-0075](../design/rmw.md) that router is
+`rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS 2. nano-ros no longer
+vendors one. So on a host with no ROS 2:
+
+* **`--rmw cyclonedds` works standalone** — Cyclone is in-process, there
+  is no daemon to start. This is the ROS-less path.
+* **`--rmw zenoh` (the default) has no router.** Either install
+  `ros-<distro>-rmw-zenoh-cpp`, or point `NROS_RMW_ZENOHD` at a
+  `rmw_zenohd` you obtained another way.
 
 | Task | Needs a ROS 2 install? |
 |---|---|
 | `nros setup`, `nros sync`, message codegen | **No** — interface sources are vendored |
-| First Node (Rust / C / C++) on Linux | **No** |
+| Building any node (Rust / C / C++), any RMW | **No** |
 | Embedded targets (Zephyr, FreeRTOS, NuttX, ThreadX) | **No** |
-| Cyclone DDS backend | **No** — `idlc` comes from the index dist, not ROS |
+| Cyclone DDS backend, build *and* run | **No** — `idlc` comes from the index dist, and there is no daemon |
+| **Running a multi-process zenoh example** | **Yes** — the router is ROS's `rmw_zenohd` (or set `NROS_RMW_ZENOHD`) |
 | Verifying with `ros2 topic echo` / `ros2 node list` | **Yes** |
 | Interop tests against `rmw_zenoh_cpp` / a real ROS 2 graph | **Yes** |
 | Contributor lanes that bridge to ROS 2 (`just test-all` interop cells) | **Yes** |
@@ -194,18 +207,16 @@ but they cost real time and disk, so `nros setup` announces them before
 it starts:
 
 ```
-nros setup: 1 package(s) have no prebuilt for linux-x86_64 — BUILDING FROM SOURCE: zenohd
+nros setup: 1 package(s) have no prebuilt for linux-x86_64 — BUILDING FROM SOURCE: <name>
   Expect minutes (tens of minutes for a large recipe) and hundreds of MB under …
 ```
 
-Today `zenohd` is the notable one: the nano-ros rebuild
-(`1.7.2-nros2`, which adds zenoh's `transport_serial` feature) has no
-published binary yet, so **every host source-builds it** — including on
-the `native` board this page starts with. Budget several minutes and
-~800 MB the first time; the zenoh checkout also pins its own Rust
-toolchain, which rustup will fetch alongside the one nano-ros pins.
-`nros setup <board> --dry-run` prints the whole plan, prebuilt vs
-source, without fetching anything.
+Source recipes build with the **workspace's** pinned Rust channel, so a
+recipe carrying its own pin does not make rustup fetch a second
+toolchain behind your back. `nros setup <board> --dry-run` prints the
+whole plan, prebuilt vs source, without fetching anything — on the
+`native` board it is two source packages (`zenoh-pico` and `mbedtls`,
+both vendored submodules) and no daemon at all.
 
 ### 1. Get the `nros` CLI onto PATH
 
@@ -270,10 +281,10 @@ RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
 
 | Command | Provisions |
 |---|---|
-| `nros setup native` | host build; the zenoh router (`zenohd`) |
+| `nros setup native` | host build; zenoh-pico + mbedtls sources (**no router — see above**) |
 | `nros setup native --rmw xrce` | host build; the Micro-XRCE-DDS agent |
 | `nros setup native --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
-| `nros setup qemu-arm-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources, `zenohd` |
+| `nros setup qemu-arm-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources |
 | `nros setup qemu-arm-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
 | `nros setup qemu-riscv64-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
 | `nros setup threadx-linux` | ThreadX POSIX-sim sources |
@@ -298,22 +309,29 @@ board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 
 > **Heads-up before your first example.** Every nano-ros example
 > (Linux talker, FreeRTOS talker, …) connects to its **RMW host
-> daemon** at startup — `zenohd` for zenoh, the Micro-XRCE-DDS agent
-> for xrce. **Cyclone DDS is in-process** — no separate daemon — so
-> the heads-up below doesn't apply if you ran `nros setup … --rmw
-> cyclonedds`. `nros setup … --rmw <rmw>` installs the daemon into
-> the nros store (`~/.nros/sdk/<tool>/<version>/bin/`; the cache
-> root is `~/.nros/sdk/` — toolchains, transports, and daemons all
-> land under there); you must then run it in a dedicated terminal
-> before launching any example. For zenoh, put the store binary on
-> PATH once and run it:
+> daemon** at startup — a zenoh router for zenoh, the Micro-XRCE-DDS
+> agent for xrce. **Cyclone DDS is in-process** — no separate daemon —
+> so none of this applies if you ran `nros setup … --rmw cyclonedds`.
+>
+> For **xrce**, `nros setup … --rmw xrce` installs the agent into the
+> nros store (`~/.nros/sdk/<tool>/<version>/bin/`), and you run it in a
+> dedicated terminal before launching any example.
+>
+> For **zenoh**, the router is **not** provisioned by `nros setup`: it is
+> ROS 2's `rmw_zenoh_cpp/rmw_zenohd`, so that nano-ros is tested against
+> the router a ROS 2 deployment actually runs
+> ([RFC-0075](../design/rmw.md)). Start it with the repo helper, which
+> resolves it out of `/opt/ros` and configures it:
 >
 > ```bash
-> export PATH="$(nros sdk-path zenohd)/bin:$PATH"
-> zenohd        # leave running for the whole session
+> just native zenohd     # leave running for the whole session
 > ```
 >
-> Without it the talker blocks forever on `Executor::open` with no
+> It is not configured on the command line — `rmw_zenohd` ignores argv
+> and reads `ZENOH_CONFIG_OVERRIDE`, which is what the helper sets. To
+> pick a different endpoint, set `ZENOH_LOCATOR` before invoking it.
+>
+> Without a router the talker blocks forever on `Executor::open` with no
 > output. Default ports: `tcp/127.0.0.1:7447` on POSIX,
 > `tcp/10.0.2.2:7451` on QEMU FreeRTOS (Slirp forwards to host).
 > Mismatch = silent hang; see

@@ -20,7 +20,7 @@
 [issue 0532](../issues/0532-platform-clock-abi-unit-and-resolution.md).
 
 **Related:** [phase-345](archived/phase-345-one-door-build-parity.md) (COMPLETE; named
-#466 and #374), [phase-344](phase-344-cmake-cache-relocation.md) and
+#466 and #374), [phase-344](archived/phase-344-cmake-cache-relocation.md) and
 [phase-347](phase-347-rmw-as-a-declared-provider.md) (both name #493),
 [RFC-0061](../design/0061-fixture-freshness-and-test-tiers.md) / [phase-318](archived/) (the tier
 contract #466 is about).

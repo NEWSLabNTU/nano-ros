@@ -153,7 +153,7 @@ should report it as removable.
 
 The design and its staged migration (W1 constructor, W2 `nros sdk-path`, W3
 consumers, W4 gate, W5 retire the unversioned prefix) live in
-[phase-365](../roadmap/phase-365-sdk-path-is-constructed-not-searched.md).
+[phase-365](../roadmap/archived/phase-365-sdk-path-is-constructed-not-searched.md).
 
 ## Scope note
 

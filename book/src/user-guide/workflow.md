@@ -17,9 +17,14 @@ nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
 ```
 
 `nros setup` provides most components prebuilt per platform per RMW; a few
-without a seeded asset (notably `zenohd`, the default RMW's daemon) are built
-from source. `nros setup <board> --rmw <rmw> --dry-run` shows which is which on
-your host — see [Installation](../getting-started/installation.md).
+without a seeded asset (the vendored submodules — `zenoh-pico`, `mbedtls`,
+RTOS sources) are built from source. `nros setup <board> --rmw <rmw> --dry-run`
+shows which is which on your host — see
+[Installation](../getting-started/installation.md).
+
+It does not provide a zenoh **router**: that is ROS's `rmw_zenohd`, so a
+multi-process zenoh example needs a ROS 2 install (or `NROS_RMW_ZENOHD`).
+`--rmw cyclonedds` needs no daemon at all.
 
 For multi-package workspaces (Pattern A — recommended for POSIX +
 mixed C / C++ / Rust deployments), put nano-ros and your packages

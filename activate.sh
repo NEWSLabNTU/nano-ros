@@ -131,12 +131,20 @@ if [ -n "$_nros_ros_setup" ]; then
 else
     # issue 0373 F3 — the bare "ROS-dependent recipes will fail" left a
     # first-time reader unable to tell whether their setup was broken. It is
-    # not: setup, `nros sync`, codegen and the first-node flows all work
-    # without ROS 2 (interface sources are vendored in packages/cli/interfaces/,
-    # verified end-to-end on a ROS-less host). Name what actually needs it.
+    # not: setup, `nros sync`, codegen and every BUILD work without ROS 2
+    # (interface sources are vendored in packages/cli/interfaces/, verified
+    # end-to-end on a ROS-less host). Name what actually needs it.
+    #
+    # issue 0653 — RUNNING split off from BUILDING when RFC-0075 made the zenoh
+    # router `rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS. zenoh-pico is a
+    # client, so a two-process zenoh example now needs that router and this host
+    # has none. Say so here: the alternative is a silent hang in `Executor::open`
+    # with nothing connecting it back to the missing ROS install.
     echo "activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes will fail" \
-        "(interop tests, \`ros2\` CLI verification). The setup, codegen and first-node" \
-        "flows do not need it — see book/src/getting-started/installation.md" >&2
+        "(interop tests, \`ros2\` CLI verification). Setup, codegen and every BUILD do not" \
+        "need it. RUNNING a multi-process zenoh example does: its router is ROS's" \
+        "rmw_zenohd (set NROS_RMW_ZENOHD to override), or use --rmw cyclonedds, which" \
+        "needs no daemon — see book/src/getting-started/installation.md" >&2
 fi
 
 # Issues 0359/0378 — project-wide cargo args, injected by a PATH shim.

@@ -352,6 +352,21 @@ leaves `wake_latency` + `component_runtime` 6/6 green). The 0319 class one level
 missing, the TARGET is unreachable, and an unreachable target still reads as coverage. Wants an audit over
 every `required-features` target, not a fix for these two by name. See `0652-*`. (2026-08-17)
 
+**#0653** (design, open 2026-08-17) — RFC-0075 accepted one casualty of sourcing the zenoh router from
+ROS: "a ROS-less host cannot run the zenoh interop lanes". The consequence is NOT confined to interop —
+zenoh-pico is a client, so *any* two-process zenoh example needs a router, and a ROS-less host now has
+none (`nros setup native` provisions 2 packages, neither a router; `just native zenohd` errors). There
+IS a working ROS-less path — `--rmw cyclonedds`, in-process, no daemon — but it is not the default and
+the book did not name it. Docs corrected with #0374; whether zenoh stays the default for such a host is
+the open decision. See `0653-*`. (2026-08-17)
+
+**#0654** (docs/scripts, open 2026-08-17) — ~95 files still say `zenohd --listen …`, and 57 name a
+deleted path (`build/zenohd`, `sdk-path zenohd`). Two failures, the second worse: the binary is gone,
+AND `rmw_zenohd` takes no command-line configuration — it ignores argv and reads
+`ZENOH_CONFIG_OVERRIDE`. So the flags are unread rather than rejected, and a wrong port becomes a silent
+hang at `Executor::open`, which the troubleshooting pages blame on other causes. Wants ONE helper
+(`nros_router_exec` exists) plus a gate, not 95 hand-edits into 95 spellings. See `0654-*`. (2026-08-17)
+
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
 IGNORED and every configure silently fetches Corrosion from GitHub — configure now needs the network, and
@@ -2354,6 +2369,12 @@ entry are gone. Measured: `nros setup native --dry-run` now plans two submodule 
 — no zenohd, hence no second Rust toolchain pulled in to build one, which was the complaint. A host without
 `ros-<distro>-rmw-zenoh-cpp` gets a named skip from the zenoh lanes instead of a source build, a cost phase-362
 accepted explicitly. See `archived/0374-*`.
+ALSO (2026-08-17): closing on the code alone would have been wrong — phase-362 W5 updated
+`design/rmw.md` and stopped, leaving the GETTING-STARTED page still describing the deleted binary, so
+`installation.md`, `reference/cli.md`, `user-guide/workflow.md` and `activate.sh` were swept with it.
+That sweep uncovered #0653 (a ROS-less host has no router for the DEFAULT rmw — the consequence
+RFC-0075 scoped to interop lanes only) and #0654 (~95 `zenohd --listen …` invocations whose flags
+`rmw_zenohd` does not read). (2026-08-17)
 
 Recently resolved (2026-08-16): **#403** — the WCET bench emitted prose nothing parses, and zeros from a
 dead cycle counter. Fixed in phase-356 W2, both halves. A dead DWT is now a HARD failure: the bench

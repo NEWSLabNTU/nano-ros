@@ -43,12 +43,17 @@ from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`). No
 hand-installed cross-toolchains; no ROS distro required.
 
 Packages are prebuilt where the index has a binary for your host and built
-from source otherwise; `zenohd` is the notable source build, and zenoh is the
-default `--rmw`. `--dry-run` prints the plan without fetching. Full explanation:
+from source otherwise; the vendored submodules (`zenoh-pico`, `mbedtls`,
+RTOS sources) are the source builds. `--dry-run` prints the plan without
+fetching. Full explanation:
 [Installation](../getting-started/installation.md#provision-your-toolchain-with-nros-setup).
 
+Note `setup` does **not** provision a zenoh router: since RFC-0075 that is
+ROS's `rmw_zenoh_cpp/rmw_zenohd`. See
+[Do I need ROS 2 installed?](../getting-started/installation.md#do-i-need-ros-2-installed).
+
 ```sh
-nros setup native --rmw zenoh            # host build + zenoh router
+nros setup native --rmw zenoh            # host build (router comes from ROS)
 nros setup qemu-arm-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
 nros setup zephyr                        # Zephyr west workspace + SDK bits
 ```

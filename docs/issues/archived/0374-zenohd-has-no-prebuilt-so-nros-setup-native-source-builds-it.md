@@ -4,7 +4,7 @@ title: "`nros setup native` source-builds zenohd and pulls a second rust toolcha
 status: resolved
 type: tech-debt
 area: build
-related: [rfc-0014, issue-0204, issue-0368, issue-0373, phase-345]
+related: [rfc-0014, rfc-0075, issue-0204, issue-0368, issue-0373, issue-0653, issue-0654, phase-345, phase-362]
 ---
 
 # `nros setup native` source-builds zenohd — the book promises prebuilt
@@ -142,3 +142,34 @@ is moot: there is no nano-ros router to ship. A host without
 than a source build, which phase-362 accepted explicitly as a cost.
 
 → phase-362, RFC-0075, issue 0660 (the recipe callers that deletion left behind).
+
+### The documentation debt this left, now paid
+
+Closing on "the code changed" alone would have been wrong: phase-362 W5
+updated `book/src/design/rmw.md` and stopped, so the **getting-started**
+page — the one this issue is about — still described the retired binary.
+Swept here:
+
+* `book/src/getting-started/installation.md` — the source-build heads-up no
+  longer names zenohd or the ~800 MB/second-toolchain cost; the provisioning
+  table no longer claims `native` and `qemu-arm-freertos` install a router;
+  the "first example" heads-up now says the zenoh router comes from ROS and
+  points at `just native zenohd` instead of `nros sdk-path zenohd`.
+* `book/src/reference/cli.md`, `book/src/user-guide/workflow.md` — "zenohd is
+  the notable source build" replaced by the vendored submodules that actually
+  are.
+* `activate.sh` — the ROS-less banner said setup, codegen "and the first-node
+  flows" need no ROS. Building still does not; running a multi-process zenoh
+  example now does.
+
+### What this uncovered, filed rather than folded in
+
+* **[issue 0653](0653-ros-less-host-has-no-zenoh-router.md)** — RFC-0075
+  accepted "a ROS-less host cannot run the zenoh interop lanes", but the
+  consequence is not limited to interop: zenoh-pico is a client, so *any*
+  two-process zenoh example needs the router. A ROS-less host has none. The
+  honest documentation is done here; whether zenoh should stay the default
+  RMW for such a host is a decision, not a doc edit.
+* **[issue 0654](0654-zenohd-invocations-name-a-retired-binary.md)** — ~95
+  files still say `zenohd --listen …`. `rmw_zenohd` ignores argv, so those
+  flags are unread rather than rejected: a silent wrong-port hang.
