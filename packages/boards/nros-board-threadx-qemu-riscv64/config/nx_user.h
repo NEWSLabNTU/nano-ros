@@ -9,6 +9,18 @@
 #ifndef NX_USER_H
 #define NX_USER_H
 
+/* issue 0657 — `rand`, declared here because NetX uses it through NX_RAND.
+ *
+ * `nx_api.h` defines `NX_RAND` as bare `rand` and calls it from TUs that
+ * include no libc header, so the declaration has to arrive with this file (the
+ * user-define file NetX force-includes). It compiled only because the Ubuntu
+ * `riscv64-unknown-elf` newlib happens to pull `stdlib.h` in transitively; the
+ * toolchain `nros setup` provisions for this board (xPack `riscv-none-elf`,
+ * per `[board.qemu-riscv64-threadx]` in nros-sdk-index.toml) does not, and
+ * every netxduo TU then failed `-Werror=implicit-function-declaration`.
+ * Depending on one libc's include graph is the accident; this is the fix. */
+#include <stdlib.h>
+
 /* BSD socket layer.
  * NX_BSD_ENABLE_NATIVE_API: use nx_bsd_* prefixed names to avoid
  * conflicting with any system POSIX headers.

@@ -2,7 +2,7 @@
 #
 # CMake toolchain file for ThreadX on RISC-V 64-bit (QEMU virt).
 #
-# Selects the riscv64-unknown-elf cross-compiler and sets the Rust target
+# Resolves the riscv64 bare-metal cross-compiler (issue 0657) and sets the Rust target
 # triple so that Corrosion compiles nros-c / nros-cpp for riscv64gc.
 #
 # Usage:
@@ -17,11 +17,57 @@
 set(CMAKE_SYSTEM_NAME       Generic)
 set(CMAKE_SYSTEM_PROCESSOR  riscv64)
 
-set(CMAKE_C_COMPILER    riscv64-unknown-elf-gcc)
-set(CMAKE_CXX_COMPILER  riscv64-unknown-elf-g++)
-set(CMAKE_ASM_COMPILER  riscv64-unknown-elf-gcc)
-set(CMAKE_AR            riscv64-unknown-elf-ar  CACHE FILEPATH "Archiver")
-set(CMAKE_RANLIB        riscv64-unknown-elf-ranlib CACHE FILEPATH "Ranlib")
+# issue 0657 — RESOLVE the toolchain, do not spell it. `[board.qemu-riscv64-threadx]`
+# provisions xPack's `riscv-none-elf-*` (the portable dist, installed by
+# `nros setup` on every supported host); hardcoding Ubuntu's
+# `riscv64-unknown-elf-*` here meant a provisioned host configured with a
+# compiler it did not have. Same candidate order and the same
+# `NROS_RISCV64_PREFIX` override as the shell twin
+# (scripts/build/riscv64-toolchain.sh) and the Rust one
+# (`nros_build_helpers::riscv64`).
+function(_nros_riscv64_find_prefix _out)
+    if(DEFINED ENV{NROS_RISCV64_PREFIX} AND NOT "$ENV{NROS_RISCV64_PREFIX}" STREQUAL "")
+        set(${_out} "$ENV{NROS_RISCV64_PREFIX}" PARENT_SCOPE)
+        return()
+    endif()
+    # The SDK store first, newest version first — the store ACCUMULATES and a
+    # stale copy must not shadow the pinned one (the issue-0500 rule).
+    set(_store "$ENV{HOME}/.nros/sdk/riscv-none-elf-gcc")
+    if(DEFINED ENV{NROS_SDK_STORE})
+        set(_store "$ENV{NROS_SDK_STORE}/riscv-none-elf-gcc")
+    endif()
+    if(IS_DIRECTORY "${_store}")
+        file(GLOB _vers RELATIVE "${_store}" "${_store}/*")
+        list(SORT _vers COMPARE NATURAL ORDER DESCENDING)
+        foreach(_v IN LISTS _vers)
+            if(EXISTS "${_store}/${_v}/bin/riscv-none-elf-gcc")
+                set(${_out} "${_store}/${_v}/bin/riscv-none-elf" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    endif()
+    foreach(_cand riscv-none-elf riscv64-unknown-elf riscv64-none-elf riscv64-elf)
+        find_program(_nros_rv_gcc "${_cand}-gcc")
+        if(_nros_rv_gcc)
+            set(${_out} "${_cand}" PARENT_SCOPE)
+            unset(_nros_rv_gcc CACHE)
+            return()
+        endif()
+        unset(_nros_rv_gcc CACHE)
+    endforeach()
+    # Nothing found: keep the historical spelling so the error names a real
+    # package rather than an empty string.
+    set(${_out} "riscv64-unknown-elf" PARENT_SCOPE)
+endfunction()
+
+_nros_riscv64_find_prefix(_NROS_RISCV64_PREFIX)
+message(STATUS "nano-ros: riscv64 toolchain prefix ${_NROS_RISCV64_PREFIX}")
+
+set(CMAKE_C_COMPILER    ${_NROS_RISCV64_PREFIX}-gcc)
+set(CMAKE_CXX_COMPILER  ${_NROS_RISCV64_PREFIX}-g++)
+set(CMAKE_ASM_COMPILER  ${_NROS_RISCV64_PREFIX}-gcc)
+set(CMAKE_AR            ${_NROS_RISCV64_PREFIX}-ar  CACHE FILEPATH "Archiver")
+set(CMAKE_RANLIB        ${_NROS_RISCV64_PREFIX}-ranlib CACHE FILEPATH "Ranlib")
 
 set(CMAKE_C_FLAGS_INIT   "-march=rv64gc -mabi=lp64d -mcmodel=medany -ffunction-sections -fdata-sections -fno-builtin")
 set(CMAKE_CXX_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -std=c++14 -ffreestanding")
@@ -35,7 +81,7 @@ set(CMAKE_ASM_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany")
 # etc.) that don't go through `nros_threadx_setup_picolibc`
 # fail at `fatal error: stdint.h: No such file or directory`.
 execute_process(
-    COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d
+    COMMAND ${_NROS_RISCV64_PREFIX}-gcc -march=rv64gc -mabi=lp64d
             --specs=picolibc.specs -print-sysroot
     OUTPUT_VARIABLE _RISCV_THREADX_PICOLIBC_SYSROOT
     OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -79,7 +125,7 @@ endif()
 # Zenoh-only builds never reference `-lstdc++`, so a miss here changes
 # nothing for them; the cyclone link fails loudly either way.
 execute_process(
-    COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d
+    COMMAND ${_NROS_RISCV64_PREFIX}-gcc -march=rv64gc -mabi=lp64d
             --print-file-name=libstdc++.a
     OUTPUT_VARIABLE _riscv_stdcxx OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")

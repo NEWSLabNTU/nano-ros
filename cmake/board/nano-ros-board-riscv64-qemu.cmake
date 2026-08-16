@@ -524,6 +524,8 @@ function(nros_threadx_rv64_rust_cyclone_app target)
         # carries a `compile_error!` naming the feature if it is missing.
         FEATURES rmw-cyclonedds alloc)
     nros_cargo_profile_env(${_crate_target}-static)
+# issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
+nros_riscv64_rustflags_env(${_crate_target}-static)
     # phase-351 W5 — the board rung + site config reach cargo HERE, because a
     # workspace member's own `.cargo/config.toml` never does (corrosion invokes
     # cargo from the workspace root).

@@ -10,4 +10,6 @@ publish = false
 name = "threadx_netx_sys"
 
 [build-dependencies]
+# issue 0652 — the ONE riscv64 toolchain resolver (see its module docs).
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }
 bindgen = "0.72"

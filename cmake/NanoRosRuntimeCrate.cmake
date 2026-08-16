@@ -272,6 +272,8 @@ function(nros_synth_runtime_umbrella)
         PROFILE       ${NROS_CARGO_PROFILE}
     )
     nros_cargo_profile_env(nros_ws_runtime-static)
+# issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
+nros_riscv64_rustflags_env(nros_ws_runtime-static)
     # phase-351 W5 — the board rung + site config reach cargo HERE, because a
     # workspace member's own `.cargo/config.toml` never does (corrosion invokes
     # cargo from the workspace root).

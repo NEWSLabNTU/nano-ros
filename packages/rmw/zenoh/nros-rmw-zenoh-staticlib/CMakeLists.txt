@@ -57,6 +57,8 @@ corrosion_import_crate(
     LOCKED
 )
 nros_cargo_profile_env(nros_rmw_zenoh_staticlib-static)
+# issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
+nros_riscv64_rustflags_env(nros_rmw_zenoh_staticlib-static)
 
 # _lib_name retained above for reference only — the in-tree consumer
 # links the Corrosion staticlib target directly under the

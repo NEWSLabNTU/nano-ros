@@ -297,3 +297,94 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
     }
     shared
 }
+
+/// The riscv64 bare-metal toolchain, resolved rather than spelled — issue 0657.
+///
+/// `[board.qemu-riscv64-threadx]` provisions xPack's `riscv-none-elf-gcc`, and
+/// it is what `nros setup` installs on every supported host. The build scripts
+/// spelled the compiler `riscv64-unknown-elf-*` (Ubuntu's package), so a host
+/// provisioned entirely by `nros setup` could not build this platform at all.
+///
+/// The shell twin is `scripts/build/riscv64-toolchain.sh` and the cmake twin is
+/// in `cmake/toolchain/riscv64-threadx.cmake`; all three read the same order and
+/// honour `NROS_RISCV64_PREFIX` first. Three spellings exist because the three
+/// build systems cannot call each other — not because the rule differs.
+pub mod riscv64 {
+    use std::path::PathBuf;
+
+    /// Candidate prefixes, most portable first. `riscv-none-elf` leads because
+    /// it is the one the SDK index pins and provisioning installs.
+    const CANDIDATES: &[&str] = &[
+        "riscv-none-elf",
+        "riscv64-unknown-elf",
+        "riscv64-none-elf",
+        "riscv64-elf",
+    ];
+
+    fn sdk_store() -> PathBuf {
+        if let Ok(s) = std::env::var("NROS_SDK_STORE") {
+            return PathBuf::from(s);
+        }
+        let home = std::env::var("HOME").unwrap_or_default();
+        PathBuf::from(home).join(".nros/sdk")
+    }
+
+    /// The store's newest `riscv-none-elf-gcc`, if provisioned.
+    ///
+    /// Newest-first for the reason issue 0500 records: the store ACCUMULATES,
+    /// and a stale version shadowing the pinned one is the failure that rule
+    /// exists to prevent.
+    fn store_bin() -> Option<PathBuf> {
+        let dir = sdk_store().join("riscv-none-elf-gcc");
+        let mut versions: Vec<_> = std::fs::read_dir(&dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        versions.sort();
+        versions.reverse();
+        versions
+            .into_iter()
+            .map(|v| dir.join(v).join("bin"))
+            .find(|b| b.join("riscv-none-elf-gcc").is_file())
+    }
+
+    /// `<prefix>-<suffix>` as an absolute path when the toolchain came from the
+    /// SDK store, a bare name when it came from `PATH`, `None` when there is no
+    /// toolchain at all — the caller decides whether that is a skip or an error,
+    /// and this function never guesses on its behalf.
+    pub fn tool(suffix: &str) -> Option<String> {
+        if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX") {
+            if !prefix.is_empty() {
+                return Some(format!("{prefix}-{suffix}"));
+            }
+        }
+        if let Some(bin) = store_bin() {
+            let p = bin.join(format!("riscv-none-elf-{suffix}"));
+            if p.is_file() {
+                return Some(p.to_string_lossy().into_owned());
+            }
+        }
+        CANDIDATES
+            .iter()
+            .map(|p| format!("{p}-{suffix}"))
+            .find(|name| which_on_path(name))
+    }
+
+    /// `tool()`, or the historical spelling so a caller that cannot skip still
+    /// produces the old error message rather than a confusing empty one.
+    pub fn tool_or_legacy(suffix: &str) -> String {
+        tool(suffix).unwrap_or_else(|| format!("riscv64-unknown-elf-{suffix}"))
+    }
+
+    fn which_on_path(name: &str) -> bool {
+        std::env::var_os("PATH")
+            .map(|paths| {
+                std::env::split_paths(&paths).any(|dir| {
+                    let p = dir.join(name);
+                    p.is_file()
+                })
+            })
+            .unwrap_or(false)
+    }
+}

@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0657** (build/toolchain, open 2026-08-17) — `[board.qemu-riscv64-threadx]` provisions xPack
+`riscv-none-elf-gcc`; twenty files spelled the compiler `riscv64-unknown-elf-*` (Ubuntu's package), so a host
+provisioned the documented way could not build the board at all — and before #0650 the lane reported that as
+OK, which is how phase-366 W5.c's six diverged examples reached main. ONE resolver now (shell / Rust /
+cmake, `NROS_RISCV64_PREFIX`, SDK store before PATH), plus the four libc assumptions underneath it (`rand`
+via NetX's `NX_RAND`, no `-lc` from a newlib toolchain, `_sbrk`, picolibc-only stdio in `startup.c`). Rust
+half VERIFIED end to end (a real riscv64 ELF); the C/C++ half still fails to link because compiler_builtins'
+C fallback `bswapsi2.o` comes out soft-float — the issue records what has been ruled out. See `0657-*`.
+(2026-08-17)
+
 Recently resolved (2026-08-16): **#0650** — a fixture lane that skipped every step still printed
 `<platform> test fixtures built.` and exited 0, so `build-test-fixtures` recorded OK. #0599 built the SKIPPED
 verdict (rc 78) and converted three lanes; 21 sites in five others kept `exit 0`, in two spellings one grep

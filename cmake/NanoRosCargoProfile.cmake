@@ -131,3 +131,58 @@ function(nros_cargo_profile_env _target)
     endif()
     corrosion_set_env_vars(${_target} ${NROS_CARGO_PROFILE_ENV})
 endfunction()
+
+# nros_riscv64_rustflags_env(<target>) — issue 0657
+#
+# compiler_builtins compiles C fallbacks (`bswapsi2.c` and friends) whose float
+# ABI follows RUSTFLAGS, not the `CFLAGS_<triple>` a cc-rs build honours. On the
+# toolchain `nros setup` provisions (xPack `riscv-none-elf`, a MULTILIB build)
+# the default is soft-float, so those objects came out soft-float while every
+# cmake object was `-mabi=lp64d`, and lld refused: "cannot link object files
+# with different floating-point ABI".
+#
+# `riscv64-threadx.cmake` already carried `set(ENV{RUSTFLAGS} "-Ctarget-feature=+d")`
+# for exactly this — and issue 0460 is why it did nothing: `set(ENV{})` touches
+# the CONFIGURE-time process, and corrosion's cargo runs at BUILD time.
+#
+# It must also not be exported globally from the lane: cargo's `RUSTFLAGS` env
+# REPLACES a leaf's `[build] rustflags`, so a lane-wide export silently drops
+# `-C link-arg=-Tlink.lds` and the Rust images fail on `_bss_start` — measured.
+# Per-target, through corrosion's own env, is the spelling that reaches the
+# right cargo and only that one.
+function(nros_riscv64_rustflags_env _target)
+    # Gate on the TARGET ARCHITECTURE, not on a toolchain-file variable: normal
+    # variables set by a toolchain file are not reliably visible in every
+    # subdirectory scope that imports a crate, and the first version of this
+    # returned early everywhere it mattered while looking correct.
+    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64")
+        return()
+    endif()
+    if(NOT COMMAND corrosion_set_env_vars)
+        message(FATAL_ERROR "nros_riscv64_rustflags_env(${_target}): Corrosion not loaded")
+    endif()
+    # Corrosion names the target for a staticlib crate `<crate>-static`, but not
+    # every import site spells it that way. Attach to whichever exists rather
+    # than guessing — a `corrosion_set_env_vars` on a name that is not a target
+    # is a silent no-op, which is how this landed inert the first time.
+    foreach(_cand "${_target}" "${_target}-static")
+        if(TARGET ${_cand})
+            # BOTH, because two different compilers produce objects here and
+            # only one of them reads RUSTFLAGS:
+            #   * rustc compiles compiler_builtins' Rust half — `-Ctarget-feature=+d`;
+            #   * cc-rs compiles its C fallbacks (`bswapsi2.c` …) from inside
+            #     that crate's build script, and takes `-mabi` from CFLAGS.
+            # The C half is the one that actually failed the link, and the
+            # RUSTFLAGS line alone left it soft-float.
+            corrosion_set_env_vars(${_cand}
+                "RUSTFLAGS=-Ctarget-feature=+d"
+                "CFLAGS_riscv64gc_unknown_none_elf=-march=rv64gc -mabi=lp64d -mcmodel=medany"
+                "CXXFLAGS_riscv64gc_unknown_none_elf=-march=rv64gc -mabi=lp64d -mcmodel=medany")
+            message(STATUS "nano-ros: riscv64 hard-float RUSTFLAGS -> ${_cand}")
+            return()
+        endif()
+    endforeach()
+    message(STATUS
+        "nano-ros: riscv64 hard-float RUSTFLAGS NOT attached — no target named "
+        "${_target} or ${_target}-static (issue 0657)")
+endfunction()

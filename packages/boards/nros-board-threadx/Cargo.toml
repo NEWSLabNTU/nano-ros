@@ -58,6 +58,8 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = f
 ], optional = true }
 
 [build-dependencies]
+# issue 0652 — the ONE riscv64 toolchain resolver (see its module docs).
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
 # 152.2.B.3 — generic `build.rs` lifts the ThreadX kernel +
 # `nros-platform-threadx` C-port compile into this crate (Option
 # C from the analysis). NetX-Duo / NSOS, port `.S` asm, and

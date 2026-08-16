@@ -344,8 +344,8 @@ fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
 fn configure_riscv64(build: &mut cc::Build) {
     // Use the RISC-V GCC cross-compiler
     build
-        .compiler("riscv64-unknown-elf-gcc")
-        .archiver("riscv64-unknown-elf-ar")
+        .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
+        .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"))
         .opt_level(2)
         .flag("-march=rv64gc")
         .flag("-mabi=lp64d")
@@ -393,7 +393,7 @@ fn configure_riscv64(build: &mut cc::Build) {
 
 /// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
 fn get_picolibc_sysroot() -> Option<PathBuf> {
-    if let Ok(output) = Command::new("riscv64-unknown-elf-gcc")
+    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
         .args([
             "-march=rv64gc",
             "-mabi=lp64d",
@@ -434,12 +434,31 @@ fn get_picolibc_lib_dir() -> Option<PathBuf> {
             return Some(single);
         }
     }
+    // issue 0657 — ask the COMPILER where its libc is, which is the question,
+    // and works for either toolchain. The probe above knows only picolibc's
+    // sysroot layout, so on the xPack `riscv-none-elf` build that `nros setup`
+    // provisions (newlib bundled, no `picolibc.specs`) it found nothing, no
+    // `-lc` reached the link, and the image failed on `strcmp`, `snprintf`,
+    // `memchr` … — a libc that was sitting in the toolchain all along.
+    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
+        .args(["-march=rv64gc", "-mabi=lp64d", "-print-file-name=libc.a"])
+        .output()
+        && output.status.success()
+    {
+        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        // gcc echoes the bare name back when it cannot find the file.
+        if path.is_absolute() && path.exists() {
+            if let Some(dir) = path.parent() {
+                return Some(dir.to_path_buf());
+            }
+        }
+    }
     None
 }
 
 /// Get the libgcc directory for rv64gc/lp64d.
 fn get_libgcc_dir() -> Option<PathBuf> {
-    if let Ok(output) = Command::new("riscv64-unknown-elf-gcc")
+    if let Ok(output) = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
         .args(["-march=rv64gc", "-mabi=lp64d", "-print-libgcc-file-name"])
         .output()
         && output.status.success()

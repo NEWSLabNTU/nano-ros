@@ -65,6 +65,8 @@ corrosion_import_crate(
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_cpp-static)
+# issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
+nros_riscv64_rustflags_env(nros_cpp-static)
 
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)

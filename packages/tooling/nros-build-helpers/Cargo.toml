@@ -24,6 +24,10 @@ cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
 nros-cc-flags = { path = "../nros-cc-flags" }
+# issue 0657 — the riscv64 toolchain resolver lives in the ZERO-DEP crate,
+# not here: this one pulls cbindgen, and putting a directory lookup behind
+# that dragged cbindgen into the `nros` CLI graph (118 lock lines).
+nros-build-paths = { path = "../nros-build-paths" }
 nros-sizes-build = { workspace = true }
 # NOTE (issue 0452): the regenerator that WRITES the committed cbindgen headers
 # deliberately lives in its own crate, `nros-cbindgen-headers`, not as a

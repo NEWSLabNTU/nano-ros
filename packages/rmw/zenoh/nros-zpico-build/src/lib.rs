@@ -555,6 +555,19 @@ pub const RISCV_GCC_CANDIDATES: &[&str] = &[
 
 /// Detect and set the RISC-V cross-compiler for cc::Build.
 pub fn detect_riscv_compiler(build: &mut cc::Build) {
+    // issue 0657 — for a riscv64 target, defer to the SHARED resolver. This
+    // list is ordered for the esp32 (riscv32) case, where the esp toolchain
+    // must win; on riscv64 it put Ubuntu's `riscv64-unknown-elf-gcc` ahead of
+    // the xPack build that `nros setup` provisions, so a host with both
+    // compiled the zenoh C shim with one toolchain and the ThreadX board with
+    // the other — two libcs in one image, agreeing about nothing.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.starts_with("riscv64") {
+        if let Some(gcc) = nros_build_paths::riscv64::tool("gcc") {
+            build.compiler(gcc);
+            return;
+        }
+    }
     for cc_name in RISCV_GCC_CANDIDATES {
         if Command::new(cc_name).arg("--version").output().is_ok() {
             build.compiler(cc_name);

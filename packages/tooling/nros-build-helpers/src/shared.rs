@@ -118,7 +118,7 @@ pub fn picolibc_include() -> Option<String> {
             return Some(include);
         }
     }
-    if let Ok(output) = std::process::Command::new("riscv64-unknown-elf-gcc")
+    if let Ok(output) = std::process::Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
         .args([
             "-march=rv64gc",
             "-mabi=lp64d",

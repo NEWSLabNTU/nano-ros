@@ -30,30 +30,36 @@ doctor:
         echo "  [MISSING] NetX Duo at $NETX_DIR (run: just threadx_riscv64 setup)"
         fail=1
     fi
-    if command -v riscv64-unknown-elf-gcc &>/dev/null; then
-        echo "  [OK] riscv64-unknown-elf-gcc"
-        # The Ubuntu `gcc-riscv64-unknown-elf` package is a bare-metal
-        # compiler with NO C library — the C/C++ examples need libc
-        # headers (stdint.h etc.) from picolibc, found via
-        # `--specs=picolibc.specs` (the same way `riscv64-threadx.cmake`
-        # locates the picolibc sysroot). Probe by preprocessing a TU
-        # that pulls in stdint.h under those specs; a compiler-only
-        # install fails with `stdint.h: No such file or directory`.
-        if echo '#include <stdint.h>' | riscv64-unknown-elf-gcc --specs=picolibc.specs -E - &>/dev/null; then
+    # shellcheck source=scripts/build/riscv64-toolchain.sh
+    source scripts/build/riscv64-toolchain.sh
+    _rv_prefix="$(nros_riscv64_prefix)"
+    if [ -n "$_rv_prefix" ]; then
+        echo "  [OK] ${_rv_prefix}-gcc ($(nros_riscv64_tool gcc))"
+        # issue 0657 — probe the QUESTION (can this toolchain preprocess a TU
+        # that needs libc headers?), not one libc's answer to it. Two shapes
+        # reach here and both are fine:
+        #
+        #   * Ubuntu `gcc-riscv64-unknown-elf` — compiler only, headers come
+        #     from a separate picolibc package, reached via `--specs=`;
+        #   * the pinned index dist (xPack `riscv-none-elf-gcc`, what
+        #     `nros setup` installs for this board) — BUNDLES newlib, so plain
+        #     preprocessing already works and `picolibc.specs` does not exist.
+        #
+        # The old check asked only the first, so the provisioned toolchain
+        # reported "[MISSING] riscv64 C library headers" while holding a
+        # complete libc. There WAS a second branch saying exactly that about
+        # xPack; it sat after an `elif` this one always won.
+        _rv_gcc="$(nros_riscv64_tool gcc)"
+        if echo '#include <stdint.h>' | "$_rv_gcc" -x c -E - &>/dev/null; then
+            echo "  [OK] riscv64 C library headers (bundled with the toolchain)"
+        elif echo '#include <stdint.h>' | "$_rv_gcc" --specs=picolibc.specs -x c -E - &>/dev/null; then
             echo "  [OK] riscv64 C library headers (picolibc)"
         else
-            echo "  [MISSING] riscv64 C library headers — install picolibc:"
-            echo "             nros setup --system   (composes the install command for this host)"
-            echo "             (or: just workspace apt-packages). Needed only for the"
-            echo "             C/C++ riscv64 examples; the Rust ones build without it."
+            echo "  [MISSING] riscv64 C library headers — this toolchain ships none."
+            echo "             Pinned dist that bundles its own: nros setup --tool riscv-none-elf-gcc"
+            echo "             Or add picolibc for the distro compiler: nros setup --system"
             fail=1
         fi
-    elif command -v riscv-none-elf-gcc &>/dev/null; then
-        # Issue 0368 F2 — the `[tool.riscv-none-elf-gcc]` index dist (xPack) is
-        # the pinned alternative to the distro compiler and BUNDLES its own
-        # newlib libc, so it needs no separate picolibc step. The board's
-        # package set (`nros-sdk-index.toml` [board.*].packages) names it.
-        echo "  [OK] riscv-none-elf-gcc (index dist — bundles newlib)"
     else
         echo "  [MISSING] riscv64 bare-metal cross-gcc. Install the pinned index"
         echo "             dist:   nros setup --tool riscv-none-elf-gcc"
@@ -107,8 +113,19 @@ build-examples:
         nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just threadx-linux setup"
         exit 0
     fi
-    if ! command -v riscv64-unknown-elf-gcc &>/dev/null; then
-        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (riscv64-unknown-elf-gcc not found)"
+    # issue 0657 — resolve, do not spell. `nros setup` provisions xPack's
+    # `riscv-none-elf-gcc` for this board, so a guard naming only Ubuntu's
+    # binary skipped the lane on a fully provisioned host.
+    # shellcheck source=scripts/build/riscv64-toolchain.sh
+    source scripts/build/riscv64-toolchain.sh
+    # issue 0657 — cc-rs derives its compiler from the TARGET TRIPLE when no
+    # `CC_<triple>` says otherwise, and its derivation for
+    # `riscv64gc-unknown-none-elf` is `riscv64-unknown-elf-gcc` — a binary the
+    # provisioned toolchain does not contain. Exported here so the lane's cargo
+    # builds and its cmake ones use the same compiler.
+    nros_riscv64_export_cc
+    if [ -z "$(nros_riscv64_prefix)" ]; then
+        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (no riscv64 bare-metal gcc: run nros setup qemu-riscv64-threadx)"
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
@@ -147,8 +164,16 @@ build-fixture-extras:
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
-    if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
-        nros_lane_skip_note threadx-riscv64 "riscv64-unknown-elf-gcc not found"; exit 0
+    # shellcheck source=scripts/build/riscv64-toolchain.sh
+    source scripts/build/riscv64-toolchain.sh
+    # issue 0657 — cc-rs derives its compiler from the TARGET TRIPLE when no
+    # `CC_<triple>` says otherwise, and its derivation for
+    # `riscv64gc-unknown-none-elf` is `riscv64-unknown-elf-gcc` — a binary the
+    # provisioned toolchain does not contain. Exported here so the lane's cargo
+    # builds and its cmake ones use the same compiler.
+    nros_riscv64_export_cc
+    if [ -z "$(nros_riscv64_prefix)" ]; then
+        nros_lane_skip_note threadx-riscv64 "no riscv64 bare-metal gcc (run: nros setup qemu-riscv64-threadx)"; exit 0
     fi
     echo "Building ThreadX-RV64 test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
@@ -249,8 +274,8 @@ build-fixture-extras:
     # Opt out with NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 (e.g. a fast local loop).
     if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-1}" = "0" ]; then
         echo "  → skipping ThreadX-RV64 Cyclone fixtures (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 opt-out)"
-    elif ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
-        echo "  → skipping ThreadX-RV64 Cyclone fixtures (riscv64-unknown-elf-gcc absent — cannot self-provision Cyclone)"
+    elif [ -z "$(nros_riscv64_prefix)" ]; then
+        echo "  → skipping ThreadX-RV64 Cyclone fixtures (no riscv64 bare-metal gcc — cannot self-provision Cyclone)"
     else
         # Phase 186 — self-provision Cyclone from source via CMake
         # (nros_provide_cyclonedds() + the ThreadX flags staged in

@@ -42,8 +42,21 @@ void *memmove(void *d, const void *s, __SIZE_TYPE__ n) {
 /* ---- UART output for printf ---- */
 extern int uart_putc(int ch);
 
-/* picolibc stdio: provide stdout as a UART stream.
- * picolibc declares stdout as an undefined extern — we define it here. */
+/* issue 0657 — picolibc ONLY. This board builds with either C library now:
+ * the Debian `picolibc-riscv64-unknown-elf` package, or the newlib bundled in
+ * the xPack `riscv-none-elf` toolchain that `nros setup` provisions for this
+ * board. They disagree about stdio, and only picolibc's way is expressible
+ * here:
+ *
+ *   picolibc declares `stdout`/`stderr` as UNDEFINED externs and expects the
+ *   image to define them, which is what the stream below does;
+ *   newlib defines them itself (macros over its reentrancy struct), so a
+ *   definition here is a syntax error before it is a duplicate symbol.
+ *
+ * Both route the bytes through `_write` below, so the console is the same
+ * either way — newlib simply reaches it through its own FILE machinery.
+ */
+#if defined(__PICOLIBC__)
 static int _uart_put(char c, FILE *f) { (void)f; uart_putc((int)c); return 0; }
 static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WRITE);
 /* picolibc declares `extern FILE *const stdout` but leaves it undefined.
@@ -51,6 +64,7 @@ static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WR
  * not the FILE — so the FILE itself is mutable. */
 FILE *const stdout = &_uart_file;
 FILE *const stderr = &_uart_file;
+#endif /* __PICOLIBC__ */
 
 /* picolibc _write syscall for other output (fprintf to fd, etc.) */
 int _write(int fd, const char *buf, int len) {

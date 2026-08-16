@@ -30,9 +30,52 @@ pub fn is_netx_available() -> bool {
         .unwrap_or(false)
 }
 
-/// `riscv64-unknown-elf-gcc` in PATH.
+/// The riscv64 bare-metal gcc this host actually has — issue 0657.
+///
+/// `[board.qemu-riscv64-threadx]` provisions xPack's `riscv-none-elf-gcc`, so a
+/// probe spelling only Ubuntu's `riscv64-unknown-elf-gcc` reported "no
+/// toolchain" on a host that had one. Resolution order and the env override
+/// live in `scripts/build/riscv64-toolchain.sh`; this is the test-side reader of
+/// the same answer, kept to the candidate list rather than shelling out so a
+/// unit test needs no shell.
+fn riscv64_gcc() -> String {
+    if let Ok(prefix) = std::env::var("NROS_RISCV64_PREFIX") {
+        if !prefix.is_empty() {
+            return format!("{prefix}-gcc");
+        }
+    }
+    let store = std::env::var("NROS_SDK_STORE")
+        .unwrap_or_else(|_| format!("{}/.nros/sdk", std::env::var("HOME").unwrap_or_default()));
+    let dir = std::path::Path::new(&store).join("riscv-none-elf-gcc");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        let mut versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        versions.sort();
+        versions.reverse();
+        for v in versions {
+            let p = dir.join(v).join("bin/riscv-none-elf-gcc");
+            if p.is_file() {
+                return p.to_string_lossy().into_owned();
+            }
+        }
+    }
+    for cand in ["riscv-none-elf", "riscv64-unknown-elf", "riscv64-none-elf"] {
+        let name = format!("{cand}-gcc");
+        if std::env::var_os("PATH")
+            .map(|paths| std::env::split_paths(&paths).any(|d| d.join(&name).is_file()))
+            .unwrap_or(false)
+        {
+            return name;
+        }
+    }
+    "riscv64-unknown-elf-gcc".to_string()
+}
+
+/// Whether a riscv64 bare-metal gcc is available at all.
 pub fn is_riscv_gcc_available() -> bool {
-    Command::new("riscv64-unknown-elf-gcc")
+    Command::new(riscv64_gcc())
         .arg("--version")
         .output()
         .map(|o| o.status.success())

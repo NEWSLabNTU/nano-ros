@@ -21,6 +21,8 @@ name = "nros_board_common"
 # dep, suitable for runtime use under `default-features = false`.
 
 [dependencies]
+# `build-helpers` feature with the rest of the host-only set: the riscv module
+# that needs it is a build-script helper, never runtime board code.
 serde = { version = "1", features = ["derive"], optional = true }
 toml = { version = "0.8", optional = true }
 # 152.2.B — `threadx_sources::add_threadx_kernel_sources` /
@@ -48,6 +50,10 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 # on their `[build-dependencies]` edge — so a forgotten flag fails toward no_std
 # instead of silently pulling `std` into an embedded build (issue 0077).
 default = []
+# Host-only helper set for build scripts: the manifest parser, the policy
+# tables, the ThreadX source lists, and (issue 0657) the riscv64 toolchain
+# resolver that `nros-build-paths` carries.
+build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths", "dep:nros-cc-flags"]
 # phase-337 W1.b — `BaseConfig::apply_overlay`, the `DeployOverlay` -> `Config`
 # merge that four board crates had each written out. Optional so the default
 # stays no_std and dep-free: `BaseConfig` itself needs nothing, and only the
@@ -58,7 +64,6 @@ deploy-overlay = ["dep:nros-platform"]
 # Pull the manifest parser + link-feature policy + ThreadX
 # source helpers. Pulls serde + toml + cc transitively. Required
 # for crates that use these from a `build.rs`.
-build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths", "dep:nros-cc-flags"]
 
 [dev-dependencies]
 # phase-290 — platform_config tree tests build sandboxed config trees.

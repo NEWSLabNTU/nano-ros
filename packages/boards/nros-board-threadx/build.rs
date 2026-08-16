@@ -289,8 +289,8 @@ fn configure(build: &mut cc::Build) {
         .unwrap_or(false)
     {
         build
-            .compiler("riscv64-unknown-elf-gcc")
-            .archiver("riscv64-unknown-elf-ar")
+            .compiler(nros_build_paths::riscv64::tool_or_legacy("gcc"))
+            .archiver(nros_build_paths::riscv64::tool_or_legacy("ar"))
             .flag("-march=rv64gc")
             .flag("-mabi=lp64d")
             .flag("-mcmodel=medany")
@@ -310,7 +310,7 @@ fn configure(build: &mut cc::Build) {
 /// found" error.
 fn get_picolibc_sysroot() -> Option<PathBuf> {
     use std::process::Command;
-    let output = Command::new("riscv64-unknown-elf-gcc")
+    let output = Command::new(nros_build_paths::riscv64::tool_or_legacy("gcc"))
         .args([
             "-march=rv64gc",
             "-mabi=lp64d",
