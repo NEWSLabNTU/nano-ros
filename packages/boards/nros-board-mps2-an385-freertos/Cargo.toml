@@ -48,7 +48,9 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 
 # Semihosting for QEMU output
 cortex-m-semihosting = "0.5"
-panic-semihosting = "0.6"
+# phase-366 W5.b — dropped. The board no longer imports a panic BEHAVIOUR from a
+# third-party crate; the image declares the lang item and the behaviour lives in
+# `nros-platform-mps2-an385`'s `PlatformPanic`.
 
 [build-dependencies]
 # issue 0288 — `host_probe::skip_cross_build` (see build.rs).

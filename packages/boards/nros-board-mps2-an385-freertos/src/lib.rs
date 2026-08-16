@@ -26,15 +26,24 @@
 // Rust allocator adapter over the FreeRTOS C heap.
 extern crate nros_platform as _;
 
-// Issue #45 — the board crate owns the embedded `#[panic_handler]`. The board
-// is `no_std`, cortex-m-only, and deps `panic-semihosting` unconditionally, so
-// importing it here brings the `panic_impl` lang item to every Entry bin that
-// links this board rlib — without the Entry pkg declaring its own handler (which
-// the `nros::main!()` migration no longer injects). Gated on `target_os = "none"`
-// so the host-side build (`cargo check`) — where no handler is needed and
-// `panic-semihosting` cannot compile — is unaffected.
-#[cfg(target_os = "none")]
-use panic_semihosting as _;
+// phase-366 W5.b/W5.d — issue #45's arrangement is retired.
+//
+// This crate used to `use panic_semihosting as _;`, importing the `panic_impl`
+// lang item on behalf of every Entry bin that linked it. Same defect as the two
+// hand-written handlers this phase already moved, in a different shape: a
+// LIBRARY deciding what the IMAGE does when it dies.
+//
+// The behaviour did not disappear — `nros-platform-mps2-an385`'s `PlatformPanic`
+// does semihosting, `bkpt`, then halt, which is what `panic-semihosting` did
+// plus the debugger trap, and a C or C++ fatal reaches it now too. What changed
+// is who declares the lang item: the image, via `nros::panic_to_platform!()`.
+//
+// This was BLOCKED until the entries could own it, and the block was concrete:
+// `logging-smoke-freertos-mps2` deps `panic-semihosting` with
+// `features = ["exit"]` so a panic ends the QEMU run instead of hanging the
+// harness. With the board also importing it, both named the SAME crate and cargo
+// unified them; the moment the board wrote its own, that image had two. Its
+// choice was right and the board's was redundant.
 
 // Force-link the zenoh-pico C transport + platform shim when
 // `rmw-zenoh` is active. DDS-only builds drop both deps via
