@@ -47,27 +47,29 @@
 # wrote — silently, with the install reporting success. `sort -V` is the shell
 # spelling of cmake's `COMPARE NATURAL ORDER DESCENDING`.
 nros_cmake_corrosion_prefixes() {
-    local store="${NROS_HOME:-$HOME/.nros}/sdk"
-    local prefix
-    local -a ordered=()
-    while IFS= read -r prefix; do
-        [ -n "$prefix" ] && ordered+=("$prefix")
-    done < <(
-        for prefix in "$store"/corrosion/*/; do
-            [ -d "$prefix" ] || continue
-            printf '%s\n' "${prefix%/}"
-        done | sort -Vr
-    )
-    ordered+=("$store/corrosion")
-    for prefix in "${ordered[@]}"; do
-        [ -d "$prefix" ] || continue
-        # Keep only a prefix a `find_package` can actually resolve FROM.
-        if compgen -G "$prefix/lib*/cmake/Corrosion/CorrosionConfig.cmake" >/dev/null ||
-           compgen -G "$prefix/lib/*/cmake/Corrosion/CorrosionConfig.cmake" >/dev/null ||
-           compgen -G "$prefix/share/cmake/Corrosion/CorrosionConfig.cmake" >/dev/null; then
-            printf '%s\n' "$prefix"
-        fi
-    done
+    # phase-365 W3b — CONSTRUCT the prefix; do not enumerate the store.
+    #
+    # This used to glob `$store/corrosion/*/` and `sort -Vr`. Two things were
+    # wrong with that, and only the second was suspected:
+    #
+    #   1. the glob also matched the LEGACY UNVERSIONED install's `lib/` and
+    #      `share/` subdirectories, which are not versions at all — and under
+    #      `sort -Vr` a pure-alpha name sorts BEFORE the numeric ones, so the
+    #      0.5.x flat install led the list;
+    #   2. "newest in the store" is a global answer to a per-project question:
+    #      the store is shared, the pin is per-project, so a newer checkout's
+    #      provisioning silently re-pointed an older one.
+    #
+    # `nros sdk-path corrosion` joins the store root to the version THIS project
+    # pins, using the same function `nros setup` used to write the directory. No
+    # ordering rule is needed because nothing is being ordered (issue 0625).
+    #
+    # Silence on any failure — no CLI on PATH, tool not pinned, not provisioned
+    # — leaves CMAKE_PREFIX_PATH untouched, and `nros_resolve_corrosion()` then
+    # reports and falls back. A wrong prefix would be worse than none.
+    local dir
+    dir="$(nros sdk-path corrosion 2>/dev/null)" || return 0
+    [ -n "$dir" ] && [ -d "$dir" ] && printf '%s\n' "$dir"
 }
 
 # Prepend those prefixes to CMAKE_PREFIX_PATH and export it. Idempotent: a

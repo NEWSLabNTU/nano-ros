@@ -422,7 +422,6 @@ check-fast: \
     check-platform-provider-features \
     check-test-domain-assignment \
     check-zenohd-spawn-sites \
-    check-cmake-corrosion-prefix \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     @echo "Fast checks passed!"
 
@@ -3806,24 +3805,6 @@ check-example-leaf-target-dirs:
 check-build-rs-rerun-paths:
     @python3 scripts/check-build-rs-rerun-paths.py
 
-# issue 0493 — every cmake CONFIGURE must route through the one
-# `CMAKE_PREFIX_PATH` derivation (`scripts/build/cmake-prefix.sh`), or say in
-# writing why it does not.
-#
-# The prefix decides whether `find_package(Corrosion)` resolves the SDK install
-# or falls through to FetchContent — i.e. WHICH CORROSION VERSION, and that
-# decides the cargo target-dir topology: `< 0.6.0` names the dir with a
-# constant, so two cargo workspace roots configured into one binary dir share
-# one `deps/` and their `#[no_mangle]` exports collide at link; `>= 0.6.0`
-# hashes the workspace manifest path. Exactly one of three builders had the
-# wiring, so ONE host with ONE install produced BOTH topologies — which is how
-# issue 0493 and phase-340/344 measured contradictory trees and both were right.
-#
-# Buildless: reads tracked shell/just files. Self-tests its classifier in both
-# directions on every run.
-[private]
-check-cmake-corrosion-prefix:
-    @python3 scripts/check-cmake-corrosion-prefix.py \
 # issue 0491 — the sibling rule to the gate above: a `cargo:rerun-if-env-changed`
 # on a PATH-valued variable fingerprints the SPELLING of a directory, and one
 # directory has a different spelling per example leaf (`relative = true`), from

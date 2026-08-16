@@ -69,34 +69,39 @@ endfunction()
 # NATURAL sort so `0.10.x` sorts above `0.9.x`; DESCENDING so newest wins. The
 # flat prefix stays LAST — it is the fallback layout, and a versioned entry is
 # the one a provisioning run just wrote.
-function(_nros_corrosion_prefixes out_var)
-    _nros_corrosion_store(_store)
-    set(_versioned_dirs "")
-    # `nros setup --tool corrosion` — $NROS_HOME/sdk/corrosion/<version>/
-    file(GLOB _versioned LIST_DIRECTORIES true "${_store}/corrosion/*")
-    foreach(_dir IN LISTS _versioned)
-        if(IS_DIRECTORY "${_dir}")
-            list(APPEND _versioned_dirs "${_dir}")
-        endif()
-    endforeach()
-    if(_versioned_dirs)
-        list(SORT _versioned_dirs COMPARE NATURAL ORDER DESCENDING)
+# phase-365 W3a — CONSTRUCT the prefix; never search the store.
+#
+# `nros sdk-path corrosion` joins the store root to the version this project
+# PINS in `nros-sdk-index.toml`. That join is the same function `nros setup`
+# used to write the directory (`sdk_store::tool_dir`), so consumption and
+# provisioning cannot disagree.
+#
+# What this replaces, and why it had to go: a `file(GLOB)` of the store sorted
+# `COMPARE NATURAL ORDER DESCENDING`. Its ordering was correct and verified —
+# and it still lost, because the store is SHARED while the pin is PER-PROJECT,
+# so "newest installed" answers a different question than "what this project
+# wants", and a third route bypassed it entirely. Measured 2026-08-16 in a tree
+# pinning 0.6.1-nros1: 155 resolutions of 0.5.1 against 28 of 0.6.1 (issue 0625).
+#
+# Empty output means the CLI could not answer (not on PATH, or no such tool);
+# the caller falls through to FetchContent, which is the offline-hostile but
+# correct-version path.
+function(_nros_corrosion_store_dir out_var)
+    set(${out_var} "" PARENT_SCOPE)
+    find_program(_NROS_CLI nros)
+    if(NOT _NROS_CLI)
+        return()
     endif()
-    set(_candidates "${_versioned_dirs}")
-    # `just workspace install-corrosion` — $NROS_HOME/sdk/corrosion/ itself.
-    list(APPEND _candidates "${_store}/corrosion")
-
-    set(_kept "")
-    foreach(_prefix IN LISTS _candidates)
-        file(GLOB _cfg
-            "${_prefix}/lib*/cmake/Corrosion/CorrosionConfig.cmake"
-            "${_prefix}/lib/*/cmake/Corrosion/CorrosionConfig.cmake"
-            "${_prefix}/share/cmake/Corrosion/CorrosionConfig.cmake")
-        if(_cfg)
-            list(APPEND _kept "${_prefix}")
-        endif()
-    endforeach()
-    set(${out_var} "${_kept}" PARENT_SCOPE)
+    execute_process(
+        COMMAND "${_NROS_CLI}" sdk-path corrosion
+        WORKING_DIRECTORY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.."
+        OUTPUT_VARIABLE _dir
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _rc)
+    if(_rc EQUAL 0 AND IS_DIRECTORY "${_dir}")
+        set(${out_var} "${_dir}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 # The FetchContent fallback tag. Read from `nros-sdk-index.toml`'s
@@ -257,11 +262,14 @@ macro(nros_resolve_corrosion)
             set(NROS_CORROSION_REPORTED ON)
         endif()
     else()
-        _nros_corrosion_prefixes(_nros_corrosion_candidates)
-        if(_nros_corrosion_candidates)
-            list(APPEND CMAKE_PREFIX_PATH ${_nros_corrosion_candidates})
+        # NO_DEFAULT_PATH: look in the ONE constructed prefix and nowhere else.
+        # Without it cmake would still consult the environment and could find a
+        # copy this project never pinned — the defect, reintroduced by omission.
+        _nros_corrosion_store_dir(_nros_corrosion_prefix)
+        if(_nros_corrosion_prefix)
+            find_package(Corrosion QUIET
+                PATHS "${_nros_corrosion_prefix}" NO_DEFAULT_PATH)
         endif()
-        find_package(Corrosion QUIET)
         if(Corrosion_FOUND)
             _nros_corrosion_remember("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")
             nros_report_corrosion("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")

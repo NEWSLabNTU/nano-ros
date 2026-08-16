@@ -1,6 +1,6 @@
 # Phase 365 — An SDK path is CONSTRUCTED, not searched
 
-**Status (2026-08-16). W1 + W2 LANDED; W3a next.** Design agreed; waves W1–W5 below, each
+**Status (2026-08-16). W1, W2, W3a LANDED (+ the corrosion half of W3b); W3b-rest, W4, W5 open.** Design agreed; waves W1–W5 below, each
 landing on its own with its own acceptance.
 
 **Owns:** [issue 0625](../issues/0625-tool-resolution-ignores-the-pin.md).
@@ -129,16 +129,56 @@ exit 1
 The load-bearing detail: `0.5.1-nros1` was present in the store throughout, and
 `--require` still failed. A search would have returned it.
 
-### W3a — Corrosion, the caught case
+### W3a — Corrosion, the caught case — LANDED
 
 Point `Corrosion_DIR` at the W2 path. Delete `_nros_corrosion_prefixes`, the
 `scripts/build/cmake-prefix.sh` twin, and find the `add_subdirectory` route that
 bypassed both ("Using Corrosion as a subdirectory") and convert it.
 
-**Acceptance.** A `lane=all` configure reports ONE version, and zero resolutions
-of 0.5.1 — the direct inverse of the 155/28 measurement above.
+**Acceptance — met on the case that failed.** `examples/native/c/talker`, one of
+the leaves that resolved 0.5.1 during the 155/28 measurement:
 
-### W3b — the remaining consumers
+```
+configure rc=0
+nano-ros: Corrosion 0.6.1 via SDK store [hashed per-workspace cargo dirs]
+0.5.1 mentions: 0
+```
+
+A full `lane=all` re-measurement is still owed and is listed under W3b-rest.
+
+**The mechanism, finally identified** — and it was neither of the two things
+suspected. The cmake side did `list(APPEND CMAKE_PREFIX_PATH …)`, putting its
+newest-first candidates AFTER whatever the environment already carried; and
+`scripts/build/cmake-prefix.sh` PREPENDED store prefixes from a glob of
+`$store/corrosion/*/`, which matched the legacy unversioned install's `lib/` and
+`share/` subdirectories — not versions at all, and under `sort -Vr` a pure-alpha
+name sorts BEFORE the numeric ones. So the flat 0.5.x install led the exported
+prefix path and won every resolution, no matter how correctly cmake sorted its
+own list afterwards.
+
+That is why fixing the ordering could never have worked, and why probing the
+ordering in isolation looked innocent. The fix is `PATHS <constructed>
+NO_DEFAULT_PATH` on one side and a single `nros sdk-path` line on the other:
+with nothing enumerated, there is nothing to mis-order.
+
+**Retired with it:** `check-cmake-corrosion-prefix`. It asserted that both
+derivations spell the ordering idiom — and after the idiom was deleted it still
+reported OK, because the two idioms now appear only in the COMMENTS explaining
+their removal. A gate that passes on prose about itself is worse than no gate.
+
+### W3b — the remaining consumers — corrosion half LANDED
+
+`scripts/build/cmake-prefix.sh` now emits `nros sdk-path corrosion` and nothing
+else; its glob + `sort -Vr` are gone. Consumers of that file
+(`compile-check-fixtures.sh`, `fixture-matrix.sh`, `cmake-incremental.sh`)
+therefore export the pinned prefix.
+
+Still open: ~10 files spelling the store directly (`just/workspace.just` ×8,
+`scripts/{zenohd,xrce-agent,dev,installers}/…`, `zephyr-fixture-leaves.sh`,
+`doctor.rs`). W4's gate lands with them, not before — a gate against a rule the
+tree still breaks in ten places is a red nobody can act on.
+
+### W3b-rest — the other tools
 
 cmake toolchain files, `just` recipes, shell scripts, in that order.
 
