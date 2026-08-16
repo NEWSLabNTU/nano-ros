@@ -122,16 +122,61 @@ codegen step that runs as part of building them, emitting a file whose bytes
 carry the tool's identity. Issue 0562 made sync skip byte-identical writes, so
 whatever moved is genuinely different bytes, not a restamp.
 
-### Next step, precisely
+### CORRECTION 2026-08-16 — the builder column is a coincidence; the divider is `nros sync`
 
-Diff a row's directory across a behaviour-preserving CLI rebuild:
+"Specific to the builders that actually BUILD" reads a real 3-vs-1 split off the
+wrong column. `cargo-check` and `cargo-build` both go through `stage_tree`
+(`scripts/build/compile-check-fixtures.sh:109`), and staging — not building —
+is what runs the tool:
 
 ```sh
-find packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan -newer <marker> -type f
+if find "$staged" -maxdepth 3 -name package.xml -print -quit | grep -q .; then
+    ( cd "$staged" && "$_sync_cli" sync >/dev/null )
+fi
+```
+
+Checked against the same four rows:
+
+| row | builder | `package.xml` | `nros sync` | staled? |
+| --- | --- | --- | --- | --- |
+| `board_agnostic_run_plan` | `cargo-build` | yes | runs | yes |
+| `nav2_compat_smoke` | `cargo-build` | yes | runs | yes |
+| `freertos_firmware` | `cross-build` | yes | runs | yes |
+| `one_dep_component_pkg` | `cargo-check` | **none** | **skipped** | **no** |
+
+3/3 against 0/1 on the sync column, and the builder column splits the same rows
+only because this sample's one `cargo-check` row happens to be the one plain
+crate — no `package.xml`, no `build.rs`, no `launch/`, so nothing invokes the
+CLI at all. The two stale `cargo-build` rows are full workspaces.
+
+This does not change the suspect — the prose below already named `nros sync` as
+the likely writer — but it does change the SEARCH. "Builders that build" points
+at compilation, and the two stale-row builds are the expensive ones to
+reproduce; `stage_tree` is one function, runs before any compiler, and can be
+exercised alone. It also predicts the population: every row whose staged tree
+carries a `package.xml` is a candidate, which is a set to enumerate rather than
+three rows to stare at.
+
+Sample size is the caveat. Four rows, one of them the only `cargo-check` row
+examined; a second sync-less `cargo-build` row would separate the two columns
+properly and has not been looked for.
+
+### Next step, precisely
+
+Diff a staged tree across a behaviour-preserving CLI rebuild — the STAGED copy
+under the compile-check build root, not the source dir, since that is what sync
+writes into:
+
+```sh
+find <staged-root>/board_agnostic_run_plan -newer <marker> -type f
 ```
 
 and read what changed. That names the file that carries the tool identity into
 the signature, which is the last piece of the attribution this issue exists for.
+
+Cheaper first cut, now that the divider is known: run `stage_tree` alone against
+one row on either side of a rebuild. No compile, and it isolates sync from
+everything the builders do afterwards.
 
 ### Scale check, so nobody over-reads this
 

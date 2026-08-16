@@ -842,7 +842,10 @@ want different fixes. Measure and attribute first; do NOT re-run the wall-clock 
 **Attributed 2026-08-16 (partly):** the largest cause was not in the fixtures at all — the CLI's own freshness
 closure watched 17 crates it never compiles (#0627), so an edit to `nros-node` or any platform port re-staled
 the CLI, and a stale CLI is upstream of everything. Fixed there. The 3-of-~36 fixture residue measured here is
-unaffected (their tool component is the codegen fingerprint, which did not move) and keeps this open.
+unaffected (their tool component is the codegen fingerprint, which did not move) and keeps this open — but its
+divider was misread as "builders that BUILD" when it is `nros sync`: `stage_tree` runs the CLI for any row with
+a `package.xml`, before any compiler, and the sample's one non-staling row is simply the one plain crate (3/3
+vs 0/1 on that column). Search `stage_tree`, not the compile.
 See `0604-*`.
 
 Recently resolved (2026-08-16): **#627** — the CLI freshness closure was wrong in BOTH directions at once, and
