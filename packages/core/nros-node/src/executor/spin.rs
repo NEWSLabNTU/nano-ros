@@ -6589,7 +6589,6 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
-
     /// Execute one period with wall-clock overrun detection.
     ///
     /// Calls [`spin_once()`](Self::spin_once), measures wall-clock time, sleeps
@@ -6621,7 +6620,6 @@ impl<'s> Executor<'s> {
             elapsed,
         }
     }
-
 
     /// Spin at a fixed rate with drift compensation. Blocks until halted.
     ///
@@ -6656,7 +6654,6 @@ impl<'s> Executor<'s> {
         }
         Ok(())
     }
-
 
     /// Phase 110.D.b — move this Executor onto a fresh OS thread,
     /// apply a per-thread scheduling policy via the caller-supplied
@@ -6739,12 +6736,10 @@ impl<'s> Executor<'s> {
             .store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
-
     /// Check if halt has been requested.
     pub fn is_halted(&self) -> bool {
         self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
     }
-
 
     /// Phase 104.C.6 — wake the executor from another thread / ISR /
     /// signal handler.
@@ -6762,7 +6757,6 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "alloc")]
 impl<'s> Executor<'s> {
-
     /// Get a clone of the halt flag for use in signal handlers or other threads.
     ///
     /// # Example
@@ -6778,7 +6772,6 @@ impl<'s> Executor<'s> {
     pub fn halt_flag(&self) -> portable_atomic_util::Arc<portable_atomic::AtomicBool> {
         self.halt_flag.clone()
     }
-
 
     /// Phase 104.C.6 — clone of the shared wake flag for cross-thread
     /// use (signal handlers, foreign threads, future per-backend vtable
