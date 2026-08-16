@@ -107,6 +107,26 @@ DECL_PAT = re.compile(
 
 CHAR_LIT = re.compile(r"'(?:\\.|[^\\'])'")
 
+# A `#[doc = "..."]` attribute is a COMMENT that survived a translation. bindgen
+# turns each C doc comment into one, so a header sentence explaining that a
+# symbol is retired arrives here as a string LITERAL, which comment-stripping
+# cannot touch — and the gate then reports its own documentation.
+#
+# That is the failure this file already guards against for C prose ("a gate that
+# cries wolf on its own documentation gets bypassed"); doc attributes are the
+# same thing after bindgen. Measured: `platform.h`'s note on
+# `condvar_wait_until` — which exists precisely BECAUSE `clock_ms` was retired —
+# became `#[doc = "... retired `nros_platform_clock_ms` ..."]` in the committed
+# `generated.rs` and failed this gate.
+#
+# Non-greedy to the closing `"]` so consecutive attributes are not merged, and
+# newlines kept so reported line numbers stay true.
+DOC_ATTR = re.compile(r'#\[doc\s*=\s*".*?"\]', re.S)
+
+
+def strip_doc_attrs(text):
+    return DOC_ATTR.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
 
 def strip_comments(text):
     """Remove /* */ and // comments, preserving string literals and line count."""
@@ -173,6 +193,8 @@ def offenders(files):
         except OSError:
             continue
         code = strip_comments(raw)
+        if rel.endswith(".rs"):
+            code = strip_doc_attrs(code)
         # keep the match, not just the name: the first offset is reported below,
         # and re-searching for it is what the type checker rightly objects to.
         found = {}
@@ -276,6 +298,22 @@ def self_test():
         if offenders([rs_rel]):
             sys.stderr.write("self-test: a Rust comment WAS reported\n")
             sys.exit(2)
+        # …and neither is a `#[doc = "..."]`, which is what a C doc comment
+        # BECOMES after bindgen. The real `generated.rs` carries exactly this:
+        # a note explaining that `clock_ms` was retired.
+        write_rs('#[doc = " deadline in ms; this said `nros_platform_clock_ms` '
+                 'before RFC-0073 retired it"]\n'
+                 'pub fn f() -> u64 { 0 }\n')
+        if offenders([rs_rel]):
+            sys.stderr.write("self-test: a #[doc] attribute WAS reported\n")
+            sys.exit(2)
+        # …but a real USE next to a doc attribute still is. Stripping the
+        # attribute must not blind the arm to the code after it.
+        write_rs('#[doc = " mentions nros_platform_clock_ms in prose"]\n'
+                 'pub fn f() -> u64 { unsafe { nros_platform_clock_us() } }\n')
+        if not offenders([rs_rel]):
+            sys.stderr.write("self-test: a USE beside a doc attribute was NOT reported\n")
+            sys.exit(2)
 
         # …and a file that merely calls them is not a DEFINITION (it is still an
         # arm-1 offender, which is a different report).
@@ -302,6 +340,8 @@ def extra_definers(files):
         try:
             with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
                 code = strip_comments(fh.read())
+            if rel.endswith(".rs"):
+                code = strip_doc_attrs(code)
         except OSError:
             continue
         if DEFINE_PAT.search(code):
