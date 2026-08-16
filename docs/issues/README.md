@@ -839,7 +839,26 @@ phase-353 W2) should make an mtime-only change a refresh rather than a stale, an
 paid — five separate staleness cascades while chasing one tier-2 verdict on 2026-08-15 — but nobody has
 attributed them to genuine input change vs mtime artifact vs tool-fingerprint over-invalidation, and those
 want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
+**Attributed 2026-08-16 (partly):** the largest cause was not in the fixtures at all — the CLI's own freshness
+closure watched 17 crates it never compiles (#0627), so an edit to `nros-node` or any platform port re-staled
+the CLI, and a stale CLI is upstream of everything. Fixed there. The 3-of-~36 fixture residue measured here is
+unaffected (their tool component is the codegen fingerprint, which did not move) and keeps this open.
 See `0604-*`.
+
+Recently resolved (2026-08-16): **#627** — the CLI freshness closure was wrong in BOTH directions at once, and
+each direction is its own bug. `cli_source_dirs()` walked `path = "…"` textually (it must: the file is
+`include!`d by `build.rs`, so no TOML parser and no `cargo metadata`, which would deadlock on cargo's own
+package-cache lock). That walk cannot see `workspace = true` — `nros-orchestration-ir` spells
+`nros-rmw = { workspace = true }`, path in the ROOT manifest — so `nros-rmw` and `nros-core` went UNWATCHED and
+`just setup-cli` reported success without rebuilding, phase-330 W1.a's defect reintroduced by its own fix. And
+it cannot see `optional = true` — `nros-board-common`'s `nros-platform` is optional behind `deploy-overlay`,
+which the CLI does not enable — so 17 crates it never compiles (every platform port, `nros-node`, `nros-log`,
+`nros-smoltcp`, 3 generated msg crates) re-staled it, and through it every fixture. 23 dirs where cargo
+resolves 8. Fixed by recording cargo's answer instead of reimplementing it: `gen-cli-source-dirs.py` writes
+`packages/cli/cli-source-dirs.txt`, the stamp reads it, `check-cli-source-dirs` fails on drift and names the
+direction. A MISSING list yields `None` (rebuild), never a stamp over a smaller closure. Found while
+attributing #0604's cascades — a commit touching only `nros-node` reported the CLI stale.
+See `archived/0627-*`.
 
 RESOLVED 2026-08-15 (phase-353) — **#611** west fixture REUSE never refreshed `.compile-ok`, so after any
 CLI rebuild the test-side consumer rejected the fixture PERMANENTLY: `.inputsig` (content + codegen

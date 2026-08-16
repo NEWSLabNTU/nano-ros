@@ -4,7 +4,7 @@ title: "Cold leaves after every pull: measure how many are genuinely invalidated
 status: open
 type: performance
 area: build, testing
-related: [issue-0509, issue-0466, issue-0442, issue-0445, phase-286, phase-353, phase-363]
+related: [issue-0509, issue-0466, issue-0442, issue-0445, issue-0627, phase-286, phase-353, phase-363]
 ---
 
 ## Why this exists
@@ -140,3 +140,50 @@ cascades that motivated this issue each followed a `git pull` or `rebase` that
 brought REAL CLI changes, so most of that cost was legitimate invalidation, not
 this. The remedy order should follow that: the treadmill is mostly correct
 behaviour, and this is a narrow leak.
+
+## ATTRIBUTED 2026-08-16 — the largest cause was upstream of every fixture
+
+The table above stops at "three rows over-invalidate", which is a narrow leak.
+Pulling on the first row of the earlier table instead — *`git rebase` → the
+in-tree CLI ("the checkout moved")* — found a much larger one, and it is not a
+fixture problem at all.
+
+A commit touching only `packages/core/nros-node/src/executor/spin.rs` (issue
+0589, a diagnostic sink swap) reported the CLI stale. The CLI does not compile
+`nros-node`. Reconstructing `cli_source_dirs()`'s textual `path = "…"` walk and
+diffing it against `cargo metadata`:
+
+```
+textual walk : 23 dirs outside packages/cli
+cargo resolve:  8
+```
+
+**17 crates were watched that the CLI never compiles** — every platform port,
+`nros-node`, `nros-log`, `nros-smoltcp`, `mps2-an385-pac`, `zpico-alloc`,
+`nros-ghost-types`, three generated msg crates — all reached through ONE
+`optional = true` edge the walk could not see. Those are among the
+most-edited crates in the repo, so this fired constantly, and a stale CLI is the
+cascade's source: it re-stales what keys on it, and `check-tier-preconditions`
+puts it first for exactly that reason.
+
+The same diff, from the other side, found **2 crates the CLI does compile and
+the stamp was blind to** (`nros-core`, `nros-rmw`, reached by a
+`workspace = true` dep with no `path =` on the line). That half is a correctness
+bug, not a cost: `setup-cli` reported success without rebuilding.
+
+Filed and fixed as issue 0627 — the closure now comes from `cargo metadata`
+(`packages/cli/cli-source-dirs.txt`, gated by `check-cli-source-dirs`) rather
+than a walk.
+
+**In this issue's three-category framing this was category three,
+over-invalidation, and it sat above the fixtures rather than among them.** Which
+is why the per-row diff the section above prescribes had not found it: it was
+looking inside the rows.
+
+### Still open here
+
+The 3-of-~36 residue in the section above. It is unaffected by 0627 — those rows
+staled after `just setup-cli` with the codegen fingerprint UNCHANGED, and the
+fixture signature's tool component is that fingerprint, not the CLI stamp. The
+prescribed next step (diff a row's directory across a behaviour-preserving CLI
+rebuild) still stands.

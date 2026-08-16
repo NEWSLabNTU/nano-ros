@@ -405,7 +405,7 @@ check-fast: \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio \
+    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-cli-source-dirs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2866,6 +2866,22 @@ check-feature-contract:
 [group("ci")]
 check-no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
+
+# Issue 0604 — `packages/cli/cli-source-dirs.txt` must equal cargo's resolve.
+#
+# That file IS the CLI freshness closure: `source_stamp.rs` hashes `packages/cli`
+# plus the dirs it names, and every fixture in the repo keys on the resulting
+# verdict. It replaced a textual `path = "…"` walk that was wrong in both
+# directions at once (23 dirs where cargo resolves 8) — blind to
+# `workspace = true` deps, so edits to `nros-core`/`nros-rmw` left the stamp
+# FRESH, and blind to `optional = true`, so 17 crates the CLI never compiles
+# re-staled it and, through it, every fixture.
+#
+# The generated file is only as trustworthy as this check: a stale list is a
+# silent wrong stamp in whichever direction it drifted.
+[group("ci")]
+check-cli-source-dirs:
+    @python3 scripts/gen-cli-source-dirs.py --check
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.

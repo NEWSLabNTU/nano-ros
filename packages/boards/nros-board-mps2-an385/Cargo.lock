@@ -403,6 +403,7 @@ version = "0.5.0"
 dependencies = [
  "log",
  "nros-core",
+ "nros-log",
  "nros-macros",
  "nros-node",
  "nros-params",
@@ -607,6 +608,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "nros-cc-flags",
+ "nros-log",
  "nros-rmw",
  "portable-atomic",
 ]
@@ -628,6 +630,7 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "nros-core",
+ "nros-log",
  "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",

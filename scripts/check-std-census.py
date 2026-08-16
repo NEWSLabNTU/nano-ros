@@ -114,12 +114,8 @@ BASELINE = {
     # lost a gate that described a convention rather than a requirement.
     "nros": {"cfg": 12, "path": 16},
     "nros-c": {"cfg": 13, "path": 8},
-    # phase-361 W2.a: 5 -> 3. The heap gate is `cfg(feature = "alloc")` alone,
-    # `std` reaching it through `std = ["alloc", …]` in the manifest; the two
-    # `any(alloc, std)` spellings are gone. Branches this campaign no longer
-    # has to unwind.
     "nros-core": {"cfg": 3, "path": 2},
-    "nros-cpp": {"cfg": 10, "path": 21},
+    "nros-cpp": {"cfg": 9, "path": 21},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

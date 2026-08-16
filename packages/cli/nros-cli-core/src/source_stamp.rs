@@ -63,7 +63,12 @@ fn is_cli_input(rel: &str) -> bool {
     (rel.ends_with(".rs")
         || rel.ends_with(".jinja")
         || rel.ends_with("Cargo.toml")
-        || rel.ends_with("Cargo.lock"))
+        || rel.ends_with("Cargo.lock")
+        // Issue 0604 — the generated closure list DECIDES which dirs the two
+        // clauses above are read from, so a stamp blind to it would not move
+        // when the watched set changed. Same reasoning as `.jinja`: an input
+        // that changes what the build consumes without being a `.rs`.
+        || rel == CLI_SOURCE_DIRS_FILE)
         && !rel.contains("/third-party/")
         && !rel.contains("/testing_workspaces/")
 }
@@ -116,106 +121,77 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Directories the CLI is built from: `packages/cli` plus the transitive
-/// closure of its LOCAL PATH DEPENDENCIES.
+/// Repo-relative location of the generated closure list (issue 0604).
+const CLI_SOURCE_DIRS_FILE: &str = "packages/cli/cli-source-dirs.txt";
+
+/// Directories the CLI is built from: `packages/cli` plus the in-repo crates
+/// the `nros` binary is actually compiled from.
 ///
-/// phase-330 W1.a found this the hard way. The stamp used to watch
-/// `packages/cli` alone, but `nros-cli-core` path-depends on
+/// phase-330 W1.a found the need for the second half the hard way. The stamp
+/// used to watch `packages/cli` alone, but `nros-cli-core` path-depends on
 /// `../../core/nros-orchestration-ir`, which path-depends further. Editing one
 /// of those left the CLI genuinely stale while `nros source-stamp` reported
 /// FRESH and `setup-cli` skipped the rebuild — so a schema change appeared not
 /// to take effect, and the error message kept listing the old fields.
 ///
-/// That is the same shape as the input lists this file already warns about: a
-/// freshness probe watching less than the build consumes (issue 0196). The
-/// closure is computed from manifests rather than `cargo metadata` so it stays
-/// dependency-free and usable from `build.rs`.
+/// # Why a generated file and not a walk (issue 0604)
+///
+/// The fix for that was a textual `path = "…"` walk over manifests, chosen
+/// because this file is `include!`d by `build.rs`: it may not pull in a TOML
+/// parser, and it cannot shell `cargo metadata` (which takes the package-cache
+/// lock cargo already holds during a build). Measured 2026-08-16, that walk was
+/// wrong in BOTH directions at once — 23 dirs where cargo resolves 8:
+///
+/// * **blind to `nros-core` and `nros-rmw`**, which the CLI does compile.
+///   `nros-orchestration-ir` spells its dep `nros-rmw = { workspace = true }`,
+///   which carries no `path =` at all — the path lives in the ROOT manifest's
+///   `[workspace.dependencies]`, a file the leaf-manifest scan never reads. So
+///   an edit to either left the stamp FRESH and `setup-cli` skipped the
+///   rebuild: exactly the failure this function exists to prevent, reintroduced
+///   by its own fix.
+/// * **17 dirs over-watched**, all hanging off one edge: `nros-board-common`
+///   declares `nros-platform = { optional = true }`, enabled by
+///   `deploy-overlay`, which the CLI does not enable. A textual scan cannot see
+///   `optional`, so it took every platform port, `nros-node`, `nros-log`,
+///   `nros-smoltcp`, `mps2-an385-pac`, `zpico-alloc`, `nros-ghost-types` and
+///   three generated msg crates. Editing any of them re-staled the CLI, and a
+///   stale CLI re-stales every fixture keyed on its stamp — the cold-leaf
+///   cascade issue 0604 was opened to attribute.
+///
+/// Repairing the walk means hand-rolling workspace-dep inheritance AND
+/// optional-dep feature resolution in a file that cannot parse TOML. Cargo
+/// computes both exactly, so its answer is recorded instead:
+/// `scripts/gen-cli-source-dirs.py` writes the list, this reads it, and
+/// `check-cli-source-dirs` fails when the two disagree. The gate is what makes
+/// the file safe to trust — without it a stale list is a silent wrong stamp.
+///
+/// A missing or unreadable file yields `packages/cli` alone, which is the
+/// pre-phase-330 behaviour: under-watching, and therefore wrong. It cannot be
+/// silent, so [`source_stamp`] refuses to produce a stamp at all in that case.
 fn cli_source_dirs(root: &Path) -> Vec<String> {
     let mut dirs = vec!["packages/cli".to_string()];
+    let Ok(body) = std::fs::read_to_string(root.join(CLI_SOURCE_DIRS_FILE)) else {
+        return dirs;
+    };
     let mut seen: BTreeSet<String> = dirs.iter().cloned().collect();
-    let mut queue = dirs.clone();
-
-    while let Some(dir) = queue.pop() {
-        let Some(listing) = git(root, &["ls-files", "--", &dir]) else {
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
             continue;
-        };
-        for rel in listing.lines() {
-            if !rel.ends_with("Cargo.toml") {
-                continue;
-            }
-            // Vendored submodules carry their own graphs; they are not nano-ros
-            // build inputs (and would drag in thousands of files).
-            if rel.contains("/third-party/") || rel.contains("/testing_workspaces/") {
-                continue;
-            }
-            let Ok(body) = std::fs::read_to_string(root.join(rel)) else {
-                continue;
-            };
-            let manifest_dir = Path::new(rel).parent().unwrap_or(Path::new(""));
-            for dep in path_deps_of(&body) {
-                let Some(joined) = normalize_rel(manifest_dir, &dep) else {
-                    continue;
-                };
-                if joined.starts_with("packages/cli") || joined.contains("/third-party/") {
-                    continue;
-                }
-                if seen.insert(joined.clone()) {
-                    dirs.push(joined.clone());
-                    queue.push(joined);
-                }
-            }
+        }
+        if seen.insert(line.to_string()) {
+            dirs.push(line.to_string());
         }
     }
     dirs
 }
 
-/// `path = "..."` values in a manifest. Deliberately textual: this runs from
-/// `build.rs`, so it cannot pull in a TOML parser.
-fn path_deps_of(manifest: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in manifest.lines() {
-        let line = line.trim();
-        if line.starts_with('#') {
-            continue;
-        }
-        let mut rest = line;
-        while let Some(i) = rest.find("path") {
-            rest = &rest[i + 4..];
-            let after = rest.trim_start();
-            let Some(after) = after.strip_prefix('=') else {
-                continue;
-            };
-            let after = after.trim_start();
-            let Some(after) = after.strip_prefix('"') else {
-                continue;
-            };
-            let Some(end) = after.find('"') else { continue };
-            out.push(after[..end].to_string());
-        }
-    }
-    out
-}
-
-/// Resolve `base/rel` and collapse `..` segments, repo-relative.
-fn normalize_rel(base: &Path, rel: &str) -> Option<String> {
-    let mut parts: Vec<&str> = base
-        .to_str()?
-        .split('/')
-        .filter(|p| !p.is_empty())
-        .collect();
-    for seg in rel.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            other => parts.push(other),
-        }
-    }
-    if parts.is_empty() {
-        return None;
-    }
-    Some(parts.join("/"))
+/// Is the generated closure list present? [`source_stamp`] returns `None`
+/// without it rather than stamping over `packages/cli` alone — a smaller
+/// closure is a stamp that reports FRESH for a CLI that is not, and "assume
+/// fresh" is the one answer a freshness probe must never give.
+fn cli_source_dirs_file_present(root: &Path) -> bool {
+    root.join(CLI_SOURCE_DIRS_FILE).is_file()
 }
 
 /// Every tracked CLI input, repo-relative. Used by `build.rs` for
@@ -265,6 +241,13 @@ pub fn cli_input_files(root: &Path) -> Vec<String> {
 /// SHAs are what make a COMMIT silent: identical bytes hash identically
 /// whether they sit in the worktree, the index, or HEAD.
 pub fn source_stamp(root: &Path) -> Option<String> {
+    // Issue 0604 — without the generated closure list the watched set silently
+    // shrinks to `packages/cli`, and a smaller closure reports FRESH for a CLI
+    // that is not. `None` sends the caller down the same path as "outside a git
+    // checkout": skip the check, never guess.
+    if !cli_source_dirs_file_present(root) {
+        return None;
+    }
     let mut h = FNV_OFFSET;
     let modified: std::collections::HashMap<String, String> = {
         let files = modified_cli_files(root);
@@ -414,6 +397,94 @@ mod tests {
         assert!(ok, "command failed: {cmd}");
     }
 
+    /// A synthetic checkout needs the generated closure list, or
+    /// [`source_stamp`] refuses to stamp at all (issue 0604). Empty is right
+    /// here: these fixtures have no crates outside `packages/cli`, so cargo's
+    /// resolve for them would name none either.
+    fn write_closure_list(root: &Path) {
+        std::fs::write(root.join(CLI_SOURCE_DIRS_FILE), "# test fixture\n").unwrap();
+    }
+
+    /// Issue 0604 — the closure list decides what is watched, so the two
+    /// directions it can be wrong in are the two things worth asserting: a dir
+    /// it names is watched, and one it does not name is not.
+    ///
+    /// The old textual walk got BOTH wrong at once on the real tree (blind to
+    /// `workspace = true`, so `nros-rmw` went unwatched; blind to
+    /// `optional = true`, so 17 crates the CLI never compiles did). Neither
+    /// half had a test, because a walk's closure is only checkable against
+    /// cargo — which is now `check-cli-source-dirs`' job, and this is the other
+    /// half: that the list is actually obeyed.
+    #[test]
+    fn the_closure_list_decides_what_is_watched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        sh(root, "git init -q -b main .");
+        std::fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        std::fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
+        for dir in ["packages/core/listed", "packages/core/unlisted"] {
+            std::fs::create_dir_all(root.join(dir).join("src")).unwrap();
+            std::fs::write(root.join(dir).join("src/lib.rs"), "fn c() {}\n").unwrap();
+        }
+        std::fs::write(
+            root.join(CLI_SOURCE_DIRS_FILE),
+            "# generated\npackages/core/listed\n",
+        )
+        .unwrap();
+        sh(root, "git add -A && git commit -qm init");
+
+        let base = source_stamp(root).expect("stamp in a git checkout");
+
+        std::fs::write(
+            root.join("packages/core/unlisted/src/lib.rs"),
+            "fn c() {}\nfn d() {}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            source_stamp(root).as_deref(),
+            Some(base.as_str()),
+            "an unlisted dir must not move the stamp — that over-watch is what \
+             re-staled the CLI (and through it every fixture) on edits to \
+             nros-node and the platform ports"
+        );
+
+        std::fs::write(
+            root.join("packages/core/listed/src/lib.rs"),
+            "fn c() {}\nfn d() {}\n",
+        )
+        .unwrap();
+        assert_ne!(
+            source_stamp(root).as_deref(),
+            Some(base.as_str()),
+            "a listed dir MUST move the stamp — missing this is how an edit to \
+             nros-rmw left `setup-cli` reporting success without rebuilding"
+        );
+    }
+
+    /// Issue 0604 — no list, no stamp. Falling back to `packages/cli` alone
+    /// would report FRESH for a CLI whose out-of-cli deps had changed, and
+    /// "assume fresh" is the one answer a freshness probe must never give.
+    #[test]
+    fn a_missing_closure_list_refuses_to_stamp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        sh(root, "git init -q -b main .");
+        std::fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        std::fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
+        sh(root, "git add -A && git commit -qm init");
+
+        assert!(
+            source_stamp(root).is_none(),
+            "a checkout with no {CLI_SOURCE_DIRS_FILE} must yield None, not a \
+             stamp over a silently smaller closure"
+        );
+        write_closure_list(root);
+        assert!(
+            source_stamp(root).is_some(),
+            "and it must stamp once the list is there"
+        );
+    }
+
     /// The 2026-08-01 regression this file's encoding rule exists for: a
     /// binary built against DIRTY sources must stay fresh when those exact
     /// bytes are committed — dirty and committed content hash identically
@@ -425,6 +496,7 @@ mod tests {
         let root = tmp.path();
         sh(root, "git init -q -b main .");
         std::fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        write_closure_list(root);
         std::fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
         std::fs::write(
             root.join("packages/cli/x/Cargo.toml"),
@@ -484,6 +556,7 @@ mod tests {
         let root = tmp.path();
         sh(root, "git init -q -b main .");
         std::fs::create_dir_all(root.join("packages/cli/x/src")).unwrap();
+        write_closure_list(root);
         std::fs::write(root.join("packages/cli/x/src/lib.rs"), "fn a() {}\n").unwrap();
         std::fs::write(
             root.join("packages/cli/x/Cargo.toml"),

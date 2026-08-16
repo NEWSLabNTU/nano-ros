@@ -473,6 +473,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   before `nros sync` these leaves cannot even be READ (`cargo metadata` fails too, four frames deep,
   never naming sync). Guarded by `_require-leaf-includes`; `check-cargo-config-tracked` also rejects
   an include naming a target no generator writes. → AGENTS.md Rust Consumption.
+- **The CLI freshness closure is GENERATED, not walked** (issue 0627). `packages/cli/
+  cli-source-dirs.txt` names the in-repo dirs outside `packages/cli` that the `nros` binary
+  compiles; `source_stamp.rs` hashes those plus all of `packages/cli`, and a stale CLI re-stales
+  everything keyed on it. Change a CLI dep ⇒ `python3 scripts/gen-cli-source-dirs.py` + commit;
+  `check-cli-source-dirs` gates drift and names the direction. Never hand-edit it and never go
+  back to a textual `path =` walk — that one was wrong BOTH ways at once (23 dirs where cargo
+  resolves 8): blind to `workspace = true` (so `nros-core`/`nros-rmw` edits left `setup-cli`
+  skipping the rebuild while reporting success) and blind to `optional = true` (so 17 crates the
+  CLI never compiles — every platform port, `nros-node`, `nros-log` — re-staled it). A MISSING
+  list makes `source_stamp` return `None` (⇒ rebuild), never a stamp over a smaller closure.
 - **Parallel agent sessions push to `main`** — **reserve issue ids with `just issue-new <slug>`,
   never by reading the highest number.** Reading-then-writing is a race that has collided seven
   times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool
