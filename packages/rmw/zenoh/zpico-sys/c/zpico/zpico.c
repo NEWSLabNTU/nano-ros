@@ -1104,7 +1104,20 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
     return ZPICO_OK;
 }
 
-#if defined(ZENOH_ZEPHYR)
+/* Issue 0626 follow-up — `sched_get_priority_{min,max}` come from Zephyr's
+ * `lib/posix/options/sched.c`, compiled only under
+ * CONFIG_POSIX_PRIORITY_SCHEDULING. native_sim images enable it, cortex-m ones
+ * do not, so gating on ZENOH_ZEPHYR alone left every cortex-m link with
+ * `undefined reference to sched_get_priority_min` and took the whole zephyr
+ * fixture family down with it.
+ *
+ * Guarded rather than reimplemented: mapping onto whatever the policy REPORTS
+ * is the point of the band — the range is a build-configuration property
+ * (CONFIG_NUM_PREEMPT_PRIORITIES), not a constant — and an image without the
+ * POSIX scheduling option has no range to map onto. Such an image keeps the
+ * pre-0626 behaviour (transport tasks at the default priority) and opts in with
+ * `CONFIG_POSIX_PRIORITY_SCHEDULING=y`. */
+#if defined(ZENOH_ZEPHYR) && defined(CONFIG_POSIX_PRIORITY_SCHEDULING)
 /* Issue 0626 — apply a NORMALISED 0-31 priority (0 = least urgent, larger =
  * more urgent) to a pthread attr, in the one place that knows how.
  *
@@ -1218,8 +1231,15 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     // IGNORED and the new thread silently takes the creator's. A scheduling
     // attribute that is quietly dropped is the failure this issue is about, so
     // it must not be reintroduced one layer down.
+#if defined(CONFIG_POSIX_PRIORITY_SCHEDULING)
     zpico_posix_set_priority(&g_default_read_task_attr, read_priority);
     zpico_posix_set_priority(&g_default_lease_task_attr, lease_priority);
+#else
+    /* No POSIX scheduling option in this image — see the note on
+     * `zpico_posix_set_priority`. Stack size only, as before issue 0626. */
+    (void)read_priority;
+    (void)lease_priority;
+#endif
 #else
     // Linux / macOS / NuttX: priority needs a policy this process may not be
     // allowed to request. Stack size only, as before.
