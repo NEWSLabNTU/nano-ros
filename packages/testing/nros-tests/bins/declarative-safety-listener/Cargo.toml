@@ -17,6 +17,13 @@ nros = { path = "../../../../api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",
+    # phase-359 W10 swept consumer manifests off `std`, and this bin was left
+    # calling `runtime.spin()` — which is `#[cfg(feature = "std")]` and
+    # documented "Hosted-only; on bare-metal the BSP wraps `spin_once` in its own
+    # loop". This is a HOSTED test bin that wants exactly that loop, so it keeps
+    # the hosted feature rather than open-coding a `spin_once` cadence the
+    # library already picked.
+    "std",
     "safety-e2e", "macros"] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [

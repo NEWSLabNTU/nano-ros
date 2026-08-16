@@ -194,6 +194,19 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
+**#642** (build/testing, open 2026-08-16) — `check-archive-lang-items` fails `build-test-fixtures` AFTER all
+eight platform families report OK, on `link.txt` files under
+`examples/workspaces/*/build/nros-metadata/metadata-probe-cmake/` — metadata-PROBE residue dated **Jul 31**
+and **gitignored** (`examples/workspaces/c/.gitignore:2:/build/`). Deleting those dirs makes the gate pass
+with no source change. The RULE (one allocator per link line, #0616/#0436) is right; the SCOPE is not — a
+probe's link line is not an image's, and a 16-day-old one is not evidence about this tree. Second problem:
+the scan runs unbounded `find <dir> -name link.txt -path '*CMakeFiles*'` over `examples`, `packages` and
+`build`, measured at 22 min elapsed against 15 s CPU (pure I/O over every leaf build tree) — paid by every
+fixture build. Fix: scope to real artifacts (skip `*/nros-metadata/*`, or take the set from the fixture
+manifest), respect gitignore, prune build dirs, or apply a freshness rule (#0445's reasoning). Gate landed
+2026-08-16 in `fb5ef2521` / `133aaa61a`. NOTE #0645 and #0641 landed perf fixes to OTHER scans the same day;
+this one was not among them. See `0642-*`. (2026-08-16)
+
 **#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
 store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
 for one tool in one configure, only the FetchContent fallback reads the index — and (b) it cannot serve two
