@@ -441,6 +441,7 @@ check-fast: \
     check-atomic-sync-writes \
     check-platform-provider-features \
     check-sdk-store-not-enumerated \
+    check-goal-cdr-stripped \
     check-test-domain-assignment \
     check-zenohd-spawn-sites \
     check-path-env-fingerprints check-retired-platform-clock-symbols
@@ -1486,6 +1487,12 @@ check-platform-provider-features:
 # pin that is PER-PROJECT.
 check-sdk-store-not-enumerated:
     @python3 scripts/check-sdk-store-not-enumerated.py
+
+# Issue 0454 / phase-354 W3 — an FFI taking `goal_cdr` must strip the
+# encapsulation header before handing bytes to `send_goal_raw`, which takes
+# FIELDS and appends them after a header the writer already wrote.
+check-goal-cdr-stripped:
+    @python3 scripts/check-goal-cdr-stripped.py
 
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA

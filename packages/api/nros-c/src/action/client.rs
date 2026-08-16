@@ -1208,8 +1208,21 @@ pub unsafe extern "C" fn nros_action_client_send_goal_raw(
             Some(c) => c,
             None => return NROS_RET_INVALID_ARGUMENT,
         };
+        // Issue 0454 / phase-354 W3 — STRIP the encapsulation header.
+        //
+        // The parameter is `goal_cdr`: a C caller supplies CDR, which begins
+        // with the 4-byte encapsulation header. `PollingActionClientCore::
+        // send_goal_raw` wants goal FIELDS — its own doc says "without GoalId
+        // framing", and it appends the bytes after a header `tx_writer`
+        // (`CdrWriter::new_with_header`) has already written. Passing CDR
+        // through unstripped therefore put TWO headers on the wire, which is
+        // issue 0448's defect reaching a peer.
+        //
+        // The two INTERNAL callers already did this (`strip_cdr_header(goal_data)`
+        // -> `goal_fields`); only the FFI arms did not, so the parameter name
+        // stated one contract and the code implemented another.
         let slice = core::slice::from_raw_parts(goal_cdr, goal_len);
-        match core.send_goal_raw(slice) {
+        match core.send_goal_raw(strip_cdr_header(slice)) {
             Ok(id) => {
                 (*goal_id_out).copy_from_slice(&id.uuid);
                 NROS_RET_OK
