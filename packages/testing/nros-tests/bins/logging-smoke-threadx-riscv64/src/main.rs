@@ -17,6 +17,43 @@ use nros_log::{
 
 static LOGGER: Logger = Logger::new("smoke");
 
+// phase-366 W5.c/W5.d — this image declares its own ending, because the board
+// stopped doing it for us. Written out rather than `nros::panic_to_platform!()`
+// only because this bin does not dep the `nros` facade; the body is identical
+// and forwards to the board's `nros_platform_panic` (UART, then exit QEMU),
+// which is what makes a panicking fixture report a failure instead of hanging
+// until the harness times out.
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    use core::fmt::Write as _;
+
+    struct Buf {
+        bytes: [u8; 192],
+        used: usize,
+    }
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let room = self.bytes.len() - self.used;
+            let n = s.len().min(room);
+            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
+            self.used += n;
+            Ok(())
+        }
+    }
+
+    let mut buf = Buf {
+        bytes: [0u8; 192],
+        used: 0,
+    };
+    let _ = write!(buf, "{info}");
+
+    unsafe extern "C" {
+        fn nros_platform_panic(msg: *const u8, len: usize) -> !;
+    }
+    // SAFETY: `buf.bytes[..used]` is initialised and outlives the diverging call.
+    unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
+}
+
 // Network config lives in a sibling `config.toml`, compile-baked here
 // (RFC-0004: config in a file, not hardcoded in code). `from_toml` applies the
 // build-time `NROS_DOMAIN_ID` override for per-fixture domain isolation.

@@ -149,6 +149,17 @@ impl ExecutableNode for FibonacciServer {
     }
 }
 
+// phase-366 W5.c — this image's ending, declared where the image is built.
+//
+// It lives in `lib.rs`, not `main.rs`, because `[lib] crate-type` here includes
+// `staticlib`: rustc treats a staticlib as a FINAL ARTIFACT, so it needs the
+// lang item on its own, and the `bin` gets it through this rlib. Putting it in
+// both would be a duplicate. That is RFC-0077's staticlib qualification, and it
+// is why "libraries never provide" needs the word FINAL in it.
+//
+// Swap for `use panic_halt as _;`, or write a handler that logs and reboots.
+nros::panic_to_platform!();
+
 nros::node!(FibonacciServer);
 
 // CycloneDDS / CMake firmware path: the C `startup.c::main` calls

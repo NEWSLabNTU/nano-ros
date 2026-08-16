@@ -393,37 +393,15 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
     exit_failure()
 }
 
-/// Rust's lang item, forwarding to the ABI above.
-///
-/// Kept here for now because a pure-Rust image on this board links no `nros-c`,
-/// so removing it outright would leave those images with no handler at all —
-/// the W5 window the phase doc calls out. It no longer DECIDES anything: the
-/// behaviour is `nros_platform_panic`'s, shared with C and C++.
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    use core::fmt::Write as _;
-
-    struct Buf {
-        bytes: [u8; 192],
-        used: usize,
-    }
-    impl core::fmt::Write for Buf {
-        fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            let room = self.bytes.len() - self.used;
-            let n = s.len().min(room);
-            self.bytes[self.used..self.used + n].copy_from_slice(&s.as_bytes()[..n]);
-            self.used += n;
-            Ok(())
-        }
-    }
-
-    let mut buf = Buf {
-        bytes: [0u8; 192],
-        used: 0,
-    };
-    let _ = write!(buf, "{info}");
-    nros_platform_panic(buf.bytes.as_ptr(), buf.used)
-}
+// phase-366 W5.d — the `#[panic_handler]` that used to live here is GONE.
+//
+// A library must not claim a singleton of the final artifact (RFC-0077). The
+// BEHAVIOUR stays, above, as this board's strong `nros_platform_panic`; the lang
+// item now belongs to the image, which writes `nros::panic_to_platform!()` (or
+// its own handler) in the entry package.
+//
+// This was the provider that could not be turned off at all — ungated, so an
+// image linking this board and `nros-c` had two candidates for one lang item.
 
 /// #131 — bare-metal `__assert_func` override.
 ///

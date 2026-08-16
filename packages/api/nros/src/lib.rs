@@ -340,6 +340,82 @@ pub use nros_macros::node;
 #[cfg(feature = "macros")]
 pub use nros_macros::main;
 
+/// Route this image's panics to its platform — phase-366 W5.c / RFC-0077.
+///
+/// Emits the `#[panic_handler]` for an embedded image, forwarding the message
+/// to `nros_platform_panic` so a Rust panic ends the same way a C precondition
+/// failure or a C++ terminate does. What that ending IS belongs to the port:
+/// `k_panic()` on Zephyr, `esp_system_abort()` on ESP-IDF, UART-then-exit-QEMU
+/// on the ThreadX RV64 board.
+///
+/// # Why this is a macro you INVOKE, not something `nros::main!` emits
+///
+/// `#[panic_handler]` is a singleton of the final artifact, and the image owns
+/// it. Emitting one silently from `nros::main!()` would collide with every image
+/// that already declares its own — `examples/qemu-esp32-baremetal` writes
+/// `use esp_backtrace as _;`, and `logging-smoke-freertos-mps2` uses
+/// `panic-semihosting` with `features = ["exit"]` so a panic exits QEMU instead
+/// of hanging the test harness. Those images are RIGHT, and an invisible default
+/// would fight them.
+///
+/// So the line is written in the entry, where it can be read, swapped for
+/// `use panic_halt as _;`, or replaced by a hand-written handler that logs to
+/// NVM and reboots. A default you cannot see is a constraint, not a default.
+///
+/// # Use
+///
+/// ```ignore
+/// #![no_std]
+/// nros::panic_to_platform!();
+/// nros::main!();
+/// ```
+///
+/// Do NOT invoke it in a `std` image: libstd supplies the lang item there and a
+/// second one does not compile. Do not invoke it alongside `use panic_halt as _`
+/// or any other provider, for the same reason — that is the duplicate
+/// `check-archive-lang-items` exists to catch.
+#[macro_export]
+macro_rules! panic_to_platform {
+    () => {
+        #[panic_handler]
+        fn __nros_panic(info: &::core::panic::PanicInfo) -> ! {
+            use ::core::fmt::Write as _;
+
+            // Fixed buffer, never the heap: this runs when the allocator may be
+            // exactly what failed. Truncation is deliberate — a short panic line
+            // still diagnoses; a missing one does not.
+            struct Buf {
+                bytes: [u8; 192],
+                used: usize,
+            }
+            impl ::core::fmt::Write for Buf {
+                fn write_str(&mut self, s: &str) -> ::core::fmt::Result {
+                    let room = self.bytes.len() - self.used;
+                    let n = s.len().min(room);
+                    self.bytes[self.used..self.used + n]
+                        .copy_from_slice(&s.as_bytes()[..n]);
+                    self.used += n;
+                    Ok(())
+                }
+            }
+
+            let mut buf = Buf {
+                bytes: [0u8; 192],
+                used: 0,
+            };
+            let _ = write!(buf, "{info}");
+
+            unsafe extern "C" {
+                fn nros_platform_panic(msg: *const u8, len: usize) -> !;
+            }
+            // SAFETY: `buf.bytes[..used]` is initialised and outlives the
+            // diverging call; the ABI takes a length-delimited diagnostic, not
+            // a C string.
+            unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
+        }
+    };
+}
+
 /// Define Zephyr's `rust_main` for a self-bringup Rust component package.
 ///
 /// The macro is intended for `rust_cargo_application()` apps whose crate
