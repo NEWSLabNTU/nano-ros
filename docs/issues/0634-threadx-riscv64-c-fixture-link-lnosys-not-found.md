@@ -2,7 +2,7 @@
 id: 634
 title: "`-lnosys` reaches the ThreadX RISC-V link line but its `-L` does not, so
   every C fixture on that lane fails to link"
-status: open
+status: resolved
 type: bug
 area: build, boards
 related: [issue-0626, phase-358]
@@ -109,3 +109,43 @@ Whichever is chosen, verify with the LINK LINE rather than a green build: the
 Phase-358 W3 → #0626, building the ThreadX lane to verify the transport-task
 priority change end to end. The Rust half of that verification passed; this is
 what the C half hit.
+
+
+## 2026-08-16 — fixed, and a second fact the fix exposed
+
+`CMAKE_C_STANDARD_LIBRARIES` / `CMAKE_CXX_STANDARD_LIBRARIES` now carry the
+search path in the SAME string as the library:
+
+```cmake
+set(CMAKE_C_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys" CACHE STRING "" FORCE)
+```
+
+Option 1 from the list above. A library reference and the path it is found on
+are one fact; the bug was storing them in two mechanisms with different
+lifetimes, so the fix is to stop doing that rather than to make the second
+mechanism work.
+
+**Existing build directories keep the old value until they are re-configured.**
+The first rebuild after the fix still failed, and the cache showed the reason:
+
+```
+CMAKE_C_STANDARD_LIBRARIES:STRING=-lnosys     # stale: no -L
+```
+
+Wiping ONE leaf produced the new value and dropped the failure count 6 -> 5;
+wiping all 22 `examples/qemu-riscv64-threadx/*/*/build-*` dropped it to **0**.
+Worth knowing because the intermediate state looks exactly like "the fix did not
+work" — it is a cache, not a code, problem, and `-DCMAKE_TOOLCHAIN_FILE` changes
+are not re-applied to an existing cache the way a fresh configure applies them.
+
+### Verified
+
+* `-lnosys` link failures on the lane: **6 -> 0**;
+* the new cache value carries both halves:
+  `-L…/riscv-none-elf/lib/rv64imafdc_zicsr/lp64d -lnosys`;
+* `libnosys.a` and `libstdc++.a` ARE in the same multilib directory, so the
+  `EXISTS` guard is right — an earlier note in this issue guessed they might not
+  be, from a `find | head` that truncated before showing it.
+
+The lane still does not finish, but the next failure is unrelated (the in-tree
+CLI stale-source gate firing on other uncommitted work).

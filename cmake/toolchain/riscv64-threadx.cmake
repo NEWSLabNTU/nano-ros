@@ -116,9 +116,30 @@ if(_riscv_stdcxx)
     # — the image's real malloc/IO (picolibc + the ThreadX platform) resolve
     # first. Runtime-correct for Cyclone: transient samples go through
     # ddsrt_{malloc,free} on the ThreadX byte pool, never these stubs.
+    #
+    # Issue 0634 — the `-L` travels WITH the `-l`, in one string.
+    #
+    # It used to come from the `add_link_options()` above and the library from
+    # the cache variable below, and those two do not travel alike: a CACHE
+    # variable reaches every target in every subdirectory, while
+    # `add_link_options()` is a DIRECTORY-scope command and a toolchain file is
+    # not the project's directory scope (it is read early, and again inside
+    # every `try_compile`). So the library reference survived to the link line
+    # and its search path did not, and every C fixture on this lane died with
+    #
+    #     rust-lld: error: unable to find library -lnosys
+    #
+    # while the Rust examples — linked by cargo, which never sees
+    # `CMAKE_C_STANDARD_LIBRARIES` — were unaffected. A half-green lane.
+    #
+    # A library reference and the path it is found on are ONE fact. Keeping
+    # them in two mechanisms with different lifetimes is what broke; the `-L`
+    # is therefore part of the same value, ahead of the `-l` that needs it.
     if(EXISTS "${_riscv_stdcxx_dir}/libnosys.a")
-        set(CMAKE_C_STANDARD_LIBRARIES "-lnosys" CACHE STRING "" FORCE)
-        set(CMAKE_CXX_STANDARD_LIBRARIES "-lnosys" CACHE STRING "" FORCE)
+        set(CMAKE_C_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys"
+            CACHE STRING "" FORCE)
+        set(CMAKE_CXX_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys"
+            CACHE STRING "" FORCE)
     endif()
 endif()
 
