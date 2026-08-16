@@ -108,7 +108,29 @@ if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
 endif()
 if(_riscv_stdcxx)
     get_filename_component(_riscv_stdcxx_dir "${_riscv_stdcxx}" DIRECTORY)
-    add_link_options("-L${_riscv_stdcxx_dir}")
+    # `*_LINKER_FLAGS_INIT`, NOT `add_link_options()` — issue 0629.
+    #
+    # `add_link_options()` sets a DIRECTORY property, and a toolchain file has no
+    # directory to set it on that the project will inherit: the file is processed
+    # in its own scope (and again for every `try_compile`), so the option was
+    # silently dropped and the search path never reached a link line. The failure
+    # only surfaced on a C++ link, because a C link here names no library it
+    # cannot already reach by path:
+    #
+    #     rust-lld: error: unable to find library -lstdc++
+    #     rust-lld: error: unable to find library -lnosys
+    #
+    # and it stayed hidden because the CycloneDDS riscv64 cells — the only ones
+    # that link with the CXX driver — had not been rebuilt in a long time.
+    #
+    # `_INIT` is the mechanism toolchain files are supposed to use for exactly
+    # this: it seeds `CMAKE_*_LINKER_FLAGS` for the project itself. Appended to
+    # all three so a C, C++ or shared link can all resolve `-lnosys`, which
+    # `CMAKE_C_STANDARD_LIBRARIES` puts on the C line too.
+    foreach(_lang EXE MODULE SHARED)
+        set(CMAKE_${_lang}_LINKER_FLAGS_INIT
+            "${CMAKE_${_lang}_LINKER_FLAGS_INIT} -L${_riscv_stdcxx_dir}")
+    endforeach()
     # The SDK libstdc++ is newlib-built: its internals reference newlib reent
     # objects whose syscalls (`_sbrk`/`_read`/`_kill`/…) nothing bare-metal
     # provides. `libnosys.a` (same multilib dir) stubs them; appended at the

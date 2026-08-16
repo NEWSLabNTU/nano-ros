@@ -2,7 +2,7 @@
 id: 629
 title: "`riscv64-lld-wrapper.sh` adds no `-L`, so any C++ link on threadx-riscv64
   fails on `-lstdc++` / `-lnosys` the toolchain actually ships"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0582, phase-366]
@@ -63,7 +63,33 @@ fixture passes freshness checks while carrying an artifact that the current tree
 can no longer produce. Worth recording because the same masking can hide any
 number of link-level regressions on the families that rebuild least often.
 
-## Fix sketch
+## Root cause — not the wrapper
+
+The wrapper was the wrong suspect. `riscv64-threadx.cmake` DOES locate the SDK
+`libstdc++.a` and DOES try to add its directory — with `add_link_options()`.
+
+That is the defect. `add_link_options()` sets a DIRECTORY property, and a
+toolchain file has no directory the project inherits: it is processed in its own
+scope, and again for every `try_compile`. The option was silently dropped and
+the search path never reached a link line. The wrapper passing no `-L` of its
+own was a true observation about the wrong layer.
+
+## Fix
+
+`CMAKE_{EXE,MODULE,SHARED}_LINKER_FLAGS_INIT`, which is the mechanism toolchain
+files are meant to use for exactly this — it seeds the project's own linker
+flags rather than setting a property in a scope nobody reads. All three
+languages, so a C link resolves the `-lnosys` that `CMAKE_C_STANDARD_LIBRARIES`
+puts on its line too.
+
+**Verifying it needs a clean configure.** `*_INIT` seeds the cache variable on
+FIRST configure only, so an existing build dir keeps the old flags and the fix
+reads as ineffective — which is exactly what the first verification attempt
+showed. Wiping the 21 `build-*` dirs under `examples/qemu-riscv64-threadx` and
+rebuilding gives "ThreadX-RV64 test fixtures built." with zero
+`unable to find library` errors.
+
+## Superseded fix sketch
 
 In `riscv64-lld-wrapper.sh`, derive the search paths from the compiler and pass
 them through:
