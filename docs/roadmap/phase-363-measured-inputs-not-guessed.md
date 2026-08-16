@@ -1,6 +1,6 @@
 # Phase 363 — Measured inputs, not guessed ones
 
-**Status (2026-08-15). W1–W4 LANDED, each acceptance-verified; W5 planned.** Every freshness check in
+**Status (2026-08-16). W1–W5 ALL LANDED, each acceptance-verified.** Every freshness check in
 this tree answers "was this built from the sources on disk right now?", and they
 split cleanly into two kinds: the ones that ASK the tool that owns the
 dependency graph, and the ones that GUESS an input set by hand. Every recurring
@@ -263,12 +263,26 @@ coming back empty when it plainly should not have, and both now asserted by
   repo root and the depfile's own directory and accepts only a base that
   actually resolves — guessing one would have re-created the same silent drop.
 
-## W5 — the zephyr candidate list
+## W5 — the zephyr candidate list (LANDED, `d721f1771`)
 
-`source_dir_is_stale` takes a source dir and hand-lists what to watch under it.
-It has no extension filter and is deliberately over-broad, so it fails SAFE and
-is the least urgent item here. Revisit only after W3/W4 exist: if the shared
-helper is good, this becomes a caller of it.
+`source_dir_is_stale` took a source dir and hand-listed what to watch under it —
+no extension filter, deliberately over-broad, failing SAFE. It was scoped as the
+least urgent item, to revisit once W3/W4 existed. That happened, and it did
+become a caller of the shared helper.
+
+The probe now reads the configure inputs the BUILD recorded rather than guessing
+them: `ninja_configure_deps()` parses `build.ninja`'s `RERUN_CMAKE` edge, and
+`require_prebuilt_binary_fresh_zephyr()` feeds those into the same content-aware
+check the other lanes use. `ZephyrLeafSource` names the leaf's own inputs beside
+them.
+
+The first cut compared MTIMES across the ~3291 configure inputs, which reported
+every image stale — a pull rewrites those files, which is the treadmill this
+phase exists to stop trusting. Restructured to feed the content-aware path
+instead.
+
+Covered by `tests/zephyr_leaf_staleness.rs` — three mutation tests, each
+asserting the probe FAILS when an input it claims to watch is changed.
 
 ---
 
