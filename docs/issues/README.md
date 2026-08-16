@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-16): **#646** — after #0641/#0645, what remained of `nros sync`'s walk was almost
+entirely NOT the workspace: 1590 dirs visited, **20 the workspace and 1570 the nano-ros underlay**, rediscovered
+by each of the 22 syncs `regenerate-bindings.sh` runs. The underlay is load-bearing (49 provisions) and its
+provisions live in three subtrees — but `packages/cli/CLAUDE.md` forbids the obvious fix: "`nros` is a generic
+tool — it must not learn the nano-ros directory layout." A CALLER may know it, so scope became an argument, as
+colcon does it. Three flags on `nros sync`, sharing `ws providers`' vocabulary so the index sync writes stays
+the one that command reads: `--base-paths PATH...` (colcon's, replaces the search path), `--nano-ros-root PATH`
+(replaces only the underlay), `--no-provider-index` (skip it — the index is a cache for later commands, not an
+input to this sync). Dirs walked 1590 -> **0**; wall clock 0.194 -> 0.175 s, and that small gain is the useful
+result: `wait4` is 62 % of the remaining sync (~85 subprocesses), so process spawning is now the bottleneck.
+Sharp edge documented: dropping a root that holds a provider makes its boards unresolvable, silently.
+**Rejected on measurement:** enumerating via `git ls-files` instead of walking — implemented, equivalence-tested
+(it caught that git ignores the stop-at-a-package rule and found fixture packages under
+`nros-rmw-cyclonedds/tests/types/`), 147 tests green, and then SLOWER (statx 12,080 -> 16,282). Reverted, and
+recorded so it is not tried twice. See `archived/0646-*`.
+
 Recently resolved (2026-08-16): **#0635** — `compile-check-signature.sh` hashed the dep-info closure, which
 carries `.git/index`: `nros-cli-core/build.rs` watches it deliberately (its source stamp reads index blob
 SHAs), so every row whose closure reaches the CLI inherited a file that `git add`/`commit`/`status` rewrites

@@ -271,6 +271,43 @@ pub struct SyncArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// nano-ros source tree to scan as the FIRST provider search root.
+    ///
+    /// Same flag and same meaning as `nros ws providers --nano-ros-root`, so the
+    /// index `sync` writes is the one that command would read — see
+    /// [`provider_search_path`], which exists because two spellings of the root
+    /// list make every read "built for other roots".
+    #[arg(long)]
+    pub nano_ros_root: Option<PathBuf>,
+
+    /// Provider search roots, REPLACING the default (nano-ros tree, then this
+    /// workspace) — colcon's `--base-paths`, and issue 0646.
+    ///
+    /// The default puts the whole nano-ros checkout in front of every
+    /// workspace, and it is rescanned per sync: measured on
+    /// `examples/workspaces/mixed`, 1570 of the 1590 directories visited are the
+    /// underlay, and `regenerate-bindings.sh` runs 22 syncs. A caller that
+    /// already knows the underlay has not moved — a build script looping over
+    /// workspaces — can say so here rather than pay for the rediscovery each
+    /// time.
+    ///
+    /// Repeatable; order is search order, as with colcon. Naming a root that
+    /// holds no provider is not an error (the same is true of the default
+    /// workspace root when someone builds nano-ros on its own), but dropping a
+    /// root that DOES hold one makes its boards unresolvable — so this is an
+    /// override for a caller that knows the tree, not a tuning knob.
+    #[arg(long = "base-paths", value_name = "PATH", num_args = 1..)]
+    pub base_paths: Vec<PathBuf>,
+
+    /// Skip the provider index entirely (`<ws>/build/nros/providers.json`).
+    ///
+    /// The index is a CACHE for later commands, not an input to this sync, so a
+    /// caller that will not read it can skip the scan outright. Same shape as
+    /// `--no-metadata` above: name the expensive optional step and let the
+    /// caller decline it.
+    #[arg(long)]
+    pub no_provider_index: bool,
+
     /// phase-330 W4 (RFC-0063) — write resolved SystemModels HERE instead of
     /// into each bringup's `config/`, making them build output rather than
     /// committed source. Consumers find them through the same search order
@@ -489,12 +526,36 @@ pub fn provider_search_path(workspace: &Path) -> Vec<PathBuf> {
     cargo_nano_ros::provider_scan::default_search_path(nano_ros_root.as_deref(), workspace)
 }
 
-/// Refresh `<ws>/build/nros/providers.json`. Warns rather than failing — see
-/// the call site in `run_sync`.
-fn write_provider_index(ws_root: &Path, verbose: bool) {
+/// The provider search roots for one `nros sync`, honouring the colcon-style
+/// scope flags (issue 0646).
+///
+/// Precedence, most explicit first:
+///
+/// 1. `--base-paths` — REPLACES the search path outright, like colcon's;
+/// 2. `--nano-ros-root` — replaces only the underlay root, keeping the
+///    workspace, and matches `nros ws providers`' flag of the same name;
+/// 3. the default — `provider_search_path`, the one implementation shared with
+///    that command.
+fn provider_roots_for_sync(
+    ws_root: &Path,
+    base_paths: &[PathBuf],
+    nano_ros_root: Option<&Path>,
+) -> Vec<PathBuf> {
+    if !base_paths.is_empty() {
+        return base_paths.to_vec();
+    }
+    if let Some(root) = nano_ros_root {
+        return cargo_nano_ros::provider_scan::default_search_path(Some(root), ws_root);
+    }
+    provider_search_path(ws_root)
+}
+
+/// Refresh `<ws>/build/nros/providers.json` over an explicit root list. Warns
+/// rather than failing — see the call site in `run_sync`.
+fn write_provider_index_with(ws_root: &Path, roots: &[PathBuf], verbose: bool) {
     use cargo_nano_ros::provider_scan;
 
-    let roots = provider_search_path(ws_root);
+    let roots = roots.to_vec();
     let path = provider_index_path(ws_root);
     let scan = match provider_scan::scan_roots(&roots) {
         Ok(s) => s,
@@ -2066,6 +2127,11 @@ fn lexically_join(base: &Path, rel: &Path) -> PathBuf {
 }
 
 pub fn run_sync(args: SyncArgs) -> Result<()> {
+    // Captured before `args.workspace` is moved below; the scope flags are read
+    // near the END of sync, and a partial move would otherwise force the whole
+    // struct to be cloned.
+    let base_paths = args.base_paths.clone();
+    let nano_ros_root = args.nano_ros_root.clone();
     // phase-308 W1 — captured up front: `args.workspace` is moved just below,
     // and the C/C++-only early return still needs the probe's nano-ros path.
     let nano_ros_for_probes = nano_ros_path_for(&args);
@@ -2231,7 +2297,17 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // A failure to write is a WARNING, not fatal. The index is a cache —
     // everything in it is rederivable by rescanning — so an unwritable build
     // dir must not take down a sync that otherwise succeeded.
-    write_provider_index(&ws_root, args.verbose);
+    if args.no_provider_index {
+        if args.verbose {
+            println!("sync: provider index skipped (--no-provider-index)");
+        }
+    } else {
+        write_provider_index_with(
+            &ws_root,
+            &provider_roots_for_sync(&ws_root, &base_paths, nano_ros_root.as_deref()),
+            args.verbose,
+        );
+    }
 
     if rust_consumers.is_empty() {
         println!("sync: no Rust consumer pkgs — patch tables not written.");
