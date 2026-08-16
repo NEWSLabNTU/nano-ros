@@ -80,11 +80,46 @@ The no-op-sink direction was not taken, per this issue's own warning about 0420.
 
 ### The `nros-c` half no longer reproduces
 
+> **Superseded 2026-08-16 — this section was wrong, see *Completing the `nros-c`
+> half* below.** Kept as written because how it went wrong is the useful part.
+
 `cargo test --no-run -p nros-c --profile nros-relwithdebinfo` — the exact repro
 recorded under *Symptom* — now links clean, and still does with the
 dev-dependency removed, so it was fixed in passing by the platform work earlier
 in this campaign rather than by anything here. No dev-dependency was added to
 `nros-c`: one was written, measured to be dead weight, and taken back out.
+
+### Completing the `nros-c` half (2026-08-16)
+
+It did still reproduce. Both spellings fail on a clean tree — the dev profile
+the new gate line runs, and the `nros-relwithdebinfo` repro recorded above as
+verified clean:
+
+```sh
+cargo test --no-run -p nros-c --quiet
+cargo test --no-run -p nros-c --profile nros-relwithdebinfo
+```
+
+Both on the same two symbols, `nros_platform_log_write` / `_flush`. So the gate
+line added by the resolution above landed RED, and because
+`check-workspace-features` runs early it took all of tier 1 with it — every
+later gate in `just ci` was unreachable, which is how this surfaced.
+
+The fix is `nros-cpp`'s, unchanged: the `posix-c-port` dev-dependency plus
+`#[cfg(test)] use nros_platform_cffi as _;` in `nros-c/src/lib.rs`.
+
+**Why the measurement said "dead weight".** Removing a dev-dependency that
+nothing references changes nothing — that is this issue's own point (2), one
+paragraph up, in the other direction. Step 2 is what makes step 1 observable, so
+a dev-dep tested WITHOUT its anchor is indistinguishable from one that is not
+needed, and the experiment returns "no effect" whether the fix was required or
+not. The anchor here was therefore mutation-tested rather than assumed: with the
+`use` removed and the dev-dependency still in place, the same two undefined
+references come straight back.
+
+**Record-keeping.** This was archived `resolved` while half of it was red on
+`main`. The status stays `resolved` now that it is actually fixed, but the first
+resolution should have been checked by running the gate it introduced.
 
 ### The gate that should have caught it
 
