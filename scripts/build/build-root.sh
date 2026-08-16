@@ -93,6 +93,15 @@ export NROS_KIND_COMPILE_CHECK="compile-check-fixtures"
 # Everything else — bare `<family>`, named for what it holds.
 export NROS_KIND_BORROWED_E2E="borrowed-e2e"
 export NROS_KIND_CARGO="cargo"
+# issue 0624 — `check-examples` lint caches. ONE SUBDIRECTORY PER LEAF, not one
+# shared dir: every example leaf is its own workspace root (RFC-0026 standalone
+# copy-out projects, each with its own `[workspace]`), and issue 0616's rule is
+# that a `--target-dir` serves exactly ONE root — two roots sharing one get two
+# units of every shared crate, differing only in the `path` fingerprint field.
+# The lane links nothing, so 0616's duplicate-lang-item failure cannot fire
+# here, but the duplicate UNITS would still be built and cached, which is the
+# cost this kind exists to avoid.
+export NROS_KIND_EXAMPLE_LINT="example-lint"
 export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
 export NROS_KIND_LINK_DETERMINISM="link-determinism"
 export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"

@@ -334,6 +334,18 @@ check JOBS="75%":
     # function does not.
     source scripts/build/cargo.sh
     export NROS_EXAMPLE_PROFILE_FLAGS="$(nros_cargo_profile_arg_string)"
+    # issue 0624 — where this lane's cargo artifacts go. Resolved ONCE here for
+    # the same reason as the profile flags above: `check_one` is `export -f`d
+    # into subshells where `nros_build_dir` is not defined. An exported variable
+    # crosses; a function does not.
+    #
+    # Without it, `cd <leaf> && cargo clippy` writes `<leaf>/target/` — the
+    # exact shape CLAUDE.md names, and the population issue 0488 declared empty
+    # and gated. The gate ran BEFORE this lane, so it passed on dirs this lane
+    # had not yet re-created and failed on the NEXT run, which is why deleting
+    # them "fixed" it for exactly one run.
+    source scripts/build/build-root.sh
+    export NROS_EXAMPLE_LINT_DIR="$(nros_build_dir "$NROS_KIND_EXAMPLE_LINT")"
 
     # Fan-out choice.
     #
@@ -441,7 +453,11 @@ check JOBS="75%":
         # No `-j`: this path runs one leaf at a time (outer jobserver owns the
         # tokens, and cargo joins it). The old NROS_EXAMPLE_INNER_JOBS cap went
         # with the GNU parallel fan-out that needed it — issue 0466.
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet $flags )
+        # issue 0624 — one target dir PER LEAF (each is its own workspace root,
+        # RFC-0026), never the leaf's own `target/` and never one dir shared by
+        # all 39 (issue 0616: a `--target-dir` serves exactly ONE root).
+        local lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet --target-dir "$lintdir" $flags )
     }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
@@ -489,11 +505,21 @@ check JOBS="75%":
             esac
             pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$d/Cargo.toml" | head -1)"
             # No `-j`: the pool's tokens are the budget now (cargo joins it).
-            printf 'cd %s && cargo +%s fmt --check -p %s && %s cargo clippy --quiet %s\n' \
-                "$d" "{{NIGHTLY}}" "$pkg" "$e" "$f"
+            # issue 0624 — same per-leaf target dir as the serial branch above.
+            # BOTH branches must carry it: fixing only one leaves `SERIAL=1`
+            # writing the leaf `target/` dirs this gate exists to keep empty.
+            ld="$NROS_EXAMPLE_LINT_DIR/$(echo "${d#examples/}" | tr '/' '-')"
+            printf 'cd %s && cargo +%s fmt --check -p %s && %s cargo clippy --quiet --target-dir %s %s\n' \
+                "$d" "{{NIGHTLY}}" "$pkg" "$e" "$ld" "$f"
         done < "$toml_list" > "$units"
         nros_pool_run check-examples < "$units"
     fi
+    # issue 0624 — assert the leaf `target/` population is still empty HERE, at
+    # the end of the lane that used to repopulate it. The gate also runs in
+    # `check-fast`, but only BEFORE this lane, so a writer added to this recipe
+    # produced a failure on the NEXT run, attributed to whatever else changed in
+    # between. Checking after the writer makes it same-run and self-evident.
+    python3 scripts/check-example-leaf-target-dirs.py
     echo "All examples check passed!"
 
 # Show embedded example binary sizes.

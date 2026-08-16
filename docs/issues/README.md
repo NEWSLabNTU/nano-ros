@@ -51,13 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0624** (build, open 2026-08-16) — `check-examples` (`just/native.just` ~495) runs `cd <leaf> && cargo clippy`
-with no `--target-dir`, re-creating the 37 per-leaf `examples/**/target/` dirs that #0488 declared empty and
-gated. Not a regression of 0488 — a site its sweep never reached, in the population it closed. The gate runs
-BEFORE the examples lane, so each run passes, writes the dirs, and fails the NEXT run: the failure is always
-misattributed to whatever else changed, and clearing "fixes" it for exactly one run. Measured: delete all 37,
-run a green `just check`, all 37 return. Both branches (jobserver pool and `SERIAL=1`) write them. See
-`0624-*`. (2026-08-16)
+Recently resolved (2026-08-16): **#0624** — `check-examples` (`just/native.just`) ran `cd <leaf> && cargo
+clippy` with no `--target-dir` in BOTH its pool and `SERIAL=1` branches, re-creating the 39 per-leaf
+`examples/**/target/` dirs that #0488 declared empty and gated. Not a regression of 0488 — a site its sweep
+never reached, in the population it closed. Self-perpetuating: the gate ran only BEFORE the lane, so each run
+passed, wrote the dirs, and failed the NEXT one, with the failure misattributed to whatever else changed and
+clearing "fixing" it for exactly one run. Fixed with a per-LEAF dir under a new `NROS_KIND_EXAMPLE_LINT` —
+per leaf, not one shared, because each example is its own workspace root (RFC-0026) and #0616's rule is that
+a `--target-dir` serves exactly ONE root; this lane links nothing so 0616's duplicate-lang-item failure cannot
+fire, but the duplicate UNITS would still be built and cached. Both branches in one change (the root is
+resolved once and EXPORTED, since `check_one` is `export -f`d into subshells where `nros_build_dir` is not
+defined), and the gate now runs AFTER the lane too, so the next writer fails in its own run — mutation-tested
+with a planted dir. 39 before, 0 after, on both branches. See `archived/0624-*`. (2026-08-16)
 
 Recently resolved (2026-08-16): **#0620** — `NROS_PLATFORM_TASK_STORAGE_SIZE` was 256 B, sized from a 32-bit
 port ("~232 B on 32-bit"), while ThreadX-Linux is a HOSTED port whose `TX_THREAD` measures 352 B — so the

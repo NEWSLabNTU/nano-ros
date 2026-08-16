@@ -1,11 +1,44 @@
 ---
 id: 624
 title: "`check-examples` re-creates the per-leaf `target/` population that 0488 declared empty — and its own gate cannot see it"
-status: open
+status: resolved
 type: tech-debt
 area: build
-related: [issue-0488, issue-0393, phase-340, rfc-0070]
+related: [issue-0488, issue-0393, phase-340, rfc-0070, issue-0616]
+resolved_in: "phase-340 class fix — per-leaf lint target dir"
 ---
+
+> **RESOLVED 2026-08-16.** Both branches of `check-examples` now pass
+> `--target-dir`, and the gate runs at the END of the lane as well as before it.
+>
+> **The dir is per LEAF, not one shared dir**, which is the constraint this
+> issue said to settle first. Every example leaf is its own workspace root
+> (RFC-0026), and issue 0616's rule is that a `--target-dir` serves exactly ONE
+> root — two roots sharing one get two units of every shared crate, differing
+> only in the `path` fingerprint field. This lane links nothing, so 0616's
+> duplicate-lang-item failure cannot fire here; the duplicate UNITS would still
+> be built and cached, which is reason enough. New build kind
+> `NROS_KIND_EXAMPLE_LINT`, so the path comes from `nros_build_dir` rather than
+> a literal (#0393).
+>
+> **Both branches, in one change.** The pool branch and `SERIAL=1`'s `check_one`
+> each got it; fixing one would have left the other writing the dirs. `check_one`
+> is `export -f`d into subshells where `nros_build_dir` is not defined, so the
+> root is resolved once and exported — the same reason the profile flags already
+> were, recorded at that line.
+>
+> **The one-run delay is closed too.** The gate also runs after the lane, so a
+> writer added to this recipe fails in the run that added it rather than the
+> next one. Mutation-tested: a planted `examples/native/rust/talker/target`
+> fails the lane in the same run.
+>
+> Verified: 39 leaf `target/` dirs before; `rm -rf` then a full `just native
+> check` on BOTH branches leaves **0**, with caches under
+> `build/example-lint/<leaf-slug>/` (39 of them). Lane green both ways.
+>
+> There is no test-side locator to move (#0393's usual second half) because
+> `check-examples` consumes nothing downstream — as this issue predicted.
+
 
 ## Symptom
 
