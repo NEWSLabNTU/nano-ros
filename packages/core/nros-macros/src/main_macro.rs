@@ -87,6 +87,38 @@ struct MainArgs {
     /// Span of the `custom_tasks` key, retained for diagnostics when
     /// rejecting the key under a non-RTIC framework.
     custom_tasks_span: Option<Span>,
+    /// phase-366 W7.a / RFC-0077 — `panic = "platform" | "halt" | "own"`.
+    ///
+    /// The image's ending, declared in the entry's own vocabulary. Resolved
+    /// HERE, when the macro expands, not at link time: Rust has no overridable
+    /// `#[panic_handler]`, so exactly one provider must be chosen before rustc
+    /// runs, and `own` is what suppresses emission at that same point.
+    panic: PanicPolicy,
+}
+
+/// What ends this image (RFC-0077's three values, identical on the cmake side).
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum PanicPolicy {
+    /// Route to `nros_platform_panic` — the board's honest ending.
+    Platform,
+    /// Park the core, for images that must not print.
+    Halt,
+    /// This image supplies its own provider; emit nothing.
+    ///
+    /// A POSITIVE declaration, not an absence: an image bringing
+    /// `esp-backtrace` or `panic-semihosting` states it, so the build can tell
+    /// "deliberate" from "forgot".
+    Own,
+}
+
+impl Default for PanicPolicy {
+    fn default() -> Self {
+        // M1 — `own` while the ~23 images that call `panic_to_platform!()`
+        // migrate. Flipping this to `Platform` is M5, and only once every image
+        // is migrated or explicitly `own`; doing it earlier gives those images
+        // two providers.
+        Self::Own
+    }
 }
 
 impl Parse for MainArgs {
@@ -192,6 +224,39 @@ impl Parse for MainArgs {
                     }
                     out.spin_forever = true;
                 }
+                "panic" => {
+                    // phase-366 W7.a — the value set is closed on purpose. A
+                    // free-form string here would be a policy this macro cannot
+                    // implement, and the error naming the three is how an image
+                    // discovers the surface exists.
+                    let lit = match value {
+                        KvValue::Str(s) => s,
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`panic = ` takes a string literal \
+                                 (`panic = \"platform\"`, `\"halt\"` or `\"own\"`)",
+                            ));
+                        }
+                    };
+                    out.panic = match lit.value().as_str() {
+                        "platform" => PanicPolicy::Platform,
+                        "halt" => PanicPolicy::Halt,
+                        "own" => PanicPolicy::Own,
+                        other => {
+                            return Err(syn::Error::new(
+                                lit.span(),
+                                format!(
+                                    "`panic = \"{other}\"` is not a policy \
+                                     (expected \"platform\" — route to \
+                                     `nros_platform_panic`, \"halt\" — park the \
+                                     core, or \"own\" — this image supplies its \
+                                     own `#[panic_handler]`)"
+                                ),
+                            ));
+                        }
+                    };
+                }
                 "custom_tasks" => {
                     // Phase 216.B.4 — `custom_tasks = [ident, ident,
                     // ...]`. Stored even when empty so the framework-
@@ -214,7 +279,7 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, model, args, custom_tasks, spin)"
+                             (expected one of: board, launch, model, args, custom_tasks, spin, panic)"
                         ),
                     ));
                 }
@@ -2490,6 +2555,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         return Ok(expanded);
     }
 
+    // phase-366 W7.a / RFC-0077 — the image's ending, emitted from the entry
+    // because the entry IS part of the final artifact and a dependency is not.
+    //
+    // Gated `target_os = "none"`, which is the same condition the emitted `main`
+    // above uses to tell a bare-metal image from a hosted one. A hosted image
+    // links libstd, which already defines the lang item, so an ungated emit
+    // would be a duplicate on exactly the platforms that need no help.
+    let panic_ts: proc_macro2::TokenStream = match args.panic {
+        PanicPolicy::Platform => quote! {
+            #[cfg(target_os = "none")]
+            ::nros::panic_to_platform!();
+        },
+        PanicPolicy::Halt => quote! {
+            #[cfg(target_os = "none")]
+            ::nros::panic_halt!();
+        },
+        // `own` emits nothing — the image said it brings its own.
+        PanicPolicy::Own => quote! {},
+    };
+
     let expanded = quote! {
         // Phase 212.N.9 — rebuild-tracking workaround. Stable Rust
         // proc-macros can't use `proc_macro::tracked_path::path()`;
@@ -2506,6 +2591,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // W4b — baked boot-config static; emitted before the framework
         // body so `&NROS_BOOT_CONFIG` is in scope at every overlay use site.
         #boot_config_static_ts
+
+        #panic_ts
 
         #body_ts
     };

@@ -374,6 +374,44 @@ pub use nros_macros::main;
 /// second one does not compile. Do not invoke it alongside `use panic_halt as _`
 /// or any other provider, for the same reason — that is the duplicate
 /// `check-archive-lang-items` exists to catch.
+/// Park the core on panic — the `halt` value of `nros::main!(panic = …)`.
+///
+/// For an image that must not print: no formatting, no allocation, no call out
+/// to the platform. Interrupts are masked first so the parked core cannot be
+/// woken back into a half-dead system by a timer or a driver ISR still armed
+/// from before the panic.
+///
+/// This is a body rather than a re-export of the `panic-halt` crate so that
+/// choosing it costs the entry no new dependency — `main!(panic = "halt")` is a
+/// word in a macro the crate already calls, which is the point of the surface.
+/// The behaviour is the same: mask, then spin forever.
+///
+/// Prefer `panic = "platform"`. Halting discards the diagnosis, and every port
+/// implements `nros_platform_panic` precisely so a dying image can say why.
+#[macro_export]
+macro_rules! panic_halt {
+    () => {
+        #[panic_handler]
+        fn __nros_panic_halt(_info: &::core::panic::PanicInfo) -> ! {
+            // Mask interrupts through the platform's critical section, which is
+            // the one IRQ primitive that is portable across the ports (the
+            // `cortex_m`/`riscv` intrinsics are not). Entering and never
+            // leaving is deliberate.
+            unsafe extern "C" {
+                fn nros_platform_critical_section_acquire() -> u32;
+            }
+            // SAFETY: the ABI's acquire takes no argument and returns a restore
+            // token we deliberately drop — nothing after this point runs.
+            unsafe {
+                let _ = nros_platform_critical_section_acquire();
+            }
+            loop {
+                ::core::hint::spin_loop();
+            }
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! panic_to_platform {
     () => {
