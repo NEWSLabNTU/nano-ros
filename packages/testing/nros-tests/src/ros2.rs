@@ -284,6 +284,12 @@ impl Ros2Process {
         let handle = command
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
+        // issue 0659 — record the group so a LATER run can reap it. The child is
+        // its own group leader (`setpgid(0,0)`), so its pid IS the pgid. Nothing
+        // in this process can clean up after its own SIGKILL, which is why the
+        // record has to outlive it.
+        #[cfg(unix)]
+        crate::process::group_ledger::record(handle.id() as i32, &name);
         Ok(Self {
             handle,
             name,

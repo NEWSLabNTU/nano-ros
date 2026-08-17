@@ -55,6 +55,284 @@ pub fn set_new_process_group(command: &mut Command) -> &mut Command {
     }
 }
 
+/// Issue 0659 — a durable record of the process groups this run spawned, so a
+/// LATER run can reap what a SIGKILL left behind.
+///
+/// `PR_SET_PDEATHSIG` above covers exactly one level: it kills `bash`, and
+/// `timeout`/`ros2`/the node reparent to init. Nothing inside the tree can do
+/// better, because PDEATHSIG delivers SIGKILL and SIGKILL cannot be handled — so
+/// the cleanup has to be performed by something that is not being killed. That
+/// is this ledger plus [`sweep_orphaned_process_groups`], run at lane start.
+///
+/// Measured 2026-08-17: 59 orphaned `add_two_ints_server` on one host, oldest
+/// 9.4 days, holding domain-5 discovery ports until an unrelated cyclone test
+/// failed with `failed to bind to ANY:8650: address in use`.
+#[cfg(unix)]
+pub mod group_ledger {
+    use std::{fs, path::PathBuf};
+
+    fn dir() -> PathBuf {
+        // Under `build/`, which is gitignored and already the home for run
+        // state. `NROS_PEER_LEDGER_DIR` exists so the tests for this can use a
+        // scratch dir instead of the real one.
+        std::env::var_os("NROS_PEER_LEDGER_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| crate::project_root().join("build/test-peer-groups"))
+    }
+
+    /// Boot-relative start time of `pid` (field 22 of `/proc/<pid>/stat`), the
+    /// only cheap thing that distinguishes a pid from a RECYCLED pid.
+    ///
+    /// Parsed from the last `)` rather than by splitting on whitespace: field 2
+    /// is the comm, which is parenthesised and may itself contain spaces.
+    pub fn start_time(pid: i32) -> Option<u64> {
+        let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let tail = &stat[stat.rfind(')')? + 1..];
+        tail.split_whitespace().nth(19)?.parse().ok()
+    }
+
+    /// Record a spawned group. `pgid` equals the child's pid because
+    /// `set_new_process_group` made it its own leader.
+    pub fn record(pgid: i32, label: &str) {
+        record_in(&dir(), pgid, label)
+    }
+
+    /// Directory-explicit form. Tests use this rather than an env var: cargo
+    /// runs a crate's tests as THREADS of one process, so two tests setting the
+    /// same global would race, and the loser's sweep would look in the winner's
+    /// directory, find nothing, and pass vacuously. That is not hypothetical —
+    /// it happened here, and it made the recycled-pgid safety test green while
+    /// the check it guards was mutated away.
+    pub fn record_in(d: &std::path::Path, pgid: i32, label: &str) {
+        let Some(started) = start_time(pgid) else {
+            return;
+        };
+        if fs::create_dir_all(d).is_err() {
+            return;
+        }
+        // The leader's start time is the FLOOR for its descendants: a process
+        // cannot predate the group it belongs to. That is what makes a recycled
+        // pgid safe — its members would predate this.
+        let _ = fs::write(d.join(pgid.to_string()), format!("{started}\n{label}\n"));
+    }
+
+    /// Forget a group the orderly path already killed.
+    pub fn forget(pgid: i32) {
+        let _ = fs::remove_file(dir().join(pgid.to_string()));
+    }
+
+    /// Directory-explicit form, for the same reason as [`record_in`].
+    pub fn sweep_in(d: &std::path::Path) -> usize {
+        sweep_dir(d)
+    }
+
+    /// Members of `pgid` still alive, as `(pid, start_time)`.
+    fn members(pgid: i32) -> Vec<(i32, u64)> {
+        let mut out = Vec::new();
+        let Ok(entries) = fs::read_dir("/proc") else {
+            return out;
+        };
+        for e in entries.flatten() {
+            let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else {
+                continue;
+            };
+            let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                continue;
+            };
+            let Some(tail) = stat.rfind(')').map(|i| &stat[i + 1..]) else {
+                continue;
+            };
+            let f: Vec<&str> = tail.split_whitespace().collect();
+            // after the comm: state(0) ppid(1) pgrp(2) … starttime(19)
+            let (Some(pg), Some(st)) = (
+                f.get(2).and_then(|v| v.parse::<i32>().ok()),
+                f.get(19).and_then(|v| v.parse::<u64>().ok()),
+            ) else {
+                continue;
+            };
+            if pg == pgid {
+                out.push((pid, st));
+            }
+        }
+        out
+    }
+
+    /// Kill every recorded group that still has members, and drop the record.
+    ///
+    /// Returns the number of groups killed. Verification before killing is the
+    /// whole point: this issue also records a cleanup that matched on process
+    /// NAME and killed 26 live Autoware components. A group is killed only when
+    /// EVERY surviving member started at or after the recorded leader — a
+    /// recycled pgid hosting an older process is therefore skipped, not killed.
+    pub fn sweep() -> usize {
+        sweep_dir(&dir())
+    }
+
+    fn sweep_dir(d: &std::path::Path) -> usize {
+        let Ok(entries) = fs::read_dir(d) else {
+            return 0;
+        };
+        let mut killed = 0;
+        for e in entries.flatten() {
+            let Ok(pgid) = e.file_name().to_string_lossy().parse::<i32>() else {
+                continue;
+            };
+            let recorded = fs::read_to_string(e.path())
+                .ok()
+                .and_then(|t| t.lines().next()?.parse::<u64>().ok());
+            let Some(floor) = recorded else {
+                let _ = fs::remove_file(e.path());
+                continue;
+            };
+            let live = members(pgid);
+            if live.is_empty() {
+                let _ = fs::remove_file(e.path());
+                continue;
+            }
+            if live.iter().all(|(_, st)| *st >= floor) {
+                // SAFETY: negative pid signals the process group.
+                unsafe {
+                    libc::kill(-pgid, libc::SIGKILL);
+                }
+                killed += 1;
+                let _ = fs::remove_file(e.path());
+            }
+            // else: pgid was recycled — leave both the processes and the record
+            // alone rather than guess.
+        }
+        killed
+    }
+}
+
+/// Sweep process groups left behind by a previous, SIGKILLed run.
+#[cfg(unix)]
+pub fn sweep_orphaned_process_groups() -> usize {
+    group_ledger::sweep()
+}
+
+#[cfg(all(test, unix))]
+mod group_ledger_tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    /// Issue 0659's own acceptance test: SIGKILL the supervisor, then assert no
+    /// descendant survives. The previous shapes (a bash EXIT trap, `exec
+    /// timeout`) both PASS a "clean teardown" test and both fail this one,
+    /// which is why it is written this way round.
+    #[test]
+    fn a_sigkilled_supervisor_leaves_a_group_the_sweep_reaps() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+
+        // bash -> timeout -> sleep, mirroring the real chain. TWO commands, and
+        // that is load-bearing: bash EXECs a lone simple command, so
+        // `bash -c "sleep N"` has no grandchild at all and the leak cannot
+        // reproduce — the first cut of this test failed for exactly that reason.
+        // The real peer runs `bash -c "<env> && timeout N ros2 run …"`, which
+        // bash cannot exec away.
+        //
+        // A unique duration is the marker: passing a token as an extra argv word
+        // makes `sleep` exit immediately with "invalid time interval", which
+        // silently turns this into a test that always passes.
+        let marker = format!("31.{}", std::process::id() % 900 + 100);
+        let mut cmd = Command::new("bash");
+        cmd.args(["-c", &format!("true && timeout 120 sleep {marker}")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        set_new_process_group(&mut cmd);
+        let mut child = cmd.spawn().expect("spawn");
+        let pgid = child.id() as i32;
+        group_ledger::record_in(tmp.path(), pgid, "test-peer");
+
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        assert!(
+            !group_ledger_members_for_test(pgid).is_empty(),
+            "harness broken: nothing started, so this test would pass vacuously"
+        );
+
+        // SIGKILL the supervisor ONLY — what PDEATHSIG does to bash when the
+        // test binary dies. No Drop runs, so nothing kills the group.
+        // SAFETY: signalling a pid this test owns.
+        unsafe { libc::kill(pgid, libc::SIGKILL) };
+        let _ = child.wait();
+        std::thread::sleep(std::time::Duration::from_millis(400));
+
+        let orphans = group_ledger_members_for_test(pgid);
+        assert!(
+            !orphans.is_empty(),
+            "the leak did not reproduce, so the sweep below proves nothing — \
+             if PDEATHSIG ever grows subtree semantics, delete this test"
+        );
+
+        assert_eq!(
+            group_ledger::sweep_in(tmp.path()),
+            1,
+            "sweep must reap the group"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        assert!(
+            group_ledger_members_for_test(pgid).is_empty(),
+            "group survived the sweep: {:?}",
+            group_ledger_members_for_test(pgid)
+        );
+    }
+
+    /// A recycled pgid — members predating the record — must be LEFT ALONE.
+    /// This is the property that separates the fix from the cleanup that killed
+    /// 26 live Autoware components.
+    #[test]
+    fn a_group_older_than_its_record_is_not_killed() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+
+        let marker = format!("32.{}", std::process::id() % 900 + 100);
+        let mut cmd = Command::new("bash");
+        cmd.args(["-c", &format!("true && timeout 120 sleep {marker}")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        set_new_process_group(&mut cmd);
+        let mut child = cmd.spawn().expect("spawn");
+        let pgid = child.id() as i32;
+
+        // Record a floor in the FUTURE: every live member predates it, exactly
+        // as they would if this pgid had been recycled.
+        let future = group_ledger::start_time(pgid).expect("starttime") + 1_000_000;
+        std::fs::write(
+            tmp.path().join(pgid.to_string()),
+            format!("{future}\nrecycled\n"),
+        )
+        .expect("write record");
+
+        assert_eq!(
+            group_ledger::sweep_in(tmp.path()),
+            0,
+            "must not kill a recycled pgid"
+        );
+        assert!(
+            !group_ledger_members_for_test(pgid).is_empty(),
+            "the group was killed despite predating its record"
+        );
+
+        // SAFETY: cleaning up a group this test owns.
+        unsafe { libc::kill(-pgid, libc::SIGKILL) };
+        let _ = child.wait();
+    }
+
+    fn group_ledger_members_for_test(pgid: i32) -> Vec<i32> {
+        let out = Command::new("ps")
+            .args(["-eo", "pid,pgid", "--no-headers"])
+            .output()
+            .expect("ps");
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.split_whitespace();
+                let pid: i32 = f.next()?.parse().ok()?;
+                let pg: i32 = f.next()?.parse().ok()?;
+                (pg == pgid).then_some(pid)
+            })
+            .collect()
+    }
+}
+
 /// Kill an entire process group immediately with SIGKILL.
 ///
 /// Use for processes that don't need graceful shutdown (e.g., QEMU emulators).
@@ -66,6 +344,10 @@ pub fn kill_process_group(handle: &mut Child) {
         libc::kill(-pid, libc::SIGKILL);
     }
     let _ = handle.wait();
+    // issue 0659 — the orderly path just did the cleanup, so drop the record.
+    // A ledger that only grows makes every later sweep examine more groups, and
+    // each stale entry is one more chance to act on a recycled pgid.
+    group_ledger::forget(pid);
 }
 
 /// Kill a process group gracefully: SIGTERM first, then SIGKILL after timeout.
@@ -99,6 +381,11 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
         libc::kill(-pid, libc::SIGKILL);
     }
     let _ = handle.wait();
+    // issue 0659 — BOTH teardown paths drop the record, not just the immediate
+    // one. Fixing only `kill_process_group` would leave every gracefully-killed
+    // group in the ledger forever, which is this tree's recurring shape: the fix
+    // that lands where the symptom was seen.
+    group_ledger::forget(pid);
 }
 
 /// Fallback for non-unix: kill just the direct child.

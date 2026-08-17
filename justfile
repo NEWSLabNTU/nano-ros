@@ -2471,6 +2471,12 @@ _check-fixtures-stale:
 [group("full-matrix")]
 test-all verbose="": _require-fixtures _check-fixtures-stale
     #!/usr/bin/env bash
+    # issue 0659 — reap peer process groups a previous SIGKILLed run left behind,
+    # BEFORE nextest starts. Not mid-run: a concurrent test's peers are recorded
+    # and alive, so a sweep then would kill them. Orphans hold DDS discovery
+    # ports and surface later as `failed to bind to ANY:8650: address in use` on
+    # an unrelated test.
+    cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
