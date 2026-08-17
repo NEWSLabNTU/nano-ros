@@ -178,7 +178,15 @@ a project really can be malformed, and picking a victim would be worse. Dropped
 components are reported BY NAME as failures, never omitted: a component that
 vanishes from the outcome list is a sidecar nobody knows is missing.
 
-**The underlying cause is an ordering constraint and is NOT fixed — issue 0662.**
+**The underlying cause turned out NOT to be an ordering constraint, and is now
+fixed — issue 0662.** It was read here as one, and the question "isn't this a
+circular dependency?" is what disproved it: `custom_msgs` is a verbatim upstream
+msg package needing only the ROS install, so nothing it needs comes from sync.
+The workspace's own CMakeLists already resolves it with
+`set(NROS_INTERFACE_SEARCH_PATH "<ws>/src")` and the compat layer's Find-stub
+emitter; the probe project simply never set it. **0 of 16 components probed
+became 16 of 16.** What follows is the original reading, kept because the retry
+below was built on it and remains correct:
 `examples/workspaces/features`' 16 C/C++ components all `find_package(custom_msgs)`,
 a workspace-local interface package built by the workspace's own CMake build,
 which runs AFTER sync because sync generates what that build consumes. At sync

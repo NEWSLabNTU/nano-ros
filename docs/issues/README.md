@@ -51,19 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#662** (cli/build, open 2026-08-17) — every C/C++ component in `examples/workspaces/features` (**16**) has no
-source-metadata sidecar and silently falls back to the SystemModel's entity lower bound. The probe project
-configures with `CMAKE_PREFIX_PATH` = the nano-ros checkout only, and the components `find_package(custom_msgs)`
-— a WORKSPACE-LOCAL interface package built by the workspace's own CMake build, which runs AFTER sync because
-sync generates what that build consumes. Verified: no `custom_msgsConfig.cmake` anywhere, no `install/` prefix.
-So they are unprobeable BY CONSTRUCTION at sync time. phase-367 W4 fixed the all-or-nothing half — one
-component's `find_package` error used to abort the whole batch configure, contradicting the driver's own
-contract ("ONE unprobeable component degrades … rather than taking the whole workspace with it", true for
-BUILD, false for CONFIGURE) — so `run_probes` now drops the components CMake NAMED and retries with the rest.
-In THIS workspace that changes no outcome (all 16 fail for the same missing package), which is why it is filed
-rather than closed. Two candidate real fixes, both design steps: build the interface packages inside the probe
-project (needs a config file, `add_subdirectory` alone does not satisfy `find_package`), or accept them as
-unprobeable and make the count visible. See `0662-*`.
+Recently resolved (2026-08-17): **#662** — every C/C++ component in `examples/workspaces/features` (16) had no
+source-metadata sidecar and silently used the SystemModel's entity lower bound, because the probe project
+configured with `CMAKE_PREFIX_PATH` = the nano-ros checkout only while the components
+`find_package(custom_msgs)`, a workspace-local interface package. First read as an ordering constraint
+("unprobeable by construction"); the question "isn't this a circular dependency?" is what disproved it.
+**It is not circular** — `custom_msgs` is a verbatim upstream msg package needing only `ament_cmake` and
+`rosidl_default_generators` from the ROS install, so nothing it needs comes from sync. The workspace's own
+CMakeLists already says how the real build resolves it WITHOUT building or installing it:
+`set(NROS_INTERFACE_SEARCH_PATH "<ws>/src")`, whose compat layer auto-emits a Find-stub (Phase 210.A.2). The
+probe never set it. Now emitted with the documented ordering — the `set` BEFORE `find_package(nano_ros)` (the
+compat layer reads it while the package is found) and `nros_workspace_interfaces()` after it; emitting both
+after was tried, configured, and failed identically. **0 of 16 -> 16 of 16 probed, 0 unsupported**, sidecars
+carrying callbacks/nodes/parameters/provenance. Cold sync 5.5 s -> 44.5 s because sixteen probe executables now
+actually build, paid once per source change via #0641's provenance stamp; warm unchanged at 0.11 s.
+See `archived/0662-*`.
 
 Recently resolved (2026-08-17): **#0659** — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test left its ROS peer's grandchildren holding DDS ports (59 orphans here, oldest 9.4 days). Options (1) and (2) were implemented, measured and REVERTED — SIGKILL cannot be handled, so no in-tree teardown can run. Fixed from OUTSIDE: a pgid ledger swept at `test-all` head, with the leader's start time as a floor so a recycled pgid is skipped. The 59 were reaped by pgid; seven `tf2_ros` orphans deliberately left. See `archived/0659-*`. (2026-08-17)
 

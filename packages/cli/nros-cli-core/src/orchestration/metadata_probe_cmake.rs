@@ -109,8 +109,59 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         "# phase-314 spent its length deleting. OPTIONAL because a workspace with\n",
         "# no bringup legitimately has none.\n",
         "include(\"${CMAKE_CURRENT_LIST_DIR}/nros_capabilities.cmake\" OPTIONAL)\n\n",
-        "find_package(nano_ros REQUIRED)\n\n",
     ));
+
+    // issue 0662 — let the components find their WORKSPACE-LOCAL interface
+    // packages, the same way the real workspace build does.
+    //
+    // `features`' components do `find_package(custom_msgs REQUIRED)` for a
+    // sibling under `<ws>/src`. The probe configured with `CMAKE_PREFIX_PATH`
+    // = the nano-ros checkout only, so that always failed and all 16 C/C++
+    // components in the workspace went unprobed.
+    //
+    // It reads like a circular dependency and is not: `custom_msgs` is a
+    // VERBATIM upstream msg package depending only on `ament_cmake` and
+    // `rosidl_default_generators`, both from the ROS install. Nothing it needs
+    // comes from `nros sync`. The workspace's own CMakeLists says how it
+    // resolves without building or installing anything:
+    //
+    //     set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    //     # the compat layer auto-emits its Find-stub for packages under this
+    //     # search path (Phase 210.A.2). MUST precede `find_package(nano_ros)`.
+    //
+    // So the probe was missing a search path, not blocked by an ordering cycle.
+    //
+    // The ORDER is load-bearing and is the workspace's, not a guess: the `set`
+    // precedes `find_package(nano_ros)` (the compat layer reads it while the
+    // package is being found — `NanoRosCodegenCore.cmake`), and
+    // `nros_workspace_interfaces()` follows it, because nano_ros is what
+    // defines that function. Emitting the pair together AFTER the
+    // `find_package` was tried first and still failed.
+    //
+    // Derived, not passed: a component lives at `<ws>/src/<pkg>`, so its parent
+    // IS the search root, and `probe_dir_for_workspace` keys the project on one
+    // workspace, so one root is the whole answer.
+    let search_root = comps
+        .first()
+        .and_then(|c| c.package_dir.parent())
+        .map(|p| p.to_string_lossy().into_owned());
+    if let Some(root) = &search_root {
+        let _ = write!(
+            out,
+            "# issue 0662 — workspace-local interface packages, via the compat\n\
+             # layer's Find-stub emitter (Phase 210.A.2). MUST precede\n\
+             # find_package(nano_ros).\n\
+             set(NROS_INTERFACE_SEARCH_PATH \"{root}\")\n\n"
+        );
+    }
+    out.push_str("find_package(nano_ros REQUIRED)\n\n");
+    if search_root.is_some() {
+        out.push_str(
+            "# Emits the Find-stubs for the packages under the search path above.\n\
+             nros_workspace_interfaces()\n\n",
+        );
+    }
+
     // Each package added once even when it declares several components.
     let mut added: Vec<&str> = Vec::new();
     for c in comps {

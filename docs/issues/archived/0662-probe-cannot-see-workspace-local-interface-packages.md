@@ -1,7 +1,7 @@
 ---
 id: 662
 title: "The C/C++ metadata probe runs before the workspace's own interface packages are built, so every component that `find_package`es one is unprobeable"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: cli, build
@@ -79,19 +79,66 @@ repeat. That is a real trade and it is made on the contract, not on speed: a
 workspace with one broken component and sixteen good ones now gets sixteen
 sidecars instead of none.
 
-## What would actually fix it
+## Resolved 2026-08-17 — it is not a dependency cycle, it is a missing search path
 
-Not decided, and both options are design steps:
+The framing above ("unprobeable by construction", "an ordering constraint") was
+wrong, and the question that broke it was *"isn't this a circular dependency?"*
+— because checking whether it IS circular is what turned up the answer.
 
-* **build the workspace's interface packages inside the probe project.**
-  `add_subdirectory` alone does not satisfy `find_package`, which wants a config
-  file — so this means generating one, or CMake 3.24's
-  `FetchContent … FIND_PACKAGE_ARGS`.
-* **accept these as unprobeable and make it loud.** They currently degrade to
-  the SystemModel bound, which is a real answer — just a coarser one. The
-  argument for this option is that the probe exists to get an EXACT executor
-  size, and a workspace whose messages are not built yet cannot give one.
+It is not circular. `custom_msgs` is a **verbatim upstream ROS 2 msg package**:
 
-Whichever is chosen, the count belongs somewhere visible: sixteen components on
-the lower bound is not obviously wrong, and is currently invisible unless
-someone runs `nros sync --verbose` and reads.
+```cmake
+find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+rosidl_generate_interfaces(${PROJECT_NAME} msg/Reading.msg)
+```
+
+Both dependencies come from the ROS installation. **Nothing it needs is produced
+by `nros sync`**, so there is no cycle to break — sync does not wait on anything
+that waits on sync.
+
+And the workspace's own `CMakeLists.txt` says exactly how the real build
+resolves it, without building or installing `custom_msgs` at all:
+
+```cmake
+# the compat layer auto-emits its Find-stub for packages under this
+# search path (Phase 210.A.2). MUST precede `find_package(nano_ros)`.
+set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
+```
+
+The probe project simply never set it. `render_probe_cmakelists` now emits the
+documented pairing — `set(NROS_INTERFACE_SEARCH_PATH <ws>/src)` **before**
+`find_package(nano_ros)`, and `nros_workspace_interfaces()` **after** it, since
+nano_ros is what defines that function.
+
+**The order is load-bearing and cost a wrong attempt.** Emitting both together
+after `find_package(nano_ros)` compiled, configured, and still failed with the
+same `custom_msgs` error — the compat layer reads the variable while the package
+is being found (`NanoRosCodegenCore.cmake`). The workspace's comment said "MUST
+precede" and meant it.
+
+The search root is derived rather than passed: a component lives at
+`<ws>/src/<pkg>`, so its parent IS the root, and `probe_dir_for_workspace` keys
+one project to one workspace.
+
+### Measured
+
+| | before | after |
+| --- | --- | --- |
+| `features` C/C++ components probed | 0 of 16 | **16 of 16** |
+| reported unsupported | 16 | **0** |
+| sidecars written | 0 | **16**, with `callbacks`, `nodes`, `parameters`, `provenance` |
+| cold sync | 5.5 s (all failing) | 44.5 s (16 probes actually BUILD now) |
+| warm sync | 0.10 s | 0.11 s |
+
+The cold number went UP because the probe now does the work it was always meant
+to: sixteen probe executables get built and run. That is the cost of an exact
+executor size instead of the SystemModel's lower bound, and issue 0641's
+provenance stamp means it is paid once per source change.
+
+### What this changes about the phase-367 W4 retry
+
+The retry loop that drops CMake-named components stays and is still right — it
+is what makes ONE bad component cost its own sidecar rather than the
+workspace's. It simply no longer fires here, because nothing is bad any more.
+Its acceptance is the unit tests, not this workspace.
