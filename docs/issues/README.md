@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0665** (build/api, open 2026-08-17) — `EXECUTOR_OPAQUE_U64S` is `size_of::<ExecutorInlineStorage>()`
+MEASURED in the `nros` facade's compilation and asserted against the same type under the CONSUMER's feature
+set. phase-359 W10 made `env` an independent capability, so those sets now differ, and the shared cargo group
+dir holds both: two `nros-node` units (`env` present/absent) and two generated values (11191 vs 11189 — 16
+bytes, one fat pointer). The assert is right; its remedy text names knobs that cannot fix it. Exposed by
+#0663's interface tier, NOT caused by it (untouched `workspaces/cpp` trees show the same split). See
+`0665-*`. (2026-08-17)
+
 **#0664** (rmw/cyclonedds, open 2026-08-17) — the three ThreadX-RV64 Cyclone cells build and RUN for the first
 time (see #0663) and all three fail identically: the image boots, brings up NetX + virtio, reaches
 `c_app_main`, prints its banner, and never creates a subscriber. `Domain ID: 128` is neither the
