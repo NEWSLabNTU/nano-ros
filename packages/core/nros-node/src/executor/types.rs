@@ -257,8 +257,13 @@ pub struct ExecutorConfig<'a> {
     pub node_name: &'a str,
     /// Node namespace.
     pub namespace: &'a str,
-    /// Monotonic microsecond clock for no_std timer accounting.
-    #[cfg(not(feature = "std"))]
+    /// Monotonic microsecond clock for the executor's timer accounting.
+    ///
+    /// phase-359 W10 — was `no_std`-only, because the std build read an
+    /// `Instant` instead and had nothing to override. There is one clock now,
+    /// so the override applies to every flavour: a hosted caller that wants
+    /// simulated or externally-driven time can supply it here rather than
+    /// being told that is an embedded-only capability.
     pub clock_us: Option<fn() -> u64>,
     /// RFC-0052 / phase-296 W3b.2 — wall-clock µs since the UNIX epoch,
     /// for `now - header.stamp` age monitors. Distinct from the monotonic
@@ -281,7 +286,6 @@ impl<'a> ExecutorConfig<'a> {
             domain_id: 0,
             node_name: "node",
             namespace: "",
-            #[cfg(not(feature = "std"))]
             clock_us: None,
             epoch_us: None,
         }
@@ -334,8 +338,7 @@ impl<'a> ExecutorConfig<'a> {
         self
     }
 
-    /// Set a monotonic microsecond clock for no_std executor timers.
-    #[cfg(not(feature = "std"))]
+    /// Set the monotonic microsecond clock for the executor's timers.
     pub const fn clock_us(mut self, clock: fn() -> u64) -> Self {
         self.clock_us = Some(clock);
         self
@@ -459,7 +462,8 @@ impl ExecutorConfig<'static> {
             domain_id: cache.domain_id,
             node_name: "node",
             namespace: "",
-            epoch_us: Some(std_epoch_us),
+            clock_us: None,
+            epoch_us: Some(default_epoch_us),
         }
     }
 }
@@ -610,7 +614,8 @@ impl<'a> ExecutorConfig<'a> {
                     baked.node_name.unwrap_or("node")
                 },
                 namespace: baked.namespace.unwrap_or(""),
-                epoch_us: Some(std_epoch_us),
+                clock_us: None,
+                epoch_us: Some(default_epoch_us),
             });
         }
 
@@ -626,7 +631,6 @@ impl<'a> ExecutorConfig<'a> {
             domain_id,
             node_name: baked.node_name.unwrap_or("node"),
             namespace: baked.namespace.unwrap_or(""),
-            #[cfg(not(feature = "std"))]
             clock_us: None,
             epoch_us: None,
         })
@@ -1191,7 +1195,7 @@ impl GuardConditionHandle {
     /// once at handle creation; the executor passes its
     /// `nros_rmw_runtime_wake_cb` + WakeCtx pointer here so
     /// `trigger()` can signal the wake condvar from any thread / ISR.
-    #[cfg(any(all(feature = "std", feature = "rmw-cffi"), test))]
+    #[cfg(any(all(feature = "alloc", feature = "rmw-cffi"), test))]
     #[allow(dead_code)] // Wired by register_guard_condition under cfg.
     pub(crate) fn set_wake_cb(
         &mut self,
@@ -1311,9 +1315,44 @@ pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
     ((us / 1_000_000) as i32, ((us % 1_000_000) * 1_000) as u32)
 }
 
-/// RFC-0052 W3b.2 — hosted wall-clock source: µs since the UNIX epoch.
-#[cfg(feature = "std")]
-pub fn std_epoch_us() -> u64 {
+/// RFC-0052 W3b.2 — the default wall-clock source: µs since the UNIX epoch.
+///
+/// phase-359 W10 — this was `std_epoch_us`, `std`-gated, `SystemTime`. It is
+/// the same story the monotonic clock had one commit ago: `rmw-cffi` means a
+/// platform port is linked, every port exports the wall clock, so a hosted
+/// build reads the same source an embedded one does. `SystemTime` survives
+/// only where there is no port to ask.
+#[cfg(feature = "rmw-cffi")]
+pub fn default_epoch_us() -> u64 {
+    unsafe extern "C" {
+        fn nros_platform_time_since_epoch_secs() -> u32;
+        fn nros_platform_time_since_epoch_nanos() -> u32;
+    }
+    // The ABI spends one instant over TWO symbols and each call samples the
+    // clock separately, so a second boundary landing between them pairs the old
+    // second with the new sub-second remainder — a timestamp that jumps a full
+    // second BACKWARDS. Re-read the seconds and retry, bounded; issue 0532's
+    // remaining half (one `time_now_ns`) is what deletes this loop.
+    //
+    // SAFETY (all calls): bare wall-clock queries, no pointer arguments,
+    // guaranteed by whichever port linked the binary — the contract the clock,
+    // sleep and wake symbols in this crate already rely on.
+    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
+    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
+    for _ in 0..2 {
+        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
+        if recheck == secs {
+            break;
+        }
+        secs = recheck;
+        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
+    }
+    secs as u64 * 1_000_000 + (nanos as u64) / 1_000
+}
+
+/// The `std`-without-a-port wall clock. See [`default_epoch_us`].
+#[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
+pub fn default_epoch_us() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros() as u64)

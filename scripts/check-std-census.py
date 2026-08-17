@@ -174,7 +174,14 @@ BASELINE = {
     # executor's own `now_us()` plus `nros_platform_sleep_us` instead of
     # `Instant` + `thread::sleep`. `SpinOptions` and `SpinPeriodResult` follow
     # them onto `alloc`.
-    "nros-node": {"cfg": 39, "path": 25},
+    #
+    # phase-359 W10: 39 -> 28 cfg, 25 -> 22 path. `handles.rs` reaches ZERO.
+    # `WaitBudget` was a `std`/`no_std` pair — an `Instant` deadline against an
+    # iteration COUNT — so dropping `std` from a hosted consumer silently
+    # converted every timeout in that file into "N spins". It now picks on
+    # whether a clock EXISTS. `types.rs` keeps one site: the `SystemTime` wall
+    # clock for a build with no platform port.
+    "nros-node": {"cfg": 28, "path": 22},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

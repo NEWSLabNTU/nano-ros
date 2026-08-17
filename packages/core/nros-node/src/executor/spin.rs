@@ -1438,9 +1438,11 @@ impl<'s> Executor<'s> {
             // native age monitors activate without extra wiring; embedded
             // builds install `config.epoch_us` from the board in
             // `from_session_in`/`open` (the `not(std)` blocks above).
-            #[cfg(feature = "std")]
-            epoch_us_fn: Some(super::types::std_epoch_us),
-            #[cfg(not(feature = "std"))]
+            #[cfg(any(feature = "rmw-cffi", feature = "std"))]
+            epoch_us_fn: Some(super::types::default_epoch_us),
+            // Only a build with neither a port nor `std` has no wall clock to
+            // default to; the board installs `config.epoch_us` there.
+            #[cfg(not(any(feature = "rmw-cffi", feature = "std")))]
             epoch_us_fn: None,
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],

@@ -35,41 +35,47 @@ const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
 /// max_spins until a test surfaces it."* The NuttX Rust action
 /// E2E is that test.
 struct WaitBudget {
-    #[cfg(feature = "std")]
-    deadline: std::time::Instant,
-    // Pure no_std fallback: iteration-count budget (no wall clock).
-    #[cfg(not(feature = "std"))]
+    /// The clock this budget is counting against, when the build has one.
+    ///
+    /// phase-359 W10 — this used to be a `std`/`no_std` PAIR: a
+    /// `std::time::Instant` deadline on one side, an iteration count on the
+    /// other. Which one a build got was decided by whether some crate in the
+    /// graph named `std`, so dropping that feature from a hosted consumer
+    /// silently converted every timeout in this file into "N spins" — a
+    /// different quantity wearing the same name.
+    ///
+    /// The choice is now made on what the build can actually DO. Any build with
+    /// a clock — every platform port exports one — gets a real deadline. The
+    /// iteration count survives as the honest fallback for a build with no
+    /// clock at all, which is what it always was.
+    clock: Option<fn() -> u64>,
+    /// Absolute deadline in `clock`'s µs, meaningful when `clock` is `Some`.
+    deadline_us: u64,
+    /// Iterations left, meaningful when `clock` is `None`.
     remaining: u64,
 }
 
 impl WaitBudget {
-    fn new(_max_iterations: u64, _timeout: core::time::Duration) -> Self {
-        #[cfg(feature = "std")]
-        {
-            Self {
-                deadline: std::time::Instant::now() + _timeout,
-            }
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            Self {
-                remaining: _max_iterations,
-            }
+    fn new(max_iterations: u64, timeout: core::time::Duration) -> Self {
+        let clock = super::spin::default_clock_us_fn();
+        let timeout_us = timeout.as_micros().min(u64::MAX as u128) as u64;
+        Self {
+            clock,
+            deadline_us: clock.map(|c| c().saturating_add(timeout_us)).unwrap_or(0),
+            remaining: max_iterations,
         }
     }
 
     fn tick(&mut self) -> bool {
-        #[cfg(feature = "std")]
-        {
-            std::time::Instant::now() < self.deadline
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            if self.remaining == 0 {
-                false
-            } else {
-                self.remaining -= 1;
-                true
+        match self.clock {
+            Some(clock) => clock() < self.deadline_us,
+            None => {
+                if self.remaining == 0 {
+                    false
+                } else {
+                    self.remaining -= 1;
+                    true
+                }
             }
         }
     }
