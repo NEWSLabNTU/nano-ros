@@ -65,9 +65,24 @@ SECTIONS
     _sysstack_end = .;
   }
 
+  /* issue 0664 — a REAL heap, because the C library's malloc has a caller the
+   * ThreadX byte pool cannot serve.
+   *
+   * This region was zero-sized on purpose: allocation on this board belongs to
+   * the byte pool, and picolibc's malloc was never reached. The toolchain
+   * `nros setup` provisions bundles NEWLIB, and CycloneDDS's `thread_states_init`
+   * goes through libgcc's EMULATED TLS — `__emutls_get_address` calls plain
+   * `malloc` and `abort()`s when it returns NULL. So every Cyclone image aborted
+   * inside `dds_create_domain` before printing a line (issue 0664), which read
+   * as a hang.
+   *
+   * emutls allocates one small block per TLS variable per thread, so this is
+   * sized for that and not for application data — an app that wants a heap
+   * still uses the byte pool. 64 KiB against 256 MiB of QEMU RAM. */
   .heap (NOLOAD) : {
     . = ALIGN(16);
     __heap_start = .;
+    . += 0x10000;
     __heap_end = .;
   }
 
