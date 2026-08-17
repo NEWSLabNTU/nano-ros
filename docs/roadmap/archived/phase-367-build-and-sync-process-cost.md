@@ -1,7 +1,8 @@
 # Phase 367 — what a build actually spends, measured per layer
 
-**Status (2026-08-17).** W1, W2, W4 and W5 LANDED; **W3 is the one open wave**,
-and it is a design step rather than a cut. The sync loop is 7.0 s -> 1.4 s. Opened to give the `nros sync` / fixture-build cost work one
+**Status (2026-08-17). COMPLETE.** W1, W2, W4 and W5 landed; **W3 was explored
+and deliberately NOT taken** — see its section for the measurement that closed
+it. The sync loop is 7.0 s -> 1.4 s and a warm sync 1.24 s -> 0.068 s. Opened to give the `nros sync` / fixture-build cost work one
 owner instead of five issues that kept rediscovering each other.
 
 **Owns:** the per-invocation cost of `nros sync`, the number of times a build
@@ -148,7 +149,7 @@ evidence: removing 163 failed lookups moved wall clock by ~2 ms.
 | `wait4` per sync | 88 calls | **8** |
 | `execve` per sync | 770 | **38** |
 
-## W3 — the last cross-driver sync repeats (OPEN, design explored 2026-08-17)
+## W3 — the last cross-driver sync repeats (CLOSED, not taken — 2026-08-17)
 
 ### The opportunity, measured after W1/W2/W5
 
@@ -233,18 +234,36 @@ already verified the CLI at the head of a build exports the verdict, and child
 Take the 1.5 %. The waves that mattered are landed; what remains is orchestration
 overhead already reduced 18x per invocation.
 
-### Recommendation
+### Decision — C, close it
 
-**B, or C — not A.** A is the only option that risks a stale `generated/`, and it
-buys no more than B. If B is taken, the export belongs to the drivers that
-already run `check-tier-preconditions`, so the assertion and the reliance sit in
-one place; `rustc -vV` (one spawn per invocation, also constant per run) can ride
-the same mechanism.
+**Taken: option C.** The 32 repeats stay, and the 2.2 s stays with them.
 
-Whichever is chosen, the phase's rule applies: measure the build before and
-after, not the sync. A 2 s change inside a 144 s build is exactly the size that
-wall-clock noise on this host (issue 0509: 50–695 s for identical work) cannot
-resolve, so the acceptance has to be an invocation COUNT or a syscall count.
+The reasoning is the phase's own rule applied to itself. W3 was written when a
+warm sync cost 1.24 s and the repeats looked like real work; W1/W2/W5 made the
+per-invocation cost 18x smaller, and what was left was 1.5 % of a build guarded
+by a correctness risk (A) or a new mechanism (B). **Neither is worth carrying
+for 1.5 %**, and a wave that has become not-worth-doing should be closed saying
+so rather than left open looking like debt.
+
+Two things are kept deliberately rather than deleted:
+
+* **Option B stays written down.** If sync ever becomes hot again — a build that
+  runs syncs in the thousands, or a per-invocation cost that grows back — the
+  run-scoped verification memo is the design to reach for, and the profile that
+  motivates it (five of seven subprocesses are the CLI source stamp, 21 ms of a
+  70 ms sync) is above.
+* **Option A stays REJECTED, with the reason.** It is the shape a future reader
+  will think of first, because "cache the sync" is the obvious framing. The
+  finding that argues against it is not obvious: the expensive sub-steps already
+  have their own guards, so a whole-sync digest duplicates them to skip
+  orchestration rather than work, and it does that across an input surface that
+  includes the ament install.
+
+What is NOT claimed by closing this: that the repeats are harmless in principle.
+They are 63 % of invocations, and issue 0649 removed the ones that were cheap to
+remove structurally. These survive because each is a different driver honestly
+ensuring its own precondition, and making them cooperate costs more than it
+saves at the current per-invocation price.
 
 ## W4 — a configure failure stops taking the whole workspace down (LANDED)
 
