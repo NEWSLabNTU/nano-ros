@@ -294,13 +294,29 @@ if(NOT TARGET threadx_platform)
     # compiler_builtins' TLS-sensitive variants) vs compiler_builtins' WEAK ones;
     # strong-over-weak resolves with no flag. A duplicate defined symbol is now a
     # link error (the wrong-copy hazard the flag hid).
+    # issue 0657 — never a bare `-L`. When the libc probe finds nothing this
+    # variable is empty, and `-L${empty}` is not a harmless no-op: it is a
+    # dangling `-L` that consumes the next argument on the link line. That
+    # argument was `main.c.obj`, so `app_main` — defined right there — came
+    # back as an undefined symbol, pointing every reader at the entry macro
+    # instead of at a flag that ate the object.
+    #
+    # `if(<var>)`, NOT `if(NOT <var> STREQUAL "")`: in the latter an UNDEFINED
+    # variable is compared as the literal string "NROS_THREADX_PICOLIBC_LIB_DIR",
+    # which is not "", so the guard passes and emits `-L` with nothing after it —
+    # the very dangling flag it was written to prevent. The plain truthy test is
+    # false for both undefined and empty, which is the question being asked.
+    set(_nros_rv64_libc_link_opts "")
+    if(NROS_THREADX_PICOLIBC_LIB_DIR)
+        set(_nros_rv64_libc_link_opts "-L${NROS_THREADX_PICOLIBC_LIB_DIR}")
+    endif()
     nros_threadx_compose_platform(
         COMPONENTS    threadx_glue
                       virtio_net_netx
                       netxduo
                       threadx_kernel
         LINK_LIBS     c "${NROS_THREADX_LIBGCC_PATH}"
-        LINK_OPTIONS  -L${NROS_THREADX_PICOLIBC_LIB_DIR}
+        LINK_OPTIONS  ${_nros_rv64_libc_link_opts}
         DEFINES       NROS_PLATFORM_BAREMETAL)
 endif()
 

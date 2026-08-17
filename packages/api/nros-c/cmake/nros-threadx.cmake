@@ -333,17 +333,43 @@ function(nros_threadx_setup_picolibc)
         "${CMAKE_CXX_FLAGS} -isystem ${_sysroot}/include -isystem ${_cxx_compat} -DNROS_PLATFORM_BAREMETAL"
         PARENT_SCOPE)
 
-    set(_lib_dir "${_sysroot}/lib/rv64imafdc/lp64d")
-    if(NOT EXISTS "${_lib_dir}/libc.a")
-        execute_process(
-            COMMAND ${CMAKE_C_COMPILER} -march=rv64gc -mabi=lp64d
-                    --specs=picolibc.specs -print-file-name=libc.a
-            OUTPUT_VARIABLE _libc_path
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET)
-        if(_libc_path)
-            get_filename_component(_lib_dir "${_libc_path}" DIRECTORY)
+    # issue 0657 — WHERE this board's C library archives live, asked in a way
+    # either toolchain can answer.
+    #
+    # Both probes here spoke picolibc: a sysroot layout, then
+    # `--specs=picolibc.specs`. The toolchain `nros setup` provisions (xPack
+    # `riscv-none-elf`) bundles NEWLIB and has no `picolibc.specs`, so the
+    # sysroot did not exist, the specs probe failed, and this returned EMPTY —
+    # which the caller then passed as a bare `-L` (see the board overlay), and
+    # a dangling `-L` consumes the NEXT argument on the link line. That
+    # argument was `main.c.obj`, so the object defining `app_main` never
+    # reached the link and lld reported the symbol undefined. A defined symbol
+    # reads as missing when its object is silently eaten by a flag.
+    #
+    # Plain `-print-file-name=libc.a` first (answers for newlib and for a
+    # picolibc-as-default toolchain), the specs form second (Debian's
+    # compiler-only package), sysroot layout last.
+    set(_lib_dir "")
+    foreach(_probe_args "-print-file-name=libc.a" "--specs=picolibc.specs;-print-file-name=libc.a")
+        if(_lib_dir STREQUAL "")
+            execute_process(
+                COMMAND ${CMAKE_C_COMPILER} -march=rv64gc -mabi=lp64d ${_probe_args}
+                OUTPUT_VARIABLE _libc_path
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+            # gcc echoes the bare name back when it cannot find the file.
+            if(_libc_path MATCHES "^/" AND EXISTS "${_libc_path}")
+                get_filename_component(_lib_dir "${_libc_path}" DIRECTORY)
+            endif()
         endif()
+    endforeach()
+    if(_lib_dir STREQUAL "" AND EXISTS "${_sysroot}/lib/rv64imafdc/lp64d/libc.a")
+        set(_lib_dir "${_sysroot}/lib/rv64imafdc/lp64d")
+    endif()
+    if(_lib_dir STREQUAL "")
+        message(STATUS
+            "nano-ros: no riscv64 libc archive found for this toolchain — "
+            "the board will pass no -L for it (issue 0657)")
     endif()
     set(NROS_THREADX_PICOLIBC_LIB_DIR "${_lib_dir}" PARENT_SCOPE)
 

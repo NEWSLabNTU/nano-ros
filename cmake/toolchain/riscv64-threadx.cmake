@@ -111,8 +111,22 @@ get_filename_component(_riscv_threadx_cxx_compat
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
     ABSOLUTE)
 if(EXISTS "${_riscv_threadx_cxx_compat}/cstdio")
+    # issue 0657 — `-nostdinc++` travels WITH the shim.
+    #
+    # The shim IS this board's C++ library: `cstdlib` does `#include <stdlib.h>`
+    # and then `using ::calloc;`. That works when the toolchain ships no C++
+    # headers of its own (Debian's `gcc-riscv64-unknown-elf`, which is why the
+    # shim exists) and breaks when it does: on the xPack toolchain `nros setup`
+    # provisions, `<stdlib.h>` resolves to libstdc++'s wrapper, which under
+    # `-ffreestanding` declares only a minimal set — no `::calloc`, `::free` or
+    # `::getenv` — and every C++ example failed with "has not been declared in
+    # '::'".
+    #
+    # Excluding the toolchain's C++ headers makes the shim the only answer on
+    # both, which is what "freestanding minimum" already meant. A no-op on a
+    # toolchain that has none.
     set(CMAKE_CXX_FLAGS_INIT
-        "${CMAKE_CXX_FLAGS_INIT} -isystem ${_riscv_threadx_cxx_compat}")
+        "${CMAKE_CXX_FLAGS_INIT} -nostdinc++ -isystem ${_riscv_threadx_cxx_compat}")
 endif()
 
 # Issue #195 — locate a rv64gc/lp64d `libstdc++.a` for the Cyclone DDS RMW
