@@ -2,7 +2,7 @@
 id: 582
 title: "The host is assumed to be x86_64 in six places, and five of the six fail
   silently rather than loudly"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0155, issue-0163, issue-0326, issue-0334, phase-338]
@@ -189,7 +189,38 @@ git grep -n 'x86_64-unknown-linux-gnu' -- ':!docs/' ':!book/' ':!*.md' ':!third-
 git grep -n -B2 -A2 'NO_DEFAULT_PATH' -- '*.cmake'
 ```
 
-## Gate worth adding
+## Gate LANDED 2026-08-17
+
+`check-host-triple-literals` implements both signatures this section named, and
+is wired into `check-build`:
+
+* **M2** — a `find_program` with `NO_DEFAULT_PATH` whose `PATHS` carries a
+  literal triple. `NO_DEFAULT_PATH` is the part that makes it silent, and the
+  gate keys on it: without the flag the tool is still found on `PATH`, so the
+  hardcoding is redundant rather than dangerous, and flagging it would be noise.
+* **M3** — a TRACKED `.cargo/config.toml` whose `[build] target` equals the host
+  triple (read from `rustc -vV`, not assumed).
+
+Both report ZERO instances today. That is the point of adding it now: this gate
+is for the FOURTH site.
+
+Two choices worth recording, since both could have been made the lazy way:
+
+* it flags ANY architecture, not just `x86_64`. Hardcoding `aarch64` is the same
+  bug on an x86 host, and writing the check as "x86_64 only" would rebuild the
+  exact asymmetry that hid this for a year;
+* it strips `#` comments first, so the prose explaining this history is not
+  itself reported — a gate that cries wolf on its own documentation gets
+  bypassed (issue 0555's checker records the same rule).
+
+Verified by REINTRODUCING the historical defect rather than only by self-test:
+restoring the hardcoded rustlib path at `cmake/toolchain/riscv64-threadx.cmake:313`
+is reported with file, line and triple. Five self-test arms cover the other
+direction — a resolved `${_lld_dir}`, a `find_program` without
+`NO_DEFAULT_PATH`, a comment, and a legitimate CROSS `[build] target` are all
+left alone.
+
+## Gate worth adding (as filed)
 
 Mechanism 2's signature is mechanical and greppable: a `find_program` with
 `NO_DEFAULT_PATH` whose `PATHS` contains a literal target triple. A checker

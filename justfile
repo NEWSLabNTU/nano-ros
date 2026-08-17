@@ -545,7 +545,8 @@ check-test-targets:
 # (`check.yml` non-push), not on every direct push to main.
 [group("main")]
 check-build: \
-    check-cli-fresh check-required-features-reachable check-launch-resolve-builds \
+    check-cli-fresh check-required-features-reachable check-host-triple-literals \
+    check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
@@ -1069,6 +1070,15 @@ check-cli-fresh:
 [group("main")]
 check-required-features-reachable:
     @python3 scripts/check-required-features-reachable.py
+
+# Issue 0582 — a place meaning "the host" spelled as a literal triple. Nine
+# sites wore this bug; five failed SILENTLY, because `NO_DEFAULT_PATH` turns a
+# wrong path into an empty result, a skipped block and a much later failure that
+# names neither. Invisible on x86, which is why it survived a year after being
+# written down.
+[group("main")]
+check-host-triple-literals:
+    @python3 scripts/check-host-triple-literals.py
 
 # Issue 0550 — a submodule checked out BEHIND the commit the superproject
 # records. Not in `check-fast`: drift is a working-copy state, so the index and

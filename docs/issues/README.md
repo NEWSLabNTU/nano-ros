@@ -618,27 +618,7 @@ Recently resolved (2026-08-16): **#0608** — a group-built row resolved at the 
 
 Recently resolved (2026-08-16): **#0601** — `find_program` picked ROS's `idlc` (selection by EXISTENCE, not RUNNABILITY) and it cannot load its own libs outside a sourced ROS env, so cold cyclone fixtures died `code=127`. The SDK store's provisioned copy is now on the HINTS list newest-version-first (0500's ordering rule), so the tool this build controls wins; the `LD_LIBRARY_PATH` fallback still rescues ROS's copy where it is all there is. Both directions measured in a clean env. See `archived/0601-*`. (2026-08-16)
 
-**#582** (build, open 2026-08-15) — the host is assumed to be `x86_64` in six places, and five of the six
-fail SILENTLY. Three spellings of one mistake: (1) `c_char` is `u8` on ARM and `i8` on x86, so
-`ptr as *const u8` is correct on x86 and a `-D warnings` clippy failure on ARM — `.cast::<u8>()` is the
-idiom that compiles identically on both, and the pre-existing `#[allow(unnecessary_cast)]` in the zenoh
-service shim is the #326 pattern (a second idiom where a shared one belonged); (2) `rust-lld`/`llvm-ar`
-live under the HOST triple's rustlib dir, and two `find_program` lookups hardcoded x86_64 **with
-`NO_DEFAULT_PATH`**, so off-x86 the result is an empty variable rather than an error; (3) six threadx-linux
-leaves + two `fixtures.toml` rows spelled "host build" as a literal triple, which means "cross compile"
-on every other machine. Plus vendored ThreadX keying LONG/ULONG and `ALIGN_TYPE` on `__x86_64__`, where
-the `ALIGN_TYPE` arm truncated every pointer a byte pool stores — heap corruption with no diagnostic.
-Fixed via `NEWSLabNTU/threadx` `nros-lp64-ulong` + `b52acd8cf`. All three sites of (2) now share ONE
-helper, `nros_host_rustlib_bin()`, placed in the cross-RTOS layer because the third caller is
-`cmake/toolchain/riscv64-threadx.cmake` and a toolchain file cannot reach an RTOS-specific module — the
-first pass put it in `nros-threadx.cmake` and left the toolchain file, which is the #326 shape exactly.
-That toolchain also no longer SKIPS its lld setup when the lookup comes back empty (a `FATAL_ERROR` now):
-the silent skip is precisely why the hardcoded triple survived — it degraded to GNU ld and failed later
-with a message naming neither. **Noted, not fixed:** the 2026-07-28 audit already recorded this defect
-(A1/A4, both sites, the exact consequence) and nothing acted on it for a year, because on an x86 host
-every symptom here is invisible. Also surfaced an unrelated link defect, fixed here: the ThreadX platform/kernel archives
-needed `+whole-archive` because their consumers arrive bundled inside the zpico-sys rlib and land after
-them on the link line. See `0582-*`. (2026-08-15)
+Recently resolved (2026-08-17): **#582** — nine sites spelled "the host" as a literal triple and five failed SILENTLY (`NO_DEFAULT_PATH` turns a wrong path into an empty result and a much later, unrelated failure). The code fixes had landed; what was missing is why it survived a year — the 2026-07-28 audit recorded mechanism 2 and nothing enforced it. `check-host-triple-literals` now gates both mechanical signatures, ZERO instances today, verified by reintroducing the historical defect. See `archived/0582-*`. (2026-08-17)
 
 Recently resolved (2026-08-15): **#472** thirteen of fifteen opaque-storage macros had no compile-time
 size check, so a wrong probe was a short buffer rather than a build error. Fixed by `76a787b46`; the row
