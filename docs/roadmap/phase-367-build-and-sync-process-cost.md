@@ -1,7 +1,7 @@
 # Phase 367 — what a build actually spends, measured per layer
 
-**Status (2026-08-17).** W1 and W2 LANDED. W3–W5 open, each with its
-measurement already taken. Opened to give the `nros sync` / fixture-build cost work one
+**Status (2026-08-17).** W1, W2, W4 and W5 LANDED; **W3 is the one open wave**,
+and it is a design step rather than a cut. The sync loop is 7.0 s -> 1.4 s. Opened to give the `nros sync` / fixture-build cost work one
 owner instead of five issues that kept rediscovering each other.
 
 **Owns:** the per-invocation cost of `nros sync`, the number of times a build
@@ -137,7 +137,18 @@ there is little left to win here.
 **Recorded as measured-and-declined rather than open work.** W2's step 2 is the
 evidence: removing 163 failed lookups moved wall clock by ~2 ms.
 
-## W3 — the last cross-driver sync repeats need a freshness stamp
+## Where it ended up
+
+| | original | now |
+| --- | --- | --- |
+| `sync examples/workspaces/mixed` | 1.24 s | **0.068 s** |
+| 22-workspace sync loop | 7.0 s | **1.4 s** |
+| `regenerate-bindings.sh` | 12.8 s | **6.5 s** |
+| sync invocations per build | 185 | **101** |
+| `wait4` per sync | 88 calls | **8** |
+| `execve` per sync | 770 | **38** |
+
+## W3 — the last cross-driver sync repeats need a freshness stamp (OPEN)
 
 Issue 0649 took the census from 185 invocations to 101 for 69 targets. The
 remaining 32 are all 2–4× and ACROSS drivers — `regenerate-bindings.sh`, both
@@ -150,29 +161,58 @@ digest leaves a stale `generated/` compiling against the wrong shape, which is
 what phase-214.J was about; today's `nros_codegen_stamp_check_or_wipe` gates the
 WIPE, not the sync. Wave 3 is the digest and its gate, not the plumbing.
 
-## W4 — `nros sync` still spawns a cmake metadata probe
+## W4 — a configure failure stops taking the whole workspace down (LANDED)
 
-For C/C++ components with no current sidecar, sync configures and builds a CMake
-project. Issue 0641 made the FAILING case cheap (a negative cache keyed on
-`source_digest + NROS_CLI_SOURCE_STAMP`); the succeeding case still pays a full
-configure. Two threads live under this and neither is measured:
+The probe's batch configure was all-or-nothing: one component's `find_package`
+error aborted it, so EVERY component in the workspace lost its sidecar. That
+contradicted this driver's own contract, stated for the BUILD step a few lines
+below — *"ONE unprobeable component degrades to the sidecar-less path by NAME
+rather than taking the whole workspace with it"* — which held for builds and not
+for configures, where the code asserted the opposite: *"A configure failure IS
+fatal: it means the project itself is malformed."*
 
-* `examples/workspaces/features`' probe project fails to CONFIGURE — 17
-  components silently fall back to the SystemModel bound. Cheap now, still
-  wrong.
-* the probe's configure log says `Corrosion not provisioned — fetching v0.6.1
-  from git`, i.e. a network fetch inside a sync.
+`run_probes` now drops the components CMake NAMED and retries with the rest,
+using CMake's own attribution (`CMake Error at <dir>/CMakeLists.txt:N`, matched
+against `package_dir`). An error naming nothing keeps the old fatal behaviour —
+a project really can be malformed, and picking a victim would be worse. Dropped
+components are reported BY NAME as failures, never omitted: a component that
+vanishes from the outcome list is a sidecar nobody knows is missing.
 
-## W5 — decide whether the underlay index is cached
+**The underlying cause is an ordering constraint and is NOT fixed — issue 0662.**
+`examples/workspaces/features`' 16 C/C++ components all `find_package(custom_msgs)`,
+a workspace-local interface package built by the workspace's own CMake build,
+which runs AFTER sync because sync generates what that build consumes. At sync
+time there is no config file and no install prefix, verified. So they are
+unprobeable by construction, and all 16 fall back to the SystemModel bound.
 
-Issue 0646 added colcon-style scope flags (`--base-paths`, `--nano-ros-root`,
-`--no-provider-index`) so a caller that knows the tree can decline the underlay
-scan. `--no-provider-index` takes the walk to ZERO directories and saves ~10 %
-of a sync, because after W1–W3 the scan is no longer the bottleneck.
+In that workspace the retry changes no outcome — the loop drains 16 → 12 → 11 →
+5 → 4 → 1 and every component fails on the same missing package. **That is a
+property of `features`, not of the mechanism**, and it is why 0662 is filed
+rather than closed. Cost, stated: the cold path is ~5x more configures (5.5 s
+against roughly one configure), paid once per source change because issue 0641's
+negative marker absorbs the repeat. The trade is made on the contract, not on
+speed — a workspace with one broken component and sixteen good ones now gets
+sixteen sidecars instead of none.
 
-The alternative — a shared, cached underlay index — was deliberately NOT taken:
-it changes provider-resolution freshness, and a stale index hides a newly added
-board. W5 is that decision, with the flags as the fallback if the answer is no.
+## W5 — the build drivers stop writing an index nobody reads (LANDED)
+
+The question was whether to CACHE the underlay index. The answer turned out to
+be simpler: in the build path, nothing reads it.
+
+`nros sync` writes `<ws>/build/nros/providers.json`. cmake keeps its own index
+at `${CMAKE_BINARY_DIR}/nros-providers.json` and, as `NanoRosProviders.cmake`
+says, reads it *"THROUGH the CLI, never parsed here"* — and no caller points
+`nano_ros_load_providers(INDEX …)` at the sync-written path. It exists for later
+interactive commands.
+
+So the three build drivers pass `--no-provider-index` (issue 0646's flag):
+`regenerate-bindings.sh`, and the two fixture pre-passes from issue 0649. Zero
+risk — the file has no reader here — and it removes the underlay scan, which
+after W1/W2 was **28 % of a warm sync** (0.095 s → 0.068 s).
+
+Caching was NOT adopted, and that is the decision: a cached index has a validity
+problem (a stale one hides a newly added board) and would buy nothing the flag
+does not, for the population that actually pays.
 
 ## Rejected on measurement, recorded so they are not retried
 

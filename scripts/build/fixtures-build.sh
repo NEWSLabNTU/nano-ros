@@ -416,7 +416,13 @@ else
             # since the previous `nros sync`. Prevents the stale-3-type-action
             # shape that Phase 214.J first surfaced.
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync "$dir" >/dev/null
+# phase-367 W5 — `--no-provider-index`: this driver never READS
+# `<ws>/build/nros/providers.json`. cmake keeps its own index at
+# `${CMAKE_BINARY_DIR}/nros-providers.json` and reads it THROUGH the CLI, and
+# no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
+# Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
+# (0.095 s -> 0.068 s), across ~101 syncs a build.
+            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" sync --no-provider-index "$dir" >/dev/null
             NROS_REPO_DIR="$NROS_REPO_ROOT" nros_codegen_stamp_write "$dir"
         done
     }

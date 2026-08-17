@@ -238,19 +238,63 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
 
     let build_dir = probe_dir.join("build");
     let nano_ros = &comps[0].nano_ros_workspace;
-    // A configure failure IS fatal: it means the project itself is malformed,
-    // not that one component is unprobeable.
-    run_step(
-        Command::new("cmake")
-            .arg("-S")
-            .arg(probe_dir)
-            .arg("-B")
-            .arg(&build_dir)
-            .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
-            .env("NROS_WORKSPACE", nano_ros),
-        "configure",
-        "workspace",
-    )?;
+
+    // phase-367 W4 — a configure failure is NOT necessarily the whole project.
+    //
+    // This used to say "A configure failure IS fatal: it means the project
+    // itself is malformed, not that one component is unprobeable", and the
+    // measurement says otherwise. `examples/workspaces/features`: six
+    // components call `find_package(custom_msgs)` for a WORKSPACE-LOCAL message
+    // package, and the probe's `CMAKE_PREFIX_PATH` is the nano-ros checkout
+    // only — so those six can never configure here. They took the other
+    // ELEVEN down with them, and all seventeen fell back to the SystemModel
+    // bound silently.
+    //
+    // That also contradicted this driver's own contract, stated a few lines
+    // below for the BUILD step: "ONE unprobeable component degrades to the
+    // sidecar-less path by NAME rather than taking the whole workspace with
+    // it". It held for builds and not for configures.
+    //
+    // So: configure, and on failure drop the components CMake named and retry
+    // with the rest. CMake reports `CMake Error at <dir>/CMakeLists.txt:N`,
+    // and `<dir>` is a component's own `package_dir` — its own report, not a
+    // guess about which component is at fault. Bounded: each retry drops at
+    // least one component, so it terminates, and the negative marker from
+    // issue 0641 means a workspace pays this once per source change rather
+    // than every sync.
+    let mut live: Vec<&CmakeProbeOptions> = comps.iter().collect();
+    let mut rejected: Vec<(String, String)> = Vec::new();
+    let configure = loop {
+        match configure_project(probe_dir, &build_dir, nano_ros) {
+            Ok(()) => break Ok(()),
+            Err(why) => {
+                let blamed = components_named_in(&format!("{why:#}"), &live);
+                if blamed.is_empty() {
+                    // Nothing attributable — the project really is malformed.
+                    break Err(why);
+                }
+                for c in &blamed {
+                    rejected.push((
+                        format!("{}::{}", c.package, c.component),
+                        format!("cannot configure in the probe project: {why:#}"),
+                    ));
+                }
+                live.retain(|c| !blamed.iter().any(|b| b.package_dir == c.package_dir));
+                if live.is_empty() {
+                    break Err(why);
+                }
+                // Re-render without the rejected components and try again.
+                let kept: Vec<CmakeProbeOptions> = live.iter().map(|c| (*c).clone()).collect();
+                crate::atomic_file::atomic_write(
+                    &probe_dir.join("CMakeLists.txt"),
+                    &render_probe_cmakelists(&kept),
+                )?;
+            }
+        }
+    };
+    configure?;
+    let comps: Vec<CmakeProbeOptions> = live.iter().map(|c| (*c).clone()).collect();
+    let comps: &[CmakeProbeOptions] = &comps;
 
     // Build EVERY probe in one parallel invocation. One `cmake --build` per
     // component was serial by construction, and each one links a real
@@ -277,6 +321,19 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
             package: c.package.clone(),
             component: c.component.clone(),
             result,
+        });
+    }
+    // phase-367 W4 — the components dropped to let the rest configure are
+    // reported BY NAME as failures, not omitted. A component that silently
+    // vanishes from the outcome list is a sidecar nobody knows is missing,
+    // which is the failure mode this wave exists to end: seventeen of them
+    // fell back to the SystemModel bound with no line of output.
+    for (name, why) in rejected {
+        let (package, component) = name.split_once("::").unwrap_or((name.as_str(), ""));
+        out.push(ProbeOutcome {
+            package: package.to_string(),
+            component: component.to_string(),
+            result: Err(eyre::eyre!("{why}")),
         });
     }
     discard_cache_if_asked(&build_dir, &out);
@@ -361,6 +418,48 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
         );
     }
     Ok(())
+}
+
+/// One configure of the probe project.
+fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Result<()> {
+    run_step(
+        Command::new("cmake")
+            .arg("-S")
+            .arg(probe_dir)
+            .arg("-B")
+            .arg(build_dir)
+            .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
+            .env("NROS_WORKSPACE", nano_ros),
+        "configure",
+        "workspace",
+    )
+}
+
+/// Components CMake blamed in a configure failure — phase-367 W4.
+///
+/// CMake reports `CMake Error at <path>/CMakeLists.txt:N (…)`, and for a probe
+/// project the only `CMakeLists.txt` outside the generated one belong to the
+/// component packages added with `add_subdirectory`. Matching on
+/// `package_dir` is therefore CMake's own attribution rather than a guess.
+///
+/// Returns an empty list when nothing matches, which the caller reads as "the
+/// project itself is malformed" and keeps the old fatal behaviour for.
+fn components_named_in<'a>(
+    stderr: &str,
+    comps: &[&'a CmakeProbeOptions],
+) -> Vec<&'a CmakeProbeOptions> {
+    let mut out: Vec<&CmakeProbeOptions> = Vec::new();
+    for c in comps {
+        let dir = c.package_dir.to_string_lossy();
+        if dir.is_empty() {
+            continue;
+        }
+        let marker = format!("{dir}/CMakeLists.txt");
+        if stderr.contains(&marker) && !out.iter().any(|o| o.package_dir == c.package_dir) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn run_step(cmd: &mut Command, step: &str, who: &str) -> Result<()> {
@@ -450,6 +549,51 @@ fn write_capabilities(probe_dir: &Path) -> Result<()> {
 /// Was per component, which is what made every probe rebuild the runtime.
 pub fn probe_dir_for_workspace(root: &Path) -> PathBuf {
     root.join("metadata-probe-cmake")
+}
+
+#[cfg(test)]
+mod w4_configure_attribution_tests {
+    use super::*;
+
+    fn opts(dir: &str, pkg: &str) -> CmakeProbeOptions {
+        CmakeProbeOptions {
+            package: pkg.into(),
+            component: "c".into(),
+            executable: "e".into(),
+            class: "k".into(),
+            header: "h".into(),
+            language: "cpp".into(),
+            shape: "configure".into(),
+            library_target: "t".into(),
+            package_dir: PathBuf::from(dir),
+            nano_ros_workspace: PathBuf::from("/nano"),
+            output_path: PathBuf::from("/out.json"),
+            probe_dir: PathBuf::from("/probe"),
+        }
+    }
+
+    /// phase-367 W4 — CMake's own attribution, on its real message shape.
+    #[test]
+    fn a_blamed_component_is_identified_and_bystanders_are_not() {
+        let a = opts("/ws/src/reading_talker_pkg", "reading_talker_pkg");
+        let b = opts("/ws/src/qos_talker_pkg", "qos_talker_pkg");
+        let all = vec![&a, &b];
+        let err = "metadata probe configure failed for `workspace` (exit 1):\n\
+                   CMake Error at /ws/src/reading_talker_pkg/CMakeLists.txt:8 (find_package):\n\
+                     Could not find a package configuration file provided by \"custom_msgs\"";
+        let blamed = components_named_in(err, &all);
+        assert_eq!(blamed.len(), 1, "exactly the named component");
+        assert_eq!(blamed[0].package, "reading_talker_pkg");
+    }
+
+    /// An error naming nothing keeps the old fatal behaviour — the project
+    /// really can be malformed, and guessing a victim would be worse.
+    #[test]
+    fn an_unattributable_error_blames_nobody() {
+        let a = opts("/ws/src/talker_pkg", "talker_pkg");
+        let all = vec![&a];
+        assert!(components_named_in("CMake Error: generator not found", &all).is_empty());
+    }
 }
 
 #[cfg(test)]

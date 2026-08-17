@@ -450,7 +450,13 @@ for dir in "${group_dirs[@]:-}"; do
     [ -n "$dir" ] || continue
     [ -d "$repo_root/$dir" ] || continue
     echo "  -> nros sync $dir"
-    ( cd "$repo_root/$dir" && "$nros_cli" sync >/dev/null )
+# phase-367 W5 — `--no-provider-index`: this driver never READS
+# `<ws>/build/nros/providers.json`. cmake keeps its own index at
+# `${CMAKE_BINARY_DIR}/nros-providers.json` and reads it THROUGH the CLI, and
+# no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
+# Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
+# (0.095 s -> 0.068 s), across ~101 syncs a build.
+    ( cd "$repo_root/$dir" && "$nros_cli" sync --no-provider-index >/dev/null )
 done
 
 pinned_make="$repo_root/third-party/make/make"
