@@ -2,7 +2,7 @@
 id: 659
 title: "`PR_SET_PDEATHSIG` covers one level, so a SIGKILLed test leaks its ROS peer's
   grandchildren — they reparent to init and hold DDS ports for days"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [0573]
@@ -230,3 +230,45 @@ They are safe to kill by the evidence above, but this issue records a previous
 cleanup that killed 26 live processes on a name match, so the 59 are left for an
 operator who can see the machine. `pkill -g <pgid>` per recorded group is the
 shape; `pkill -f demo_nodes_cpp` is the shape that caused the earlier damage.
+
+
+## Resolved 2026-08-17 — option (3), plus the 59 reaped
+
+**The fix.** A ledger under `build/test-peer-groups/`: the pgid is recorded at
+spawn (free — `setpgid(0,0)` already makes the child its own leader), removed on
+BOTH teardown paths, and swept by `nros-peer-sweep` at the head of `test-all`.
+Not mid-run: a concurrent test's peers are recorded and alive, so a sweep then
+would kill them.
+
+Safety is the recorded leader's start time used as a FLOOR — a group is killed
+only when every surviving member started at or after it, so a recycled pgid
+hosting an older process is skipped. That, and keying on a pgid WE recorded, is
+what separates this from the name-match cleanup that killed 26 live Autoware
+components.
+
+A single binary rather than a shell reimplementation, so the ledger format has
+one reader (the "two spellings that can disagree" defect issue 0363 records).
+
+**The 59 were reaped**, after verifying all 56 groups had zero live non-orphan
+members — killed by `kill -9 -- -<pgid>`, never by name. 59 -> 0, and ports
+8650/8651 free.
+
+**Seven orphans were deliberately left**: `tf2_ros static_transform_publisher`
+with camera-frame arguments, ~6.5 days old. A different population from this
+issue's, plausibly real work. Killing them would have repeated the mistake this
+issue records.
+
+### Two test defects, both of which would have shipped a green vacuous test
+
+* Both tests set ONE global env var for the ledger directory, and cargo runs a
+  crate's tests as THREADS of a single process — so the second test's sweep
+  looked in the first's directory, found nothing, returned 0, which is exactly
+  what it asserted. **The mutation removing the safety floor passed.** The
+  directory is now an explicit parameter and that mutation fails.
+* The first chain was `bash -c "sleep N"`. Bash EXECs a lone simple command, so
+  there was no grandchild and the leak could not reproduce. The real peer runs
+  two commands (`<env> && timeout N ros2 run …`), which bash cannot exec away;
+  the test now matches.
+
+Both are the same failure the acceptance criterion was written to prevent — a
+test that passes because nothing happened — arriving from two directions.

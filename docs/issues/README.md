@@ -51,18 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#659** (testing, open 2026-08-17) — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test leaks its
-ROS peer's grandchildren. Peers spawn as `bash -c "… && timeout N ros2 run demo_nodes_cpp …"`, i.e.
-`bash → timeout → ros2 → the C++ node`; the spawn sets a process group AND PDEATHSIG, and `Drop` group-kills,
-so an orderly finish is clean. When nextest SIGKILLs the test binary there is no `Drop`, bash dies from its
-own PDEATHSIG, and the rest reparent to init. Measured: 40 `add_two_ints_server` at PPID 1, oldest
-`1-23:05:47`, holding domain 5's 8650/8651 — which surfaced as four unrelated cyclone tests failing
-`address in use`, a message about the victim rather than the cause. `process.rs` claims the opposite in
-prose ("prevents orphans when nextest SIGKILL's the test binary", naming the very chain that is not
-covered). Issue 0573's shape one peer over. Acceptance is NOT "no orphans after a clean run" — that already
-passes — but: SIGKILL the test binary mid-test, then assert no descendant survives. Carries a warning that
-any cleanup must key on a recorded pgid or PPID==1, never a process NAME: doing the latter here also matched
-a live `play_launch`/Autoware tree and killed ~26 of its processes. See `0659-*`. (2026-08-17)
+Recently resolved (2026-08-17): **#0659** — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test left its ROS peer's grandchildren holding DDS ports (59 orphans here, oldest 9.4 days). Options (1) and (2) were implemented, measured and REVERTED — SIGKILL cannot be handled, so no in-tree teardown can run. Fixed from OUTSIDE: a pgid ledger swept at `test-all` head, with the leader's start time as a floor so a recycled pgid is skipped. The 59 were reaped by pgid; seven `tf2_ros` orphans deliberately left. See `archived/0659-*`. (2026-08-17)
 
 **#0661** (build, open 2026-08-17) — two `nros_core` compilations under
 `examples/workspaces/mixed/build-workspace-fixtures` have NO `<triple>` path component, i.e. the cargo
