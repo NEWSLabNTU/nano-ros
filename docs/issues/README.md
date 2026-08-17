@@ -235,6 +235,18 @@ twelve broken. The fix is per-lane rather than mechanical: under RFC-0075 the ro
 `ZenohRouter` is the only sanctioned spawner (#0573), so most sites probably just lose the line — but
 `qemu-baremetal` and `zephyr-dev` are not the interop lanes phase-362 W1 converted. Worth a gate: `just
 --summary` knows every recipe name and `just <name>` in a body is greppable. See `0660-*`.
+**#659** (testing, open 2026-08-17) — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test leaks its
+ROS peer's grandchildren. Peers spawn as `bash -c "… && timeout N ros2 run demo_nodes_cpp …"`, i.e.
+`bash → timeout → ros2 → the C++ node`; the spawn sets a process group AND PDEATHSIG, and `Drop` group-kills,
+so an orderly finish is clean. When nextest SIGKILLs the test binary there is no `Drop`, bash dies from its
+own PDEATHSIG, and the rest reparent to init. Measured: 40 `add_two_ints_server` at PPID 1, oldest
+`1-23:05:47`, holding domain 5's 8650/8651 — which surfaced as four unrelated cyclone tests failing
+`address in use`, a message about the victim rather than the cause. `process.rs` claims the opposite in
+prose ("prevents orphans when nextest SIGKILL's the test binary", naming the very chain that is not
+covered). Issue 0573's shape one peer over. Acceptance is NOT "no orphans after a clean run" — that already
+passes — but: SIGKILL the test binary mid-test, then assert no descendant survives. Carries a warning that
+any cleanup must key on a recorded pgid or PPID==1, never a process NAME: doing the latter here also matched
+a live `play_launch`/Autoware tree and killed ~26 of its processes. See `0659-*`. (2026-08-17)
 
 **#644** (build, open 2026-08-16) — the threadx-linux talker was DECLARED `no_std` by phase-359 W10 and
 never was: `nros`'s `env` capability listed `"std"`, so std arrived through the graph and supplied both the
