@@ -4388,14 +4388,13 @@ setup-launch-resolve:
         # lock, not by a source-tree walk. Scope the ls-files to the layer-2
         # subdir so play_launch's UNINITIALISED layer-3 submodules (vendor/*,
         # container, msgs) are neither walked nor required.
-        _pl="$root/packages/cli/third-party/play_launch"
-        stale_src=""
-        while IFS= read -r _f; do
-            if [ "$_f" -nt "$bin" ]; then stale_src="$_f"; break; fi
-        done < <( { git ls-files "$crate" | grep -E '\.rs$|Cargo\.toml$'
-                    git -C "$_pl" ls-files "src/ros-launch-resolve" | grep -E '\.rs$|Cargo\.toml$' \
-                        | sed "s|^|$_pl/|" ; } )
-        if [ -z "$stale_src" ]; then
+        # phase-363 / issue 0596 — the THIRD copy of this walk, and the one that
+        # decides whether to rebuild. Now the same helper the two warning sites
+        # use, asking about CONTENT: the mtime form was falsified by any rebase
+        # or stash, which rewrites tracked files with identical bytes.
+        # shellcheck source=scripts/build/launch-resolve-stale.sh
+        source "$root/scripts/build/launch-resolve-stale.sh"
+        if ! nros_launch_resolve_stale "$root"; then
             exit 0
         fi
     fi
@@ -4415,7 +4414,17 @@ setup-launch-resolve:
     export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
     # profile-literal-ok: host tool: builds nros-launch-resolve
     cargo build --release --manifest-path "$crate/Cargo.toml"
-    touch "$bin"
+    # Record WHAT it was built from. Without this the content check has nothing
+    # to compare against and reports stale forever — issue 0596's shape, one
+    # mechanism over.
+    #
+    # This replaces a `touch "$bin"`, which existed only to make the old
+    # `source -nt binary` comparison come out right after cargo declined to
+    # relink. A stamp answers the question directly, so nothing needs its mtime
+    # nudged.
+    # shellcheck source=scripts/build/launch-resolve-stale.sh
+    source "$root/scripts/build/launch-resolve-stale.sh"
+    nros_launch_resolve_stamp "$root" > "$bin.nros-source-stamp"
     echo "[setup-launch-resolve] built: $bin"
 
 # Regenerate Rust bindings in all examples and rcl-interfaces

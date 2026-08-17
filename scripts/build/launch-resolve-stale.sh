@@ -22,12 +22,28 @@
 # (`src/ros-launch-resolve`, regular files); play_launch's layer-3 submodules are
 # deliberately uninitialised and are neither walked nor required.
 
+# phase-363 — CONTENT, not mtime. Asking about sources fixed the "remedy cannot
+# clear it" half of issue 0596; the comparison was still `source -nt binary`,
+# which `git rebase`, `git stash pop` and `git checkout` all falsify by
+# rewriting tracked files with IDENTICAL content. `source_stamp.rs` records the
+# same reasoning for the CLI: "hash what the sources ARE instead of when they
+# were written. A rebase becomes silent; an actual edit is still caught."
+#
+# `Cargo.lock` joins `.rs`/`Cargo.toml` because it pins what the binary was
+# built FROM — a lock move is a different build. The other 160 tracked files in
+# the resolver tree stay out on evidence rather than by omission: 67 are `.py`
+# belonging to layer 2's CPython runtime, and nothing embeds them
+# (`include_str!`/`include_bytes!` find nothing, and the tree has no
+# `build.rs`), so they cannot change the Rust binary. The rest are
+# README/LICENSE/.gitignore. Watching them would force a rebuild on every
+# docs edit, which is the cost `source_stamp.rs` avoids by matching precisely.
+#
 # nros_launch_resolve_stale <repo-root>
 #
-# Exit 0 (true) when the binary is missing or older than a tracked source file.
-# Exit 1 (false) when it is current — or when the submodule is not initialised,
-# which `setup-launch-resolve` reports on its own terms and this must not
-# duplicate.
+# Exit 0 (true) when the binary is missing, has no recorded stamp, or its stamp
+# disagrees with the sources on disk. Exit 1 (false) when it is current — or
+# when the submodule is not initialised, which `setup-launch-resolve` reports on
+# its own terms and this must not duplicate.
 nros_launch_resolve_stale() {
     local root="${1:-.}"
     local crate="$root/packages/cli/nros-launch-resolve"
@@ -38,15 +54,39 @@ nros_launch_resolve_stale() {
     [ -x "$bin" ] || return 0
     [ -d "$pl/src/ros-launch-resolve" ] || return 1
 
-    local f
-    while IFS= read -r f; do
-        [ -e "$f" ] || continue
-        if [ "$f" -nt "$bin" ]; then
-            return 0
-        fi
-    done < <( { git -C "$root" ls-files "$crate" 2>/dev/null | grep -E '\.rs$|Cargo\.toml$' \
-                    | sed "s|^|$root/|"
-                git -C "$pl" ls-files "src/ros-launch-resolve" 2>/dev/null \
-                    | grep -E '\.rs$|Cargo\.toml$' | sed "s|^|$pl/|" ; } )
-    return 1
+    local recorded
+    recorded="$(cat "$bin.nros-source-stamp" 2>/dev/null || true)"
+    [ -n "$recorded" ] || return 0
+
+    [ "$(nros_launch_resolve_stamp "$root")" = "$recorded" ] && return 1
+    return 0
+}
+
+# The content stamp itself, so the writer (`setup-launch-resolve`) and the
+# reader above cannot compute it differently — the defect issue 0363 names as
+# "the predicate lived in three places, two of them real implementations that
+# could disagree".
+#
+# Sorted so the digest is content-determined rather than filesystem-determined,
+# and missing files are skipped so a partially-checked-out tree degrades to a
+# different stamp rather than an error.
+nros_launch_resolve_stamp() {
+    local root="${1:-.}"
+    local crate="$root/packages/cli/nros-launch-resolve"
+    local pl="$root/packages/cli/third-party/play_launch"
+    {
+        git -C "$root" ls-files "$crate" 2>/dev/null \
+            | grep -E '\.rs$|Cargo\.(toml|lock)$' | sed "s|^|$root/|"
+        git -C "$pl" ls-files "src/ros-launch-resolve" 2>/dev/null \
+            | grep -E '\.rs$|Cargo\.(toml|lock)$' | sed "s|^|$pl/|"
+    } | sort | while IFS= read -r f; do
+        # REPO-RELATIVE path in the digest. `sha256sum` prints "<hash>  <path>",
+        # so hashing that line verbatim makes the stamp depend on how the caller
+        # spelled the root — `setup-launch-resolve` passes an absolute
+        # `justfile_directory()` while the precondition script passes `.`, and
+        # the two produced different digests for an identical tree. The check
+        # then reported stale immediately after its own remedy, which is the
+        # exact symptom issue 0596 is about.
+        [ -f "$f" ] && printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "${f#"$root"/}"
+    done | sha256sum | awk '{print $1}'
 }

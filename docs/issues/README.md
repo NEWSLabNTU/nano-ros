@@ -1661,15 +1661,7 @@ in-workspace dep-sites pass `default-features = false`, which `check-feature-con
 macro now stop compiling the subtree. Breaking out-of-tree — add `features = ["macros"]`. Lock did not move.
 See `archived/0592-*`. (2026-08-16)
 
-**#0596** (build, open 2026-08-15) — the `nros-launch-resolve` skew warning compares BINARY mtimes
-(`[ "$_cli_bin" -nt "$_resolver" ]`), and `just setup-launch-resolve` is a no-op when cargo has nothing to
-rebuild — so it never relinks, the mtime never moves, and the remedy the warning prints cannot clear it.
-Fires on every `check-tier-preconditions` after any `setup-cli`, in the list that exists to name real
-unmet preconditions (#0466). Also the wrong question: touching the binary would silence it while proving
-nothing, and a real skew with a newer binary goes undetected. The hazard is genuine (#0363 C — the two
-must agree on an argument list); the test for it is not. TWO spellings, `scripts/check-tier-preconditions.sh:145`
-and `justfile:3958`, which must move together. Fix: give the resolver a SOURCE STAMP like the CLI's and
-compare stamps. See `0596-*`. (2026-08-15)
+Recently resolved (2026-08-17): **#0596** — the skew warning compared MTIMES, so its own remedy could not clear it. Three copies of the comparison existed, not two: the third was an inline walk in `setup-launch-resolve` deciding whether to REBUILD. All three now share one helper comparing a CONTENT stamp recorded by the build. `Cargo.lock` joins the watched set; the resolver tree's 67 `.py` files stay out on evidence (nothing embeds them). Verified across five states, including that `touch` alone no longer fires. See `archived/0596-*`. (2026-08-17)
 
 **#0600** (build, open 2026-08-15) — `check-submodule-pinned-locks` reported "the submodule pointer moved
 and the lock did not follow (issue 0560)" for a lock that is byte-identical to main's and names the crate

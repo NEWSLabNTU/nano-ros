@@ -1,7 +1,7 @@
 ---
 id: 596
 title: The `nros-launch-resolve` skew warning is mtime-only, so its own remedy cannot clear it
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0363, issue-0466, issue-0561]
@@ -93,3 +93,47 @@ rebuild, so a reader does not chase it.
 Observed 2026-08-15 on `wip/feature-contract`. The branch changes no file under
 `packages/cli/nros-launch-resolve/`, so `setup-launch-resolve` is a genuine
 no-op here and the warning is certainly spurious in this instance.
+
+
+## Resolved 2026-08-17
+
+**Three copies, not two.** The issue names the helper's two callers; the third
+was an inline mtime walk inside `setup-launch-resolve` itself — the copy that
+decides whether to REBUILD, and therefore the one that kept the recipe
+early-exiting without building. All three now call one helper.
+
+**The helper was already half-fixed, and the remaining half was the mtime.** It
+had been changed to ask about SOURCES rather than binaries, which addressed "the
+remedy cannot clear it". It still compared source MTIMES, so any `git rebase`,
+`git stash pop` or `git checkout` re-armed it by rewriting tracked files with
+identical bytes — the treadmill `source_stamp.rs` documents for the CLI. It now
+compares a content stamp, recorded beside the binary by the build.
+
+**Scope, on evidence rather than omission.** `Cargo.lock` joins `.rs` /
+`Cargo.toml`: it pins what the binary was built from. The other 160 tracked
+files in the resolver tree stay out because they cannot change the Rust binary —
+67 are `.py` belonging to layer 2's CPython runtime, and nothing embeds them
+(no `include_str!`/`include_bytes!`, no `build.rs` in that tree); the rest are
+README / LICENSE / .gitignore. Watching them would force a rebuild on a docs
+edit.
+
+Verified end to end, all five states:
+
+```
+no stamp                  -> STALE
+run `just setup-launch-resolve` -> current
+run it again              -> current   (was: stale forever)
+edit a tracked .rs        -> STALE
+restore it                -> current
+touch the same file       -> current   (the false positive is gone)
+```
+
+### One defect in the fix, worth recording
+
+The first content stamp was PATH-DEPENDENT. `sha256sum` prints
+`<hash>  <path>`, so hashing that line verbatim made the digest depend on how
+the caller spelled the root — `setup-launch-resolve` passes an absolute
+`justfile_directory()`, `check-tier-preconditions` passes `.` — and the two
+disagreed for an identical tree. That reproduced this issue's exact symptom:
+stale immediately after its own remedy. The digest now carries repo-relative
+paths.
