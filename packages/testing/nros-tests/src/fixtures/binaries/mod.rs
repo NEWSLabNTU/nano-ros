@@ -1164,6 +1164,13 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
     // answer for this tree yet. Fall back to the hand-authored walk, which is
     // over-broad and therefore fails SAFE — the same reasoning W4 records for
     // needing a pre-build answer to bootstrap a row that has never built.
+    //
+    // Measured 2026-08-17: all 76 zenoh fixture build dirs carry a
+    // `zpico-sys-*/output`, each with >= 5 in-repo entries, so this arm is
+    // unreachable for a built fixture. That is exactly why it announces itself
+    // — an arm that never runs is also an arm nobody notices has started
+    // running, and a corrosion layout change is all it would take.
+    staleness::note_unmeasured_input_set();
     let c_root = project_root().join("packages/rmw/zenoh/zpico-sys/c");
     newest_source_after(&c_root, bin_mtime)
 }
@@ -5782,6 +5789,33 @@ mod tests {
             !msg.contains(&format!("armv7a-nuttx-eabihf/{ambient}/listener")),
             "resolver still used the AMBIENT profile — this is issue 0608: {msg}"
         );
+    }
+
+    /// phase-363 — the bootstrap fallback must be VISIBLE.
+    ///
+    /// Measured: every zenoh fixture build dir carries a build-script record, so
+    /// this arm is unreachable today. That is the argument for the assertion,
+    /// not against it — an arm that never runs is one nobody notices has
+    /// started running, and CLAUDE.md tells the reader to believe the `probe:`
+    /// line over the verdict.
+    #[test]
+    fn falling_back_to_a_hand_authored_input_set_is_reported() {
+        staleness::begin_probe();
+        assert!(
+            !staleness::probe_accounting().contains("UNMEASURED"),
+            "a measured probe must not claim otherwise"
+        );
+
+        staleness::note_unmeasured_input_set();
+        assert!(
+            staleness::probe_accounting().contains("UNMEASURED"),
+            "the fallback must say so in the line the reader is told to trust"
+        );
+
+        // …and the next probe starts clean, or one degraded resolution would
+        // taint every later verdict in the process.
+        staleness::begin_probe();
+        assert!(!staleness::probe_accounting().contains("UNMEASURED"));
     }
 
     /// phase-363 — the zpico probe reads the inputs cargo RECORDED, not a

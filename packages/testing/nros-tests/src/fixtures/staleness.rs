@@ -115,6 +115,9 @@ thread_local! {
     static EXAMINED: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_INPLACE: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_OUTDIR: Cell<usize> = const { Cell::new(0) };
+    /// phase-363 — set when an arm could not obtain the MEASURED input set and
+    /// fell back to a hand-authored one.
+    static UNMEASURED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Start accounting for one probe run. Called by each `require_*_fresh` entry
@@ -124,6 +127,7 @@ pub fn begin_probe() {
     EXAMINED.with(|c| c.set(0));
     EXEMPT_INPLACE.with(|c| c.set(0));
     EXEMPT_OUTDIR.with(|c| c.set(0));
+    UNMEASURED.with(|c| c.set(false));
 }
 
 /// Record one candidate the probe looked at, and whether the shared rule
@@ -145,16 +149,35 @@ pub fn note_candidate(path: &Path) -> bool {
     }
 }
 
+/// Record that this probe could not read the input set the BUILD recorded and
+/// is comparing a hand-authored one instead (phase-363).
+///
+/// The fallback is deliberate and fails safe — it is over-broad, so it errs
+/// toward a false STALE rather than a museum binary. What is not acceptable is
+/// it happening SILENTLY: a probe that quietly stops measuring looks identical
+/// to one that measured and found nothing, and CLAUDE.md already tells the
+/// reader to believe the `probe:` line over the verdict. So it says so there.
+pub fn note_unmeasured_input_set() {
+    UNMEASURED.with(|c| c.set(true));
+}
+
 /// What the probe compared, in one line.
 pub fn probe_accounting() -> String {
     let examined = EXAMINED.with(Cell::get);
     let inplace = EXEMPT_INPLACE.with(Cell::get);
     let outdir = EXEMPT_OUTDIR.with(Cell::get);
-    format!(
+    let mut line = format!(
         "examined {examined} input(s); exempted {inplace} {} + {outdir} {}",
         Exemption::RegeneratedInPlace.label(),
         Exemption::CargoOutDir.label(),
-    )
+    );
+    if UNMEASURED.with(Cell::get) {
+        line.push_str(
+            "; INPUT SET UNMEASURED — no build-script record found, \
+             compared a hand-authored path list instead",
+        );
+    }
+    line
 }
 
 // ---------------------------------------------------------------------------
