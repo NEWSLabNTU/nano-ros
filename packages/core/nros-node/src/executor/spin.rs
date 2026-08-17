@@ -191,6 +191,9 @@ impl<'s> Executor<'s> {
             executor.epoch_us_fn = config.epoch_us;
         }
         executor.set_node_identity(config.node_name, config.namespace);
+        // Issue 0656 — beside the identity, for the same reason: an entity needs
+        // both to be addressable, and this half used to be dropped here.
+        executor.domain_id = config.domain_id;
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         // Phase 277 W2.c — readiness marker for E2E harnesses. This is the
@@ -1011,6 +1014,14 @@ pub(crate) struct RemapRule {
 }
 
 pub struct Executor<'s> {
+    /// Issue 0656 — the ROS domain this executor's entities belong to.
+    ///
+    /// Retained because it was NOT: `open_in` passed `config.domain_id` into
+    /// `RmwConfig` and dropped it, so every entity built from the executor
+    /// (rather than from a `Node`, which keeps its own) declared on domain 0
+    /// whatever `ROS_DOMAIN_ID` said. The value was read, printed, and then not
+    /// used where it counts — issue 0161's shape.
+    pub(crate) domain_id: u32,
     pub(crate) session: SessionStore,
     /// phase-271 (issue 0110) — the six sized tables are no longer inline
     /// arrays baked to `nros-node`'s build-time consts; they borrow
@@ -1362,6 +1373,10 @@ impl<'s> Executor<'s> {
             *slot0 = Some(super::sched_context::SchedContext::default());
         }
         Self {
+            // `assemble` is reached from session-only entry points that have no
+            // config, so 0 is the floor rather than a choice; `open_in` and any
+            // binding that knows better overwrite it via `set_domain_id`.
+            domain_id: 0,
             session,
             arena,
             arena_used: 0,
@@ -1664,6 +1679,20 @@ impl<'s> Executor<'s> {
     }
 
     /// `TopicInfo`/`ServiceInfo` so the zenoh backend can declare liveliness.
+    /// Issue 0656 — set the ROS domain for entities this executor declares.
+    ///
+    /// For bindings that build an executor from an existing session
+    /// (`from_session_ptr_in`), where no `ExecutorConfig` is available and the
+    /// domain would otherwise stay at its 0 floor.
+    pub fn set_domain_id(&mut self, domain_id: u32) {
+        self.domain_id = domain_id;
+    }
+
+    /// The ROS domain this executor declares entities on.
+    pub fn domain_id(&self) -> u32 {
+        self.domain_id
+    }
+
     pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
         self.node_name.clear();
         let _ = self.node_name.push_str(node_name);

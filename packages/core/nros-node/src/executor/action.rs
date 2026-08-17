@@ -205,7 +205,7 @@ impl<'s> Executor<'s> {
             send_goal_type,
             A::SEND_GOAL_SERVICE_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let send_goal_server = self
             .session
             .create_service(&send_goal_info, QosSettings::services_default())
@@ -217,7 +217,7 @@ impl<'s> Executor<'s> {
             "action_msgs::srv::dds_::CancelGoal_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let cancel_goal_server = self
             .session
             .create_service(&cancel_goal_info, QosSettings::services_default())
@@ -229,7 +229,7 @@ impl<'s> Executor<'s> {
             get_result_type,
             A::GET_RESULT_SERVICE_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let get_result_server = self
             .session
             .create_service(&get_result_info, QosSettings::services_default())
@@ -241,7 +241,7 @@ impl<'s> Executor<'s> {
             feedback_type,
             <A::FeedbackMessage as nros_core::RosMessage>::TYPE_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
@@ -253,7 +253,7 @@ impl<'s> Executor<'s> {
             "action_msgs::msg::dds_::GoalStatusArray_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let status_publisher = self
             .session
             .create_publisher(
@@ -560,6 +560,10 @@ impl<'s> Executor<'s> {
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        // Issue 0656 — capture the domain BEFORE the session borrow below, for
+        // the same reason `node_name`/`ns` are cloned here: the `&mut session`
+        // in the create scope would otherwise conflict with `&self`.
+        let domain_id = self.domain_id;
         let (node_name, ns, session_idx) = match node_id {
             Some(id) => {
                 let r = self
@@ -601,7 +605,8 @@ impl<'s> Executor<'s> {
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
                 ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -612,7 +617,8 @@ impl<'s> Executor<'s> {
                 "action_msgs::srv::dds_::CancelGoal_",
                 type_hash,
             )
-            .with_namespace(&ns);
+            .with_namespace(&ns)
+            .with_domain(domain_id);
             if !node_name.is_empty() {
                 cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
             }
@@ -620,14 +626,16 @@ impl<'s> Executor<'s> {
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
                 ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
+            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
+                .with_namespace(&ns)
+                .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -638,7 +646,8 @@ impl<'s> Executor<'s> {
                 "action_msgs::msg::dds_::GoalStatusArray_",
                 type_hash,
             )
-            .with_namespace(&ns);
+            .with_namespace(&ns)
+            .with_domain(domain_id);
             if !node_name.is_empty() {
                 status_topic = status_topic.with_node_name(&node_name);
             }
@@ -1037,6 +1046,10 @@ impl<'s> Executor<'s> {
         let slot = self.next_entry_slot()?;
 
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        // Issue 0656 — capture the domain BEFORE the session borrow below, for
+        // the same reason `node_name`/`ns` are cloned here: the `&mut session`
+        // in the create scope would otherwise conflict with `&self`.
+        let domain_id = self.domain_id;
         let (node_name, ns, session_idx) = match node_id {
             Some(id) => {
                 let r = self
@@ -1063,7 +1076,8 @@ impl<'s> Executor<'s> {
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
                 ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -1074,7 +1088,8 @@ impl<'s> Executor<'s> {
                 "action_msgs::srv::dds_::CancelGoal_",
                 type_hash,
             )
-            .with_namespace(&ns);
+            .with_namespace(&ns)
+            .with_domain(domain_id);
             if !node_name.is_empty() {
                 cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
             }
@@ -1082,14 +1097,16 @@ impl<'s> Executor<'s> {
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
                 ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
+            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
+                .with_namespace(&ns)
+                .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -1200,6 +1217,10 @@ impl<'s> Executor<'s> {
         // entities. Generated `impl RosAction` overrides this (default no-op);
         // replaces the example's hand-rolled `#[cfg(rmw-cyclonedds)]` block.
         A::register_protocol_types().map_err(|()| NodeError::ActionCreationFailed)?;
+        // Issue 0656 — capture the domain BEFORE the session borrow below, for
+        // the same reason `node_name`/`ns` are cloned here: the `&mut session`
+        // in the create scope would otherwise conflict with `&self`.
+        let domain_id = self.domain_id;
         let (node_name, ns, session_idx) = match node_id {
             Some(id) => {
                 let r = self
@@ -1226,7 +1247,8 @@ impl<'s> Executor<'s> {
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
                 ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 send_goal_info = send_goal_info.with_node_name(&node_name);
             }
@@ -1236,20 +1258,23 @@ impl<'s> Executor<'s> {
                 "action_msgs::srv::dds_::CancelGoal_",
                 type_hash,
             )
-            .with_namespace(&ns);
+            .with_namespace(&ns)
+            .with_domain(domain_id);
             if !node_name.is_empty() {
                 cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
             }
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
                 ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
-                    .with_namespace(&ns);
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash).with_namespace(&ns);
+            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
+                .with_namespace(&ns)
+                .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }

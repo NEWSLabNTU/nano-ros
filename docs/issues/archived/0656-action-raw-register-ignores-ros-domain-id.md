@@ -1,7 +1,7 @@
 ---
 id: 656
 title: "The raw action register path declares every channel on domain 0, whatever ROS_DOMAIN_ID says"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0454, phase-338, phase-354]
@@ -89,3 +89,58 @@ fixes touched and the ones nobody has written yet.
 `tests/action_raw_goal_e2e.rs` (issue 0454 / phase-354 W3) cannot exercise a
 non-zero domain until this is fixed; it runs both peers on the default domain
 and says so at the call site.
+
+
+## Fixed 2026-08-17
+
+The fix sketch says "thread the executor's resolved domain into both raw
+register paths". The reason that had not happened is that **there was no
+executor domain to thread**: `open_in` passed `config.domain_id` into
+`RmwConfig` and dropped it. No field on `Executor`, none on `NodeRecord`, no
+accessor on the session. `Node` keeps its own — which is exactly why its path
+works and the executor paths do not.
+
+So:
+
+* `Executor` gains `domain_id`, set in `open_in` beside `set_node_identity`,
+  where the config is still in scope. Same shape, and the identity half was
+  already being kept there;
+* `set_domain_id()` / `domain_id()` for bindings that build from an existing
+  session (`from_session_ptr_in` has no config, so 0 is a FLOOR there rather
+  than a choice — stated because it is a real remaining gap for that entry);
+* the typed path's five literal `.with_domain(0)` become `self.domain_id`;
+* thirteen raw-path `ServiceInfo`/`TopicInfo` chains across three functions
+  gain `.with_domain(domain_id)`, captured before the session borrow for the
+  same reason `node_name`/`ns` already were.
+
+### Gate — narrowed deliberately
+
+`check-literal-domain-id` rejects `with_domain(<integer literal>)` in the
+runtime crates. It does NOT attempt the issue's fuller phrasing ("every chain
+reaching a `create_*` carries a non-literal `with_domain`"): that needs
+dataflow, and a half-working version would either miss chains or flag the many
+`Info` values that never reach a `create_*`. The literal is the mechanical half
+and the half that was actually written — five times in this file alone.
+
+Two false positives on the first run, both correct code:
+`tests/rtic_integration.rs` pinning `with_domain(42)`. An integration test
+asserting behaviour ON domain 42 must say 42; that is the opposite of this
+defect, which is SHIPPED code unable to express the session's domain. `tests/`,
+`benches/` and `examples/` are excluded.
+
+Verified by reintroducing the historical literal: the gate names
+`action.rs:208`.
+
+### NOT verified: the wire
+
+The repro in this issue needs `zenohd` plus the built C example, and this host
+has no `rmw_zenoh_cpp` — every action test here reports
+`[SKIPPED:capability]` (1 passed, 4 skipped, and they skip identically before
+and after this change). So "declares on 42" is confirmed by reading
+(`keyexpr.rs:33` formats `domain_id` into the prefix) and by the gate, **not**
+measured on the wire. Anyone with a ROS router should run the repro above before
+treating the wire behaviour as proven.
+
+`tests/action_raw_goal_e2e.rs` (issue 0454 / phase-354 W3) is unblocked in
+principle — it can now be pointed at a non-zero domain — but that is worth doing
+on a host where it can actually run.

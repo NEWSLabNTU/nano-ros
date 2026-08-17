@@ -546,6 +546,7 @@ check-test-targets:
 [group("main")]
 check-build: \
     check-cli-fresh check-required-features-reachable check-host-triple-literals \
+    check-literal-domain-id \
     check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
@@ -1079,6 +1080,14 @@ check-required-features-reachable:
 [group("main")]
 check-host-triple-literals:
     @python3 scripts/check-host-triple-literals.py
+
+# Issue 0656 — an entity declared with a LITERAL domain declares on THAT domain
+# whatever `ROS_DOMAIN_ID` says, and the keyexpr is `<domain_id>/<name>/…`. A
+# peer honouring the value matches nothing and times out with no diagnostic on
+# either side. Invisible while both peers drop the domain identically.
+[group("main")]
+check-literal-domain-id:
+    @python3 scripts/check-literal-domain-id.py
 
 # Issue 0550 — a submodule checked out BEHIND the commit the superproject
 # records. Not in `check-fast`: drift is a working-copy state, so the index and

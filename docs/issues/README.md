@@ -97,14 +97,7 @@ has no manifest row, so it could never be lane-skipped and reported STALE in eve
 both accessors now state their coordinate via `require_coord_in_lane`. Tier-2 reds 9 -> 2, and the
 last two are one QEMU red and one load flake that passes solo. See `archived/0658-*`. (2026-08-17)
 
-**#656** — the raw action register path declares every channel on domain 0 whatever `ROS_DOMAIN_ID`
-says. A C action server started with `ROS_DOMAIN_ID=42` prints `Domain ID: 42` and then declares
-`0/fibonacci/_action/send_goal/…`: `register_action_{server,client}_raw*` never passes a domain, and
-the typed path spells it `.with_domain(0)` outright. So actions are not domain-isolated at all, and
-a cross-binding pair silently fails to discover whenever one side honours the domain and the other
-does not — which is how it was found (phase-354 W3's polling probe vs the executor-mode C server).
-Invisible until now because every existing action test agreed on `0/` on both sides. See `0656-*`.
-(2026-08-17)
+Recently resolved (2026-08-17): **#656** — raw/typed action registration declared every channel on domain 0 whatever `ROS_DOMAIN_ID` said. The root cause was that the executor had NO domain to thread: `open_in` put `config.domain_id` into `RmwConfig` and dropped it. `Executor` now keeps it; 5 literal + 13 raw chains fixed, gated by `check-literal-domain-id`. NOT verified on the wire — no `rmw_zenoh_cpp` on this host, so every action test skips. See `archived/0656-*`. (2026-08-17)
 
 Recently resolved (2026-08-17): **#454** — the two `*_send_goal_raw` FFIs (`nros-c` + `nros-cpp`) took a
 param named `goal_cdr` and passed it through unstripped, so a caller would ship the #448 double
