@@ -1,6 +1,6 @@
 # Phase 363 — Measured inputs, not guessed ones
 
-**Status (2026-08-17). W1–W5 LANDED and each RE-SWEPT; the one site the sweeps found still guessing is now measured too. Nothing outstanding beyond the documented bootstrap below.** Every freshness check in
+**Status (2026-08-17). W1–W5 LANDED and each RE-SWEPT. The waves are closed; the CLASS is not — four more sites turned up AFTER they were, the most recent being issue 0596. Treat this phase as a standing sweep, not a finished list.** Every freshness check in
 this tree answers "was this built from the sources on disk right now?", and they
 split cleanly into two kinds: the ones that ASK the tool that owns the
 dependency graph, and the ones that GUESS an input set by hand. Every recurring
@@ -458,6 +458,41 @@ stopped it.
 * **Not touching `rerun-if-env-changed`.** Issue 0491 is the same class in the
   ENV dimension and has its own gate (`check-path-env-fingerprints`); folding it
   in here would blur two acceptance criteria.
+
+## Found after the waves closed (2026-08-17)
+
+Two more, both after this doc first said the phase was complete. Recorded
+because the pattern is the point: each was in a file the relevant wave never
+opened.
+
+**The zpico bootstrap now announces itself.** The hand-authored walk kept as a
+fallback is unreachable for a built fixture — measured, all 76 zenoh build dirs
+carry a `zpico-sys-*/output` with >= 5 in-repo entries. That makes it the
+failure-mode handler rather than leftover guesswork: if the recorded set came
+back empty and the probe returned `None`, it would report FRESH forever. The
+defect was that the degradation was SILENT, so `probe_accounting()` now says
+`INPUT SET UNMEASURED` in the line CLAUDE.md tells the reader to trust over the
+verdict.
+
+**Issue 0596 — `nros-launch-resolve`'s skew check was mtime.** The same class in
+a predicate this phase never surveyed. It had already been moved from comparing
+BINARIES to comparing SOURCES; the remaining half was that it compared source
+MTIMES, so a rebase or stash re-armed it with identical bytes. Now a content
+stamp, from ONE helper shared by all THREE copies of the comparison — the third
+being an inline walk in `setup-launch-resolve` that decided whether to rebuild.
+
+### The remaining mtime predicate, and why it stays
+
+`just/zephyr-ci.just:149` re-runs `nros sync` for a package when its
+`package.xml` is newer than a stamp. Same construct, opposite direction of harm:
+it OVER-regenerates, so a rebase costs an unnecessary sync rather than hiding a
+stale one. A content-based sibling (`nros_codegen_stamp_check_or_wipe`, the
+trait-surface hash) already sits directly above it, so the conversion is
+available if the cost is ever measured to matter.
+
+`scripts/check-artifact-identity-budget.sh:267` also compares mtimes and is NOT
+this class: it asks "was this rlib written during this run" (issue 0499), which
+is genuinely a question about time.
 
 ## What remains, stated plainly
 
