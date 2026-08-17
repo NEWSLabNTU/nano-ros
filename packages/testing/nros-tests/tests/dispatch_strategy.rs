@@ -22,9 +22,7 @@
 
 use std::panic;
 
-use nros::{
-    Callback, CallbackId, DispatchStrategy, Node, NodeContext, NodeResult, SubscriptionTag,
-};
+use nros::{CallbackId, DispatchStrategy, Node, NodeContext, NodeResult, SubscriptionTag};
 use nros_platform::{NodeDispatchRuntime, NullNodeRuntime, SignaledCallback};
 
 // ---------------------------------------------------------------------------
