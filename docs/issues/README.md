@@ -78,14 +78,15 @@ the writer is not a site that gate reads, and WHICH writer is not established �
 building that morning. Do not clear the tree; those two rlibs are the only evidence there is. Sibling axis
 of #0616. See `0661-*`. (2026-08-17)
 
-**#0657** (build/toolchain, open 2026-08-17) — `[board.qemu-riscv64-threadx]` provisions xPack
-`riscv-none-elf-gcc`; twenty files spelled the compiler `riscv64-unknown-elf-*` (Ubuntu's package), so a host
-provisioned the documented way could not build the board at all — and before #0650 the lane reported that as
-OK, which is how phase-366 W5.c's six diverged examples reached main. ONE resolver now (shell / Rust /
-cmake, `NROS_RISCV64_PREFIX`, SDK store before PATH), plus the four libc assumptions underneath it (`rand`
-via NetX's `NX_RAND`, no `-lc` from a newlib toolchain, `_sbrk`, picolibc-only stdio in `startup.c`). Rust
-half VERIFIED end to end (a real riscv64 ELF); the C/C++ half still fails to link because compiler_builtins'
-C fallback `bswapsi2.o` comes out soft-float — the issue records what has been ruled out. See `0657-*`.
+Recently resolved (2026-08-17): **#0657** — nine defects, one shape: a tool, path or library NAMED as a
+literal instead of asked for. `[board.qemu-riscv64-threadx]` provisions xPack `riscv-none-elf-gcc`; twenty
+files spelled Ubuntu's `riscv64-unknown-elf-*`, so a host provisioned exactly as the book says could not build
+the board — and before #0650 the lane called that OK, which is how phase-366's six diverged examples reached
+main. Now ONE resolver (shell/Rust/cmake), plus the libc assumptions underneath: `rand` via NetX's `NX_RAND`,
+no `-lc` from a newlib toolchain, `_sbrk`, picolibc-only stdio, the soft-float strip whose READER was missing
+(stripping zero objects, silently), `-lgcc`, a dangling `-L` that ate the object defining `app_main`, and
+`-nostdinc++` for the C++ shim. Two of them had been doing nothing on EVERY host, including the maintainer's.
+Rust, C and C++ all build now: rc 0, real riscv64 ELFs. See `archived/0657-*`. (2026-08-17)
 
 Recently resolved (2026-08-17): **#658** — five tier-2 reds were lane SKIPS. Each of five matrix
 aggregators tested `msg.contains("[SKIPPED]")` — the BARE marker — so every CLASSED skip

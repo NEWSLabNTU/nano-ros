@@ -1,7 +1,7 @@
 ---
 id: 657
 title: "The riscv64 lane demands Ubuntu's `riscv64-unknown-elf-*` while `nros setup` provisions xPack's `riscv-none-elf-*` — so a fully provisioned host cannot build the board"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build/toolchain
@@ -122,17 +122,53 @@ rlib and target-feature does not rebuild it. The earlier reading came from a
 run where a lane-wide `RUSTFLAGS` export had also discarded the leaf's linker
 script, so the link failed earlier and the ABI error simply never printed.
 
-## Still open: `app_main` on the C application path
+## Resolved (2026-08-17)
 
-With the above, the C/C++ riscv64 link gets past the ABI and past `__bswapsi2`,
-and now stops at one undefined symbol: `app_main`.
+`just threadx_riscv64 build-fixtures` → rc 0 on a host provisioned only by
+`nros setup`. Rust, C and C++ all produce real images
+(`ELF 64-bit LSB executable, UCB RISC-V, RVC, double-float ABI`). The remaining
+skips are the CycloneDDS cells, which want `idlc` — announced now rather than
+silent (#0650).
 
-That is not a toolchain question. `-u app_main` comes from the board overlay,
-and the symbol is emitted by the SYNTHESISED typed-entry TU that
-`NanoRosNodeRegister.cmake` generates for node-shaped targets. These C examples
-are application-shaped — `nano_ros_add_executable(c_listener src/main.c)` with
-`nros_app_main()` in `main.c` — so no entry TU is synthesised and nothing
-defines the boot symbol. Whoever picks this up should decide whether the
-application shape is supposed to be supported on this board (then the board
-needs the shim other RTOS carriers have) or whether these examples should be
-node-shaped like the platforms whose fixtures do build.
+The last three defects, and the wrong story each one told:
+
+**`app_main` was never an entry-shape problem.** The board passed
+`-L${NROS_THREADX_PICOLIBC_LIB_DIR}` unguarded, and on a newlib toolchain that
+variable is unset. A dangling `-L` consumes the NEXT argument on the link line —
+which was `main.c.obj`. The object defining `app_main` never reached the link,
+so a defined symbol was reported undefined, and this issue's own earlier
+write-up sent the reader to `NanoRosNodeRegister.cmake` to fix wiring that was
+correct all along. **A missing-symbol error names the symbol, not the reason it
+is missing.**
+
+The first guard was itself an instance of the same class: `if(NOT VAR STREQUAL
+"")` compares the literal string `"NROS_THREADX_PICOLIBC_LIB_DIR"` when the
+variable is UNDEFINED, so it passed and emitted the dangling flag it was written
+to prevent. `if(<var>)` is the test that asks the question. `cmake
+--trace-expand` named the exact call in one line, after an hour of reading cmake
+that could not have shown it — worth reaching for sooner.
+
+**The libc probe spoke only picolibc**: a sysroot layout, then
+`--specs=picolibc.specs`. The provisioned toolchain has neither. Plain
+`-print-file-name=libc.a` first now.
+
+**The C++ shim needs `-nostdinc++`.** `cxx-compat/cstdlib` does `#include
+<stdlib.h>` then `using ::calloc;` — correct when the toolchain ships no C++
+headers (Debian's, which is why the shim exists), broken when it does, because
+`<stdlib.h>` then resolves to libstdc++'s wrapper, which under `-ffreestanding`
+declares no `::calloc`. The flag travels with the shim now.
+
+## The pattern this issue is really about
+
+Nine distinct defects, one shape: **a tool, path or library named as a literal
+instead of asked for.** The compiler prefix, the readelf that decides what to
+strip, libgcc, the libc archive dir, the C++ header set, and — one layer up —
+the Corrosion target that carries environment to cargo. Every one of them had a
+correct-looking answer for the maintainer's host and no answer at all for a host
+provisioned exactly as the book says.
+
+Two of them (the strip's reader, the corrosion env target) failed SILENTLY and
+were doing nothing on every host, including the maintainer's: the strip because
+an empty probe result reads as "nothing to strip", the env because
+`set_property` succeeds on a target nobody reads. Neither had a symptom until
+something else forced them into the light.
