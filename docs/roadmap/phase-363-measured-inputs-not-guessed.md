@@ -1,6 +1,6 @@
 # Phase 363 — Measured inputs, not guessed ones
 
-**Status (2026-08-16). W1–W5 ALL LANDED, each acceptance-verified.** Every freshness check in
+**Status (2026-08-17). W1–W5 LANDED and each RE-SWEPT; the one site the sweeps found still guessing is now measured too. Nothing outstanding beyond the documented bootstrap below.** Every freshness check in
 this tree answers "was this built from the sources on disk right now?", and they
 split cleanly into two kinds: the ones that ASK the tool that owns the
 dependency graph, and the ones that GUESS an input set by hand. Every recurring
@@ -364,7 +364,7 @@ asserting the probe FAILS when an input it claims to watch is changed.
 
 ---
 
-## Next W5-class site — `zpico_c_source_newer` (specified 2026-08-17, NOT implemented)
+## The site the sweeps found — `zpico_c_source_newer` (LANDED 2026-08-17)
 
 Found by sweeping the W5 class the way W2 and W3 were swept. It is the same
 shape three times over, in one function:
@@ -398,12 +398,26 @@ today**, though cargo names it an input. CLAUDE.md separately records those
 files as carrying the `rerun_if_env_changed` lists of issue 0491, which is the
 same class in the env dimension.
 
-**Deliberately left unimplemented here.** This probe gates every zenoh cmake
-fixture; getting it wrong yields either mass false-STALE or mass museum
-binaries, and this phase's own W4 found two silent-shrink defects in its
-extractor when it did the equivalent work. It wants its own change with mutation
-tests, not an end-of-sweep edit. The finding is recorded with the evidence so
-the next pass starts from a measurement rather than a re-sweep.
+**LANDED with the mutation tests it was held back for.** The probe now reads the
+`cargo:rerun-if-changed` lines cargo stored, and the hand-authored walk survives
+only as a BOOTSTRAP for a tree with no build-script output yet — over-broad,
+therefore failing safe, which is the same reasoning W4 records for needing a
+pre-build answer.
+
+Three properties the measured path has to get right, each asserted:
+
+* a recorded entry may be a DIRECTORY (`…/include`), and cargo means "anything
+  under it" — the shape the old walk could not express;
+* no extension filter on this path: cargo named it an input, so what it IS
+  matters less than that it changed;
+* both `cargo:` and `cargo::` prefixes — the `cc` crate still emits the legacy
+  one, and a probe knowing only the modern spelling records nothing, silently.
+
+Five mutations, all caught: drop the legacy prefix, ignore directory inputs,
+drop the in-repo filter, and cap the search depth at 0 and at 4. `MAX_DEPTH` is
+measured rather than chosen — the `zpico-sys-*` dir sits at recursion depth 5 in
+a real corrosion layout (4 fails, 5 passes), and the shipped 8 is that bound plus
+headroom. An earlier draft of that comment said "six levels", counted by eye.
 
 ### Why some leaves churned on every sync, and why a gate on it was wrong
 
@@ -444,3 +458,24 @@ stopped it.
 * **Not touching `rerun-if-env-changed`.** Issue 0491 is the same class in the
   ENV dimension and has its own gate (`check-path-env-fingerprints`); folding it
   in here would blur two acceptance criteria.
+
+## What remains, stated plainly
+
+One guess survives on purpose: `zpico_c_source_newer`'s walk over
+`zpico-sys/c`, reached only when no `zpico-sys-*/output` exists under the build
+dir — a tree whose fixture has never been built by cargo. It is over-broad and
+fails SAFE, and removing it would trade a rare false-STALE for a rare museum
+binary, which is the worse direction.
+
+Everything else the thesis names is measured: bindgen reports what it read (W1),
+cmake re-globs (W2), signatures enumerate through the git index with no type
+filter (W3), every builder contributes its own dependency record (W4), and the
+zephyr and zpico probes read those records rather than a candidate list (W5 and
+above). The CLI's own predicate keeps a filter BY DESIGN — it watches whole
+crate dirs, so an unfiltered rule would stale the CLI on a fixture edit — and
+that filter is now asserted rather than trusted.
+
+The phase is complete. What it leaves behind is a habit rather than a backlog:
+each of the three re-sweeps found a site the original wave had missed, always in
+a sibling file, so the next person to touch a freshness check should re-run the
+sweep for its class rather than trust that the class was closed.
