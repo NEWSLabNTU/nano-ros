@@ -59,12 +59,13 @@ bytes, one fat pointer). The assert is right; its remedy text names knobs that c
 #0663's interface tier, NOT caused by it (untouched `workspaces/cpp` trees show the same split). See
 `0665-*`. (2026-08-17)
 
-**#0664** (rmw/cyclonedds, open 2026-08-17) — the three ThreadX-RV64 Cyclone cells build and RUN for the first
-time (see #0663) and all three fail identically: the image boots, brings up NetX + virtio, reaches
-`c_app_main`, prints its banner, and never creates a subscriber. `Domain ID: 128` is neither the
-`NROS_DOMAIN_ID` default nor one of the 50–58 the fixture pairs bake — measure that first. They had been
-skipping on every host that did not hand-build the dev `idlc`, and `sdk-tiers.md` still calls them
-experimental while the lane builds them by default. See `0664-*`. (2026-08-17)
+Recently resolved (2026-08-17): **#0664** — the three ThreadX-RV64 Cyclone cells were not hanging, they were
+ABORTING: CycloneDDS's thread bootstrap reaches libgcc's emulated TLS, and `__emutls_get_address` calls plain
+`malloc` and `abort()`s on NULL — which #0657's `_sbrk` always returned. A gdb stub named it in six frames
+after the symptom ("never creates a subscriber") had pointed two calls too late. `.heap` now reserves 64 KiB
+and `_sbrk` is a bump allocator over it; emutls's caller is compiler-emitted, so the byte pool cannot serve
+it. All four `threadx_riscv64_qemu` tests pass (C, C++, Rust). `Domain ID: 128` was a red herring — it is
+deliberate SPDP separation. See `archived/0664-*`. (2026-08-17)
 
 Recently resolved (2026-08-17): **#0663** — `nros setup --tool cyclonedds` installs `idlc` and nothing put it
 on PATH, so every Cyclone lane skipped and told the user to run an IN-REPO dev recipe. Third instance of one
