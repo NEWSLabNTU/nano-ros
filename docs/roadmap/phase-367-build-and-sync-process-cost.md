@@ -148,18 +148,103 @@ evidence: removing 163 failed lookups moved wall clock by ~2 ms.
 | `wait4` per sync | 88 calls | **8** |
 | `execve` per sync | 770 | **38** |
 
-## W3 — the last cross-driver sync repeats need a freshness stamp (OPEN)
+## W3 — the last cross-driver sync repeats (OPEN, design explored 2026-08-17)
 
-Issue 0649 took the census from 185 invocations to 101 for 69 targets. The
-remaining 32 are all 2–4× and ACROSS drivers — `regenerate-bindings.sh`, both
-fixture pre-passes, `just/native.just` — each legitimately ensuring its own
-precondition in a separate process.
+### The opportunity, measured after W1/W2/W5
 
-Removing them needs a cross-process stamp: "this workspace's msg inputs have not
-changed since the last sync". **This is a design step, not a hoist.** A wrong
-digest leaves a stale `generated/` compiling against the wrong shape, which is
-what phase-214.J was about; today's `nros_codegen_stamp_check_or_wipe` gates the
-WIPE, not the sync. Wave 3 is the digest and its gate, not the plumbing.
+The 32 remaining repeats are all 2–4x and ACROSS drivers — `regenerate-bindings.sh`,
+both fixture pre-passes, `just/native.just` — each legitimately ensuring its own
+precondition in a separate process. A warm sync is now **0.070 s**, so:
+
+```
+32 redundant invocations x 0.070 s   =  2.2 s
+native fixture build (warm)          =  144 s
+                                        -> 1.5 %
+```
+
+**That number is the first thing any W3 design has to justify itself against**,
+and it did not exist when the wave was written: W1/W2/W5 cut a warm sync from
+1.24 s to 0.070 s, which took the prize down with it.
+
+### Why the original framing is the wrong shape
+
+W3 was written as "a cross-process freshness stamp over the workspace's msg
+inputs". Two findings argue against it:
+
+**The input surface is wide and partly outside the workspace.** Sync reads
+`package.xml` files, `msg`/`srv`/`action` definitions, `system.toml`, launch
+files, `Cargo.toml` dep tables, board descriptors, the CLI itself, AND the
+resolved ament install under `/opt/ros`. A digest that misses one arm is a
+stale `generated/` compiling against the wrong shape — phase-214.J — and the
+ament arm in particular cannot be hashed cheaply.
+
+**The expensive sub-steps are ALREADY guarded, one level down.** Metadata
+sidecars carry a provenance digest (`sidecar_is_fresh`, issue 0641's negative
+marker beside it); codegen has `nros_codegen_stamp_check_or_wipe`; the probe has
+its own cache. That is why a warm sync is 70 ms and not seconds. **A whole-sync
+digest would therefore duplicate guards that already exist, to skip
+orchestration rather than work** — taking on the widest possible correctness
+risk for the narrowest possible saving.
+
+### What the 70 ms actually is
+
+```
+wait4     48 %   7 subprocesses — FIVE of them the CLI source stamp, plus rustc -vV
+statx/newfstatat/openat  ~29 %   the workspace scan and the freshness checks above
+```
+
+Isolated by bypassing the guard:
+
+```
+warm sync                     0.069 s
+warm sync, stale check off    0.048 s   -> the source stamp is 21 ms, ~30 %
+```
+
+The CLI source stamp runs at process entry for EVERY `nros` invocation, and its
+answer is identical across all 101 in a build — the CLI does not change mid-run.
+
+### Option A — content digest over msg inputs (the original framing)
+
+Skip sync entirely for the 32 repeats. **~2.2 s.** Rejected as written: the
+input surface above, against a saving that is 1.5 % of a build.
+
+### Option B — a run-scoped verification memo
+
+Not a claim about the workspace at all: a claim about the RUN. A driver that has
+already verified the CLI at the head of a build exports the verdict, and child
+`nros` invocations skip re-deriving it.
+
+* **~2.1 s** (21 ms x 101), i.e. the same order as Option A, and it applies to
+  every invocation rather than only the repeats.
+* The claim is narrow and already made elsewhere — `check-tier-preconditions`
+  verifies the CLI at the head of `just ci` precisely so the rest of the run can
+  rely on it. This makes that reliance explicit instead of re-proving it 101
+  times.
+* Failure mode is bounded and diagnosable: if someone edits a CLI source
+  mid-build without rebuilding, the memo says fresh when the stamp would say
+  stale. That is a strictly smaller and more legible hazard than a stale
+  `generated/`, and `NROS_SKIP_STALE_CHECK` already exists as the same trade
+  taken manually.
+* The memo must be keyed to ONE build run, never persisted — a stamp cached
+  across runs is the museum-CLI failure the guard exists for (issue 0363).
+
+### Option C — close W3
+
+Take the 1.5 %. The waves that mattered are landed; what remains is orchestration
+overhead already reduced 18x per invocation.
+
+### Recommendation
+
+**B, or C — not A.** A is the only option that risks a stale `generated/`, and it
+buys no more than B. If B is taken, the export belongs to the drivers that
+already run `check-tier-preconditions`, so the assertion and the reliance sit in
+one place; `rustc -vV` (one spawn per invocation, also constant per run) can ride
+the same mechanism.
+
+Whichever is chosen, the phase's rule applies: measure the build before and
+after, not the sync. A 2 s change inside a 144 s build is exactly the size that
+wall-clock noise on this host (issue 0509: 50–695 s for identical work) cannot
+resolve, so the acceptance has to be an invocation COUNT or a syscall count.
 
 ## W4 — a configure failure stops taking the whole workspace down (LANDED)
 
