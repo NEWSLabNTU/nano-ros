@@ -13,7 +13,7 @@ use super::arena::{
 };
 #[cfg(feature = "rmw-cffi")]
 use super::types::ExecutorConfig;
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 use super::types::SpinOptions;
 use super::{
     arena::{
@@ -6392,7 +6392,13 @@ impl<'s> Executor<'s> {
 // `Arc`. Gating the BLOCK rather than the items made a no_std image unable to
 // stop its own executor — `ExecutorNodeRuntime::spin` carried a matching `std`
 // gate for no reason but this one.
-#[cfg(feature = "std")]
+// phase-359 W10 — `alloc`, not `std`. The wall-clock spin loops were the
+// reason this block was std-gated: `Instant` for the deadline and
+// `thread::sleep` for the pacing. Both now go through the platform — the
+// executor's own `now_us()` and `nros_platform_sleep_us` — so a no_std
+// image can run the same blocking loops a hosted one does instead of
+// hand-rolling them in its BSP.
+#[cfg(feature = "alloc")]
 impl<'s> Executor<'s> {
     /// Blocking spin loop with configurable exit conditions.
     ///
@@ -6415,13 +6421,19 @@ impl<'s> Executor<'s> {
     /// executor.spin_blocking(SpinOptions::spin_once())?;
     /// ```
     pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
-        use core::time::Duration;
-        use std::time::Instant;
-
         const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
-        let start = Instant::now();
-        let timeout = opts.timeout_ms.map(Duration::from_millis);
+        // phase-359 W10 — the executor's own clock, not `Instant`. `now_us()`
+        // reads the platform monotonic counter wherever a port is linked and an
+        // `Instant` only where one is not, so this loop no longer needs `std`
+        // to know how long it has been running.
+        //
+        // `None` means this build has NO clock at all. A timeout cannot be
+        // honoured then, and pretending otherwise would exit immediately or
+        // never; the honest reading is "no deadline", which is what an
+        // untimed `spin_blocking` already is.
+        let start_us = self.now_us();
+        let timeout_us = opts.timeout_ms.map(|ms| ms as u64 * 1_000);
         let mut total_callbacks = 0usize;
 
         self.halt_flag
@@ -6432,7 +6444,11 @@ impl<'s> Executor<'s> {
                 break;
             }
 
-            if timeout.is_some_and(|t| start.elapsed() >= t) {
+            if let (Some(start), Some(limit)) = (start_us, timeout_us)
+                && self
+                    .now_us()
+                    .is_some_and(|now| now.saturating_sub(start) >= limit)
+            {
                 break;
             }
 
@@ -6469,12 +6485,18 @@ impl<'s> Executor<'s> {
         &mut self,
         period: core::time::Duration,
     ) -> super::types::SpinPeriodResult {
-        let start = std::time::Instant::now();
+        let start_us = self.now_us();
         let result = self.spin_once(period);
-        let elapsed = start.elapsed();
+        // With no clock there is nothing to measure and nothing to sleep off;
+        // report zero elapsed and no overrun, which is what an unmeasured
+        // period is.
+        let elapsed = start_us
+            .zip(self.now_us())
+            .map(|(s, e)| core::time::Duration::from_micros(e.saturating_sub(s)))
+            .unwrap_or_default();
         let overrun = elapsed > period;
-        if !overrun {
-            std::thread::sleep(period - elapsed);
+        if !overrun && start_us.is_some() {
+            platform_sleep(period - elapsed);
         }
         super::types::SpinPeriodResult {
             work: result,
@@ -6498,7 +6520,12 @@ impl<'s> Executor<'s> {
     pub fn spin_period(&mut self, period: core::time::Duration) -> Result<(), NodeError> {
         self.halt_flag
             .store(false, core::sync::atomic::Ordering::SeqCst);
-        let mut next_invocation = std::time::Instant::now() + period;
+        let period_us = period.as_micros().min(u64::MAX as u128) as u64;
+        // Absolute next-deadline in the executor's own clock. `None` = this
+        // build has no clock, so there is no pacing to do and the loop runs as
+        // fast as `spin_once` returns — the same thing the old code would have
+        // done with a clock that never advanced.
+        let mut next_us = self.now_us().map(|n| n + period_us);
 
         loop {
             if self.halt_flag.load(core::sync::atomic::Ordering::SeqCst) {
@@ -6507,16 +6534,22 @@ impl<'s> Executor<'s> {
 
             self.spin_once(period);
 
-            let now = std::time::Instant::now();
-            if now < next_invocation {
-                std::thread::sleep(next_invocation - now);
+            if let Some(next) = next_us {
+                if let Some(now) = self.now_us()
+                    && now < next
+                {
+                    platform_sleep(core::time::Duration::from_micros(next - now));
+                }
+                // Accumulate to prevent drift (not = now + period)
+                next_us = Some(next + period_us);
             }
-            // Accumulate to prevent drift (not = now + period)
-            next_invocation += period;
         }
         Ok(())
     }
+}
 
+#[cfg(feature = "alloc")]
+impl<'s> Executor<'s> {
     /// Phase 110.D.b — move this Executor onto a fresh OS thread,
     /// apply a per-thread scheduling policy via the caller-supplied
     /// `apply_policy` function, and run the spin loop until
@@ -6542,7 +6575,7 @@ impl<'s> Executor<'s> {
     /// and that no other thread mutates the session concurrently.
     /// `from_session` (Owned) is safer — `ConcreteSession` ownership
     /// transfers cleanly into the thread.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub unsafe fn open_threaded(
         self,
         policy: nros_platform_api::SchedPolicy,
@@ -6558,29 +6591,48 @@ impl<'s> Executor<'s> {
         's: 'static,
     {
         let halt = self.halt_flag.clone();
-        // SAFETY: Send is asserted via `unsafe impl Send for Executor`
-        // below; the caller's safety contract on `from_session_ptr`
-        // covers the pointer-validity invariant.
-        let mut executor = self;
-        let join = std::thread::spawn(move || {
-            // Apply the requested OS scheduling policy to this fresh
-            // thread. Failure is reported but not propagated — a
-            // runtime that fails to lift to SCHED_FIFO still spins
-            // correctly at SCHED_OTHER (just without RT guarantees).
-            let _ = apply_policy(policy);
-            while !executor.is_halted() {
-                executor.spin_once(spin_period);
-            }
-        });
+        // phase-359 W10 — a platform task, not `std::thread`. The two other
+        // executor-owned workers moved earlier; this is the third and last, and
+        // it is the one the ABI fits best: `open_threaded` exists to give a
+        // spin loop an OS SCHEDULING POLICY, which is not something a build
+        // without an OS was ever going to get from `std`.
+        //
+        // The closure becomes a heap context because the entry point crosses C
+        // as `*mut c_void`. It is reclaimed by the trampoline on exit rather
+        // than leaked: unlike a tier task, this loop RETURNS — that is what
+        // `halt` is for.
+        let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(ThreadedCtx {
+            executor: self,
+            policy,
+            apply_policy,
+            spin_period,
+        }));
+        // SAFETY: `ctx` stays live until the trampoline reclaims it, which
+        // happens on the spawned task and only after the loop exits.
+        let task = unsafe {
+            super::platform_task::PlatformTask::spawn(
+                threaded_spin_trampoline,
+                ctx as *mut core::ffi::c_void,
+                OPEN_THREADED_STACK_BYTES,
+                c"nros-exec".as_ptr(),
+            )
+        };
+        let Some(task) = task else {
+            // The platform refused (or cannot size) a task. Reclaim the
+            // context and hand back a handle that owns nothing — `halt` and
+            // `join` stay callable, which keeps the caller's shape identical to
+            // the success path.
+            //
+            // SAFETY: nothing was spawned, so this pointer has no other owner.
+            drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
+            return ThreadHandle { task: None, halt };
+        };
         ThreadHandle {
-            join: Some(join),
+            task: Some(task),
             halt,
         }
     }
-}
 
-#[cfg(feature = "alloc")]
-impl<'s> Executor<'s> {
     /// Request the executor to stop spinning.
     ///
     /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
@@ -6702,13 +6754,52 @@ impl Drop for OpaqueTimerHandle {
 /// spawned thread's join handle and a clone of the executor's halt
 /// flag. Drop runs `halt() + join()` so the thread can't outlive the
 /// handle.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 pub struct ThreadHandle {
-    join: Option<std::thread::JoinHandle<()>>,
+    task: Option<super::platform_task::PlatformTask>,
     halt: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
 }
 
-#[cfg(feature = "std")]
+/// Default stack for an `open_threaded` spin loop. `std::thread`'s default was
+/// 2 MiB; the executor's own storage is caller-carved and lives elsewhere, so
+/// this carries call frames only — the same reasoning (and size) as the NuttX
+/// tier spawn, which measured this against a real RTOS default.
+#[cfg(feature = "alloc")]
+const OPEN_THREADED_STACK_BYTES: usize = 65536;
+
+/// What [`Executor::open_threaded`] hands its task, in place of a closure's
+/// captures. Owned by the trampoline, which reclaims it when the loop exits.
+#[cfg(feature = "alloc")]
+struct ThreadedCtx {
+    executor: Executor<'static>,
+    policy: nros_platform_api::SchedPolicy,
+    apply_policy: fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>,
+    spin_period: core::time::Duration,
+}
+
+/// The spawned spin loop.
+///
+/// # Safety
+/// `arg` must be the `Box<ThreadedCtx>` raw pointer `open_threaded` created,
+/// passed exactly once.
+#[cfg(feature = "alloc")]
+unsafe extern "C" fn threaded_spin_trampoline(
+    arg: *mut core::ffi::c_void,
+) -> *mut core::ffi::c_void {
+    // SAFETY: the caller's contract — this is the pointer `open_threaded`
+    // leaked, and the task is the only consumer of it.
+    let mut ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut ThreadedCtx) };
+    // Apply the requested OS scheduling policy to this fresh task. Failure is
+    // reported but not propagated — a runtime that fails to lift to SCHED_FIFO
+    // still spins correctly at SCHED_OTHER (just without RT guarantees).
+    let _ = (ctx.apply_policy)(ctx.policy);
+    while !ctx.executor.is_halted() {
+        ctx.executor.spin_once(ctx.spin_period);
+    }
+    core::ptr::null_mut()
+}
+
+#[cfg(feature = "alloc")]
 impl ThreadHandle {
     /// Signal the spawned executor thread to stop. The thread exits
     /// on its next `spin_once` iteration.
@@ -6716,23 +6807,35 @@ impl ThreadHandle {
         self.halt.store(true, core::sync::atomic::Ordering::SeqCst);
     }
 
-    /// Wait for the spawned thread to exit. Returns the join result.
-    /// After `join`, calling it again is a no-op (returns `Ok(())`).
-    pub fn join(mut self) -> std::thread::Result<()> {
+    /// Wait for the spawned task to exit. After `join`, calling it again is a
+    /// no-op.
+    ///
+    /// phase-359 W10 — was `std::thread::Result<()>`, which carried a panic
+    /// payload this can no longer produce: a platform task has no unwinding
+    /// join. Same two outcomes, an error type that does not require `std` —
+    /// the trade `signal_fd` already made in this campaign. `NotInitialized`
+    /// means the platform refused to host the task at spawn time — nothing was
+    /// started, so there is nothing to wait for. (An existing variant rather
+    /// than a new one: `NodeError` is mapped across the C and C++ FFI, so a new
+    /// variant is a gate-checked ABI change and this needs no new meaning.)
+    pub fn join(mut self) -> Result<(), NodeError> {
         self.halt();
-        match self.join.take() {
-            Some(j) => j.join(),
-            None => Ok(()),
+        match self.task.take() {
+            Some(t) => {
+                t.join();
+                Ok(())
+            }
+            None => Err(NodeError::NotInitialized),
         }
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 impl Drop for ThreadHandle {
     fn drop(&mut self) {
         self.halt.store(true, core::sync::atomic::Ordering::SeqCst);
-        if let Some(j) = self.join.take() {
-            let _ = j.join();
+        if let Some(t) = self.task.take() {
+            t.join();
         }
     }
 }
@@ -6743,7 +6846,10 @@ impl Drop for ThreadHandle {
 // `unsafe fn open_threaded` entry point documents the safety
 // contract for Borrowed sessions; for Owned sessions the Send claim
 // is unconditional.
-#[cfg(feature = "std")]
+// phase-359 W10 — `alloc`, not `std`: this assertion exists for
+// `open_threaded`, which now hands the executor to a PLATFORM task. The
+// crossing is the same one; only the thing doing the crossing changed.
+#[cfg(feature = "alloc")]
 unsafe impl<'s> Send for Executor<'s> {}
 
 // =============================================================================
@@ -7143,6 +7249,29 @@ fn default_platform_clock_us() -> u64 {
     // still microseconds (`clock_us_fn`, `delta_us`), so the division lives
     // here rather than being pushed into every port.
     unsafe { nros_platform_clock_ns() / 1_000 }
+}
+
+/// Sleep, through the platform ABI.
+///
+/// phase-359 W10 — the spin loops used `std::thread::sleep`. Every port already
+/// exports `nros_platform_sleep_us` (the ABI's own pacing primitive, the one an
+/// RTOS build has always used), so a hosted loop and an embedded one now pace
+/// the same way. The µs entry point is used rather than `_ms` because
+/// `spin_one_period_timed` sleeps off a remainder, which rounds badly at
+/// millisecond granularity on short periods.
+#[cfg(feature = "alloc")]
+fn platform_sleep(d: core::time::Duration) {
+    unsafe extern "C" {
+        fn nros_platform_sleep_us(us: usize);
+    }
+    let us = d.as_micros().min(usize::MAX as u128) as usize;
+    if us == 0 {
+        return;
+    }
+    // SAFETY: a bare pacing call with no pointer arguments, guaranteed by
+    // whichever port linked the binary — the same contract the clock and wake
+    // symbols in this file already rely on.
+    unsafe { nros_platform_sleep_us(us) }
 }
 
 /// A monotonic µs reader, or `None` when this build has no clock at all.

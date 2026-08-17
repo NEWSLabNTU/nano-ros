@@ -58,8 +58,18 @@ pub(crate) mod os_priority;
 // `-D warnings`.
 #[cfg(all(
     feature = "alloc",
-    feature = "rmw-cffi",
-    any(feature = "scheduler-os-priority", feature = "signal-fd-wake")
+    // phase-359 W10 — `open_threaded` is a third consumer and it is NOT
+    // feature-selected: any `alloc` build can call it. The `rmw-cffi` and
+    // worker-feature conditions came from the first two consumers; the module
+    // itself only ever needed an allocator and the ABI symbols, which every
+    // final artifact links anyway (nros-node's own dev-deps pull the POSIX
+    // port, which is how the unit tests exercise this).
+    any(
+        feature = "rmw-cffi",
+        feature = "scheduler-os-priority",
+        feature = "signal-fd-wake",
+        test
+    )
 ))]
 pub(crate) mod platform_task;
 #[cfg(any(has_rmw, test))]

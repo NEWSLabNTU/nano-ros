@@ -166,7 +166,15 @@ BASELINE = {
     #
     # path 33 -> 34 is that trade paid once: `Instant` survives in exactly one
     # function, the `std`-without-a-port reader for mock-session tests.
-    "nros-node": {"cfg": 47, "path": 34},
+    #
+    # phase-359 W10: 47 -> 39 cfg, 34 -> 25 path. The THREAD and SPIN-LOOP
+    # cluster. `open_threaded` spawns a platform task instead of a
+    # `std::thread` (the third and last executor-owned worker to move), and
+    # `spin_blocking` / `spin_period` / `spin_one_period_timed` pace on the
+    # executor's own `now_us()` plus `nros_platform_sleep_us` instead of
+    # `Instant` + `thread::sleep`. `SpinOptions` and `SpinPeriodResult` follow
+    # them onto `alloc`.
+    "nros-node": {"cfg": 39, "path": 25},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

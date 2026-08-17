@@ -86,11 +86,15 @@ pub struct SpinPeriodPollingResult {
 // SpinPeriodResult (std only)
 // ============================================================================
 
-/// Result from a single period with wall-clock measurement (`std` only).
+/// Result from a single period with monotonic-clock measurement.
 ///
 /// Contains the work performed, whether processing exceeded the period
-/// (overrun), and the actual wall-clock processing time.
-#[cfg(feature = "std")]
+/// (overrun), and the actual measured processing time.
+///
+/// phase-359 W10 — was "(`std` only)". The measurement is the executor's own
+/// clock now, so a no_std image gets the same result type its hosted sibling
+/// does; `elapsed` is zero on a build with no clock at all.
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub struct SpinPeriodResult {
     /// Work performed during this period

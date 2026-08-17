@@ -56,6 +56,19 @@
 
 #![no_std]
 
+// phase-359 W10 — force the POSIX platform port into the UNIT-TEST link.
+//
+// `nros-platform-cffi` (with `posix-c-port`) is a host dev-dependency, but a
+// dev-dep is only LINKED if something references the crate, and nothing in this
+// crate's `src/` does — it reaches the platform through bare `extern "C"`
+// declarations. So the C objects were never pulled in and every
+// `nros_platform_*` symbol was undefined at test-link time, which is why
+// `open_threaded`'s tests could not be run against a platform task until now.
+// Issue 0612 records the same shape for `tests/signal_fd_wake.rs`, which this
+// does NOT fix: that is a separate integration binary with its own link.
+#[cfg(test)]
+extern crate nros_platform_cffi as _;
+
 // Phase 248 (C2) — `nros-rmw-cyclonedds[-sys]` deps removed (issue #60,
 // Tier 1). Per-type descriptor registration is now the generic
 // `nros_rmw::register_type_descriptor` seam (see `rmw_type_registry`);
