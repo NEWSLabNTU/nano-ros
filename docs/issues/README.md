@@ -224,6 +224,18 @@ cell's `.platform`), refusing anything in neither; each exemption carries a reas
 Three plausible fixes had been weighed before the cause was found, and all three were wrong.
 See `archived/0630-*`.
 
+**#660** (build/testing, open 2026-08-17) — phase-362 W4 retired the vendored router and deleted the
+`build-zenohd` recipe, but left **twelve callers**: nine in `just/native.just` (`test`, `test-large-msg`,
+`test-rmw`, `test-ros2`, `test-ros2-params`, `test-ros2-lifecycle`, `test-native-api`, `test-c`, `test-cpp`),
+one in `qemu-baremetal.just`, two in `zephyr-dev.just`. `just` resolves a recipe reference only when the recipe
+RUNS, so nothing failed at parse time and each of the twelve now dies immediately:
+`error: Justfile does not contain recipe \`build-zenohd\``. No gate covers the class — `just check` never
+invokes them, `ci` runs `test-all` instead, and `check-doc-refs` is docs-only — so tier 1 is green with all
+twelve broken. The fix is per-lane rather than mechanical: under RFC-0075 the router comes from ROS, and
+`ZenohRouter` is the only sanctioned spawner (#0573), so most sites probably just lose the line — but
+`qemu-baremetal` and `zephyr-dev` are not the interop lanes phase-362 W1 converted. Worth a gate: `just
+--summary` knows every recipe name and `just <name>` in a body is greppable. See `0660-*`.
+
 **#644** (build, open 2026-08-16) — the threadx-linux talker was DECLARED `no_std` by phase-359 W10 and
 never was: `nros`'s `env` capability listed `"std"`, so std arrived through the graph and supplied both the
 `#[global_allocator]` AND the `#[panic_handler]`. Removing that grant made it visible. The allocator half
