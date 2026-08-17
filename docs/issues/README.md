@@ -81,6 +81,36 @@ cmake, `NROS_RISCV64_PREFIX`, SDK store before PATH), plus the four libc assumpt
 via NetX's `NX_RAND`, no `-lc` from a newlib toolchain, `_sbrk`, picolibc-only stdio in `startup.c`). Rust
 half VERIFIED end to end (a real riscv64 ELF); the C/C++ half still fails to link because compiler_builtins'
 C fallback `bswapsi2.o` comes out soft-float — the issue records what has been ruled out. See `0657-*`.
+
+Recently resolved (2026-08-17): **#658** — five tier-2 reds were lane SKIPS. Each of five matrix
+aggregators tested `msg.contains("[SKIPPED]")` — the BARE marker — so every CLASSED skip
+(`[SKIPPED:lane]`, #584) was filed as a FAILED cell, and by the time it reached junit the marker sat
+nested in an aggregate panic where the rewriter's start-anchored match (correctly) cannot look. The
+same literal had been fixed once before in the rewriter itself; it returned because no shared helper
+existed. Now `nros_tests::skip_marker` (one Rust spelling, mirroring the Python), the five sites
+routed through it, `check-skip-marker-matching` in check-fast, and a reporter that NAMES a nested
+marker instead of letting it read as real. Same change closed the px4 half: `px4/rust/companion/*`
+has no manifest row, so it could never be lane-skipped and reported STALE in every narrowed lane —
+both accessors now state their coordinate via `require_coord_in_lane`. Tier-2 reds 9 -> 2, and the
+last two are one QEMU red and one load flake that passes solo. See `archived/0658-*`. (2026-08-17)
+
+**#656** — the raw action register path declares every channel on domain 0 whatever `ROS_DOMAIN_ID`
+says. A C action server started with `ROS_DOMAIN_ID=42` prints `Domain ID: 42` and then declares
+`0/fibonacci/_action/send_goal/…`: `register_action_{server,client}_raw*` never passes a domain, and
+the typed path spells it `.with_domain(0)` outright. So actions are not domain-isolated at all, and
+a cross-binding pair silently fails to discover whenever one side honours the domain and the other
+does not — which is how it was found (phase-354 W3's polling probe vs the executor-mode C server).
+Invisible until now because every existing action test agreed on `0/` on both sides. See `0656-*`.
+(2026-08-17)
+
+Recently resolved (2026-08-17): **#454** — the two `*_send_goal_raw` FFIs (`nros-c` + `nros-cpp`) took a
+param named `goal_cdr` and passed it through unstripped, so a caller would ship the #448 double
+encapsulation. LATENT only because NOTHING called them — no example, no fixture, no test — which is
+also why phase-354 W3's acceptance (a wire demonstration) took the work: the caller had to be built.
+`bins/action-raw-goal-probe` + `action_raw_goal_e2e.rs` now assert on the SERVER's decoded order;
+falsified by reverting the strip (server reads 256, not the predicted 65536). Writing the caller
+found two more: the polling arms never got phase-338 W3's channel-type fix (fixed at all six
+remaining sites), and actions ignore `ROS_DOMAIN_ID` (issue 656, open). See `archived/0454-*`.
 (2026-08-17)
 
 Recently resolved (2026-08-16): **#0650** — a fixture lane that skipped every step still printed
@@ -2399,13 +2429,6 @@ when the sweep finds 11 (third recurrence of the shape this issue documents), an
 is line-based, so 8 of its hits are false positives on multi-line `format!(` calls that DO carry a pid.
 Verified: 512 lib tests, three CONCURRENT suites clean, `check-cli-tests` 975 tests, clippy `-D warnings`.
 See `archived/0455-*`.
-**#454** — the two `*_send_goal_raw` FFIs (`nros-c` + `nros-cpp`) take a param named `goal_cdr` —
-the same name their STRIPPING siblings use for `[CDR_HEADER][fields]` input — and pass it through
-untouched, while every non-`_raw` sibling calls `strip_cdr_header`. `PollingActionClient::send_goal`
-feeds `ffi_serialize` output (which carries a header) straight into one, so it would ship the #448
-double encapsulation verbatim. LATENT, not live: `PollingActionClient` has no consumer anywhere and
-neither `_raw` is called from `examples/` or `packages/testing/` — which is exactly why nothing
-caught it. Found by sweeping the #448 class rather than by a failure. See `0454-*`. (2026-08-06)
 
 Recently resolved (2026-08-07): **#453** — no native action cell could prove the goal payload was
 DELIVERED: the cells asserted only `ACTION_RESULT_PREFIX`, which a client prints even when it decoded a

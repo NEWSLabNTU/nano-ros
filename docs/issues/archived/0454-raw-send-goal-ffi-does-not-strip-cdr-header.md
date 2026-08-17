@@ -1,10 +1,10 @@
 ---
 id: 454
 title: "the `*_send_goal_raw` C/C++ FFIs take a param named `goal_cdr` but never strip its header, so `PollingActionClient` would ship the #448 double encapsulation"
-status: open
+status: resolved
 type: bug
 area: api
-related: [issue-0448, issue-0418, rfc-0069]
+related: [issue-0448, issue-0418, issue-0656, rfc-0069, phase-354]
 ---
 
 ## The inconsistency
@@ -83,3 +83,26 @@ nobody can infer from the signature.
 **Whichever is chosen, it needs a consumer to verify.** The reason this sat
 undetected is that no test instantiates `PollingActionClient` at all; fixing the
 strip without adding a cell would just move an unverified claim.
+
+## Resolved 2026-08-17 (phase-354 W3)
+
+Both FFI arms strip: `core.send_goal_raw(strip_cdr_header(slice))` in
+`nros-c/src/action/client.rs` and `nros-cpp/src/action.rs`. Guarded by
+`scripts/check-goal-cdr-stripped.py`.
+
+The acceptance asked for a WIRE demonstration, and that needed the caller this
+FFI never had — `packages/testing/nros-tests/bins/action-raw-goal-probe`, a
+CMake C leaf with its own `[[fixture]]` row, driven by
+`tests/action_raw_goal_e2e.rs`. It asserts on the C action SERVER's decoded
+order, not the probe's own account.
+
+**Falsified before being trusted.** With the strip removed and rebuilt, the
+server reports order **256** against the 7 sent; restored, the test passes.
+256, not the 65536 this issue's arithmetic would predict — the parsed request is
+`[encap][GoalId(16)][order]`, so the four extra bytes shift the tail rather than
+landing in `order` directly.
+
+Writing the caller surfaced two further defects: the polling arms never received
+phase-338 W3's channel-type fix (fixed in the same change, at all six remaining
+sites), and actions ignore `ROS_DOMAIN_ID` entirely — filed as
+[issue 0656](0656-action-raw-register-ignores-ros-domain-id.md).
