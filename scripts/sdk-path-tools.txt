@@ -1,0 +1,34 @@
+# Provisioned tools that MUST be reachable by BARE NAME — issue 0663.
+#
+# `nros setup --tool <x>` installs into the SDK store
+# (`~/.nros/sdk/<tool>/<version>/bin`). Nothing there is on `PATH` by default,
+# and that is deliberate: the test harness resolves qemu, zenohd and friends
+# through an explicit `build/<tool>` prefix so a stray store copy cannot shadow
+# the one a lane pinned.
+#
+# But some tools are invoked by BARE NAME by something we do not control — an
+# RTOS `make`, a cmake `find_program`, a build script — and for those, "in the
+# store" and "not on PATH" means provisioning succeeded and the step still
+# skipped. That has now happened three times, each found separately:
+#
+#   genromfs   NuttX's rv-virt ROMFS bake calls it (Phase 194.3c)
+#   espflash   `just esp32 build-qemu` packs its flash image by bare name
+#              (issue 0486) — provisioned, and the pack step still skipped
+#   idlc       the CycloneDDS IDL compiler. `nros setup --tool cyclonedds`
+#              installs it (the index builds with BUILD_IDLC=ON), and every
+#              Cyclone fixture lane still skipped with "idlc not found",
+#              telling the user to run the DEV recipe instead (issue 0663)
+#
+# The list lived as a hand-written `[ -x … ] || [ -x … ]` chain in BOTH
+# `activate.sh` and `activate.fish`, and had already drifted: `espflash` was in
+# the bash one and not the fish one, so the same host behaved differently in
+# two shells. One file, read by both.
+#
+# Format: one bare tool name per line; `#` comments and blanks ignored.
+# A cross-gcc needs no entry — both shells detect `*-gcc` in the dir directly.
+
+genromfs
+sccache
+espflash
+zenohd
+idlc

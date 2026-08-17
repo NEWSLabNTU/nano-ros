@@ -262,11 +262,23 @@ if [ -d "$_nros_sdk" ]; then
         # and the pack step still skipped, because nothing put the store bin
         # dir on PATH. Same reason genromfs is here (an RTOS `make` calls it by
         # bare name).
-        if _nros_dir_has_gcc "$_nros_tcbin" \
-            || [ -x "$_nros_tcbin/genromfs" ] \
-            || [ -x "$_nros_tcbin/sccache" ] \
-            || [ -x "$_nros_tcbin/espflash" ] \
-            || [ -x "$_nros_tcbin/zenohd" ]; then
+        # issue 0663 — the list is DATA, in scripts/sdk-path-tools.txt, read by
+        # this file and by activate.fish. It was a hand-written chain in both
+        # and had already drifted (espflash in one, not the other), so the same
+        # host behaved differently depending on the shell.
+        _nros_want=0
+        if _nros_dir_has_gcc "$_nros_tcbin"; then
+            _nros_want=1
+        else
+            while IFS= read -r _nros_tool; do
+                case "$_nros_tool" in ''|\#*) continue ;; esac
+                if [ -x "$_nros_tcbin/$_nros_tool" ]; then
+                    _nros_want=1
+                    break
+                fi
+            done < "$_nros_root/scripts/sdk-path-tools.txt"
+        fi
+        if [ "$_nros_want" = "1" ]; then
             export PATH="$_nros_tcbin:$PATH"
         fi
     done <<EOF

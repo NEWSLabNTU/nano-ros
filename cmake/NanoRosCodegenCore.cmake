@@ -585,6 +585,19 @@ function(_nros_resolve_interface_file target relpath out_var)
             set(${out_var} "${_cand}" PARENT_SCOPE)
             return()
         endif()
+        # issue 0663 — tier 4, the SOURCE tree. The bundled tier above names an
+        # INSTALLED layout (`share/nano-ros/interfaces/`), which a checkout does
+        # not have: in-tree the same files ship at `packages/cli/interfaces/`.
+        # So on a host with no ROS, `std_msgs/msg/String.msg` resolved nowhere
+        # and every CycloneDDS fixture that generates interfaces through cmake
+        # failed — while the files sat in the repo being searched. The compat
+        # stub `_NrosFindRosMsgPackage.cmake` already knew this location; the
+        # tier list did not.
+        set(_cand "${_R_BUNDLED_PREFIX}/packages/cli/interfaces/${target}/${relpath}")
+        if(EXISTS "${_cand}")
+            set(${out_var} "${_cand}" PARENT_SCOPE)
+            return()
+        endif()
     endif()
 endfunction()
 

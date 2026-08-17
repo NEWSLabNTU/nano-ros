@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0664** (rmw/cyclonedds, open 2026-08-17) — the three ThreadX-RV64 Cyclone cells build and RUN for the first
+time (see #0663) and all three fail identically: the image boots, brings up NetX + virtio, reaches
+`c_app_main`, prints its banner, and never creates a subscriber. `Domain ID: 128` is neither the
+`NROS_DOMAIN_ID` default nor one of the 50–58 the fixture pairs bake — measure that first. They had been
+skipping on every host that did not hand-build the dev `idlc`, and `sdk-tiers.md` still calls them
+experimental while the lane builds them by default. See `0664-*`. (2026-08-17)
+
+Recently resolved (2026-08-17): **#0663** — `nros setup --tool cyclonedds` installs `idlc` and nothing put it
+on PATH, so every Cyclone lane skipped and told the user to run an IN-REPO dev recipe. Third instance of one
+bug (genromfs, then espflash — whose own comment describes it), in a hand-written whitelist that existed
+TWICE and had already drifted (`espflash` in bash only, so the same host behaved differently per shell). The
+list is now DATA in `scripts/sdk-path-tools.txt`, read by both shells. Second cause underneath: the interface
+resolver's "bundled" tier names an INSTALLED layout, so a ROS-less checkout could not find `std_msgs` files
+shipped at `packages/cli/interfaces/` — a fourth tier, in the resolver and the GLOB, and named in the error.
+See `0663-*`. (2026-08-17)
+
 Recently resolved (2026-08-17): **#662** — every C/C++ component in `examples/workspaces/features` (16) had no
 source-metadata sidecar and silently used the SystemModel's entity lower bound, because the probe project
 configured with `CMAKE_PREFIX_PATH` = the nano-ros checkout only while the components

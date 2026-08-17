@@ -86,11 +86,25 @@ end
 set -l _nros_sdk (set -q NROS_HOME; and echo $NROS_HOME/sdk; or echo $HOME/.nros/sdk)
 if test -d $_nros_sdk
     for _nros_tcbin in $_nros_sdk/*/*/bin $_nros_sdk/*/bin
-        # Cross-gcc toolchains, plus build host tools the RTOS `make` invokes by
-        # bare name (genromfs — the NuttX rv-virt etc/ ROMFS bake, Phase 194.3c),
-        # and sccache (issue #74) — RUSTC_WRAPPER + the zephyr CMake launcher
-        # auto-use it once on PATH.
-        if test -d $_nros_tcbin; and begin; count $_nros_tcbin/*-gcc >/dev/null 2>&1; or test -x $_nros_tcbin/genromfs; or test -x $_nros_tcbin/sccache; or test -x $_nros_tcbin/zenohd; end
+        # issue 0663 — the tool list is DATA, in scripts/sdk-path-tools.txt,
+        # shared with activate.sh. This copy was a hand-written chain and had
+        # already drifted from the bash one (it lacked `espflash`), so the same
+        # provisioned host behaved differently depending on the shell.
+        set -l _nros_want 0
+        if test -d $_nros_tcbin
+            if count $_nros_tcbin/*-gcc >/dev/null 2>&1
+                set _nros_want 1
+            else
+                for _nros_tool in (string trim (string replace -r '#.*' '' < $_nros_root/scripts/sdk-path-tools.txt))
+                    test -n "$_nros_tool"; or continue
+                    if test -x $_nros_tcbin/$_nros_tool
+                        set _nros_want 1
+                        break
+                    end
+                end
+            end
+        end
+        if test $_nros_want -eq 1
             set -gx PATH $_nros_tcbin $PATH
         end
     end

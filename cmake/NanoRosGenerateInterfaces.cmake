@@ -201,6 +201,7 @@ function(nros_generate_interfaces target)
           "    ${CMAKE_CURRENT_SOURCE_DIR}/${_relpath}\n"
           "    AMENT_PREFIX_PATH/share/${target}/${_relpath}\n"
           "    ${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/${_relpath}\n"
+          "    ${_NANO_ROS_PREFIX}/packages/cli/interfaces/${target}/${_relpath}\n"
           "  Hint: check the file path or set AMENT_PREFIX_PATH.")
       endif()
       list(APPEND _interface_files "${_abs_path}")
@@ -237,6 +238,18 @@ function(nros_generate_interfaces target)
       file(GLOB _bundled_srv CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/srv/*.srv")
       file(GLOB _bundled_action CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/action/*.action")
       list(APPEND _interface_files ${_bundled_msg} ${_bundled_srv} ${_bundled_action})
+    endif()
+
+    # 4. Source tree — issue 0663. Same fact as tier 3, different layout: the
+    # bundled path is where an INSTALL puts these files, `packages/cli/interfaces`
+    # is where the checkout ships them. Without this a ROS-less source tree
+    # found no `std_msgs` at all, and the error listed three paths none of which
+    # was the one holding the file.
+    if(NOT _interface_files)
+      file(GLOB _src_msg CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${target}/msg/*.msg")
+      file(GLOB _src_srv CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${target}/srv/*.srv")
+      file(GLOB _src_action CONFIGURE_DEPENDS "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${target}/action/*.action")
+      list(APPEND _interface_files ${_src_msg} ${_src_srv} ${_src_action})
     endif()
 
     if(NOT _interface_files)

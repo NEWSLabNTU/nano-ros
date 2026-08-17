@@ -84,8 +84,11 @@ doctor:
         echo "  [OK] idlc (project): $PWD/build/cyclonedds/bin/idlc (folded onto PATH by build-fixture-extras)"
     else
         echo "  [INFO] idlc not found — ThreadX-RV64 Cyclone fixtures will skip."
-        echo "         Provision with: just cyclonedds setup (builds build/cyclonedds/bin/idlc),"
-        echo "         or put idlc on PATH, or opt out: NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0."
+        echo "         Provision it the way a USER would:  nros setup --tool cyclonedds"
+        echo "         (the index builds Cyclone with BUILD_IDLC=ON, and activate.sh puts"
+        echo "          the store bin on PATH — issue 0663), then re-source ./activate.sh."
+        echo "         In-repo alternative: just cyclonedds setup (builds build/cyclonedds/bin/idlc)."
+        echo "         Opt out entirely: NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0."
     fi
     exit $fail
 
