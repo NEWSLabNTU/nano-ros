@@ -393,8 +393,21 @@ profile dir="." flags="":
 # only `check-fast` so it completes under a rapid push cadence (the build tier's
 # workspace/example clippy + nros-tests/staticlib compiles are minutes; cancelled
 # repeatedly otherwise). See docs/development/ci-workflow-reorg.md.
+# `check-cli-fresh` FIRST, ahead of both lanes — issue 0363's script says its
+# whole contribution is POSITION ("a stale CLI used to surface … minutes into
+# `just check`; here it is the first thing that runs"), and that was not true
+# for a direct `just check`. It was first within `check-build`, but `check-fast`
+# runs earlier and contains recipes that EXEC the CLI, so the in-binary guard
+# fired there instead and the dedicated probe never got its turn. Measured
+# 2026-08-17: the stale-CLI error landed at line 83 of a 96-line run, after 13
+# gates had passed, where the probe itself costs 0.21 s.
+#
+# Listed here as well as in `check-build`: just runs a dependency once per
+# invocation, so this only moves it earlier — it does not run twice. `just ci`
+# also probes via `check-tier-preconditions`; that duplicate is 0.21 s and buys
+# the property that ANY future lane gaining a CLI-using recipe stays covered.
 [group("main")]
-check: check-fast check-build
+check: check-cli-fresh check-fast check-build
     #!/usr/bin/env bash
     set -e
     # issue 0650 — same reason as `check-fast`'s closing line: "All checks
