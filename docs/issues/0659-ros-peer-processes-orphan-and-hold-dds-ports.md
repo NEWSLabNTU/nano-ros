@@ -123,3 +123,53 @@ someone else's running work on the first try.
 Found 2026-08-17 while getting tier 1 green after issue 0639. The four cyclone
 failures were the visible edge; the orphans had been accumulating for days
 across sessions.
+
+
+## Measured 2026-08-17 — options (1) and (2) do not work, and cannot
+
+Both in-shell shapes were implemented and measured against the acceptance test
+this issue specifies: SIGKILL the supervisor, then count descendants.
+
+The probe mirrors the real chain — `bash -> timeout -> <node>`, own process
+group, PDEATHSIG on bash only — and SIGKILLs bash, which is exactly what the
+kernel does to it when the test binary dies.
+
+| variant | survived the SIGKILL |
+| --- | --- |
+| `timeout N sleep …` (today) | 1 |
+| `trap 'kill 0' EXIT INT TERM HUP; timeout N sleep …` — option (2) | 2 |
+| `exec timeout N sleep …` — option (1) | 1 |
+
+**Neither helps, for a reason that rules out the whole family:**
+
+* **Option (2) cannot fire.** `PR_SET_PDEATHSIG` is set to SIGKILL, and SIGKILL
+  is uncatchable — bash never runs an EXIT trap because it is not permitted to
+  run anything. The trap only protects the paths that already worked (orderly
+  exit, SIGTERM), which is the case `Drop` already covers.
+* **Option (1) moves the problem one process along.** `exec` makes `timeout` the
+  PDEATHSIG carrier, but `timeout` SIGKILLed is just as unable to reap `sleep`
+  as bash was. It removes a process from the chain without changing who is
+  responsible when the chain's head is killed.
+
+The general statement: **no mechanism running inside the killed process can
+survive its own SIGKILL**, and `PR_SET_PDEATHSIG` is a property of one process,
+never of a subtree. Any fix has to live OUTSIDE the tree being killed.
+
+That leaves option (3) — sweeping leftovers keyed on a recorded pgid — as the
+only sound direction of the three, with the corollary that the recording must
+happen at spawn time (the pgid must be durable, because by the time anyone
+sweeps, the process that knew it is gone). A `cgroup`-based confinement would
+also qualify, for the same reason: it is enforced by something the SIGKILL does
+not reach.
+
+Implemented, measured, and REVERTED rather than left in place looking like a
+fix: a trap that cannot run is worse than no trap, because the next reader sees
+teardown code and stops looking.
+
+### Harness note, since the first two runs lied
+
+An earlier version of the probe passed a unique token as an extra argv word to
+`sleep`, which makes `sleep` exit immediately with "invalid time interval" — so
+every variant reported zero survivors and all three looked like fixes. The probe
+now uses a unique DURATION as its marker and refuses to report a result unless
+it can confirm the chain actually started.

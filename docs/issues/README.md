@@ -1663,23 +1663,9 @@ See `archived/0592-*`. (2026-08-16)
 
 Recently resolved (2026-08-17): **#0596** — the skew warning compared MTIMES, so its own remedy could not clear it. Three copies of the comparison existed, not two: the third was an inline walk in `setup-launch-resolve` deciding whether to REBUILD. All three now share one helper comparing a CONTENT stamp recorded by the build. `Cargo.lock` joins the watched set; the resolver tree's 67 `.py` files stay out on evidence (nothing embeds them). Verified across five states, including that `touch` alone no longer fires. See `archived/0596-*`. (2026-08-17)
 
-**#0600** (build, open 2026-08-15) — `check-submodule-pinned-locks` reported "the submodule pointer moved
-and the lock did not follow (issue 0560)" for a lock that is byte-identical to main's and names the crate
-it supposedly lost: the real error is `failed to download hermit-abi v0.5.2 … --offline was specified`, i.e.
-a COLD CACHE on this host. `cargo fetch --locked` pulled it plus six platform-irrelevant siblings and the
-gate passed with the lock untouched — which is why `setup-launch-resolve` had BUILT the binary fine minutes
-earlier (the build never needs them, only whole-graph resolution does). The misdiagnosis is not cosmetic:
-it prescribes `just lock-update`, i.e. re-resolving a correct lock, which is exactly the churn #0359/#0378
-were about. Match on the `--offline` marker and print `cargo fetch --locked` instead. See `0600-*`. (2026-08-15)
+Recently resolved (2026-08-17): **#0600** — the gate blamed a moved submodule pointer for an uncached crate and prescribed `lock-update`, i.e. rewriting a CORRECT lock. Split on cargo's own words, each cause gets its own remedy, and the offline branch says "Do NOT run lock-update" — the imperative was the real defect. Direction (4)'s sibling sweep found NO other instance: `check-leaf-lockfiles.sh` already avoids `--offline` for the same reason, recorded independently. See `archived/0600-*`. (2026-08-17)
 
-**#0599** (testing, open 2026-08-15) — `just/zephyr-ci.just:32` prints `Zephyr skip: zephyr-workspace not
-set up` and then `exit 0`, so the driver records `== zephyr == OK` for a lane that built NOTHING. Twenty
-minutes later `_lane-gate` fails naming four missing `.inputsig` files (`west_bringup_zephyr`,
-`west_board_import`, `zephyr_self_pkg_{rust,sibling}`) — west-owned by design (`fixtures.toml:4553`) and
-never skippable by lane narrowing, so every run scope requires them — and its remedy is
-`just build-test-fixtures`, the command that just "succeeded". `check-tier-preconditions` does not mention
-it either. The unprovisioned host is legitimate; reporting the skip as OK is not. Needs a third lane
-verdict (SKIPPED), and both `exit 0` sites move together. #0196 shape. See `0599-*`. (2026-08-15)
+Recently resolved (2026-08-17): **#0599** — the Zephyr lane reported OK for a run that built nothing. Directions (1)/(2)/(4) had landed (`nros_lane_skip` at both sites, precondition warning); (3) was open — the downstream error named the artifact and prescribed the command that had just 'succeeded'. It now names the CAUSE, with the west-owned ids DERIVED from `fixtures.toml` rather than hand-listed. Verified in all three branches, two of which are about staying quiet. See `archived/0599-*`. (2026-08-17)
 
 Recently resolved (2026-08-16, phase-361 W2.a): **#0598** — `std` implied `alloc` in four crates and not in
 five others, and `nros-core`'s SOURCE assumed the implication its own manifest did not make, so at the default
