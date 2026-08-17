@@ -236,7 +236,6 @@ test verbose="": build-fixtures
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -367,7 +366,6 @@ test-xrce verbose="":
 # Run Zephyr C examples test
 [group("debug")]
 test-c:
-    just build-zenohd
     ./tests/zephyr/run-c.sh
 
 # Clean Zephyr build directories

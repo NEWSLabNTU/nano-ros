@@ -657,7 +657,6 @@ test verbose="": build-fixtures
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     # Drop ROS 2 / XRCE-interop binaries by their nextest test-groups
     # (`.config/nextest.toml`) so new interop binaries assigned to those
     # groups are excluded automatically — no per-binary chain to maintain.
@@ -704,35 +703,18 @@ test-large-msg verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test large_msg --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
-# Run RMW abstraction integration tests
-[group("debug")]
-test-rmw verbose="":
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
-    args=(-p nros-tests --test rmw --features rmw --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
-
-# Run ROS 2 interop tests (Rust test harness)
 [group("debug")]
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test interop_e2e --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -747,7 +729,6 @@ test-ros2-params verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test params --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -762,7 +743,6 @@ test-ros2-lifecycle verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test interop_e2e -E 'test(lifecycle)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -774,22 +754,6 @@ test-ros2-lifecycle verbose="":
 test-ros2-shell:
     ./tests/ros2-interop.sh
 
-# Run DDS ROS 2 interop tests (requires ROS 2 + rmw_cyclonedds_cpp)
-[group("debug")]
-test-dds-ros2 verbose="":
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test dds_ros2_interop --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
-
-# Run the in-tree C msg-gen test (shell-based, no nextest). Phase 195.D — the
-# nros-cli codegen-engine tests (cargo-nano-ros / nros-cli-core) moved out with
-# the retired `packages/codegen` submodule; they run in nros-cli's own CI.
 _test-c-codegen verbose="":
     #!/usr/bin/env bash
     set -e
@@ -806,7 +770,6 @@ test-native-api verbose="":
     # `just build-test-fixtures` first for the full matrix.
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --test native_api --test cpp_parameters --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -820,7 +783,6 @@ test-c verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     just init-test-logs
     args=(-p nros-tests --test native_api --no-fail-fast \
           -E 'test(/Language__C$/) or test(test_c_)')
@@ -837,7 +799,6 @@ test-cpp verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --no-fail-fast \
           -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(cpp_parameters)')
     if [ -z "{{verbose}}" ]; then

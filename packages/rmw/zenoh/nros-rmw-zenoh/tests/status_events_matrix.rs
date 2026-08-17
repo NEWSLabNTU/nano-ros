@@ -104,8 +104,10 @@ fn zenoh_event_matrix() {
     // failure still fails.
     let Some(mut sess) = open_session() else {
         nros_tests::skip!(
-            "zenohd unavailable (looked at build/zenohd/zenohd, the nros setup store \
-             and PATH) — run `nros setup <board> --rmw zenoh`"
+            "zenohd unavailable (looked at the nros setup store and PATH) — the \
+             vendored `build/zenohd` is gone (phase-362 W4, RFC-0075): the router \
+             now comes from ROS, so install `ros-<distro>-rmw-zenoh-cpp` or set \
+             NROS_RMW_ZENOHD"
         );
     };
 

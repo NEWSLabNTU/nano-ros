@@ -22,8 +22,24 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Use locally-built zenohd (build with: just build-zenohd)
-ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
+# issue 0660 — the router comes from ROS, not from a vendored build.
+#
+# phase-362 W4 deleted `build/zenohd` and the recipe that produced it (RFC-0075:
+# `rmw_zenohd` ships with `rmw_zenoh_cpp` and links the same `libzenohc.so` the
+# RMW does, so it cannot drift from it). This script kept pointing at the
+# deleted path.
+#
+# Resolution mirrors `nros_tests::process::ros_zenohd_path`: an explicit
+# `NROS_RMW_ZENOHD`, else `$ROS_DISTRO`, else the newest `/opt/ros/*` that has
+# one.
+ZENOHD="${NROS_RMW_ZENOHD:-}"
+if [ -z "$ZENOHD" ]; then
+    if [ -n "${ROS_DISTRO:-}" ] && [ -x "/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd" ]; then
+        ZENOHD="/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    else
+        ZENOHD="$(ls -d /opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd 2>/dev/null | sort | tail -1)"
+    fi
+fi
 
 # =============================================================================
 # phase-277 W2.a — mirror of the talker/listener log-line prefixes.
@@ -127,7 +143,10 @@ check_zephyr_prerequisites() {
     fi
 
     # Check zenohd
-    if "$ZENOHD" --version &>/dev/null; then
+    # NOT `--version`: `rmw_zenohd` ignores its argv and would START a router
+    # (the fixture's own comment records that `--help` starts one). Test for an
+    # executable file instead.
+    if [ -n "$ZENOHD" ] && [ -x "$ZENOHD" ]; then
         log_success "zenohd found: $ZENOHD"
     else
         log_error "zenohd not found"
@@ -204,7 +223,14 @@ test_zephyr_to_native() {
     pkill -x zenohd 2>/dev/null || true
     sleep 1
     # Zephyr C pubsub examples use port 7556 (lang_stride = 100, C = Rust+100).
-    "$ZENOHD" --listen tcp/127.0.0.1:7556 --no-multicast-scouting > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
+    # `rmw_zenohd` takes NO command-line configuration — it reads
+    # `ZENOH_CONFIG_OVERRIDE`, `;`-separated, with `=` where the CLI used `:`.
+    # Same translation `fixtures::zenohd_router::router_command` documents and
+    # verified against the installed binary there:
+    #   --listen tcp/127.0.0.1:7556  ->  listen/endpoints=["tcp/127.0.0.1:7556"]
+    #   --no-multicast-scouting      ->  scouting/multicast/enabled=false
+    ZENOH_CONFIG_OVERRIDE='scouting/multicast/enabled=false;listen/endpoints=["tcp/127.0.0.1:7556"]' \
+        "$ZENOHD" > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
     local zenohd_pid=$!
     register_pid $zenohd_pid
     sleep 2

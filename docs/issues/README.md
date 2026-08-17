@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#659** (testing, open 2026-08-17) — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test leaks its
+ROS peer's grandchildren. Peers spawn as `bash -c "… && timeout N ros2 run demo_nodes_cpp …"`, i.e.
+`bash → timeout → ros2 → the C++ node`; the spawn sets a process group AND PDEATHSIG, and `Drop` group-kills,
+so an orderly finish is clean. When nextest SIGKILLs the test binary there is no `Drop`, bash dies from its
+own PDEATHSIG, and the rest reparent to init. Measured: 40 `add_two_ints_server` at PPID 1, oldest
+`1-23:05:47`, holding domain 5's 8650/8651 — which surfaced as four unrelated cyclone tests failing
+`address in use`, a message about the victim rather than the cause. `process.rs` claims the opposite in
+prose ("prevents orphans when nextest SIGKILL's the test binary", naming the very chain that is not
+covered). Issue 0573's shape one peer over. Acceptance is NOT "no orphans after a clean run" — that already
+passes — but: SIGKILL the test binary mid-test, then assert no descendant survives. Carries a warning that
+any cleanup must key on a recorded pgid or PPID==1, never a process NAME: doing the latter here also matched
+a live `play_launch`/Autoware tree and killed ~26 of its processes. See `0659-*`. (2026-08-17)
+
 **#0661** (build, open 2026-08-17) — two `nros_core` compilations under
 `examples/workspaces/mixed/build-workspace-fixtures` have NO `<triple>` path component, i.e. the cargo
 invocation that wrote them passed no `--target` — the axis phase-340 W3 exists to prevent, and
@@ -233,29 +246,23 @@ cell's `.platform`), refusing anything in neither; each exemption carries a reas
 Three plausible fixes had been weighed before the cause was found, and all three were wrong.
 See `archived/0630-*`.
 
-**#660** (build/testing, open 2026-08-17) — phase-362 W4 retired the vendored router and deleted the
-`build-zenohd` recipe, but left **twelve callers**: nine in `just/native.just` (`test`, `test-large-msg`,
-`test-rmw`, `test-ros2`, `test-ros2-params`, `test-ros2-lifecycle`, `test-native-api`, `test-c`, `test-cpp`),
-one in `qemu-baremetal.just`, two in `zephyr-dev.just`. `just` resolves a recipe reference only when the recipe
-RUNS, so nothing failed at parse time and each of the twelve now dies immediately:
-`error: Justfile does not contain recipe \`build-zenohd\``. No gate covers the class — `just check` never
-invokes them, `ci` runs `test-all` instead, and `check-doc-refs` is docs-only — so tier 1 is green with all
-twelve broken. The fix is per-lane rather than mechanical: under RFC-0075 the router comes from ROS, and
-`ZenohRouter` is the only sanctioned spawner (#0573), so most sites probably just lose the line — but
-`qemu-baremetal` and `zephyr-dev` are not the interop lanes phase-362 W1 converted. Worth a gate: `just
---summary` knows every recipe name and `just <name>` in a body is greppable. See `0660-*`.
-**#659** (testing, open 2026-08-17) — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test leaks its
-ROS peer's grandchildren. Peers spawn as `bash -c "… && timeout N ros2 run demo_nodes_cpp …"`, i.e.
-`bash → timeout → ros2 → the C++ node`; the spawn sets a process group AND PDEATHSIG, and `Drop` group-kills,
-so an orderly finish is clean. When nextest SIGKILLs the test binary there is no `Drop`, bash dies from its
-own PDEATHSIG, and the rest reparent to init. Measured: 40 `add_two_ints_server` at PPID 1, oldest
-`1-23:05:47`, holding domain 5's 8650/8651 — which surfaced as four unrelated cyclone tests failing
-`address in use`, a message about the victim rather than the cause. `process.rs` claims the opposite in
-prose ("prevents orphans when nextest SIGKILL's the test binary", naming the very chain that is not
-covered). Issue 0573's shape one peer over. Acceptance is NOT "no orphans after a clean run" — that already
-passes — but: SIGKILL the test binary mid-test, then assert no descendant survives. Carries a warning that
-any cleanup must key on a recorded pgid or PPID==1, never a process NAME: doing the latter here also matched
-a live `play_launch`/Autoware tree and killed ~26 of its processes. See `0659-*`. (2026-08-17)
+Recently resolved (2026-08-17): **#660** — phase-362 W4 retired the vendored router and deleted the
+`build-zenohd` recipe, leaving **twelve callers** across `native.just` (9), `qemu-baremetal.just` (1) and
+`zephyr-dev.just` (2). `just` resolves a recipe reference only when the recipe RUNS, so all twelve parsed fine
+and died on invocation while tier 1 stayed green (`ci` runs `test-all`, never the per-family `native test-*`
+recipes a developer types). All twelve dropped — `ZenohRouter` resolves `rmw_zenohd` from `/opt/ros` itself, so
+nothing replaces them. `tests/zephyr/run-c.sh` was the one LIVE consumer of the deleted path and would have
+kept failing; it resolves the ROS router now, and two things there were not mechanical: `rmw_zenohd` IGNORES
+its argv, so `--listen`/`--no-multicast-scouting` became `ZENOH_CONFIG_OVERRIDE` entries, and the
+`--version` availability probe would have STARTED a router. Gated by `check-just-recipe-refs` (`just check`),
+which parses recipe DEFINITIONS — `just --summary` omits private recipes and reported a dozen live ones as
+missing on the first attempt. **A second clause came from the fix:** with the first error gone,
+`just native test-rmw` reached cargo and said "no test target named `rmw`", so the gate also checks
+`-p <pkg> --test <target>`. Two dead targets found, deleted in phase-115 and phase-169.3 — the latter's commit
+says it "strip[ped] Cargo wiring" and missed the recipe. Both recipes deleted: one that cannot run looks like
+coverage. Mutation-tested both directions. See `archived/0660-*`.
+
+
 
 **#644** (build, open 2026-08-16) — the threadx-linux talker was DECLARED `no_std` by phase-359 W10 and
 never was: `nros`'s `env` capability listed `"std"`, so std arrived through the graph and supplied both the

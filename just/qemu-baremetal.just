@@ -323,7 +323,6 @@ test-all verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    just build-zenohd
     args=(-p nros-tests --no-fail-fast \
           -E 'binary(emulator) or binary(large_msg)')
     if [ -z "{{verbose}}" ]; then

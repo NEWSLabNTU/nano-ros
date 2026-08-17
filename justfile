@@ -444,7 +444,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-cli-source-dirs \
+    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2930,6 +2930,20 @@ check-feature-contract:
 [group("ci")]
 check-no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
+
+# Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
+#
+# `just` resolves a recipe reference only when the recipe RUNS, so deleting a
+# recipe leaves its callers parsing fine and dying on invocation. phase-362 W4
+# retired `build-zenohd` and left TWELVE callers dead across three lane files;
+# tier 1 stayed green because `ci` runs `test-all` and never touches the
+# per-family `native test-*` recipes a developer actually types.
+#
+# Parses definitions rather than `just --summary`, which omits private recipes —
+# bodies call those constantly (`just _count-real-failures`).
+[group("ci")]
+check-just-recipe-refs:
+    @python3 scripts/check-just-recipe-refs.py
 
 # Issue 0604 — `packages/cli/cli-source-dirs.txt` must equal cargo's resolve.
 #
