@@ -119,8 +119,43 @@ fn play_launch_pin(root: &Path) -> Option<String> {
     (!sha.is_empty()).then_some(sha)
 }
 
+/// `git`, resolved once — phase-367 W2.
+///
+/// `Command::new("git")` makes the kernel walk PATH on EVERY spawn, and this
+/// host's PATH has 41 entries, so each invocation costs ~40 failed `execve`
+/// plus their `statx`/`openat`. Measured on a warm `nros sync`: 165 of the ~244
+/// failed lookups were `git`, and running the same sync with `PATH=/usr/bin:/bin`
+/// — byte-identical output, same exit — took **0.060 s against 0.156 s**.
+///
+/// That 61 % is why this is worth doing and why `strace -c` alone would have
+/// talked us out of it: it books the cost to `execve` (~1.5 % of syscall time)
+/// while the real weight is the failed path resolutions spread across `statx`
+/// and `openat`. The phase doc's W2 said "measure before cutting"; this is the
+/// measurement, and it inverted the prediction.
+///
+/// Falls back to the bare name when the lookup fails, so a `git` that appears
+/// later (a PATH change mid-process, a shim) still works — the resolution is an
+/// optimisation, not a new requirement.
+fn git_program() -> &'static std::ffi::OsString {
+    static GIT: std::sync::OnceLock<std::ffi::OsString> = std::sync::OnceLock::new();
+    GIT.get_or_init(|| {
+        if let Some(paths) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&paths) {
+                let cand = dir.join("git");
+                if std::fs::metadata(&cand)
+                    .map(|m| m.is_file())
+                    .unwrap_or(false)
+                {
+                    return cand.into_os_string();
+                }
+            }
+        }
+        std::ffi::OsString::from("git")
+    })
+}
+
 fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+    let out = Command::new(git_program())
         .arg("-C")
         .arg(root)
         .args(args)

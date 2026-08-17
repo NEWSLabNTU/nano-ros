@@ -3040,7 +3040,41 @@ fn parse_cargo_minor(version_line: &str) -> Option<u64> {
 /// stabilization (1.93), so an external consumer on an old pinned toolchain gets
 /// a clear diagnostic instead of a silent patch drop (#272). Best-effort: any
 /// failure to run/parse `cargo --version` stays silent (never blocks sync).
+/// Does the `cargo --version` warning apply to this workspace? — phase-367 W2.
+///
+/// Extracted so both arms are testable: a predicate embedded in a
+/// side-effect-only function can only be verified by watching for a warning
+/// that may legitimately not appear, which is no verification at all.
+///
+/// `false` for a workspace inside the nano-ros checkout, `true` outside it.
+fn cargo_version_warning_applies(ws_root: &Path) -> bool {
+    crate::abi_guard::find_monorepo_root(ws_root).is_none()
+}
+
 fn warn_if_cargo_predates_config_include(ws_root: &Path) {
+    // phase-367 W2 — this warning is for an EXTERNAL consumer on an old pinned
+    // toolchain (#272), and it is the single most expensive thing a warm
+    // `nros sync` does.
+    //
+    // Measured on `examples/workspaces/mixed`: 0.160 s with the probe,
+    // 0.093 s with it failing fast — **42 % of the run, to decide whether to
+    // print a warning**. The cost is not `cargo --version` itself but the
+    // `scripts/bin/cargo` PATH shim it goes through, which fans out into
+    // `env` -> `bash` -> `dirname` -> `grep` -> the real cargo -> `rustc -vV`.
+    // That is also why `strace -c` misattributes it: the weight lands on the
+    // children, not on this process's `execve`.
+    //
+    // An IN-REPO workspace cannot be the case the warning is for: the toolchain
+    // is pinned by the checkout, and the build that follows uses the same
+    // shim-wrapped cargo this repo ships. `find_monorepo_root` walks up for
+    // `packages/core/nros-core/Cargo.toml`, so `Some` means "inside the
+    // nano-ros tree" — exactly the population #272 excluded.
+    //
+    // A build runs ~101 syncs (issue 0649's census), so this is ~6.8 s per
+    // fixture build spent deciding not to print anything.
+    if !cargo_version_warning_applies(ws_root) {
+        return;
+    }
     // Run in the workspace root so a `rust-toolchain.toml` there selects the
     // SAME cargo the build will use, not whatever invoked `nros`.
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
@@ -5230,6 +5264,30 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
 #[cfg(test)]
 mod config_include_version_tests {
     use super::*;
+
+    /// phase-367 W2 — the probe is skipped in-repo and KEPT for the external
+    /// consumer it exists for (#272). Both arms, because skipping one is how a
+    /// diagnostic gets deleted by an optimisation.
+    #[test]
+    fn cargo_version_warning_applies_only_outside_the_monorepo() {
+        let repo = crate::abi_guard::find_monorepo_root(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .expect("these tests run inside the nano-ros checkout");
+        assert!(
+            !cargo_version_warning_applies(&repo),
+            "an in-repo workspace pins its toolchain; the probe is 42% of a sync"
+        );
+        assert!(
+            !cargo_version_warning_applies(&repo.join("examples/workspaces/mixed")),
+            "a workspace nested in the checkout is still in-repo"
+        );
+
+        let outside = tempfile::tempdir().expect("tempdir");
+        assert!(
+            cargo_version_warning_applies(outside.path()),
+            "an out-of-tree consumer is exactly who #272's warning is for — \
+             skipping it there would delete the diagnostic"
+        );
+    }
 
     #[test]
     fn parses_minor_from_cargo_version_line() {

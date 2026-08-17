@@ -1,7 +1,7 @@
 # Phase 367 — what a build actually spends, measured per layer
 
-**Status (2026-08-17).** W1 LANDED. W2–W5 open, each with its measurement
-already taken. Opened to give the `nros sync` / fixture-build cost work one
+**Status (2026-08-17).** W1 and W2 LANDED. W3–W5 open, each with its
+measurement already taken. Opened to give the `nros sync` / fixture-build cost work one
 owner instead of five issues that kept rediscovering each other.
 
 **Owns:** the per-invocation cost of `nros sync`, the number of times a build
@@ -69,16 +69,73 @@ against issue 0627's own table rather than assumed:
 Plus `nros source-stamp` agreeing with its baked value after a rebuild — the
 thing a wrong line order would have broken permanently.
 
-## W2 — the remaining 741 failed `execve` are a PATH scan
+## W2 — a diagnostic probe was 42 % of a warm sync (LANDED)
 
-`git` is invoked by NAME, and this host's PATH has ~40 entries, so each
-invocation costs ~40 failed `execve` before the real one. Before W1 that was
-741 of 772; after W1 it is ~244 of 260.
+W2 was written as "the remaining 741 failed `execve` are a PATH scan", with a
+warning that a large count attached to a small cost is the shape that looks like
+progress and is not. **That warning was right about the method and wrong about
+the answer, in both directions**, which is worth recording in full.
 
-**Measure first:** `execve` is ~1.5 % of syscall time, so this is a large COUNT
-attached to a small cost. Resolve `git` once into a `OnceLock` only if a
-measurement says the count is worth it — a 741-call finding that saves 9 ms is
-exactly the shape that looks like progress and is not.
+**Step 1 — the hypothesis, tested.** Running the same sync with
+`PATH=/usr/bin:/bin` (byte-identical output, same exit) took **0.060 s against
+0.156 s**. That looked like the PATH scan and justified cutting it.
+
+**Step 2 — the fix, measured, and it bought nothing.** Resolving `git` once
+through a `OnceLock` removed 163 failed lookups (`execve` 260 → 97, git
+lookups → 0) and moved wall clock by **~2 ms**. The count was real; the cost
+was not. Kept anyway — it is strictly fewer syscalls with no downside — but it
+is not why this wave landed.
+
+**Step 3 — re-profile, and the real cause was structural.** With the short PATH,
+`wait4` was **9 calls against 73**. A short PATH does not make lookups faster,
+it makes tools *not be found*, so probes skip their subprocesses entirely. The
+saving was never in the scan.
+
+The probe is `warn_if_cargo_predates_config_include`: a `cargo --version` run
+whose only effect is to print a warning if cargo predates 1.93 (#272). Through
+this repo's `scripts/bin/cargo` PATH shim it fans out into
+`env` → `bash` → `dirname` → `grep` → the real cargo → `rustc -vV`. Isolated:
+
+```
+current (shim on PATH)                0.160 s
+CARGO=<real cargo>, shim skipped      0.115 s
+CARGO=/bin/false, probe fails fast    0.093 s
+```
+
+**42 % of a warm sync, spent deciding whether to print a warning** — and a build
+runs ~101 syncs, so ~6.8 s per fixture build.
+
+The warning is for an EXTERNAL consumer on an old pinned toolchain. An in-repo
+workspace cannot be that case: its toolchain is pinned by the checkout, and the
+build that follows uses the same shim-wrapped cargo. `find_monorepo_root` is
+exactly that predicate.
+
+```
+                   before W1   after W1   after W2
+wall clock (mixed)   0.156 s    0.153 s    0.094 s
+wait4 calls              88         73          8
+execve                  770        260         38
+22-workspace loop       4.2 s       —         2.7 s
+regenerate-bindings     9.4 s       —         7.1 s
+```
+
+**Acceptance — the diagnostic still fires where it is for.** The predicate is
+extracted as `cargo_version_warning_applies` precisely so both arms are
+testable: a predicate buried in a side-effect-only function can only be checked
+by watching for a warning that may legitimately not appear, which is no check at
+all. In-repo → skipped, nested-in-repo → skipped, out-of-tree tempdir → applies.
+Mutation-tested: making it return `false` everywhere fails the out-of-tree arm.
+
+## W2b — the rest of the PATH scan (open, and probably not worth it)
+
+
+`git` is resolved once now, but `bash`, `rustc` and `cargo` are still looked up
+by name (33, 28 and 18 failed lookups respectively at the last count). After W2
+removed the probe that spawned most of them, `execve` is 38 calls total, so
+there is little left to win here.
+
+**Recorded as measured-and-declined rather than open work.** W2's step 2 is the
+evidence: removing 163 failed lookups moved wall clock by ~2 ms.
 
 ## W3 — the last cross-driver sync repeats need a freshness stamp
 
