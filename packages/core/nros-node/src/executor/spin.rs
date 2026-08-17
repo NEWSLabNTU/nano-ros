@@ -477,7 +477,13 @@ impl<'cfg> SessionSpec<'cfg> {
 // available; resolution always falls through to the single-backend
 // or ambiguous path. Embedded users with multiple backends use the
 // bridge surface `Executor::open_multi` instead.
-#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+// phase-359 W10 — the gate is `env`, not `std`. Reading `$NROS_RMW` is the
+// process-environment CAPABILITY, exactly as `ExecutorConfig::from_env` and
+// `nros::init*` are; `std` is merely what that capability is built on today.
+// Gating it on the flavour is what made "which backend did this image pick"
+// depend on whether some crate in the graph happened to name the standard
+// library.
+#[cfg(all(feature = "env", feature = "rmw-cffi"))]
 fn read_rmw_selector_env() -> Option<alloc::vec::Vec<u8>> {
     let raw = std::env::var_os("NROS_RMW")?;
     let bytes = raw.as_encoded_bytes();
@@ -487,7 +493,7 @@ fn read_rmw_selector_env() -> Option<alloc::vec::Vec<u8>> {
     Some(bytes.to_vec())
 }
 
-#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+#[cfg(all(not(feature = "env"), feature = "rmw-cffi"))]
 fn read_rmw_selector_env() -> Option<&'static [u8]> {
     None
 }
@@ -1278,8 +1284,12 @@ pub struct Executor<'s> {
     // phase-359 W4 — ONE field. The std twin held an `Instant`; both now hold
     // µs from the single `now_us()` read.
     pub(crate) last_spin_end_us: Option<u64>,
-    /// Optional platform clock hook supplied by `ExecutorConfig`.
-    #[cfg(not(feature = "std"))]
+    /// The executor's monotonic µs clock: `ExecutorConfig::clock_us` when the
+    /// caller supplied one, else [`default_clock_us_fn`].
+    ///
+    /// phase-359 W10 — no longer `no_std`-only. The std build read an
+    /// `Instant` through a separate field instead, which is how "what time is
+    /// it" had two answers in one crate.
     pub(crate) clock_us_fn: Option<fn() -> u64>,
 
     /// Consecutive `drive_io` failures on the PRIMARY session (issue 0324).
@@ -1328,9 +1338,6 @@ pub struct Executor<'s> {
     pub(crate) report_violations: bool,
     pub(crate) monitor_violations:
         heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
-    /// Monotonic base for the std monitor clock (µs derived per check).
-    #[cfg(feature = "std")]
-    pub(crate) clock_base: Option<std::time::Instant>,
 }
 
 impl<'s> Executor<'s> {
@@ -1365,7 +1372,11 @@ impl<'s> Executor<'s> {
             #[cfg(feature = "alloc")]
             sporadic_atomic_states,
             major_frame_us: 0,
-            #[cfg(all(feature = "alloc", feature = "rmw-cffi", feature = "scheduler-os-priority"))]
+            #[cfg(all(
+                feature = "alloc",
+                feature = "rmw-cffi",
+                feature = "scheduler-os-priority"
+            ))]
             os_priority_pool: super::os_priority::OsPriorityPool::new(),
             #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
             os_priority_apply_policy: None,
@@ -1415,14 +1426,12 @@ impl<'s> Executor<'s> {
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
             // like time spent between later calls.
-            // One field, two seeds: on std the epoch is construction (see
-            // `clock_base` above), so 0 IS the construction instant; on no_std
-            // the injected clock is absolute, so it must be read.
-            #[cfg(feature = "std")]
-            last_spin_end_us: Some(0),
-            #[cfg(not(feature = "std"))]
+            // One field, one seed now (phase-359 W10): the clock is absolute
+            // on every flavour, so it is READ here rather than assumed to be
+            // zero at construction. The std arm used to seed `Some(0)` because
+            // its epoch WAS construction; with one provider that special case
+            // is gone.
             last_spin_end_us: default_clock_us_fn().map(|clock| clock()),
-            #[cfg(not(feature = "std"))]
             clock_us_fn: default_clock_us_fn(),
             consecutive_io_failures: 0,
             // RFC-0052 W3b.5 — hosted builds get a wall clock by default so
@@ -1442,13 +1451,6 @@ impl<'s> Executor<'s> {
             monitor_violations_dropped: 0,
             report_violations: true,
             monitor_violations: heapless::Vec::new(),
-            #[cfg(feature = "std")]
-            // phase-359 W4 — eager, not lazy: the std epoch must START at
-            // construction so `last_spin_end_us: Some(0)` below means
-            // "construction", preserving the property that the first spin
-            // credits time the caller spent BEFORE it (setup, a pre-spin
-            // sleep). Lazily seeding it on first read would silently drop that.
-            clock_base: Some(std::time::Instant::now()),
         }
     }
 
@@ -2042,15 +2044,7 @@ impl<'s> Executor<'s> {
     /// Callers must degrade, not guess: a missing clock is why the sporadic
     /// refill and the major-frame phase behaved differently on no_std.
     fn now_us(&mut self) -> Option<u64> {
-        #[cfg(not(feature = "std"))]
-        {
-            self.clock_us_fn.map(|clock| clock())
-        }
-        #[cfg(feature = "std")]
-        {
-            let base = *self.clock_base.get_or_insert_with(std::time::Instant::now);
-            Some(base.elapsed().as_micros() as u64)
-        }
+        self.clock_us_fn.map(|clock| clock())
     }
 
     /// Run the rate/latency/age checks over the baked tables (single
@@ -5626,7 +5620,6 @@ impl<'s> Executor<'s> {
                     super::sched_context::DeadlineAction::Ignore
                 )
         });
-        #[cfg(not(feature = "std"))]
         let mon_clock = self.clock_us_fn;
         // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
         // so the flavour difference stays a value instead of a branch: std
@@ -5640,14 +5633,6 @@ impl<'s> Executor<'s> {
         // (a `Copy` `Instant`) so reading inside the loop touches no `self`.
         // This is the last cfg pair in the timing path: the two call sites it
         // serves each had FOUR arms (start + elapsed, per flavour).
-        #[cfg(feature = "std")]
-        let read_us = {
-            let base = self
-                .clock_base
-                .expect("clock_base is seeded at construction");
-            move || base.elapsed().as_micros().min(u64::MAX as u128) as u64
-        };
-        #[cfg(not(feature = "std"))]
         let read_us = move || mon_clock.map(|c| c()).unwrap_or(0);
         // Deferred deadline-miss violations (the loop body holds an
         // immutable borrow of `self.entries`, so the ring is fed after).
@@ -7143,12 +7128,12 @@ fn check_deadline_miss(
 // linkage contract the wake primitives rely on (`nros_platform_export_clock!`
 // in nros-platform-cffi), so an rmw-cffi no_std build can safely default the
 // executor clock to it; `ExecutorConfig::clock_us` stays as an override.
-#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+#[cfg(feature = "rmw-cffi")]
 unsafe extern "C" {
     fn nros_platform_clock_ns() -> u64;
 }
 
-#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+#[cfg(feature = "rmw-cffi")]
 fn default_platform_clock_us() -> u64 {
     // SAFETY: bare query of the platform's monotonic ns counter; the symbol
     // is guaranteed by whichever platform port linked the binary (the same
@@ -7160,16 +7145,42 @@ fn default_platform_clock_us() -> u64 {
     unsafe { nros_platform_clock_ns() / 1_000 }
 }
 
-/// The executor's default timer clock: the platform monotonic counter on
-/// no_std rmw-cffi builds, nothing elsewhere (std uses `Instant`).
-#[cfg(not(feature = "std"))]
+/// A monotonic µs reader, or `None` when this build has no clock at all.
+///
+/// phase-359 W10 — one provider, chosen by what is LINKED rather than by which
+/// flavour the crate was built in. W4 unified the executor's clock ACCESSOR and
+/// said the provider was the last piece; this is it.
+///
+/// `rmw-cffi` means a platform port is linked, and every port exports
+/// `nros_platform_clock_ns` under the same contract the wake primitives use —
+/// so a hosted build reads the same counter an embedded one does, instead of
+/// `Instant` on one and the platform on the other. `Instant` survives only
+/// where there is no port to ask: `std` without `rmw-cffi`, which is the
+/// mock-session test configuration.
 pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     #[cfg(feature = "rmw-cffi")]
     {
         Some(default_platform_clock_us)
     }
-    #[cfg(not(feature = "rmw-cffi"))]
+    #[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
+    {
+        Some(default_std_clock_us)
+    }
+    #[cfg(all(not(feature = "rmw-cffi"), not(feature = "std")))]
     {
         None
     }
+}
+
+/// The `std`-without-a-port monotonic reader. Its base is seeded on first call,
+/// and `Executor` construction is the first call (`default_clock_us_fn()` feeds
+/// `last_spin_end_us`), so 0 still means "the construction instant" — the
+/// property W4's eager `clock_base` seed existed for.
+#[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
+fn default_std_clock_us() -> u64 {
+    static BASE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    BASE.get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_micros()
+        .min(u64::MAX as u128) as u64
 }

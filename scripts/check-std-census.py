@@ -156,7 +156,17 @@ BASELINE = {
     # a second implementation of a thing that had stopped differing when the
     # condvar fallback was deleted. One `WakeCtx` on `alloc + rmw-cffi` now,
     # and the two `primary_drive_timeout_ms` arms are one arm.
-    "nros-node": {"cfg": 60, "path": 33},
+    #
+    # phase-359 W10: 60 -> 47 cfg. Two clusters. `$NROS_RMW` selection moved off
+    # `std` onto `env`, where reading the process environment belongs. And the
+    # executor's CLOCK became one provider: `rmw-cffi` means a platform port is
+    # linked, so a hosted build now reads `nros_platform_clock_ns` like an
+    # embedded one instead of an `Instant` through a separate `clock_base`
+    # field. W4 unified the accessor and named the provider as what remained.
+    #
+    # path 33 -> 34 is that trade paid once: `Instant` survives in exactly one
+    # function, the `std`-without-a-port reader for mock-session tests.
+    "nros-node": {"cfg": 47, "path": 34},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0661** (build, open 2026-08-17) — two `nros_core` compilations under
+`examples/workspaces/mixed/build-workspace-fixtures` have NO `<triple>` path component, i.e. the cargo
+invocation that wrote them passed no `--target` — the axis phase-340 W3 exists to prevent, and
+`check-artifact-identity-budget` has been red since. Not residue: that tree was deleted and rebuilt green
+(4/4) on 2026-08-16, and both files carry mtime 2026-08-17 03:03. `check-cargo-target-spelling` passes, so
+the writer is not a site that gate reads, and WHICH writer is not established — several sessions were
+building that morning. Do not clear the tree; those two rlibs are the only evidence there is. Sibling axis
+of #0616. See `0661-*`. (2026-08-17)
+
 **#0657** (build/toolchain, open 2026-08-17) — `[board.qemu-riscv64-threadx]` provisions xPack
 `riscv-none-elf-gcc`; twenty files spelled the compiler `riscv64-unknown-elf-*` (Ubuntu's package), so a host
 provisioned the documented way could not build the board at all — and before #0650 the lane reported that as
