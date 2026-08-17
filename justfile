@@ -545,7 +545,7 @@ check-test-targets:
 # (`check.yml` non-push), not on every direct push to main.
 [group("main")]
 check-build: \
-    check-cli-fresh check-launch-resolve-builds \
+    check-cli-fresh check-required-features-reachable check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
@@ -1062,6 +1062,13 @@ check-board-tiers:
 [private]
 check-cli-fresh:
     @bash scripts/check-cli-fresh.sh
+
+# Issue 0652 — a `required-features` target no recipe enables is invisible:
+# cargo does not report it as filtered, it simply never builds it, so it looks
+# like coverage while running nothing. Baseline is a shrinking backlog.
+[group("main")]
+check-required-features-reachable:
+    @python3 scripts/check-required-features-reachable.py
 
 # Issue 0550 — a submodule checked out BEHIND the commit the superproject
 # records. Not in `check-fast`: drift is a working-copy state, so the index and

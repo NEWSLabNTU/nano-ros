@@ -85,3 +85,56 @@ enumeration is a one-liner over `Cargo.toml` `[[test]]` blocks.
 cargo nextest run -p nros-tests --features trigger-test,component-runtime-test \
   --test trigger_conditions --test wake_latency --test component_runtime
 ```
+
+
+## Audit 2026-08-17 — the scope is FIVE features and nine targets
+
+The issue asks for the enumeration rather than a fix by name. Doing it changes
+the size:
+
+| feature | targets | in a recipe? |
+| --- | --- | --- |
+| `trigger-test` | trigger_conditions, wake_latency | no |
+| `component-runtime-test` | component_runtime, tier_filter, component_dispatch, component_param | no |
+| `loan-e2e` | loan_e2e | no |
+| `phase216-substrate` | dispatch_strategy | no |
+| `rmw` | custom_transport_loopback | no |
+
+`rmw` is the one worth pausing on: it appears **250 times** across the justfiles
+and is enabled as a feature exactly never — every hit is a substring of
+`rmw-zenoh`, `check-rmw-cyclonedds` and friends. A reachability check written as
+a plain grep would call it covered. The gate therefore matches only
+`--features` / `features = ` positions.
+
+### One target could not have run even with a lane
+
+`dispatch_strategy` failed to compile: an unused `Callback` import, fatal under
+`-D warnings`. Fixed here. Nine targets now build.
+
+### Runtime state, and what this host cannot tell you
+
+```
+21 tests: 7 passed, 14 "failed"
+```
+
+All 14 are `[SKIPPED:capability] no rmw_zenoh_cpp/rmw_zenohd under /opt/ros` —
+the `nros_tests::skip!` convention, which CLAUDE.md records bare `cargo nextest`
+as reporting like a failure. This host has no `ros-humble-rmw-zenoh-cpp`.
+
+So **the `trigger_conditions` failure reported above is not reproducible here**,
+and nothing in this audit contradicts it: on a host with the ROS router the test
+gets far enough to open a session, and on this one it never tries. Deciding
+between "put them in a lane" and "delete what is obsolete" needs that host.
+
+## Gate landed — option (2)
+
+`check-required-features-reachable` asserts every declared `required-features`
+value is enabled by at least one recipe. The five above are a BASELINE and it is
+labelled a shrinking backlog, not an exemption — gating nine targets on day one
+would fail immediately and get bypassed. What it buys now is that a SIXTH cannot
+arrive silently, which is the property whose absence let these accumulate.
+
+Mutation-tested both directions: a target behind an unlisted feature fails, and
+a baselined feature becoming reachable fails with "remove it from BASELINE".
+
+Still open: (1) versus (3) for the nine targets.
