@@ -6433,7 +6433,7 @@ impl<'s> Executor<'s> {
         // never; the honest reading is "no deadline", which is what an
         // untimed `spin_blocking` already is.
         let start_us = self.now_us();
-        let timeout_us = opts.timeout_ms.map(|ms| ms as u64 * 1_000);
+        let timeout_us = opts.timeout_ms.map(|ms| ms * 1_000);
         let mut total_callbacks = 0usize;
 
         self.halt_flag
