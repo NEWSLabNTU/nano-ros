@@ -276,6 +276,53 @@ fi
 if [ ${#compile_check_stale[@]} -gt 0 ]; then
     echo "ERROR: ${#compile_check_stale[@]} compile-check fixture(s) are missing or stale:" >&2
     printf '  %s\n' "${compile_check_stale[@]}" >&2
+
+    # issue 0599 direction (3) — name the CAUSE, not just the artifact. These
+    # rows are built by the west lane and by nothing else, so when the Zephyr
+    # workspace is unprovisioned the lane SKIPPED and the remedy below is the
+    # command that just reported success. Telling the reader to re-run it sends
+    # them round a twenty-minute loop that cannot succeed.
+    #
+    # The west-owned ids are DERIVED from the manifest (`[[compile_check_fixture]]`
+    # with a `west-*` builder), not listed here: a hand-copied list is the thing
+    # that goes stale when a row is added, and this file would have no way to
+    # notice.
+    _west_ids="$(awk '
+        # `in_block` is load-bearing: `id`/`builder` keys appear in [[fixture]]
+        # and [[workspace_fixture]] too, and without the flag an id from one
+        # block pairs with a builder from another — the first cut of this
+        # emitted 58 rows that do not exist.
+        /^\[\[/            { in_block = ($0 ~ /^\[\[compile_check_fixture\]\]/); id=""; next }
+        !in_block          { next }
+        /^id[ \t]*=/        { v=$0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v); id=v }
+        /^builder[ \t]*=/   { v=$0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v)
+                             if (v ~ /^west/ && id != "") print id }
+    ' examples/fixtures.toml 2>/dev/null)"
+    _west_missing=""
+    for _id in $_west_ids; do
+        for _row in "${compile_check_stale[@]}"; do
+            case "$_row" in *"$_id"*) _west_missing="$_west_missing $_id" ;; esac
+        done
+    done
+    if [ -n "$_west_missing" ]; then
+        _zws="${NROS_ZEPHYR_WORKSPACE:-}"
+        if [ -z "$_zws" ]; then
+            for _c in zephyr-workspace ../nano-ros-workspace; do
+                [ -d "$_c/zephyr" ] && _zws="$_c" && break
+            done
+        fi
+        if [ -z "$_zws" ] || [ ! -d "$_zws/zephyr" ]; then
+            echo "" >&2
+            echo "  CAUSE: no provisioned Zephyr workspace, so the west lane SKIPPED." >&2
+            echo "  These are built by that lane and by no other, and they are" >&2
+            echo "  unattributable to a coordinate, so every run scope requires them:" >&2
+            echo "   $_west_missing" >&2
+            echo "  Re-running the build below will skip the lane again and report OK." >&2
+            echo "  Provision first:  just zephyr setup" >&2
+            echo "" >&2
+        fi
+    fi
+
     echo "  Run \`just build-test-fixtures\` before test-all." >&2
     echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     stale_families=$((stale_families + 1))

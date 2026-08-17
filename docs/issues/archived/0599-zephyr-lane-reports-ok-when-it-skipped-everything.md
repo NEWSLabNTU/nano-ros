@@ -1,7 +1,7 @@
 ---
 id: 599
 title: The Zephyr fixture lane exits 0 when the workspace is missing, so it reports OK and the failure surfaces 20 minutes later as four missing `.inputsig`
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0196, issue-0482, phase-350, rfc-0061]
@@ -105,3 +105,48 @@ Tier 2 and tier 3 cannot complete on a host without a provisioned Zephyr
 workspace, which is correct — but the operator learns it as an artifact error
 after a full fixture build rather than as a precondition beforehand. Every
 agent session on such a host pays that round trip once.
+
+
+## Resolved 2026-08-17
+
+Directions (1), (2) and (4) had already landed: `nros_lane_skip`
+(`scripts/build/lane-skip.sh`) gives SKIPPED its own verdict at BOTH `exit 0`
+sites, and `check-tier-preconditions` warns that the lane will skip and names
+the four fixtures.
+
+**(3) was still open** — the downstream error named the artifact and prescribed
+`just build-test-fixtures`, the command that had just reported OK. It now names
+the cause:
+
+```
+ERROR: 4 compile-check fixture(s) are missing or stale:
+  west_board_import (missing …/.inputsig)
+  …
+  CAUSE: no provisioned Zephyr workspace, so the west lane SKIPPED.
+  These are built by that lane and by no other, and they are
+  unattributable to a coordinate, so every run scope requires them:
+    west_board_import
+  Re-running the build below will skip the lane again and report OK.
+  Provision first:  just zephyr setup
+```
+
+The west-owned ids are DERIVED from `examples/fixtures.toml`
+(`[[compile_check_fixture]]` with a `west-*` builder), not hand-listed — a
+copied list is exactly what goes stale when a row is added, and this file would
+have no way to notice.
+
+Verified in all three branches, since two of them are about staying QUIET:
+
+| condition | behaviour |
+| --- | --- |
+| west row missing, no workspace | names the cause |
+| non-west row missing, no workspace | silent — unrelated failure |
+| west row missing, workspace PRESENT | silent — a real build failure must not be blamed on provisioning |
+
+### A defect in the derivation, found by running it
+
+The first cut emitted **58 ids that do not exist**. `id` and `builder` keys
+appear in `[[fixture]]` and `[[workspace_fixture]]` blocks too, so without an
+in-block flag an id from one block paired with a builder from another. The
+awk now tracks which block it is inside. (A prior cut also used a greedy
+`gsub(/.*"|".*/)`, which ate the whole line and emitted nothing at all.)
