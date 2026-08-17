@@ -173,3 +173,60 @@ An earlier version of the probe passed a unique token as an extra argv word to
 every variant reported zero survivors and all three looked like fixes. The probe
 now uses a unique DURATION as its marker and refuses to report a result unless
 it can confirm the chain actually started.
+
+
+## Explored 2026-08-17 — the leak is live, and what option (3) needs
+
+### Current state on this host: worse than filed
+
+```
+59 orphaned /opt/ros/humble/lib/demo_nodes_cpp/add_two_ints_server, all PPID 1
+oldest ELAPSED 815657 s  (~9.4 days)
+56 distinct pgids across the 59
+```
+
+Every sampled pgid has ZERO non-orphan members, and no `component_container` or
+`play_launch` tree is running, so nothing live owns them. They are abandoned
+test spawns holding DDS discovery ports, exactly as described.
+
+### Why the naive sweep is not available
+
+`PPID == 1 && old` matches **247** processes on this host, and the first three
+are `systemd-journal`, `systemd-udevd` and `rpcbind`. Reparenting to init is
+normal for daemons; it is only suspicious in combination with something that
+identifies the process as ours. That is the same trap this issue already records
+from the other direction, where matching on NAME killed 26 live Autoware
+components.
+
+### What option (3) needs, and why each part
+
+A ledger written at spawn, swept at lane start:
+
+| part | why |
+| --- | --- |
+| record the **pgid** at spawn | `setpgid(0,0)` already makes the child its own leader, so `handle.id()` IS the pgid — nothing new to compute |
+| record the leader's **start time** (`/proc/<pid>/stat` field 22, boot-relative ticks) | pgid alone is not an identity: `pid_max` is 4194304 here against a current pid of ~427000, so reuse needs ~4M spawns — unlikely per session, reachable on a host up 10 days |
+| record a **spawn timestamp** | the leader is usually DEAD by sweep time (that is the failure being cleaned up), so the leader's own start time cannot be re-read. Surviving members must have started at or after the group did; a recycled pgid hosting an older process is thereby spared |
+| remove the entry on `Drop` | the orderly path already kills the group, and a ledger that only grows makes every later sweep more dangerous |
+| sweep at **lane start**, not lane end | a run that is SIGKILLed never reaches its own end; the next run is the first moment anything is alive to clean up |
+
+`ps -eo pid,pgid,etimes` enumerates a group's members and `/proc/<pid>/stat`
+supplies the start time, so no new dependency is needed.
+
+### What is NOT worth trying
+
+Anything inside the process tree — measured and recorded in the section above.
+The one-line summary for a future reader: **PDEATHSIG delivers SIGKILL, SIGKILL
+cannot be handled, so no shell-level teardown in that tree can run.**
+
+A cgroup (`systemd-run --user --scope`) satisfies the same "enforced from
+outside" requirement and would also work; it trades a ledger for a systemd
+dependency in the test harness, which is the trade to weigh rather than a
+settled answer.
+
+### Cleanup of the existing 59 is deliberately NOT done here
+
+They are safe to kill by the evidence above, but this issue records a previous
+cleanup that killed 26 live processes on a name match, so the 59 are left for an
+operator who can see the machine. `pkill -g <pgid>` per recorded group is the
+shape; `pkill -f demo_nodes_cpp` is the shape that caused the earlier damage.
