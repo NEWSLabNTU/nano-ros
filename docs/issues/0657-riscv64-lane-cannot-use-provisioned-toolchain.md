@@ -78,28 +78,61 @@ produces a real image:
 ELF 64-bit LSB executable, UCB RISC-V, RVC, double-float ABI, statically linked
 ```
 
-## Open: the C/C++ half
+## The C/C++ half (2026-08-17)
 
-`libnros_cpp.a` contains `bswapsi2.o` — one of compiler_builtins' **C**
-fallbacks — compiled soft-float, while every cmake object is `-mabi=lp64d`, so
-lld refuses: *"cannot link object files with different floating-point ABI"*.
+Three more, each the same shape as the rest — a tool named rather than resolved,
+and each hiding the next.
 
-What has been established, so the next person does not repeat it:
+**1. The soft-float strip had no reader.** `cmake/strip-compiler-builtins.sh`
+exists precisely for rust-lang/rust#83229: it removes compiler_builtins'
+soft-float objects so they cannot clash with this board's lp64d ones. It decided
+what to strip with a hardcoded `riscv64-unknown-elf-readelf` — absent on a
+provisioned host, so `flags` came back EMPTY, nothing matched "soft-float", and
+it stripped ZERO objects while reporting nothing (the probe's stderr goes to
+`/dev/null`, and an empty result is indistinguishable from "none here"). It now
+prefers `llvm-readobj` (which ships beside the `llvm-ar` it is already handed)
+and falls back to whichever cross readelf exists; with no reader at all it FAILS
+instead of silently stripping nothing. On the archive that was failing: 36
+objects stripped where it previously stripped none.
 
-* `riscv64-threadx.cmake` already carried `set(ENV{RUSTFLAGS} "-Ctarget-feature=+d")`
-  for this. It cannot work: issue 0460 — `set(ENV{})` is configure-time, and
-  corrosion's cargo runs at build time.
-* Exporting `RUSTFLAGS` from the lane DOES fix the float ABI, and is not
-  usable: cargo's `RUSTFLAGS` env **replaces** a leaf's `[build] rustflags`, so
-  the Rust images then fail on `_bss_start` / `_sysstack_start` — their linker
-  script is gone. Measured both ways.
-* Per-target `corrosion_set_env_vars` now attaches both `RUSTFLAGS` and
-  `CFLAGS_riscv64gc_unknown_none_elf` to `nros_c-static` / `nros_cpp-static`
-  (confirmed firing, 8 times, by its STATUS line). The object is STILL
-  soft-float, so the compile that produces it is not governed by either — most
-  likely a different cargo invocation than the one those targets name.
-* It is not staleness: the build dirs were deleted before the last three runs.
+**2. `-lgcc` was missing, and only mattered once (1) worked.** The stripped
+objects were also the image's only definition of `__bswapsi2`; the hard-float
+equivalents live in the TOOLCHAIN's libgcc, on a different multilib path from
+libstdc++ (`lib/gcc/<triple>/<ver>/<arch>/<abi>` vs
+`<triple>/lib/<arch>/<abi>`), resolved now with `-print-libgcc-file-name`. One
+bug had been hiding the other: the soft-float objects stayed, satisfied the
+symbol, and failed the link on the ABI instead.
 
-The next step is to find which cargo invocation compiles that object — the
-`cargo/nano-ros_23c15/` group dir under the example's build tree — and give
-THAT one the flags, rather than guessing at target names.
+**3. `corrosion_set_env_vars` was landing on the wrong target — repo-wide.**
+Corrosion 0.6 creates TWO targets per crate: `<crate>`, an INTERFACE target
+whose properties the cargo build command reads through a generator expression,
+and `<crate>-static`, an IMPORTED library naming the `.a`. `set_property`
+succeeds on either and only the first is ever read. Every call site passed the
+`-static` spelling, so `nros_cargo_profile_env`, `nros_board_facts_env` AND the
+riscv64 rustflags were setting a property nothing consumes. Measured on a
+configured example before the fix: `build.ninja` contained no `CARGO_PROFILE_*`,
+no `NROS_BOARD*` and no `RUSTFLAGS` — **phase-351 W5's board rung was reaching
+cargo on zero targets under this Corrosion**, and nothing failed loudly because
+every consumer has a default (issue 0529's shape). Fixed with one normaliser,
+`nros_corrosion_env_target`, in its own module both helpers include.
+
+Correction to this issue's earlier note: `-Ctarget-feature=+d` does NOT fix the
+float ABI. It cannot — the objects come from the PRECOMPILED compiler_builtins
+rlib and target-feature does not rebuild it. The earlier reading came from a
+run where a lane-wide `RUSTFLAGS` export had also discarded the leaf's linker
+script, so the link failed earlier and the ABI error simply never printed.
+
+## Still open: `app_main` on the C application path
+
+With the above, the C/C++ riscv64 link gets past the ABI and past `__bswapsi2`,
+and now stops at one undefined symbol: `app_main`.
+
+That is not a toolchain question. `-u app_main` comes from the board overlay,
+and the symbol is emitted by the SYNTHESISED typed-entry TU that
+`NanoRosNodeRegister.cmake` generates for node-shaped targets. These C examples
+are application-shaped — `nano_ros_add_executable(c_listener src/main.c)` with
+`nros_app_main()` in `main.c` — so no entry TU is synthesised and nothing
+defines the boot symbol. Whoever picks this up should decide whether the
+application shape is supposed to be supported on this board (then the board
+needs the shim other RTOS carriers have) or whether these examples should be
+node-shaped like the platforms whose fixtures do build.

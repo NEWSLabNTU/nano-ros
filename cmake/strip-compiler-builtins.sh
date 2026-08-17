@@ -30,16 +30,80 @@ cp -p "$ARCHIVE" "$SNAPSHOT"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR" "$SNAPSHOT"' EXIT
 
+# issue 0657 — the READER, resolved. This asked `riscv64-unknown-elf-readelf`
+# by name: Ubuntu's package, not the xPack `riscv-none-elf-*` that
+# `nros setup` provisions for this board. On a provisioned host the command
+# does not exist, `flags` comes back EMPTY, nothing matches "soft-float", and
+# the loop strips zero objects — silently, because the probe's stderr goes to
+# /dev/null and an empty result is indistinguishable from "no soft-float here".
+#
+# That is why the C/C++ riscv64 link failed on `bswapsi2.o` with "cannot link
+# object files with different floating-point ABI" even though this exact
+# workaround was running on every archive: the tool that decides what to strip
+# was missing, so it decided nothing.
+#
+# `llvm-readobj` ships beside the `llvm-ar` this script is already handed, so
+# prefer it and fall back to whichever cross readelf exists.
+# Prints `soft-float`, `hard-float`, or `STRIP_NO_READER`.
+#
+# The two readers state the same fact differently and only one states it in
+# words. GNU readelf decodes the e_flags into "soft-float ABI"; llvm-readobj
+# prints the RAW value (`Flags [ (0x1)`) and names only the bits it has names
+# for — soft-float is the ABSENCE of the float bits, so there is nothing to
+# grep for. Decode instead: e_flags & 0x6 is the float ABI field (0 = soft,
+# 2 = single, 4 = double, 6 = quad).
+_riscv_float_abi() {
+    local obj="$1"
+    local candidate
+    for candidate in riscv-none-elf-readelf riscv64-unknown-elf-readelf riscv64-none-elf-readelf; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            if "$candidate" -h "$obj" 2>/dev/null | grep -q 'soft-float'; then
+                echo soft-float
+            else
+                echo hard-float
+            fi
+            return
+        fi
+    done
+    local llvm_readobj="$(dirname "$LLVM_AR")/llvm-readobj"
+    if [ -x "$llvm_readobj" ]; then
+        local raw
+        raw=$("$llvm_readobj" --file-headers "$obj" 2>/dev/null \
+              | sed -n 's/.*Flags \[ (\(0x[0-9a-fA-F]*\)).*/\1/p' | head -1)
+        if [ -n "$raw" ]; then
+            if [ $(( raw & 0x6 )) -eq 0 ]; then echo soft-float; else echo hard-float; fi
+            return
+        fi
+    fi
+    echo "STRIP_NO_READER"
+}
+
 count=0
+no_reader=0
 for obj in $("$LLVM_AR" t "$ARCHIVE"); do
     "$LLVM_AR" p "$ARCHIVE" "$obj" > "$TMPDIR/$obj" 2>/dev/null || continue
-    # Check if this object has soft-float ABI (flag 0x0000 or RVC-only 0x0001)
-    flags=$(riscv64-unknown-elf-readelf -h "$TMPDIR/$obj" 2>/dev/null | grep 'Flags:' | head -1)
-    if echo "$flags" | grep -q 'soft-float'; then
+    # Check if this object has soft-float ABI (flag 0x0000 or RVC-only 0x0001).
+    # llvm-readobj spells it `EF_RISCV_FLOAT_ABI_SOFT`; GNU readelf spells it
+    # `soft-float`. Match either — the two readers word the same fact
+    # differently, and keying on one spelling is how this broke.
+    flags=$(_riscv_float_abi "$TMPDIR/$obj")
+    if [ "$flags" = "STRIP_NO_READER" ]; then
+        no_reader=1
+        break
+    fi
+    if [ "$flags" = "soft-float" ]; then
         "$LLVM_AR" d "$ARCHIVE" "$obj" 2>/dev/null
         count=$((count + 1))
     fi
 done
+
+if [ "$no_reader" -eq 1 ]; then
+    echo "$0: no ELF reader for riscv64 objects (looked for llvm-readobj beside" >&2
+    echo "  $LLVM_AR, then riscv-none-elf-readelf / riscv64-unknown-elf-readelf)." >&2
+    echo "  Cannot tell soft-float objects from hard-float ones, so nothing was" >&2
+    echo "  stripped and the link will fail on a float-ABI mismatch (issue 0657)." >&2
+    exit 1
+fi
 
 if [ $count -gt 0 ]; then
     echo "Stripped $count soft-float compiler_builtins objects from $(basename "$ARCHIVE")"

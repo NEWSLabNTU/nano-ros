@@ -213,9 +213,37 @@ if(_riscv_stdcxx)
     # them in two mechanisms with different lifetimes is what broke; the `-L`
     # is therefore part of the same value, ahead of the `-l` that needs it.
     if(EXISTS "${_riscv_stdcxx_dir}/libnosys.a")
-        set(CMAKE_C_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys"
+        # The libgcc multilib dir is NOT the libstdc++ one: libstdc++ sits under
+        # `<sysroot>/riscv-none-elf/lib/<arch>/<abi>`, libgcc under
+        # `lib/gcc/riscv-none-elf/<ver>/<arch>/<abi>`. Ask the compiler rather
+        # than deriving a second path by hand.
+        execute_process(
+            COMMAND ${_NROS_RISCV64_PREFIX}-gcc -march=rv64gc -mabi=lp64d
+                    -print-libgcc-file-name
+            OUTPUT_VARIABLE _riscv_libgcc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        set(_riscv_libgcc_flag "")
+        if(_riscv_libgcc MATCHES "^/" AND EXISTS "${_riscv_libgcc}")
+            get_filename_component(_riscv_libgcc_dir "${_riscv_libgcc}" DIRECTORY)
+            set(_riscv_libgcc_flag " -L${_riscv_libgcc_dir} -lgcc")
+        endif()
+
+        # issue 0657 — `-lgcc` belongs here too, and only became necessary once
+        # the soft-float strip started working.
+        #
+        # `strip-compiler-builtins.sh` removes compiler_builtins' soft-float
+        # objects so they cannot clash with this board's lp64d ones. Those
+        # objects are also the only definition of `__bswapsi2` and friends in
+        # the image, so removing them leaves the symbol undefined — the
+        # hard-float equivalents live in the TOOLCHAIN's libgcc, on the same
+        # multilib path the `-L` above already names.
+        #
+        # It was not needed before because the strip silently did nothing on a
+        # host without `riscv64-unknown-elf-readelf`: the soft-float objects
+        # stayed, and satisfied the symbol at the cost of the link failing on
+        # the ABI instead. One bug hid the other.
+        set(CMAKE_C_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys${_riscv_libgcc_flag}"
             CACHE STRING "" FORCE)
-        set(CMAKE_CXX_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys"
+        set(CMAKE_CXX_STANDARD_LIBRARIES "-L${_riscv_stdcxx_dir} -lnosys${_riscv_libgcc_flag}"
             CACHE STRING "" FORCE)
     endif()
 endif()

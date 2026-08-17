@@ -25,6 +25,9 @@
 
 include_guard(GLOBAL)
 
+# issue 0657 — `nros_corrosion_env_target`.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+
 # At FILE scope, not inside the function below: an `include()` in a function
 # body loses the included file's normal variables when the frame pops (the
 # `_NROS_ENTRY_DIR` class in CLAUDE.md). Only the function definitions would
@@ -129,6 +132,8 @@ function(nros_cargo_profile_env _target)
     if(NOT COMMAND corrosion_set_env_vars)
         message(FATAL_ERROR "nros_cargo_profile_env(${_target}): Corrosion not loaded")
     endif()
+    # issue 0657 — the env-carrying target, not the imported artifact.
+    nros_corrosion_env_target("${_target}" _target)
     corrosion_set_env_vars(${_target} ${NROS_CARGO_PROFILE_ENV})
 endfunction()
 
@@ -161,11 +166,11 @@ function(nros_riscv64_rustflags_env _target)
     if(NOT COMMAND corrosion_set_env_vars)
         message(FATAL_ERROR "nros_riscv64_rustflags_env(${_target}): Corrosion not loaded")
     endif()
-    # Corrosion names the target for a staticlib crate `<crate>-static`, but not
-    # every import site spells it that way. Attach to whichever exists rather
-    # than guessing — a `corrosion_set_env_vars` on a name that is not a target
-    # is a silent no-op, which is how this landed inert the first time.
-    foreach(_cand "${_target}" "${_target}-static")
+    # issue 0657 — the env-carrying INTERFACE target. Guessing between the two
+    # names is what made the first two attempts at this inert; the normaliser
+    # states the rule once.
+    nros_corrosion_env_target("${_target}" _env_target)
+    foreach(_cand "${_env_target}")
         if(TARGET ${_cand})
             # BOTH, because two different compilers produce objects here and
             # only one of them reads RUSTFLAGS:

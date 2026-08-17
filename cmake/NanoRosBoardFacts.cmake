@@ -24,6 +24,9 @@
 
 include_guard(GLOBAL)
 
+# issue 0657 — `nros_corrosion_env_target`.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+
 # nros_resolve_board_facts([BOARD <name>] [WORKSPACE <dir>])
 #
 # Resolve once per configure into the `NROS_BOARD_FACTS_ENV` cache entry (a
@@ -130,5 +133,12 @@ function(nros_board_facts_env _target)
     if(NOT COMMAND corrosion_set_env_vars)
         message(FATAL_ERROR "nros_board_facts_env(${_target}): Corrosion not loaded")
     endif()
+    # issue 0657 — attach to the target the cargo command actually READS.
+    # Corrosion 0.6 makes `<crate>` (INTERFACE, carries the env genex) and
+    # `<crate>-static` (IMPORTED, just names the .a); `set_property` succeeds on
+    # both and only the first is consumed. Every call site here passed the
+    # `-static` spelling, so this wave's whole point — the board rung reaching
+    # cargo — was landing on a property nothing reads.
+    nros_corrosion_env_target("${_target}" _target)
     corrosion_set_env_vars(${_target} ${NROS_BOARD_FACTS_ENV})
 endfunction()
