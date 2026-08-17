@@ -1,7 +1,7 @@
 ---
 id: 374
 title: "`nros setup native` source-builds zenohd and pulls a second rust toolchain, while the book promises prebuilt toolchains"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [rfc-0014, issue-0204, issue-0368, issue-0373, phase-345]
@@ -114,3 +114,31 @@ Pick one, they are not exclusive:
 
    Note this host still carries the `1.85.0` toolchain that the old behaviour
    installed — the fix prevents the next one, it does not clean up the last.
+
+## Resolved 2026-08-17 — by removal, not by shipping a prebuilt
+
+phase-362 W4 retired the vendored router entirely (RFC-0075: `rmw_zenohd` ships
+with `rmw_zenoh_cpp` and links the same `libzenohc.so` the RMW does, so it
+cannot drift from it). The `third-party/zenoh/zenoh` submodule, the `zenohd`
+build recipe and the SDK-store entry are gone, which removes this issue's
+premise rather than satisfying its ask.
+
+Measured on the current tree:
+
+```
+$ nros setup native --dry-run
+nros setup: native (rmw zenoh) needs 2 package(s):
+  zenoh-pico   source 1.7.2 — submodule …/zenoh-pico
+  mbedtls      source 3.x   — submodule …/mbedtls
+```
+
+Two submodule checkouts. No zenohd, and therefore no second Rust toolchain
+pulled in to build one — which was the whole complaint.
+
+The acceptance this issue actually wanted ("`nros setup native` does not
+source-build a router") holds. The one it asked for ("ship a zenohd prebuilt")
+is moot: there is no nano-ros router to ship. A host without
+`ros-<distro>-rmw-zenoh-cpp` now gets a named skip from the zenoh lanes rather
+than a source build, which phase-362 accepted explicitly as a cost.
+
+→ phase-362, RFC-0075, issue 0660 (the recipe callers that deletion left behind).

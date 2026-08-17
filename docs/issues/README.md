@@ -2356,13 +2356,13 @@ which is the point of it. See `0362-*`. (2026-07-31)
 
 Recently resolved (2026-08-10): **#0371** — RESOLVED 2026-08-10, archived. See `archived/0371-*`.
 
-**#374** (filed as #373; renumbered) — `nros setup native --rmw zenoh` source-builds zenohd
-(`[tool.zenohd]` has no `dist.linux-x86_64`; assets never seeded) and pulls a SECOND rust toolchain
-(`1.85.0`, zenoh's own pin) for 792 MB of store — while installation.md:123 promised "ships prebuilt
-toolchains per platform per RMW" for exactly this board. **Narrowed 2026-08-01:** the wait is now
-announced up front by `nros setup` and the book no longer promises unconditional prebuilts; what
-remains is out-of-repo — publish `1.7.2-nros2` assets on `nano-ros-sdk` so the dist rows return.
-See `0374-*`. (2026-08-01)
+Recently resolved (2026-08-17): **#374** — resolved by REMOVAL, not by shipping the prebuilt it asked for.
+phase-362 W4 retired the vendored router entirely (RFC-0075: `rmw_zenohd` ships with `rmw_zenoh_cpp` and links
+the same `libzenohc.so` the RMW does, so it cannot drift), so the submodule, the build recipe and the SDK-store
+entry are gone. Measured: `nros setup native --dry-run` now plans two submodule checkouts (zenoh-pico, mbedtls)
+— no zenohd, hence no second Rust toolchain pulled in to build one, which was the complaint. A host without
+`ros-<distro>-rmw-zenoh-cpp` gets a named skip from the zenoh lanes instead of a source build, a cost phase-362
+accepted explicitly. See `archived/0374-*`.
 
 Recently resolved (2026-08-16): **#403** — the WCET bench emitted prose nothing parses, and zeros from a
 dead cycle counter. Fixed in phase-356 W2, both halves. A dead DWT is now a HARD failure: the bench

@@ -205,14 +205,34 @@ fn cli_source_dirs_file_present(root: &Path) -> bool {
     root.join(CLI_SOURCE_DIRS_FILE).is_file()
 }
 
+/// Run one git command over the WHOLE closure, passing every directory as a
+/// pathspec in a single invocation — phase-367 W1.
+///
+/// Each of the three consumers below used to loop the closure and spawn one git
+/// per directory. With nine directories that is nine processes each, and
+/// `source_stamp` runs all three: **20 of the ~29 subprocesses a warm
+/// `nros sync` spawns were this file**, against a measured ~2.8 ms per spawn
+/// and `wait4` at 54 % of the run.
+///
+/// git takes multiple pathspecs after `--` and unions the results, which is
+/// exactly what the loops were doing by concatenation — so this is the same
+/// output from 1 process instead of 9, not a change of question.
+fn git_over_closure(root: &Path, args: &[&str]) -> Option<String> {
+    let dirs = cli_source_dirs(root);
+    if dirs.is_empty() {
+        return Some(String::new());
+    }
+    let mut argv: Vec<&str> = args.to_vec();
+    argv.push("--");
+    argv.extend(dirs.iter().map(String::as_str));
+    git(root, &argv)
+}
+
 /// Every tracked CLI input, repo-relative. Used by `build.rs` for
 /// `cargo:rerun-if-changed`.
 pub fn cli_input_files(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
-    for dir in cli_source_dirs(root) {
-        let Some(listing) = git(root, &["ls-files", "--", &dir]) else {
-            continue;
-        };
+    if let Some(listing) = git_over_closure(root, &["ls-files"]) {
         out.extend(
             listing
                 .lines()
@@ -273,10 +293,7 @@ pub fn source_stamp(root: &Path) -> Option<String> {
     // SAME closure the rest of this file uses — `packages/cli` plus its local
     // path-dep closure. Hardcoding `packages/cli` here is what let an edit to
     // `packages/core/nros-orchestration-ir` leave the stamp unchanged.
-    let mut idx = String::new();
-    for dir in cli_source_dirs(root) {
-        idx.push_str(&git(root, &["ls-files", "-s", "--", &dir])?);
-    }
+    let idx = git_over_closure(root, &["ls-files", "-s"])?;
     for line in idx.lines() {
         // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
         // rather than aborting the whole stamp on one odd entry.
@@ -374,10 +391,7 @@ pub fn modified_cli_files(root: &Path) -> Vec<String> {
     // still reported FRESH — the very bug the closure was added to fix,
     // surviving in the other half of the same function.
     let mut out = Vec::new();
-    for dir in cli_source_dirs(root) {
-        let Some(listing) = git(root, &["diff", "--name-only", "--", &dir]) else {
-            continue;
-        };
+    if let Some(listing) = git_over_closure(root, &["diff", "--name-only"]) {
         out.extend(
             listing
                 .lines()
