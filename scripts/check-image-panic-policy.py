@@ -32,6 +32,7 @@ it says so rather than claiming to be the artifact-level one.
 """
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -90,11 +91,32 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     bad = []
     checked = 0
-    for main_rs in list(root.glob("examples/**/src/main.rs")) + list(
-        root.glob("packages/testing/**/src/main.rs")
-    ):
-        if any(p in main_rs.parts for p in ("target", "build", "generated")):
-            continue
+    # Enumerate through the GIT INDEX, not the filesystem (issue 0684).
+    #
+    # `Path.glob("**")` has to DESCEND a tree to discover it, and these two
+    # roots contain every cmake build dir, west workspace and `_deps/` checkout
+    # in the repo. The previous walk found 974 `main.rs`, kept 776 after
+    # filtering — and only 139 of those are tracked. The other 637 were build
+    # output: staged per-RMW copies of the same entry (`build-zenoh/`,
+    # `build-cyclonedds/`, `build-xrce/`) and vendored third-party sources, of
+    # which the most eloquent was
+    #
+    #     …/talker/build-zenoh/_deps/corrosion-src/test/hostbuild/hostbuild/src/main.rs
+    #
+    # i.e. Corrosion's own test fixture, judged by a nano-ros panic gate.
+    #
+    # The old filter — `("target", "build", "generated")` — is an EXACT
+    # component match, so `build-zenoh` never matched `build`. Extending that
+    # list is the wrong repair: it is a denylist against a set nobody controls,
+    # and it still pays the traversal to build the list it then throws away.
+    # The index knows what is ours, costs no walk, and cannot drift.
+    listed = subprocess.run(
+        ["git", "ls-files", "examples/**/src/main.rs",
+         "packages/testing/**/src/main.rs"],
+        capture_output=True, text=True, check=True, cwd=root,
+    ).stdout.split()
+    for rel in listed:
+        main_rs = root / rel
         # Strip comment lines BEFORE matching, rather than matching and then
         # trying to tell prose from code.
         #

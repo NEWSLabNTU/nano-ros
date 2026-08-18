@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#684** — `check-image-panic-policy`, a gate documented as BUILDLESS and wired
+into `check-fast`, took ~10 min on a cold cache. It enumerated with `Path.glob("**")` over `examples/` and
+`packages/testing/`, which must DESCEND every cmake build dir, west workspace and `_deps/` checkout to
+discover them, then discarded them with an EXACT-component filter (`build` never matched `build-zenoh`).
+Measured: 974 `main.rs` found, 776 kept, **139 tracked** — 637 were build output, including Corrosion's own
+test fixture under a `_deps/` tree. The verdict was NOT wrong (zero of the 637 contain an `nros::main!` call,
+and the count is 21 before and after) but the exposure was latent. Fixed by enumerating through the git index,
+the rule phase-360 W3 already records. 4.63 s -> 0.037 s warm. See `archived/0684-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#618** — `#[panic_handler]` and `#[global_allocator]` are link-time
 singletons of the FINAL ARTIFACT, but §2 had both "selected by the `platform-<rtos>` feature", so "exactly one
 per image" was an invariant held by hand at every dep-site — six providers, five gating idioms, the
