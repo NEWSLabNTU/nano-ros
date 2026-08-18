@@ -203,7 +203,15 @@ BASELINE = {
     # dependency edge in a core crate for a public type with no caller anywhere,
     # which is issue 0669's decision to make, not this campaign's.
     "nros-node": {"cfg": 11, "path": 22},
-    "nros-params": {"cfg": 7, "path": 1},
+    #
+    # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
+    # a constraint: the `heapless::String` parameter impl was excluded on `std`
+    # although an `alloc`-without-`std` build has always had it AND the `alloc`
+    # one (different types, no conflict), and the issue-0323 regression tests
+    # asked for `std` to build a `Vec` and a `String`. What remains is real:
+    # `extern crate std`, `FileParamStore` (a FILESYSTEM store) with its
+    # re-export, and its tests.
+    "nros-params": {"cfg": 5, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
 }

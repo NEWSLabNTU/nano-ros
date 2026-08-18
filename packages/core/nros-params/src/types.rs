@@ -470,8 +470,15 @@ impl ParameterVariant for f64 {
     }
 }
 
-// For strings, we implement ParameterVariant for heapless::String (no_std)
-#[cfg(not(feature = "std"))]
+// `ParameterVariant` for `heapless::String` — the fixed-capacity parameter type.
+//
+// phase-359 W10 — this was `#[cfg(not(feature = "std"))]`, which said a hosted
+// build may not use a fixed-capacity string parameter. Nothing enforced that:
+// the `alloc` impl below is on a DIFFERENT type, so an `alloc`-without-`std`
+// build has always had both, and only the hosted flavour was singled out. A
+// consumer that wants bounded parameter storage on a host — the usual reason
+// being that the same node also builds for a target — was told no by a gate
+// that was expressing a preference, not a constraint.
 impl ParameterVariant for String<MAX_STRING_VALUE_LEN> {
     fn to_parameter_value(&self) -> ParameterValue {
         ParameterValue::String(self.clone())
@@ -863,7 +870,9 @@ mod verification {
     }
 }
 
-#[cfg(all(test, feature = "std"))]
+// The heap is what these need — the over-long values they build are a `Vec` and
+// a `String`, which `alloc` has.
+#[cfg(all(test, feature = "alloc"))]
 mod issue_0323_tests {
     use super::*;
 
@@ -886,7 +895,7 @@ mod issue_0323_tests {
     /// The array case: `unwrap_or_default()` yielded an EMPTY array.
     #[test]
     fn oversize_integer_array_is_rejected_not_silently_empty() {
-        let big: std::vec::Vec<i64> = (0..(MAX_ARRAY_LEN as i64 + 1)).collect();
+        let big: alloc::vec::Vec<i64> = (0..(MAX_ARRAY_LEN as i64 + 1)).collect();
         match big.to_parameter_value() {
             ParameterValue::IntegerArray(v) => {
                 assert!(v.is_empty(), "documenting the legacy empty-array behaviour")
@@ -899,7 +908,7 @@ mod issue_0323_tests {
     /// `Vec<String>` silently SKIPPED elements that did not fit.
     #[test]
     fn oversize_string_array_element_is_rejected_not_skipped() {
-        let big: std::vec::Vec<std::string::String> =
+        let big: alloc::vec::Vec<alloc::string::String> =
             (0..(MAX_ARRAY_LEN + 1)).map(|i| i.to_string()).collect();
         assert!(big.try_to_parameter_value().is_err());
     }
