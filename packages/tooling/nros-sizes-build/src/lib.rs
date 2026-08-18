@@ -587,10 +587,56 @@ fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
         return Ok(Vec::new());
     }
 
-    Ok(forwarded_features()
+    // issue 0665 — forward what the caller's feature table TURNS ON in the
+    // probed crate, not just the names the two happen to share.
+    //
+    // Name-intersection alone silently under-forwards whenever a caller's
+    // feature enables a DIFFERENTLY-NAMED feature of the probed crate. That is
+    // exactly what `nros-c` does:
+    //
+    //     std = ["alloc", "nros/std", "nros/env", "nros-node/std", …]
+    //
+    // Before phase-359 W10, `nros/std` implied `env`, so forwarding the shared
+    // name `std` happened to reproduce the caller's configuration. W10 made
+    // `env` an independent capability — correctly — and the probe then built
+    // the facade WITHOUT it while the consumer linked WITH it. The measured
+    // `ExecutorInlineStorage` came out 16 bytes (one fat pointer) short, and
+    // `EXECUTOR_OPAQUE_U64S` with it: 11189 where the linked type needs 11191.
+    // The `nros-c` assert caught it; on the C side the same number sizes a
+    // caller's `_opaque` buffer, where too small is a silent overrun.
+    //
+    // So also read the caller's own `[features]` table and collect every
+    // `<probed-crate>/<feat>` an ACTIVE caller feature enables. Deterministic,
+    // local, no second cargo invocation — and it states the rule the manifest
+    // already encodes rather than inferring one from names.
+    let extra = features_enabled_on_dep(&manifest_dir, crate_name).unwrap_or_default();
+
+    Ok(merge_forwarded(forwarded_features(), extra, &declared))
+}
+
+/// The probe's feature list — issue 0665.
+///
+/// `base` is what the caller's own `CARGO_FEATURE_*` say; `extra` is what its
+/// feature table turns on in the probed crate under OTHER names (the half that
+/// was missing); `declared` is what the probed crate actually has, because
+/// `cargo build --features <unknown>` is an error.
+///
+/// Split out from `resolved_features_for` so the rule can be tested without a
+/// `cargo metadata` call — the first version of this fix was exercised only
+/// through the parser, and deleting the wiring left every test green.
+fn merge_forwarded(
+    base: Vec<String>,
+    extra: Vec<String>,
+    declared: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let mut out: Vec<String> = base
         .into_iter()
+        .chain(extra)
         .filter(|f| declared.contains(f))
-        .collect())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Produce a path-safe slug from `rustc -V` (or `$CARGO_BUILD_RUSTC -V`
@@ -964,6 +1010,54 @@ pub fn variant_slug_from_env() -> String {
 /// Cargo exposes them as `CARGO_FEATURE_<NAME>=1` env vars with name
 /// upper-cased and `-` replaced by `_`. Reverse the transform so the
 /// nested invocation sees the original lowercase-with-dashes form.
+/// Features of `dep` that the CALLER's active features enable — issue 0665.
+///
+/// Reads the caller's own `Cargo.toml` `[features]` table and, for every
+/// feature cargo says is active (`CARGO_FEATURE_*`), collects the `dep/<feat>`
+/// entries it lists. This is the half `forwarded_features()` cannot see: a
+/// caller feature named `std` may enable `nros/env`, and no amount of comparing
+/// names will reveal it.
+///
+/// Best-effort by design: an unreadable or unparsable manifest yields nothing
+/// extra and the name-intersection behaviour stands, because under-forwarding
+/// is what this fixes and a hard error here would break every probe that reads
+/// a manifest shape this simple parser does not expect.
+fn features_enabled_on_dep(manifest_dir: &str, dep: &str) -> Result<Vec<String>, Error> {
+    let text = std::fs::read_to_string(Path::new(manifest_dir).join("Cargo.toml"))
+        .map_err(|e| Error::CargoMetadata(e.to_string()))?;
+
+    let active: std::collections::HashSet<String> = forwarded_features().into_iter().collect();
+    let prefix = format!("{dep}/");
+    let mut out = Vec::new();
+    let mut in_features = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_features = t == "[features]";
+            continue;
+        }
+        if !in_features || t.starts_with('#') {
+            continue;
+        }
+        let Some((name, rest)) = t.split_once('=') else {
+            continue;
+        };
+        let name = name.trim().trim_matches('"');
+        if !active.contains(name) {
+            continue;
+        }
+        for item in rest.split(&['[', ']', ',', '"'][..]) {
+            let item = item.trim();
+            if let Some(feat) = item.strip_prefix(&prefix)
+                && !feat.is_empty()
+            {
+                out.push(feat.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn forwarded_features() -> Vec<String> {
     let mut out = Vec::new();
     for (k, v) in env::vars() {
@@ -1252,6 +1346,68 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// issue 0665 — the WIRING, not just the parser. Removing the `extra`
+    /// merge must fail a test; the first version of this fix only exercised
+    /// `features_enabled_on_dep` directly, so deleting its call site left
+    /// everything green.
+    #[test]
+    fn merge_keeps_dep_features_the_caller_enables_under_another_name() {
+        let declared: std::collections::HashSet<String> = ["std", "env", "alloc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let got = merge_forwarded(vec!["std".to_string()], vec!["env".to_string()], &declared);
+        assert_eq!(got, vec!["env".to_string(), "std".to_string()]);
+
+        // Undeclared names are dropped — `cargo build --features <unknown>` errors.
+        let got = merge_forwarded(
+            vec!["std".to_string()],
+            vec!["never-declared".to_string()],
+            &declared,
+        );
+        assert_eq!(got, vec!["std".to_string()]);
+    }
+
+    /// issue 0665 — a caller feature that enables a DIFFERENTLY-NAMED feature of
+    /// the probed crate must be forwarded. `nros-c`'s `std` enables `nros/env`,
+    /// and name-intersection alone forwarded only `std`, so the probe measured
+    /// an env-less `ExecutorInlineStorage`: 16 bytes short of the linked one,
+    /// and `EXECUTOR_OPAQUE_U64S` short with it.
+    #[test]
+    fn dep_features_enabled_by_an_active_caller_feature_are_collected() {
+        let _guard = env_lock();
+        let dir = std::env::temp_dir().join(format!("nros-probe-feat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"caller\"\n\n[features]\n\
+             std = [\"alloc\", \"nros/std\", \"nros/env\", \"nros-node/std\"]\n\
+             alloc = [\"nros/alloc\"]\n\
+             unused = [\"nros/never-forwarded\"]\n",
+        )
+        .unwrap();
+
+        // Only `std` is active, so the `alloc` and `unused` rows must not be read.
+        unsafe {
+            std::env::set_var("CARGO_FEATURE_STD", "1");
+            std::env::remove_var("CARGO_FEATURE_ALLOC");
+            std::env::remove_var("CARGO_FEATURE_UNUSED");
+        }
+        let got = features_enabled_on_dep(dir.to_str().unwrap(), "nros").unwrap();
+        unsafe { std::env::remove_var("CARGO_FEATURE_STD") };
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(got.contains(&"std".to_string()), "got {got:?}");
+        assert!(
+            got.contains(&"env".to_string()),
+            "the whole point: `env` is enabled BY `std` under another name — got {got:?}"
+        );
+        assert!(
+            !got.contains(&"never-forwarded".to_string()),
+            "an inactive caller feature's row must not be read — got {got:?}"
+        );
     }
 
     /// Clear every knob the key reads, so a test states its own inputs rather
