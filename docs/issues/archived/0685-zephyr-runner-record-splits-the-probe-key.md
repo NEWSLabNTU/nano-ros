@@ -1,6 +1,6 @@
 ---
 id: 685
-title: "`NROS_ZEPHYR_RUNNER_RECORD` is a timestamped OUTPUT path inside the sizes-probe key, so every zephyr build minted keys nothing can reuse"
+title: "RETIRED as a duplicate — `NROS_ZEPHYR_RUNNER_RECORD` splitting the sizes-probe key was found and better fixed in issue 0446"
 status: resolved
 type: performance
 area: build
@@ -82,3 +82,31 @@ Found 2026-08-19 while re-measuring issue 0446's census on a current tree — th
 `sizes-probe` population had gone 25.8x -> 87.3x since 08-15, which is the
 opposite of what W4's landing should have produced, so the discrepancy was worth
 explaining rather than filing as growth.
+
+## RETIRED 2026-08-19 — duplicate, and the other fix is the right one
+
+A concurrent session found the same splitter and recorded it inside
+[issue 0446](../0446-build-artifact-reuse-factors.md) rather than as its own
+issue. Same knob, same mechanism, same day. Their fix is better and is what
+landed.
+
+**They established the fact I missed: `NROS_ZEPHYR_RUNNER_RECORD` has no
+readers.** `zephyr-fixture-make-driver.sh` set it AND passed the identical path
+as the runner's positional argument, and `zephyr-fixture-run-one.sh` reads only
+`${1:-}`. Tree-wide, zero readers.
+
+So the correct repair is to DELETE the dead export, which they did. Mine added
+it to `KNOBS_THAT_CANNOT_CHANGE_A_SIZE` — in their words, "bookkeeping for a
+variable with no consumer", and a permanent entry describing something that
+should not exist. I reverted my entry when the merge surfaced theirs.
+
+Worth keeping the distinction, because it generalises: an unread `NROS_*` export
+is not free. `knob_identity()` sweeps every `NROS_*` deliberately — that
+conservative default is what issue 0528 requires — so a dead export becomes a
+directory-per-run. The lesson is "delete the variable", not "teach the key about
+it".
+
+The measurement in this issue stands and is not disputed: 911 sub-keys / 207 GB,
+with creation collapsing after W4 landed, and the ~200 GB of pre-W4 residue
+deleted here. Their census (209 sub-keys / 61 GB) was taken after that deletion,
+which is why the two differ.

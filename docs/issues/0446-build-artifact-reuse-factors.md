@@ -318,3 +318,121 @@ The 61 GB of existing sub-keys pre-dates this and is residue, not growth. It is
 regenerated on demand, so deleting `build/sizes-probe` is safe and is the way to
 reclaim it — deliberately not done here, since a wipe would also erase the
 evidence above.
+
+## Re-reviewed 2026-08-19 — the campaign landed, and direction 1 was REFUTED
+
+Re-measured on a current tree and read against the refactors that happened after
+the 08-15 note. **Every direction this issue proposed is now either done or
+disproved**, and the disproof is the interesting half.
+
+### Census, in this issue's own scope (`*/nros-relwithdebinfo/deps/`)
+
+| | 08-06 | 08-15 | **08-19** |
+| --- | --- | --- | --- |
+| rlibs | 106 | 707 | 2025 |
+| target dirs | 60 | 385 | 1629 |
+| identities | 5 | 49 | 100 |
+| factor | 21.2x | 14.4x | **20.3x** |
+
+The headline factor barely moved, and it is now the wrong number to watch —
+see the population split:
+
+| population | rlibs | identities | factor | disposition |
+| --- | --- | --- | --- | --- |
+| `build/cargo-fixtures` | 71 | 33 | **2.2x** | phase-340: solved |
+| `packages/**` | 102 | 21 | 4.8x | bench/test leaves |
+| `examples/**` | 346 | 58 | **6.0x** (was 13.9x) | structural, below |
+| `build/cmake-fixtures` | 20 | 2 | 10.0x | 20 rlibs total |
+| `build/sizes-probe` | 1310 | 15 | 87.3x | fixed + cleared, issue 0685 |
+
+`sizes-probe` alone was 65 % of the rlibs and all of the tail. With it gone the
+fixture lane sits at 2.2x, which is close to the floor.
+
+### Direction 3 — DONE
+
+phase-340 W3 made every cmake-emitted cargo command pass `--target`, host
+included, gated by `check-cargo-target-spelling`. Two of the five identity
+classes merged.
+
+### Direction 2 — DONE, and the sccache question was superseded
+
+`[profile.nros-relwithdebinfo]` no longer sets `incremental`. It is opt-in as
+`nros-iterate` for local iteration, "named rather than ambient", and the profile
+comment records why the A/B this issue asked for never needed running:
+
+> Do NOT use `CARGO_INCREMENTAL=1` instead: sccache 0.8.2 aborts the build.
+
+So the "Not measured" section's hypothesis — that incremental is what makes Rust
+compilations non-cacheable — is not merely unproven but the wrong shape. The
+interaction is not a cache miss, it is an abort.
+
+### Direction 1 — REFUTED, by issue 0616
+
+This issue proposed:
+
+> A shared `CARGO_TARGET_DIR` for leaves whose (profile, features, target-flag,
+> RUSTFLAGS) tuple matches would collapse the duplication with no semantic
+> change — cargo already proves equivalence via the metadata hash.
+
+That premise is false, and the counter-example is now in the tree. `-C metadata`
+includes **the path spelling a crate was reached by** — a member is recorded
+relative to its root, an external path dep absolutely — so two workspace roots
+sharing one directory get two units of every shared crate, identical in
+features, deps and profile, differing only in the `path` fingerprint field.
+Issue 0616's conclusion is exact:
+
+> Units are keyed by that same path spelling, so two workspace roots can never
+> reuse each other's artifacts — the shared directory produced collisions and no
+> sharing.
+
+And the collision was not academic: `nros-platform` holds the tree's one
+`#[global_allocator]`, so both copies defined it and a transitive lookup could
+bind either — intermittent failure, permanent cause. A second root claiming a
+claimed target-dir is now a configure-time `FATAL_ERROR`.
+
+So the metadata hash does NOT prove what this issue assumed it proves. It is an
+identity, not an equivalence class over locations — the very
+directory-vs-identity confusion this issue named, pointing the other way.
+
+Direction 1 survives only WITHIN a workspace root, which is what phase-340
+actually did (all cargo rows into one keyed dir, now 2.2x).
+
+### Why the residual populations are structural, not waste
+
+* **`target-zenoh` / `target-xrce` / `target-cyclonedds`** (110 of the 346
+  `examples/**` rlibs) — a different RMW is a different feature set, so these
+  are genuinely different identities, not repeats.
+* **`cargo/nano-ros_<hash>/`** (56) — Corrosion >= 0.6.0's hashed per-workspace
+  dirs, which issue 0500 required and 0616 proved necessary.
+* **`nros-metadata/metadata-probe-cmake/`** (35) — issue 0522's subject,
+  resolved.
+* **Per-leaf isolation in `examples/**`** is the copy-out contract (RFC-0026,
+  RFC-0070 R1 as amended); phase-340 P4 was WITHDRAWN rather than blocked for
+  exactly this reason.
+
+### Wall clock, for the record
+
+phase-340 W7 re-measured the lane this issue was opened against: **6794 s ->
+581 s, 11.7x**, at the same 72 fixtures. No wall-clock claim is made here — issue
+0562 established this host's lane timing is set by page-cache state, a 14x
+spread on provably identical work.
+
+### Remaining work
+
+**None, in this issue's framing.** Every direction is closed: 3 done, 2 done,
+1 refuted, the probe dir fixed (0685) and its 207 GB reclaimed, and both
+successor issues (0522, 0488) resolved. What is left in the census is either
+legitimately distinct identities or an isolation contract the tree has decided
+to keep.
+
+The durable output is the question in the title — *what actually makes those
+builds incompatible* — and the answer has one more entry than the original
+table:
+
+| Factor | Blocks reuse? |
+| --- | --- |
+| profile / features / `--target` / RUSTFLAGS | yes (measured 2026-08-06) |
+| **the path spelling the crate was reached by** | **yes (issue 0616)** |
+
+That last row is the one nobody had, and it is why "share by identity" cannot be
+done by pointing two roots at one directory.

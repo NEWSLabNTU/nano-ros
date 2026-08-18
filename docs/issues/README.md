@@ -51,16 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-19): **#685** — `build/sizes-probe` had grown to **207 GB / 911 sub-keys** (87.3x
-duplication) where phase-353 W4 left it at 8 keys / 2.2 GB with "zero new keys on a second run". Two facts, not
-one: ~850 keys are pre-W4 residue the fix made unreachable and nobody deleted (creation collapses from
-356/day on 08-15 to ~20/day after), and one knob of the same class escaped the exclusion list —
-`NROS_ZEPHYR_RUNNER_RECORD`, a timestamp+pid OUTPUT path, **329 distinct values**, the largest splitter left.
-W4's census ran a NATIVE lane and this knob is set only by the zephyr driver, so the mechanism was right and
-the survey narrower than the population. Excluded with its argument; 0528's invariant untouched and the four
-content-bearing names still unexcludable. `NROS_FIXTURE_COORDS` also varies but names a file whose CONTENT
-selects coordinates, so it is deliberately left for its own argument. Residue deleted. See `archived/0685-*`.
-(2026-08-19)
+Retired (2026-08-19): **#685** — duplicate. A concurrent session found the same probe-key splitter
+(`NROS_ZEPHYR_RUNNER_RECORD`, a timestamp+pid OUTPUT path) and recorded it in **#446** the same day, with the
+better fix: the variable has NO READERS — the driver set it and passed the identical path positionally, and
+the runner reads only `$1` — so the repair is DELETING the dead export, not adding it to the
+cannot-change-a-size list. My exclusion entry was reverted. The lesson generalises: `knob_identity()` sweeps
+every `NROS_*` by design (issue 0528's conservative default), so an unread `NROS_*` export costs a
+directory-per-run. The 207 GB of pre-W4 residue measured here was deleted. See `archived/0685-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#684** — `check-image-panic-policy`, a gate documented as BUILDLESS and wired
 into `check-fast`, took ~10 min on a cold cache. It enumerated with `Path.glob("**")` over `examples/` and
