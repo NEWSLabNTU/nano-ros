@@ -119,15 +119,18 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
     // `seen.contains(RULE_MAX_AGE_RUNTIME)` match the complaint about the
     // missing rule and the test passes exactly when it should fail. Evidence
     // goes in the panic MESSAGE; only real output goes in `seen`.
+    // issue 0670 — `collect_until_count` is this closure, promoted to
+    // `nros_tests::process` so the next test needing it does not re-derive the
+    // separation (and does not re-derive it WRONG: both obvious spellings,
+    // `unwrap_or_default()` and `unwrap_or_else(|e| e.to_string())`, are the
+    // traps described above).
     let mut why = String::new();
     let mut wait_rule = |proc: &mut ManagedProcess, rule: &str, secs: u64| -> String {
-        match proc.wait_for_output_count(rule, 1, Duration::from_secs(secs)) {
-            Ok(out) => out,
-            Err(e) => {
-                why.push_str(&format!("\n[wait {rule}] {e}"));
-                String::new()
-            }
+        let (out, diag) = proc.collect_until_count(rule, 1, Duration::from_secs(secs));
+        if let Some(d) = diag {
+            why.push_str(&d);
         }
+        out
     };
     let age_out = wait_rule(&mut diagsink, RULE_MAX_AGE_RUNTIME, 14);
     let rate_out = wait_rule(&mut diagsink, RULE_RATE_HIERARCHY_RUNTIME, 18);

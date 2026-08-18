@@ -805,6 +805,58 @@ impl ManagedProcess {
         self.wait_until_pattern(pattern, timeout).0
     }
 
+    /// [`Self::wait_for_output_count`] for an assert-on-content caller: the
+    /// real output, and the diagnostic SEPARATELY.
+    ///
+    /// Issue 0670. The obvious way to keep a timed-out wait's evidence is
+    /// `unwrap_or_else(|e| e.to_string())`, and it is a trap: that text NAMES
+    /// the pattern it was waiting for (``did not print `max-age-runtime` ``),
+    /// so an assertion of the common shape
+    ///
+    /// ```ignore
+    /// assert!(seen.contains(RULE), "expected {RULE}, got:\n{seen}");
+    /// ```
+    ///
+    /// then matches the COMPLAINT about the missing rule, and the test passes
+    /// exactly when it should fail. That was tried on `contract_monitor_parity`
+    /// and produced a green run against a pipeline emitting one DIAG line.
+    ///
+    /// The other obvious way, `unwrap_or_default()`, throws the evidence away
+    /// instead — which is how the same test reported `got:` with nothing after
+    /// it, and why the real cause (issue 0671: an unguarded `epoch_us_fn`
+    /// clobber left the age monitor with no clock) took a separate
+    /// investigation to find.
+    ///
+    /// So the two are returned on different channels and cannot be confused:
+    /// put `.0` in what you assert on, `.1` in the panic MESSAGE.
+    ///
+    /// ```ignore
+    /// let (seen, why) = p.collect_until_count(RULE, 1, Duration::from_secs(14));
+    /// assert!(
+    ///     seen.contains(RULE),
+    ///     "expected {RULE} on /diagnostics, got:\n{seen}{}",
+    ///     why.unwrap_or_default()
+    /// );
+    /// ```
+    ///
+    /// Sibling of [`Self::collect_until`], which serves the same purpose for
+    /// the single-occurrence case and returns no diagnostic because its own
+    /// `Err` carries none.
+    pub fn collect_until_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: Duration,
+    ) -> (String, Option<String>) {
+        match self.wait_for_output_count(pattern, expected, timeout) {
+            Ok(out) => (out, None),
+            // The error carries the output too (see the timeout branch of
+            // `wait_for_output_count`), but it is NOT returned as output: only
+            // what the process really printed belongs in the asserted string.
+            Err(e) => (String::new(), Some(format!("\n[wait {pattern}] {e}"))),
+        }
+    }
+
     /// Wait until a pattern appears at least `expected` times in stdout+stderr.
     pub fn wait_for_output_count(
         &mut self,

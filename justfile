@@ -464,6 +464,7 @@ check-fast: _check-skip-reset \
     check-goal-cdr-stripped \
     check-test-domain-assignment \
     check-zenohd-spawn-sites check-zenohd-resolution-parity \
+    check-wait-evidence-discarded \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     #!/usr/bin/env bash
     set -e
@@ -1607,6 +1608,27 @@ check-test-domain-assignment:
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.
 check-zenohd-spawn-sites:
     @bash scripts/check-zenohd-spawn-sites.sh
+
+# Issue 0670 — a timed-out wait's evidence must not be thrown away.
+#
+# `wait_for_output*` returns `Err` carrying what the process PRINTED;
+# `.unwrap_or_default()` replaces it with `""`, so the assertion reports `got:`
+# with nothing after it. `contract_monitor_parity` failed exactly that way, and
+# the empty `got:` is why its real cause (issue 0671 — an unguarded
+# `epoch_us_fn` clobber leaving the age monitor with no clock) took a separate
+# investigation instead of being readable off the failure.
+#
+# A gate rather than a sweep, because the obvious mechanical fix is WRONG:
+# `unwrap_or_else(|e| e.to_string())` folds in text that NAMES the pattern being
+# waited for, so `seen.contains(<pattern>)` matches the complaint about the
+# missing pattern and the test passes exactly when it should fail. Each site
+# needs its assertion read. `collect_until_count` returns the two on separate
+# channels for that reason.
+#
+# 87 sites are baselined as a SHRINKING backlog; what this buys today is that an
+# eighty-eighth cannot arrive silently.
+check-wait-evidence-discarded:
+    @python3 scripts/check-wait-evidence-discarded.py
 
 # Issue 0653 — the shell and Rust router resolvers must resolve the SAME router.
 #

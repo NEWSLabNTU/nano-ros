@@ -104,14 +104,18 @@ Closed as bookkeeping — the phase archived COMPLETE 2026-08-16 and this was le
 2026-08-18. Residue, deliberately not held open here: `play_launch_parser` is still hand-joined because it
 installs UNVERSIONED and needs its installer moved first (phase-365 W3b). See `archived/0625-*`. (2026-08-18)
 
-**#0670** (testing/diagnostics, open 2026-08-18) — `contract_monitor_parity`'s violating case is red on main
-and reproduces SOLO. The diagsink emits ONE DIAG line in 32 s — the PUB's `rate-hierarchy-runtime` — and the
-SUB's `max-age-runtime` never arrives, though the sub is receiving the stale headers that should trip it. The
-same three fixtures, env and start order pass by hand against BOTH routers (50 max-age), so phase-362's router
-switch is ruled out; the variable is the harness. The compliant twin cannot catch this — it asserts SILENCE,
-so a dead pipeline passes it. Two harness defects fixed on the way (`wait_for_output_count` dropped its output
-on timeout; the call site `unwrap_or_default()`ed it away) — and a warning in the issue against the tempting
-fix that makes the test pass vacuously. See `0670-*`. (2026-08-18)
+Recently resolved (2026-08-18): **#0670** — `contract_monitor_parity`'s violating case, red on main and
+reproducing SOLO: ONE DIAG line in 32 s (the PUB's rate rule), the SUB's `max-age-runtime` never arriving
+though the sub was receiving the stale headers that should trip it. That asymmetry turned out to be #0671
+exactly — an UNGUARDED `epoch_us_fn = config.epoch_us` beside a guarded `clock_us`, so every hosted node built
+through `ctx.config()` lost its wall clock, the age cell was never attached, and only the rate monitor (which
+rides the guarded clock) kept firing. Verified on rebuilt fixtures: 2/2 PASS, the violating case 32 s -> 5.4 s.
+The issue's own prescribed experiment — reproduce the harness's piped spawn — was aimed at the wrong layer;
+the by-hand runs differed by taking a config path that still had an epoch. What this issue OWNED is closed
+here: `ManagedProcess::collect_until_count` (the inline `wait_rule`, promoted — output and diagnostic on
+SEPARATE channels, because `unwrap_or_default()` destroys the evidence and `unwrap_or_else(|e| e.to_string())`
+makes the test pass vacuously), plus `check-wait-evidence-discarded` with the 87 present sites baselined as a
+shrinking backlog rather than swept. See `archived/0670-*`. (2026-08-18)
 **#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
 in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
 findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not
