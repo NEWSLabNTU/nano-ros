@@ -1,7 +1,7 @@
 ---
 id: 681
 title: "`check-tier-preconditions` probes the fixture STAMP but not fixture FRESHNESS, so it reports OK and `just ci` fails minutes later on the gate it did not run"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: build, testing
@@ -96,3 +96,45 @@ static gates that protect it): the gate is not missing, the EDGE to it is.
 That the fixtures went stale at all is ordinary treadmill (the pull re-stamped
 `nros-cpp`, which those cmake fixtures depend on) and is working as designed.
 The defect is that the precondition check said OK about it.
+
+
+## RESOLVED 2026-08-19 — probe both, and stop the message claiming more than it checks
+
+Took direction 1 + 3. `check-tier-preconditions.sh` now runs `_check-fixtures-stale`
+beside `_require-fixtures`, and the two probes say which question each answers:
+
+    [x] test fixtures MISSING for this lane (no build stamp covering it)
+    [x] test fixtures STALE for this lane (an input is newer than the artifact)
+
+No scope wiring was needed: issue 0443 already made `_check-fixtures-stale`
+DERIVE its scope from `NROS_FIXTURE_LANE`, which this script reads, so the two
+gates cannot disagree about what the lane contains.
+
+### Demonstrated on the tree that reported the bug
+
+Same checkout, immediately after a pull:
+
+| gate | exit |
+| --- | --- |
+| `_require-fixtures` (the only one probed before) | **0** — the batch reported OK |
+| `_check-fixtures-stale` (never probed) | **1** — 54 stale C/C++ cells, then 9 more families |
+
+With the probe added, the batch now reports the unmet precondition up front
+instead of `just ci` dying on it after `check`, `check-fast` and
+`rust-rtos-link-check`.
+
+### One property this breaks, deliberately
+
+The probes around it are documented "buildless and source-free". This one is
+not: `_check-fixtures-stale` self-heals the C/C++ cmake cells it finds stale
+("54 cell(s) … have now been rebuilt"), so the batch can now do work rather than
+only report. It is the same work `just ci` would do minutes later, moved
+earlier — but the difference from its neighbours is real, and the script says so
+rather than leaving the next reader to discover it.
+
+### Direction 2 not taken
+
+Collapsing the two gates into one is still the better end state — a caller
+having to remember to invoke them in pairs is the seam that produced #0443 and
+this issue. It is a larger change than the edge that was missing, and the edge
+is what made the batch lie. Left as a follow-up rather than bundled here.
