@@ -47,7 +47,7 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
 
     // Locate the emitted run_plan.rs under demo_entry/target/.../build/
     // demo_entry-<hash>/out/ (the hash is build-specific → walk).
-    let build_dir = staged.join("demo_entry/target/debug/build");
+    let build_dir = staged.join("src/demo_entry/target/debug/build");
     let run_plan_path = walk(&build_dir)
         .into_iter()
         .find(|e| e.file_name().and_then(|n| n.to_str()) == Some("run_plan.rs"))

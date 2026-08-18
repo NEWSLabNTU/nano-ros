@@ -13,18 +13,23 @@
 
 fn main() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture_root = manifest.parent().expect("manifest parent").to_path_buf();
-    let launch = fixture_root.join("launch/system.launch.xml");
+    // `<fixture>/src/<entry>/` — the canonical layout, so the workspace root is
+    // two levels up and the SHARED `launch/` dir sits there beside `src/`.
+    let fixture_root = manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("manifest grandparent")
+        .to_path_buf();
+    let launch = fixture_root.join("src/shared_bringup/launch/system.launch.xml");
     println!("cargo:rerun-if-changed={}", launch.display());
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Override `Options::workspace_root`: nros-build's `from_env`
-    // default (`manifest.parent().parent()`) assumes the canonical
-    // `<workspace>/src/<entry>/Cargo.toml` layout. The Entry pkgs in
-    // this fixture sit one level shallower (sibling of `src/`), so
-    // we point the planner at the actual fixture root directly.
-    let mut opts = nros_build::Options::from_env(&launch);
-    opts.workspace_root = fixture_root;
+    // Issue 0683 — no `workspace_root` override: `Options::from_env`'s own
+    // `manifest.parent().parent()` is now right. These Entry pkgs used to sit
+    // BESIDE `src/` and patch the derivation here, which also put them outside
+    // the tree `nros sync` walks — so no SystemModel was resolved for this
+    // launch file and codegen fell back to the stub below.
+    let opts = nros_build::Options::from_env(&launch);
 
     match nros_build::generate_run_plan_with(&opts) {
         Ok(path) => eprintln!("nros-build: emitted {}", path.display()),

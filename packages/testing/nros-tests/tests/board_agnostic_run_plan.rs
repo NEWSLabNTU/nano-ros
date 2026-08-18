@@ -78,9 +78,10 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
     // OUT_DIR/run_plan.rs identity meaningful in the first place. Read
     // the committed fixture sources; `build.rs` carries no
     // `@…@` placeholder, so the bytes compare directly.
-    let posix_build_rs = fs::read(src.join("posix_entry/build.rs")).expect("read posix build.rs");
+    let posix_build_rs =
+        fs::read(src.join("src/posix_entry/build.rs")).expect("read posix build.rs");
     let freertos_build_rs =
-        fs::read(src.join("freertos_entry/build.rs")).expect("read freertos build.rs");
+        fs::read(src.join("src/freertos_entry/build.rs")).expect("read freertos build.rs");
     assert_eq!(
         posix_build_rs, freertos_build_rs,
         "fixture invariant violated: posix_entry/build.rs and freertos_entry/build.rs MUST be \
@@ -92,7 +93,7 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
     // prebuilt `out/run_plan.rs`.
     let stamp = nros_tests::fixtures::require_compile_check("board_agnostic_run_plan")?;
     let staged = stamp.parent().expect("stamp dir");
-    let build_dir = staged.join("posix_entry/target/debug/build");
+    let build_dir = staged.join("src/posix_entry/target/debug/build");
     let run_plan_path = walk(&build_dir)
         .into_iter()
         .find(|e| e.file_name().and_then(|n| n.to_str()) == Some("run_plan.rs"))

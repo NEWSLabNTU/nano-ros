@@ -3036,8 +3036,10 @@ output = ".compile-ok"
 id = "nav2_compat_smoke"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/o5_nav2_compat_smoke"
-# The crate lives in a subdir; `pkg` defaults to demo_entry.
-manifest_dir = "demo_entry"
+# issue 0683 — the entry is a workspace package under `src/` like every other,
+# so `nros sync` resolves ITS launch file. While it sat beside `src/` sync never
+# saw it, no SystemModel was written, and the fixture emitted a stub for months.
+manifest_dir = "src/demo_entry"
 output = "target/debug/demo_entry"
 
 [[compile_check_fixture]]
@@ -3045,7 +3047,8 @@ id = "board_agnostic_run_plan"
 builder = "cargo-build"
 dir = "packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan"
 pkg = "posix_entry"
-manifest_dir = "posix_entry"
+# issue 0683 — under `src/` so `nros sync` resolves the launch file.
+manifest_dir = "src/posix_entry"
 output = "target/debug/posix_entry"
 
 # --- cmake-configure: configure (and build) into build/cmake-fixtures/<id>.
@@ -3137,7 +3140,8 @@ output = "nros-metadata.json"
 id = "freertos_firmware"
 builder = "cross-build"
 dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos"
-manifest_dir = "firmware"
+# issue 0683 — under `src/` so `nros sync` resolves its launch file.
+manifest_dir = "src/firmware"
 pkg = "firmware"
 target = "thumbv7m-none-eabi"
 output = "target/thumbv7m-none-eabi/debug/firmware"

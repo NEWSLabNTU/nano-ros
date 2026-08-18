@@ -3,9 +3,9 @@
 # while debugging the fixture, this keeps the per-Entry target dirs
 # out of git. Mirrors the CLAUDE.md `.gitignore` discipline (leading
 # `/` so the rule only matches at this dir's root).
-/posix_entry/target/
-/freertos_entry/target/
-/shared_node_pkg/target/
-/posix_entry/Cargo.lock
-/freertos_entry/Cargo.lock
-/shared_node_pkg/Cargo.lock
+/src/posix_entry/target/
+/src/freertos_entry/target/
+/src/shared_node_pkg/target/
+/src/posix_entry/Cargo.lock
+/src/freertos_entry/Cargo.lock
+/src/shared_node_pkg/Cargo.lock

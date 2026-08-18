@@ -1,39 +1,34 @@
-//! Phase 212.O.3 — Entry pkg build.rs (board-agnostic).
+//! Phase 212.O.5 fixture — demo_entry build.rs.
 //!
-//! **This file is byte-identical to its sibling Entry pkg's
-//! `build.rs`.** The O.3 acceptance assertion compares the two
-//! `OUT_DIR/run_plan.rs` outputs for byte-identity; that only holds
-//! if the inputs are the same (launch XML path resolves to the same
-//! canonical content + nros-build crate version is the same +
-//! build.rs source is the same).
+//! Drives [`nros_build::generate_run_plan`] against the nav2-style
+//! `launch/system.launch.xml`. The launch.xml exercises every directive
+//! in the Phase 212.N.11 v1 tag set; this build script is the codegen
+//! seam that must accept all of them and emit
+//! `$OUT_DIR/run_plan.rs`.
 //!
-//! Consumes `../launch/system.launch.xml` — both Entry pkgs read the
-//! SAME launch file through a relative path that resolves to the
-//! shared fixture-level `launch/` dir.
+//! Same offline-CI fallback shape as the H.3 firmware build.rs: if the
+//! git-based `nros-build` dep is unavailable or the planner trips on
+//! the launch file, fall through to a placeholder stub so the bin still
+//! compiles. The integration test inspects the emitted body and skips
+//! when only the placeholder is present (matches H.3 gating).
 
 fn main() {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture_root = manifest.parent().expect("manifest parent").to_path_buf();
-    let launch = fixture_root.join("launch/system.launch.xml");
+    let launch = manifest.join("launch/system.launch.xml");
     println!("cargo:rerun-if-changed={}", launch.display());
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Override `Options::workspace_root`: nros-build's `from_env`
-    // default (`manifest.parent().parent()`) assumes the canonical
-    // `<workspace>/src/<entry>/Cargo.toml` layout. The Entry pkgs in
-    // this fixture sit one level shallower (sibling of `src/`), so
-    // we point the planner at the actual fixture root directly.
-    let mut opts = nros_build::Options::from_env(&launch);
-    opts.workspace_root = fixture_root;
+    // Issue 0683 — no `workspace_root` override. This Entry pkg lives at the
+    // canonical `<workspace>/src/<entry>/Cargo.toml`, so `Options::from_env`'s
+    // own `manifest.parent().parent()` is right. It used to sit BESIDE `src/`
+    // and patch the derivation here; that also put it outside the tree
+    // `nros sync` walks, so no SystemModel was ever resolved for this launch
+    // file and the codegen below fell back to a stub for months.
+    let opts = nros_build::Options::from_env(&launch);
 
     match nros_build::generate_run_plan_with(&opts) {
         Ok(path) => eprintln!("nros-build: emitted {}", path.display()),
         Err(err) => {
-            // Offline / network-blocked fallback. Stub keeps the bin
-            // linkable so the test can still surface a meaningful
-            // skip!. The integration test detects this stub and skips
-            // the byte-identical assertion (one Entry can't prove
-            // codegen identity by itself).
             eprintln!("nros-build: codegen skipped: {err:?}");
             let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
             let stub = std::path::Path::new(&out_dir).join("run_plan.rs");

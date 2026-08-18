@@ -19,4 +19,4 @@
 [workspace]
 resolver = "2"
 members = []
-exclude = ["src/talker_pkg", "src/listener_pkg", "src/demo_bringup", "firmware"]
+exclude = ["src/talker_pkg", "src/listener_pkg", "src/demo_bringup", "src/firmware"]

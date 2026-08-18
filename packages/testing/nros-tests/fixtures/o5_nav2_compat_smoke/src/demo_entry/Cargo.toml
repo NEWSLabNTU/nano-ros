@@ -48,8 +48,8 @@ nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", defa
 # Phase 212.M.5.a.3 — component pkg paths so the codegen-emitted
 # `run_plan(runtime)` body can call `<pkg>::register(runtime)` for each
 # `<node>` entry in the launch XML graph.
-primary_node = { path = "../src/primary_node" }
-secondary_node = { path = "../src/secondary_node" }
+primary_node = { path = "../primary_node" }
+secondary_node = { path = "../secondary_node" }
 
 [build-dependencies]
 # Phase 212.N.4 codegen library — in-tree CLI (post-Phase-218

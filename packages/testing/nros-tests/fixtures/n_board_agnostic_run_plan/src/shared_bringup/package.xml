@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!-- Issue 0683 — the ONE launch file both Entry pkgs consume, as a bringup
+     PACKAGE rather than a bare `launch/` dir at the fixture root.
+
+     The sharing is the point of this fixture: posix_entry and freertos_entry
+     must plan from the SAME launch.xml under two different Boards. A bare
+     directory expressed that, but it is not a package, so `nros sync` never
+     resolved a SystemModel for it and both entries fell back to a codegen stub.
+     A bringup package says the same thing in the vocabulary the toolchain
+     reads. -->
+<package format="3">
+  <name>shared_bringup</name>
+  <version>0.1.0</version>
+  <description>Board-agnostic launch topology consumed by both Entry pkgs.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>shared_node_pkg</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

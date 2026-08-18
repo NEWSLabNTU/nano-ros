@@ -35,7 +35,7 @@ panic-semihosting = { version = "0.6", features = ["exit"] }
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 # Component pkg under test — enable the `freertos` feature gate so
 # its `nros` dep links the FreeRTOS platform backend.
-shared_node_pkg = { path = "../src/shared_node_pkg", features = ["freertos"] }
+shared_node_pkg = { path = "../shared_node_pkg", features = ["freertos"] }
 
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from

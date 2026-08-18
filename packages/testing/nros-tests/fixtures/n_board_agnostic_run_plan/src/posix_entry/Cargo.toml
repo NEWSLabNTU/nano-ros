@@ -30,7 +30,7 @@ nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", defa
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "std"] }
 # Component pkg under test — enable the `posix` feature gate so its
 # `nros` dep links the POSIX platform backend.
-shared_node_pkg = { path = "../src/shared_node_pkg", features = ["posix"] }
+shared_node_pkg = { path = "../shared_node_pkg", features = ["posix"] }
 
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from

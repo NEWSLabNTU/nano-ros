@@ -40,8 +40,8 @@ panic-semihosting = { version = "0.6", features = ["exit"] }
 # Phase 212.N.7 step-5 — Component pkgs are linked here so the codegen
 # `run_plan(runtime)` body can call `<pkg>::register(runtime)` (the
 # wrapper emitted by `nros::component!()` since step-3.4).
-talker_pkg = { path = "../src/talker_pkg" }
-listener_pkg = { path = "../src/listener_pkg" }
+talker_pkg = { path = "../talker_pkg" }
+listener_pkg = { path = "../listener_pkg" }
 
 [build-dependencies]
 # Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the

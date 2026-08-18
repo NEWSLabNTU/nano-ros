@@ -19,4 +19,4 @@
 [workspace]
 resolver = "2"
 members = []
-exclude = ["src/primary_node", "src/secondary_node", "demo_entry"]
+exclude = ["src/primary_node", "src/secondary_node", "src/demo_entry"]

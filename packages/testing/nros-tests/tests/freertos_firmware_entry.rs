@@ -34,9 +34,9 @@ fn find_run_plan(build_dir: &std::path::Path) -> Option<PathBuf> {
 fn freertos_qemu_mps2_an385_entry_pkg_firmware_builds() -> nros_tests::TestResult<()> {
     let stamp = nros_tests::fixtures::require_compile_check("freertos_firmware")?;
     let staged = stamp.parent().expect("fixture dir");
-    let build_dir = staged.join("firmware/target/thumbv7m-none-eabi/debug/build");
+    let build_dir = staged.join("src/firmware/target/thumbv7m-none-eabi/debug/build");
     let run_plan_path = find_run_plan(&build_dir)
-        .expect("nros-build did not emit run_plan.rs under firmware/target");
+        .expect("nros-build did not emit run_plan.rs under src/firmware/target");
     let run_plan = fs::read_to_string(&run_plan_path).expect("read run_plan.rs");
 
     // Offline fallback: the firmware build.rs emits a `Placeholder` stub when the

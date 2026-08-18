@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!-- Issue 0683 — the Entry pkg needs a package.xml, or `nros sync` does not see
+     it as a package and never resolves a SystemModel for its `launch/`. Without
+     one this fixture cross-built happily and emitted a codegen STUB, so the
+     firmware ELF proved it links, not that the launch file planned. -->
+<package format="3">
+  <name>firmware</name>
+  <version>0.1.0</version>
+  <description>Phase 212.N.7 fixture — FreeRTOS Entry pkg driving run_plan codegen.</description>
+  <maintainer email="dev@example.org">nano-ros tests</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <exec_depend>talker_pkg</exec_depend>
+  <exec_depend>listener_pkg</exec_depend>
+  <export>
+    <build_type>nros_entry</build_type>
+  </export>
+</package>

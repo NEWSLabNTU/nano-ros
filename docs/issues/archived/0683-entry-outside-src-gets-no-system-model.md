@@ -1,7 +1,7 @@
 ---
 id: 683
 title: "An Entry package outside `src/` never gets a SystemModel, so two compile-check fixtures emit a stub — and the skip blamed a tool that was installed"
-status: open
+status: resolved
 type: bug
 area: testing/orchestration
 related: [phase-330, rfc-0060]
@@ -67,20 +67,51 @@ where the precondition is manufactured by the build. Four fixture build scripts
 share this shape (`o5_nav2_compat_smoke`, both `n_board_agnostic_run_plan`
 entries, `multi_pkg_workspace_freertos`).
 
-## Directions
+## Fix
 
-Candidates, not a plan.
+All three Entry packages moved to the canonical `<workspace>/src/<entry>/`:
 
-- **Make sync see entries outside `src/`.** Most direct; the question is whether
-  a bringup outside `src/` is a layout the CLI means to support, or whether
-  these fixtures are the only ones shaped this way.
-- **Move the entries under `src/`.** Canonical layout, and the `workspace_root`
-  override in both build scripts goes away with it. Costs whatever the shallower
-  layout was meant to exercise — which is not written down anywhere.
-- **Set `NROS_MODEL_DIR` for these fixtures** in the compile-check builder. The
-  narrowest fix, and the error message already suggests it; it leaves the
-  underlying "sync does not see this package" gap in place for the next layout.
-- **Stop the fallback from hiding failures** — make the stub arm fail the build
-  for fixtures whose whole purpose is asserting codegen output. This turns two
-  silent skips into two honest reds, so it wants to land WITH one of the above,
-  not before.
+| fixture | was | now |
+| --- | --- | --- |
+| `o5_nav2_compat_smoke` | `demo_entry/` | `src/demo_entry/` |
+| `n_board_agnostic_run_plan` | `posix_entry/`, `freertos_entry/` | `src/…` |
+| `multi_pkg_workspace_freertos` | `firmware/` | `src/firmware/` |
+
+The `exclude` lists, `manifest_dir` rows, `.gitignore` rules, sibling path deps
+and test-side paths moved with them, and the `Options::workspace_root` overrides
+are DELETED — `from_env`'s own `manifest.parent().parent()` is correct at the
+canonical depth, which is what those overrides were working around.
+
+Two of the three needed one more thing, and both are the same rule:
+**`nros sync` resolves PACKAGES, so a launch file has to live in one.**
+
+- `n_board_agnostic_run_plan` kept its shared launch file in a bare
+  `launch/` dir at the fixture root — deliberate (both Entry pkgs must plan
+  from the SAME file), but a directory is not a package. It is now
+  `src/shared_bringup/`, a bringup package with `package.xml` + `launch/`,
+  which says the same thing in the vocabulary the toolchain reads.
+- `multi_pkg_workspace_freertos`'s `firmware/` had no `package.xml` at all. It
+  cross-built happily and emitted a stub, so its ELF proved the image links, not
+  that the launch file plans.
+
+## Verified
+
+`nav2_compat`, `board_agnostic_run_plan` and `freertos_firmware_entry` all PASS
+against real codegen — the first two were skipping, the third was passing over a
+stub.
+
+## Left open, deliberately
+
+`multi_pkg_workspace_freertos` now reaches the PLANNER and fails there:
+
+```
+planning failed with 2 error(s):
+missing-source-metadata: missing source metadata for talker_pkg/talker …
+missing-source-metadata: missing source metadata for listener_pkg/listener …
+```
+
+So its `run_plan.rs` is still a stub — but for a real, newly-visible reason
+instead of a missing model, and its test passes either way because it only
+asserts the ELF builds. That is a separate defect in the fixture's node
+metadata, not this one; it is recorded here rather than chased, and it is
+findable now because the stub carries its reason.
