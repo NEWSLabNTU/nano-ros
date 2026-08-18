@@ -482,6 +482,16 @@ own, silently. Also records the measurement error that made an earlier attempt l
 reused stale caches; the `PARENT_SCOPE`/two-C-libraries explanation built on that is RETRACTED.
 See `archived/0679-*`. (2026-08-18)
 
+**#0680** (boards/platform, open 2026-08-18) — #0678 moved threadx-riscv64 onto the toolchain's own newlib,
+which is the right fix, and newlib resolves `errno` through `_impure_ptr` — ONE global pointer to ONE
+`struct _reent`. Nothing points it per-thread: all four `TX_THREAD_EXTENSION` slots are empty and there is no
+`_impure_ptr` / `__retarget_lock_*` wiring anywhere. So `errno` is shared across ThreadX threads (a failing
+socket call on the RX thread is readable by the app thread, no diagnostic) and `malloc`/`free` have no lock —
+exposure limited by #0664's bump `_sbrk` with no free. Pre-existing newlib property made REACHABLE by #0678,
+not a regression: before it the board did not link at all, and picolibc's per-thread `errno` only ever worked
+where the compiler had native TLS. ThreadX's own answer is a `TX_THREAD_EXTENSION` slot; all four are free.
+See `0680-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0678** — the `threadx-riscv64` Cyclone rows could not link
 `__emutls_v.errno`: the provisioned xPack toolchain implements `__thread` as EMULATED TLS while the injected
 Debian picolibc was built with NATIVE TLS and carries zero emutls symbols, so the reference could never be

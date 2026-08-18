@@ -275,3 +275,48 @@ picolibc still expected — one undefined symbol became three. Here picolibc
 leaves the link entirely (`nros_threadx_setup_picolibc` returns before
 publishing its lib dir), so newlib defines that stdio itself and `startup.c`
 correctly must not.
+
+## Addendum — what the upstream projects advise, and what this fix leaves behind
+
+Independent research reaching the same conclusion this fix implements, plus the
+half it does not cover. Sources at the end.
+
+**picolibc decides TLS at ITS OWN build time.** `-Dthread-local-storage`
+defaults to `auto` — *"based on compiler support"* — and `-Dnewlib-global-errno`
+(*"use single global errno even when thread-local-storage=true"*) is likewise a
+picolibc BUILD option. So whether `errno` is `__thread` is fixed when picolibc
+is compiled, by whichever compiler compiled it. A consumer cannot change it,
+which is exactly why defining `NEWLIB_GLOBAL_ERRNO` in our own TUs was unsound —
+it changes the declaration and not the archive (issue 0679 reached this from an
+attempt that linked).
+
+**Zephyr states the rule this fix restores.** Zephyr uses the toolchain-BUNDLED
+picolibc, and says the SDK's copy and the module are *"guaranteed to be in
+sync"*; building from source is the exception for toolchains with no bundled
+copy. Injecting a distro picolibc into a different toolchain is the thing that
+principle exists to prevent. Worth noting alongside: the picolibc TLS discussion
+records the arm gnu toolchain also shipping without TLS, so a bare-metal GNU
+toolchain lacking it is a recurring condition, not an xPack quirk.
+
+**What this fix hands to ThreadX.** picolibc kept `errno` in compiler TLS, so
+per-thread `errno` came for free wherever the compiler supported it. newlib
+resolves `errno` through `_impure_ptr` — one global pointer to one
+`struct _reent` — and ThreadX's mechanism for per-thread library state is a
+`TX_THREAD_EXTENSION` slot in `tx_port.h`, saved and restored by the context
+switch. That wiring does not exist here: all four extension slots are empty and
+there is no `_impure_ptr` or `__retarget_lock_*` anywhere in the tree.
+
+So `errno` and `_reent` are now SHARED across ThreadX threads. That is a
+pre-existing property of newlib made REACHABLE by this fix rather than a
+regression it introduced — before it, the board did not link at all on a
+provisioned host — and it is not an argument for going back, since picolibc's
+per-thread `errno` only ever worked where the compiler had native TLS. It is
+tracked as [issue 0680](../0680-threadx-newlib-reent-shared-across-threads.md).
+
+### Sources
+
+* picolibc build options — <https://github.com/picolibc/picolibc/blob/main/doc/build.md>
+* picolibc TLS design — <https://github.com/picolibc/picolibc/blob/main/doc/tls.md>
+* Zephyr picolibc integration — <https://docs.zephyrproject.org/latest/develop/languages/c/picolibc.html>
+* ThreadX errno / `TX_THREAD_EXTENSION` — <https://learn.microsoft.com/en-us/answers/questions/1245073/integrating-bsd-library-with-azure-threadx-rtos>
+* ThreadX + newlib reentrancy, unanswered — <https://github.com/eclipse-threadx/threadx/issues/448>
