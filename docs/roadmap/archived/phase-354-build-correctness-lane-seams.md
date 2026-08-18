@@ -1,6 +1,6 @@
 # Phase 354 — Contract seams: the places two sides disagree about one fact
 
-**Status (2026-08-17). W1–W4 DONE.** This header said
+**Status (2026-08-18). COMPLETE — W1–W4 all DONE; archived.** This header said
 "PLANNING — nothing implemented" after work had landed — corrected here.
 
 * **W1 (#493, two workspace roots / one corrosion dir)** — **DONE.** Both halves
@@ -14,8 +14,9 @@
   the W3 section. #454 resolved.
 * **W4 (#532, clock ABI resolution)** — **DONE.** The check ran: phase-352
   covers items 1-3 and answers the open question; item 4 is a recorded
-  deferral; item 5 (the wall clock) is untouched. #532 restated to that
-  remainder — see the W4 section.
+  deferral; item 5 (the wall clock) was untouched, so #532 was restated to that
+  remainder — and the remainder has SINCE landed (2026-08-18): the wall clock is
+  one `nros_platform_time_now_ns` and #532 is resolved. See the W4 section.
 
 **Owns:** [issue 0493](../issues/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md),
 [issue 0466](../issues/0466-tier1-setup-contract-unstated.md),
@@ -244,7 +245,7 @@ point of the wave:
 | 2. `clock_resolution_ns` | DONE — `platform.h:178` |
 | 3. `clock_ms`/`clock_us` stop being per-port symbols | DONE **and further** — W6 retired them outright instead of keeping wrappers, gated by `check-retired-platform-clock-symbols` |
 | 4. coarse path only if measured | DECIDED — RFC-0073 defers it "not refused" and names the trigger |
-| 5. wall clock collapses to one `time_now_ns` | **NOT COVERED** |
+| 5. wall clock collapses to one `time_now_ns` | **NOT COVERED by phase-352** — done separately 2026-08-18, see below |
 | open q: may `resolution_ns` change after init? | ANSWERED in the header (constant after init; a scaling port reports its coarsest) |
 
 So #532 was neither "already resolved and never closed" nor open as written. It
@@ -254,7 +255,16 @@ mentions the wall clock only as EVIDENCE of the inconsistency, never as scope.
 The `secs`/`nanos` split also caps seconds at `uint32_t` — a 2106 problem in a
 tree that just moved monotonic to `u64` ns for range.
 
-Per this wave's own instruction, the remaining work is NOT planned here.
+Per this wave's own instruction, the remaining work was NOT planned here.
+
+**Postscript 2026-08-18 — the remainder landed.** Item 5 was done as its own
+change rather than as a wave of this phase, which is what the restatement asked
+for. The wall clock is now one `nros_platform_time_now_ns`; the three retired
+symbols took the `uint32_t` seconds field (a 2106 overflow) with them, and the
+bounded re-read loops in `nros-core` and `nros-node` — each of which named #532
+in a comment as what would delete it — are single reads. #532 is resolved and
+archived. Recorded here because this wave's output was the restatement, and a
+restatement that outlives its subject reads as open work.
 
 **One defect found by the check.** `condvar_wait_until`'s deadline was
 documented in "`clock_ms` units" — a symbol W6 retired, so the C header

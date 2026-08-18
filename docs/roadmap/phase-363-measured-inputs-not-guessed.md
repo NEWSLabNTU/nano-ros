@@ -16,7 +16,7 @@ shape.
 inputs as test-side gates — the rule this phase enforces mechanically),
 [issue 0491](../issues/) (a `rerun-if-env-changed` on a PATH variable — the same
 class in the env dimension), [phase-319](archived/) (`.inputsig`, which
-introduced the signature scripts), [phase-354](phase-354-build-correctness-lane-seams.md)
+introduced the signature scripts), [phase-354](archived/phase-354-build-correctness-lane-seams.md)
 W2 (#466's owner; this phase takes its last item).
 
 ## The thesis
