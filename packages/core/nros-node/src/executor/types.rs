@@ -1348,29 +1348,19 @@ pub(crate) fn default_epoch_us_fn() -> Option<fn() -> u64> {
 #[cfg(feature = "rmw-cffi")]
 pub fn default_epoch_us() -> u64 {
     unsafe extern "C" {
-        fn nros_platform_time_since_epoch_secs() -> u32;
-        fn nros_platform_time_since_epoch_nanos() -> u32;
+        fn nros_platform_time_now_ns() -> u64;
     }
-    // The ABI spends one instant over TWO symbols and each call samples the
-    // clock separately, so a second boundary landing between them pairs the old
-    // second with the new sub-second remainder — a timestamp that jumps a full
-    // second BACKWARDS. Re-read the seconds and retry, bounded; issue 0532's
-    // remaining half (one `time_now_ns`) is what deletes this loop.
+    // ONE read, and therefore no retry loop. Issue 0532 item 5 collapsed the
+    // wall clock to a single symbol; the loop that used to sit here existed
+    // because the ABI spent one instant over TWO symbols sampled separately, so
+    // a second boundary landing between them paired the old second with the new
+    // sub-second remainder — a timestamp that jumped a full second BACKWARDS.
+    // A single u64 cannot tear, so the whole hazard is gone rather than bounded.
     //
-    // SAFETY (all calls): bare wall-clock queries, no pointer arguments,
-    // guaranteed by whichever port linked the binary — the contract the clock,
-    // sleep and wake symbols in this crate already rely on.
-    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
-    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    for _ in 0..2 {
-        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
-        if recheck == secs {
-            break;
-        }
-        secs = recheck;
-        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    }
-    secs as u64 * 1_000_000 + (nanos as u64) / 1_000
+    // SAFETY: a bare wall-clock query, no pointer arguments, guaranteed by
+    // whichever port linked the binary — the contract the clock, sleep and wake
+    // symbols in this crate already rely on.
+    unsafe { nros_platform_time_now_ns() / 1_000 }
 }
 
 /// The `std`-without-a-port wall clock. See [`default_epoch_us`].

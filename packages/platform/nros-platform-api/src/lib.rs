@@ -397,25 +397,23 @@ pub trait PlatformRandom {
 /// Wall-clock / system time.
 ///
 /// Used for logging timestamps and `z_time_now_as_str()`.
-/// On bare-metal without an RTC, return monotonic time or zeros.
+/// On bare-metal without an RTC, return 0.
 ///
-/// The two-function `time_since_epoch_*` split (instead of returning a
-/// struct) was chosen to match the shape that zenoh-pico's C headers
-/// want across the FFI boundary — zpico-platform-shim forwards each
-/// of these directly to a `_z_time_*` symbol, so collapsing them into
-/// a Rust struct would require the shim to decompose the struct on
-/// every call.
+/// ONE method for one fact, matching `nros_platform_time_now_ns` in the C ABI
+/// (issue 0532 item 5). It replaced `time_now_ms` + `time_since_epoch_secs` +
+/// `time_since_epoch_nanos`.
+///
+/// The old doc justified the split by zenoh-pico's FFI shape: "zpico-platform-
+/// shim forwards each of these directly to a `_z_time_*` symbol, so collapsing
+/// them into a Rust struct would require the shim to decompose the struct on
+/// every call." That argument was against a STRUCT, and it still holds — but a
+/// single `u64` is not a struct. The shim now takes one value and derives the
+/// pair with a divide and a remainder, which is both cheaper than two FFI calls
+/// and, unlike them, cannot tear across a second boundary.
 pub trait PlatformTime {
-    /// Returns system time in milliseconds.
-    fn time_now_ms() -> u64;
-
-    /// Seconds component of wall-clock time since the Unix epoch.
-    fn time_since_epoch_secs() -> u32;
-
-    /// Sub-second nanoseconds component of wall-clock time since the
-    /// Unix epoch (i.e. the nanosecond remainder after the seconds are
-    /// stripped; always in `0..1_000_000_000`).
-    fn time_since_epoch_nanos() -> u32;
+    /// Wall-clock nanoseconds since the Unix epoch, or 0 if this platform has
+    /// no real-time clock.
+    fn time_now_ns() -> u64;
 }
 
 // ============================================================================

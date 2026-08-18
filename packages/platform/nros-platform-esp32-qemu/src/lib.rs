@@ -229,16 +229,12 @@ impl nros_platform_api::PlatformRandom for Esp32QemuPlatform {
 
 impl nros_platform_api::PlatformTime for Esp32QemuPlatform {
     #[inline]
-    fn time_now_ms() -> u64 {
-        clock::clock_ms()
-    }
-    #[inline]
-    fn time_since_epoch_secs() -> u32 {
-        (clock::clock_ms() / 1000) as u32
-    }
-    #[inline]
-    fn time_since_epoch_nanos() -> u32 {
-        ((clock::clock_ms() % 1000) * 1_000_000) as u32
+    fn time_now_ns() -> u64 {
+        // No RTC on this board: the monotonic millisecond counter is all there
+        // is, so this reports uptime on the wall-clock symbol rather than a
+        // real Unix time — exactly what the three retired methods derived
+        // from, minus the seconds/remainder split that could tear.
+        clock::clock_ms() * 1_000_000
     }
 }
 

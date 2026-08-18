@@ -614,9 +614,10 @@ pub struct ZenohServiceClient {
 /// monotonicity like the publisher path.
 fn current_timestamp_ms(fallback_seq: i64) -> i64 {
     unsafe extern "C" {
-        fn nros_platform_time_now_ms() -> u64;
+        fn nros_platform_time_now_ns() -> u64;
     }
-    let ms = unsafe { nros_platform_time_now_ms() };
+    // Issue 0532 item 5 — the ABI is nanoseconds now; this caller wants ms.
+    let ms = unsafe { nros_platform_time_now_ns() / 1_000_000 };
     if ms == 0 { fallback_seq } else { ms as i64 }
 }
 

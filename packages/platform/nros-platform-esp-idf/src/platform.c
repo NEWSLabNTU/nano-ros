@@ -137,18 +137,12 @@ void nros_platform_random_fill(void *buf, size_t len) {
 
 /* ---- Wall clock ---- */
 
-uint64_t nros_platform_time_now_ms(void) {
+uint64_t nros_platform_time_now_ns(void) {
+    /* `time()` carries whole seconds only, so the sub-second field was always
+     * 0 here — the ns ABI states that honestly rather than implying a
+     * precision this source does not have. */
     time_t t = time(NULL);
-    return t < 0 ? 0 : (uint64_t) t * 1000ULL;
-}
-
-uint32_t nros_platform_time_since_epoch_secs(void) {
-    time_t t = time(NULL);
-    return t < 0 ? 0 : (uint32_t) t;
-}
-
-uint32_t nros_platform_time_since_epoch_nanos(void) {
-    return 0;  /* time() doesn't expose sub-second precision */
+    return t < 0 ? 0 : (uint64_t) t * 1000000000ULL;
 }
 
 /* ---- Tasks / Mutex / Condvar — FreeRTOS, same as FreeRTOS-C ----

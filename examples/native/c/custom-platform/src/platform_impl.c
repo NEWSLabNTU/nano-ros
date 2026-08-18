@@ -230,28 +230,15 @@ void nros_platform_random_fill(void* buf, size_t len) {
  * Real-time (Unix epoch). Return 0 if the board has no RTC.
  * ==========================================================================*/
 
-uint64_t nros_platform_time_now_ms(void) {
+uint64_t nros_platform_time_now_ns(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return 0;
     }
-    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
-}
-
-uint32_t nros_platform_time_since_epoch_secs(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return 0;
-    }
-    return (uint32_t)ts.tv_sec;
-}
-
-uint32_t nros_platform_time_since_epoch_nanos(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return 0;
-    }
-    return (uint32_t)ts.tv_nsec;
+    /* One symbol, one sample. See `nros/platform.h` — the wall clock used to
+     * be three functions, and reading the seconds and the sub-second part
+     * separately could pair an old second with a new remainder. */
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
 /* ============================================================================

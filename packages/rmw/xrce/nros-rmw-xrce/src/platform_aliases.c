@@ -14,7 +14,7 @@
  * clock service, not the wall-clock time service. micro-XRCE uses them
  * only for relative deadline deltas (`remaining = timeout - (now - start)`);
  * a wall clock that steps (NTP) or is unsupported (Zephyr without
- * CONFIG_RTC, where `nros_platform_time_now_ms` returns 0) breaks those
+ * CONFIG_RTC, where `nros_platform_time_now_ns` returns 0) breaks those
  * loops. The millisecond and microsecond views share one
  * monotonic epoch (see nros/platform.h) and never decrease.
  */

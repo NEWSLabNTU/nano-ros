@@ -116,26 +116,37 @@ void z_random_fill(void *buf, size_t len) {
 
 /* -------------------------------------------------------------------------
  *  Wall-clock time — wrapper. zenoh-pico's `z_time_now()` returns a
- *  64-bit ms count compatible with `nros_platform_time_now_ms()`.
- *  `_z_get_time_since_epoch` writes a struct, matched here.
+ *  64-bit ms count; the platform ABI is nanoseconds since issue 0532 item 5,
+ *  so these divide. `_z_get_time_since_epoch` writes a struct, matched here.
+ *
+ *  This is the shape the old `PlatformTime` doc used to justify keeping THREE
+ *  symbols ("the shim forwards each directly to a `_z_time_*` symbol"). That
+ *  argument was against returning a STRUCT, and it still holds — but one u64
+ *  is not a struct: the pair below comes from a single read plus a divide and
+ *  a remainder, which is cheaper than two FFI calls AND cannot pair an old
+ *  second with a new sub-second remainder the way the split could.
  * ----------------------------------------------------------------------- */
 
+static uint64_t nros_zp_now_ms(void) {
+    return nros_platform_time_now_ns() / 1000000ULL;
+}
+
 uint64_t z_time_now(void) {
-    return nros_platform_time_now_ms();
+    return nros_zp_now_ms();
 }
 
 uint64_t z_time_elapsed_us(const uint64_t *time) {
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_zp_now_ms();
     return (now - *time) * 1000ULL;
 }
 
 uint64_t z_time_elapsed_ms(const uint64_t *time) {
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_zp_now_ms();
     return now - *time;
 }
 
 uint64_t z_time_elapsed_s(const uint64_t *time) {
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_zp_now_ms();
     return (now - *time) / 1000ULL;
 }
 
@@ -148,8 +159,9 @@ int8_t _z_get_time_since_epoch(struct nros_z_time_since_epoch *t) {
     if (t == NULL) {
         return -1;
     }
-    t->secs = nros_platform_time_since_epoch_secs();
-    t->nanos = nros_platform_time_since_epoch_nanos();
+    const uint64_t ns = nros_platform_time_now_ns();
+    t->secs = (uint32_t) (ns / 1000000000ULL);
+    t->nanos = (uint32_t) (ns % 1000000000ULL);
     return 0;
 }
 
@@ -171,7 +183,7 @@ void z_yield(void) {
  * ----------------------------------------------------------------------- */
 
 uint64_t smoltcp_clock_now_ms(void) {
-    return nros_platform_time_now_ms();
+    return nros_zp_now_ms();
 }
 
 /* -------------------------------------------------------------------------
@@ -318,7 +330,7 @@ int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
  *  Phase 160.L.1 — `z_clock_*` is the *monotonic* clock in zenoh-pico's
  *  contract (`unix/system.c:247` uses `CLOCK_MONOTONIC`; `z_time_now`
  *  is the wall-clock variant). The alias TU previously routed
- *  `z_clock_now` through `nros_platform_time_now_ms` (wall-clock /
+ *  `z_clock_now` through the wall clock (`nros_platform_time_now_*` /
  *  CLOCK_REALTIME on POSIX). That meant
  *  `zpico_spin_once`'s cv-deadline (`z_clock_now() + 100 ms`) was a
  *  REALTIME-epoch number (~1.78e15 ms in 2026), but
@@ -332,8 +344,8 @@ int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
  *  Fix: route the monotonic clock variants through
  *  `nros_platform_clock_ms` so the value matches what
  *  `nros_platform_condvar_wait_until` expects. `z_time_*` (wall
- *  clock) — if/when added to the alias TU — should keep
- *  `nros_platform_time_now_ms`.
+ *  clock) — if/when added to the alias TU — should keep the wall clock
+ *  (`nros_platform_time_now_ns`, issue 0532 item 5).
  * ----------------------------------------------------------------------- */
 
 uint64_t z_clock_now(void) {

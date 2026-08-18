@@ -522,9 +522,10 @@ struct EventReg {
 /// symbol directly instead of routing through `ConcretePlatform`.
 fn now_ms() -> u64 {
     unsafe extern "C" {
-        fn nros_platform_time_now_ms() -> u64;
+        fn nros_platform_time_now_ns() -> u64;
     }
-    unsafe { nros_platform_time_now_ms() }
+    // Issue 0532 item 5 — the ABI is nanoseconds now; this caller wants ms.
+    unsafe { nros_platform_time_now_ns() / 1_000_000 }
 }
 
 impl ZenohSubscriber {

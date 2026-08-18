@@ -19,7 +19,7 @@
 #![no_std]
 // `smoltcp_clock_now_ms` (referenced by `nros-smoltcp::bridge`) is
 // provided by `zpico-sys`'s `platform_aliases.c`, which forwards to
-// `nros_platform_time_now_ms`. Phase 129 retired the per-board override.
+// `nros_platform_time_now_ns`. Phase 129 retired the per-board override.
 
 extern crate alloc;
 

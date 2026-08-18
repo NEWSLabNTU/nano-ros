@@ -280,9 +280,8 @@ void nros_platform_random_fill(void *buf, size_t len) {
 
 /* ---- Wall clock — unsupported ---- */
 
-uint64_t nros_platform_time_now_ms(void)              { return 0; }
-uint32_t nros_platform_time_since_epoch_secs(void)    { return 0; }
-uint32_t nros_platform_time_since_epoch_nanos(void)   { return 0; }
+/* No real-time clock on this port: 0 means "no wall clock", per the ABI. */
+uint64_t nros_platform_time_now_ns(void)              { return 0; }
 
 /* ---- Tasks ----
  *

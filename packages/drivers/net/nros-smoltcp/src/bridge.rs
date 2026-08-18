@@ -591,7 +591,7 @@ unsafe extern "C" {
     /// routed through `smoltcp_clock_now_ms`, which `zpico-sys`'s
     /// `platform_aliases.c` still provides for the C-side `zpico.c`
     /// callers but DDS-only builds drop along with zpico-sys).
-    fn nros_platform_time_now_ms() -> u64;
+    fn nros_platform_time_now_ns() -> u64;
 }
 
 // ============================================================================
@@ -712,7 +712,10 @@ impl SmoltcpBridge {
         BRIDGE_POLL_CALLS.fetch_add(1, Ordering::Relaxed);
 
         let timestamp =
-            smoltcp::time::Instant::from_millis(unsafe { nros_platform_time_now_ms() } as i64);
+            // Issue 0532 item 5 — the wall-clock ABI is ns; smoltcp wants ms.
+            smoltcp::time::Instant::from_millis(
+                unsafe { nros_platform_time_now_ns() / 1_000_000 } as i64,
+            );
 
         // Phase 71.26 — drain any multicast joins queued by
         // `mcast_listen` since the previous poll, so the IP layer
@@ -1178,7 +1181,7 @@ impl SmoltcpBridge {
 
     /// Get current clock in milliseconds (delegates to platform).
     pub fn clock_now_ms() -> u64 {
-        unsafe { nros_platform_time_now_ms() }
+        unsafe { nros_platform_time_now_ns() / 1_000_000 }
     }
 
     /// Trigger a poll via the registered callback.

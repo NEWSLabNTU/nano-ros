@@ -164,28 +164,15 @@ void nros_platform_random_fill(void *buf, size_t len) {
 
 /* ---- Wall clock ---- */
 
-uint64_t nros_platform_time_now_ms(void) {
+uint64_t nros_platform_time_now_ns(void) {
     struct timespec ts;
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
         return 0;
     }
-    return (uint64_t) ts.tv_sec * 1000ULL + (uint64_t) ts.tv_nsec / 1000000ULL;
-}
-
-uint32_t nros_platform_time_since_epoch_secs(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return 0;
-    }
-    return (uint32_t) ts.tv_sec;
-}
-
-uint32_t nros_platform_time_since_epoch_nanos(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return 0;
-    }
-    return (uint32_t) ts.tv_nsec;
+    /* Issue 0532 item 5 — ONE sample. This port used to issue a separate
+     * `clock_gettime` per symbol, which is exactly what let the seconds and
+     * the sub-second remainder come from different instants. */
+    return (uint64_t) ts.tv_sec * 1000000000ULL + (uint64_t) ts.tv_nsec;
 }
 
 /* ---- Tasks ----

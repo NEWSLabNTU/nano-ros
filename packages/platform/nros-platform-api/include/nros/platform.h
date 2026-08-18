@@ -281,15 +281,36 @@ void     nros_platform_random_fill(void *buf, size_t len);
 
 /* ---- Wall clock ---- */
 
-/** Wall-clock milliseconds since the Unix epoch, or `0` if the platform
- *  has no real-time clock. */
-uint64_t nros_platform_time_now_ms(void);
+/** Wall-clock nanoseconds since the Unix epoch, or `0` if the platform has
+ *  no real-time clock.
+ *
+ *  ONE symbol for one fact, mirroring what RFC-0073 / phase-352 did for the
+ *  monotonic clock. It replaced `time_now_ms` + `time_since_epoch_secs` +
+ *  `time_since_epoch_nanos` (issue 0532 item 5).
+ *
+ *  Why the split had to go, beyond tidiness: the ABI spent ONE INSTANT over
+ *  two symbols, and each call sampled the clock separately (the POSIX port
+ *  issued its own `clock_gettime` in each). A second boundary landing between
+ *  the two reads paired the OLD second with the NEW sub-second remainder — a
+ *  timestamp that jumped a full second BACKWARDS, rarely and silently. Both
+ *  `nros-core` and `nros-node` carried a bounded re-read loop to paper over
+ *  it; a single read cannot tear, so those loops are gone.
+ *
+ *  `u64` ns spans ~584 years from 1970, so it also retires the `uint32_t`
+ *  seconds field, which overflowed in 2106.
+ *
+ *  Ports convert from whatever they have — a port with only seconds returns
+ *  `secs * 1000000000ULL`, and one with no RTC returns 0. Callers wanting
+ *  milliseconds divide by 1000000; wanting a `(secs, nanos)` pair, divide and
+ *  remainder by 1000000000. */
+uint64_t nros_platform_time_now_ns(void);
 
-/** Whole seconds since the Unix epoch (truncated `time_now_ms`). */
-uint32_t nros_platform_time_since_epoch_secs(void);
-
-/** Sub-second nanosecond component of the wall clock (`0..1e9`). */
-uint32_t nros_platform_time_since_epoch_nanos(void);
+/* Issue 0532 item 5 — `nros_platform_time_now_ms`,
+ * `nros_platform_time_since_epoch_secs` and
+ * `nros_platform_time_since_epoch_nanos` are RETIRED, the same way
+ * phase-352 W6 retired `clock_ms` / `clock_us` rather than keeping
+ * wrappers. A caller that hand-declares any of the three is caught by
+ * `scripts/check-retired-platform-clock-symbols.py`. */
 
 /* ---- Threading: tasks ---- */
 

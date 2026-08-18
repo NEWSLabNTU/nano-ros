@@ -1,7 +1,7 @@
 ---
 id: 532
-title: "The WALL clock still spreads one fact over three symbols — the monotonic half of this issue shipped as RFC-0073 / phase-352"
-status: open
+title: "The WALL clock spread one fact over three symbols — collapsed to `time_now_ns`; the monotonic half shipped earlier as RFC-0073 / phase-352"
+status: resolved
 type: enhancement
 area: embedded
 related: [issue-0502, issue-0504, issue-0515, issue-0531, rfc-0073, phase-352, phase-354]
@@ -235,3 +235,73 @@ Added, and this is the part the measurement earns:
   not cycles, so it does not model memory-access latency for the
   register reads — the instruction ratios should hold, the absolute
   microseconds should not be quoted.
+
+## Resolved 2026-08-18 — item 5 landed
+
+The wall clock is one symbol:
+
+```c
+uint64_t nros_platform_time_now_ns(void);   /* platform.h */
+```
+
+`time_now_ms`, `time_since_epoch_secs` and `time_since_epoch_nanos` are RETIRED
+outright — the same disposal phase-352 W6 chose for `clock_ms`/`clock_us`, not a
+wrapper release. `u64` ns is ~584 years from 1970, so the `uint32_t` seconds
+field and its 2106 overflow are gone with them.
+
+### What it actually bought, beyond one symbol instead of three
+
+The split was not merely untidy: **it could not be read atomically.** The ABI
+spent one instant over two symbols, and each call sampled the clock separately —
+the POSIX port issued its own `clock_gettime` in each. A second boundary landing
+between the two reads paired the OLD second with the NEW sub-second remainder: a
+timestamp that jumped a full second BACKWARDS, rarely and silently.
+
+Two crates carried a bounded re-read loop to paper over that, each with a comment
+saying the loop was waiting for this issue:
+
+* `nros-core/src/clock.rs` — "when it collapses to one `time_now_ns`, this loop
+  is what goes away"
+* `nros-node/src/executor/types.rs` — "issue 0532's remaining half (one
+  `time_now_ns`) is what deletes this loop"
+
+Both are now a single read. A `u64` cannot tear, so the hazard is removed rather
+than bounded.
+
+### Sites
+
+| layer | change |
+| --- | --- |
+| `platform.h` | three decls → one, plus a retirement note |
+| C ports (posix, freertos, threadx, zephyr, esp-idf) | one function each; posix now takes ONE `clock_gettime` |
+| Rust `PlatformTime` | three methods → `time_now_ns` |
+| Rust ports (mps2-an385, stm32f4, esp32-qemu) | one method each |
+| `nros-platform-cffi` | trait impl, export macro, test impl, C stubs |
+| `generated.rs` | regenerated with the pinned bindgen 0.72.1 |
+| consumers | `nros-core`, `nros-node`, zenoh shim ×3, zpico `platform_aliases.c`, `nros-smoltcp` |
+| `examples/native/c/custom-platform` | the user-facing port example |
+
+### The old objection, and why it did not survive
+
+`PlatformTime`'s doc justified the split by zenoh-pico's FFI shape: the shim
+"forwards each of these directly to a `_z_time_*` symbol, so collapsing them
+into a Rust struct would require the shim to decompose the struct on every
+call." That argument was against a STRUCT and it still stands — but one `u64` is
+not a struct. `_z_get_time_since_epoch` now takes a single read and derives the
+pair with a divide and a remainder: fewer FFI calls than before, and unlike
+before it cannot tear.
+
+### Gate
+
+`check-retired-platform-clock-symbols` (issue 0555) gained the three names
+beside `clock_ms`/`clock_us` — the same retirement, the same failure mode (a
+hand-declared `extern "C"` copy compiles and dies at link). **It paid for itself
+on its first run**, catching `examples/native/c/custom-platform/src/platform_impl.c`,
+a consumer this change had missed. That is precisely the shape the gate was
+written for: #547 and #548 were each discovered by a separate link failure
+during the monotonic rename.
+
+### Not done here
+
+Item 4 (a separate coarse clock) remains a recorded deferral in RFC-0073 with a
+named trigger, unchanged by this.

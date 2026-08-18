@@ -73,9 +73,7 @@ void     nros_platform_random_fill(void *buf, size_t len)       { (void) buf; (v
 
 /* ---- Time ---- */
 
-uint64_t nros_platform_time_now_ms(void)                        { bump(NROS_STUB_TIME); return 0; }
-uint32_t nros_platform_time_since_epoch_secs(void)              { bump(NROS_STUB_TIME); return 0; }
-uint32_t nros_platform_time_since_epoch_nanos(void)             { bump(NROS_STUB_TIME); return 0; }
+uint64_t nros_platform_time_now_ns(void)                        { bump(NROS_STUB_TIME); return 0; }
 
 /* ---- Task ---- */
 

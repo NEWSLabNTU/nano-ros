@@ -21,7 +21,7 @@
  * type out of that buffer.
  *
  * Clock and wall-clock time collapse to `uint64_t` milliseconds,
- * matching `nros_platform_time_now_ms` and the
+ * matching `nros_platform_time_now_ns` and the
  * `_z_condvar_wait_until` deadline argument.
  *
  * Network sockets stay per-platform-provider — this header
@@ -90,7 +90,7 @@ typedef nros_platform_task_attr_t z_task_attr_t;
 
 /* -------------------------------------------------------------------------
  *  Clock + wall-clock time — both are millisecond `uint64_t`.
- *  This matches `nros_platform_time_now_ms` and the
+ *  This matches `nros_platform_time_now_ns` and the
  *  `nros_platform_condvar_wait_until` deadline arg.
  * ----------------------------------------------------------------------- */
 

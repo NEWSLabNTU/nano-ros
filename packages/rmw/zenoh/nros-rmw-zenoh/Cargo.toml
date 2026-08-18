@@ -40,7 +40,7 @@ no-liveliness = []
 # dropped. Phase 129.D retired `zpico-platform-shim`, which was
 # the only consumer that needed `ConcretePlatform`. The two
 # `now_ms()` callsites in `shim/{publisher,subscriber}.rs` now
-# call the canonical `nros_platform_time_now_ms` C symbol
+# call the canonical `nros_platform_time_now_ns` C symbol
 # directly; no Rust trait dispatch, no platform pin.
 #
 # Phase 214.G — forwards RESTORED for the canonical symbol-provider

@@ -496,7 +496,7 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeou
      * `<time.h>` does not declare `CLOCK_MONOTONIC` and there is no `nanosleep`.
      *
      * Issue 0035 — use the *monotonic* clock `nros_platform_clock_ns`, NOT the
-     * *wall* clock `nros_platform_time_now_ms`. The latter is epoch time and
+     * *wall* clock `nros_platform_time_now_ns`. The latter is epoch time and
      * returns 0 on any platform without an RTC (Zephyr/native_sim, FreeRTOS,
      * ThreadX — see each provider's `platform.c`). With a 0 clock `elapsed_ms`
      * is always 0, `remaining` never reaches 0, and this loop spins forever

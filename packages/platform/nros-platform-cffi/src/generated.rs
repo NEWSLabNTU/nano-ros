@@ -119,16 +119,8 @@ unsafe extern "C" {
     pub fn nros_platform_random_fill(buf: *mut core::ffi::c_void, len: usize);
 }
 unsafe extern "C" {
-    #[doc = " Wall-clock milliseconds since the Unix epoch, or `0` if the platform\n  has no real-time clock."]
-    pub fn nros_platform_time_now_ms() -> u64;
-}
-unsafe extern "C" {
-    #[doc = " Whole seconds since the Unix epoch (truncated `time_now_ms`)."]
-    pub fn nros_platform_time_since_epoch_secs() -> u32;
-}
-unsafe extern "C" {
-    #[doc = " Sub-second nanosecond component of the wall clock (`0..1e9`)."]
-    pub fn nros_platform_time_since_epoch_nanos() -> u32;
+    #[doc = " Wall-clock nanoseconds since the Unix epoch, or `0` if the platform has\n  no real-time clock.\n\n  ONE symbol for one fact, mirroring what RFC-0073 / phase-352 did for the\n  monotonic clock. It replaced `time_now_ms` + `time_since_epoch_secs` +\n  `time_since_epoch_nanos` (issue 0532 item 5).\n\n  Why the split had to go, beyond tidiness: the ABI spent ONE INSTANT over\n  two symbols, and each call sampled the clock separately (the POSIX port\n  issued its own `clock_gettime` in each). A second boundary landing between\n  the two reads paired the OLD second with the NEW sub-second remainder — a\n  timestamp that jumped a full second BACKWARDS, rarely and silently. Both\n  `nros-core` and `nros-node` carried a bounded re-read loop to paper over\n  it; a single read cannot tear, so those loops are gone.\n\n  `u64` ns spans ~584 years from 1970, so it also retires the `uint32_t`\n  seconds field, which overflowed in 2106.\n\n  Ports convert from whatever they have — a port with only seconds returns\n  `secs * 1000000000ULL`, and one with no RTC returns 0. Callers wanting\n  milliseconds divide by 1000000; wanting a `(secs, nanos)` pair, divide and\n  remainder by 1000000000."]
+    pub fn nros_platform_time_now_ns() -> u64;
 }
 unsafe extern "C" {
     #[doc = " Fill `attr` with the defaults — equivalent to passing `NULL` to\n  `task_init`.\n\n  Callers use this rather than a designated initialiser so that a field added\n  to the struct later stays source-compatible for out-of-tree ports."]

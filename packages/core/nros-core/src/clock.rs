@@ -173,50 +173,36 @@ impl Default for Clock {
 /// a port is linked; without it this is `None` and the caller keeps the counter
 /// it had.
 ///
-/// Two symbols rather than one because that is what the ABI has today; issue
-/// 0532's remaining half is collapsing them into a single `time_now_ns`, and
-/// this function is then the one place that changes.
+/// ONE symbol since issue 0532 item 5 collapsed the wall clock; this function
+/// was named there as the one place that would change, and it was.
 #[cfg(all(not(feature = "std"), feature = "platform-clock"))]
 fn platform_wall_clock() -> Option<Time> {
     unsafe extern "C" {
-        fn nros_platform_time_since_epoch_secs() -> u32;
-        fn nros_platform_time_since_epoch_nanos() -> u32;
+        fn nros_platform_time_now_ns() -> u64;
     }
-    // SAFETY (all three calls): bare queries of the platform's wall clock,
-    // guaranteed by whichever port linked the binary — the same contract
-    // `nros_platform_clock_ns` and `nros_platform_wake_*` rely on. Both are
-    // documented never to error; a port with no clock returns 0.
+    // SAFETY: a bare query of the platform's wall clock, guaranteed by
+    // whichever port linked the binary — the same contract
+    // `nros_platform_clock_ns` relies on. Documented never to error; a port
+    // with no clock returns 0.
     //
-    // Read seconds, nanoseconds, then seconds AGAIN, and retry while the two
-    // second-reads disagree. The ABI spends one instant over two symbols and
-    // each call samples the clock separately (the POSIX port issues its own
-    // `clock_gettime` in each), so a second boundary landing between them
-    // pairs the OLD second with the NEW sub-second remainder — a timestamp
-    // that jumps a full second BACKWARDS, rarely and silently. This is the
-    // concrete cost of the split issue 0532's remaining half is about; when it
-    // collapses to one `time_now_ns`, this loop is what goes away.
-    //
-    // Bounded, not `loop`: at most three attempts, then accept the last pair.
-    // A clock that changes second between every adjacent pair of calls is not
-    // a clock this can outrun, and a hot loop in a time query is worse than a
-    // rare 1 s error.
-    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
-    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    for _ in 0..2 {
-        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
-        if recheck == secs {
-            break;
-        }
-        secs = recheck;
-        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    }
-    // A port with no wall clock answers 0/0. Reporting the Unix epoch as "now"
+    // ONE read. Issue 0532 item 5 collapsed the old
+    // `time_since_epoch_secs` + `time_since_epoch_nanos` pair into this, and
+    // the bounded re-read loop that used to live here went with it: the split
+    // spent one instant over two symbols sampled separately, so a second
+    // boundary landing between them paired the OLD second with the NEW
+    // sub-second remainder — a timestamp that jumped a full second BACKWARDS,
+    // rarely and silently. A single u64 cannot tear.
+    let ns = unsafe { nros_platform_time_now_ns() };
+    // A port with no wall clock answers 0. Reporting the Unix epoch as "now"
     // would be a wrong answer stated confidently, so say nothing instead and
     // let the counter fallback stand.
-    if secs == 0 && nanos == 0 {
+    if ns == 0 {
         return None;
     }
-    Some(Time::new(secs as i32, nanos))
+    Some(Time::new(
+        (ns / 1_000_000_000) as i32,
+        (ns % 1_000_000_000) as u32,
+    ))
 }
 
 #[cfg(all(not(feature = "std"), not(feature = "platform-clock")))]

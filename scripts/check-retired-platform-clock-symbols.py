@@ -74,8 +74,21 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# The retired names, and the header whose `static inline` now defines them.
-RETIRED = ["nros_platform_clock_ms", "nros_platform_clock_us"]
+# The retired names.
+#
+# The monotonic pair (issue 0555 / phase-352 W6) and the WALL-CLOCK trio
+# (issue 0532 item 5) are retired the same way and fail the same way: a
+# hand-declared `extern "C"` copy compiles and then dies at link. Listing them
+# together is the point — the wall-clock collapse is the second time this exact
+# rename ran, and the first time it ran the tree learned about consumers one
+# link failure at a time (#541, #547, #548).
+RETIRED = [
+    "nros_platform_clock_ms",
+    "nros_platform_clock_us",
+    "nros_platform_time_now_ms",
+    "nros_platform_time_since_epoch_secs",
+    "nros_platform_time_since_epoch_nanos",
+]
 # The header the names used to live in. Phase-352 W6 removed the wrappers from
 # it, so it is no longer a definition site — it is only where the vacuity check
 # below confirms they stayed gone.
@@ -384,7 +397,9 @@ def main():
         for rel, line, why, what in hits:
             sys.stderr.write(f"         {rel}:{line}: {why} — {what}\n")
         sys.stderr.write(
-            "\n       `nros_platform_clock_{ms,us}` are RETIRED (RFC-0073 / phase-352 W6).\n"
+            "\n       `nros_platform_clock_{ms,us}` (RFC-0073 / phase-352 W6) and the\n"
+            "       wall-clock trio `nros_platform_time_now_ms` /\n"
+            "       `..._time_since_epoch_{secs,nanos}` (issue 0532 item 5) are RETIRED.\n"
             "       They spent one release as `static inline` wrappers behind\n"
             "       NROS_PLATFORM_LEGACY_CLOCK_UNITS; the wrappers and the escape hatch\n"
             "       are both gone, so NOTHING defines these names and no spelling of a\n"

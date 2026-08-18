@@ -51,7 +51,7 @@ return-value / threading / blocking conventions. The capability split:
 - **Sleep** (`nros_platform_sleep_us`, `..._sleep_ms`, `..._sleep_s`) — blocking sleep
 - **Yield** (`nros_platform_yield_now`) — cooperative-yield primitive
 - **Random** (`nros_platform_random_u8` … `..._random_u64`, `..._random_fill`) — entropy
-- **Time** (`nros_platform_time_now_ms`, `..._time_since_epoch_*`) — wall clock
+- **Time** (`nros_platform_time_now_ns`) — wall clock
 - **Threading** (`nros_platform_task_*`) — spawn / join / detach / cancel / exit / free
 - **Mutexes** (`nros_platform_mutex_*` non-recursive, `..._mutex_rec_*` recursive)
 - **Condvars** (`nros_platform_condvar_*`, including `..._condvar_wait_until`)

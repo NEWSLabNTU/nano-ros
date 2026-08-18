@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#532** — the WALL clock spread one fact over three symbols
+(`time_now_ms` + `time_since_epoch_secs` + `time_since_epoch_nanos`); the monotonic half had shipped as
+RFC-0073 / phase-352. Now one `nros_platform_time_now_ns`, the three RETIRED outright as phase-352 W6 did for
+`clock_ms`/`clock_us`, and the `uint32_t` seconds field (a 2106 overflow) gone with them. The split was not
+merely untidy: it could not be read ATOMICALLY — one instant over two symbols, sampled separately, so a second
+boundary between the reads paired the old second with the new remainder and the timestamp jumped a second
+BACKWARDS. `nros-core` and `nros-node` each carried a bounded re-read loop whose comment named this issue as
+what would delete it; both are now a single read. `check-retired-platform-clock-symbols` gained the three
+names and caught a missed consumer (`examples/native/c/custom-platform`) on its first run. Item 4 (a coarse
+clock) stays a recorded RFC-0073 deferral. See `archived/0532-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#625** — a provisioned tool was found by SCANNING the shared SDK store
 (newest-first glob) instead of by reading the project's PIN, so resolution was inconsistent (three routes for
 one tool in one configure) and could not serve two projects at once: "newest in the store" is a global answer
@@ -1628,14 +1639,6 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 — and it hid because `lane=tier2` reports the same three as a soft `cargo-check FAILED … (no stamp)` and
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
-
-**#532** (embedded, open 2026-08-13, RESTATED 2026-08-16) — the MONOTONIC half shipped as RFC-0073 /
-phase-352: `clock_ns` + `clock_resolution_ns` exist, `clock_ms`/`clock_us` were retired outright (not
-merely wrapped) and are gated, the coarse variant is a recorded deferral with a named trigger, and the
-"may resolution change after init" question is answered in the header. What REMAINS is the wall clock —
-`time_now_ms` + `time_since_epoch_secs` + `time_since_epoch_nanos`, three symbols for one fact, which
-RFC-0073 cites only as evidence and never scopes; the `secs`/`nanos` split also caps seconds at `uint32_t`.
-Checked against `platform.h`, not against the phase doc (phase-354 W4). See `0532-*`. (2026-08-16)
 
 **#507** (rmw, open 2026-08-10) — the cyclonedds fork carries TWO nano-ros-only lock changes
 upstream lacks: striped addrset locks (`942dda3c`) and the Zephyr-native ddsrt sync backend

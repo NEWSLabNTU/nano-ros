@@ -304,18 +304,8 @@ impl nros_platform_api::PlatformRandom for CffiPlatform {
 
 impl nros_platform_api::PlatformTime for CffiPlatform {
     #[inline]
-    fn time_now_ms() -> u64 {
-        unsafe { nros_platform_time_now_ms() }
-    }
-
-    #[inline]
-    fn time_since_epoch_secs() -> u32 {
-        unsafe { nros_platform_time_since_epoch_secs() }
-    }
-
-    #[inline]
-    fn time_since_epoch_nanos() -> u32 {
-        unsafe { nros_platform_time_since_epoch_nanos() }
+    fn time_now_ns() -> u64 {
+        unsafe { nros_platform_time_now_ns() }
     }
 }
 
@@ -741,16 +731,8 @@ macro_rules! nros_platform_export_random {
 macro_rules! nros_platform_export_time {
     ($ty:ty) => {
         #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_time_now_ms() -> u64 {
-            <$ty as ::nros_platform_api::PlatformTime>::time_now_ms()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_time_since_epoch_secs() -> u32 {
-            <$ty as ::nros_platform_api::PlatformTime>::time_since_epoch_secs()
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_time_since_epoch_nanos() -> u32 {
-            <$ty as ::nros_platform_api::PlatformTime>::time_since_epoch_nanos()
+        pub extern "C" fn nros_platform_time_now_ns() -> u64 {
+            <$ty as ::nros_platform_api::PlatformTime>::time_now_ns()
         }
     };
 }
@@ -1470,13 +1452,7 @@ mod test_self_export {
         fn random_fill(_: *mut c_void, _: usize) {}
     }
     impl PlatformTime for TestPlatform {
-        fn time_now_ms() -> u64 {
-            0
-        }
-        fn time_since_epoch_secs() -> u32 {
-            0
-        }
-        fn time_since_epoch_nanos() -> u32 {
+        fn time_now_ns() -> u64 {
             0
         }
     }
