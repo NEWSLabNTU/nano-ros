@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#689** — `nano_ros_entry()` applies PANIC with
+`corrosion_set_features()`, which needs `nros_c`/`nros_cpp` to be CORROSION targets. phase-366 rightly made a
+silent skip fatal, W7.d then exempted the one lane where they are not (Zephyr, `nros_cargo_build`) — and three
+hours later the NuttX lane hit the identical fatal, because its Rust side is an `add_custom_target` build of
+`nros-nuttx-ffi`. The ending was applied there all along, in that crate's COMMITTED manifest
+(`panic-platform`); nothing let the entry know. Fixed by generalising the exemption instead of adding a second
+one: `NROS_ENTRY_PANIC_APPLIED{,_BY,_HOW}` is lane-neutral, Zephyr migrated onto it, NuttX declares `platform`
+— so an entry asking for another policy now fails naming the manifest rather than "no Rust target exists".
+Found by tier 2, which is 1-wise over platform, so nuttx's absence blocked the whole tier. See
+`archived/0689-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#446** — "the same crate is compiled ~21x across leaf target dirs". Answered
 and closed after the build campaign. Direction 3 (normalise `--target`) done by phase-340 W3; direction 2
 (`incremental` in the shared profile) done, which also SUPERSEDED the unmeasured sccache question — the

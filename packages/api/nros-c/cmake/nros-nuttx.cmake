@@ -57,6 +57,29 @@ include("${CMAKE_CURRENT_LIST_DIR}/nros-rtos-helpers.cmake")
 # ----------------------------------------------------------------------
 # nros_nuttx_validate
 # ----------------------------------------------------------------------
+# Issue 0689 — this lane applies the image's ending ITSELF, so
+# `nano_ros_entry()` must verify rather than scan.
+#
+# The Rust side here is an `add_custom_target` cargo build of `nros-nuttx-ffi`,
+# not a Corrosion target, so there is nothing for `corrosion_set_features()` to
+# act on — the same shape the Zephyr lane has. The ending is baked into
+# `nros-nuttx-ffi`'s COMMITTED manifest, which names `nros-c`'s features
+# directly:
+#
+#     nros-c = { path = …, default-features = false, features = [
+#         "alloc", "global-allocator", "panic-platform", … ] }
+#
+# so this lane supports exactly one policy. Declaring it lets an entry that asks
+# for a DIFFERENT one fail with that sentence instead of "no Rust target exists",
+# which described the mechanism rather than the cause.
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED "platform")
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_BY "NuttX")
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW
+    "On NuttX the ending is baked into `nros-nuttx-ffi`'s committed manifest \
+(`nros-c` features include `panic-platform`), because the staticlib is built by \
+a custom cargo target rather than Corrosion. This lane can only offer PANIC \
+platform; change the manifest to offer another.")
+
 function(nros_nuttx_validate)
     cmake_parse_arguments(_NNV "" "" "REQUIRE" ${ARGN})
     nros_validate_vars(NUTTX_DIR ${_NNV_REQUIRE})

@@ -194,7 +194,13 @@ nros_panic_policy_feature(_nros_panic_feature
     "${NROS_ENTRY_PANIC}" "zephyr NROS_ENTRY_PANIC")
 # Tell `nano_ros_entry()` the ending was applied HERE, and with what, so it
 # verifies agreement instead of scanning for a target this lane never creates.
-set_property(GLOBAL PROPERTY NROS_ZEPHYR_PANIC_APPLIED "${NROS_ENTRY_PANIC}")
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED "${NROS_ENTRY_PANIC}")
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_BY "Zephyr")
+set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW
+    "On Zephyr the policy reaches the staticlib through `NROS_ENTRY_PANIC`, \
+which must be set BEFORE `find_package(Zephyr)` — the feature list is fixed \
+there, and the entry call runs after it. Set that variable, or make the \
+keyword match.")
 # Appended to every `nros_cargo_build` FEATURES string below. Empty for
 # `PANIC own`, where the image supplies its own `#[panic_handler]` and selecting
 # either feature would be the second provider.

@@ -217,25 +217,33 @@ function(nano_ros_entry)
         endif()
         set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY "${_nra_panic}")
 
-        # The Zephyr lane applies the ending itself, in `zephyr/CMakeLists.txt`,
-        # because its Rust side is `nros_cargo_build()` — a custom target plus an
-        # IMPORTED `nros_c_cargo`, not a Corrosion target — and because
-        # `find_package(Zephyr)` fixes the feature list before the app's
-        # `nano_ros_add_executable()` runs. So there is nothing to apply here and
-        # nothing to scan for; what IS worth doing is checking the two agree,
-        # since the entry's keyword is the declaration a reader trusts.
-        get_property(_nra_zephyr_panic GLOBAL PROPERTY NROS_ZEPHYR_PANIC_APPLIED)
-        if(_nra_zephyr_panic)
-            string(TOLOWER "${_nra_zephyr_panic}" _nra_zephyr_panic_lc)
-            if(NOT _nra_zephyr_panic_lc STREQUAL "${_nra_panic}")
+        # Some lanes apply the ending THEMSELVES, because their Rust side is not
+        # a Corrosion target and there is nothing here to call
+        # `corrosion_set_features()` on. Such a lane declares what it applied and
+        # how it is set, and this call VERIFIES agreement instead of scanning for
+        # a target that will never exist:
+        #
+        #   zephyr  `zephyr/CMakeLists.txt` — `nros_cargo_build()` plus an
+        #           IMPORTED `nros_c_cargo`; `find_package(Zephyr)` fixes the
+        #           feature list before the app's `nano_ros_add_executable()`.
+        #   nuttx   `packages/api/nros-c/cmake/nros-nuttx.cmake` — an
+        #           `add_custom_target` cargo build of `nros-nuttx-ffi`, whose
+        #           COMMITTED manifest names the `nros-c` features.
+        #
+        # Issue 0689 — this was a Zephyr-only special case, and the next lane
+        # over hit the same FATAL_ERROR the moment it was made fatal. Two
+        # spellings of one rule is what CLAUDE.md warns about, so the property is
+        # lane-neutral and carries the lane's name for the message.
+        get_property(_nra_ext_panic GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED)
+        get_property(_nra_ext_lane GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_BY)
+        get_property(_nra_ext_how GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW)
+        if(_nra_ext_panic)
+            string(TOLOWER "${_nra_ext_panic}" _nra_ext_panic_lc)
+            if(NOT _nra_ext_panic_lc STREQUAL "${_nra_panic}")
                 message(FATAL_ERROR
                     "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} contradicts "
-                    "the ending already built into this Zephyr image "
-                    "(${_nra_zephyr_panic_lc}). On Zephyr the policy reaches the "
-                    "staticlib through `NROS_ENTRY_PANIC`, which must be set BEFORE "
-                    "`find_package(Zephyr)` — the feature list is fixed there, and "
-                    "this call runs after it. Set that variable to "
-                    "${_nra_panic}, or make the keyword match.")
+                    "the ending already built into this ${_nra_ext_lane} image "
+                    "(${_nra_ext_panic_lc}). ${_nra_ext_how}")
             endif()
             set(_nra_panic_feature "")
         endif()
