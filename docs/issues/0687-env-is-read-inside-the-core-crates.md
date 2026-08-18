@@ -58,6 +58,58 @@ hosted callers that already exist (`nros-board-linux`, the entry macro's hosted
 expansion, `nros-c`'s init), which hand a fully-resolved `ExecutorConfig` in.
 Core crates keep no `env` feature at all.
 
+## Costed 2026-08-19 — the move needs a decision this issue did not carry
+
+Attempted, and stopped short deliberately. Two measurements decide it.
+
+### `$NROS_RMW` already has an edge, and the core duplicates it
+
+The same variable is read in THREE places:
+
+* `nros-node/executor/spin.rs` — inside `Executor::open`, the core path
+* `nros/src/lib.rs:812` — the facade's `open_session`
+* `nros-c/src/executor.rs:321` — the C entry
+
+So "push it to the edge" is not a move; the edge readers exist already and the
+core one is a third copy. But deleting the core read is NOT behaviour-preserving:
+it serves callers that reach `Executor::open` DIRECTLY rather than through the
+facade, and the multi-edition harness drives example binaries with `NROS_RMW`
+set expecting exactly that (`ros_env.rs` pins the selector so the choice is
+"self-contained — never at the mercy of an ambient `NROS_RMW`"). Removing it for
+a one-site win is a behavioural gamble against a live harness, so it was not
+taken.
+
+### `from_env` has 86 call sites
+
+| where | callers |
+| --- | --- |
+| `nros-node` (its own tests) | 15 |
+| `cli/testing` | 15 |
+| `examples/native` | 10 |
+| `nros-bench` | 8 |
+| `cli/third-party`, `nros`, `rmw/zenoh`, `cargo-nano-ros`, … | 22 |
+
+`ExecutorConfig` is defined in `nros-node`, so `from_env` is an INHERENT method:
+it cannot be reimplemented in a hosted crate and still be spelled
+`ExecutorConfig::from_env()`. Every mechanism that moves it changes call syntax
+or import at all 86 sites, or keeps a shim.
+
+### The two mechanisms, and what each costs
+
+1. **Extension trait in the facade** — `nros::ExecutorConfigEnvExt::from_env`.
+   The core loses `env` entirely. Call sites keep the spelling ONLY where the
+   trait is in scope, so every site needs an import (or the prelude, which not
+   all of them use). Honest, breaking, mechanical.
+2. **Resolver injected into the core** — the core keeps `from_env` but calls an
+   installed `fn(&str) -> Option<String>`; a hosted crate installs a
+   `std::env::var` one. No call site changes and no `std` in the core — but
+   nothing installs it automatically (this tree has no ctors on RTOS by rule),
+   so an image that forgets silently resolves defaults. That failure mode is
+   worse than the flavour it removes.
+
+**Recommendation: (1), as its own phase item with the 86 sites in scope**, not
+folded into a flavour cleanup. It is an API change and should be reviewed as
+one.
 ## What this does NOT finish
 
 Deleting `std` from the nine crates needs three more answers, none of them env:
