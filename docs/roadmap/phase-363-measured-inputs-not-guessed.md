@@ -481,6 +481,32 @@ MTIMES, so a rebase or stash re-armed it with identical bytes. Now a content
 stamp, from ONE helper shared by all THREE copies of the comparison — the third
 being an inline walk in `setup-launch-resolve` that decided whether to rebuild.
 
+### Re-swept 2026-08-19 — W2's class survived in the Zephyr copy, and is now gated
+
+The fifth re-sweep, and the same shape as the previous four: a sibling file the
+wave never opened. `zephyr/cmake/nros_generate_interfaces.cmake` is a COPY of the
+function W2 fixed, and its six interface globs — `msg/*.msg`, `srv/*.srv`,
+`action/*.action`, local and ament — carried no `CONFIGURE_DEPENDS`. Same
+consequence W2 names: adding a `.msg` leaves the build generating the old set
+until something unrelated reconfigures.
+
+Fixed, and this time gated: `check-interface-glob-configure-depends` (check-fast)
+requires the flag on every glob whose pattern is `.msg`/`.srv`/`.action`. 21 such
+globs tree-wide, all now flagged; mutation-checked by removing one and watching
+the gate name the site.
+
+**The gate is deliberately narrow.** The tree has 39 unflagged `file(GLOB)`s and
+flagging them all would be noise — a glob over vendored ThreadX/CycloneDDS
+sources only gains files on a submodule bump, which reconfigures anyway, and a
+glob over the SDK store is one-shot discovery rather than a build input set.
+Interface definitions are the case where USER content changes with nothing else
+moving, which is what makes a stale capture reachable. A gate that cried wolf on
+the other 33 would be bypassed, and then it would not catch the next `.msg` one
+either.
+
+This is the fifth site found after the phase declared itself complete. The
+standing-sweep framing at the head of this doc is correct and should stay.
+
 ### The remaining mtime predicate, and why it stays
 
 `just/zephyr-ci.just:149` re-runs `nros sync` for a package when its

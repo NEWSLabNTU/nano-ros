@@ -465,6 +465,7 @@ check-fast: _check-skip-reset \
     check-test-domain-assignment \
     check-zenohd-spawn-sites check-zenohd-resolution-parity \
     check-zenohd-flag-invocations \
+    check-interface-glob-configure-depends \
     check-wait-evidence-discarded \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     #!/usr/bin/env bash
@@ -1662,6 +1663,14 @@ check-zenohd-resolution-parity:
 # header — which is how it reached ~95 files.
 check-zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
+
+# phase-363 (W2's class) — `file(GLOB)` over `.msg`/`.srv`/`.action` captures the
+# interface set at CONFIGURE time, so a newly added message is invisible until
+# an unrelated reconfigure and the build ships the OLD generated sources. W2
+# fixed the file it was looking at; the Zephyr COPY kept the bug until the
+# phase's standing re-sweep found it. Gated so there is no third occurrence.
+check-interface-glob-configure-depends:
+    @python3 scripts/check-interface-glob-configure-depends.py
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute

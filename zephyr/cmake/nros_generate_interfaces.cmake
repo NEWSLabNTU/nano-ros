@@ -173,19 +173,31 @@ function(nros_generate_interfaces target)
       list(APPEND _interface_files "${_abs_path}")
     endforeach()
   else()
+    # phase-363 (W2's class, re-swept 2026-08-19) — CONFIGURE_DEPENDS on every
+    # glob, for the same reason as `cmake/NanoRosGenerateInterfaces.cmake`: a
+    # plain `file(GLOB)` runs at CONFIGURE time only, so ADDING a `.msg` leaves
+    # the build generating the OLD set until something unrelated forces a
+    # reconfigure. The generated sources are a function of this list, so a stale
+    # list is a museum artifact.
+    #
+    # This is the Zephyr COPY of that function, and W2 never opened it — which is
+    # the pattern phase-363 records: every re-sweep found the class surviving in
+    # a sibling file. Unlike the vendored ThreadX/Cyclone source globs, these
+    # name USER content that changes with no submodule bump to reconfigure
+    # behind it.
     # Auto-discover from local directories
-    file(GLOB _local_msg "${CMAKE_CURRENT_SOURCE_DIR}/msg/*.msg")
-    file(GLOB _local_srv "${CMAKE_CURRENT_SOURCE_DIR}/srv/*.srv")
-    file(GLOB _local_action "${CMAKE_CURRENT_SOURCE_DIR}/action/*.action")
+    file(GLOB _local_msg CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/msg/*.msg")
+    file(GLOB _local_srv CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/srv/*.srv")
+    file(GLOB _local_action CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/action/*.action")
     list(APPEND _interface_files ${_local_msg} ${_local_srv} ${_local_action})
 
     # Fall back to ament index
     if(NOT _interface_files AND DEFINED ENV{AMENT_PREFIX_PATH})
       string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
       foreach(_prefix ${_ament_paths})
-        file(GLOB _ament_msg "${_prefix}/share/${target}/msg/*.msg")
-        file(GLOB _ament_srv "${_prefix}/share/${target}/srv/*.srv")
-        file(GLOB _ament_action "${_prefix}/share/${target}/action/*.action")
+        file(GLOB _ament_msg CONFIGURE_DEPENDS "${_prefix}/share/${target}/msg/*.msg")
+        file(GLOB _ament_srv CONFIGURE_DEPENDS "${_prefix}/share/${target}/srv/*.srv")
+        file(GLOB _ament_action CONFIGURE_DEPENDS "${_prefix}/share/${target}/action/*.action")
         list(APPEND _interface_files ${_ament_msg} ${_ament_srv} ${_ament_action})
       endforeach()
     endif()
