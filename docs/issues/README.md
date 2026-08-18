@@ -569,6 +569,20 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
+**#666** (build/examples, open 2026-08-18) — `examples/qemu-riscv64-threadx/rust/*` is the only Rust
+leaf built two ways, and **the RMW picks which**: zenoh via cargo (bin, `nros::main!()`), cyclonedds via
+CMake+Corrosion (`staticlib`, board `app_main!()`). One directory, two build systems, `crate-type =
+["staticlib","rlib"]`, two entry points that must not both be active. Defensible per-backend — Cyclone is a
+C++ CMake library with generated IDL descriptors that cargo cannot cross-compile — but it contradicts the
+RMW-is-a-swappable-backend promise at the build layer, and the contradiction leaked into the API: the board's
+C-ABI entry macro was `cyclonedds_app_main!()` (body: `run_app_thread($register)`, nothing Cyclone in it)
+until phase-366 W7 renamed it to `app_main!()`. It is also the one family where `#[panic_handler]` placement
+is non-obvious — two artifacts from one crate means the lib owns it — which is what made these six the
+special case in phase-366's migration. CMake half currently red on `undefined symbol: stderr/stdout` from
+`libddsc.a` + picolibc (reproduced with all local edits stashed; suspect `a19e1fdfb`'s riscv64 toolchain
+change, not diagnosed). Directions: CMake-only (the Zephyr shape), cargo-only (build-script the C++ half),
+split the leaf (collides with RFC-0066), or accept-and-document. See `0666-*`.
+
 **#651** (build/zephyr, open 2026-08-16) — nothing runnable before a push touches Zephyr **4.4**.
 `NROS_ZEPHYR_VERSION` defaults to `3.7` and no tier sets it, so tiers 1–3 all resolve `west.yml`; the 4.4
 line lives only in `nightly.yml` (10 of 20 matrix cells, plus `ci-both` and a copy-out check), behind a
