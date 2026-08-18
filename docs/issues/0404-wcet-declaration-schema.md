@@ -86,7 +86,39 @@ designed WITH rather than around:
   validated against the format is a genuine result; a claim that a measurement
   flowed end-to-end is not available yet. Keep the two apart when reporting.
 
-The KEYING question is untouched by this and remains the hard one: the artifact
+### Designed 2026-08-18 — RFC-0078
+
+The schema is [RFC-0078](../design/0078-wcet-is-declared-per-profile.md), which
+answers all four questions above:
+
+* **keyed on** a named measurement profile (`stm32f4-168mhz-release`). Board id
+  and platform family both collapse into it — the first is a profile with one
+  member, the second is a profile that omits the rate it needs anyway;
+* **unit**: declare CYCLES plus the profile's `clock_hz`, and convert to `ms`
+  inside this repo. rlm's slot is milliseconds by cross-repo agreement and
+  cannot be redefined here; declaring `ms` directly would put the conversion
+  where a human holds the rate in their head, which is where an invented rate
+  enters;
+* **granularity**: per BOUNDARY, at rlm's own `node/path` identity, so
+  `ChainFeasibleWithoutWcet`'s `boundaries_without_wcet` and the declarations
+  join by set difference. Primitive composition stays out of scope;
+* **provenance**: the conditions 0403 already emits travel with the number.
+  Automatic staleness invalidation is explicitly NOT solved — only that the
+  commit is recorded so a reviewer can ask.
+
+The invariant is preserved and stated as outranking every decision: absent stays
+representable and stays the DEFAULT, and the success condition is
+`ChainFeasibleWithoutWcet` naming fewer boundaries — never going quiet.
+
+RFC only, by scope. The Rust type and its validator are deliberately a separate
+work item so the design is reviewable before an implementation makes it
+expensive to revert.
+
+One correction the design turned up: the pinned rlm is **v0.1.6**
+(rev `b9f45f1`), and CLAUDE.md still describes the dep as tag `v0.1.0`.
+
+The KEYING question is settled by the above. What remains hard, and what this
+issue's original text called out: the artifact
 records `cpu`/`profile`/`commit` for the run that produced it, but says nothing
 about which OTHER contexts that number may be applied to. That judgement is this
 schema's to make.

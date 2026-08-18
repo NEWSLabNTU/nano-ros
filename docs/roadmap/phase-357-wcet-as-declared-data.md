@@ -1,7 +1,7 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-08-16). W3 DONE; W1 UNBLOCKED 2026-08-16 but not started; W2
-blocked behind W1.** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
+**Status (2026-08-18). W3 DONE; W1's RFC LANDED (RFC-0078) with its type/validator
+still to come; W2 blocked behind that.** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
 W2 landed the artifact (#403 resolved), which was the only thing holding W1.
 Three orchestration issues that are one dependency chain, not three tasks.
 
@@ -16,6 +16,14 @@ Three orchestration issues that are one dependency chain, not three tasks.
   numbers. The format answers the keying question concretely in one respect
   already: the artifact carries no `clock_hz` and says `convertible_to_time:
   false`, so a declaration in `ms` cannot be derived from it as it stands.
+* **W1 update 2026-08-18** — the schema is
+  [RFC-0078](../design/0078-wcet-is-declared-per-profile.md): keyed on a named
+  measurement PROFILE, declaring cycles plus `clock_hz` with the conversion to
+  rlm's millisecond slot done inside this repo, per BOUNDARY at rlm's own
+  `node/path` identity. Scope was RFC-only, so the type and validator remain.
+  The acceptance's "worked example carrying one real measured callback" is NOT
+  met and cannot be here: the RFC's example is marked SYNTHETIC because no run
+  has ever produced an artifact (QEMU cannot measure, no hardware lane).
 * **W2 (#259, quantitative scheduling)** — blocked on W1, by construction.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
