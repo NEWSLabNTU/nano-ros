@@ -102,6 +102,17 @@ it — and the flat candidate requires an install marker, else `<store>/<tool>` 
 and mirror the pre-0493 bug. cmake now names the prefix it tried before falling through. Corrects #0625's
 closure, which verified the versioned store and was blind to the flat one. See `archived/0628-*`. (2026-08-19)
 
+**#0682** (rmw/zenoh, open 2026-08-19) — `NROS_SESSION_MODE=peer` on a native zenoh example fails
+immediately with `RMW session open failed — ConnectionFailed`, on both zenoh fixture roots, no router
+involved. The book promises the opposite twice ("two zenoh-pico devices can communicate directly without
+any router"; "Peer-to-peer: Yes"). `nano2nano::test_peer_mode_communication` covers this exact path and
+ends at `skip!("peer mode may not be supported — listener exited early")` — a GUESS about the one thing it
+is positioned to answer, so a missing capability and a regression read identically. NOT diagnosed: peer
+sessions DO open elsewhere (`zenoh_integration`'s `ZENOH_MULTICAST_SCOUTING` test passes), so the
+difference is scouting config, loopback multicast, or a compiled-out `Z_FEATURE_LINK_UDP_MULTICAST` —
+filed with the reproducer rather than a guess. Surfaced only when installing `ros-humble-rmw-zenoh-cpp`
+dropped the sweep from 167 skips to 7. See `0682-*`. (2026-08-19)
+
 Recently resolved (2026-08-18): **#0672** — `test_ros2_service_xrce_client`'s "wait for the ROS 2 server" was
 a 5 s no-op, so the client raced a server that might not be listening. THREE compounding faults: the rclpy
 helper ran a BUFFERED `python3`; `Ros2DdsProcess` reads STDOUT ONLY while ROS 2 logs to stderr; and the result
