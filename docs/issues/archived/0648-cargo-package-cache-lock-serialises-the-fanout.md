@@ -1,7 +1,7 @@
 ---
 id: 648
-title: "The fixture fan-out serialises on cargo's GLOBAL package-cache lock: 23 cargo processes, 4 compiling, 274 blocks, 0 downloads"
-status: open
+title: "The package-cache lock is taken on EVERY resolution and does not serialise the fan-out — the 274 blocks are real and nearly free"
+status: resolved
 type: performance
 area: build
 related: [issue-0509, issue-0604, phase-340, phase-365]
@@ -97,3 +97,79 @@ Observed by the maintainer from `htop` (many cargo processes, low CPU) during a
 2026-08-16 `lane=all`. The measurement above followed from that read; the
 hypothesis it replaced — a shared BUILD directory — was wrong, and the log
 message names the package cache explicitly.
+
+## MEASURED AND CLOSED 2026-08-18 — the premise in the title was wrong
+
+The experiment this issue specified — N concurrent cargo invocations over a warm
+tree, with and without `--offline`, counting blocks, on an otherwise idle box —
+has been run. It answers the open question and refutes the framing.
+
+### 1. `--offline` changes nothing. The lock is unconditional.
+
+16 concurrent `cargo metadata` resolutions, two rounds each:
+
+| arm | pkg-cache blocks | wall |
+| --- | --- | --- |
+| online | 39, 43 | 5.1 s, 1.6 s |
+| offline | 45, 43 | 0.7 s, 0.5 s |
+
+**Answer to the stated open question: cargo takes the lock on every resolution
+regardless, not because something still writes.** So remedy 1 ("pre-warm once,
+then `--offline`") does not address it — exactly the case this issue said it
+would not fix. `--offline` is still worth having for the wall-clock reason
+visible above (no index freshness check), but not for the lock.
+
+### 2. The lock does NOT serialise. That was the title's claim.
+
+Same 16 resolutions, serial vs parallel:
+
+```
+SERIAL   1.75 s
+PARALLEL 0.54 s     3.3x
+```
+
+If the lock serialised the fan-out these would be equal. Scaling, on 32 cores
+(N=32 repeated three times; a first 3.46 s reading was a cold-cache outlier and
+did not reproduce):
+
+| N | 1 | 2 | 4 | 8 | 16 | 32 |
+| --- | --- | --- | --- | --- | --- | --- |
+| wall (s) | 0.13 | 0.15 | 0.19 | 0.34 | 0.54 | 0.88 |
+| blocks | 0 | 5 | 11 | 21 | 43 | 77 |
+| s / invocation | .128 | .075 | .048 | .042 | .033 | .027 |
+
+32x the work in 6.8x the time, and per-invocation cost FALLS monotonically. The
+lock is taken and released quickly; it does not gate throughput.
+
+### 3. The methodological error, which is the durable lesson
+
+**Block COUNT is not a cost measure.** Blocks grow linearly with N — about 2.4
+per invocation at every point on that curve — including where scaling is
+healthy. So the original observation (274 blocks in the zephyr lane, 68 of 89
+leaves blocking at least once) establishes that the contention EXISTS and is
+frequent. It does not establish that it costs anything, and this issue read it
+as though it did.
+
+That is the same shape as the storage A/B this issue's own text cites approvingly
+from #0509: a plausible mechanism, measured for presence rather than for cost.
+
+### What this means for the fan-out's real cost
+
+#0509's finding stands untouched: the lane is dominated by fixed per-leaf
+overhead. This was proposed as a second component of it and is not one. The
+remedies are therefore re-dispositioned:
+
+1. pre-warm + `--offline` — **refuted** for the lock (keep it for index-check
+   latency if wanted, which is a different and smaller win);
+2. per-lane `CARGO_HOME` — **not worth it**; it buys removal of a cost that
+   measures near zero, at the price of a duplicated registry per lane;
+3. fewer invocations — still correct, and still phase-340's direction, but on
+   the per-leaf-overhead argument rather than this one.
+
+### Caveats, stated so nobody over-reads this in the other direction
+
+* Measured with `cargo metadata`, i.e. resolution only. A real leaf then
+  COMPILES for seconds, which makes the lock's share smaller still, not larger.
+* Warm registry, one machine, 32 cores. A box with far more concurrency than
+  cores, or a cold registry, could differ — but the fan-out is capped at
+  `min(16, cores-2)`, inside the range measured here.

@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#648** — the fixture fan-out was thought to serialise on cargo's global
+`.package-cache` lock (274 blocks, 68 of 89 leaves, 0 downloads). The specified experiment finally ran on an
+idle box and refutes the framing. `--offline` does NOT reduce the blocks (43 vs 43 at N=16), so the lock is
+taken on EVERY resolution rather than because something writes — which is the open question answered, and it
+rules out remedy 1. And it does not serialise: 16 concurrent resolutions beat serial 3.3x (0.54 s vs 1.75 s),
+and scaling to N=32 costs 6.8x the time for 32x the work with per-invocation cost falling monotonically. The
+durable lesson is methodological — block COUNT is not a cost measure; blocks grow linearly with N (~2.4 each)
+even where throughput scales fine, so the original 274 established presence, not cost. #0509's per-leaf
+overhead finding stands; this is not a second component of it. See `archived/0648-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#604** — cold leaves after every pull, inherited from #509 as a
 MEASUREMENT: how many leaves are genuinely invalidated versus merely re-stamped. All three categories are now
 attributed. The large one was over-invalidation ABOVE the fixtures — the CLI stamp watched 17 crates it never
@@ -521,17 +531,6 @@ Checked the "a feature requires 4.4" recollection against the record — phase-1
 POLICY slot (LTS + ≤1 rolling, floor set by `zephyr-lang-rust`), `65c1998a4` names no feature, and all
 4.4-specific issue history (0058, 0078) is keeping the line building rather than a capability 3.7 lacks;
 correct that section if a counter-example predates it, because it changes the priority. See `0651-*`.
-
-**#648** (build, open 2026-08-16) — the fixture fan-out serialises on cargo's MACHINE-WIDE package-cache
-lock (`$CARGO_HOME/.package-cache`), not on a build dir. Sampled mid-`lane=all`: 23 cargo processes, 22
-sleeping, **4** rustc actually compiling, **274** `Blocking waiting for file lock on package cache`, and
-**0 downloads** — every crate already fetched, so the queue buys nothing. 68 of 89 zephyr leaf logs blocked
-at least once; each block sits at INVOCATION START, immediately before the first `Compiling` line. Explains
-a second component of #509's "76 % idle, ~0 compilers" that the storage A/B (iowait ~0 on both disks) had
-ruled out without naming, and bounds what phase-340's shared cargo groups can buy — fewer target dirs do
-not reduce contention on a global lock. Remedies: pre-warm + `--offline`, per-lane `CARGO_HOME`, or fewer
-invocations; which one works depends on whether anything still WRITES the cache offline, stated as the open
-question rather than assumed. Spotted by the maintainer in `htop`. See `0648-*`.
 
 Recently resolved (2026-08-17): **#642** (build/testing) — `check-archive-lang-items` failed `build-test-fixtures` on
 16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it
