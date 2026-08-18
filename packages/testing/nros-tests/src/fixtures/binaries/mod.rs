@@ -2890,7 +2890,13 @@ pub fn build_native_workspace_cpp_subnode_realtime_entry() -> TestResult<&'stati
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-subnode",
                 "realtime-cpp",
-                "native_entry",
+                // The manifest row declares `entry = "native_subnode_entry"`,
+                // and the workspace builds three entries side by side
+                // (`native_entry`, `native_rclcpp_entry`, `native_subnode_entry`)
+                // — so naming the wrong one here resolves to a real binary's
+                // NEIGHBOUR and the cell skips forever. issue 0411's class,
+                // caught by the guard this call sits under.
+                "native_subnode_entry",
             )
         })
         .map(|p| p.as_path())
