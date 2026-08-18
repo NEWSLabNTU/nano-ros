@@ -513,6 +513,17 @@ phase-359 W10 lead is REFUTED, and the regression window is explicitly not claim
 W3b, so the likely trigger was the first fresh fixture build in 16 days exposing a latent defect.
 See `archived/0671-*`. (2026-08-18)
 
+**#0673** (ci/testing, open 2026-08-18) — `check-required-features-tests` invokes `cargo nextest run`
+directly, and only `just test-all` rewrites junit to turn a `nros_tests::skip!` panic back into a skip. So on
+a host with no `ros-<distro>-rmw-zenoh-cpp` the phase-362 capability skip ("no `rmw_zenoh_cpp/rmw_zenohd`
+under /opt/ros") lands as **13 hard failures from one line**, `zenohd_router.rs:448`, with zero other panics
+in the run. Two correct decisions that do not compose: the router must be the one a ROS 2 deployment runs
+(RFC-0075/phase-362), and a skip has no spelling but a marked panic. Tier 1 is therefore red for an
+environment fact on any ROS-less host — and because CI stops at the first failure it also HIDES
+`check-feature-set-ssot`, `check-no-tracked-file-find`, `native::check`, `rust-rtos-link-check` and
+`test-all`. Found in phase-366 when an earlier gate was fixed and this one finally ran. The invariant worth
+restoring: `nros_tests::skip!` means the same thing in every lane that runs tests. See `0673-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
 from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to
 interop: zenoh-pico is a client, so ANY two-process zenoh example needs a router. DECIDED: keep the
