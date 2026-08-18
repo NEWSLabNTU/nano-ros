@@ -1,7 +1,7 @@
 ---
 id: 628
 title: "`nros sdk-path corrosion` constructs only the VERSIONED layout, so a flat-layout install is ignored and every configure silently fetches Corrosion from GitHub"
-status: open
+status: resolved
 type: bug
 area: build/provisioning
 related: [issue-0493, issue-0500, issue-0622, phase-365, phase-354]
@@ -103,3 +103,76 @@ Found 2026-08-16 while verifying phase-354 W1's acceptance — the mixed native
 workspace links, and the configure line it prints is how this surfaced. CLAUDE.md
 requires that line to be READ rather than inferred, and reading it is what showed
 the origin was `FetchContent` and not `SDK store`.
+
+## Resolved 2026-08-19 — construct BOTH shapes, pinned first
+
+Took option 1, in the place option 3 pointed at: the resolution lives in the
+CLI, so every tool and every consumer gets it rather than `NanoRosCorrosion.cmake`
+alone. `play_launch_parser` is the other flat-layout tool in the store, and
+phase-365 W3b left it hand-joined for exactly this reason.
+
+### What changed
+
+`sdk_store::tool_dir_usable()` — the pinned prefix if it exists, else the legacy
+flat prefix if that does. `tool_dir_candidates()` exposes the list so an error
+can NAME what was tried.
+
+**This is still construction, not search.** Two candidates built from the same
+two inputs that produced the install; the store is never enumerated, so it
+cannot return a version nobody pinned (issue 0500) nor a sibling project's copy
+(issue 0625). Order is the contract: residue must never outrank a pin.
+
+`tool_dir()` is unchanged and still means "where an installer WRITES" — the
+distinction the bug turned on. A consumer needs somewhere it can READ.
+
+### The guard that keeps this from being the pre-0493 bug mirrored
+
+`<store>/<tool>` exists as soon as any version is installed beneath it, so an
+unguarded flat candidate would hand `find_package` a directory containing
+`0.6.1-nros1/` and nothing resolvable — which is the pre-0493 failure from the
+other side. The flat candidate is therefore offered ONLY when an install marker
+(`.installed-version` or `.nros-provenance`) is present, and a test asserts that
+equivalence rather than the current state of one host.
+
+### Verified in both directions
+
+On a host carrying BOTH shapes:
+
+```
+$ nros sdk-path corrosion
+/home/aeon/.nros/sdk/corrosion/0.6.1-nros1        # the pin wins
+```
+
+With the versioned prefix moved aside — the reported host's situation:
+
+```
+$ nros sdk-path corrosion
+/home/aeon/.nros/sdk/corrosion                    # flat accepted
+$ nros sdk-path corrosion --require ; echo $?
+0
+```
+
+Before, that second case printed a path that does not exist and `--require`
+failed, which is what sent cmake to the network.
+
+### No longer silent
+
+`_nros_corrosion_store_dir()` now emits a `STATUS` naming the prefix it tried
+before falling through to `FetchContent`. The CLI resolves both shapes, so
+reaching that branch means genuinely absent — and the issue asked for the
+difference between "not installed" and "installed where I did not look" to be
+checkable rather than inferred.
+
+### Note on the closure this corrects
+
+Issue 0625 was closed against `nros sdk-path corrosion` resolving the pinned
+prefix. That verification was correct for a versioned store and blind to the
+flat one, so the closure read broader than it was. The mechanism is now what
+that closure claimed.
+
+### Not done
+
+Option 2 (normalise at install time, migrate existing hosts) remains the cleanest
+end state. `install-corrosion` already writes the versioned shape, so flat is
+frozen residue rather than something still being produced — a migration can be
+scheduled on its own merits instead of under a broken configure.

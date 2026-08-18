@@ -169,6 +169,19 @@ function(_nros_corrosion_store_dir out_var)
         RESULT_VARIABLE _rc)
     if(_rc EQUAL 0 AND IS_DIRECTORY "${_dir}")
         set(${out_var} "${_dir}" PARENT_SCOPE)
+        return()
+    endif()
+    # Issue 0628 — say WHICH paths were tried before falling through.
+    #
+    # "not installed" and "installed where I did not look" printed the same
+    # nothing here, and the difference is the whole bug: on a host carrying only
+    # the legacy FLAT layout the configure fetched Corrosion from the network
+    # while advising `nros setup --tool corrosion` — the step already done. The
+    # CLI resolves both shapes now, so this branch means genuinely absent; a
+    # STATUS line makes that checkable instead of inferred.
+    if(_rc EQUAL 0 AND _dir)
+        message(STATUS "nano-ros: no Corrosion at the pinned prefix (${_dir}) "
+                       "— falling through to FetchContent")
     endif()
 endfunction()
 

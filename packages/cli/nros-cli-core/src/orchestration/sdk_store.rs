@@ -67,6 +67,62 @@ pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBu
     Some(tool_prefix(&store_root(), tool, version))
 }
 
+/// The pinned prefix if it exists, else the LEGACY FLAT prefix if that does —
+/// issue 0628.
+///
+/// [`tool_dir`] answers "where does this tool go", which is the right question
+/// for an installer and the wrong one for a consumer, because two provisioning
+/// paths have historically written two shapes:
+///
+/// ```text
+/// nros setup --tool corrosion       ->  <store>/<tool>/<version>/   (versioned)
+/// just workspace install-corrosion  ->  <store>/<tool>/             (flat, legacy)
+/// ```
+///
+/// `install-corrosion` now resolves through `nros sdk-path` and writes the
+/// versioned shape, so flat is only ever residue on a host provisioned before
+/// that. But residue is what people HAVE: phase-365 replaced a newest-first
+/// prefix SEARCH with a single constructed path, and on a flat-only host the
+/// constructed path does not exist, `find_package` is never called, and the
+/// configure silently fetches Corrosion from the network while advising you to
+/// install the copy you already have.
+///
+/// This stays construction, not search — the phase-365 thesis is intact. It
+/// builds TWO candidates from the same two inputs and takes the first that
+/// resolves; it never enumerates the store, so it cannot return a version
+/// nobody pinned (issue 0500) nor a sibling project's install.
+///
+/// Returns `None` when neither resolves, so a caller can say which paths it
+/// looked at rather than reporting "not installed".
+pub fn tool_dir_usable(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
+    for cand in tool_dir_candidates(index, tool) {
+        if cand.is_dir() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+/// The candidates [`tool_dir_usable`] tries, in order — exposed so an error
+/// message can NAME them. "Installed where I did not look" and "not installed"
+/// are different problems and used to print the same line.
+pub fn tool_dir_candidates(index: &super::sdk_index::SdkIndex, tool: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(versioned) = tool_dir(index, tool) {
+        out.push(versioned);
+    }
+    // The flat prefix is only meaningful when something was installed INTO it.
+    // `<store>/<tool>` always exists once any version was installed under it, so
+    // requiring an install marker is what keeps a versioned-only store from
+    // resolving to its own parent — which would hand `find_package` a directory
+    // holding `0.6.1-nros1/` and nothing it can use.
+    let flat = store_root().join(tool);
+    if flat.join(".installed-version").is_file() || flat.join(".nros-provenance").is_file() {
+        out.push(flat);
+    }
+    out
+}
+
 /// How a tool was installed; persisted to `<prefix>/.nros-provenance`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -675,6 +731,65 @@ mod phase365_tool_dir_tests {
                 resolved.display()
             );
         }
+    }
+
+    /// Issue 0628 — the candidate list is CONSTRUCTED, versioned first.
+    ///
+    /// Order is the whole contract: a host carrying both shapes must get the
+    /// pinned one. Flat is legacy residue, and residue must never outrank a pin.
+    #[test]
+    fn candidates_are_versioned_then_flat_and_never_enumerate() {
+        let index = repo_index();
+        let root = store_root();
+        let tool = index
+            .tool
+            .keys()
+            .next()
+            .expect("index declares no tools")
+            .clone();
+        let cands = tool_dir_candidates(&index, &tool);
+        assert!(!cands.is_empty(), "no candidate for pinned `{tool}`");
+        assert_eq!(
+            cands[0],
+            tool_dir(&index, &tool).unwrap(),
+            "the pinned path must be tried FIRST"
+        );
+        for c in &cands {
+            assert!(
+                c == &root.join(&tool) || c.starts_with(root.join(&tool)),
+                "candidate {} escaped <store>/<tool> — this must not be a search",
+                c.display()
+            );
+        }
+        assert!(
+            cands.len() <= 2,
+            "exactly two shapes exist; {} candidates means something is enumerating",
+            cands.len()
+        );
+    }
+
+    /// A flat prefix with no install marker is NOT a candidate.
+    ///
+    /// `<store>/<tool>` exists as soon as any version is installed beneath it,
+    /// so an unguarded flat candidate would hand `find_package` a directory
+    /// containing `0.6.1-nros1/` and nothing it can resolve from — the
+    /// pre-0493 failure this must not reintroduce from the other side.
+    #[test]
+    fn a_bare_parent_directory_is_not_mistaken_for_a_flat_install() {
+        let index = repo_index();
+        let tool = index.tool.keys().next().unwrap().clone();
+        let flat = store_root().join(&tool);
+        let marked =
+            flat.join(".installed-version").is_file() || flat.join(".nros-provenance").is_file();
+        let listed = tool_dir_candidates(&index, &tool).contains(&flat);
+        assert_eq!(
+            marked,
+            listed,
+            "`{tool}`: flat prefix {} is {} an install but {} listed",
+            flat.display(),
+            if marked { "marked as" } else { "NOT" },
+            if listed { "IS" } else { "is NOT" }
+        );
     }
 
     /// A miss is `None`, never a fallback. Substituting a different version is

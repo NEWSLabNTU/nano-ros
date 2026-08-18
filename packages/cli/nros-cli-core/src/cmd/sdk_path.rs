@@ -57,25 +57,46 @@ pub fn run(args: Args) -> Result<()> {
         );
     };
 
-    if args.require && !dir.is_dir() {
+    // Issue 0628 — answer with the layout that is actually PRESENT.
+    //
+    // `tool_dir` is where an installer WRITES; a consumer needs somewhere it can
+    // read. Two provisioning paths wrote two shapes historically, so a host
+    // provisioned before `install-corrosion` learned to ask this command has the
+    // pinned version under the flat prefix. Constructing only the versioned one
+    // made that host look unprovisioned, and cmake fetched from the network
+    // while printing advice to install what was already installed.
+    //
+    // Still construction: two candidates from the same inputs, no enumeration.
+    let usable = sdk_store::tool_dir_usable(&index, &args.tool);
+
+    if args.require && usable.is_none() {
         let version = index
             .tool
             .get(&args.tool)
             .map(|t| t.version.as_str())
             .unwrap_or("?");
+        // Name every path tried. "Not installed" and "installed where I did not
+        // look" printed the same line before, and they need different fixes.
+        let tried: Vec<String> = sdk_store::tool_dir_candidates(&index, &args.tool)
+            .iter()
+            .map(|p| format!("  {}", p.display()))
+            .collect();
         bail!(
-            "{} is pinned to {} but {} does not exist.\n\
+            "{} is pinned to {} but no install was found. Looked at:\n{}\n\
              Provision it:  nros setup --tool {}\n\
              (NOT substituting another version on purpose: the store is shared \
              between projects while the pin is per-project, so a substitution \
              silently gives this build another project's toolchain — issue 0625.)",
             args.tool,
             version,
-            dir.display(),
+            tried.join("\n"),
             args.tool
         );
     }
 
-    println!("{}", dir.display());
+    // Without `--require` this still prints the CANONICAL path when nothing is
+    // installed: the caller asked where the tool goes, and an empty answer is
+    // harder to act on than a path that does not exist yet.
+    println!("{}", usable.unwrap_or(dir).display());
     Ok(())
 }

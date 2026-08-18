@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#0628** — `nros sdk-path` constructed only the VERSIONED store layout, so a
+host carrying the legacy FLAT one looked unprovisioned: `find_package` was never called and every configure
+fetched Corrosion from the network while advising the `nros setup` step already done. Silent, because the
+version still resolved correctly — #0500's "prints success either way" exactly. Fixed in the CLI rather than
+in `NanoRosCorrosion.cmake`, so every tool benefits (`play_launch_parser` is the other flat one, and the
+reason phase-365 W3b left it hand-joined): `tool_dir_usable()` tries the pinned prefix, then the flat one.
+Still CONSTRUCTION — two candidates from the same inputs, no enumeration, pin first so residue never outranks
+it — and the flat candidate requires an install marker, else `<store>/<tool>` would resolve to its own parent
+and mirror the pre-0493 bug. cmake now names the prefix it tried before falling through. Corrects #0625's
+closure, which verified the versioned store and was blind to the flat one. See `archived/0628-*`. (2026-08-19)
+
 Recently resolved (2026-08-18): **#0672** — `test_ros2_service_xrce_client`'s "wait for the ROS 2 server" was
 a 5 s no-op, so the client raced a server that might not be listening. THREE compounding faults: the rclpy
 helper ran a BUFFERED `python3`; `Ros2DdsProcess` reads STDOUT ONLY while ROS 2 logs to stderr; and the result
@@ -600,14 +611,6 @@ converted to the `ZENOH_CONFIG_OVERRIDE` env form; the two debug scripts call `n
 PID; `build-all.mk` was still running the DELETED `just build-zenohd` recipe — stage and
 `ci/.../build-zenohd.sh` removed. Gated by `check-zenohd-flag-invocations`, mutation-checked both ways, with
 `docs/**/archived/**` exempt. See `archived/0654-*`. (2026-08-18)
-
-**#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
-store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
-IGNORED and every configure silently fetches Corrosion from GitHub — configure now needs the network, and
-the remedy the message prints is the thing already done. The module's own header documents both layouts and
-records that missing one is the pre-0493 defect; phase-365's switch from a searched prefix list to a single
-constructed path reintroduced it, one layout the other way. Found by READING the `via <origin>` line, which
-CLAUDE.md requires. See `0628-*`. (2026-08-16)
 
 Recently resolved (2026-08-16): **#633** — issue 0601's runnability probe could not fire in a build dir that
 had already resolved an unusable `idlc`. The resolved path was cached as `NROS_RMW_CYCLONEDDS_IDLC:INTERNAL`
