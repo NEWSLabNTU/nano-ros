@@ -108,9 +108,19 @@ case "$sub" in
 esac
 
 # Already asked for by the caller → do not duplicate.
+# Already-explicit lock discipline: don't double up.
+#
+# `--offline` is NOT in this list, deliberately (issue 0676). It restricts cargo
+# to the local cache; it does NOT pin resolution, so `cargo <cmd> --offline`
+# will happily re-resolve and REWRITE `Cargo.lock` from whatever the cache
+# holds. It was listed here, and that is how a measurement run for issue 0648
+# silently moved `libc` 0.2.183 -> 0.2.189 in two leaf locks — the exact class
+# `--locked` is injected project-wide to prevent (issues 0359, 0378).
+#
+# `--frozen` stays: it means `--locked --offline` by definition.
 for a in "$@"; do
     case "$a" in
-        --locked | --frozen | --offline)
+        --locked | --frozen)
             exec "$real_cargo" "$@"
             ;;
     esac

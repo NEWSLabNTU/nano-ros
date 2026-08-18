@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#676** — the project-wide `--locked` shim (`scripts/bin/cargo`) skipped
+injection when the caller passed `--offline`, alongside `--locked` and `--frozen`. `--frozen` does mean
+`--locked --offline`; `--offline` does NOT pin resolution — it only restricts cargo to the local cache, and
+cargo will re-resolve and REWRITE `Cargo.lock` from whatever that cache holds. Found by accident: the #648
+measurement's `--offline` arm silently moved `libc` 0.2.183 -> 0.2.189, with a crates.io `source` line, in two
+leaf locks — in a run meant to be read-only, with the one guard against exactly that standing down. Confirmed
+by controlled repro (same command with and without `--offline`) and fixed by dropping `--offline` from the
+skip list. See `archived/0676-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#648** — the fixture fan-out was thought to serialise on cargo's global
 `.package-cache` lock (274 blocks, 68 of 89 leaves, 0 downloads). The specified experiment finally ran on an
 idle box and refutes the framing. `--offline` does NOT reduce the blocks (43 vs 43 at N=16), so the lock is
