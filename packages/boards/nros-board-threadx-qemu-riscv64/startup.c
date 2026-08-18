@@ -56,15 +56,33 @@ extern int uart_putc(int ch);
  * Both route the bytes through `_write` below, so the console is the same
  * either way — newlib simply reaches it through its own FILE machinery.
  */
-/* issue 0674 — `NROS_LIBC_PICOLIBC` is set by the toolchain file's SAME `if()`
- * that puts picolibc's headers on the include path, so it cannot disagree with
- * the library actually linked. `__PICOLIBC__` is kept for a build driven by
+/* issue 0674 — three ways to be told this is picolibc, and an error when none
+ * of them says so.
+ *
+ * `NROS_LIBC_PICOLIBC` is set by the toolchain file's SAME `if()` that puts
+ * picolibc's headers on the include path, so it cannot disagree with the
+ * library actually linked. `__PICOLIBC__` is kept for a build driven by
  * `--specs=picolibc.specs`, which does define it; the provisioned xPack
- * `riscv-none-elf-gcc` ships no such spec file, and Debian's `picolibc.h`
- * spells its own macro `_PICOLIBC__` (one underscore) and is not included by
- * `stdio.h` — so on that combination `__PICOLIBC__` alone was never true and
- * these definitions vanished from an image that still linked picolibc. */
-#if defined(NROS_LIBC_PICOLIBC) || defined(__PICOLIBC__)
+ * `riscv-none-elf-gcc` ships no such spec file, so on that combination
+ * `__PICOLIBC__` alone was never true and these definitions vanished from an
+ * image that still linked picolibc.
+ *
+ * `PICOLIBC_STDIO_GLOBALS` is added because it is the CONTRACT rather than a
+ * provenance flag: picolibc's own <stdio.h> defines it and documents it as
+ * "defined when stdin/stdout/stderr are global variables" — precisely "the
+ * image must define these". It also holds where the other two do not, e.g. a
+ * TU compiled with picolibc's headers by something other than this toolchain
+ * file. Measured on Debian picolibc 1.7.4 with the xPack compiler: a bare
+ * `#include <stdio.h>` yields both `PICOLIBC_STDIO_GLOBALS` and `_PICOLIBC__`,
+ * so `picolibc.h` IS reached transitively — an earlier revision of this comment
+ * said it was not.
+ *
+ * The `#else` is the half that keeps this from recurring. A guard that silently
+ * produces an image with no stdio puts its failure on whichever consumer
+ * references `stderr` first — for issue 0674 that was CycloneDDS, an arbitrary
+ * distance from the cause, and the lane it killed had nothing to do with this
+ * file. An unrecognised C library is a compile error HERE now. */
+#if defined(NROS_LIBC_PICOLIBC) || defined(__PICOLIBC__) || defined(PICOLIBC_STDIO_GLOBALS)
 static int _uart_put(char c, FILE *f) { (void)f; uart_putc((int)c); return 0; }
 static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WRITE);
 /* picolibc declares `extern FILE *const stdout` but leaves it undefined.
@@ -72,7 +90,17 @@ static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WR
  * not the FILE — so the FILE itself is mutable. */
 FILE *const stdout = &_uart_file;
 FILE *const stderr = &_uart_file;
-#endif /* NROS_LIBC_PICOLIBC || __PICOLIBC__ */
+#elif defined(__NEWLIB__)
+/* newlib defines stdout/stderr itself (macros over its reentrancy struct), so a
+ * definition here would be a syntax error before it was a duplicate symbol. Its
+ * FILE machinery reaches the same console through `_write` below. */
+#else
+#error "nros-board-threadx-qemu-riscv64: unrecognised C library — neither \
+picolibc (NROS_LIBC_PICOLIBC / __PICOLIBC__ / PICOLIBC_STDIO_GLOBALS) nor newlib \
+(__NEWLIB__). This board must know which one owns stdout/stderr: defining them \
+under newlib is a syntax error, and NOT defining them under picolibc is an \
+undefined symbol at link time, in whatever links first (issue 0674)."
+#endif
 
 /* picolibc _write syscall for other output (fprintf to fd, etc.) */
 int _write(int fd, const char *buf, int len) {

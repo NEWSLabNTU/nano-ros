@@ -471,6 +471,15 @@ hand-picked list that would drift from it. The property to preserve is that it s
 expensive edge in front of every fixture build gets deleted. Gate, not warning. See `archived/0677-*`.
 (2026-08-18)
 
+**#0678** (build/boards, open 2026-08-18) — the `threadx-riscv64` C++ Cyclone rows fail to link,
+`undefined symbol: __emutls_v.errno` from `libddsc.a`'s `ddsrt_malloc_s`. UNMASKED by #0674's fix, not caused
+by it: that issue's `stdout`/`stderr` failure killed the platform before any C++ row reached its link. The C
+Cyclone rows in the same tree link and produce binaries, so a working control exists — diff the two link
+lines before theorising. `__emutls_v.errno` is the control object for picolibc's thread-local `errno`, whose
+definition lives in picolibc's `libc.a`; the C++ lane has a deliberately different libc surface
+(`-nostdinc++` + the board `cxx-compat` shim, plus a separately resolved `libstdc++.a`). Distinct from #0664,
+which is the same family at RUNTIME (emutls `malloc` aborting) and links fine. See `0678-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
 define both, behind `#if defined(__PICOLIBC__)` — a guard #0657 added because this board builds against

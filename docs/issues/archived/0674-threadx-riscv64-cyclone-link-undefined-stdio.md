@@ -200,3 +200,48 @@ undefined symbol: 0 occurrences   # was stdout + stderr, 7+ references
 the bug was never Cyclone-specific, so the coverage gap that made it look that
 way is still open — a zenoh riscv64 row would have caught this sooner and
 should still exist.
+
+
+## Addendum 2026-08-18 — the guard also asks picolibc's own contract, and says so when nothing answers
+
+The fix above keys on `NROS_LIBC_PICOLIBC`, published by the toolchain file's
+own `if()`. Two things added on top, from a parallel investigation that reached
+the same root cause:
+
+**`PICOLIBC_STDIO_GLOBALS` joins the condition.** It is the CONTRACT rather than
+a provenance flag — picolibc's `<stdio.h>` defines it and documents it as
+*"defined when stdin/stdout/stderr are global variables"*, i.e. exactly "the
+image must define these" — and it holds where the other two do not, such as a TU
+compiled against picolibc's headers by something other than this toolchain file.
+
+This also corrects a factual claim in the note above: Debian picolibc 1.7.4's
+`picolibc.h` **is** reached from `<stdio.h>`. Measured with the xPack compiler,
+a bare `#include <stdio.h>` defines both `PICOLIBC_STDIO_GLOBALS` and
+`_PICOLIBC__`, so a header-derived predicate was available all along.
+
+**An unrecognised C library is now a compile error here.** The `#elif
+defined(__NEWLIB__)` arm documents why newlib must NOT get definitions, and the
+`#else` fails the build in `startup.c`. That is the part which stops this
+recurring: a guard that silently yields an image with no stdio puts its failure
+on whichever consumer references `stderr` first — here CycloneDDS, in a lane
+that has nothing to do with this file.
+
+Verified object-level with the toolchain's `-D` ABSENT, which is the case the
+extra term buys:
+
+| build | `stdout`/`stderr` |
+| --- | --- |
+| picolibc headers only, no `-DNROS_LIBC_PICOLIBC` | **defined** |
+| xPack newlib, no defines | none, compiles clean |
+
+### What the platform build then showed
+
+`just threadx_riscv64 build-fixtures`: `undefined symbol: stdout`/`stderr` is
+gone (0 occurrences), and `threadx-riscv64-c-cyclonedds` links —
+`c_talker` and `c_listener` produced.
+
+The C++ Cyclone rows now reach their link for the first time and fail on
+`undefined symbol: __emutls_v.errno`. That is a distinct defect this issue was
+standing in front of, filed as
+[issue 0678](../0678-threadx-rv64-cpp-cyclone-emutls-errno-undefined.md); the C
+rows are a working control in the same tree.
