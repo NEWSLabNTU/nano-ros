@@ -235,3 +235,86 @@ never be excluded because each names a file whose CONTENT carries sizing knobs.
 
 No wall-clock claim: issue 0562 established this host's lane timing is set by
 page-cache state (a 14x spread on provably identical work).
+
+
+## Re-measured 2026-08-19 — W4's fix holds; a FOURTH name of the same shape was live
+
+Census re-run in the original scope (`libnros_core-*.rlib` under
+`*/nros-relwithdebinfo/deps/`):
+
+| | 2026-08-06 | 2026-08-15 | 2026-08-19 |
+| --- | --- | --- | --- |
+| rlibs | 106 | 707 | **773** |
+| target dirs | 60 | 385 | **605** |
+| identities | 5 | 49 | **62** |
+
+By population, the probe dir is still the worst duplicator — 326 rlibs over **8**
+identities (40.8x) — but the identity count is W4's win: 18 -> 8. What did NOT
+improve is the directory count: **209 sub-keys, 61 GB**, worse than the 110 / 37 GB
+that prompted W4.
+
+**W4's fix is intact.** `NROS_BUILD_LOG_DIR`, `NROS_WS_RECORDS_FILE` and
+`NROS_BUILD_JOBS` appear in zero key-input records. But **198 of the 209 sub-keys
+post-date it** (179 on 2026-08-16 alone), so "a second run creates zero new keys"
+held only for a REPEAT OF THE SAME LANE.
+
+Sampling 60 key-input records: of 27 knobs recorded, exactly **one varied** —
+
+```
+NROS_ZEPHYR_RUNNER_RECORD   46 distinct
+  .../build/zephyr-fixture-make-driver/records/<timestamp-pid>/<fixture>.tsv
+```
+
+One variable was splitting the entire population. Same mechanism W4 removed,
+arriving in a name W4's list did not carry.
+
+### The fix is a DELETION, not another exclusion
+
+The obvious move — add it to `KNOBS_THAT_CANNOT_CHANGE_A_SIZE` — would have been
+bookkeeping for a variable with no consumer. `zephyr-fixture-make-driver.sh` set
+it **and** passed the identical path as the runner's positional argument:
+
+```sh
+env … NROS_ZEPHYR_RUNNER_RECORD=$record_file  $runner_script  $record_file
+```
+
+`zephyr-fixture-run-one.sh` reads `record_path="${1:-}"` and never mentions the
+env var; tree-wide there were no readers at all. The export is deleted, so the
+probe key never sees it.
+
+A dead export is not free here precisely because `knob_identity()` sweeps every
+`NROS_*` on purpose — the conservative default that issue 0528 requires makes any
+unread `NROS_*` a directory-per-run.
+
+**Nearly mis-filed it.** The record's content includes `conf_files=` and
+`-DCONFIG_NROS_*`, and Zephyr conf files are where sizing knobs live (issue
+0460), which looks like the criterion for the four NEVER-excludable names
+(`NROS_BOARD_TOML`, `NROS_PLATFORMS_DIR`, `NROS_MODEL_DIR`, `NROS_HOME`). It is
+the opposite: those name files the build READS, this names a file the build
+WRITES. An output describing what was built cannot feed a probed size, so 0528's
+invariant is untouched.
+
+### Verified
+
+Generated recipe no longer sets the variable, and the runner still receives the
+path as its argument. Running the Zephyr fixture lane afterwards minted **2** new
+sub-keys, and they differ from each other by nothing but genuine sizing knobs:
+
+```
+NROS_XRCE_BUFFER_SIZE / MAX_SERVICE_CLIENTS / MAX_SERVICE_SERVERS
+MAX_SUBSCRIBERS / STREAM_HISTORY
+```
+
+Two earned keys, where a Zephyr lane previously minted ~180 unreusable ones.
+
+(The lane itself still exits non-zero, on
+`NanoRosEntry.cmake:240` "staticlib must be imported before the entry declares
+its ending" — phase-366's PANIC work, issue 0668, unrelated to this and owned
+elsewhere.)
+
+### Left alone
+
+The 61 GB of existing sub-keys pre-dates this and is residue, not growth. It is
+regenerated on demand, so deleting `build/sizes-probe` is safe and is the way to
+reclaim it — deliberately not done here, since a wipe would also erase the
+evidence above.

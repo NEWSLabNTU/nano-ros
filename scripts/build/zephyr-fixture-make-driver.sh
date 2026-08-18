@@ -72,6 +72,19 @@ stamp="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
 . "$(dirname "${BASH_SOURCE[0]}")/build-root.sh"
 work_root="$(nros_build_dir "$NROS_KIND_ZEPHYR_FIXTURE_MAKE_DRIVER")"
 record_dir="$work_root/records/$stamp"
+# issue 0446 — the runner takes this path as its ARGUMENT (`record_path="${1:-}"`
+# in zephyr-fixture-run-one.sh). It was ALSO exported as
+# `NROS_ZEPHYR_RUNNER_RECORD`, which nothing ever read — zero references in the
+# tree outside the two lines that set it.
+#
+# A dead export is not free here. `nros-sizes-build::knob_identity()` sweeps
+# EVERY `NROS_*` in the environment into the sizes-probe key, deliberately, so
+# an unknown knob costs a directory rather than risking issue 0528's
+# order-dependent corruption. `$stamp` is a timestamp+pid, so this one differed
+# on every run and every Zephyr fixture build minted probe keys that could never
+# be reused — the mechanism phase-353 W4 removed for three other names, arriving
+# by a fourth. Deleting the export is the fix; excluding it would have been
+# bookkeeping for a variable with no consumer.
 log_dir="$work_root/logs/$stamp"
 status_dir="$work_root/status/$stamp"
 joblog="$work_root/joblog-$stamp.tsv"
@@ -193,11 +206,11 @@ fi
         printf '\t+@echo "zephyr fixture: %s"\n' "$id"
         printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; ' "$(shell_quote "$status_file")"
         if [ "$jobserver_mode" = "1" ]; then
-            printf '( env NROS_JOBSERVER=1 NROS_ZEPHYR_JOBSERVER=1 NROS_ZEPHYR_RUNNER_RECORD=%s %s %s ) >%s 2>&1 || status=$$?; ' \
-                "$(shell_quote "$record_file")" "$(shell_quote "$runner_script")" "$(shell_quote "$record_file")" "$(shell_quote "$scheduler_log")"
+            printf '( env NROS_JOBSERVER=1 NROS_ZEPHYR_JOBSERVER=1 %s %s ) >%s 2>&1 || status=$$?; ' \
+                "$(shell_quote "$runner_script")" "$(shell_quote "$record_file")" "$(shell_quote "$scheduler_log")"
         else
-            printf '( env NROS_ZEPHYR_NINJA_JOBS=%s NROS_ZEPHYR_RUNNER_RECORD=%s %s %s ) >%s 2>&1 || status=$$?; ' \
-                "$(shell_quote "$fallback_ninja_jobs")" "$(shell_quote "$record_file")" "$(shell_quote "$runner_script")" "$(shell_quote "$record_file")" "$(shell_quote "$scheduler_log")"
+            printf '( env NROS_ZEPHYR_NINJA_JOBS=%s %s %s ) >%s 2>&1 || status=$$?; ' \
+                "$(shell_quote "$fallback_ninja_jobs")" "$(shell_quote "$runner_script")" "$(shell_quote "$record_file")" "$(shell_quote "$scheduler_log")"
         fi
         printf 'end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; '
         printf 'printf "target=%%s\\nid=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nscheduler_log=%%s\\nzephyr_log=%%s\\nrecord=%%s\\n" %s %s "$$state" "$$start" "$$end" "$$duration" %s %s %s >%s; ' \
