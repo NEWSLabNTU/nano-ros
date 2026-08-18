@@ -16,13 +16,15 @@ description = "NuttX rv-virt kernel + nros C/C++ FFI bundle for CMake-built exam
 # of both are switched off with `default-features = false`. Exactly one of each
 # may exist per image.
 nros-board-nuttx-qemu = { path = "..", default-features = false }
-# `panic-spin`: this bin owns the image's panic handler through `nros-c` (the
-# board crate's is off via `default-features = false` above). phase-361 W8.b
-# moved that handler from the `global-allocator` gate onto its own feature —
-# "asking for a panic handler no longer means asking for a heap" — so the choice
-# has to be stated here rather than arriving as a side effect of the allocator.
+# `panic-platform`: this bin IS the final artifact, so it owns the image's panic
+# handler through `nros-c` (the board crate's is off via `default-features =
+# false` above). phase-361 W8.b first moved that handler off the
+# `global-allocator` gate onto its own feature — "asking for a panic handler no
+# longer means asking for a heap" — and phase-366 R1 replaced that feature's
+# spin loop with the port's own ending: the image now panics through
+# `nros_platform_panic`, which on NuttX is the platform's, not a bare `loop {}`.
 nros-c = { path = "../../../api/nros-c", default-features = false, features = [
-    "alloc", "global-allocator", "panic-spin", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
+    "alloc", "global-allocator", "panic-platform", "cffi-zenoh-cffi", "platform-nuttx", "ros-humble"
 ] }
 nros-cpp = { path = "../../../api/nros-cpp", default-features = false, features = [
     "alloc", "rmw-zenoh-cffi", "platform-nuttx", "ros-humble"
