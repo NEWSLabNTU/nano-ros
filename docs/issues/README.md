@@ -490,6 +490,15 @@ socket call on the RX thread is readable by the app thread, no diagnostic) and `
 exposure limited by #0664's bump `_sbrk` with no free. Pre-existing newlib property made REACHABLE by #0678,
 not a regression: before it the board did not link at all, and picolibc's per-thread `errno` only ever worked
 where the compiler had native TLS. ThreadX's own answer is a `TX_THREAD_EXTENSION` slot; all four are free.
+DESIGN EXPLORED: `__errno()` returns `_impure_ptr` and `_errno` is at offset 0, so per-thread errno IS
+per-thread `_impure_ptr` — and the two shortcuts are unsound for #0678's reason (overriding `__errno()`
+misses the `_r` objects that write `ptr->_errno` directly; `-D__DYNAMIC_REENT__` is a declaration change
+against a `libc.a` built without it). Recommended hook needs NO assembly: the port already carries
+`_tx_execution_{thread_enter,thread_exit,isr_enter,isr_exit}` call sites compiled out behind
+`TX_ENABLE_EXECUTION_CHANGE_NOTIFY`; define it, set `_impure_ptr` from `_tx_thread_current_ptr` in C, stub
+the other three. Slot `EXTENSION_3` (the header's "SHALL NOT" is about the PROFILE variables, and the two
+macros are mutually exclusive). Also surfaced: the port's asm addresses the TCB by hand-maintained byte
+offsets with no `_Static_assert` — safe today only because every offset used precedes `EXTENSION_0`.
 See `0680-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0678** — the `threadx-riscv64` Cyclone rows could not link
