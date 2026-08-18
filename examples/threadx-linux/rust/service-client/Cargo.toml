@@ -14,7 +14,14 @@ name = "service-client"
 path = "src/main.rs"
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib"]
+# phase-366 — was `["rlib", "staticlib"]`. Nothing consumed the staticlib: this
+# family has no CMakeLists, no C runtime links it, and no build or fixture row
+# names a `.a`. A `staticlib` is a FINAL artifact and rustc holds it to that —
+# it needs its own lang items — so declaring one nothing builds is a standing
+# obligation with no consumer. Same removal, same reasoning, as phase-359 W7 on
+# qemu-arm-nuttx. threadx-linux is a hosted (`std`) sim, which is why the
+# obligation was invisible: libstd supplied the items and no one had to notice.
 
 [features]
 # Phase 248 C6e — RMW is selected by config (`[package.metadata.nros.deploy.*].rmw`)
