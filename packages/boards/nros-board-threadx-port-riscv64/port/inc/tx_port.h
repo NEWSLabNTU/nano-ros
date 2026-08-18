@@ -17,29 +17,20 @@
 #ifndef TX_PORT_H
 #define TX_PORT_H
 
-#ifdef __ASSEMBLER__
-
-#if __riscv_xlen == 64
-# define SLL32    sllw
-# define STORE    sd
-# define LOAD     ld
-# define LWU      lwu
-# define LOG_REGBYTES 3
-#else
-# define SLL32    sll
-# define STORE    sw
-# define LOAD     lw
-# define LWU      lw
-# define LOG_REGBYTES 2
-#endif
-#define REGBYTES (1 << LOG_REGBYTES)
-
 /*
- * TX_THREAD struct field offsets for assembly code.
+ * TX_THREAD struct field offsets, shared by assembly AND C.
  *
  * With ULONG=unsigned int (4 bytes) and VOID*=8 bytes, the critical section
  * of TX_THREAD has mixed-size fields. These offsets match the C compiler's
  * struct layout and MUST be kept in sync with tx_api.h:TX_THREAD_STRUCT.
+ *
+ * issue 0680 — hoisted OUT of the `__ASSEMBLER__` branch. They used to be
+ * visible only to assembly, which is precisely why "MUST be kept in sync" had
+ * nothing enforcing it: no C translation unit could see both these numbers and
+ * the struct they mirror. `reent.c` now `_Static_assert`s each against
+ * `offsetof(TX_THREAD, …)`, so an append to the control block fails the build
+ * instead of leaving the context switch writing a stack pointer into whatever
+ * field moved. Same definition, both languages — not a second copy.
  *
  * Layout:
  *   Offset  0: tx_thread_id              (ULONG, 4 bytes)
@@ -59,6 +50,24 @@
 #define TX_TCB_STACK_SIZE_OFF       32
 #define TX_TCB_TIME_SLICE_OFF       36
 #define TX_TCB_NEW_TIME_SLICE_OFF   40
+
+#ifdef __ASSEMBLER__
+
+#if __riscv_xlen == 64
+# define SLL32    sllw
+# define STORE    sd
+# define LOAD     ld
+# define LWU      lwu
+# define LOG_REGBYTES 3
+#else
+# define SLL32    sll
+# define STORE    sw
+# define LOAD     lw
+# define LWU      lw
+# define LOG_REGBYTES 2
+#endif
+#define REGBYTES (1 << LOG_REGBYTES)
+
 
 #else   /*not __ASSEMBLER__ */
 
@@ -158,7 +167,49 @@ typedef unsigned short                          USHORT;
 #define TX_THREAD_EXTENSION_0
 #define TX_THREAD_EXTENSION_1
 #define TX_THREAD_EXTENSION_2
-#define TX_THREAD_EXTENSION_3
+
+struct _reent; /* <sys/reent.h>; only the pointer is needed here */
+
+/* issue 0680 — per-thread newlib reentrancy.
+ *
+ * Since issue 0678 this board links the toolchain's own newlib, whose `errno`
+ * resolves through `_impure_ptr` — ONE global pointer to ONE `struct _reent`.
+ * `__errno()` on this target is three instructions and returns `_impure_ptr`
+ * itself (`_errno` is at offset 0), so per-thread `errno` means per-thread
+ * `_impure_ptr` and nothing less: overriding `__errno()` misses the `_r`
+ * entry points (`_write_r` and friends) that write `ptr->_errno` through the
+ * reent they were handed, and `-D__DYNAMIC_REENT__` cannot help because THIS
+ * `libc.a` was not built with it.
+ *
+ * ThreadX's mechanism for per-thread library state is a control-block
+ * extension saved across the context switch. Slot 3 is the one Microsoft's
+ * BSD-layer guidance names for exactly this, and `tx_api.h`'s warning against
+ * adding variables here applies to the ThreadX-6 `TX_EXECUTION_PROFILE_ENABLE`
+ * arrangement, which is mutually exclusive with the
+ * `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` one selected below. */
+#define TX_THREAD_EXTENSION_3   struct _reent *nros_reent;
+
+/* The port declares the capability so shared code can ask for it rather than
+ * test the board. `nros-platform-threadx` is compiled for threadx-linux too,
+ * where the host libc already gives every pthread its own `errno` and this
+ * whole mechanism must compile out. */
+#define NROS_TX_PORT_HAS_REENT 1
+
+/* Turn on the four execution-notify call sites the port assembly ALREADY
+ * carries (`tx_thread_schedule.S`, `tx_thread_system_return.S`,
+ * `tx_thread_context_save.S`, `tx_thread_context_restore.S`). That is what
+ * makes this a C-only change: `_tx_execution_thread_enter` runs after
+ * `_tx_thread_current_ptr` is stored, which is exactly where `_impure_ptr`
+ * has to be swapped. The alternative — three instructions in
+ * `tx_thread_schedule.S` — is cheaper at runtime and has to be repeated for
+ * every port that ever needs this.
+ *
+ * The macro is NOT defined here. The `.S` files include no headers, so it
+ * reaches them only as a `-D` on the assembler line; defining it here as well
+ * would let C and assembly disagree — C would compile the hook while the
+ * assembly kept the call sites out, and the swap would silently never happen.
+ * One definition, in `nros_threadx_build_kernel`, reaching both languages.
+ * `nros_threadx_reent.c` fails to compile if it does not arrive. */
 
 /* Define the port extensions of the remaining ThreadX objects.  */
 

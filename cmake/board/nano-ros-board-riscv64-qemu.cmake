@@ -225,7 +225,15 @@ if(NOT TARGET threadx_kernel)
         EXTRA_INCLUDES "${NETX_DIR}/common/inc"
                        "${NETX_DIR}/addons/BSD"
                        "${VIRTIO_DRIVER_DIR}/include"
-        EXTRA_DEFINES NX_INCLUDE_USER_DEFINE_FILE NROS_PLATFORM_BAREMETAL)
+        # issue 0680 — `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` turns on the four
+        # execution-notify call sites the port ASSEMBLY already carries. Those
+        # `.S` files include no headers, so it reaches them only as a `-D`;
+        # `reent.c` (in the glue below) refuses to compile without the same
+        # define, so the two halves cannot drift apart silently — a C hook
+        # compiled against assembly that never calls it would leave `errno`
+        # shared with nothing to show for it.
+        EXTRA_DEFINES NX_INCLUDE_USER_DEFINE_FILE NROS_PLATFORM_BAREMETAL
+                      TX_ENABLE_EXECUTION_CHANGE_NOTIFY)
 endif()
 
 if(NOT TARGET netxduo)
@@ -260,6 +268,9 @@ if(NOT TARGET threadx_glue)
         "${THREADX_BOARD_DIR}/entry.s"
         "${THREADX_BOARD_DIR}/trap.c"
         "${THREADX_BOARD_DIR}/syscalls.c"
+        # issue 0680 — per-thread newlib reentrancy: the execution-notify hook
+        # that swaps `_impure_ptr` on context switch.
+        "${THREADX_BOARD_DIR}/reent.c"
         "${THREADX_BOARD_DIR}/hwtimer.c")
     nros_threadx_build_glue(
         SOURCES ${_glue_srcs}
@@ -275,7 +286,14 @@ if(NOT TARGET threadx_glue)
         # define block is honoured for the bare-metal C glue.
         DEFINES NROS_PLATFORM_BAREMETAL
                 NX_BSD_ENABLE_NATIVE_API
-                NX_INCLUDE_USER_DEFINE_FILE)
+                NX_INCLUDE_USER_DEFINE_FILE
+                # issue 0680 — the SAME define the kernel gets above, for the
+                # SAME reason, on adjacent lines so the pair stays visible:
+                # the kernel's copy turns on the assembly call sites, this one
+                # lets `reent.c` compile the hook they call. `reent.c` has an
+                # `#error` on its absence, so a half-applied pair fails loudly
+                # instead of yielding an image with a shared `errno`.
+                TX_ENABLE_EXECUTION_CHANGE_NOTIFY)
     # The kernel's includes (qemu_virt board, netxduo BSD, virtio) are
     # already on threadx_kernel's INTERFACE — pull them onto threadx_glue
     # so app_define.c finds <nx_bsd.h>, <virtio_net.h>, etc.

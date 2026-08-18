@@ -308,6 +308,15 @@ typedef struct {
     TX_THREAD thread;
     /** Non-NULL when this port allocated the stack and must release it. */
     void *owned_stack;
+#ifdef NROS_TX_PORT_HAS_REENT
+    /* issue 0680 — this task's newlib reentrancy block, owned here and
+     * released with the stack. The PORT declares the capability (see its
+     * `tx_port.h`), because whether per-thread libc state is needed is a
+     * property of the C library that port links: threadx-linux compiles this
+     * whole mechanism out, its host libc already giving every pthread its own
+     * `errno`. */
+    struct _reent *owned_reent;
+#endif
 } nros_threadx_task_t;
 
 /** Default stack for a task spawned with no `stack_bytes`. Sized for the
@@ -356,6 +365,29 @@ int8_t nros_platform_task_init(void *task, void *attr,
         slot->owned_stack = stack;
     }
 
+#ifdef NROS_TX_PORT_HAS_REENT
+    /* issue 0680 — give this task its own newlib reentrancy block BEFORE the
+     * thread can run. `tx_thread_create` below starts it (TX_AUTO_START), and
+     * the scheduler's execution-notify hook reads `nros_reent` on the way in,
+     * so a slot filled afterwards would leave the first scheduling of this
+     * thread pointing at the shared `_impure_data`.
+     *
+     * `_REENT_INIT_PTR` is newlib's own initialiser; zeroing is not
+     * sufficient, the block carries non-zero fields (stdio pointers, the
+     * locale pointer). A failure here is NOMEM like the stack's, not a silent
+     * fallback to the shared block — sharing `errno` is the bug this exists to
+     * fix, and doing it quietly is how it stayed invisible. */
+    slot->owned_reent = (struct _reent *) nros_platform_alloc(sizeof(struct _reent));
+    if (slot->owned_reent == NULL) {
+        if (slot->owned_stack != NULL) {
+            nros_platform_dealloc(slot->owned_stack);
+            slot->owned_stack = NULL;
+        }
+        return NROS_PLATFORM_RET_NOMEM;
+    }
+    _REENT_INIT_PTR(slot->owned_reent);
+#endif
+
     /* ThreadX entry signature is `void(*)(ULONG)`. We forward our
      * pointer-shaped `arg` via reinterpretation; the double-cast via
      * `void *` defeats `-Werror=cast-function-type`; ABI parity is
@@ -389,6 +421,25 @@ int8_t nros_platform_task_init(void *task, void *attr,
         prio = (UINT) TX_MAX_PRIORITIES - 1u;
     }
 
+    /* issue 0680 — a port with per-thread reentrancy creates SUSPENDED.
+     * `tx_thread_create` does `TX_MEMSET(thread_ptr, 0, sizeof(TX_THREAD))`
+     * (tx_thread_create.c:168), wiping the whole control block INCLUDING the
+     * extension slot, so a `nros_reent` written BEFORE the call does not
+     * survive it. Written AFTER, with the thread already running under
+     * TX_AUTO_START, it would race the scheduler's execution-notify hook —
+     * which reads the slot on the way in — and this thread's first scheduling
+     * would take the shared `_impure_data`. Suspended-then-resume is the only
+     * ordering with neither hole.
+     *
+     * Hoisted into a variable rather than an `#ifdef` inside the call:
+     * `tx_thread_create` is a macro, and a directive among macro arguments is
+     * not portable (gcc `-Werror` rejects it outright). */
+#ifdef NROS_TX_PORT_HAS_REENT
+    const UINT start_option = TX_DONT_START;
+#else
+    const UINT start_option = TX_AUTO_START;
+#endif
+
     UINT rc = tx_thread_create(
         &slot->thread,
         (a != NULL && a->name != NULL) ? (char *) a->name : (char *) "nros",
@@ -399,7 +450,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
         prio,
         prio,
         TX_NO_TIME_SLICE,
-        TX_AUTO_START);
+        start_option);
     if (rc != TX_SUCCESS) {
         if (slot->owned_stack != NULL) {
             /* `_dealloc`, not `_free`: the canonical `nros_platform_free` is a
@@ -413,6 +464,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
             nros_platform_dealloc(slot->owned_stack);
             slot->owned_stack = NULL;
         }
+#ifdef NROS_TX_PORT_HAS_REENT
+        if (slot->owned_reent != NULL) {
+            nros_platform_dealloc(slot->owned_reent);
+            slot->owned_reent = NULL;
+        }
+#endif
         /* phase-364 W1 — a refused create is a RESOURCE condition, not a
          * permanent one: ThreadX rejects when the priority is out of range (a
          * caller bug) or when the control block cannot be taken. `NOMEM` tells
@@ -420,6 +477,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
          * issue 0246 turns on. */
         return NROS_PLATFORM_RET_NOMEM;
     }
+#ifdef NROS_TX_PORT_HAS_REENT
+    /* Publish the reent BEFORE the thread can be scheduled, then start it.
+     * This is the half `TX_DONT_START` above exists for. */
+    slot->thread.nros_reent = slot->owned_reent;
+    (void) tx_thread_resume(&slot->thread);
+#endif
     return NROS_PLATFORM_RET_OK;
 }
 
@@ -470,6 +533,19 @@ void nros_platform_task_free(void **task) {
         nros_platform_dealloc(slot->owned_stack);
         slot->owned_stack = NULL;
     }
+#ifdef NROS_TX_PORT_HAS_REENT
+    /* issue 0680 — the reent outlives the thread only until here. `_reclaim_reent`
+     * is deliberately NOT called: it walks newlib's per-reent stdio and atexit
+     * chains, and on this board nothing populates them (no `fopen`, no
+     * `atexit`), while calling it would drag that machinery into every image.
+     * The block is a plain allocation from this port's bump `_sbrk`, so
+     * releasing it is releasing it. Cleared after `tx_thread_delete`, so no
+     * scheduling of this thread can observe a freed pointer. */
+    if (slot->owned_reent != NULL) {
+        nros_platform_dealloc(slot->owned_reent);
+        slot->owned_reent = NULL;
+    }
+#endif
 }
 
 /* ---- Mutex (non-recursive + recursive share the same primitive) ----
