@@ -177,6 +177,12 @@ pub fn run(args: Args) -> Result<()> {
             None
         }
     });
+    // Issue 0259 — realizer verdicts for this bake, carried into
+    // `nros-plan.json` so `nros explain` can show them. Declared out here
+    // because the derivation happens inside the model-ingest arm below while
+    // the plan is written after it. Empty unless the schedule was DERIVED;
+    // declared tiers realize nothing and produce no verdicts.
+    let mut sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning> = Vec::new();
     let bringup = if let Some(model_path) = &discovered_model {
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
         // R1-N1 — contracted-publisher monitors ride the bake.
@@ -238,12 +244,16 @@ pub fn run(args: Args) -> Result<()> {
         // always win; an uncontracted model derives nothing and bakes
         // tier-less exactly as before).
         if model.execution.tiers.is_empty() {
-            let derived = crate::orchestration::model_ingest::derive_execution_from_contracts(
-                &mut owned.system,
-                &model,
-                &target_rtos,
-                &callback_groups,
-            )?;
+            let (derived, warnings) =
+                crate::orchestration::model_ingest::derive_execution_from_contracts(
+                    &mut owned.system,
+                    &model,
+                    &target_rtos,
+                    &callback_groups,
+                )?;
+            // Issue 0259 — the realizer's verdicts belong in the artifact, not
+            // only in this bake's scrollback.
+            sched_warnings = warnings;
             if derived > 0 {
                 eprintln!(
                     "codegen-system: derived {derived} scheduling tier(s) from model \
@@ -309,6 +319,7 @@ pub fn run(args: Args) -> Result<()> {
 
     emit_bake_tree(
         &bake_dir,
+        sched_warnings,
         bringup,
         &component_kinds,
         args.target.as_deref(),
@@ -538,6 +549,8 @@ fn classify_components(
 #[allow(clippy::too_many_arguments)]
 fn emit_bake_tree(
     bake_dir: &Path,
+    // Issue 0259 — realizer verdicts for this bake, written into the plan.
+    sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning>,
     bringup: &BringupPackageEntry,
     component_kinds: &[(String, ComponentLang)],
     target: Option<&str>,
@@ -603,6 +616,7 @@ fn emit_bake_tree(
         &bake_dir.join("nros-plan.json"),
         &render_plan_json(
             bringup,
+            sched_warnings,
             component_kinds,
             target,
             resolved_launch,
@@ -812,6 +826,11 @@ struct PlanDoc<'a> {
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tiers: Vec<PlanTierDoc<'a>>,
+    /// Issue 0259 — what the realizer concluded while deriving this schedule.
+    /// Omitted when empty so a plan with no verdicts stays byte-identical to
+    /// one produced before this field existed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning>,
 }
 
 #[derive(Serialize)]
@@ -854,6 +873,7 @@ struct PlanTierMember<'a> {
 #[allow(clippy::too_many_arguments)]
 fn render_plan_json(
     bringup: &BringupPackageEntry,
+    sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning>,
     component_kinds: &[(String, ComponentLang)],
     target: Option<&str>,
     resolved_launch: Option<&str>,
@@ -941,6 +961,7 @@ fn render_plan_json(
         age_monitors: ages,
         transports,
         tiers,
+        sched_warnings,
     };
     let mut s = serde_json::to_string_pretty(&doc).wrap_err("serialize plan json")?;
     s.push('\n');
@@ -1094,6 +1115,9 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
         &out_dir.join("nros-plan.json"),
         &render_plan_json(
             bringup,
+            // The px4 side-car plan derives no schedule (no callback groups
+            // here), so there are no realizer verdicts to carry.
+            Vec::new(),
             &kinds,
             Some("px4"),
             None,

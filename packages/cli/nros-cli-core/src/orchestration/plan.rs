@@ -43,6 +43,19 @@ pub struct NrosPlan {
     /// Additive; absent ⇒ no server, omitted so plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param_services: Option<PlanParamServices>,
+    /// Issue 0259 — what the RFC-0052 realizer concluded while deriving this
+    /// schedule, carried INTO the artifact rather than only onto stderr.
+    ///
+    /// A warning printed at bake time is gone the moment the terminal scrolls;
+    /// the plan is the thing a user inspects afterwards with `nros explain`.
+    /// Putting the realizer's verdicts here is what makes a derived schedule
+    /// auditable — the feasibility check in particular, whose whole value is
+    /// that it names the numbers it judged.
+    ///
+    /// Additive; absent ⇒ omitted, so a plan with no warnings stays
+    /// byte-identical to one produced before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sched_warnings: Vec<PlanSchedWarning>,
     /// Phase 250 (Wave 1) — E2E message-integrity (CRC + sequence gap/dup)
     /// capability. A declared `[safety]` block lowers this on; the generated
     /// entry then carries the `nros/safety-e2e` umbrella feature so the
@@ -70,6 +83,20 @@ pub struct NrosPlan {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub executables: Vec<PlanExecutable>,
     pub build: PlanBuildOptions,
+}
+
+/// One realizer verdict about one node's derived schedule (issue 0259).
+///
+/// `dim` names the requirement dimension the verdict is about (`deadline`,
+/// `budget`, `feasibility`, …) so a reader can tell a weakened guarantee from
+/// an impossible declaration. `reason` carries the NUMBERS — a verdict without
+/// its inputs is an assertion, and this schema exists so the derivation can be
+/// checked rather than believed.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlanSchedWarning {
+    pub node: String,
+    pub dim: String,
+    pub reason: String,
 }
 
 impl NrosPlan {

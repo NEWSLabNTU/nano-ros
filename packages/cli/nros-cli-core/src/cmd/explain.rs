@@ -136,6 +136,23 @@ pub fn render<W: Write>(plan: &NrosPlan, w: &mut W) -> std::io::Result<()> {
         writeln!(w)?;
     }
 
+    // Issue 0259 — what the realizer concluded, shown before the table it
+    // produced. Ordered that way deliberately: a reader who sees "this node's
+    // declaration is infeasible" should see it BEFORE the priorities derived
+    // for it, not as a footnote after them.
+    if !plan.sched_warnings.is_empty() {
+        writeln!(
+            w,
+            "Derived-schedule verdicts ({}):",
+            plan.sched_warnings.len()
+        )?;
+        for sw in &plan.sched_warnings {
+            writeln!(w, "  {} [{}]", sw.node, sw.dim)?;
+            writeln!(w, "      {}", sw.reason)?;
+        }
+        writeln!(w)?;
+    }
+
     // The scheduling table the runtime is generated against.
     if !plan.sched_contexts.is_empty() {
         writeln!(
@@ -437,5 +454,77 @@ mod tests {
     #[test]
     fn a_pre_505_plan_without_period_us_widens_the_millisecond_field() {
         assert!(entity_line(&timer(25, None)).contains("25ms"));
+    }
+
+    /// Issue 0259 — a realizer verdict reaches the artifact AND the reader.
+    ///
+    /// Built by DESERIALISING a plan rather than constructing the struct: that
+    /// exercises the schema too, so this fails if `sched_warnings` ever stops
+    /// round-tripping through `nros-plan.json` — which is the whole point of
+    /// routing verdicts there instead of onto stderr.
+    fn plan_json(extra: &str) -> NrosPlan {
+        let src = format!(
+            r#"{{
+              "version": 2,
+              "system": "demo",
+              "trace": {{
+                "system_config": "system.toml",
+                "launch_record": "rec.json",
+                "generated_by": "test"
+              }},
+              "components": [],
+              "instances": [],
+              "interfaces": [],
+              "sched_contexts": [],
+              "build": {{
+                "target": "native",
+                "board": "linux",
+                "rmw": "zenoh",
+                "profile": "dev",
+                "features": [],
+                "cfg": {{}}
+              }}{extra}
+            }}"#
+        );
+        serde_json::from_str(&src).expect("plan json must parse")
+    }
+
+    #[test]
+    fn explain_shows_derived_schedule_verdicts_with_their_inputs() {
+        let plan = plan_json(
+            r#",
+              "sched_warnings": [
+                {
+                  "node": "/perception",
+                  "dim": "feasibility",
+                  "reason": "C=6000us + B=5000us > D=10000us"
+                }
+              ]"#,
+        );
+        assert_eq!(plan.sched_warnings.len(), 1, "the field must round-trip");
+
+        let mut out = Vec::new();
+        render(&plan, &mut out).expect("render");
+        let text = String::from_utf8(out).expect("utf8");
+
+        assert!(text.contains("/perception"), "{text}");
+        assert!(text.contains("feasibility"), "{text}");
+        assert!(
+            text.contains("C=6000us + B=5000us > D=10000us"),
+            "the verdict must carry its inputs, not just a label: {text}"
+        );
+    }
+
+    /// A plan with no verdicts renders no section — silence rather than an
+    /// empty heading, so `explain` output stays byte-identical for systems that
+    /// derive nothing.
+    #[test]
+    fn explain_is_silent_when_there_are_no_verdicts() {
+        let plan = plan_json("");
+        assert!(plan.sched_warnings.is_empty());
+        let mut out = Vec::new();
+        render(&plan, &mut out).expect("render");
+        let text = String::from_utf8(out).expect("utf8");
+        assert!(!text.contains("Derived-schedule verdicts"), "{text}");
     }
 }

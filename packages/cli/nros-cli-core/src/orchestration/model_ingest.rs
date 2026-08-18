@@ -251,7 +251,7 @@ pub fn derive_execution_from_contracts(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
-) -> Result<usize> {
+) -> Result<(usize, Vec<crate::orchestration::plan::PlanSchedWarning>)> {
     // The derive CORE lives in `nros-orchestration-ir` (shared with the
     // `nros::main!` proc-macro so pure-cargo Rust entries derive identically).
     // This wrapper surfaces the recorded degradations + groupless notes on
@@ -263,11 +263,21 @@ pub fn derive_execution_from_contracts(
         callback_groups,
     )
     .map_err(|e| eyre::eyre!("{e}"))?;
+    // Issue 0259 — surface on stderr AND carry into the plan. stderr is for the
+    // person watching this bake; the plan is for everyone who reads the system
+    // afterwards, and a verdict that exists only in scrollback cannot be
+    // audited.
+    let mut warnings = Vec::new();
     for d in &derived.degradations {
         eprintln!(
             "codegen-system: derived-schedule degradation — {} [{}]: {}",
             d.node, d.dim, d.reason
         );
+        warnings.push(crate::orchestration::plan::PlanSchedWarning {
+            node: d.node.clone(),
+            dim: d.dim.to_string(),
+            reason: d.reason.clone(),
+        });
     }
     for name in &derived.groupless_notes {
         eprintln!(
@@ -279,7 +289,7 @@ pub fn derive_execution_from_contracts(
     let n = derived.tiers.len();
     system.tiers = derived.tiers;
     system.node_overrides = derived.overrides;
-    Ok(n)
+    Ok((n, warnings))
 }
 
 /// Issue 0257 — read `[package.metadata.nros.entry] max_callbacks` from an
@@ -891,7 +901,10 @@ mod tests {
 
         let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &ctrl_groups())
             .expect("derivation succeeds");
-        assert_eq!(n, 1, "one contracted node → one derived tier");
+        assert_eq!(n.0, 1, "one contracted node → one derived tier");
+        // Issue 0259 — a well-formed contracted node with no declared WCETs
+        // produces no verdicts: the realizer has nothing to judge.
+        assert!(n.1.is_empty(), "unexpected verdicts: {:?}", n.1);
 
         let tier = system
             .tiers
@@ -930,7 +943,7 @@ mod tests {
         // No callback groups declared → nothing to bind → no derived tier.
         let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &BTreeMap::new())
             .expect("derivation succeeds");
-        assert_eq!(n, 0);
+        assert_eq!(n.0, 0);
         assert!(system.tiers.is_empty());
     }
 

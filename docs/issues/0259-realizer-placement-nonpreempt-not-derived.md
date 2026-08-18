@@ -191,6 +191,25 @@ to exceed. Where `B_i` itself is unknown it is counted as 0 for this check ONLY
 build — and the report says `unknown (counted as 0)` rather than presenting an
 absent term as a measured zero.
 
+### The verdicts reach the artifact, and `nros explain` shows them
+
+Routed the same day. `nros-plan.json` gains an additive `sched_warnings` array
+(`{ node, dim, reason }`), written by `codegen-system` — the command that both
+derives the schedule and writes the plan, so no cross-verb plumbing was needed.
+`nros explain` renders them ABOVE the SchedContext table: a reader who is told
+"this node's declaration is infeasible" should see that before the priorities
+derived for it, not as a footnote after them.
+
+Why the artifact and not just stderr: a warning printed at bake time is gone
+when the terminal scrolls, and the plan is what anyone inspects afterwards. A
+verdict that exists only in scrollback cannot be audited, which defeats the
+point of making the check carry its inputs.
+
+Additive and omitted when empty, so a system that derives nothing produces a
+byte-identical plan and byte-identical `explain` output. The test builds its
+plan by DESERIALISING one rather than constructing the struct, so it fails if
+the field ever stops round-tripping through the schema.
+
 ### Still open
 
 `placement` is untouched and still needs the interference/utilisation model

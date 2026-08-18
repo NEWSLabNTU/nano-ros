@@ -34,9 +34,12 @@ Three orchestration issues that are one dependency chain, not three tasks.
   MODEL change scoped in 0259. `placement` untouched. `B_i` now has a CONSUMER: a
   necessary-condition feasibility check (`C_i + B_i > D_i`) reported as a
   `Degradation { dim: "feasibility" }` carrying its inputs, on the channel
-  codegen and the macro already print. Acceptance still NOT fully met —
-  `nros explain` reads the emitted plan, not the realizer's warnings, so the
-  derivation's inputs surface on stderr at bake time rather than in `explain`.
+  codegen and the macro already print. The verdicts now reach the ARTIFACT:
+  `nros-plan.json` carries an additive `sched_warnings` array and `nros explain`
+  renders it above the SchedContext table, so the derivation's inputs are
+  visible to a reader rather than only in the bake's scrollback. Acceptance for
+  the `budget`/feasibility strand is met; `placement` and `non_preempt` remain
+  underived (the latter needs per-callback priorities, a MODEL change).
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.
