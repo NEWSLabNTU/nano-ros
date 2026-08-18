@@ -51,6 +51,9 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+# `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
+# workspace umbrella (phase-366). include_guard'd.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureSet.cmake")
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -138,21 +141,8 @@ function(nano_ros_entry)
     endif()
     if(_NRA_PANIC)
         string(TOLOWER "${_NRA_PANIC}" _nra_panic)
-        if(_nra_panic STREQUAL "platform")
-            set(_nra_panic_feature panic-platform)
-        elseif(_nra_panic STREQUAL "halt")
-            set(_nra_panic_feature panic-halt)
-        elseif(_nra_panic STREQUAL "own")
-            # The image supplies its own provider; select neither feature. A
-            # POSITIVE declaration, so the gate can tell deliberate from forgot.
-            set(_nra_panic_feature "")
-        else()
-            message(FATAL_ERROR
-                "nano_ros_entry(${_NRA_NAME}): PANIC '${_NRA_PANIC}' is not a policy "
-                "(expected: platform — route to nros_platform_panic, the board's "
-                "ending; halt — park the core; own — this image supplies its own "
-                "#[panic_handler]).")
-        endif()
+        nros_panic_policy_feature(_nra_panic_feature
+            "${_NRA_PANIC}" "nano_ros_entry(${_NRA_NAME})")
 
         # One staticlib serves every entry in a workspace, so two entries asking
         # for different endings is not a merge — it is a contradiction, and

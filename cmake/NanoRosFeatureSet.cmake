@@ -209,3 +209,45 @@ function(nros_feature_set out_var)
     list(REMOVE_DUPLICATES _feats)
     set(${out_var} "${_feats}" PARENT_SCOPE)
 endfunction()
+
+# ---------------------------------------------------------------------------
+# Public — `nros_panic_policy_feature(<out_var> <policy> <context>)`
+#
+# Maps an RFC-0077 image-runtime policy (`platform`/`halt`/`own`) onto the
+# nros-c/nros-cpp feature that supplies it, or the empty string for `own`.
+#
+# phase-366 — this lives here, beside the feature assembly, because the policy
+# reaches the Rust archive by TWO routes and they must agree on the feature
+# name. `nano_ros_entry(PANIC ...)` appends it to an already-imported
+# nros-c/nros-cpp with `corrosion_set_features()`; a workspace instead bakes
+# nros-cpp's features into the synthesized umbrella's dependency line
+# (`default-features = false`, so the crate's own default never applies). When
+# only the first route knew the mapping, the umbrella's nros-cpp was built
+# without the feature while the entry's header expected it, and the two met at
+# the link as issue-0369's variant anchor:
+#
+#   undefined symbol: nros_cpp_config_variant_alloc_panic_platform_..._std
+#
+# which is that anchor doing its job — a feature split caught at link instead of
+# shipped as a silently mismatched ABI.
+#
+# `context` is the caller's name, used only in the diagnostic.
+# ---------------------------------------------------------------------------
+function(nros_panic_policy_feature out_var policy context)
+    string(TOLOWER "${policy}" _p)
+    if(_p STREQUAL "platform")
+        set(${out_var} panic-platform PARENT_SCOPE)
+    elseif(_p STREQUAL "halt")
+        set(${out_var} panic-halt PARENT_SCOPE)
+    elseif(_p STREQUAL "own")
+        # The image supplies its own provider; select neither feature. A
+        # POSITIVE declaration, so a gate can tell deliberate from forgot.
+        set(${out_var} "" PARENT_SCOPE)
+    else()
+        message(FATAL_ERROR
+            "${context}: PANIC '${policy}' is not a policy "
+            "(expected: platform — route to nros_platform_panic, the board's "
+            "ending; halt — park the core; own — this image supplies its own "
+            "#[panic_handler]).")
+    endif()
+endfunction()

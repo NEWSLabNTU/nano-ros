@@ -241,6 +241,31 @@ function(nros_synth_runtime_umbrella)
         BOARD        "${NANO_ROS_BOARD}"
         CAPABILITIES "${_caps}")
 
+    # phase-366 — and the image's ending, which `nros_feature_set` cannot know.
+    #
+    # This runs AFTER the SUBDIRS loop (see nano_ros_workspace), so every
+    # `nano_ros_entry(PANIC ...)` in this configure has already recorded its
+    # policy, and the entry itself has already rejected the case where two of
+    # them disagree. The entry applies the feature to nros_cpp-static with
+    # `corrosion_set_features()`; here the archive is a DIFFERENT crate, whose
+    # nros-cpp dependency is spelled `default-features = false` — so the feature
+    # has to be baked into that dep line or nothing carries it, and the entry's
+    # generated header meets an nros-cpp built without it as issue-0369's
+    # variant-anchor undefined symbol.
+    #
+    # No entry in the configure means no image, so the crate's own default
+    # (`panic-platform`) is the honest stand-in: same ending an entry that says
+    # nothing gets.
+    get_property(_umb_panic GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY)
+    if(NOT _umb_panic)
+        set(_umb_panic platform)
+    endif()
+    nros_panic_policy_feature(_umb_panic_feature
+        "${_umb_panic}" "nros_synth_runtime_umbrella")
+    if(_umb_panic_feature)
+        list(APPEND _cpp_features ${_umb_panic_feature})
+    endif()
+
     # Phase 241 W11 was inlined here; phase-263 C2c-zephyr factored it into
     # nros_write_runtime_umbrella_crate so the Zephyr/west lane reuses the IDENTICAL synthesis.
     # The cmake/Corrosion lane keeps no_std == CMAKE_CROSSCOMPILING (its embedded targets are
