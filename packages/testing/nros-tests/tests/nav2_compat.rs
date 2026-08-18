@@ -60,12 +60,20 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
         });
     let run_plan = fs::read_to_string(&run_plan_path).expect("read run_plan.rs");
 
-    // Offline gate: a build without `play_launch_parser` writes a Placeholder
-    // stub (compiles, but no N.11 directives exercised) → skip with the reason.
+    // The build script falls back to a Placeholder stub when codegen fails, and
+    // carries WHY in a `// reason:` line (issue 0683). Report THAT — this arm
+    // used to assert "play_launch_parser absent at build time", which had been
+    // wrong since phase-330 made SystemModels build output: the actual failure
+    // is that no model is resolved for this entry's launch file, and the wrong
+    // reason sent two investigations after a tool that was installed and on PATH.
     if run_plan.contains("Placeholder") {
+        let reason = run_plan
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("// reason: "))
+            .unwrap_or("no reason recorded — build.rs predates issue 0683");
         nros_tests::skip!(
-            "nav2_compat_smoke build-fixture emitted the offline Placeholder stub at {} \
-             (play_launch_parser absent at build time) — no codegen evidence to assert",
+            "nav2_compat_smoke build-fixture emitted the Placeholder stub at {} \
+             — no codegen evidence to assert. nros-build said: {reason}",
             run_plan_path.display()
         );
     }

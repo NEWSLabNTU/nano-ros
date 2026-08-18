@@ -102,6 +102,19 @@ it — and the flat candidate requires an install marker, else `<store>/<tool>` 
 and mirror the pre-0493 bug. cmake now names the prefix it tried before falling through. Corrects #0625's
 closure, which verified the versioned store and was blind to the flat one. See `archived/0628-*`. (2026-08-19)
 
+**#0683** (testing/orchestration, open 2026-08-19) — `nav2_compat` and `board_agnostic_run_plan` both skip
+on a Placeholder stub, and the skip blamed `play_launch_parser` being "absent at build time" — a tool that
+is installed, on PATH, and since RFC-0060 not even shelled but LINKED. The real error sat in cargo's
+captured build-script stderr: **no SystemModel for the entry's launch file**. `compile-check-fixtures.sh`
+does run `nros sync`, but sync resolves what it finds under `<ws>/src/`, and in both fixtures the Entry
+package is a SIBLING of `src/` — so sync resolved `src/secondary_node`'s own launch file and the entry's
+was never resolved at all. The layout is deliberate (`build.rs` overrides `workspace_root` for exactly
+this) and worked while models were committed files; phase-330 made them build output resolved by a
+`src/`-walking sync and nothing connected the two. It stayed invisible because the fallback swallows EVERY
+codegen error into a stub that compiles, so the consuming test cannot fail — four fixture build scripts
+share that shape. Stub now carries a `// reason:` line and both tests report it, so the wrong guess is no
+longer available. See `0683-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0682** — `NROS_SESSION_MODE=peer` failed as an opaque
 `ConnectionFailed`. Cause: `nros-zpico-build` hardcoded `Z_FEATURE_MULTICAST_TRANSPORT 0` /
 `Z_FEATURE_SCOUTING 0` with no knob and no comment, so peer mode has never worked in ANY nano-ros build —

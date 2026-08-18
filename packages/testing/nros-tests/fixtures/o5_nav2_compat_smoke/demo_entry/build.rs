@@ -34,13 +34,23 @@ fn main() {
             eprintln!("nros-build: codegen skipped: {err:?}");
             let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
             let stub = std::path::Path::new(&out_dir).join("run_plan.rs");
-            let body = "// Placeholder — nros-build codegen unavailable.\n\
-                        pub fn run_plan(\n    \
-                            runtime: &mut ::nros_platform::RuntimeCtx<'_>,\n\
-                        ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {\n    \
-                            let _ = runtime;\n    \
-                            Ok(())\n\
-                        }\n";
+            // Issue 0683 — the stub carries WHY. Without it the only trace of the
+            // real error is cargo's captured build-script stderr, which nobody
+            // reads, so the consuming test invented a reason ("play_launch_parser
+            // absent") that had been wrong since phase-330 moved SystemModels to
+            // build output. A fallback that hides its cause is how a fixture
+            // asserts nothing for months.
+            let reason = format!("{err:?}").replace('\n', " ");
+            let body = format!(
+                "// Placeholder — nros-build codegen unavailable.\n\
+                 // reason: {reason}\n\
+                 pub fn run_plan(\n    \
+                     runtime: &mut ::nros_platform::RuntimeCtx<'_>,\n\
+                 ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {{\n    \
+                     let _ = runtime;\n    \
+                     Ok(())\n\
+                 }}\n"
+            );
             std::fs::write(&stub, body).expect("write stub run_plan.rs");
         }
     }

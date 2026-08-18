@@ -105,12 +105,19 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
         });
     let run_plan = fs::read_to_string(&run_plan_path).expect("read run_plan.rs");
 
-    // Offline gate: a build without a reachable `nros-build` writes the
-    // Placeholder stub (compiles, but exercises no real codegen) → skip.
+    // The build script falls back to a Placeholder stub when codegen fails, and
+    // carries WHY in a `// reason:` line (issue 0683). Report THAT rather than
+    // asserting a cause: "nros-build codegen unavailable" described an offline
+    // CI that no longer exists, while the real failure here is a SystemModel
+    // that is never resolved for this entry's launch file.
     if is_placeholder_stub(&run_plan) {
+        let reason = run_plan
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("// reason: "))
+            .unwrap_or("no reason recorded — build.rs predates issue 0683");
         nros_tests::skip!(
-            "board_agnostic_run_plan build-fixture emitted the offline Placeholder stub at {} \
-             (nros-build codegen unavailable at build time) — no emit to assert",
+            "board_agnostic_run_plan build-fixture emitted the Placeholder stub at {} \
+             — no emit to assert. nros-build said: {reason}",
             run_plan_path.display()
         );
     }
