@@ -1,8 +1,19 @@
 # Phase 366 — The panic platform API, and one fatal path per image
 
-**Status (2026-08-18).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W7.a
-(M1, Rust half) landed. W5.e stays BLOCKED as R1 of the retirement list; W5.f is
-R4; W7.b–W7.d and M2–M6 remain.
+**Status (2026-08-18).** COMPLETE — W1–W7 landed, M1–M6 and R1–R4 done.
+
+The ending belongs to the image on every surface. A Rust entry writes
+`nros::main!()` and gets the board's ending; a C/C++ entry writes
+`nano_ros_entry(…)` and gets the same; an image bringing its own says `own`, and
+the build can tell that from having forgotten. `panic-spin` is deleted, the
+per-platform `panic-halt` table rows are gone, and `panic_to_platform!()` is the
+documented escape hatch for entries no `main!()` expansion reaches.
+
+**Carries a behaviour change, deliberately:** an embedded C/C++ image used to
+halt silently on panic (the table said `panic-halt`, and nros-c's gate made halt
+always win), so W4's forward was unreachable on exactly the images it was written
+for. Those images now end the way their board ends. `PANIC halt` restores the old
+behaviour per image.
 
 The lang item now belongs to the image on all three boards. `nros-board-nuttx`,
 `nros-board-threadx-qemu-riscv64` and `nros-board-mps2-an385-freertos` no longer

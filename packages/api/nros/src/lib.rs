@@ -362,12 +362,27 @@ pub use nros_macros::main;
 /// `use panic_halt as _;`, or replaced by a hand-written handler that logs to
 /// NVM and reboots. A default you cannot see is a constraint, not a default.
 ///
-/// # Use
+/// # Use — `main!(panic = …)` is the normal way; this is the escape hatch
+///
+/// phase-366 R3. An entry that goes through `nros::main!()` should say
+/// `panic = "platform"` (or nothing — that is the default since M5) and let the
+/// macro emit this body. One line, and the build can check it.
 ///
 /// ```ignore
 /// #![no_std]
+/// nros::main!();            // ends through `nros_platform_panic`
+/// ```
+///
+/// Invoke this macro directly only where no `main!()` expansion can carry the
+/// item — a hand-rolled `no_std` binary, or the lib side of a crate whose
+/// `crate-type` includes `staticlib` and whose entry macro is
+/// `zephyr_component_main!` / a board `app_main!`. It is kept for exactly those:
+/// deleting it would strand the images that cannot use the macro replacing it.
+///
+/// ```ignore
+/// // src/app_main.rs — the .a is a final artifact to rustc, and `main!()` in
+/// // the bin target never reaches it.
 /// nros::panic_to_platform!();
-/// nros::main!();
 /// ```
 ///
 /// Do NOT invoke it in a `std` image: libstd supplies the lang item there and a

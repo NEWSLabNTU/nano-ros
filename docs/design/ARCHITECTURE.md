@@ -100,9 +100,31 @@ that could not fire, because the manifest edge satisfied the condition it tested
 > **No `no_std`-capable crate declares a non-empty `default` containing `std` or
 > `alloc`.**
 >
-> Orthogonally: **`malloc` and `panic` are unified per platform.** Exactly one
-> `#[global_allocator]` and one `#[panic_handler]` per image, selected by the
-> `platform-<rtos>` feature — which selects the provider and nothing else.
+> Orthogonally: **`malloc` is unified per platform; `panic` is the image's.**
+> Exactly one `#[global_allocator]` and exactly one `#[panic_handler]` per image
+> — chosen by different layers, which phase-366 separated.
+>
+> The **allocator** is selected by the `platform-<rtos>` feature, which selects
+> the provider and nothing else. Not a convention: the Rust heap and the C side
+> (`z_malloc`, `ddsrt_malloc`) must reach ONE arena, so the port owns it and an
+> image gets no knob that could split it (RFC-0034 D6/D7).
+>
+> The **panic handler** is the image's, because an ending is a policy and the
+> platform knows only the mechanism. The port implements `nros_platform_panic`;
+> the image decides whether to reach it, halt, or bring its own — said as
+> `nros::main!(panic = "platform" | "halt" | "own")` in a Rust entry, or
+> `nano_ros_entry(… PANIC …)` for a C/C++ one, whose whole Rust surface is the
+> `nros-c`/`nros-cpp` staticlib. Saying nothing gets `platform`.
+>
+> Which surface carries the choice depends on **who links the final image**, and
+> that is the question, because rustc's notion of a final artifact is not the
+> system's: rustc demands the lang item wherever it emits a `staticlib`, even
+> when west or CMake will link that archive into an ELF it does not own. Where
+> another build system brings its own runtime the ending is already supplied —
+> Zephyr's, per `zephyr-lang-rust` — and the image says `own` (RFC-0077).
+>
+> Libraries never provide one. Node packages in a workspace never provide one:
+> a node cannot know which image it lands in.
 
 **Why the implication lives in the manifest and not in `cfg`s.** The one-line
 form was briefly replaced by independent axes, with the implication respelled at
