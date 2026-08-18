@@ -268,24 +268,34 @@ where
     )
 }
 
-/// Issue #205 step 2 — emit the C-ABI `app_main` entry for the CMake/CycloneDDS
-/// firmware path, so app crates don't hand-write the `#[no_mangle]` FFI
-/// trampoline. The C `startup.c::main` boots the ThreadX kernel and dispatches
-/// to `app_main` inside the app thread; the expansion forwards to
-/// [`run_app_thread`] with the given register fn (typically the
-/// `nros::node!()`-emitted `register`).
+/// Issue #205 step 2 — emit the C-ABI `app_main` entry for the CMake firmware
+/// path, so app crates don't hand-write the `#[no_mangle]` FFI trampoline. The
+/// C `startup.c::main` boots the ThreadX kernel and dispatches to `app_main`
+/// inside the app thread; the expansion forwards to [`run_app_thread`] with the
+/// given register fn (typically the `nros::node!()`-emitted `register`).
 ///
 /// ```ignore
 /// nros::node!(Talker);
-/// nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(register);
+/// nros_board_threadx_qemu_riscv64::app_main!(register);
 /// ```
 ///
-/// The zenoh/cargo path uses `src/main.rs`'s `nros::main!()` instead and never
-/// compiles this symbol. Invoking the macro also keeps this board crate (panic
-/// handler + allocator + critical-section impl) linked into the staticlib — no
-/// separate `extern crate` anchor needed.
+/// Was `app_main!` until phase-366 W7. Nothing in the expansion is
+/// CycloneDDS — it is `run_app_thread($register)`, and the backend arrives the
+/// way it always does, through cargo features and the linked RMW. The name
+/// encoded an accident: Cyclone is a C++ CMake library with generated IDL
+/// descriptors, so it is the one backend whose embedded build must be linked by
+/// CMake rather than cargo, and this macro is what a CMake-linked image needs.
+/// That is a BUILD-SYSTEM property, not an RMW one. nano-ros promises RMW
+/// portability at the ABI, and an entry macro named for a backend contradicts
+/// it: a second backend needing the CMake path would have to either misuse a
+/// `cyclonedds_`-named macro or clone it.
+///
+/// The cargo path uses `src/main.rs`'s `nros::main!()` instead and never
+/// compiles this symbol. Invoking the macro also keeps this board crate
+/// (allocator + critical-section impl) linked into the staticlib — no separate
+/// `extern crate` anchor needed.
 #[macro_export]
-macro_rules! cyclonedds_app_main {
+macro_rules! app_main {
     ($register:path) => {
         #[unsafe(no_mangle)]
         pub extern "C" fn app_main() -> ! {

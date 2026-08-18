@@ -47,7 +47,7 @@ nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C
 # Issue #205 step 3 — the corrosion import, generated link-anchor TU,
 # executable, and platform/RMW link calls collapse into the board-overlay
 # seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
-# `cyclonedds_app_main!(register)` (board macro) provides `app_main`.
+# `app_main!(register)` (board macro) provides `app_main`.
 nros_threadx_rv64_rust_cyclone_app(riscv64_threadx_rust_action_client_cyclonedds
     CRATE qemu-riscv64-threadx-action-client
     LINK  example_interfaces__nano_ros_c)

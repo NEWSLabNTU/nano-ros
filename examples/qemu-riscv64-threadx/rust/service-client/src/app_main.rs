@@ -16,7 +16,7 @@ extern crate alloc;
 // absent from the `.a`. This anchor keeps it.
 extern crate nros_board_threadx_qemu_riscv64 as _;
 
-nros_board_threadx_qemu_riscv64::cyclonedds_app_main!(crate::register);
+nros_board_threadx_qemu_riscv64::app_main!(crate::register);
 
 // phase-361 W8.e / issue 0594 — the backend REQUIRES the heap; it does not
 // silently enable it. Build as `--features rmw-cyclonedds,alloc` (the cmake

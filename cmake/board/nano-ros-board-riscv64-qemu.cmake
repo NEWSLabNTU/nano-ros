@@ -515,7 +515,7 @@ endfunction()
 #
 # CRATE is the cargo package name; the corrosion target is derived from it
 # (`-` → `_`). The Rust crate must expose `app_main` (the board crate's
-# `cyclonedds_app_main!(register)` macro emits it).
+# `app_main!(register)` macro emits it).
 # ---------------------------------------------------------------------------
 function(nros_threadx_rv64_rust_cyclone_app target)
     cmake_parse_arguments(_A "" "CRATE;DOMAIN" "LINK" ${ARGN})
