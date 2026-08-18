@@ -524,6 +524,17 @@ environment fact on any ROS-less host — and because CI stops at the first fail
 `test-all`. Found in phase-366 when an earlier gate was fixed and this one finally ran. The invariant worth
 restoring: `nros_tests::skip!` means the same thing in every lane that runs tests. See `0673-*`. (2026-08-18)
 
+**#0675** (rmw/xrce, open 2026-08-18) — `test_ros2_service_xrce_client` fails **3/3 SOLO**: the nano-ros
+XRCE service CLIENT opens its session, then every call returns `Runtime` and no reply arrives from the ROS 2
+service server. The FORWARD direction (`test_xrce_service_ros2_client`, nano-ros as SERVER) is green in
+4.06 s on the same host and agent, so the transport, the agent and the ROS 2 side all work — it is
+nano-ros-as-client specifically. NOT phase-366: the fixture binary is mtime **2026-08-07**, eleven days
+older than that phase, and the eight fixtures the run rebuilt were all cyclonedds. That age is its own
+finding — the staleness probe calls an eleven-day-old binary fresh, so this test has not exercised current
+code for eleven days and the far edge of the regression window is unestablished. Root cause NOT determined;
+`Runtime` says the call failed, not why, and whether the request reaches the server or the reply fails to
+route back is the first thing to check — after a fresh fixture rebuild. See `0675-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
 from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to
 interop: zenoh-pico is a client, so ANY two-process zenoh example needs a router. DECIDED: keep the
