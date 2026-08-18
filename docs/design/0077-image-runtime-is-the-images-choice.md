@@ -660,6 +660,56 @@ of the opt-out: an image that brings `esp-backtrace` or `panic-semihosting`
 STATES it, so the build can tell "deliberate" from "forgot" — which is the
 distinction the current design cannot make.
 
+### Amendment 2026-08-18 (b) — the question is WHO LINKS THE FINAL IMAGE
+
+The three values and the placement rule both answer a prior question that this
+RFC never stated, and stating it explains the awkward cases instead of listing
+them.
+
+**rustc's notion of a final artifact is not the system's.** rustc demands the
+lang item whenever it emits a `staticlib`. But on Zephyr, on the ThreadX CMake
+path, and for every C/C++ image, that archive is an INPUT to a link step some
+other build system owns — the real image is an ELF produced by west or CMake. So
+`crate-type = ["staticlib"]` imposes a rustc-level obligation on a crate that is
+emphatically not the image.
+
+This is the tension, and it is why "does this crate need a handler?" has no
+answer at the crate level. The answerable question is:
+
+> **Who links the final image?**
+
+| who links it | the ending belongs to | in this tree |
+| --- | --- | --- |
+| cargo | our entry package | freertos, nuttx, arm-baremetal bins — `nros::main!(panic = …)` |
+| another build system, which brings its own runtime | that runtime | Zephyr: `zephyr-lang-rust` links our `rustapp` into its ELF and the `zephyr` crate supplies the handler |
+| another build system, with no runtime of its own | our staticlib, because nothing else will | a C/C++ image linking `libnros_c.a`; ThreadX-RV64's CMake path |
+
+**Zephyr is not the exception — it is the second row, and it says so in the
+source.** `examples/workspaces/rust/src/zephyr_entry/src/lib.rs`: *"Zephyr's
+allocator + panic + boot belong to the RTOS."* That entry package supplies no
+provider and needs none. A Zephyr entry that said `panic = "platform"` would
+collide with the `zephyr` crate's handler — W5.b's duplicate-lang-item failure
+arriving from the other direction.
+
+**The workspace case is the first row, and the tree already matches.** Every
+`*_pkg` node package under `examples/workspaces/rust/src/` carries zero
+providers; only entry packages do. A node is a link in an image whose shape the
+entry defines, so a node must never embed an ending — it cannot know which image
+it will end up in, and two nodes in one image would be a duplicate.
+
+**Corrects the wording of amendment (a), not its code.** "The package produces a
+staticlib, therefore the LIB is the image" is the right derivation with the wrong
+reason. The truth is "rustc will demand an item where it emits an archive,
+whether or not that archive is the image" — which is also why `PANIC own` must be
+sayable on the C/C++ side for a Zephyr-hosted target: the RTOS has it covered.
+
+**And it decides M4's open question.** The per-platform table in
+`NanoRosFeatureSet.cmake` cannot answer "does anything else supply the handler?",
+because that is a property of the ENTRY and its link step, not of the platform.
+Only the entry knows. So the staticlib's feature set has to be computable after
+entries are declared, rather than fixed at import time from globals — the
+deferred option, not the pre-import global.
+
 ### Amendment 2026-08-18 — the policy is declared, the PLACEMENT is derived
 
 Implementing M1 surfaced a third case the two-surface table does not cover, and

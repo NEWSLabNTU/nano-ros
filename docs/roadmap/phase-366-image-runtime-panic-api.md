@@ -277,6 +277,21 @@ tracked as issue 0666. And `examples/threadx-linux/rust/*` dropped a
 `crate-type` `staticlib` that nothing consumed (no CMakeLists, no C runtime, no
 fixture row naming a `.a`), the same removal phase-359 W7 made on qemu-arm-nuttx.
 
+**W7.b is UNBLOCKED, and the answer is the deferred one (RFC-0077 amendment
+2026-08-18b).** M4's open question was where `PANIC` is resolved: a pre-import
+global, matching how `BOARD`/`PLATFORM`/`RMW` reach `nros_feature_set()`, or a
+feature set computed after entries are declared.
+
+Reframing settles it. The question a build must answer is not "which macro is
+this?" but WHO LINKS THE FINAL IMAGE — and the per-platform table cannot answer
+it, because "does anything else already supply the handler?" is a property of the
+entry and its link step. Zephyr proves it: `zephyr-lang-rust` links our
+`rustapp` into its own ELF and the `zephyr` crate supplies the handler, so a
+Zephyr-hosted target must be able to say `PANIC own` and mean it, while a bare
+C/C++ image linking `libnros_c.a` has nothing and must emit. Same platform table,
+opposite answers. So the staticlib's feature set has to be computable after
+entries are declared.
+
 **W7.c — migration, M1-M6 of RFC-0077.** Ordered so no commit leaves an image
 with two providers or none: add the argument defaulting to `own` (behaviour
 identical to today) → migrate the ~23 images that call `panic_to_platform!()`,

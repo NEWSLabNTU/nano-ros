@@ -2692,10 +2692,16 @@ fn read_entry_deploy(cargo_toml: &Path) -> Result<String, String> {
 /// phase-366 W7 / RFC-0077 — does this package also produce a `staticlib`?
 ///
 /// If it does, the LIB owns the `#[panic_handler]` and `main!()` must not emit
-/// one. rustc treats a staticlib as a final artifact and demands the lang item
-/// when it compiles it, from `lib.rs`'s module tree — a handler emitted here, in
-/// the bin target, never reaches the `.a`. One in the lib reaches both, because
-/// the bin links the rlib and inherits it.
+/// one. rustc demands the lang item wherever it emits an archive, from
+/// `lib.rs`'s module tree — a handler emitted here, in the bin target, never
+/// reaches the `.a`. One in the lib reaches both, because the bin links the rlib
+/// and inherits it.
+///
+/// Note what this is NOT saying (RFC-0077 amendment 2026-08-18b): not "a
+/// staticlib is the image". rustc's notion of a final artifact is not the
+/// system's — on Zephyr and the ThreadX CMake path that archive is an INPUT to a
+/// link step west or CMake owns. The obligation is real either way, which is the
+/// whole reason this is derived here rather than asked of the author.
 ///
 /// So placement is DERIVED from the manifest rather than chosen by the author.
 /// The alternative was making those crates say `panic = "own"`, which would
