@@ -569,6 +569,18 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
+**#668** (build/examples, open 2026-08-18) — the six `qemu-riscv64-threadx/rust/*` are the only standalone
+examples with TWO entry points in one crate (`main.rs`'s `nros::main!()` → bin, `app_main.rs`'s
+`<board>::app_main!()` → `.a`), where every other family has one: freertos/nuttx/baremetal have only
+`main.rs`, zephyr only `app_main.rs`. Consequence of #666's dual build path, tracked separately because it
+leaks into EXAMPLE SOURCE and into phase-366: it is the only family where `#[panic_handler]` placement is
+non-obvious, it is why `main!()` must read `[lib] crate-type` to suppress its emit, and these six are the
+only images still hand-writing `nros::panic_to_platform!()` after M2 migrated the other 15. An earlier plan
+had them say `panic = "own"`, which would have overloaded `own` ("I bring my own provider", not "my provider
+is in my other artifact") — rejected in RFC-0077. Aligning to EITHER single-entry shape (zephyr's, or
+freertos'/nuttx') removes the machinery; allocator deliberately out of scope (0616/0594 own that). See
+`0668-*`.
+
 **#666** (build/examples, open 2026-08-18) — `examples/qemu-riscv64-threadx/rust/*` is the only Rust
 leaf built two ways, and **the RMW picks which**: zenoh via cargo (bin, `nros::main!()`), cyclonedds via
 CMake+Corrosion (`staticlib`, board `app_main!()`). One directory, two build systems, `crate-type =
