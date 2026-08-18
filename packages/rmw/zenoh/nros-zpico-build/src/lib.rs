@@ -55,6 +55,28 @@ pub struct ShimConfig {
     pub lease_task_priority: usize,
 }
 
+/// Whether the generated zenoh-pico config compiles in the multicast transport
+/// and scouting that zenoh's PEER mode is built on.
+///
+/// Issue 0682 — this is `false`, and that is a size decision, not an oversight:
+/// multicast transport, scouting and multicast declarations are three more code
+/// paths in a library whose whole point here is fitting on an MCU, and every
+/// nano-ros deployment reaches its peers through a router or an agent. It is
+/// named rather than written as a bare `0` because the value has to be
+/// legible from BOTH sides — the C `#define` the library is compiled with, and
+/// the Rust const the session layer checks before it tries to open a peer
+/// session. When it was only the `0`, `NROS_SESSION_MODE=peer` failed as an
+/// opaque `ConnectionFailed` and the book went on promising peer-to-peer.
+///
+/// Turning it on means flipping this, rebuilding the shim, and accepting the
+/// footprint; nothing else here special-cases it.
+pub const MULTICAST_TRANSPORT: bool = false;
+
+/// The `0`/`1` spelling of [`MULTICAST_TRANSPORT`] for a C `#define`.
+pub const fn multicast_transport_flag() -> u8 {
+    if MULTICAST_TRANSPORT { 1 } else { 0 }
+}
+
 impl ShimConfig {
     /// Generate `$OUT_DIR/shim_constants.rs` contents with Rust const declarations.
     pub fn rust_consts(&self) -> String {
@@ -70,13 +92,18 @@ impl ShimConfig {
              /// Maximum number of concurrent pending get operations (set via ZPICO_MAX_PENDING_GETS, default 4).\n\
              pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\
              /// Size of the session pool (set via ZPICO_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
-             pub const ZPICO_MAX_SESSIONS: usize = {};\n",
+             pub const ZPICO_MAX_SESSIONS: usize = {};\n\
+             /// Whether this shim was compiled with the multicast transport + scouting\n\
+             /// that zenoh PEER mode needs (issue 0682). Emitted from the SAME constant\n\
+             /// that writes the C `#define`, so the two cannot drift.\n\
+             pub const ZPICO_PEER_MODE_SUPPORTED: bool = {};\n",
             self.max_publishers,
             self.max_subscribers,
             self.max_queryables,
             self.max_liveliness,
             self.max_pending_gets,
             self.max_sessions,
+            MULTICAST_TRANSPORT,
         )
     }
 
@@ -256,10 +283,28 @@ pub fn config_header(
     writeln!(header).unwrap();
     writeln!(header, "// Transport Modes").unwrap();
     writeln!(header, "#define Z_FEATURE_UNICAST_TRANSPORT 1").unwrap();
-    writeln!(header, "#define Z_FEATURE_MULTICAST_TRANSPORT 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_SCOUTING 0").unwrap();
+    // Issue 0682 — off by size decision; see `MULTICAST_TRANSPORT`. Written from
+    // that constant so the C library and the Rust session layer cannot disagree
+    // about whether peer mode can work.
+    writeln!(
+        header,
+        "#define Z_FEATURE_MULTICAST_TRANSPORT {}",
+        multicast_transport_flag()
+    )
+    .unwrap();
+    writeln!(
+        header,
+        "#define Z_FEATURE_SCOUTING {}",
+        multicast_transport_flag()
+    )
+    .unwrap();
     writeln!(header, "#ifndef Z_FEATURE_SCOUTING_UDP").unwrap();
-    writeln!(header, "#define Z_FEATURE_SCOUTING_UDP 0").unwrap();
+    writeln!(
+        header,
+        "#define Z_FEATURE_SCOUTING_UDP {}",
+        multicast_transport_flag()
+    )
+    .unwrap();
     writeln!(header, "#endif").unwrap();
     writeln!(header).unwrap();
     if unstable_api {

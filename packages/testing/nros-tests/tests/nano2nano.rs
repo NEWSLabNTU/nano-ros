@@ -135,17 +135,41 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
-    // Wait for listener readiness
-    if listener
+    // Wait for listener readiness.
+    //
+    // Issue 0682 — this used to end at `skip!("peer mode may not be supported")`,
+    // a GUESS about the one thing this test is positioned to answer: a build that
+    // never had peer mode and a peer mode that regressed produced the same green
+    // lane. The backend now REFUSES peer mode when the shim is compiled without
+    // multicast transport / scouting, and says so, so this can read the answer
+    // off the fixture instead of inferring it from a timeout.
+    let startup = listener
         .wait_for_output_pattern(
             nros_tests::output::LISTENER_READY_MARKER,
             Duration::from_secs(5),
         )
-        .is_err()
-        && !listener.is_running()
-    {
-        nros_tests::skip!("peer mode may not be supported — listener exited early");
+        .unwrap_or_else(|e| format!("{e}"));
+
+    if startup.contains(nros_tests::output::ZENOH_PEER_MODE_UNSUPPORTED_MARKER) {
+        // The documented, deliberate configuration. A SKIP, but one that names
+        // the compiled capability rather than shrugging at a timeout.
+        listener.kill();
+        nros_tests::skip!(
+            "peer mode is not compiled into this shim (multicast transport + scouting \
+             are off by size decision — issue 0682); the backend refused the session \
+             up front, which is the intended behaviour"
+        );
     }
+
+    // Not refused ⇒ the build claims peer mode. Then readiness is REQUIRED: a
+    // listener that neither refuses nor comes up is the regression this test
+    // exists to catch, and it must not pass as a skip.
+    assert!(
+        startup.contains(nros_tests::output::LISTENER_READY_MARKER),
+        "peer mode was not refused, so this build claims to support it — but the \
+         listener never reported readiness (still running: {}). Output:\n{startup}",
+        listener.is_running()
+    );
 
     // Start talker in peer mode
     let mut talker_cmd = Command::new(&talker_binary);

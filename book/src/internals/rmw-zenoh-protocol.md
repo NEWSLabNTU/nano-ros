@@ -18,7 +18,8 @@ nros <-> ROS 2 rmw_zenoh communication is fully operational as of January 2025.
 └─────────────────────────┘          └─────────────────────────┘
 ```
 
-Both nodes connect to the same Zenoh router (zenohd) or communicate directly in peer mode.
+Both nodes connect to the same Zenoh router (zenohd). zenoh's router-free peer mode is not
+compiled into the nano-ros shim — `NROS_SESSION_MODE=peer` is refused at session open (issue 0682).
 
 ## Quick Start
 

@@ -345,6 +345,13 @@ pub fn service_result_line(sum: impl std::fmt::Display) -> String {
     format!("{SERVICE_RESULT_PREFIX} {sum}")
 }
 
+/// Marker the zenoh backend logs when `NROS_SESSION_MODE=peer` is requested of
+/// a shim compiled without multicast transport / scouting (issue 0682).
+///
+/// The test greps this rather than guessing from a timeout: a build that never
+/// had peer mode and a peer mode that regressed used to look identical.
+pub const ZENOH_PEER_MODE_UNSUPPORTED_MARKER: &str = "peer mode unsupported:";
+
 /// Readiness marker: the service server prints a line containing this once
 /// its service is up (`"Waiting for service requests"`).
 pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";

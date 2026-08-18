@@ -187,6 +187,30 @@ impl ZenohSession {
     ///
     /// A new session or error if connection fails
     pub fn new(config: &TransportConfig) -> Result<Self, TransportError> {
+        // Issue 0682 — peer mode rests on zenoh-pico's multicast transport and
+        // scouting, and this shim is compiled WITHOUT them (a size decision, see
+        // `nros_zpico_build::MULTICAST_TRANSPORT`). Refuse here, where the reason
+        // is still known.
+        //
+        // Without this the request went all the way to `z_open`, which had no
+        // multicast link to bring up and returned the same `ConnectionFailed`
+        // that a wrong locator or a dead router produces — so the one error the
+        // build could have explained exactly was the one it explained least.
+        // `NROS_SESSION_MODE=peer` is a documented value; a documented value
+        // that cannot work has to say so rather than look like a network fault.
+        if matches!(config.mode, SessionMode::Peer) && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED {
+            // Kept under nros-log's 256-byte buffer: a message that overflows is
+            // replaced by "…", and a diagnostic nobody can read is the failure
+            // this guard exists to prevent.
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "peer mode unsupported: shim built without multicast transport/scouting \
+                 (issue 0682). Use client mode with a router, or rebuild with \
+                 nros_zpico_build::MULTICAST_TRANSPORT = true."
+            );
+            return Err(TransportError::Unsupported);
+        }
+
         // Issue 0330 — `None` and `""` both mean "caller supplied nothing";
         // the backend (not any agnostic layer) owns the default.
         let supplied_locator = normalize_locator(config.locator);

@@ -17,10 +17,16 @@ The Zenoh backend uses [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico)
 1. The MCU runs zenoh-pico in **client mode**, connecting to a `zenohd` router process over TCP, UDP, or TLS.
 2. zenoh-pico creates publishers and subscribers directly on the Zenoh network.
 3. ROS 2 nodes running `rmw_zenoh_cpp` connect to the same `zenohd` router, enabling transparent interop.
-4. In **peer mode**, two zenoh-pico devices can communicate directly without any router.
+4. zenoh itself defines a **peer mode** in which two zenoh-pico devices talk directly with no
+   router. **nano-ros does not ship it.** The shim is compiled without zenoh-pico's multicast
+   transport and scouting (`nros_zpico_build::MULTICAST_TRANSPORT = false`) because those are
+   three more code paths in a library whose job here is fitting on an MCU, and every nano-ros
+   deployment reaches its peers through a router or an agent. `NROS_SESSION_MODE=peer` is
+   therefore refused at session open with a message saying so — see issue 0682. Enabling it
+   means flipping that constant, rebuilding the shim, and accepting the footprint.
 
 **Key characteristics:**
-- Peer-to-peer capable (no mandatory bridge process)
+- Client/router topology; zenoh's router-free peer mode is compiled out (see above)
 - `zenohd` is a generic router, not a protocol translator -- it forwards messages without interpreting them
 - If `zenohd` crashes, peers in client mode lose routing but the MCU continues running
 - Full ROS 2 graph discovery via liveliness tokens
@@ -110,7 +116,7 @@ On a tier without the toolchain, the embedded-Cyclone tests are filtered out of
 | **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         |
 | **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
 | **Bridge process**    | `zenohd` (generic router)      | Agent (protocol translator)     | None — RTPS multicast directly  |
-| **Peer-to-peer**      | Yes (no router needed)         | No (agent always required)      | Yes (RTPS native)               |
+| **Peer-to-peer**      | Not as shipped — multicast/scouting compiled out (issue 0682) | No (agent always required)      | Yes (RTPS native)               |
 | **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast or static peer list |
 | **Entity creation**   | Client creates directly        | Client requests, agent creates  | Client creates directly         |
 | **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             | UDP unicast + multicast (RTPS)  |

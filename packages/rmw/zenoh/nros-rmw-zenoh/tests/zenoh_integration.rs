@@ -42,6 +42,30 @@ fn router() -> Option<ZenohRouter> {
 /// Test that we can open and close a session in peer mode
 /// (doesn't require a router).
 /// Multicast scouting is disabled to avoid contention under parallel test load.
+/// Issue 0682 — what a PEER-mode `open()` must do, given how the shim was built.
+///
+/// These tests used to accept either outcome ("connection failure is acceptable
+/// in CI/test environments"), which made them unable to fail: peer mode has
+/// never worked in a nano-ros build and they reported green throughout. The
+/// answer is a compile-time fact, so there is ONE place that states it.
+fn assert_peer_open_matches_build(
+    result: Result<<ZenohTransport as nros_rmw::Transport>::Session, nros_rmw::TransportError>,
+) {
+    if nros_rmw_zenoh::zpico::ZPICO_PEER_MODE_SUPPORTED {
+        let mut session = result
+            .expect("the shim is compiled WITH multicast transport, so a peer session must open");
+        assert!(session.is_open(), "Session should be open");
+        assert!(session.close().is_ok(), "Failed to close session");
+    } else {
+        assert!(
+            matches!(result, Err(nros_rmw::TransportError::Unsupported)),
+            "peer mode is compiled out, so open() must be REFUSED with Unsupported \
+             rather than attempted and failed as a transport error — got {:?}",
+            result.map(|_| "Ok(session)")
+        );
+    }
+}
+
 #[test]
 fn test_session_open_close_peer() {
     let config = TransportConfig {
@@ -54,19 +78,7 @@ fn test_session_open_close_peer() {
     };
 
     let result = ZenohTransport::open(&config);
-    match result {
-        Ok(mut session) => {
-            let close_result = session.close();
-            assert!(close_result.is_ok(), "Failed to close session");
-        }
-        Err(e) => {
-            // Connection failure is acceptable in CI/test environments
-            println!(
-                "Session open failed (expected in some environments): {:?}",
-                e
-            );
-        }
-    }
+    assert_peer_open_matches_build(result);
 }
 
 /// Test topic info generation
@@ -445,21 +457,7 @@ fn test_session_open_peer_with_scouting_disabled() {
     };
 
     let result = ZenohTransport::open(&config);
-    match result {
-        Ok(mut session) => {
-            assert!(session.is_open(), "Session should be open");
-            let close_result = session.close();
-            assert!(close_result.is_ok(), "Failed to close session");
-            println!("SUCCESS: Peer session with scouting disabled opened and closed");
-        }
-        Err(e) => {
-            // Connection failure is acceptable in CI/test environments
-            println!(
-                "Session open failed (expected in some environments): {:?}",
-                e
-            );
-        }
-    }
+    assert_peer_open_matches_build(result);
 }
 
 /// Test that a peer session opens with ZENOH_MULTICAST_SCOUTING env var
@@ -481,22 +479,11 @@ fn test_session_open_with_env_scouting_disabled() {
     };
 
     let result = ZenohTransport::open(&config);
-    match result {
-        Ok(mut session) => {
-            assert!(session.is_open(), "Session should be open");
-            let close_result = session.close();
-            assert!(close_result.is_ok(), "Failed to close session");
-            println!(
-                "SUCCESS: Peer session with ZENOH_MULTICAST_SCOUTING env var opened and closed"
-            );
-        }
-        Err(e) => {
-            println!(
-                "Session open failed (expected in some environments): {:?}",
-                e
-            );
-        }
-    }
+    // Issue 0682 — peer mode is refused BEFORE the property/env plumbing runs, so
+    // this no longer proves the env var reaches zenoh-pico; it proves the refusal.
+    // Still better than the old accept-anything arm, and the gap is recorded
+    // rather than papered over: env/property precedence needs a CLIENT-mode test.
+    assert_peer_open_matches_build(result);
 
     unsafe { std::env::remove_var("ZENOH_MULTICAST_SCOUTING") };
 }
@@ -518,20 +505,9 @@ fn test_session_explicit_props_override_env() {
     };
 
     let result = ZenohTransport::open(&config);
-    match result {
-        Ok(mut session) => {
-            assert!(session.is_open(), "Session should be open");
-            let close_result = session.close();
-            assert!(close_result.is_ok(), "Failed to close session");
-            println!("SUCCESS: Explicit property overrides env var");
-        }
-        Err(e) => {
-            println!(
-                "Session open failed (expected in some environments): {:?}",
-                e
-            );
-        }
-    }
+    // Issue 0682 — same as above: the refusal precedes the property merge, so this
+    // asserts the refusal; precedence coverage is follow-up work.
+    assert_peer_open_matches_build(result);
 
     unsafe { std::env::remove_var("ZENOH_MULTICAST_SCOUTING") };
 }
