@@ -286,7 +286,7 @@ def builds_a_final_artifact(doc):
     `nros-cpp` is the case. It declares `crate-type = ["staticlib", "lib"]`, and
     a bare `cargo check -p nros-cpp` therefore builds a FINAL artifact — which
     for `no_std` needs a panic provider, which is exactly what its
-    `default = ["panic-spin"]` supplies. Following the clause's advice and
+    `default = ["panic-platform"]` supplies. Following the clause's advice and
     emptying that default produces:
 
         error: `#[panic_handler]` function required, but not found
@@ -632,7 +632,7 @@ def self_test():
         # d — issue 0615: a crate whose OWN build is FINAL is a consumer the
         # dep-site view cannot see. `nros-cpp` declares
         # `crate-type = ["staticlib", "lib"]`, so a bare `cargo check -p
-        # nros-cpp` links, and its `default = ["panic-spin"]` is what supplies
+        # nros-cpp` links, and its `default = ["panic-platform"]` is what supplies
         # the panic handler. The clause used to demand that default be emptied,
         # which produces `#[panic_handler] function required, but not found`.
         r = os.path.join(tmp, "d4")

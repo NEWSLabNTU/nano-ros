@@ -117,13 +117,13 @@ function(nros_feature_set out_var)
     elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3"
            OR _FS_PLATFORM STREQUAL "esp_idf")
         # ESP-IDF is Espressif's FreeRTOS port — same no_std tier.
-        list(APPEND _feats alloc panic-halt platform-freertos)
+        list(APPEND _feats alloc platform-freertos)
     elseif(_FS_PLATFORM STREQUAL "nuttx" OR _FS_PLATFORM STREQUAL "nuttx_armv7a")
         list(APPEND _feats std platform-nuttx)
     elseif(_FS_PLATFORM STREQUAL "threadx_linux")
         list(APPEND _feats std platform-threadx)
     elseif(_FS_PLATFORM STREQUAL "threadx_riscv64")
-        list(APPEND _feats alloc panic-halt platform-threadx)
+        list(APPEND _feats alloc platform-threadx)
     elseif(_FS_PLATFORM STREQUAL "threadx")
         # phase-338 W5.a — what distinguishes the two ThreadX tiers is whether
         # the target has a hosted libc, and that is exactly `_cross`: the Linux
@@ -137,14 +137,14 @@ function(nros_feature_set out_var)
         # ThreadX board lands in the right tier with no edit here, and the
         # `BOARD` argument is no longer load-bearing for this decision.
         if(_cross)
-            list(APPEND _feats alloc panic-halt platform-threadx)
+            list(APPEND _feats alloc platform-threadx)
         else()
             list(APPEND _feats std platform-threadx)
         endif()
     elseif(_cross)
         # Unknown embedded cross target: no_std + alloc, matching the board tier
         # so nros-serdes / nros-params never pull `std`.
-        list(APPEND _feats alloc panic-halt "platform-${_FS_PLATFORM}")
+        list(APPEND _feats alloc "platform-${_FS_PLATFORM}")
     else()
         message(FATAL_ERROR
             "nros_feature_set: unknown PLATFORM '${_FS_PLATFORM}' (expected: posix, "

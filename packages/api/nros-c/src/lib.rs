@@ -158,12 +158,12 @@ extern crate nros_platform;
 // truncated rather than dropped — a truncated panic line is still a diagnosis,
 // a missing one is not.
 //
-// phase-361 W8.b / issue 0594 — gated on `panic-spin`, NOT on
-// `global-allocator`. Asking for a panic handler no longer means asking for a
-// heap. The gate is unchanged here; what changed is what the handler DOES.
+// phase-361 W8.b / issue 0594 established that asking for a panic handler is not
+// asking for a heap; phase-366 R1 finished the thought by deleting `panic-spin`,
+// the platform-selected gate, so the ENTRY is the only thing that can ask.
 // W5 moves ownership out of this library entirely, to the entry.
 #[cfg(all(
-    any(feature = "panic-spin", feature = "panic-platform"),
+    feature = "panic-platform",
     not(feature = "std"),
     not(feature = "panic-halt")
 ))]

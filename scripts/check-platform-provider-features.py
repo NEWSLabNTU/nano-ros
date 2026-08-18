@@ -18,10 +18,20 @@ fixture family. A HOST build cannot detect this: it gets both items from `std`.
 
 THE RULE
 
-  platform-posix   MUST NOT select a provider — libstd supplies both, and a
-                   second `#[global_allocator]` is a duplicate lang item.
-  every other      MUST select a malloc provider (`global-allocator`) and a
-  platform-*       panic provider (`panic-spin` or `panic-halt`).
+  platform-posix   MUST NOT select a malloc provider — libstd supplies it.
+  every other      MUST select a malloc provider (`global-allocator`).
+  platform-*
+  EVERY platform-* MUST NOT select a panic provider, and `nros_feature_set()`
+                   must not emit one either. phase-366 moved that decision to
+                   the IMAGE: `nros::main!(panic = …)` for a Rust entry,
+                   `nano_ros_entry(… PANIC …)` for a C/C++ one, which reaches
+                   the staticlib through `corrosion_set_features()`.
+
+                   The table cannot answer it. "Does anything else already
+                   supply the handler?" is a property of the entry and its link
+                   step, not of the RTOS — the same platform is `own` for a
+                   Zephyr-hosted C/C++ image (the `zephyr` crate has it) and
+                   `platform` for a bare one.
 
 `nros-cpp` delegates (`platform-X = ["nros-c/platform-X"]`), so `nros-c` is the
 single source of truth and this gate checks the delegation holds rather than
@@ -41,7 +51,8 @@ import sys
 from pathlib import Path
 
 MALLOC = "global-allocator"
-PANIC = ("panic-spin", "panic-halt")
+# phase-366 R1/R2 — the entry-selected provider. `panic-spin` is deleted.
+PANIC = ("panic-platform", "panic-halt")
 # `std` supplies both lang items, so these must NOT name a provider.
 STD_BACKED = {"platform-posix"}
 
@@ -82,23 +93,27 @@ def main() -> int:
     for name, body in sorted(rows.items()):
         has_malloc = MALLOC in body
         has_panic = any(p in body for p in PANIC)
+        # phase-366 — no platform row may choose the ending, std-backed or not.
+        if has_panic:
+            print(
+                f"ERROR: nros-c/{name} selects a panic provider. The ending is the "
+                "IMAGE's call (RFC-0077): `nros::main!(panic = …)` or "
+                "`nano_ros_entry(… PANIC …)`, never the platform.",
+                file=sys.stderr,
+            )
+            fail = 1
         if name in STD_BACKED:
-            if has_malloc or has_panic:
+            if has_malloc:
                 print(
-                    f"ERROR: nros-c/{name} names a malloc/panic provider, but `std` "
-                    "already supplies both — that is a duplicate lang item.",
+                    f"ERROR: nros-c/{name} names a malloc provider, but `std` "
+                    "already supplies one — that is a duplicate lang item.",
                     file=sys.stderr,
                 )
                 fail = 1
             continue
-        missing = []
         if not has_malloc:
-            missing.append(f"`{MALLOC}`")
-        if not has_panic:
-            missing.append("`panic-spin` or `panic-halt`")
-        if missing:
             print(
-                f"ERROR: nros-c/{name} selects no {' and no '.join(missing)}.",
+                f"ERROR: nros-c/{name} selects no `{MALLOC}`.",
                 file=sys.stderr,
             )
             fail = 1
@@ -121,10 +136,12 @@ def main() -> int:
                 continue  # a partial append; the platform arrives in another
             if "std" in feats:
                 continue  # std supplies panic + allocator
-            if not any(p in feats for p in PANIC):
+            if any(p in feats for p in PANIC):
                 print(
-                    f"ERROR: nros_feature_set emits {plat} with neither `std` nor a "
-                    f"panic provider: {' '.join(feats)}",
+                    f"ERROR: nros_feature_set emits {plat} with a panic provider "
+                    f"({' '.join(feats)}). phase-366 R2 removed those rows — the "
+                    "ending comes from `nano_ros_entry(… PANIC …)`, which applies "
+                    "it with corrosion_set_features() after the entry is declared.",
                     file=sys.stderr,
                 )
                 fail = 1

@@ -24,7 +24,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 # standalone check meaningful without reintroducing a `std` default — every
 # real consumer takes this crate with `default-features = false` and picks its
 # own provider, so nothing downstream is affected.
-default = ["panic-spin"]
+default = ["panic-platform"]
 # phase-359 W10 — `env` rides with `std` here; see the same note in `nros-cpp`.
 # `std` on the C API has always meant "hosted", and a hosted C entry resolves
 # its locator/domain from the environment at runtime.
@@ -144,10 +144,10 @@ critical-section = ["dep:critical-section"]
 # `std`/`alloc` + `panic-halt` explicitly per platform — so this only brings the
 # Rust manifests into line with that table.
 # Platform backends (select one — orthogonal to RMW and ROS version).
-# Ports that own the unified kernel heap enable `global-allocator` + `panic-spin`; ports that own the unified kernel heap
-# also enable `global-allocator` (and, where DDS/portable-atomic need it,
-# `critical-section`) so the agnostic blocks in lib.rs compile without the
-# build script passing them explicitly.
+# Ports that own the unified kernel heap enable `global-allocator` (and, where
+# DDS/portable-atomic need it, `critical-section`) so the agnostic blocks in
+# lib.rs compile without the build script passing them explicitly. They do NOT
+# select a panic provider: that is the entry's, via `panic-platform` (phase-366).
 # Phase 248 C5c — route the platform impl through a DIRECT `nros-platform`
 # dep, NOT the now-agnostic `nros` umbrella (`nros` no longer carries
 # `platform-*`). nros-c is the C/C++ staticlib root: it brings the bundled
@@ -158,14 +158,12 @@ platform-posix = [
 ]
 platform-zephyr = [
     "global-allocator",
-    "panic-spin",
     "critical-section",
     "nros-platform/platform-zephyr",
     "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
     "global-allocator",
-    "panic-spin",
     "nros-platform/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
 ]
@@ -180,13 +178,11 @@ platform-nuttx = [
     # "`#[panic_handler]` function required, but not found" and took the whole
     # NuttX fixture family with it.
     "global-allocator",
-    "panic-spin",
     "nros-platform/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
 ]
 platform-threadx = [
     "global-allocator",
-    "panic-spin",
     "nros-platform/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
 ]
@@ -199,30 +195,16 @@ ros-jazzy = ["nros/ros-jazzy"]
 # Bare-metal panic handler (enables building staticlib without std)
 panic-halt = ["dep:panic-halt"]
 
-# phase-361 W8.b / issue 0594 — the BUILT-IN no_std panic handler (a spin loop),
-# split out of `global-allocator`.
-#
-# It used to be gated `all(global-allocator, not(std), not(panic-halt))`, so
-# "this image needs a panic handler" was only sayable as "this image wants a
-# global allocator". Those are different facts and a target can need one without
-# the other: with phase-361 W3's `default = []`, a plain host build of this
-# crate had neither and died on `#[panic_handler] function required`.
-#
-# Like `global-allocator`, this is a PLATFORM statement — the `platform-*`
-# features below select it, so malloc and panic stay unified per platform (W1).
-# `panic-halt` still wins if both are on; `std` supersedes both.
-panic-spin = []
 
 # phase-366 M4 / RFC-0077 — the ENTRY-selected panic provider, set by
 # `nano_ros_entry(… PANIC platform)` through `corrosion_set_features()` after the
 # entry is declared.
 #
-# Distinct from `panic-spin`, which the `platform-*` features select, because the
-# two answer different questions. `platform-*` cannot answer this one: whether
+# The `platform-*` features do NOT select it, because they cannot answer the
+# question it asks. Whether
 # anything ELSE already supplies the handler is a property of the entry and its
 # link step, not of the RTOS — the same platform is `own` for a Zephyr-hosted
 # C/C++ image (the `zephyr` crate supplies it) and `platform` for a bare one.
-# `panic-spin` is deleted by R1 once every entry names its policy.
 panic-platform = []
 
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS

@@ -24,7 +24,7 @@ crate-type = ["staticlib", "lib"]
 # standalone check meaningful without reintroducing a `std` default — every
 # real consumer takes this crate with `default-features = false` and picks its
 # own provider, so nothing downstream is affected.
-default = ["panic-spin"]
+default = ["panic-platform"]
 std = [
     "env",
     "alloc",
@@ -189,9 +189,6 @@ ros-jazzy = [
 # (one instance), so this provides exactly one handler — no duplicate.
 panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
 
-# phase-361 W8.b / issue 0594 — forwards nros-c's built-in spin-loop panic
-# handler. nros-c owns the lang item for the bundled single-runtime staticlib.
-panic-spin = ["nros-c/panic-spin"]
 
 # phase-366 M4 — the entry-selected provider, forwarded like every other.
 panic-platform = ["nros-c/panic-platform"]

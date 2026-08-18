@@ -123,8 +123,19 @@ function(nano_ros_entry)
     # Zephyr-hosted C/C++ image (the `zephyr` crate supplies it, so `own`) and a
     # bare one linking `libnros_c.a` (nothing does, so `platform`).
     #
-    # Absent PANIC keeps today's behaviour — the table's `panic-halt` — until M5
-    # flips the default and R2 deletes the table rows.
+    # phase-366 M5/R2 — absent PANIC now means `platform`, and the per-platform
+    # table no longer appends `panic-halt` (those four rows are gone). So an
+    # entry that says nothing gets the board's ending, which is the same default
+    # `nros::main!()` gives a Rust entry.
+    #
+    # This carries the behaviour change RFC-0077 called out rather than shipping
+    # silently: an embedded C/C++ image used to halt on panic because the table
+    # said so, and now ends the way its board ends — printing where the port
+    # prints, `k_panic()` on Zephyr, exiting QEMU on the ThreadX RV64 board. An
+    # image that wants the old behaviour says `PANIC halt`.
+    if(NOT _NRA_PANIC)
+        set(_NRA_PANIC platform)
+    endif()
     if(_NRA_PANIC)
         string(TOLOWER "${_NRA_PANIC}" _nra_panic)
         if(_nra_panic STREQUAL "platform")
