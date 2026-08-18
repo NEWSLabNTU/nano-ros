@@ -722,7 +722,13 @@ test-ros2 verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run ROS 2 parameter interop tests.
-# Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
+# The distro's `rmw_zenoh_cpp` is enough; `just rmw_zenoh setup`'s overlay is
+# OPTIONAL (RFC-0075 keeps it as an opt-in for reproducing a specific pairing,
+# and explicitly rejects requiring it). The old note here said "Requires … so
+# rmw_zenoh_cpp matches our zenoh-pico pin" — issue 0291 refuted the premise:
+# zenoh's wire is proto-0x09-stable across 1.x, so zpico 1.7.2 interops with a
+# far newer distro RMW, and the actual fix was the keyexpr type-hash, never a
+# version match. These tests pass on a host with no overlay built.
 [group("debug")]
 test-ros2-params verbose="":
     #!/usr/bin/env bash
@@ -736,7 +742,13 @@ test-ros2-params verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
-# Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
+# The distro's `rmw_zenoh_cpp` is enough; `just rmw_zenoh setup`'s overlay is
+# OPTIONAL (RFC-0075 keeps it as an opt-in for reproducing a specific pairing,
+# and explicitly rejects requiring it). The old note here said "Requires … so
+# rmw_zenoh_cpp matches our zenoh-pico pin" — issue 0291 refuted the premise:
+# zenoh's wire is proto-0x09-stable across 1.x, so zpico 1.7.2 interops with a
+# far newer distro RMW, and the actual fix was the keyexpr type-hash, never a
+# version match. These tests pass on a host with no overlay built.
 [group("debug")]
 test-ros2-lifecycle verbose="":
     #!/usr/bin/env bash

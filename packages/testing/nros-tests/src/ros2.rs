@@ -18,9 +18,19 @@ pub const DEFAULT_ROS_DISTRO: &str = "humble";
 /// Locate the pinned `rmw_zenoh_cpp` overlay built by `just rmw_zenoh setup`.
 ///
 /// Returns the overlay's `setup.bash` path when the ament install is present,
-/// allowing tests to source a zenoh RMW whose wire version matches our
-/// pinned `zenoh-pico` / `zenohd`. When absent, callers should fall back to
-/// the distro install (if any).
+/// so a caller can reproduce a SPECIFIC `rmw_zenoh_cpp` pairing. When absent —
+/// which is the normal case — callers fall back to the distro install.
+///
+/// This used to say the overlay matched "our pinned `zenoh-pico` / `zenohd`".
+/// Half of that is gone: nano-ros pins no router at all now, ROS supplies it
+/// (RFC-0075). The other half was refuted by issue 0291 — zenoh's wire is
+/// proto-`0x09`-stable across 1.x, so zpico 1.7.2 interops with a much newer
+/// distro RMW and the real fix was the keyexpr type-hash, not a version match.
+///
+/// So the overlay is an OPT-IN, not a prerequisite: RFC-0075 rejected both
+/// making it the default (pinning our own RMW makes the tested configuration
+/// LESS like production) and requiring it when ROS is present (an hour-long
+/// build for no benefit).
 pub fn rmw_zenoh_overlay() -> Option<PathBuf> {
     let overlay = crate::build_dir(crate::kind::RMW_ZENOH_WS, &["install"]).join("setup.bash");
     overlay.exists().then_some(overlay)
