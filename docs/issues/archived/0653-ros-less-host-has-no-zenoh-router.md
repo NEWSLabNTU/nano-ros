@@ -1,11 +1,11 @@
 ---
 id: 653
 title: "A ROS-less host has no zenoh router at all, so the getting-started path for the DEFAULT rmw cannot be run — RFC-0075 scoped this consequence to the interop lanes only"
-status: open
+status: resolved
 type: design
 severity: high
 area: provisioning, docs, rmw
-related: [issue-0374, rfc-0075, phase-362, rfc-0056]
+related: [issue-0374, issue-0654, issue-0485, rfc-0075, phase-362, rfc-0056]
 ---
 
 ## The gap
@@ -105,3 +105,98 @@ Whether the tree's `zenohd --listen …` invocations still work. They do not —
 `rmw_zenohd` ignores argv and reads `ZENOH_CONFIG_OVERRIDE` — but that is a
 separate defect with a separate fix, tracked as
 [issue 0654](0654-zenohd-invocations-name-a-retired-binary.md).
+
+## Resolution 2026-08-18 — direction (1) + (2) confirmed, (3) declined; and the real defect was narrower than the framing
+
+**The decision, taken by the maintainer:** keep the ROS-shipped router. nano-ros
+does not ship one. So of the three directions above, (1) was already done
+alongside issue 0374, (2) is answered — zenoh stays the default RMW and
+`--rmw cyclonedds` remains the documented ROS-less route — and (3) is declined.
+
+That leaves the part of this issue that was a genuine bug rather than a
+documentation gap, and it is not the one the title names.
+
+### "Has ROS" was implemented as "has `/opt/ros`"
+
+Both resolvers — `nros_zenohd_bin` in `scripts/dev/zenohd.sh` and
+`nros_tests::process::ros_zenohd_path` — searched `$ROS_DISTRO` and then
+`/opt/ros/*`, and nothing else. A user who **sources a working ROS** gets told
+there is no router whenever that ROS is not under `/opt/ros`:
+
+* a ROS built from source — which this repo documents doing, for
+  Arch/Fedora/NixOS (`docs/development/ros2-on-non-ubuntu.md`);
+* a colcon overlay, whose prefix is wherever the user put it;
+* anything installed under `/usr`, a container layout, or a Nix profile.
+
+The fix is to read what the sourced environment itself says. Resolution order is
+now, most explicit first:
+
+```
+1. NROS_RMW_ZENOHD     an explicit path
+2. PATH                where a caller who put it there expects it found
+3. AMENT_PREFIX_PATH   every prefix the caller has SOURCED, in ament's order
+4. $ROS_DISTRO         under /opt/ros
+5. /opt/ros/*          newest distro name last
+```
+
+Verified with the fallbacks disabled, which is the case that was broken:
+
+```
+$ source /opt/ros/humble/setup.bash
+$ unset ROS_DISTRO; NROS_ZENOHD_OPT_ROS=/nonexistent
+$ nros_zenohd_bin
+/opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd
+```
+
+### `rmw_zenohd` is not on `PATH`, and that is not a bug
+
+Worth stating because it is the reasonable expectation and it is wrong: sourcing
+`setup.bash` does **not** make `command -v rmw_zenohd` work. The binary installs
+into `<prefix>/lib/rmw_zenoh_cpp/`, and the setup script exports only `bin/`;
+ROS's own route is `ros2 run rmw_zenoh_cpp rmw_zenohd`. Step 2 above honours a
+`PATH` the user has arranged rather than depending on one, and the book now says
+a silent `command -v` is normal so nobody reads it as a broken install.
+
+### Two resolvers, one table
+
+`zenohd.sh` has carried the sentence *"Mirrors `ros_zenohd_path`; the two must
+agree"* since phase-362, with nothing checking it — and they drifted anyway, in
+the same direction, which is what this issue is. Two implementations are
+unavoidable (one is invoked from a justfile, one from the harness, neither can
+call the other), so the shared thing is the EXPECTATIONS:
+
+* `scripts/dev/zenohd-resolution-cases.tsv` — nine rows, each decided by a
+  different step of the order, each answered wrongly by some plausible
+  alternative order.
+* `scripts/check-zenohd-resolution-parity.sh` runs the SHELL over it (in
+  `just check`).
+* `zenohd_resolution_matches_the_shared_table` runs the RUST over it.
+
+Behaviour on both sides, not a diff of two languages. Mutation-checked by
+deleting the `AMENT_PREFIX_PATH` step: 4 of 9 cases fail, naming the rows.
+
+### Two defects the gate found in itself before it found any in the resolver
+
+Both would have made it pass on anything, and both are recorded because a gate
+that cannot fail is the failure mode this whole class is about:
+
+* `IFS=$'\t' read` **collapses runs of tabs** — tab is IFS whitespace — so every
+  empty column shifted the fields, and each row compared an empty expectation
+  against an empty result. Now split on `\037`, with a guard asserting the row
+  name is a slug and that at least six rows expect a router.
+* A per-case `PATH=... bash -c` prefix assignment applies to the **command
+  lookup too**, so `bash` itself was not found. `bash` is now resolved
+  absolutely.
+
+### And one in the resolver's own dependencies
+
+Driving the shell over a synthetic `PATH` showed `nros_zenohd_bin` shelling out
+to `tr`, `ls`, `sort` and `tail` — so its answer depended on `PATH`, which is one
+of the things it resolves over. It is builtins-only now (array split for step 3,
+a glob under `LC_ALL=C` for step 5 — the locale being issue 0485's class).
+
+### Not changed
+
+`NROS_ZENOHD_OPT_ROS` exists solely so the gate can drive steps 4 and 5 over a
+synthetic tree; no non-test caller sets it. The alternative was a gate that
+checks the two new steps and leaves the two legacy ones unwatched on both sides.

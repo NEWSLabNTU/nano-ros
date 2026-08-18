@@ -463,7 +463,7 @@ check-fast: _check-skip-reset \
     check-sdk-store-not-enumerated \
     check-goal-cdr-stripped \
     check-test-domain-assignment \
-    check-zenohd-spawn-sites \
+    check-zenohd-spawn-sites check-zenohd-resolution-parity \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     #!/usr/bin/env bash
     set -e
@@ -1607,6 +1607,22 @@ check-test-domain-assignment:
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.
 check-zenohd-spawn-sites:
     @bash scripts/check-zenohd-spawn-sites.sh
+
+# Issue 0653 — the shell and Rust router resolvers must resolve the SAME router.
+#
+# `just <plat> zenohd` is shell and the test harness is Rust; neither can call
+# the other, so `zenohd.sh` carried "the two must agree" as a comment and they
+# drifted regardless — both searching only `/opt/ros` while `AMENT_PREFIX_PATH`
+# is what a sourced ROS actually announces. On a ROS built from source, or this
+# repo's own Arch/Fedora/NixOS distrobox route, that is not `/opt/ros`: you could
+# source a working ROS and be told there is no router.
+#
+# The answer to two implementations is one TABLE
+# (`scripts/dev/zenohd-resolution-cases.tsv`), answered here for the shell and by
+# `zenohd_resolution_matches_the_shared_table` for the Rust — behaviour on both
+# sides, not a diff of two languages.
+check-zenohd-resolution-parity:
+    @bash scripts/check-zenohd-resolution-parity.sh
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute

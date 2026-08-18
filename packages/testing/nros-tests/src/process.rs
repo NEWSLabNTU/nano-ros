@@ -1065,32 +1065,111 @@ impl Drop for ManagedProcess {
 /// deployment runs `rmw_zenohd`. Testing against ours tested a configuration
 /// nobody deploys.
 ///
-/// Resolution order, most explicit first:
+/// Resolution order, most explicit first (issue 0653):
 ///   1. `NROS_RMW_ZENOHD` — an explicit path, for a non-standard install.
-///   2. `$ROS_DISTRO` — the distro the caller has sourced.
-///   3. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
+///   2. `PATH` — where a caller who put the router there expects it found.
+///   3. `$AMENT_PREFIX_PATH` — every prefix the caller has SOURCED, in the
+///      order ament lists them (most recently sourced first).
+///   4. `$ROS_DISTRO` under `/opt/ros`.
+///   5. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
+///
+/// Steps 2 and 3 are what makes "source `setup.bash`, then run the tests" true.
+/// It is not true through `/opt/ros` alone, for two separate reasons:
+///
+/// * **ROS does not put this binary on `PATH`.** `rmw_zenohd` installs into
+///   `lib/rmw_zenoh_cpp/`, and `setup.bash` exports only `bin/`; ROS's own route
+///   to it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So expecting `command -v
+///   rmw_zenohd` to work after sourcing is reasonable and wrong, and step 2
+///   exists to honour it where a user HAS arranged it rather than to rely on it.
+/// * **A ROS install need not live under `/opt/ros` at all.** This repo
+///   documents building one on Arch/Fedora/NixOS
+///   (`docs/development/ros2-on-non-ubuntu.md`), and a colcon overlay is a
+///   prefix anywhere the user chose. `AMENT_PREFIX_PATH` is the sourced
+///   environment's own answer to "which prefixes are active", so it covers both
+///   without this code guessing a layout.
 ///
 /// Returns `None` rather than a fallback path: a caller that cannot find the
 /// ROS router must SKIP (issue 0599), and a `PathBuf` that does not exist would
 /// turn that into a spawn failure several frames away from the cause.
+///
+/// Mirrored by `nros_zenohd_bin` in `scripts/dev/zenohd.sh`; the two are kept
+/// in step by `check-zenohd-resolution-parity`, which parses both.
 pub fn ros_zenohd_path() -> Option<std::path::PathBuf> {
-    if let Some(explicit) = std::env::var_os("NROS_RMW_ZENOHD") {
-        let p = std::path::PathBuf::from(explicit);
-        return p.exists().then_some(p);
+    ros_zenohd_path_in(&ZenohdEnv::from_process())
+}
+
+/// The environment `ros_zenohd_path` reads, captured so the order can be tested.
+///
+/// Resolution is a function of four env vars and the filesystem. Taking them as
+/// data is what lets the parity test drive both this and the shell over the same
+/// synthetic prefixes — otherwise the only assertion available is "it found the
+/// one router this host happens to have", which passes for every wrong order.
+#[derive(Debug, Default, Clone)]
+pub struct ZenohdEnv {
+    pub explicit: Option<std::path::PathBuf>,
+    pub path: Vec<std::path::PathBuf>,
+    pub ament_prefixes: Vec<std::path::PathBuf>,
+    pub ros_distro: Option<String>,
+    pub opt_ros: std::path::PathBuf,
+}
+
+impl ZenohdEnv {
+    pub fn from_process() -> Self {
+        let split = |k: &str| -> Vec<std::path::PathBuf> {
+            std::env::var_os(k)
+                .map(|v| std::env::split_paths(&v).collect())
+                .unwrap_or_default()
+        };
+        Self {
+            explicit: std::env::var_os("NROS_RMW_ZENOHD").map(Into::into),
+            path: split("PATH"),
+            ament_prefixes: split("AMENT_PREFIX_PATH"),
+            ros_distro: std::env::var("ROS_DISTRO").ok(),
+            // Overridable ONLY for the parity gate's synthetic tree; see the
+            // note on `opt_ros` in `scripts/dev/zenohd.sh`.
+            opt_ros: std::env::var_os("NROS_ZENOHD_OPT_ROS")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("/opt/ros")),
+        }
     }
-    let relative = std::path::Path::new("lib/rmw_zenoh_cpp/rmw_zenohd");
-    if let Ok(distro) = std::env::var("ROS_DISTRO") {
-        let p = std::path::Path::new("/opt/ros")
-            .join(&distro)
-            .join(relative);
+}
+
+/// The router's path relative to an install prefix.
+pub const ROS_ZENOHD_RELATIVE: &str = "lib/rmw_zenoh_cpp/rmw_zenohd";
+
+/// [`ros_zenohd_path`] against an explicit environment. See [`ZenohdEnv`].
+pub fn ros_zenohd_path_in(env: &ZenohdEnv) -> Option<std::path::PathBuf> {
+    if let Some(explicit) = &env.explicit {
+        return explicit.exists().then(|| explicit.clone());
+    }
+    // 2 — PATH. `rmw_zenohd` is the only spelling looked for; `zenohd` is the
+    // retired vendored router and must not be picked up by accident (issue 0654
+    // is the sweep for its remaining mentions).
+    for dir in &env.path {
+        let p = dir.join("rmw_zenohd");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    // 3 — the sourced prefixes, in ament's own precedence order.
+    for prefix in &env.ament_prefixes {
+        let p = prefix.join(ROS_ZENOHD_RELATIVE);
         if p.exists() {
             return Some(p);
         }
     }
-    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir("/opt/ros")
+    // 4 — the named distro under the conventional prefix.
+    if let Some(distro) = &env.ros_distro {
+        let p = env.opt_ros.join(distro).join(ROS_ZENOHD_RELATIVE);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    // 5 — any distro under it, newest name last.
+    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&env.opt_ros)
         .ok()?
         .filter_map(|e| e.ok())
-        .map(|e| e.path().join(relative))
+        .map(|e| e.path().join(ROS_ZENOHD_RELATIVE))
         .filter(|p| p.exists())
         .collect();
     found.sort();
@@ -1174,9 +1253,17 @@ pub fn require_zenohd() -> bool {
     }
 
     if !is_zenohd_available() {
+        // Names SOURCING first (issue 0653): the common cause is not a missing
+        // package but an unsourced one, and `rmw_zenohd` is invisible to
+        // `command -v` even when present, so "is it installed?" is the question
+        // a reader cannot answer from the shell.
         eprintln!(
-            "Skipping test: no ROS zenoh router — install `ros-<distro>-rmw-zenoh-cpp` \
-             or set NROS_RMW_ZENOHD (phase-362)"
+            "Skipping test: no ROS zenoh router. Source your ROS setup \
+             (`source /opt/ros/<distro>/setup.bash`) — that exports \
+             AMENT_PREFIX_PATH, which is how the router is found; note \
+             `rmw_zenohd` is NOT on PATH even when installed. Otherwise install \
+             `ros-<distro>-rmw-zenoh-cpp`, or set NROS_RMW_ZENOHD to its path. \
+             No ROS on this host? `--rmw cyclonedds` needs no router (phase-362)"
         );
         return false;
     }
@@ -1399,6 +1486,120 @@ mod tests {
             out.contains("Transport(InvalidConfig)"),
             "collect_until must hand back what was printed so the caller's own \
              assertion can quote it, got: {out}"
+        );
+    }
+
+    /// Issue 0653 — the RUST resolver answers the shared resolution table.
+    ///
+    /// The other consumer is `scripts/check-zenohd-resolution-parity.sh`, which
+    /// runs `scripts/dev/zenohd.sh` over the same rows. Two resolvers exist
+    /// because one is invoked from a justfile and one from the harness, and
+    /// neither can call the other; what stops them drifting is that the
+    /// EXPECTATIONS are written once. `zenohd.sh` carried "the two must agree"
+    /// as a comment for a phase and they drifted regardless — both looking only
+    /// under `/opt/ros`, so a sourced ROS built anywhere else resolved nothing.
+    ///
+    /// Reads the table rather than restating it: a copy here would be a second
+    /// spelling of the thing the table exists to prevent.
+    #[test]
+    fn zenohd_resolution_matches_the_shared_table() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root above packages/testing/nros-tests")
+            .to_path_buf();
+        let table_path = repo.join("scripts/dev/zenohd-resolution-cases.tsv");
+        let table = std::fs::read_to_string(&table_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", table_path.display()));
+
+        let root = std::env::temp_dir().join(format!(
+            "nros-zenohd-parity-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let rel = std::path::Path::new(ROS_ZENOHD_RELATIVE);
+        let touch_exec = |p: &std::path::Path| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+        };
+        for prefix in ["overlay", "underlay", "optros/humble", "optros/jazzy"] {
+            touch_exec(&root.join(prefix).join(rel));
+        }
+        touch_exec(&root.join("bin/rmw_zenohd"));
+        touch_exec(&root.join("explicit/router"));
+        std::fs::create_dir_all(root.join("nothing")).unwrap();
+
+        let expand = |s: &str| -> String {
+            s.replace('@', &root.to_string_lossy())
+                .replace("$rel", ROS_ZENOHD_RELATIVE)
+        };
+        let split = |s: &str| -> Vec<std::path::PathBuf> {
+            s.split(':')
+                .filter(|c| !c.is_empty())
+                .map(std::path::PathBuf::from)
+                .collect()
+        };
+
+        let mut ran = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+        for line in table.lines() {
+            if line.trim_start().starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let col: Vec<&str> = line.split('\t').collect();
+            assert_eq!(
+                col.len(),
+                7,
+                "row {:?} has {} columns, expected 7 — the table's shape is shared \
+                 with the shell gate, so a ragged row breaks both",
+                col[0],
+                col.len()
+            );
+            ran += 1;
+            let (name, explicit, path, ament, distro, optros, expected) = (
+                col[0],
+                expand(col[1]),
+                expand(col[2]),
+                expand(col[3]),
+                col[4],
+                expand(col[5]),
+                expand(col[6]),
+            );
+
+            let env = ZenohdEnv {
+                explicit: (!explicit.is_empty()).then(|| std::path::PathBuf::from(&explicit)),
+                path: split(&path),
+                ament_prefixes: split(&ament),
+                ros_distro: (!distro.is_empty()).then(|| distro.to_string()),
+                opt_ros: std::path::PathBuf::from(&optros),
+            };
+            let got = ros_zenohd_path_in(&env)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if got != expected {
+                failures.push(format!(
+                    "  {name}: resolved {:?}, table says {:?}",
+                    got, expected
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            ran > 0,
+            "the shared table has NO rows — this test watches nothing"
+        );
+        assert!(
+            failures.is_empty(),
+            "{} of {ran} shared-table case(s) disagree:\n{}",
+            failures.len(),
+            failures.join("\n")
         );
     }
 }

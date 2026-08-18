@@ -105,6 +105,23 @@ vendors one. So on a host with no ROS 2:
   `ros-<distro>-rmw-zenoh-cpp`, or point `NROS_RMW_ZENOHD` at a
   `rmw_zenohd` you obtained another way.
 
+If you do have ROS 2, **source its setup first** — that is what makes the router
+findable:
+
+```bash
+source /opt/ros/<distro>/setup.bash
+```
+
+nano-ros reads `AMENT_PREFIX_PATH` from that, so a ROS installed anywhere works,
+including one you built from source or a colcon overlay — it is not assumed to be
+under `/opt/ros`.
+
+Do not expect `command -v rmw_zenohd` to print anything: `rmw_zenohd` installs
+into `<prefix>/lib/rmw_zenoh_cpp/`, and `setup.bash` puts only `bin/` on `PATH`.
+ROS's own way to reach it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So a silent
+`command -v` is normal and not a broken install — `just <plat> zenohd` finds it
+regardless.
+
 | Task | Needs a ROS 2 install? |
 |---|---|
 | `nros setup`, `nros sync`, message codegen | **No** — interface sources are vendored |

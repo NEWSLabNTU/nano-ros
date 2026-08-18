@@ -1,0 +1,43 @@
+# Issue 0653 — the ONE table both router resolvers answer.
+#
+# `scripts/dev/zenohd.sh` (`nros_zenohd_bin`, used by `just <plat> zenohd`) and
+# `nros_tests::process::ros_zenohd_path` (used by the test harness) must resolve
+# the same router: a contributor debugging a lane by hand and the lane itself
+# have to start the same process. Neither can call the other — one is shell, one
+# is Rust — so the guarantee has to come from somewhere, and a comment saying
+# "the two must agree" was what there was. They drifted anyway.
+#
+# So: one table, two consumers.
+#   * `scripts/check-zenohd-resolution-parity.sh` runs the SHELL over it.
+#   * `zenohd_resolution_matches_the_shared_table` runs the RUST over it.
+# A row is written once and answered twice; a resolver that disagrees fails on
+# its own side, naming the row.
+#
+# Each row is decided by a DIFFERENT step of the order, and each would be
+# answered wrongly by some plausible alternative order — a table where every row
+# is settled by step 1 proves nothing about steps 2..5.
+#
+# COLUMNS  name <TAB> explicit <TAB> path <TAB> ament <TAB> distro <TAB> optros <TAB> expected
+#
+# `@` is the synthetic root each runner creates; `$rel` is
+# `lib/rmw_zenoh_cpp/rmw_zenohd`. An empty `expected` means BOTH resolvers must
+# FAIL — a fallback path here would turn "no router" into a spawn error several
+# frames from the cause (issue 0599).
+#
+# Prefixes each runner materialises under `@`, all holding an executable router:
+#   @/overlay  @/underlay  @/optros/humble  @/optros/jazzy  @/bin/rmw_zenohd
+#   @/explicit/router     @/nothing (created EMPTY — no router)
+#
+# `optros` is the conventional root steps 4 and 5 search, a column rather than a
+# constant so the last row can say "no router anywhere" at all. Both runners
+# pass it as NROS_ZENOHD_OPT_ROS, which is the only reason that override exists.
+#
+explicit-wins	@/explicit/router	@/bin	@/overlay	humble	@/optros	@/explicit/router
+path-beats-ament		@/bin	@/overlay	humble	@/optros	@/bin/rmw_zenohd
+ament-when-path-has-none			@/overlay	humble	@/optros	@/overlay/$rel
+ament-order-overlay-first			@/overlay:@/underlay	humble	@/optros	@/overlay/$rel
+ament-order-underlay-first			@/underlay:@/overlay	humble	@/optros	@/underlay/$rel
+ament-skips-prefix-without-router			@/nothing:@/underlay	humble	@/optros	@/underlay/$rel
+opt-ros-named-distro				humble	@/optros	@/optros/humble/$rel
+opt-ros-newest-name-last					@/optros	@/optros/jazzy/$rel
+nothing-anywhere				humble	@/nothing	

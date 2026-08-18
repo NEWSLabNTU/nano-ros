@@ -370,13 +370,20 @@ time and yields a real `rc=-22` where the never-compiled `#else` invented `-88`.
 (pin between `k_thread_create` and `k_thread_start`) is still open, and the BOOT tier may be unfixable
 as posed. See `0655-*`. (2026-08-17)
 
-**#0653** (design, open 2026-08-17) — RFC-0075 accepted one casualty of sourcing the zenoh router from
-ROS: "a ROS-less host cannot run the zenoh interop lanes". The consequence is NOT confined to interop —
-zenoh-pico is a client, so *any* two-process zenoh example needs a router, and a ROS-less host now has
-none (`nros setup native` provisions 2 packages, neither a router; `just native zenohd` errors). There
-IS a working ROS-less path — `--rmw cyclonedds`, in-process, no daemon — but it is not the default and
-the book did not name it. Docs corrected with #0374; whether zenoh stays the default for such a host is
-the open decision. See `0653-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
+from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to
+interop: zenoh-pico is a client, so ANY two-process zenoh example needs a router. DECIDED: keep the
+ROS-shipped router, do not ship one — zenoh stays the default and `--rmw cyclonedds` (in-process, no
+daemon) remains the documented ROS-less route; RFC-0075's Consequences amended to say so rather than
+scoped to interop. The genuine bug underneath was narrower and is fixed: "has ROS" was implemented as
+"has `/opt/ros`", so a user who SOURCED a working ROS built from source, or a colcon overlay — including
+this repo's own Arch/Fedora/NixOS distrobox route — was told there was no router. Both resolvers now read
+the sourced environment (`PATH`, then `AMENT_PREFIX_PATH`, then the `/opt/ros` fallbacks); note
+`rmw_zenohd` is NOT on `PATH` even when installed (it lives in `lib/rmw_zenoh_cpp/`), which the book now
+states so a silent `command -v` is not read as a broken install. `zenohd.sh` had carried "the two must
+agree" as a comment since phase-362 with nothing checking it, and they drifted identically; the
+expectations are now ONE table answered twice — `check-zenohd-resolution-parity` for the shell,
+`zenohd_resolution_matches_the_shared_table` for the Rust. See `archived/0653-*`. (2026-08-18)
 
 **#0654** (docs/scripts, open 2026-08-17) — ~95 files still say `zenohd --listen …`, and 57 name a
 deleted path (`build/zenohd`, `sdk-path zenohd`). Two failures, the second worse: the binary is gone,

@@ -156,6 +156,25 @@ is what a future failure gets diffed against — not a version to enforce.
 * **A ROS-less host cannot run the zenoh interop lanes.** Correct: those lanes
   test interoperation with ROS 2. They should `skip!` with a reason rather than
   run against a router no user deploys.
+
+  *Amended 2026-08-18 (issue 0653): this consequence was written too narrowly.*
+  zenoh-pico connects in CLIENT mode, so a router is needed by **any two-process
+  zenoh example**, interop or not — a talker and a listener are two processes.
+  The casualty is therefore not the interop lanes but the whole `--rmw zenoh`
+  path on a ROS-less host, including the getting-started one, since zenoh is the
+  default RMW. Confirmed and accepted rather than reversed: nano-ros does not
+  ship a router. `--rmw cyclonedds` is the ROS-less route (in-process, no
+  daemon), the book's getting-started page says so, and `NROS_RMW_ZENOHD` remains
+  the escape hatch for a router obtained some other way.
+
+  What *was* wrong is that "has ROS" was implemented as "has `/opt/ros`". Both
+  resolvers now read the SOURCED environment — `PATH`, then `AMENT_PREFIX_PATH`,
+  before falling back to `/opt/ros` — so a ROS built from source or installed
+  under a colcon overlay resolves the router the moment its `setup.bash` is
+  sourced. Note `rmw_zenohd` is NOT put on `PATH` by that sourcing: it installs
+  into `lib/rmw_zenoh_cpp/`, and ROS's own route to it is `ros2 run rmw_zenoh_cpp
+  rmw_zenohd`. `AMENT_PREFIX_PATH` is what makes it findable, which is why the
+  fallback that skipped it was the defect.
 * **We no longer control the router version.** That is the trade this RFC makes
   deliberately: control over a number we could not use, exchanged for lockstep
   with the component that number was supposed to track.
