@@ -177,6 +177,15 @@ freshness gate derive its scope from the lane. NOTE the new probe is NOT buildle
 it self-heals cmake cells. Collapsing the two gates (direction 2) left as a follow-up. See
 `archived/0681-*`. (2026-08-19)
 
+**#0687** (api, open 2026-08-19) — the `env` capability is what keeps `std` in the core crates: 31 of the
+~41 remaining non-test `std::` paths are `env::var`, and phase-359 W10 moved every OTHER host facility
+(clock, wall clock, sleep, tasks, log) onto the platform ABI. An ABI `env_get` is the WRONG analogue — a
+clock is something every RTOS has, a process environment is not, and five of six ports would implement it
+as `return 0`. The fit is to push env resolution to the hosted EDGE (`nros-board-linux`, the entry macro,
+`nros-c` init) and let core crates take a resolved `ExecutorConfig`, which is already how embedded works.
+Records what env does NOT finish: `Mutex`/`OnceLock` caches, the `Instant`/`SystemTime` no-port fallbacks,
+and `fs`/`Path` host-only features. See `0687-*`. (2026-08-19)
+
 **#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
 in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
 findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not

@@ -733,6 +733,45 @@ Verified: five feature combinations compile (std / std+rmw-cffi / alloc+rmw-cffi
 `wake_latency` + `component_runtime` + `roundtrip_xprocess`, which covers the
 cross-thread wake trigger this merge is about.
 
+#### Where W10 stops, and why — the `env` question answered (2026-08-19)
+
+166 cfg sites -> 33; 129 `std::` paths -> 41. The last question is what is
+holding the remainder, and it is measurable rather than arguable:
+
+| crate | env | everything else (non-test) |
+| --- | --- | --- |
+| `nros-node` | 16 | `sync::{Mutex, OnceLock}`, `time::Instant`, `ffi` |
+| `nros` | 8 | `path::Path`, `sync::Mutex` |
+| `nros-cpp` | 6 | `fs::write` |
+| `nros-c` | 1 | — |
+| `nros-core` | 0 | `time::SystemTime` |
+| `nros-rmw`, `nros-serdes`, `nros-log`, `nros-params` | 0 | **none** |
+
+Four of the nine crates are already clean apart from `extern crate std`. Env is
+31 of the ~41 that remain.
+
+**The tempting fix is the wrong one.** Every other host facility W10 touched
+moved onto the platform ABI — clock, wall clock, sleep, tasks, log sink — so
+`nros_platform_env_get` looks like the next step in an established pattern. It
+is not the same case. Those are things every RTOS HAS; a process environment is
+not, and five of six ports would implement the entry as `return 0`. That is
+permanent ABI surface modelling a facility of exactly one platform family.
+
+**The shape that fits** is to push env resolution to the hosted EDGE and let the
+core take values — which is already how embedded works (a board installs
+`ExecutorConfig::clock_us` / `epoch_us`; the core never asks where they came
+from). `ExecutorConfig` is the boundary; `from_env` is the only constructor that
+reaches behind it. Filed as issue 0687 with the readers named.
+
+**And env does not finish the campaign.** Three classes remain after it, each
+with its own question rather than a mechanical answer: the `Mutex`/`OnceLock`
+process-global caches (a dependency edge, the trade issue 0669 records), the
+`Instant`/`SystemTime` fallbacks for a build with no platform port (deleting
+them removes a capability from a supported configuration — `from_session` takes
+any `Session`), and `fs`/`Path` in host-only FEATURES (`metadata-mode`,
+`init`'s launch path). A reader treating "33 sites" as nearly-done should read
+that list first.
+
 #### The final commit's exact file set (2026-08-16)
 
 After the consumer sweep (d48e78ea0), the crates that still name a core `std`
