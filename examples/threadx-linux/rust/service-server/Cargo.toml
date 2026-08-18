@@ -38,20 +38,28 @@ rmw-cyclonedds = []
 # phase-338 W2 — carried over from the collapsed `-entry` package.
 # #131 / #194 — forward the family board's zenoh-backend link + boot-path register().
 nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
-# phase-359 W10 — this one STAYS on `std`, and the reason is measured, not
-# stylistic. ThreadX-Linux is a no_std board that happens to run as a Linux
-# process, so `alloc` is the right flavour on paper — but the image then has
-# NEITHER of the two lang items a final artifact needs: `rust-rtos-link-check`
-# fails first with "no global memory allocator found", and once the board
-# supplies one, with "`#[panic_handler]` function required". Today `std`
-# supplies both. Giving the board an `image-runtime` feature (the pair bound
-# together, as `nros-board-nuttx` does since W7) is the fix. Owned by issue
-# 0618, which is about exactly this — the lang items are per-IMAGE singletons
-# decided in libraries, so an image gets two or none; this is a "none" — and it
-# lands in phase-366's territory, which is currently moving board panic paths
-# onto `nros_platform_panic`, so a third board growing its own handler here
-# would collide with that wave.
-nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "macros"] }
+# issue 0644 — `alloc`, not `std`. The `std` here was never about the API: it
+# was there because removing it left the image with neither per-image lang item.
+# That is fixed, and NOT the way the issue's Direction expected.
+#
+# The blocker was `crate-type = ["rlib", "staticlib"]`. A staticlib is a FINAL
+# artifact, so rustc demanded `#[global_allocator]` and `#[panic_handler]` while
+# compiling `src/lib.rs` — which is `#![no_std]` and references no board, so
+# nothing could supply them. phase-366 dropped the staticlib (nothing consumed
+# it), and the obligation went with it.
+#
+# What remains needs NO board feature and NO `panic_to_platform!()`, and that is
+# the part worth writing down: on THIS family the Rust bin IS the Linux process
+# entry, so `src/main.rs` links std for its runtime (crt0 + the `main` shim) and
+# std legitimately owns both lang items. Adding either would be wrong —
+# `panic_to_platform!()` is an E0152 conflict with std's handler (measured), and
+# a board `#[global_allocator]` would reroute every allocation through
+# `tx_byte_allocate` for no reason. The RISC-V sibling differs precisely here:
+# its entry is `app_main.rs` in a staticlib called from C, so it has no std
+# runtime and must declare both.
+#
+# Acceptance is the issue's own: this leaf builds with `nros`'s `std` OFF.
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # Phase 212.N.7 step-2 — Entry-pkg-callable `pub fn register(runtime: &mut RuntimeCtx)` wrapper.
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }

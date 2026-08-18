@@ -2,7 +2,7 @@
 id: 644
 title: The threadx-linux talker was declared `no_std` but had no allocator and no
   panic handler — it linked only because `env` granted `std`
-status: open
+status: resolved
 type: bug
 area: build
 related: [0594, 0475]
@@ -121,3 +121,52 @@ violation that had `just ci` red on main. Every other consumer that relied on
 the grant needed only its manifest updated (27 of them); this one is the single
 case where the dependency was on std's LANG ITEMS rather than its API, and it is
 the only one that cannot be fixed by naming a feature.
+
+
+## RESOLVED 2026-08-19 — the blocker was already gone, and the fix is smaller than any of the three shapes
+
+All six threadx-linux Rust leaves now take `nros` with **`alloc`**, not `std`, and
+build. That is this issue's own acceptance criterion, and `rust-rtos-link-check`
+— the gate it names as failing first — passes.
+
+### What actually unblocked it
+
+None of the three directions. The blocker was `crate-type = ["rlib",
+"staticlib"]`: a staticlib is a FINAL artifact, so rustc demanded
+`#[global_allocator]` and `#[panic_handler]` while compiling `src/lib.rs`, which
+is `#![no_std]` and references no board, so nothing could supply them.
+
+phase-366 already dropped the staticlib from all six leaves — nothing consumed
+it — which is direction 3, landed for its own reasons. The obligation went with
+it. What remained was one word in six manifests.
+
+### What NOT to add, both measured
+
+The obvious completions are both wrong on THIS family, and each was tried:
+
+* **`nros::panic_to_platform!()` in `src/main.rs` — E0152.** *"the lang item is
+  first defined in crate `std` (which `talker` depends on)"*. On threadx-linux
+  the Rust bin IS the Linux process entry, so `main.rs` links std for its
+  runtime (crt0 + the `main` shim) and std owns the panic lang item already.
+* **A board `image-runtime` feature** forwarding `nros-platform/global-allocator`,
+  mirroring `nros-board-nuttx`. Builds — and is unnecessary: removing it, all six
+  still build, because std's allocator serves. Installing one would reroute every
+  Rust allocation through `tx_byte_allocate` in a hosted process, a runtime
+  behaviour change with no defect behind it. Reverted.
+
+The RISC-V sibling differs precisely here, which is why copying it fails: its
+entry is `app_main.rs` inside a staticlib called from C, so it has no std
+runtime and must declare both lang items. `qemu-riscv64-threadx/*/src/app_main.rs`
+carries `nros::panic_to_platform!()` for that reason. threadx-linux is a hosted
+process wearing an RTOS board's name.
+
+So the residual `std` in these images is real and correct — it is the process
+runtime, not a capability grant. What issue 0644 was actually about, `nros`'s
+`env` capability GRANTING `std` (ARCHITECTURE §2 clause (a)), is closed: the
+leaves no longer name it.
+
+### Note
+
+Building the six leaves by hand created `examples/threadx-linux/rust/*/target/`
+(2.7 GiB), which `check-example-leaf-target-dirs` correctly flagged as "a writer
+this gate cannot see" — it was me. Deleted. The gate works.

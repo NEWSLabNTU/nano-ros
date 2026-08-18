@@ -429,16 +429,16 @@ coverage. Mutation-tested both directions. See `archived/0660-*`.
 
 
 
-**#644** (build, open 2026-08-16) — the threadx-linux talker was DECLARED `no_std` by phase-359 W10 and
-never was: `nros`'s `env` capability listed `"std"`, so std arrived through the graph and supplied both the
-`#[global_allocator]` AND the `#[panic_handler]`. Removing that grant made it visible. The allocator half
-follows the tree's pattern (the board wires `nros-platform/global-allocator`), but a board-supplied panic
-handler cannot reach this target: the leaf is `crate-type = ["rlib", "staticlib"]`, a staticlib is a final
-artifact so rustc demands lang items at LIB compile time, and `src/lib.rs` never references the board —
-only `main.rs` does, via `nros::main!()` — so the rlib is never loaded. Same DCE class CLAUDE.md records
-for force-linked backends, applied to a lang item. The leaf names `std` again, restoring exactly what it
-linked before rather than inventing a different image; three candidate shapes are recorded. Acceptance is
-NOT "it compiles" — that is what hid it for the length of W10. See `0644-*`. (2026-08-16)
+Recently resolved (2026-08-19): **#644** — all six threadx-linux Rust leaves now take `nros` with `alloc`,
+not `std`, which is this issue's own acceptance criterion (`rust-rtos-link-check`, the gate it names as
+failing first, passes). None of the three recorded directions was the fix: the blocker was
+`crate-type = ["rlib","staticlib"]` — a staticlib is a FINAL artifact, so rustc demanded both lang items
+while compiling the `#![no_std]` `src/lib.rs` that references no board — and phase-366 had already dropped
+the staticlib, so what remained was one word in six manifests. BOTH obvious completions are wrong here and
+were measured: `panic_to_platform!()` is an E0152 conflict (this family's Rust bin IS the Linux process
+entry, so std owns the lang item), and a board `global-allocator` is unnecessary (all six build without it)
+and would reroute allocations through `tx_byte_allocate` for no reason. The RISC-V sibling differs because
+its entry is a staticlib called from C. See `archived/0644-*`. (2026-08-19)
 
 Recently resolved (2026-08-17): **#639** — `activate.sh` sourced ROS's bash-only `setup.bash` unconditionally, so under **zsh** it set NOTHING and said nothing: `${BASH_SOURCE[0]}` is undefined there, the script bails, and activation reported success with no ROS environment at all. A build launched from zsh then invoked `/opt/ros/humble/bin/idlc` with no loader path and died `code=127` on the first `.idl` — reading as a missing tool rather than a missing environment. None of the four suspected boundaries (make driver, `cmake -E env`, ninja, `just`) dropped anything; the variable was never set. FIXED: pick a file the current shell can read (`setup.bash` under bash, POSIX `setup.sh` otherwise) and then CHECK it took, warning when `ROS_DISTRO` is still unset — sourcing something that silently sets nothing is the whole bug. `activate.fish` already had the right shape and is untouched. Proven in both shells, guard sabotage-tested, and the real ninja rule rebuilt from zsh now sees the full `LD_LIBRARY_PATH` where it previously got 127. Also records the idlc-choice measurement: every RELEASED edition ships upstream 0.10.5 and their idlc output is byte-identical to ours over 8 real IDLs, but ROLLING already ships 11.0.1 — so keep the SDK copy, because what must match is the `ddsc` the image LINKS. See `archived/0639-*`. (2026-08-17)
 
