@@ -9,4 +9,4 @@
 // not override.
 extern crate panic_semihosting;
 
-nros::main!(launch = "demo_bringup");
+nros::main!(panic = "own", launch = "demo_bringup");

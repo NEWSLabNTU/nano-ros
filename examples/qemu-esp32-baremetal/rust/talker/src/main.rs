@@ -21,4 +21,4 @@ use esp_backtrace as _;
 
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
-nros::main!();
+nros::main!(panic = "own");
