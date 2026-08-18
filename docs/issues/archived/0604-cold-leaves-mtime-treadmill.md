@@ -1,7 +1,7 @@
 ---
 id: 604
 title: "Cold leaves after every pull: measure how many are genuinely invalidated versus merely re-stamped, before optimising either"
-status: open
+status: resolved
 type: performance
 area: build, testing
 related: [issue-0509, issue-0466, issue-0442, issue-0445, issue-0627, phase-286, phase-353, phase-363]
@@ -232,3 +232,103 @@ staled after `just setup-cli` with the codegen fingerprint UNCHANGED, and the
 fixture signature's tool component is that fingerprint, not the CLI stamp. The
 prescribed next step (diff a row's directory across a behaviour-preserving CLI
 rebuild) still stands.
+
+## ATTRIBUTED AND CLOSED 2026-08-18 — the residue is LEGITIMATE invalidation
+
+The last open item was: "diff a row's directory across a behaviour-preserving
+CLI rebuild, and name the file that carries tool identity into the signature."
+Done. **The answer is that no file carries tool identity — the three rows have a
+real build-dependency on the CLI, and rebuilding them is correct.**
+
+### The measurement
+
+Perturb only the CLI (append a comment to `nros-cli-core/src/lib.rs`,
+`just setup-cli`), with the compile-check tree freshly built on both sides, and
+diff every `.inputsig`:
+
+```
+stamps that moved: 3 of 75
+  build/compile-check-fixtures/board_agnostic_run_plan/.inputsig
+  build/compile-check-fixtures/freertos_firmware/.inputsig
+  build/compile-check-fixtures/nav2_compat_smoke/.inputsig
+```
+
+The same three rows as 2026-08-16. Isolating the signature's components for
+`board_agnostic_run_plan` across the same perturbation:
+
+| component | moves? |
+| --- | --- |
+| `bin_hash` (not in the signature) | yes |
+| `tool:nros` codegen fingerprint | **no** |
+| `nros_source_manifest` over the row dir | **no** |
+| `nros_dep_closure_manifest` over the build dir | **YES** |
+
+and diffing the closure itself narrows it to one entry:
+
+```
+< 8f37e9b6…  packages/cli/nros-cli-core/src/lib.rs
+> 1a47f5c3…  packages/cli/nros-cli-core/src/lib.rs
+```
+
+### Why that is correct, not a leak
+
+`posix_entry/Cargo.toml` declares
+
+```toml
+[build-dependencies]
+nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }
+```
+
+and `nros-build` path-depends on `nros-cli-core`. So the row's `build.rs`
+genuinely COMPILES the CLI core; cargo's own dep-info says so, and cargo would
+rebuild the row for the same edit. The fixture signature agreeing with cargo is
+the mechanism working.
+
+The dependency also PREDICTS the population, which is the check that this is a
+rule and not three coincidences — fixture dirs that build-depend on
+`nros-build`:
+
+```
+multi_pkg_workspace_freertos/firmware   -> freertos_firmware
+n_board_agnostic_run_plan/{posix,freertos}_entry -> board_agnostic_run_plan
+o5_nav2_compat_smoke/demo_entry         -> nav2_compat_smoke
+```
+
+Three dirs, three rows, no others.
+
+### What this refutes
+
+This issue's standing hypothesis was: "the likely writer is the `nros sync` /
+codegen step that runs as part of building them, emitting a file whose bytes
+carry the tool's identity." **Refuted directly.** Staging one of these rows by
+hand (copy template, rewrite `@NANO_ROS_ROOT@`, run `nros sync`) on either side
+of a behaviour-preserving CLI rebuild produces a BYTE-IDENTICAL tree — and
+staging twice with one CLI is byte-identical too, so staging is deterministic
+and sync writes nothing tool-specific.
+
+The suspicion was reasonable and wrong, which is why the issue asked for the
+diff rather than a fix.
+
+### Method note, because it produced a false negative first
+
+An early attempt computed the signature with a hand-built record pointing at
+`build/compile-check/<id>`. The real path is `build/compile-check-fixtures/<id>`,
+so the dep-closure component was computed over a directory that does not exist —
+a constant — and the signature looked stable across the rebuild. It is not. Any
+future measurement here should perturb the input and diff the REAL `.inputsig`
+files rather than recompute a signature from a reconstructed record.
+
+### Verdict against this issue's three categories
+
+| category | finding |
+| --- | --- |
+| genuine input change | the 3 rows above, and the bulk of the six original cascades |
+| mtime-only artifact | none found; content-aware staleness (#147/phase-286) handles the treadmill |
+| tool-fingerprint over-invalidation | was REAL and LARGE, above the fixtures — 17 crates the CLI never compiles; fixed as #0627 |
+
+All three categories are now attributed, which is what this issue existed to do.
+The remaining cost is legitimate, so there is nothing here to optimise: closing.
+
+Cost note kept for whoever reads the 0509 lineage: a CLI source edit rebuilds
+three fixture rows because those rows compile the CLI. If that ever matters,
+the lever is the `nros-build` build-dependency, not the staleness machinery.

@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#604** — cold leaves after every pull, inherited from #509 as a
+MEASUREMENT: how many leaves are genuinely invalidated versus merely re-stamped. All three categories are now
+attributed. The large one was over-invalidation ABOVE the fixtures — the CLI stamp watched 17 crates it never
+compiles — fixed as #0627. The 3-of-75 residue that remained is LEGITIMATE: perturbing only the CLI moves
+exactly `board_agnostic_run_plan`, `freertos_firmware` and `nav2_compat_smoke`, and component isolation puts
+it in the measured dep closure at one entry, `packages/cli/nros-cli-core/src/lib.rs` — those rows declare
+`[build-dependencies] nros-build`, which path-deps `nros-cli-core`, so their `build.rs` genuinely compiles the
+CLI and cargo would rebuild them too. The dependency predicts the population exactly (three fixture dirs,
+three rows). Refuted on the way: the standing hypothesis that `nros sync` writes tool identity into the staged
+tree — staging is byte-identical across a behaviour-preserving CLI rebuild. Nothing left to optimise.
+See `archived/0604-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#532** — the WALL clock spread one fact over three symbols
 (`time_now_ms` + `time_since_epoch_secs` + `time_since_epoch_nanos`); the monotonic half had shipped as
 RFC-0073 / phase-352. Now one `nros_platform_time_now_ns`, the three RETIRED outright as phase-352 W6 did for
@@ -1233,24 +1245,6 @@ follows the next leaf that grows a submodule dep. Verified three ways against th
 on the fix, red on the break with the `just lock-update` remedy, SKIP when the submodule is absent. Reason 2 is closed too: `check-launch-resolve-builds` in `check-build` runs the REAL recipe (~14 s warm,
 catching link errors a `cargo check` misses), skipping when the submodule is absent so a bare clone can
 still `just check`. Split by TIER — lock check sub-second in `check-fast`, compile in the build tier. See `archived/0560-*`. (2026-08-13)
-
-**#604** (build/testing, open 2026-08-15) — cold leaves after every pull, inherited from #509's one
-surviving direction: a cold Zephyr leaf costs ~28 s and a pull/rebase/`git stash` was believed to cold every
-one. Filed as a MEASUREMENT, not a defect, because the premise may already be half-fixed: content-aware
-staleness (a `.srcbaseline` of `(mtime,size,content_hash)` per watched file, shared by both arms since
-phase-353 W2) should make an mtime-only change a refresh rather than a stale, and `codegen-fingerprint`
-(phase-363) should stop a CLI rebuild invalidating what its codegen did not change. The cost is still being
-paid — five separate staleness cascades while chasing one tier-2 verdict on 2026-08-15 — but nobody has
-attributed them to genuine input change vs mtime artifact vs tool-fingerprint over-invalidation, and those
-want different fixes. Measure and attribute first; do NOT re-run the wall-clock A/B #509 warned about.
-**Attributed 2026-08-16 (partly):** the largest cause was not in the fixtures at all — the CLI's own freshness
-closure watched 17 crates it never compiles (#0627), so an edit to `nros-node` or any platform port re-staled
-the CLI, and a stale CLI is upstream of everything. Fixed there. The 3-of-~36 fixture residue measured here is
-unaffected (their tool component is the codegen fingerprint, which did not move) and keeps this open — but its
-divider was misread as "builders that BUILD" when it is `nros sync`: `stage_tree` runs the CLI for any row with
-a `package.xml`, before any compiler, and the sample's one non-staling row is simply the one plain crate (3/3
-vs 0/1 on that column). Search `stage_tree`, not the compile.
-See `0604-*`.
 
 Recently resolved (2026-08-16): **#627** — the CLI freshness closure was wrong in BOTH directions at once, and
 each direction is its own bug. `cli_source_dirs()` walked `path = "…"` textually (it must: the file is
