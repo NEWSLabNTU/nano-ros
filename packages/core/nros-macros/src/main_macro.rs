@@ -119,7 +119,6 @@ enum PanicPolicy {
     /// A POSITIVE declaration, not an absence: an image bringing
     /// `esp-backtrace` or `panic-semihosting` states it, so the build can tell
     /// "deliberate" from "forgot".
-    ///
     Own,
 }
 
