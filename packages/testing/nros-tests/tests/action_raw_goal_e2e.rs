@@ -53,16 +53,17 @@ fn action_raw_goal_ships_one_cdr_header(
     };
 
     let locator = zenohd_unique.locator();
-    // ISSUE 0656 — both peers run on the DEFAULT domain, deliberately.
-    // `Executor::register_action_server_raw*` declares its queryables on domain
-    // 0 whatever `ROS_DOMAIN_ID` says, while the polling client the probe uses
-    // honours it; setting a unique domain here makes the two sides disagree on
-    // the keyexpr and nothing is delivered. Isolation still holds — the router
-    // is this test's own (`zenohd_unique`), so no other test shares the graph.
-    // Restore a unique domain once 0656 lands.
+    // A NON-ZERO domain, deliberately. Issue 0656 — found by this very test —
+    // was the executor-mode server declaring its queryables under `0/…`
+    // whatever `ROS_DOMAIN_ID` said, while the polling client the probe uses
+    // honoured it: the two sides built different keyexprs and nothing was
+    // delivered. 0656 is fixed, so a unique domain is the stronger setup, and
+    // it keeps this test standing as the regression check for both facts.
+    let domain_id = nros_tests::unique_ros_domain_id().to_string();
 
     let mut scmd = Command::new(&c_action_server_binary);
     scmd.env("NROS_LOCATOR", &locator);
+    scmd.env("ROS_DOMAIN_ID", &domain_id);
     let mut server = ManagedProcess::spawn_command(scmd, "c-action-server-raw-goal")
         .expect("spawn the C action server");
 
@@ -72,6 +73,7 @@ fn action_raw_goal_ships_one_cdr_header(
 
     let mut pcmd = Command::new(&probe);
     pcmd.env("NROS_LOCATOR", &locator);
+    pcmd.env("ROS_DOMAIN_ID", &domain_id);
     let mut probe_proc =
         ManagedProcess::spawn_command(pcmd, "action-raw-goal-probe").expect("spawn the raw probe");
 
