@@ -231,7 +231,7 @@ pub use executor::{ExecutorInlineStorage, ExecutorSizing};
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use executor::SessionSpec;
 
-#[cfg(all(feature = "std", any(has_rmw, test)))]
+#[cfg(all(feature = "alloc", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;
 
 // ---------------------------------------------------------------------------
@@ -260,10 +260,13 @@ compile_error!("`signal-fd-wake` allocates: add \"alloc\" to this crate's featur
 compile_error!(
     "`signal-fd-wake` needs the platform task + wake ABI: add \"rmw-cffi\" to this crate's features"
 );
-#[cfg(all(feature = "signal-fd-wake", not(feature = "std")))]
-compile_error!(
-    "`signal-fd-wake` still reaches the std-gated `WakeCtx`: add \"std\" (phase-359 W10 removes this)"
-);
+// phase-359 W10 — this guard said `signal-fd-wake` "still reaches the std-gated
+// `WakeCtx`: add \"std\" (phase-359 W10 removes this)". It did remove it: the
+// wake context is `alloc`-gated, its worker is a platform task, and the only
+// `std::` left in `WakeSignalFd` is a comment about what it stopped returning.
+// What the feature actually needs is the allocator the context is built on.
+#[cfg(all(feature = "signal-fd-wake", not(feature = "alloc")))]
+compile_error!("`signal-fd-wake` builds on the `alloc`-gated wake context: add \"alloc\"");
 // phase-359 W10 made the process environment a CAPABILITY rather than a
 // flavour of the core, which was right; the manifest then wrote
 // `env = ["std"]`, which grants what it should have required. `from_env`

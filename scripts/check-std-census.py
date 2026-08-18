@@ -181,7 +181,15 @@ BASELINE = {
     # converted every timeout in that file into "N spins". It now picks on
     # whether a clock EXISTS. `types.rs` keeps one site: the `SystemTime` wall
     # clock for a build with no platform port.
-    "nros-node": {"cfg": 28, "path": 22},
+    #
+    # phase-359 W10: 28 -> 17 cfg. The singles, and two of them were STALE
+    # rather than merely split: `signal-fd-wake`'s guard still demanded `std`
+    # for a wake context that moved to `alloc`, and the per-callback sporadic
+    # accounting was gated "until a board-side monotonic-microsecond accessor
+    # lands" — it landed, so target builds get the accounting too. Also
+    # `measure_us` stops asking `cfg!(feature = "std")` and asks whether a
+    # clock exists, which is the question it always meant.
+    "nros-node": {"cfg": 17, "path": 22},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

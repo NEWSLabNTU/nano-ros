@@ -119,7 +119,6 @@ impl<'s> Executor<'s> {
             // seams), but `InvalidConfig` at least says "your configuration is
             // unresolvable", and the std-gated line below names WHICH outcome.
             other => {
-                #[cfg(feature = "std")]
                 {
                     let why: &str = match other {
                         nros_rmw_cffi::BackendResolution::NoBackend => {
@@ -179,7 +178,6 @@ impl<'s> Executor<'s> {
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
         // + alive for `'s`.
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
-        #[cfg(not(feature = "std"))]
         {
             // `config.clock_us` overrides the constructor's platform default
             // (issue: assigning `None` here clobbered it and re-enabled the
@@ -391,7 +389,6 @@ impl<'s> Executor<'s> {
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         // SAFETY: forwarded from this fn's contract.
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
-        #[cfg(not(feature = "std"))]
         {
             // `config.clock_us` overrides the constructor's platform default
             // (issue: assigning `None` here clobbered it and re-enabled the
@@ -874,7 +871,7 @@ impl Drop for WakeSignalFd {
 ///   `tx_semaphore_put`, `k_condvar_signal`.
 ///
 /// `ctx` semantics identical to [`nros_rmw_runtime_wake_cb`].
-#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 #[allow(dead_code)] // Public exposure pending B.7.c signalfd worker.
 pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core::ffi::c_void) {
     // Today: alias regular wake_cb. POSIX signal-handler safety
@@ -4851,7 +4848,7 @@ impl<'s> Executor<'s> {
             let mut guard_handle = GuardConditionHandle::new(flag_ptr);
             // Phase 124.B.5 — wire the wake callback so trigger()
             // also signals the executor's wake_cv.
-            #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             {
                 let ctx = self.wake_ctx_ptr();
                 guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
@@ -5589,12 +5586,15 @@ impl<'s> Executor<'s> {
         // against every Sporadic SC regardless of which entries
         // actually fired — accurate per-callback measurement is the
         // shape the design doc's per-callback runtime acceptance
-        // calls out. The closure is `feature = "std"`-gated because
-        // it needs a `core::time::Instant`-equivalent monotonic
-        // clock; the no_std fallback continues to use the polled
-        // `SporadicState` path (cycle delta_us) until a board-side
-        // monotonic-microsecond accessor lands.
-        #[cfg(feature = "std")]
+        // calls out.
+        //
+        // phase-359 W10 — this was `feature = "std"`-gated, because it "needs a
+        // `core::time::Instant`-equivalent monotonic clock ... until a
+        // board-side monotonic-microsecond accessor lands". That accessor
+        // landed: `now_us()` reads the platform monotonic counter on every
+        // flavour. So per-callback sporadic accounting is no longer something
+        // only a hosted build gets, and the no_std fallback to polled
+        // `SporadicState` cycle deltas is no longer the only option on target.
         let consume_dispatch_runtime_us =
             |desc_idx: usize,
              elapsed_us: u32,
@@ -5640,8 +5640,10 @@ impl<'s> Executor<'s> {
         // W3b.5 — post-dispatch contract checks. `lat_active` gates the
         // per-dispatch publish-count snapshot (attribution of dispatch
         // elapsed time to monitored publishers whose counter advanced);
-        // `dl_active` gates elapsed measurement for deadline actions on
-        // no_std (std measures anyway for the sporadic path).
+        // `dl_active` gates elapsed measurement for deadline actions. The third
+        // term used to be `cfg!(feature = "std")` — "std measures anyway for
+        // the sporadic path" — which made a COMPILE-TIME flavour stand in for
+        // "is there a clock". It is now the runtime question it always was.
         let mon_table = self.monitor_table;
         let lat_active = mon_table.iter().any(|m| m.max_latency_ms > 0);
         let dl_active = self.sched_contexts.iter().flatten().any(|sc| {
@@ -5657,7 +5659,7 @@ impl<'s> Executor<'s> {
         // measures unconditionally because the sporadic runtime accounting
         // below (itself std-only) consumes the result, which is exactly what
         // the comment above described and what the four-arm sites encoded.
-        let measure_us = lat_active || dl_active || cfg!(feature = "std");
+        let measure_us = lat_active || dl_active || mon_clock.is_some();
         // phase-359 W4 — ONE hoisted µs reader for the per-dispatch latency
         // measurement below. Hoisted because `now_us()` takes `&mut self` and
         // the dispatch loop already holds borrows; the std arm copies the epoch
@@ -5698,7 +5700,6 @@ impl<'s> Executor<'s> {
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
-                    #[cfg(feature = "std")]
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,
@@ -5738,7 +5739,6 @@ impl<'s> Executor<'s> {
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
-                    #[cfg(feature = "std")]
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,
