@@ -103,6 +103,76 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0661 — `--self-test`: the two era verdicts must match their own note.
+#
+# The failure this guards is not a wrong COUNT but wrong ADVICE. When the
+# started_at window says nothing about the budgeted crate, the gate widens to
+# the whole tree and says so — and used to then announce "accumulation is ruled
+# out — do NOT delete the tree", because the flag `era_verdict()` reads was
+# initialised after that widening. A reader who believes it goes looking for a
+# real regression in an accumulated tree, which is exactly how issue 0661 spent
+# its length blaming two ordinary host build-dependency artifacts.
+#
+# Both directions are checked: a filtered reading must still say "ruled out"
+# (else the fix has made every reading unfiltered and the gate stops
+# distinguishing).
+if [ "${1:-}" = "--self-test" ]; then
+    _st_tmp="$(mktemp -d)"
+    trap 'rm -rf "$_st_tmp"' EXIT
+    _st_deps="$_st_tmp/tree/cargo/root_a/x86_64-unknown-linux-gnu/profile/deps"
+    mkdir -p "$_st_deps"
+    # Five identities of the budget crate: over any sane budget, so the gate
+    # fails and prints a verdict.
+    for h in 1111111111111111 2222222222222222 3333333333333333 \
+             4444444444444444 5555555555555555; do
+        : > "$_st_deps/libnros_core-$h.rlib"
+    done
+    : > "$_st_deps/libother-9999999999999999.rlib"
+    _st_fails=0
+
+    # (a) window EXCLUDES the crate -> unfiltered -> "rebuild and re-read".
+    _st_stamp_a="$_st_tmp/stamp_a"
+    touch -d '2000-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
+    printf 'started_at=2030-01-01T00:00:00Z\n' > "$_st_stamp_a"
+    # `other` inside the window keeps `rlibs` non-empty, which is what makes
+    # this the EARLY widening rather than the stampless path.
+    touch -d '2035-01-01 00:00:00' "$_st_deps/libother-9999999999999999.rlib"
+    _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_a" \
+        bash "$0" 2>&1 || true)"
+    if printf '%s' "$_st_out" | grep -q 'accumulation is ruled out'; then
+        echo "  FAIL (a): an UNFILTERED reading claimed accumulation was ruled out" >&2
+        _st_fails=$((_st_fails + 1))
+    elif printf '%s' "$_st_out" | grep -q 'UNFILTERED'; then
+        echo "  ok   (a) a widened reading says so and asks for a rebuild"
+    else
+        echo "  FAIL (a): no era verdict printed at all" >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
+    # (b) window INCLUDES the crate -> filtered -> "do not delete the tree".
+    # Dates are far apart on purpose: a stamp EQUAL to an mtime sits on the
+    # comparison's boundary, and which side it lands on is not what this test
+    # is about.
+    _st_stamp_b="$_st_tmp/stamp_b"
+    touch -d '2020-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
+    printf 'started_at=2010-01-01T00:00:00Z\n' > "$_st_stamp_b"
+    _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_b" \
+        bash "$0" 2>&1 || true)"
+    if printf '%s' "$_st_out" | grep -q 'accumulation is ruled out'; then
+        echo "  ok   (b) a filtered reading still keeps the evidence"
+    else
+        echo "  FAIL (b): a filtered reading lost its 'do not delete' advice" >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
+    if [ "$_st_fails" -ne 0 ]; then
+        echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
+        exit 1
+    fi
+    echo "check-artifact-identity-budget --self-test: 2 case(s) OK"
+    exit 0
+fi
+
 TREE="${NROS_IDENTITY_BUDGET_TREE:-examples/workspaces/mixed/build-workspace-fixtures}"
 
 # --- the budget -------------------------------------------------------------
@@ -297,6 +367,22 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
         # the named-budget question needs the wider set (see the note there).
         _rlibs_era="$rlibs"
         rlibs="$_all"
+        # issue 0661 — this reading is UNFILTERED, and the verdict has to know.
+        #
+        # `era_verdict()` picks its advice from `_era_filtered`. That flag was
+        # initialised further down, AFTER this widening, and the later
+        # 0647-aware widening only clears it when the crate is still missing —
+        # which it is not, because this branch already widened. So a count that
+        # this very note calls inflatable was announced as "accumulation is
+        # ruled out — do NOT delete the tree".
+        #
+        # That is not a cosmetic mismatch: it is the advice that sent issue
+        # 0661 hunting a cargo invocation that had skipped `--target`, when the
+        # two no-`<triple>` artifacts it blamed are ordinary HOST
+        # build-dependency output (cargo puts build-script deps in
+        # `<dir>/<profile>/` precisely BECAUSE `--target` was passed) and the
+        # real reading was two generations of target artifacts in one tree.
+        _era_filtered=0
         IDENTITY_ERA_NOTE="  $BUDGET_CRATE was NOT rebuilt since started_at=$_started (an incremental
   build with nothing to do for it), so this counts ALL $_n_all rlib(s) in the
   tree — an accumulated tree can inflate it (issue 0499)."
@@ -467,7 +553,8 @@ identity_counts="$(printf '%s\n' "$triples" | count_identities)"
 # only count MORE, never fewer, so it introduces no false green — an over-budget
 # crate is still reported, with the caveat and the rebuild remedy that a
 # stampless tree already gets.
-_era_filtered=1
+# issue 0661 — do NOT clobber a 0 set by the earlier widening above.
+_era_filtered="${_era_filtered:-1}"
 if [ -n "${_started:-}" ] && [ -n "$_all" ] \
     && ! printf '%s\n' "$identity_counts" | awk -v c="$BUDGET_CRATE" '$2 == c {found=1} END {exit !found}'; then
     _all_triples="$(printf '%s\n' "$_all" \

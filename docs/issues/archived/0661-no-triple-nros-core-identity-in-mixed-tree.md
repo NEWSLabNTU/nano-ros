@@ -1,8 +1,9 @@
 ---
 id: 661
-title: "Something wrote a NO-`--target` `nros_core` compilation into the mixed
-  workspace tree, and `check-artifact-identity-budget` has been red since"
-status: open
+title: "`check-artifact-identity-budget` printed an unfiltered count and \"accumulation
+  is ruled out\" in the same breath; the no-`--target` `nros_core` it was opened on is
+  cargo's ordinary host build-dependency layout"
+status: resolved
 type: bug
 area: build
 related: [issue-0616, issue-0499, issue-0647, phase-340]
@@ -140,3 +141,94 @@ evidence alone.
 compilations, the budget of 4 counts two things it should probably separate —
 host and target identities of the same crate — and the R3 axis the gate already
 prints (`identities 154/54 (host/target)`) suggests it can tell them apart.
+
+## Resolution 2026-08-18 — the title's premise is wrong; the real defect was the gate's VERDICT
+
+Three things, in the order they were established.
+
+### 1. The route is `nros-macros`, and it is legitimate
+
+The 2026-08-17 measurement above left open "why is `nros_core` needed host-side
+at all", and answered it from `nros-macros`'s manifest — which it read
+incompletely. `nros-macros` is a proc-macro crate, so everything it links is
+host-side by construction, and it declares:
+
+```toml
+nros-orchestration-ir = { workspace = true }   # packages/core/nros-macros/Cargo.toml:47
+```
+
+`nros-orchestration-ir` deps `nros-rmw`, which deps `nros-core`. That is the
+whole route:
+
+```
+nros-macros (proc-macro, host)
+  → nros-orchestration-ir → nros-rmw → nros-core
+```
+
+Corroborated by what else is in those directories — `cbindgen`, `cc`,
+`autocfg`, `pkg_config`, `libnros_macros.so` — a build-dependency and
+proc-macro set, not a target one.
+
+So a no-`<triple>` `nros_core` rlib is not evidence of a missing `--target`.
+The opposite: cargo only splits host artifacts into `<dir>/<profile>/` **because**
+`--target` was passed. Phase-340 W3's rule and `check-cargo-target-spelling` are
+intact, and there is no rogue writer to find.
+
+### 2. What the red tree was actually saying
+
+Today's tree, freshly built:
+
+```
+cargo/nano-ros_1147c/nros-relwithdebinfo/deps/…                       (host)
+cargo/nano-ros_1147c/x86_64-unknown-linux-gnu/nros-relwithdebinfo/…   (target)
+cargo/nros_ws_runtime_f22c6/nros-relwithdebinfo/deps/…                (host)
+cargo/nros_ws_runtime_f22c6/x86_64-unknown-linux-gnu/…                (target)
+```
+
+Two roots × {host, target} = 4, which is the budget, and the gate is green
+(`nros_core 4/4; worst crate 5/5; counted 265 of 265`).
+
+The red tree had the same 2 host plus **4** target. The anomaly was an extra
+pair of TARGET identities — two generations of the same build — i.e. exactly
+the tree accumulation the gate's own remedy text describes. The two no-triple
+paths the issue was opened on were the only ones that looked wrong, and they
+were the two that were fine.
+
+### 3. The defect worth fixing: the gate said both things at once
+
+Why the accumulation reading was not reached: `check-artifact-identity-budget`
+has two widening paths, and only the later one maintained the flag that
+`era_verdict()` reads.
+
+* The early branch (no rlib of the budgeted crate falls inside the `started_at`
+  window) sets `rlibs="$_all"` and an `IDENTITY_ERA_NOTE` saying the count
+  "counts ALL … an accumulated tree can inflate it".
+* `_era_filtered` was initialised to `1` further down, after that branch, and
+  the later 0647-aware widening's guard does not re-fire once the crate is
+  present.
+
+So a widened run printed its own note and then `era_verdict()`'s "accumulation
+is ruled out — Do NOT delete the tree". A reader who believes the second
+sentence goes looking for a live writer in a tree whose history has not been
+excluded. That is this issue.
+
+Fix: the early branch sets `_era_filtered=0`, and the later initialisation is
+`_era_filtered="${_era_filtered:-1}"` so it cannot overwrite it. A widened run
+now ends with "the count above is UNFILTERED and MAY include earlier builds.
+Rebuild … and re-read before treating it as a regression."
+
+Guarded by `bash scripts/check-artifact-identity-budget.sh --self-test`, which
+drives both verdicts over a synthetic tree via `NROS_IDENTITY_BUDGET_TREE`:
+a widened reading must NOT claim accumulation is ruled out, and a filtered one
+must still keep the "do not delete the tree" advice. Reproduced the original
+contradiction before the fix with a crafted stamp sitting between the crate's
+mtime and the newest rlib's.
+
+### Left alone deliberately
+
+The 2026-08-17 note's closing suggestion — that the budget of 4 should separate
+host from target identities — is NOT taken. The R3 axis already prints the split
+(`identities 154/54 (host/target)`), which is what makes a reading like this
+diagnosable; splitting the BUDGET would mean two ceilings to maintain for a
+crate whose host side is one proc-macro chain that does not vary. If the host
+side ever starts moving on its own, that is the moment for it.

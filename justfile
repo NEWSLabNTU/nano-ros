@@ -4030,6 +4030,13 @@ check-path-env-fingerprints:
 check-archive-lang-items:
     @bash scripts/check-archive-lang-items.sh
 
+# `--self-test` (issue 0661) drives both era verdicts over a synthetic tree,
+# because the failure mode here is a wrong VERDICT rather than a wrong count:
+# the early widening branch used to print "counts ALL … an accumulated tree can
+# inflate it" and then, from an uninitialised flag, "accumulation is ruled out".
+# A reader who believed the second one went looking for a regression that was
+# not there, which is how 0661 spent its length on two ordinary host
+# build-dependency artifacts.
 [private]
 check-artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh

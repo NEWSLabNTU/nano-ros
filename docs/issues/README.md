@@ -93,14 +93,16 @@ See `archived/0662-*`.
 
 Recently resolved (2026-08-17): **#0659** — `PR_SET_PDEATHSIG` covers ONE level, so a SIGKILLed test left its ROS peer's grandchildren holding DDS ports (59 orphans here, oldest 9.4 days). Options (1) and (2) were implemented, measured and REVERTED — SIGKILL cannot be handled, so no in-tree teardown can run. Fixed from OUTSIDE: a pgid ledger swept at `test-all` head, with the leader's start time as a floor so a recycled pgid is skipped. The 59 were reaped by pgid; seven `tf2_ros` orphans deliberately left. See `archived/0659-*`. (2026-08-17)
 
-**#0661** (build, open 2026-08-17) — two `nros_core` compilations under
-`examples/workspaces/mixed/build-workspace-fixtures` have NO `<triple>` path component, i.e. the cargo
-invocation that wrote them passed no `--target` — the axis phase-340 W3 exists to prevent, and
-`check-artifact-identity-budget` has been red since. Not residue: that tree was deleted and rebuilt green
-(4/4) on 2026-08-16, and both files carry mtime 2026-08-17 03:03. `check-cargo-target-spelling` passes, so
-the writer is not a site that gate reads, and WHICH writer is not established — several sessions were
-building that morning. Do not clear the tree; those two rlibs are the only evidence there is. Sibling axis
-of #0616. See `0661-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0661** — opened on two `nros_core` rlibs with no `<triple>` path
+component, read as a cargo invocation that forgot `--target`. It is the opposite: cargo splits host
+artifacts into `<dir>/<profile>/` precisely BECAUSE `--target` was passed, and those two are the host side
+of the `nros-macros` proc-macro chain (`nros-macros -> nros-orchestration-ir -> nros-rmw -> nros-core`),
+alongside `cbindgen`/`cc`/`autocfg`. phase-340 W3 and `check-cargo-target-spelling` were intact throughout;
+there was no rogue writer. The red tree held 2 host + **4** target — an extra pair of TARGET identities,
+i.e. plain accumulation. What stopped anyone reading it that way is the real defect: the gate's early
+widening branch printed "counts ALL … an accumulated tree can inflate it" and then, from a flag initialised
+only further down, "accumulation is ruled out — Do NOT delete the tree". Both verdicts now covered by
+`check-artifact-identity-budget.sh --self-test`. See `archived/0661-*`. (2026-08-18)
 
 Recently resolved (2026-08-17): **#0657** — nine defects, one shape: a tool, path or library NAMED as a
 literal instead of asked for. `[board.qemu-riscv64-threadx]` provisions xPack `riscv-none-elf-gcc`; twenty
