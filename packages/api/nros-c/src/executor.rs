@@ -311,6 +311,14 @@ pub unsafe extern "C" fn nros_executor_init(
         let support_locator =
             core::str::from_utf8_unchecked(&support_ref.locator[..support_ref.locator_len]);
         rust_exec.set_primary_identity(&name, support_locator);
+        // Issue 0656 — the domain, beside the identity, for the same reason.
+        // `from_session_ptr_in` takes a session and no config, so the executor
+        // floors its domain to 0; every entity the C binding declares through
+        // an executor path then lands on `0/…` however `ROS_DOMAIN_ID` was set.
+        // MEASURED, not reasoned: with the executor fix alone, a rebuilt
+        // `c_action_server` under `ROS_DOMAIN_ID=42` still declared
+        // `0/fibonacci/_action/…` on a live `rmw_zenohd`.
+        rust_exec.set_domain_id(u32::from(support_ref.domain_id));
     }
     ptr::write(executor._opaque.as_mut_ptr() as *mut CExecutor, rust_exec);
 

@@ -131,7 +131,41 @@ defect, which is SHIPPED code unable to express the session's domain. `tests/`,
 Verified by reintroducing the historical literal: the gate names
 `action.rs:208`.
 
-### NOT verified: the wire
+### VERIFIED ON THE WIRE 2026-08-18 — and the first fix was INCOMPLETE
+
+Once `ros-humble-rmw-zenoh-cpp` was installed the repro in this issue became
+runnable, and running it found that the executor fix alone did not work:
+
+| `c_action_server` build | declares under `ROS_DOMAIN_ID=42` |
+| --- | --- |
+| pre-fix (Aug 16) | `0/fibonacci/_action/…` |
+| **executor fix only** | **`0/…` — still wrong** |
+| executor + C binding | `42/…` |
+
+The middle row is the finding. `from_session_ptr_in` takes a session and no
+config, so the C binding's executor floored its domain to 0 and the raw-path fix
+faithfully used that 0. This issue's own text called that "a real remaining gap,
+stated rather than papered over" — and it was still shipped as fixed, because a
+green compile and a green gate looked like enough.
+
+The missing half is one line beside `set_primary_identity`, where the value was
+already in scope:
+
+```rust
+rust_exec.set_domain_id(u32::from(support_ref.domain_id));
+```
+
+All three queryables now declare on `42/`, on a live `rmw_zenohd`:
+
+```
+queryable 42/fibonacci/_action/send_goal/…
+queryable 42/fibonacci/_action/cancel_goal/…
+queryable 42/fibonacci/_action/get_result/…
+```
+
+### Superseded: what could not be verified before
+
+
 
 The repro in this issue needs `zenohd` plus the built C example, and this host
 has no `rmw_zenoh_cpp` — every action test here reports
