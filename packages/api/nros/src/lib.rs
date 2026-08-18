@@ -972,8 +972,6 @@ pub use nros_params::{
 };
 // Phase 172.H — runtime parameter-override persistence backends.
 /// Hosted file-backed parameter store (the only built-in backend today).
-#[cfg(feature = "std")]
-pub use nros_params::FileParamStore;
 pub use nros_params::{NullParamStore, ParamStore, ParamStoreError};
 
 /// Prelude module for convenient imports

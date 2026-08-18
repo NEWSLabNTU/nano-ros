@@ -45,8 +45,6 @@ pub mod typed;
 pub mod types;
 
 // Re-export main types
-#[cfg(feature = "std")]
-pub use persist::FileParamStore;
 pub use persist::{NullParamStore, ParamStore, ParamStoreError};
 pub use server::{LegacyParameterBuilder, ParameterServer};
 pub use typed::{

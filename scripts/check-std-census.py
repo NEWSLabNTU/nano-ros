@@ -116,7 +116,10 @@ BASELINE = {
     # diagnostic moved from `std::eprintln!` to `nros_log`. Set from the TREE,
     # which is what the note above prescribes — three separate merges here have
     # now produced a number that is neither side's nor their arithmetic.
-    "nros": {"cfg": 11, "path": 15},
+    #
+    # Then 12 -> 10: the `env` capability took `init` (above), and the
+    # `FileParamStore` re-export went with the type issue 0080 retired.
+    "nros": {"cfg": 10, "path": 15},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -257,7 +260,17 @@ BASELINE = {
     # asked for `std` to build a `Vec` and a `String`. What remains is real:
     # `extern crate std`, `FileParamStore` (a FILESYSTEM store) with its
     # re-export, and its tests.
-    "nros-params": {"cfg": 5, "path": 1},
+    #
+    # phase-359 W10: 5 -> 1 cfg, 1 -> 0 path. `FileParamStore` is deleted.
+    # Issue 0080 ruled on-device parameter persistence a NON-GOAL in July and
+    # listed this type in its own follow-up cleanup; it had no constructor call
+    # anywhere in the tree, so it was a filesystem backend for a feature nobody
+    # could reach. Its five tests went with it (46 -> 41). The SEAM stays —
+    # `ParamStore`/`NullParamStore` are what the executor holds.
+    #
+    # The 1 is `extern crate std`, and this crate now has NO `std::` path at
+    # all: the feature survives only to forward to dependencies.
+    "nros-params": {"cfg": 1, "path": 0},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
 }
