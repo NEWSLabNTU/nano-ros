@@ -402,6 +402,47 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
         let preempt_real = DimRealization::NotRequested;
         let placement_real = DimRealization::NotRequested;
 
+        // Issue 0259 — the first CONSUMER of `B_i`: a necessary-condition
+        // schedulability check.
+        //
+        // If a node's own worst callback plus the longest sibling it can wait
+        // for already exceeds its deadline, no priority assignment, core pin or
+        // preemption threshold can rescue it — interference from other nodes
+        // only adds. So this reports a fact about the declaration rather than
+        // about the schedule, which is why it is sound without a taskset model.
+        //
+        // Deliberately NOT full response-time analysis. RTA needs
+        // `Σ over higher-priority tasks ceil(R/T)*C`, and with most callbacks
+        // carrying no WCET that sum would be missing terms — an optimistic
+        // number presented as an upper bound, which is the exact shape of
+        // issue 0259. A necessary condition can only ever MISS an infeasible
+        // node; it cannot invent one.
+        //
+        // `B` unknown is treated as 0 HERE and only here: it biases toward
+        // silence, so the check stays free of false alarms. That is the safe
+        // direction for something that stops a build; the unsafe direction is
+        // the one `blocking_us: None` refuses everywhere else.
+        if let (Some(c_us), Some(d_us)) = (budget_us, deadline_us) {
+            let b_us = blocking_us.unwrap_or(0);
+            if c_us.saturating_add(b_us) > d_us {
+                let b_shown = match blocking_us {
+                    Some(b) => format!("{b}us"),
+                    None => "unknown (counted as 0)".to_string(),
+                };
+                degradations.push(Degradation {
+                    node: (*name).to_string(),
+                    dim: "feasibility",
+                    reason: format!(
+                        "execution + blocking exceeds the deadline before any \
+                         interference is considered: C={c_us}us + B={b_shown} > \
+                         D={d_us}us. No priority, core pin or preemption \
+                         threshold can recover this; the declaration itself is \
+                         infeasible (issue 0259)."
+                    ),
+                });
+            }
+        }
+
         nodes.push(RealizedNode {
             name: (*name).to_string(),
             priority,
@@ -791,5 +832,110 @@ mod tests {
         let n = realize_one(node_with_execs("/n", &[Some(3.0), Some(9.0)]));
         assert_eq!(n.preempt_real, DimRealization::NotRequested);
         assert_eq!(n.preempt_threshold, None);
+    }
+
+    // ---- issue 0259: B_i's first consumer, the feasibility check -----------
+
+    fn realize_one_plan(node: MapperNode) -> RtosPlan {
+        let input = MapperInput {
+            nodes: vec![node],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        realize_rtos(&ranked, &input, &caps(false, false, false))
+    }
+
+    fn node_with(name: &str, deadline_ms: f64, execs: &[f64]) -> MapperNode {
+        MapperNode {
+            name: name.to_string(),
+            scope: "/".to_string(),
+            criticality: Some(Criticality::High),
+            paths: execs
+                .iter()
+                .enumerate()
+                .map(|(i, e)| timer_path(&format!("p{i}"), 50.0, Some(deadline_ms), Some(*e)))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    /// The blocking term CHANGES the verdict: 6ms of work fits a 10ms deadline,
+    /// but 6ms plus a 5ms sibling does not. Without `B_i` this node would look
+    /// schedulable — which is what issue 0259 is about.
+    #[test]
+    fn blocking_turns_a_fitting_node_into_an_infeasible_one() {
+        let plan = realize_one_plan(node_with("/n", 10.0, &[6.0, 5.0]));
+        let d = plan
+            .degradations
+            .iter()
+            .find(|d| d.dim == "feasibility")
+            .expect("C+B exceeds D, so the check must fire");
+        assert_eq!(d.node, "/n");
+        assert!(d.reason.contains("C=6000us"), "{}", d.reason);
+        assert!(d.reason.contains("B=5000us"), "{}", d.reason);
+        assert!(d.reason.contains("D=10000us"), "{}", d.reason);
+    }
+
+    /// The same work under a deadline that accommodates it stays silent.
+    #[test]
+    fn work_that_fits_within_the_deadline_is_not_reported() {
+        let plan = realize_one_plan(node_with("/n", 20.0, &[6.0, 5.0]));
+        assert!(
+            !plan.degradations.iter().any(|d| d.dim == "feasibility"),
+            "11ms of work fits a 20ms deadline: {:?}",
+            plan.degradations
+        );
+    }
+
+    /// A node whose own callback already exceeds the deadline is infeasible
+    /// with no sibling at all — and the reason says the blocking term was
+    /// unknown rather than implying it was measured as zero.
+    #[test]
+    fn a_single_overrunning_callback_reports_unknown_blocking() {
+        let plan = realize_one_plan(node_with("/n", 4.0, &[9.0]));
+        let d = plan
+            .degradations
+            .iter()
+            .find(|d| d.dim == "feasibility")
+            .expect("C alone exceeds D");
+        assert!(
+            d.reason.contains("unknown (counted as 0)"),
+            "the report must not present an absent B as a measured 0: {}",
+            d.reason
+        );
+    }
+
+    /// No WCET means no verdict. Silence here is correct: the check reports on
+    /// declarations, and an undeclared execution time is not a claim that the
+    /// node fits.
+    #[test]
+    fn a_node_without_wcets_gets_no_feasibility_verdict() {
+        let n = MapperNode {
+            name: "/n".to_string(),
+            scope: "/".to_string(),
+            criticality: Some(Criticality::High),
+            paths: vec![timer_path("p", 50.0, Some(1.0), None)],
+            ..Default::default()
+        };
+        let plan = realize_one_plan(n);
+        assert!(
+            !plan.degradations.iter().any(|d| d.dim == "feasibility"),
+            "an undeclared WCET must not produce a verdict either way"
+        );
+    }
+
+    /// No deadline means no verdict — there is nothing to exceed.
+    #[test]
+    fn a_node_without_a_deadline_gets_no_feasibility_verdict() {
+        let n = MapperNode {
+            name: "/n".to_string(),
+            scope: "/".to_string(),
+            criticality: Some(Criticality::High),
+            paths: vec![timer_path("p", 50.0, None, Some(900.0))],
+            ..Default::default()
+        };
+        let plan = realize_one_plan(n);
+        assert!(!plan.degradations.iter().any(|d| d.dim == "feasibility"));
     }
 }

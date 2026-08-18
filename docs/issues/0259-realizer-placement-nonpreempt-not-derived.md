@@ -166,12 +166,38 @@ model change: per-callback priorities within a tier, carried through
 them. That is the prerequisite, and it should be scoped as its own work item
 rather than attempted inside the realizer.
 
+### `B_i` has a consumer: a necessary-condition feasibility check
+
+Added the same day. If a node's own worst callback plus the longest sibling it
+can wait for already exceeds its deadline, no priority assignment, core pin or
+preemption threshold can rescue it — interference from other nodes only adds. So
+`C_i + B_i > D_i` is reported as a `Degradation { dim: "feasibility" }`, which
+both existing consumers (codegen-system and the `nros::main!` macro) already
+print, so it surfaces with no new plumbing and cannot be silently dropped.
+
+The reason string carries the inputs — `C=6000us + B=5000us > D=10000us` — so
+the verdict is auditable rather than an assertion.
+
+**Deliberately not full response-time analysis.** RTA needs
+`Σ over higher-priority tasks ceil(R/T)*C`, and with most callbacks carrying no
+WCET that sum would be missing terms: an optimistic number presented as an upper
+bound, which is precisely this issue's failure. A necessary condition can only
+MISS an infeasible node; it cannot invent one.
+
+Two silences are correct and tested: no WCET means no verdict (an undeclared
+execution time is not a claim that the node fits), and no deadline means nothing
+to exceed. Where `B_i` itself is unknown it is counted as 0 for this check ONLY
+— that biases toward silence, the safe direction for something that stops a
+build — and the report says `unknown (counted as 0)` rather than presenting an
+absent term as a measured zero.
+
 ### Still open
 
 `placement` is untouched and still needs the interference/utilisation model
-finding 2 describes. `B_i` is derived but nothing consumes it yet — wiring it
-into a feasibility check is the next step, and is where the number stops being
-inert.
+finding 2 describes. The check is a NECESSARY condition, not a sufficient one:
+it cannot say a system IS schedulable, only that a declaration is not. Saying
+the former needs the taskset model — and WCETs on every callback, which needs
+hardware.
 
 Caveat on evidence: on a host with no hardware lane every WCET feeding this is
 declared rather than measured (RFC-0078's `SYNTHETIC` caveat), so the derivation

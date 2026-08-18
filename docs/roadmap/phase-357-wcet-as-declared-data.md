@@ -31,9 +31,12 @@ Three orchestration issues that are one dependency chain, not three tasks.
   deliberately not derived: over a node's own callbacks the ceiling equals the
   node's priority by construction, so it would be a tautology — what
   `non_preempt` actually needs is per-callback priorities within a tier, a
-  MODEL change scoped in 0259. `placement` untouched. Acceptance NOT met: `B_i`
-  is derived but nothing consumes it yet, and `nros explain` shows no
-  derivation inputs.
+  MODEL change scoped in 0259. `placement` untouched. `B_i` now has a CONSUMER: a
+  necessary-condition feasibility check (`C_i + B_i > D_i`) reported as a
+  `Degradation { dim: "feasibility" }` carrying its inputs, on the channel
+  codegen and the macro already print. Acceptance still NOT fully met —
+  `nros explain` reads the emitted plan, not the realizer's warnings, so the
+  derivation's inputs surface on stderr at bake time rather than in `explain`.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.
