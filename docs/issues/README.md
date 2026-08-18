@@ -471,6 +471,17 @@ hand-picked list that would drift from it. The property to preserve is that it s
 expensive edge in front of every fixture build gets deleted. Gate, not warning. See `archived/0677-*`.
 (2026-08-18)
 
+Retired (2026-08-18): **#0679** — a DUPLICATE of #0678, filed independently for the same
+`__emutls_v.errno` link failure. #0678 is canonical and has the correct analysis (emulated-TLS-only
+compiler vs a natively-TLS picolibc). #0679 is kept only for what it adds to the "do not retry" list:
+defining `__thread int errno;` in `startup.c` DOES link all four Cyclone rows (verified by artifacts) and
+is UNSOUND — `nm --format=sysv` shows picolibc defines `errno` in `.tbss` NATIVE TLS with zero emutls
+symbols, so an emulated-TLS definition is a DIFFERENT storage: libc sets its `errno`, the app reads its
+own, silently. Also records the measurement error that made an earlier attempt look refuted —
+`rm -rf a/*/x b/*/x` under zsh ABORTS on the unmatched glob and deletes NOTHING, so every "clean rebuild"
+reused stale caches; the `PARENT_SCOPE`/two-C-libraries explanation built on that is RETRACTED.
+See `archived/0679-*`. (2026-08-18)
+
 **#0678** (build/boards, open 2026-08-18) — the `threadx-riscv64` Cyclone rows cannot link
 `__emutls_v.errno`. NOT a link-order problem: the provisioned xPack `riscv-none-elf-gcc` has no native TLS
 for this target (`-fno-emulated-tls` is not even a recognised option) and emits EMULATED TLS for picolibc's
