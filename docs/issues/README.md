@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#625** — a provisioned tool was found by SCANNING the shared SDK store
+(newest-first glob) instead of by reading the project's PIN, so resolution was inconsistent (three routes for
+one tool in one configure) and could not serve two projects at once: "newest in the store" is a global answer
+to a per-project question. Phase-365 replaced the scan with a CONSTRUCTED path — `nros sdk-path <tool>` joins
+the store root to the pinned version, cmake consumes it, and enumeration is banned by
+`check-sdk-store-not-enumerated`; #0500's ordering gate was RETIRED rather than left as a second
+implementation. Measured `lane=all`: 155 legacy resolutions -> 0, 97 on the pin, 73 stale caches self-healed.
+Closed as bookkeeping — the phase archived COMPLETE 2026-08-16 and this was left open; every claim re-verified
+2026-08-18. Residue, deliberately not held open here: `play_launch_parser` is still hand-joined because it
+installs UNVERSIONED and needs its installer moved first (phase-365 W3b). See `archived/0625-*`. (2026-08-18)
+
 **#0670** (testing/diagnostics, open 2026-08-18) — `contract_monitor_parity`'s violating case is red on main
 and reproduces SOLO. The diagsink emits ONE DIAG line in 32 s — the PUB's `rate-hierarchy-runtime` — and the
 SUB's `max-age-runtime` never arrives, though the sub is receiving the stale headers that should trip it. The
@@ -491,19 +502,6 @@ asked. Filed with three non-equivalent resolutions and deliberately NOT patched 
 ACTIVE phase. Fixed upstream the same day by the phase itself, `03ca659c8` *"`env` REQUIRES the standard
 library, it does not grant it"* (`env = []`), i.e. resolution 1. Verified here: `check-feature-contract` OK
 (216 crates, 6 clauses). Found by a tier-2 sweep. See `archived/0643-*`. (2026-08-16)
-
-**#625** (build/provisioning, open 2026-08-16) — a provisioned tool is found by SCANNING the shared SDK
-store (newest-first glob), not by reading the project's PIN, so (a) resolution is inconsistent — three routes
-for one tool in one configure, only the FetchContent fallback reads the index — and (b) it cannot serve two
-projects: "newest in the store" is a global answer to a per-project question, so a store provisioned by a
-newer checkout silently hands that version to an older one. Measured: one `lane=all` produced 155
-resolutions of Corrosion 0.5.1 against 28 of 0.6.1 in a tree pinning `0.6.1-nros1`, via an
-`add_subdirectory` route that never consults the prefix list (the list's own ordering is correct). Both
-halves of the fix already exist — the pin is per-project in `nros-sdk-index.toml`, the store is
-version-keyed `~/.nros/sdk/<tool>/<version>/` — what is missing is the join. Proposal: resolve the pin
-exactly, fail with the provisioning command on a miss, accept an already-loaded copy only if it EQUALS the
-pin, and delete the ordering heuristic (and #0500's gate that keeps its two implementations agreeing).
-General to every tool, so filed as a DESIGN change against RFC-0014. See `0625-*`.
 
 Recently resolved (2026-08-16): **#0622** — the legacy-Corrosion remedy named only the WORKSPACE trees, so following it verbatim reproduced the error. The fix had landed in the FATAL arm only, while the WARNING arm — the one readers actually reach, since fatal became opt-in — still said "remove its build dir". Both arms now print a MEASURED list of the caches naming a legacy prefix (and say so explicitly when there are none, since the 155-vs-28 split was an `add_subdirectory` bypass, not stale caches). See `archived/0622-*`. (2026-08-16)
 

@@ -1,7 +1,7 @@
 ---
 id: 625
 title: "A provisioned tool is found by SCANNING the shared store, not by reading the project's pin — so resolution is inconsistent and cannot serve two projects"
-status: open
+status: resolved
 type: design
 severity: high
 area: build, provisioning
@@ -161,3 +161,32 @@ The immediate breakage is contained (a warning, not a failure). This issue is
 filed as a DESIGN change because the fix touches how every provisioned tool is
 located, and RFC-0014 owns that surface. It should not be done piecemeal per
 tool — that is how three routes appeared for one tool.
+
+## Resolved 2026-08-18 (phase-365, all waves)
+
+Bookkeeping close: [phase-365](../roadmap/archived/phase-365-sdk-path-is-constructed-not-searched.md)
+was archived COMPLETE on 2026-08-16 with every wave reporting acceptance met,
+and this issue — which it owns — was left open.
+
+Verified today rather than taken from the phase doc:
+
+| claim | check |
+| --- | --- |
+| a tool path is CONSTRUCTED from the pin | `nros sdk-path corrosion` → `~/.nros/sdk/corrosion/0.6.1-nros1` |
+| cmake consumes the constructor, not a scan | `_nros_corrosion_store_dir()` in `cmake/NanoRosCorrosion.cmake` calls it |
+| the store is never enumerated | `check-sdk-store-not-enumerated` — OK |
+| #500's ordering gate is RETIRED, not silently broken | `check-cmake-corrosion-prefix` no longer exists; deleted by W3a (`24519cac8`), replaced by the above |
+
+The final `lane=all` measurement is in the phase doc: **155 → 0** legacy
+Corrosion resolutions, 97 on the pinned 0.6.1, 73 stale caches self-healed, 0
+legacy-topology warnings, all nine fixture families building.
+
+### One deliberate residue, not tracked here
+
+`play_launch_parser` in `just/workspace.just` is still hand-joined. It is
+installed UNVERSIONED (`<store>/play_launch_parser/`), so converting the reader
+alone would point it at a directory the installer never writes — the exact break
+W5 hit and reverted. It needs the installer moved first, which is its own change
+and belongs with whoever owns that tool. Recorded in phase-365 W3b; deliberately
+NOT held open here, because this issue is about the resolution MECHANISM and
+that mechanism is in place.
