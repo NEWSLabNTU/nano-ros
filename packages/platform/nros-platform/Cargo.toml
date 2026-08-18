@@ -18,7 +18,10 @@ categories = ["embedded", "no-std", "os"]
 # layer still defaulting to `std`; every sibling (`nros-platform-cffi`,
 # `-esp32-qemu`, `-stm32f4`, `nros-baremetal-common`) already had `default = []`.
 default = []
-std = []
+# phase-359 W10 — lists `alloc` because this crate now HAS one (it forwards the
+# ABI crate's task helper). ARCHITECTURE §2: `std` implies a heap, written once
+# here rather than at every use site.
+std = ["alloc"]
 
 # Platform backends (select one).
 #
@@ -136,6 +139,9 @@ global-allocator = []
 # is the unified C+Rust figure (RFC-0034 D7). No dependency: the counter is a
 # pair of `AtomicUsize`, and pulling `zpico-alloc` (an RMW-layer crate) down
 # into the platform layer would invert RFC-0001's layer map.
+# phase-359 W10 — forwards the ABI crate's task helper (`nros_platform_api::task`),
+# which `nros-cpp` reaches through this crate's `pub use nros_platform_api::*`.
+alloc = ["nros-platform-api/alloc"]
 alloc-stats = []
 
 # Phase 97.1.cs — opt-in `critical_section::Impl` registered against

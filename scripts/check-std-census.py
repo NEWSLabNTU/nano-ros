@@ -156,7 +156,14 @@ BASELINE = {
     # exposing that internal surface or writing a THIRD copy of the sequence
     # (`nros-node` and `nros-board-nuttx` have the other two). That is an API
     # decision, not a flavour cleanup.
-    "nros-cpp": {"cfg": 5, "path": 16},
+    #
+    # phase-359 W10: 5 -> 3 cfg, 16 -> 15 path. `nros_board_native_run_tiers`
+    # spawns one PLATFORM TASK per tier instead of one `std::thread`, so its
+    # gate is `env` (the locator/domain/spin-bound it reads) rather than the
+    # flavour. Two fields the API documented as ignored — `priority` ("advisory
+    # ... applied by nobody") and `stack_bytes` ("informational on native") —
+    # reach the kernel now, because the ABI attribute carries them.
+    "nros-cpp": {"cfg": 3, "path": 15},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

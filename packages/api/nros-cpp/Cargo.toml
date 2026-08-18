@@ -52,7 +52,7 @@ std = [
     # bridge ABI's std-only diagnostics compile out (issue 0436).
     "nros-bridge?/std",
 ]
-alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
+alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc", "nros-platform/alloc"]
 # phase-359 W10 — the process-environment CAPABILITY, named so this crate's own
 # `#[cfg]` can ask for it (the same reason `nros-c` gained one). `std` implies
 # it, so a C++ image linking the std flavour keeps exactly what it had: the

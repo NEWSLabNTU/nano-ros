@@ -13,5 +13,11 @@ readme = "README.md"
 keywords = ["embedded", "no-std", "rtos", "traits"]
 categories = ["embedded", "no-std", "os"]
 
+[features]
+# phase-359 W10 — `task::PlatformTask` allocates the port's task storage, whose
+# size it ASKS for (`nros_platform_task_storage_size`). Off by default so this
+# crate stays what its description says: capability traits with no deps.
+alloc = []
+
 [lints]
 workspace = true

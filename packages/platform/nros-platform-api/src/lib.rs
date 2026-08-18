@@ -53,6 +53,17 @@
 //! shims switching to `<P as PlatformX>::foo()`. Until that work is
 //! complete the traits here are a target specification.
 
+// phase-359 W10 — the ONE Rust-side spawn helper for the task ABI this crate
+// defines. It lived in `nros-node::executor::platform_task`, private, which
+// meant the second Rust caller (`nros-cpp`'s native tier runtime) could only
+// reach it by exposing a core crate's internals or by writing a third copy of
+// allocate-spawn-join — `nros-board-nuttx` already holds a second. A helper for
+// an ABI belongs with the ABI.
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(feature = "alloc")]
+pub mod task;
+
 use core::ffi::{c_int, c_void};
 
 pub mod boot_config;

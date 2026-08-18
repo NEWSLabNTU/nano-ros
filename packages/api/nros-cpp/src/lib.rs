@@ -2452,7 +2452,10 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 /// `groups` must be NULL or point to `n_groups` valid null-terminated strings.
 /// `setup` must be a valid function pointer or NULL (NULL skips setup — only
 /// useful for tiers that register no nodes of their own).
-#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+// phase-359 W10 — `env`, not `std`. The tier runtime below spawns PLATFORM
+// TASKS now, not `std::thread`s; what it still needs from the host is the
+// environment it resolves its locator, domain and spin bound from.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[repr(C)]
 pub struct NativeTierSpecC {
     pub name: *const c_char,
@@ -2504,7 +2507,7 @@ pub struct NativeTierSpecC {
 /// `tiers` must be a valid pointer to `n_tiers` [`NativeTierSpecC`] entries,
 /// valid for the duration of the call. `session_name` is NULL or a valid
 /// null-terminated string.
-#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_tiers(
     session_name: *const c_char,
@@ -2585,23 +2588,25 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
         n_tiers
     );
 
-    // Shared shutdown flag — boot thread sets it; tier threads poll it.
+    // Shared shutdown flag — boot thread sets it; tier tasks poll it.
     let shutdown = Arc::new(AtomicBool::new(false));
 
-    // Wrapper to make *const/*mut Send across thread spawn.
-    struct SendUsize(usize);
-    unsafe impl Send for SendUsize {}
-
-    // Spawn one std::thread per non-boot tier.
-    let mut thread_handles: Vec<std::thread::JoinHandle<()>> = Vec::with_capacity(n_tiers - 1);
+    // phase-359 W10 — one PLATFORM TASK per non-boot tier, not one
+    // `std::thread`.
+    //
+    // Two fields this API documented as ignored now take effect, because the
+    // ABI's task attribute carries them and `std::thread` did not: `priority`
+    // (documented "advisory ... raw POSIX nice-level adjustment", applied by
+    // nobody) and `stack_bytes` ("informational on native — `std::thread`
+    // manages the stack"). A C++ author declaring a tier priority was writing a
+    // number the native runtime dropped on the floor.
+    //
+    // Application stays BEST-EFFORT: the POSIX port sets the policy after
+    // create and treats a refusal — the usual case on Linux without
+    // `CAP_SYS_NICE` — as success, so an unprivileged run behaves exactly as
+    // it did before.
+    let mut tier_tasks: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
     for tier in &tier_slice[1..] {
-        let shutdown_clone = Arc::clone(&shutdown);
-        let period_us = tier.spin_period_us;
-        let n_groups = tier.n_groups;
-        let groups_usize = SendUsize(tier.groups as usize);
-        let session_usize = SendUsize(session_handle);
-        let setup_fn = tier.setup;
-        let domain_id_copy: u32 = domain_id as u32;
         let tier_name = if tier.name.is_null() {
             String::new()
         } else {
@@ -2609,69 +2614,39 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 .to_string_lossy()
                 .into_owned()
         };
-
-        let tier_name_in_thread = tier_name.clone();
-        let handle = std::thread::Builder::new()
-            .name(std::format!("nros-tier-{tier_name}"))
-            .spawn(move || {
-                let tier_name = tier_name_in_thread;
-                // Open borrowed executor (shares the session — does NOT open
-                // a new RMW session and does NOT close it on drop).
-                let sh = session_usize.0 as *mut c_void;
-                let groups_ptr = groups_usize.0 as *const *const c_char;
-
-                let mut tier_storage = core::mem::MaybeUninit::<CppContext>::uninit();
-                let tptr = tier_storage.as_mut_ptr() as *mut c_void;
-                let rc = unsafe {
-                    nros_cpp_executor_open_over_session(sh, core::ptr::null(), domain_id_copy, tptr)
-                };
-                if rc != NROS_CPP_RET_OK {
-                    crate::cpp_diag!(
-                        "nros: tier '{tier_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
-                    );
-                    return;
-                }
-
-                // Gate to this tier's callback groups.
-                if !groups_ptr.is_null() && n_groups > 0 {
-                    unsafe { nros_cpp_executor_set_active_groups(tptr, groups_ptr, n_groups) };
-                }
-
-                // Run setup (creates + configures nodes for this tier).
-                if let Some(setup) = setup_fn {
-                    let setup_rc = unsafe { setup(tptr) };
-                    if setup_rc != 0 {
-                        crate::cpp_diag!(
-                            "nros: tier '{tier_name}' setup FAILED (rc={setup_rc}) — tier will not run"
-                        );
-                        // Drop borrowed executor (no session close).
-                        unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
-                        return;
-                    }
-                }
-
-                // Spin at the tier's period until the shutdown flag is set.
-                let period = core::time::Duration::from_micros(period_us.max(1_000));
-                while !shutdown_clone.load(Ordering::Relaxed) {
-                    let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
-                    if rc != NROS_CPP_RET_OK {
-                        crate::cpp_diag!(
-                            "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
-                        );
-                        break;
-                    }
-                    std::thread::sleep(period);
-                }
-
-                // Drop borrowed executor in place (does NOT close the shared session).
-                unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
-            })
-            .unwrap_or_else(|e| {
-                crate::cpp_diag!("nros: failed to spawn tier '{tier_name}': {e}");
-                // Return a dummy thread that immediately exits.
-                std::thread::spawn(|| {})
-            });
-        thread_handles.push(handle);
+        let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeTierCtx {
+            shutdown: Arc::clone(&shutdown),
+            period_us: tier.spin_period_us,
+            n_groups: tier.n_groups,
+            groups: tier.groups as usize,
+            session: session_handle,
+            setup: tier.setup,
+            domain_id: domain_id as u32,
+            name: tier_name.clone(),
+        }));
+        // The port copies what it keeps, but the pointer must be valid FOR the
+        // call, so the CString outlives it here.
+        let task_name = alloc::ffi::CString::new(std::format!("nros-tier-{tier_name}"))
+            .unwrap_or_else(|_| c"nros-tier".into());
+        // SAFETY: `ctx` stays live until the trampoline reclaims it — on the
+        // spawned task, after its loop exits.
+        let spawned = unsafe {
+            nros_platform::task::PlatformTask::spawn_with(
+                native_tier_trampoline,
+                ctx as *mut c_void,
+                task_name.as_ptr(),
+                tier.stack_bytes,
+                tier.priority,
+            )
+        };
+        match spawned {
+            Some(task) => tier_tasks.push(task),
+            None => {
+                crate::cpp_diag!("nros: failed to spawn tier '{tier_name}' — tier will not run");
+                // SAFETY: nothing was spawned, so nothing else owns this.
+                drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
+            }
+        }
     }
 
     // Boot thread spin loop (tier[0] on the owning executor).
@@ -2680,7 +2655,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
     let start_ns = nros_cpp_time_ns();
-    let boot_period = core::time::Duration::from_micros(boot_tier.spin_period_us.max(1_000));
+    let boot_period_us = boot_tier.spin_period_us.max(1_000);
     let mut ret = 0i32;
     loop {
         let last = unsafe { nros_cpp_spin_once(sptr, 10) };
@@ -2694,18 +2669,115 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
                 break;
             }
         }
-        std::thread::sleep(boot_period);
+        platform_sleep_us(boot_period_us);
     }
 
-    // Signal all tier threads to exit and wait for them.
+    // Signal all tier tasks to exit and wait for them.
     shutdown.store(true, Ordering::Relaxed);
-    for h in thread_handles {
-        let _ = h.join();
+    for t in tier_tasks {
+        t.join();
     }
 
     // Close the primary (session-owning) executor.
     unsafe { nros_cpp_fini(sptr) };
     ret
+}
+
+/// What one spawned tier receives, in place of a closure's captures — the entry
+/// crosses C as `*mut c_void`.
+///
+/// `groups` and `session` are held as `usize` for the same reason the previous
+/// `SendUsize` wrapper existed: raw pointers are not `Send`, and this value
+/// moves to another task.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+struct NativeTierCtx {
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    period_us: u64,
+    n_groups: usize,
+    groups: usize,
+    session: usize,
+    setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    domain_id: u32,
+    name: std::string::String,
+}
+
+/// One tier's loop, as a platform-task entry.
+///
+/// # Safety
+/// `arg` must be the `Box<NativeTierCtx>` raw pointer the spawn site created,
+/// passed exactly once.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
+    use std::sync::atomic::Ordering;
+
+    // SAFETY: the caller's contract — this task is the only consumer of the
+    // pointer, and reclaiming it here is what frees the context when the loop
+    // exits.
+    let ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut NativeTierCtx) };
+    let tier_name = &ctx.name;
+
+    // Open borrowed executor (shares the session — does NOT open a new RMW
+    // session and does NOT close it on drop).
+    let sh = ctx.session as *mut c_void;
+    let groups_ptr = ctx.groups as *const *const c_char;
+
+    let mut tier_storage = core::mem::MaybeUninit::<CppContext>::uninit();
+    let tptr = tier_storage.as_mut_ptr() as *mut c_void;
+    let rc =
+        unsafe { nros_cpp_executor_open_over_session(sh, core::ptr::null(), ctx.domain_id, tptr) };
+    if rc != NROS_CPP_RET_OK {
+        crate::cpp_diag!(
+            "nros: tier '{tier_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
+        );
+        return core::ptr::null_mut();
+    }
+
+    // Gate to this tier's callback groups.
+    if !groups_ptr.is_null() && ctx.n_groups > 0 {
+        unsafe { nros_cpp_executor_set_active_groups(tptr, groups_ptr, ctx.n_groups) };
+    }
+
+    // Run setup (creates + configures nodes for this tier).
+    if let Some(setup) = ctx.setup {
+        let setup_rc = unsafe { setup(tptr) };
+        if setup_rc != 0 {
+            crate::cpp_diag!(
+                "nros: tier '{tier_name}' setup FAILED (rc={setup_rc}) — tier will not run"
+            );
+            // Drop borrowed executor (no session close).
+            unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
+            return core::ptr::null_mut();
+        }
+    }
+
+    // Spin at the tier's period until the shutdown flag is set.
+    let period_us = ctx.period_us.max(1_000);
+    while !ctx.shutdown.load(Ordering::Relaxed) {
+        let rc = unsafe { nros_cpp_spin_once(tptr, 10) };
+        if rc != NROS_CPP_RET_OK {
+            crate::cpp_diag!(
+                "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
+            );
+            break;
+        }
+        platform_sleep_us(period_us);
+    }
+
+    // Drop borrowed executor in place (does NOT close the shared session).
+    unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
+    core::ptr::null_mut()
+}
+
+/// Sleep through the platform ABI, like every other pacing site in the tree
+/// since phase-359 W10.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+fn platform_sleep_us(us: u64) {
+    unsafe extern "C" {
+        fn nros_platform_sleep_us(us: usize);
+    }
+    // SAFETY: a bare pacing call with no pointer arguments, guaranteed by
+    // whichever port linked the image.
+    unsafe { nros_platform_sleep_us(us as usize) }
 }
 
 /// Get current monotonic time in nanoseconds.

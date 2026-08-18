@@ -1,5 +1,10 @@
 //! phase-359 W10 — one place that spawns a platform task from Rust.
 //!
+//! Moved here from `nros-node::executor::platform_task`: three Rust callers now
+//! need it (`nros-node`'s worker pool and `open_threaded`, `nros-cpp`'s native
+//! tier runtime), and a helper for an ABI belongs beside the ABI rather than
+//! inside one of its consumers.
+//!
 //! Two executor-owned workers need a thread: the per-OS-priority pool
 //! ([`super::os_priority`]) and the signalfd forwarder in `spin.rs`. Both were
 //! `std::thread`; both are platform tasks now, so the allocate-spawn-join
@@ -59,7 +64,7 @@ unsafe extern "C" {
 /// have to signal their worker to stop BEFORE waiting for it — a `Drop` that
 /// joined implicitly would deadlock against a worker still blocked on its own
 /// wait.
-pub(crate) struct PlatformTask {
+pub struct PlatformTask {
     ptr: *mut u8,
     layout: core::alloc::Layout,
 }
@@ -71,12 +76,43 @@ impl PlatformTask {
     /// # Safety
     /// `arg` must remain valid and pointed-to until [`join`](Self::join)
     /// returns — the task dereferences it.
-    pub(crate) unsafe fn spawn(
+    pub unsafe fn spawn(
         entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
         arg: *mut c_void,
         stack_bytes: usize,
         name: *const core::ffi::c_char,
     ) -> Option<Self> {
+        // SAFETY: forwarded unchanged; the caller's contract is unchanged.
+        unsafe { Self::spawn_with(entry, arg, name, stack_bytes, PRIORITY_INHERIT as i64) }
+    }
+
+    /// Spawn `entry(arg)` stating a PRIORITY as well.
+    ///
+    /// phase-359 W10 — `spawn` inherits the creating task's priority, which is
+    /// right for the executor's own workers and wrong for a TIER: a tier's
+    /// priority is the thing its author declared. `priority <= 0` means
+    /// "unstated" and inherits, matching how the board descriptors spell an
+    /// absent priority; anything positive is the kernel's own number and is
+    /// passed through the band's RAW escape hatch, because a
+    /// `[tiers.<name>.<rtos>] priority` is already in the kernel's units.
+    ///
+    /// # Safety
+    /// Same as [`spawn`](Self::spawn).
+    pub unsafe fn spawn_with(
+        entry: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
+        arg: *mut c_void,
+        name: *const core::ffi::c_char,
+        stack_bytes: usize,
+        priority: i64,
+    ) -> Option<Self> {
+        /// `NROS_PLATFORM_PRIORITY_RAW(n)` from `<nros/platform.h>`.
+        const fn raw(n: i32) -> i32 {
+            -0x4000_0000 - n
+        }
+        let priority = i32::try_from(priority)
+            .ok()
+            .filter(|p| *p > 0)
+            .map_or(PRIORITY_INHERIT, raw);
         // SAFETY: both probes are documented pure functions, callable before
         // any task exists.
         let (size, align) = unsafe {
@@ -105,7 +141,7 @@ impl PlatformTask {
             name,
             stack_bytes,
             stack_mem: core::ptr::null_mut(),
-            priority: PRIORITY_INHERIT,
+            priority,
             core: -1,
             flags: 0,
         };
@@ -131,7 +167,7 @@ impl PlatformTask {
     /// Block until the task exits, then release its storage.
     ///
     /// The caller must already have told the task to stop; this only waits.
-    pub(crate) fn join(self) {
+    pub fn join(self) {
         // SAFETY: `ptr` holds the handle `task_init` wrote.
         unsafe { nros_platform_task_join(self.ptr as *mut c_void) };
         // SAFETY: the task has exited, so nothing else references the storage;

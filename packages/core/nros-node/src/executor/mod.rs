@@ -52,26 +52,9 @@ mod node_wake;
 // step.
 #[cfg(any(has_rmw, test))]
 pub(crate) mod os_priority;
-// phase-359 W10 — the shared allocate/spawn/join for the executor's own worker
-// tasks. Gated on having a consumer: with neither worker feature on, nothing
-// spawns anything and an ungated module is a dead-code error under
-// `-D warnings`.
-#[cfg(all(
-    feature = "alloc",
-    // phase-359 W10 — `open_threaded` is a third consumer and it is NOT
-    // feature-selected: any `alloc` build can call it. The `rmw-cffi` and
-    // worker-feature conditions came from the first two consumers; the module
-    // itself only ever needed an allocator and the ABI symbols, which every
-    // final artifact links anyway (nros-node's own dev-deps pull the POSIX
-    // port, which is how the unit tests exercise this).
-    any(
-        feature = "rmw-cffi",
-        feature = "scheduler-os-priority",
-        feature = "signal-fd-wake",
-        test
-    )
-))]
-pub(crate) mod platform_task;
+// phase-359 W10 — the allocate/spawn/join helper moved to
+// `nros_platform_api::task`, beside the ABI it wraps, once `nros-cpp` became a
+// third caller. Reached through a `use` below rather than a module here.
 #[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
 pub mod sched_context;

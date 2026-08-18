@@ -38,7 +38,7 @@ default = []
 env = []
 
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util", "nros-platform-api/alloc"]
 
 # Phase 110 — compile-time scheduler selection. Default ships only
 # `scheduler-fifo` so MCU builds drop unused scheduler code. Each

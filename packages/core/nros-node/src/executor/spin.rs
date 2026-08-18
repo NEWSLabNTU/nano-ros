@@ -751,7 +751,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
 pub struct WakeSignalFd {
     fd: core::ffi::c_int,
     ctx: portable_atomic_util::Arc<SignalFdCtx>,
-    task: Option<super::platform_task::PlatformTask>,
+    task: Option<nros_platform_api::task::PlatformTask>,
 }
 
 /// What the signalfd worker task needs, reachable through one pointer.
@@ -827,7 +827,7 @@ impl WakeSignalFd {
         // SAFETY: `arg` points at a ctx this struct owns and keeps alive until
         // after the join in `Drop`.
         let Some(task) = (unsafe {
-            super::platform_task::PlatformTask::spawn(
+            nros_platform_api::task::PlatformTask::spawn(
                 signal_fd_worker,
                 arg,
                 // A read(2) loop and one atomic store — the smallest stack any
@@ -6672,7 +6672,7 @@ impl<'s> Executor<'s> {
         // SAFETY: `ctx` stays live until the trampoline reclaims it, which
         // happens on the spawned task and only after the loop exits.
         let task = unsafe {
-            super::platform_task::PlatformTask::spawn(
+            nros_platform_api::task::PlatformTask::spawn(
                 threaded_spin_trampoline,
                 ctx as *mut core::ffi::c_void,
                 OPEN_THREADED_STACK_BYTES,
@@ -6818,7 +6818,7 @@ impl Drop for OpaqueTimerHandle {
 /// handle.
 #[cfg(feature = "alloc")]
 pub struct ThreadHandle {
-    task: Option<super::platform_task::PlatformTask>,
+    task: Option<nros_platform_api::task::PlatformTask>,
     halt: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
 }
 
