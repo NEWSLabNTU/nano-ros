@@ -777,6 +777,12 @@ const KNOBS_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
         "NROS_WS_RECORDS_FILE",
         "TIMESTAMPED workspace records path; differs every run",
     ),
+    (
+        "NROS_ZEPHYR_RUNNER_RECORD",
+        "TIMESTAMPED+pid zephyr runner record path (issue 0685); an OUTPUT the \
+         driver writes, never an input — 329 distinct values in one probe-dir \
+         census, the single largest splitter left after W4",
+    ),
     ("NROS_JOBSERVER", "make jobserver handshake flag"),
     ("NROS_COMPILE_CHECK_POOL", "compile-check parallelism"),
     (
