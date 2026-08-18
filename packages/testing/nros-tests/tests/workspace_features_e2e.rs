@@ -750,10 +750,24 @@ fn run_cell(pcell: &MCell) {
                         if !block.contains(expect) {
                             lis.kill();
                             tlk.kill();
+                            // The BLOCK alone cannot say which endpoint it is.
+                            // `topic_endpoint_block` returns the FIRST block of
+                            // this kind, so when the topic carries more than one
+                            // endpoint the assertion may be reading someone
+                            // else's — and this cell fails in-sweep while
+                            // passing solo, which is exactly the shape a foreign
+                            // endpoint would produce. Printing the block only
+                            // (issue 0445's class) leaves that indistinguishable
+                            // from the profile genuinely being dropped, so carry
+                            // the whole report and the endpoint count.
+                            let n = report.matches("Endpoint type: ").count();
                             panic!(
                                 "[{} {}] the {kind} does not advertise its code-declared QoS \
-                                 (`{expect}` missing) — the per-entity profile was dropped \
-                                 somewhere between the node and the wire ({}):\n{block}",
+                                 (`{expect}` missing) — either the per-entity profile was \
+                                 dropped between the node and the wire, or this block belongs \
+                                 to a different endpoint ({}).\n\
+                                 asserted block (first `{kind}` of {n} endpoint(s) on \
+                                 {topic}):\n{block}\nfull report:\n{report}",
                                 lang, workload, cell.note
                             );
                         }

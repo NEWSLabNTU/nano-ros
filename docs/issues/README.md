@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0690** (testing, open 2026-08-19) — `case_08_c_qos` fails in-sweep and passes solo, on the SAME freshly
+built tree: 1453-test sweep FAIL, 5-test solo PASS, 1453-test sweep PASS. The publisher advertises
+`RELIABLE + VOLATILE + KEEP_LAST(10)`, which is exactly `nros_c_qos_default()`. Not a product regression, and
+not the 0160 by-value drift class either — the `nros_cpp_qos_t` mirror is field-for-field identical to the
+ffi.h SSoT, `nros_cpp_node_t` is opaque, no entry sets QoS overrides, and `case_17_mixed_qos` runs the
+BYTE-IDENTICAL C component and never fails. Likely `topic_endpoint_block` returning the FIRST `PUBLISHER`
+block when the topic carries more than one, but unproven: the panic printed the selected block and not the
+report it came from, so "profile dropped" and "someone else's endpoint" were indistinguishable in every
+failure recorded (0445's class, one layer in). The assertion now carries the full report and the endpoint
+count, so the next occurrence says which. Only ever runs with ROS 2 present (`require_ros2()`), i.e. only in
+the distrobox — 0309 last exercised it on 2026-07-28. See `0690-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#689** — `nano_ros_entry()` applies PANIC with
 `corrosion_set_features()`, which needs `nros_c`/`nros_cpp` to be CORROSION targets. phase-366 rightly made a
 silent skip fatal, W7.d then exempted the one lane where they are not (Zephyr, `nros_cargo_build`) — and three
