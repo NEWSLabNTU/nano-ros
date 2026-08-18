@@ -2559,17 +2559,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // above uses to tell a bare-metal image from a hosted one. A hosted image
     // links libstd, which already defines the lang item, so an ungated emit
     // would be a duplicate on exactly the platforms that need no help.
-    let panic_ts: proc_macro2::TokenStream = match args.panic {
-        PanicPolicy::Platform => quote! {
-            #[cfg(target_os = "none")]
-            ::nros::panic_to_platform!();
-        },
-        PanicPolicy::Halt => quote! {
-            #[cfg(target_os = "none")]
-            ::nros::panic_halt!();
-        },
-        // `own` emits nothing — the image said it brings its own.
-        PanicPolicy::Own => quote! {},
+    //
+    // …unless this package also produces a `staticlib`, in which case the LIB
+    // owns the item for BOTH artifacts and emitting here would be a duplicate.
+    // Derived, so every image can write the same `panic = …` regardless of shape.
+    let lib_owns_panic = package_emits_staticlib(&manifest_dir.join("Cargo.toml"));
+    let panic_ts: proc_macro2::TokenStream = if lib_owns_panic {
+        quote! {}
+    } else {
+        match args.panic {
+            PanicPolicy::Platform => quote! {
+                #[cfg(target_os = "none")]
+                ::nros::panic_to_platform!();
+            },
+            PanicPolicy::Halt => quote! {
+                #[cfg(target_os = "none")]
+                ::nros::panic_halt!();
+            },
+            // `own` emits nothing — the image said it brings its own.
+            PanicPolicy::Own => quote! {},
+        }
     };
 
     let expanded = quote! {
@@ -2672,6 +2681,39 @@ fn read_entry_deploy(cargo_toml: &Path) -> Result<String, String> {
 /// table size without a `[env] NROS_EXECUTOR_MAX_CBS` that bloats every lean
 /// embedded entry in the same workspace. The hosted (posix) board applies it via
 /// [`BoardEntry::run_with_deploy_sized`] → `Executor::open_sized`.
+/// phase-366 W7 / RFC-0077 — does this package also produce a `staticlib`?
+///
+/// If it does, the LIB owns the `#[panic_handler]` and `main!()` must not emit
+/// one. rustc treats a staticlib as a final artifact and demands the lang item
+/// when it compiles it, from `lib.rs`'s module tree — a handler emitted here, in
+/// the bin target, never reaches the `.a`. One in the lib reaches both, because
+/// the bin links the rlib and inherits it.
+///
+/// So placement is DERIVED from the manifest rather than chosen by the author.
+/// The alternative was making those crates say `panic = "own"`, which would
+/// overload `own` (it means "I bring my own provider") and ask an example author
+/// to know a Rust linkage rule to answer a question about panics.
+///
+/// Text-scanned, not parsed: this crate reads `Cargo.toml` in three other places
+/// the same way, and the shape here is a fixed one-line array.
+fn package_emits_staticlib(cargo_toml: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(cargo_toml) else {
+        return false;
+    };
+    let mut in_lib = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_lib = t == "[lib]";
+            continue;
+        }
+        if in_lib && t.starts_with("crate-type") && t.contains("staticlib") {
+            return true;
+        }
+    }
+    false
+}
+
 fn read_entry_executor_sizing(cargo_toml: &Path) -> Option<(usize, usize)> {
     let raw = std::fs::read_to_string(cargo_toml).ok()?;
     let v: toml::Value = toml::from_str(&raw).ok()?;
