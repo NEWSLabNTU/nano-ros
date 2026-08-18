@@ -312,7 +312,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
+            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"), Some(config_dir))
@@ -335,7 +335,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 15 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+            "{env_setup} && timeout --foreground 15 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
 
         Self::spawn_bash(
@@ -393,7 +393,7 @@ node = Server()
 rclpy.spin(node)
 "#;
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'
+            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'
 {python_script}
 NROS_PYEOF"
         );
@@ -407,7 +407,7 @@ NROS_PYEOF"
     /// cross-vendor interop on the ROS graph.
     pub fn demo_nodes_cpp_talker(locator: &str, distro: &str) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
-        let cmd = format!("{env_setup} && timeout 30 ros2 run demo_nodes_cpp talker");
+        let cmd = format!("{env_setup} && timeout --foreground 30 ros2 run demo_nodes_cpp talker");
         Self::spawn_bash(&cmd, "ros2 demo_nodes_cpp talker", Some(config_dir))
     }
 
@@ -439,7 +439,7 @@ NROS_PYEOF"
         // publisher-side discovery of a zenoh-pico subscriber takes ~10 s, so a
         // 10 s publisher would die right as the first sample would land.
         let cmd = format!(
-            "{env_setup} && timeout 45 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\""
+            "{env_setup} && timeout --foreground 45 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\""
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"), Some(config_dir))
@@ -699,7 +699,7 @@ fn wait_child_data(remaining: Duration) {
 /// Run `ros2 node list` and return the output
 pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 10 ros2 node list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -712,7 +712,7 @@ pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 10 ros2 topic list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic list 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -733,7 +733,8 @@ pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
 /// connect".
 pub fn ros2_topic_info_verbose(locator: &str, distro: &str, topic: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 15 ros2 topic info --verbose {topic} 2>&1");
+    let cmd =
+        format!("{env_setup} && timeout --foreground 15 ros2 topic info --verbose {topic} 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -771,7 +772,7 @@ pub fn topic_endpoint_block(report: &str, kind: &str) -> Option<String> {
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 10 ros2 service list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 service list 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -784,7 +785,7 @@ pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
 /// Run `ros2 node info` for a specific node
 pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 10 ros2 node info {node_name} 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node info {node_name} 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -797,7 +798,7 @@ pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResul
 /// Run `ros2 param list` for a specific node
 pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 15 ros2 param list {node_name} 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 15 ros2 param list {node_name} 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -815,7 +816,9 @@ pub fn ros2_param_get(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 15 ros2 param get {node_name} {param_name} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 15 ros2 param get {node_name} {param_name} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -834,8 +837,9 @@ pub fn ros2_param_set(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd =
-        format!("{env_setup} && timeout 15 ros2 param set {node_name} {param_name} {value} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 15 ros2 param set {node_name} {param_name} {value} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -853,8 +857,9 @@ pub fn ros2_param_describe(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd =
-        format!("{env_setup} && timeout 15 ros2 param describe {node_name} {param_name} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 15 ros2 param describe {node_name} {param_name} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -867,7 +872,7 @@ pub fn ros2_param_describe(
 /// Run `ros2 topic info` for a specific topic
 pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout 10 ros2 topic info {topic} 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic info {topic} 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -933,7 +938,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
+            "{env_setup} && timeout --foreground 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
 
         Self::spawn_bash(
@@ -979,7 +984,7 @@ rclpy.spin(node)
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
 
         Self::spawn_bash(&cmd, "ros2 add_two_ints_server", Some(config_dir))
@@ -1002,7 +1007,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
+            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(
@@ -1033,7 +1038,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
+            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(
@@ -1183,7 +1188,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic echo {topic}"))
     }
@@ -1217,7 +1222,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic pub {topic}"))
     }
@@ -1248,7 +1253,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
+            "{env_setup} && timeout --foreground 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-dds service call {service_name}"))
     }
@@ -1266,7 +1271,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone topic echo {topic}"))
     }
@@ -1282,7 +1287,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone topic pub {topic}"))
     }
@@ -1297,7 +1302,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
+            "{env_setup} && timeout --foreground 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone service call {service_name}"))
     }
@@ -1312,7 +1317,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+            "{env_setup} && timeout --foreground 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone action send_goal {action_name}"))
     }
@@ -1348,7 +1353,7 @@ rclpy.spin(node)
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds add_two_ints_server")
     }
@@ -1397,7 +1402,7 @@ rclpy.spin(node)
         // Quoted heredoc so the script's real newlines reach python —
         // `python3 -c '<\n literals>'` is a SyntaxError (see add_two_ints_server).
         let cmd = format!(
-            "{env_setup} && timeout 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds fibonacci_action_server")
     }
@@ -1412,7 +1417,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
-            "{env_setup} && timeout 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+            "{env_setup} && timeout --foreground 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-dds action send_goal {action_name}"))
     }

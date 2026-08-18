@@ -223,21 +223,44 @@ mod group_ledger_tests {
     fn a_sigkilled_supervisor_leaves_a_group_the_sweep_reaps() {
         let tmp = tempfile::tempdir().expect("tmpdir");
 
-        // bash -> timeout -> sleep, mirroring the real chain. TWO commands, and
-        // that is load-bearing: bash EXECs a lone simple command, so
-        // `bash -c "sleep N"` has no grandchild at all and the leak cannot
-        // reproduce — the first cut of this test failed for exactly that reason.
-        // The real peer runs `bash -c "<env> && timeout N ros2 run …"`, which
-        // bash cannot exec away.
+        // bash -> timeout -> bash -> sleep, mirroring the real chain
+        // `bash -c "<env> && timeout N ros2 run <pkg> <node>"`, which is FOUR
+        // deep: the python `ros2` launcher spawns the node.
+        //
+        // Both shortcuts the earlier shape took are load-bearing, and both were
+        // measured wrong on this host (issue 0659 follow-up, bash 5.3.15 +
+        // coreutils 9.11):
+        //
+        //   * "`true &&` stops bash EXECing away" — it does not. bash execs the
+        //     last command of an `&&` list, and did so for `export X=1 && …`
+        //     too, so the pgid leader was `timeout` and there was no supervisor
+        //     to kill. The trailing `; :` is what keeps bash resident, and the
+        //     assertion below states that rather than trusting it.
+        //   * "`timeout N sleep` leaks its child" — it does not. coreutils
+        //     `timeout` takes its child down with it, which is the OPPOSITE of
+        //     the property the real leak needs. `ros2` (python) does not, so
+        //     the middle process here must be one that also does not: an inner
+        //     `bash` that backgrounds its child and waits.
+        //
+        // `--foreground` is not cosmetic and mirrors the peer spawn: without it
+        // `timeout` puts ITSELF in a new process group, so every descendant
+        // leaves the group the ledger recorded and the sweep — which matches
+        // `/proc/<pid>/stat`'s pgrp against that pgid — cannot see the orphans
+        // it exists to reap. Measured: leader pgid 1213064, orphaned
+        // timeout/bash/sleep in 1212154. With `--foreground` all four share the
+        // recorded group.
         //
         // A unique duration is the marker: passing a token as an extra argv word
         // makes `sleep` exit immediately with "invalid time interval", which
         // silently turns this into a test that always passes.
         let marker = format!("31.{}", std::process::id() % 900 + 100);
         let mut cmd = Command::new("bash");
-        cmd.args(["-c", &format!("true && timeout 120 sleep {marker}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+        cmd.args([
+            "-c",
+            &format!("true && timeout --foreground 120 bash -c 'sleep {marker} & wait'; :"),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
         set_new_process_group(&mut cmd);
         let mut child = cmd.spawn().expect("spawn");
         let pgid = child.id() as i32;
@@ -247,6 +270,24 @@ mod group_ledger_tests {
         assert!(
             !group_ledger_members_for_test(pgid).is_empty(),
             "harness broken: nothing started, so this test would pass vacuously"
+        );
+
+        // The SHAPE this test depends on, asserted rather than assumed. If a
+        // future bash execs the compound away, the leader stops being a
+        // supervisor and the leak cannot reproduce — which previously surfaced
+        // as "the leak did not reproduce" and sent the reader looking for a
+        // regression in the fix instead of a change in the shell.
+        let leader_comm = std::fs::read_to_string(format!("/proc/{pgid}/comm"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        assert_eq!(
+            leader_comm, "bash",
+            "the process-group leader is `{leader_comm}`, not bash: this shell \
+             EXECed the compound away, so there is no supervisor to SIGKILL and \
+             the leak this test exists to reproduce cannot happen. Fix the \
+             command shape (a trailing `; :` kept bash resident on 5.3.15), do \
+             not delete the assertion."
         );
 
         // SIGKILL the supervisor ONLY — what PDEATHSIG does to bash when the

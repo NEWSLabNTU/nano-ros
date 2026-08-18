@@ -272,3 +272,55 @@ issue records.
 
 Both are the same failure the acceptance criterion was written to prevent — a
 test that passes because nothing happened — arriving from two directions.
+
+## Follow-up (2026-08-18) — the sweep could not reach the orphans it was built for
+
+The acceptance test above started failing at its own precondition ("the leak did
+not reproduce, so the sweep below proves nothing"). Chasing that found two false
+assumptions in the test AND one in the shipped fix. Measured on bash 5.3.15 +
+coreutils 9.11.
+
+**Test assumption 1 — "`true &&` stops bash EXECing away."** It does not. bash
+execs the last command of an `&&` list, and did so for the production shape
+`export X=1 && …` too. The process-group leader was therefore `timeout`, not
+bash: there was no supervisor to SIGKILL. A trailing `; :` keeps bash resident,
+and the test now ASSERTS the leader is bash rather than trusting it — a future
+shell change fails with that sentence instead of as an absent leak.
+
+**Test assumption 2 — "`timeout N sleep` leaks its child."** The opposite:
+coreutils `timeout` takes its child down when killed. The real chain leaks
+because `ros2` (python) does not, and because the node is one level BELOW it.
+The proxy is now four deep with a middle that does not propagate
+(`timeout … bash -c 'sleep N & wait'`).
+
+**The fix's own assumption — the orphans are in the recorded group.** They were
+not. `timeout` puts ITSELF in a new process group, so everything below it leaves
+the pgid `setpgid(0,0)` recorded, and the sweep — which matches
+`/proc/<pid>/stat`'s pgrp against that pgid — could not see them:
+
+```
+leader (bash)      pgid 1213064
+timeout            pgid 1212154   ← new group
+  bash             pgid 1212154
+    sleep          pgid 1212154
+```
+
+So the ledger recorded a group that held only bash, and after PDEATHSIG killed
+bash that group was empty. The sweep ran, found nothing, and reported success.
+
+**Repair:** `timeout --foreground` — it does not create a group, so every
+descendant stays in the recorded one. Applied to the proxy and to all 29 peer
+spawn sites in `ros2.rs`. With it the test reproduces the leak and the sweep
+reaps it; both ledger tests pass.
+
+Trade-off, stated: under `--foreground` a timeout expiry kills only the direct
+child rather than the group. The group kill still happens on `Drop`, and the
+sweep now genuinely covers the killed-binary path — which is the case this issue
+is about.
+
+**What this says about the original verification.** The commit reported reaping
+"56 groups"; a swept group whose members escaped is indistinguishable, from the
+sweep's side, from one that was cleaned. The count measured groups PROCESSED,
+not orphans killed. Worth remembering when a cleanup reports its own success:
+the number to assert is the one from OUTSIDE — surviving processes, not swept
+records.
