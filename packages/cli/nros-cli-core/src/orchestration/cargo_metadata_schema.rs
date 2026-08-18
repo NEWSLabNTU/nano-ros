@@ -27,6 +27,9 @@ pub use nros_orchestration_ir::{
     CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
 };
 
+/// RFC-0078 — re-exported so a `system.toml` reader sees one vocabulary.
+pub use nros_orchestration_ir::wcet::{BoundaryWcet, WcetError, WcetProfile};
+
 use super::schema::RemapRule;
 
 // ---------------------------------------------------------------------------
@@ -572,6 +575,16 @@ pub struct SystemToml {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub node_overrides: Vec<NodeOverride>,
+    /// RFC-0078 — `[wcet]`: declared execution-time bounds, keyed per named
+    /// measurement profile, plus which profile each deploy target selects.
+    ///
+    /// Selection lives HERE rather than in `[deploy.<target>]` because
+    /// `DeployTarget` is a re-export of rlm's `DeployBlock` — an upstream type
+    /// with `deny_unknown_fields`, so a field added there would have to land in
+    /// another repository first. Keying the selection map by target name keeps
+    /// "a board selects a profile" true without that dependency.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wcet: Option<SystemWcet>,
     /// Phase 254 — declared capability axes (RFC-0031 §Generalization), the
     /// single typed home read by BOTH codegen paths (the Rust planner + the
     /// C/C++ bake). Supersedes the transitional per-package `nros.toml`
@@ -593,6 +606,105 @@ pub struct SystemToml {
     // is intentionally absent, so `deny_unknown_fields` REJECTS a
     // `[param_persistence]` block until the backends land. The runtime `ParamStore`
     // seam (`nros-params`) + the codegen path are kept dormant for re-enable.
+}
+
+/// `[wcet]` — RFC-0078 declared execution-time bounds.
+///
+/// Two halves: the profiles themselves, and which one each deploy target
+/// selects. A target with no entry gets NO bounds, which is the default and is
+/// not an error — absent stays representable all the way up.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemWcet {
+    /// `[wcet.profiles.<name>]`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub profiles: BTreeMap<String, WcetProfile>,
+    /// `[wcet.select]` — deploy-target name to profile name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub select: BTreeMap<String, String>,
+}
+
+/// Why a `[wcet]` section could not be resolved for a target.
+///
+/// Both variants are HARD errors rather than a silent `None`. A selection that
+/// quietly resolves to nothing puts the scheduling model straight back to
+/// counting every boundary as zero — issue 0259 with the evidence removed — and
+/// the whole point of RFC-0078 is that absent must be loud.
+#[derive(Clone, Debug, PartialEq)]
+pub enum WcetSelectionError {
+    /// `[wcet.select]` names a profile that `[wcet.profiles]` does not define.
+    /// Almost always a typo, and a typo must not read as "this board has no
+    /// measurements".
+    UnknownProfile { target: String, profile: String },
+    /// The selected profile exists and cannot be believed.
+    InvalidProfile {
+        target: String,
+        profile: String,
+        errors: Vec<WcetError>,
+    },
+}
+
+impl std::fmt::Display for WcetSelectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownProfile { target, profile } => write!(
+                f,
+                "[wcet.select] {target} = \"{profile}\" names no profile under \
+                 [wcet.profiles]; a typo here would silently mean \"no bounds for \
+                 this board\""
+            ),
+            Self::InvalidProfile {
+                target,
+                profile,
+                errors,
+            } => {
+                write!(
+                    f,
+                    "[wcet.profiles.{profile}] (selected by {target}) cannot be believed:"
+                )?;
+                for e in errors {
+                    write!(f, "\n  - {e}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl SystemToml {
+    /// The measurement profile this deploy target selects, validated.
+    ///
+    /// `Ok(None)` means no bounds are declared for this target — no `[wcet]`
+    /// section, or no `[wcet.select]` entry. That is the default and stays
+    /// silent. Everything else is an error, because the alternative is a
+    /// declaration that exists and does nothing.
+    pub fn wcet_profile_for(
+        &self,
+        target: &str,
+    ) -> Result<Option<&WcetProfile>, WcetSelectionError> {
+        let Some(wcet) = self.wcet.as_ref() else {
+            return Ok(None);
+        };
+        let Some(name) = wcet.select.get(target) else {
+            return Ok(None);
+        };
+        let profile =
+            wcet.profiles
+                .get(name)
+                .ok_or_else(|| WcetSelectionError::UnknownProfile {
+                    target: target.to_string(),
+                    profile: name.clone(),
+                })?;
+        let errors = profile.validate();
+        if !errors.is_empty() {
+            return Err(WcetSelectionError::InvalidProfile {
+                target: target.to_string(),
+                profile: name.clone(),
+                errors,
+            });
+        }
+        Ok(Some(profile))
+    }
 }
 
 /// phase-330 W4.0 — one `[[model]]` entry: which launch file, with which
@@ -1996,6 +2108,125 @@ mystery_knob = "no"
         assert!(
             msg.contains("mystery_knob") || msg.contains("unknown field"),
             "diagnostic: {msg}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod wcet_authoring_tests {
+    use super::*;
+
+    fn parse(toml_src: &str) -> SystemToml {
+        toml::from_str(toml_src).expect("system.toml must parse")
+    }
+
+    const HEADER: &str = r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+"#;
+
+    fn with_profile(extra: &str) -> String {
+        format!(
+            r#"{HEADER}
+[wcet.profiles.stm32f4-168mhz-release]
+cpu = "cortex-m4f"
+clock_hz = 168000000
+profile = "release"
+measured_at_commit = "a1b2c3d4e5f6"
+counter_valid = true
+source = "nros.wcet.measurements/1"
+margin_percent = 20.0
+
+[wcet.profiles.stm32f4-168mhz-release.boundaries]
+"/perception/on_scan" = {{ min_observed_cycles = 41120, max_observed_cycles = 68940, iterations = 1000 }}
+{extra}
+"#
+        )
+    }
+
+    /// The section parses at all — `SystemToml` carries `deny_unknown_fields`,
+    /// so before this field existed a `[wcet]` block was a hard parse error and
+    /// the authoring path could not exist.
+    #[test]
+    fn a_wcet_section_parses_and_resolves_for_the_selecting_target() {
+        let sys = parse(&with_profile(
+            "\n[wcet.select]\nflash-stm32f4-disco = \"stm32f4-168mhz-release\"",
+        ));
+        let profile = sys
+            .wcet_profile_for("flash-stm32f4-disco")
+            .expect("valid selection")
+            .expect("a profile is selected");
+        assert_eq!(profile.cpu, "cortex-m4f");
+        // 68_940 * 1.20 = 82_728 cycles at 168 MHz
+        let ms = profile.exec_ms("/perception/on_scan").expect("convertible");
+        assert!((ms - 0.492_428_571).abs() < 1e-6, "got {ms}");
+    }
+
+    /// A target nobody selected for gets nothing, silently. Absent is the
+    /// default and must not be an error.
+    #[test]
+    fn a_target_with_no_selection_gets_no_bounds_and_no_error() {
+        let sys = parse(&with_profile(
+            "\n[wcet.select]\nflash-stm32f4-disco = \"stm32f4-168mhz-release\"",
+        ));
+        assert_eq!(sys.wcet_profile_for("native").unwrap(), None);
+    }
+
+    #[test]
+    fn no_wcet_section_at_all_is_not_an_error() {
+        let sys = parse(HEADER);
+        assert_eq!(sys.wcet_profile_for("native").unwrap(), None);
+    }
+
+    /// The failure this resolver exists for: a typo must NOT read as "this
+    /// board has no measurements".
+    #[test]
+    fn a_selection_naming_an_unknown_profile_is_a_hard_error() {
+        let sys = parse(&with_profile(
+            "\n[wcet.select]\nflash-stm32f4-disco = \"stm32f4-168mhz-relase\"",
+        ));
+        match sys.wcet_profile_for("flash-stm32f4-disco") {
+            Err(WcetSelectionError::UnknownProfile { target, profile }) => {
+                assert_eq!(target, "flash-stm32f4-disco");
+                assert_eq!(profile, "stm32f4-168mhz-relase");
+            }
+            other => panic!("a typo must be an error, got {other:?}"),
+        }
+    }
+
+    /// A profile that exists and cannot be believed stops the build rather than
+    /// evaporating into `None`.
+    #[test]
+    fn a_selected_profile_that_fails_validation_is_a_hard_error() {
+        let src = with_profile("\n[wcet.select]\nflash-stm32f4-disco = \"stm32f4-168mhz-release\"")
+            .replace("counter_valid = true", "counter_valid = false");
+        let sys = parse(&src);
+        match sys.wcet_profile_for("flash-stm32f4-disco") {
+            Err(WcetSelectionError::InvalidProfile { errors, .. }) => {
+                assert!(errors.contains(&WcetError::CounterNotValid), "{errors:?}");
+            }
+            other => panic!("an unbelievable profile must be an error, got {other:?}"),
+        }
+    }
+
+    /// An observation with no margin and no explicit bound parses, validates,
+    /// and yields NO exec_ms — RFC-0078's central refusal, reachable from
+    /// authored TOML rather than only from Rust.
+    #[test]
+    fn an_authored_observation_without_a_bound_yields_no_exec_ms() {
+        let src = with_profile("\n[wcet.select]\nflash-stm32f4-disco = \"stm32f4-168mhz-release\"")
+            .replace("margin_percent = 20.0\n", "");
+        let sys = parse(&src);
+        let profile = sys
+            .wcet_profile_for("flash-stm32f4-disco")
+            .expect("still valid")
+            .expect("still selected");
+        assert_eq!(
+            profile.exec_ms("/perception/on_scan"),
+            None,
+            "a high-water mark with no declared bound must not reach the scheduler"
         );
     }
 }

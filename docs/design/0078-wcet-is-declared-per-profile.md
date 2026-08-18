@@ -249,9 +249,8 @@ the system stays `None`, and `ChainFeasibleWithoutWcet` continues to name them.
 
 ## What this RFC does not decide
 
-* **The file's location and how a board selects a profile.** That is
-  `system.toml` / SystemModel territory (RFC-0050, phase-330) and should be
-  settled where those live, not here.
+* ~~**The file's location and how a board selects a profile.**~~ SETTLED
+  2026-08-18 — see "Where a declaration lives" below.
 * **The Rust type and its validator.** Deliberately a separate work item so
   this design is reviewable before an implementation makes it expensive to
   revert.
@@ -270,6 +269,52 @@ field for that precisely so the stronger claim has somewhere to go.
 Boundary keys are `<node_fqn>/<path_name>` where the FQN is a ROS name — it
 begins with `/` and may carry namespaces, so `/perception/front/on_scan` is node
 `/perception/front`, path `on_scan`.
+
+## Where a declaration lives (added 2026-08-18)
+
+Both halves are a `[wcet]` section in `system.toml`:
+
+```toml
+[wcet.profiles.stm32f4-168mhz-release]
+cpu                = "cortex-m4f"
+clock_hz           = 168_000_000
+profile            = "release"
+measured_at_commit = "a1b2c3d4e5f6"
+counter_valid      = true
+source             = "nros.wcet.measurements/1"
+margin_percent     = 20.0
+coverage           = "fixed synthetic inputs; worst path not established"
+
+[wcet.profiles.stm32f4-168mhz-release.boundaries]
+"/perception/on_scan" = { min_observed_cycles = 41_120, max_observed_cycles = 68_940, iterations = 1000 }
+
+[wcet.select]
+flash-stm32f4-disco = "stm32f4-168mhz-release"
+```
+
+**Selection is keyed by deploy-target name, not written inside
+`[deploy.<target>]`**, and that is a constraint rather than a preference:
+`DeployTarget` is a re-export of `ros_launch_manifest_model::system_config::DeployBlock`,
+an upstream type carrying `deny_unknown_fields`. A field added there would have
+to land in another repository first. Keying a map by target name keeps "a board
+selects a profile" true without that dependency.
+
+### Two hard errors, because the alternative is a silent zero
+
+`SystemToml::wcet_profile_for(target)` returns `Ok(None)` for a target with no
+`[wcet]` section and for one with no `[wcet.select]` entry — absent is the
+default and stays silent. Everything else is an error:
+
+* **`[wcet.select]` naming a profile that does not exist.** Almost always a
+  typo, and a typo must not read as "this board has no measurements". A silent
+  `None` here would put the model back to counting every boundary as zero,
+  which is issue 0259 with the evidence removed.
+* **A selected profile that fails `validate()`.** A declaration that exists and
+  cannot be believed stops the build rather than evaporating.
+
+Note that `system.toml` carries `deny_unknown_fields`, so before this section
+existed a `[wcet]` block was a hard parse error: the authoring path did not
+merely lack a reader, it was actively rejected.
 
 ## Open question this design cannot close by itself
 

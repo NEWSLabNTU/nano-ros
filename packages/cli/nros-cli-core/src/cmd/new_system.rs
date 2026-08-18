@@ -378,6 +378,8 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         safety: None,
         param_services: None,
         lifecycle: None,
+        // RFC-0078 — no declared bounds; absent is the default.
+        wcet: None,
     };
 
     let body = toml::to_string_pretty(&model).wrap_err("serialize generated system.toml")?;

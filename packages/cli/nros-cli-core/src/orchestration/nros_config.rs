@@ -658,6 +658,8 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         safety: None,
         param_services: None,
         lifecycle: None,
+        // RFC-0078 — no declared bounds; absent is the default.
+        wcet: None,
     };
 
     BringupPackageEntry {
