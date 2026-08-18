@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#618** — `#[panic_handler]` and `#[global_allocator]` are link-time
+singletons of the FINAL ARTIFACT, but §2 had both "selected by the `platform-<rtos>` feature", so "exactly one
+per image" was an invariant held by hand at every dep-site — six providers, five gating idioms, the
+composition rule in prose. It failed BOTH ways: two providers (#0617's mixed Zephyr entry) and none (#0617's
+nros-c on nuttx; phase-359 W10's threadx-linux leaves, where the two errors surface one at a time). phase-366
+landed the split RFC-0077 named — implementation is the platform's, policy is the image's: `panic-spin`
+retired, the entry macro emits the handler, `nros::main!(panic = …)` / `nano_ros_entry(… PANIC …)` select it,
+and §2 now reads "`malloc` is unified per platform; `panic` is the image's". The missing half is gated:
+`check-image-panic-policy` is buildless, reads DECLARED against SUPPLIED per image, and so catches ABSENCE,
+which `check-archive-lang-items` is structurally blind to. Verified 21 images declare exactly one ending.
+RFC-0077 stays Draft as the design record. See `archived/0618-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0628** — `nros sdk-path` constructed only the VERSIONED store layout, so a
 host carrying the legacy FLAT one looked unprovisioned: `find_package` was never called and every configure
 fetched Corrosion from the network while advising the `nros setup` step already done. Silent, because the
@@ -685,31 +697,6 @@ library, it does not grant it"* (`env = []`), i.e. resolution 1. Verified here: 
 (216 crates, 6 clauses). Found by a tier-2 sweep. See `archived/0643-*`. (2026-08-16)
 
 Recently resolved (2026-08-16): **#0622** — the legacy-Corrosion remedy named only the WORKSPACE trees, so following it verbatim reproduced the error. The fix had landed in the FATAL arm only, while the WARNING arm — the one readers actually reach, since fatal became opt-in — still said "remove its build dir". Both arms now print a MEASURED list of the caches naming a legacy prefix (and say so explicitly when there are none, since the 155-vs-28 split was an `add_subdirectory` bypass, not stale caches). See `archived/0622-*`. (2026-08-16)
-
-**#618** (build/api, open 2026-08-16) — **OWNER: `ARCHITECTURE.md` §2, implemented by phase-361** — this is a
-disagreement with normative architecture, not a gap in it. §2 says `malloc` and `panic` are "unified per
-platform … selected by the `platform-<rtos>` feature"; two of its three clauses are right and kept (exactly
-one per image; malloc and panic move together), only the SELECTOR is disputed. Changing it means amending §2,
-and RFC-0077 is that argument. Note §2 is already not self-enforcing: `nros-board-threadx-qemu-riscv64`
-defines an UNGATED `#[panic_handler]` no platform feature selects. Half the enforcement exists —
-`check-archive-lang-items` covers the allocator per LINK LINE; the panic half and a per-image-coordinate view
-do not. #0619's author reached the same framing independently and extended it: the platform SYMBOL SET is a
-third image singleton, and "a dev-dependency is a library-level lever — it cannot express 'supply these only
-when nobody else does'". Original finding below.  `#[panic_handler]` and `#[global_allocator]` are link-time singletons
-of the FINAL ARTIFACT, but nano-ros picks them in LIBRARY crates keyed on the PLATFORM — so "exactly one per
-image" is not guaranteed by the build, it is maintained by hand at every dep-site. Both halves of #0617 are
-the two failure modes this permits: two providers (`#[global_allocator] in nros_platform conflicts with`) and
-none (`#[panic_handler] function required`). SIX providers exist under five different gating idioms
-(`nros-c`'s spin loop, `panic-halt`, three board crates — one of them UNGATED — and libstd), and the
-composition rule lives in prose: `nros-board-nuttx` documents that C/C++ images must take it with
-`default-features = false` so `nros-c` can own the runtime. Keying on the platform cannot work — two images
-for one platform legitimately want different handlers (print-and-exit for a fixture, log-and-reboot for a
-shipped controller), and `nros-c`'s own comment apologises for choosing a policy it cannot know. Direction:
-libraries never provide; the IMAGE chooses, in the user's project; the entry layer (`nros::main!` /
-`nano_ros_entry()`) supplies a default because it IS part of the final artifact — with one qualification, that
-a staticlib IS a final artifact when it is the deliverable, which is what #0615 discovered. Gate worth having:
-per image coordinate, count the crates that can emit the lang item under the selected features and require
-exactly one. Invisible on host lanes, where `std` supplies both. See `0618-*`. (2026-08-16)
 
 Recently resolved (2026-08-15): **#610** — `just zephyr setup` downloaded `zephyr-sdk-0.16.8_linux-x86_64.tar.xz`
 on ANY host. `scripts/zephyr/setup.sh` hardcoded the tarball AND its sha256, so on aarch64 the fetch and the

@@ -2,7 +2,7 @@
 id: 618
 title: "`#[panic_handler]` and `#[global_allocator]` are per-IMAGE singletons,
   but nano-ros decides them in libraries — so images get two or none"
-status: open
+status: resolved
 type: design
 area: build/api
 related: [issue-0617, issue-0615, issue-0594, issue-0591, issue-0566, rfc-0034]
@@ -254,3 +254,53 @@ Remaining, per phase-366: **W5.e** retires `panic-spin` from `nros-c`/`nros-cpp`
 which removes the last library-owned handler above; **W5.f** amends §2. W6's
 `check-archive-lang-items` already counts per LINK LINE — note it catches
 duplication and cannot catch ABSENCE, which is why W5.d ordering mattered.
+
+## Resolved 2026-08-19 — phase-366 landed every part of this, and the gate passes
+
+Verified against the TREE rather than the phase doc, because this issue was
+itself burned by a measurement that went stale between the grep and the
+paragraph describing it.
+
+| what this issue asked for | state |
+| --- | --- |
+| libraries stop providing | `panic-spin` is gone from `nros-c` and `nros-cpp` (W5.e, resumed as RFC-0077 R1) |
+| the image chooses | `nros::main!(panic = "platform" \| "halt" \| "own")`; `nano_ros_entry(… PANIC …)` for C/C++ |
+| the entry layer supplies the default | the handler is emitted by the entry macro (`packages/api/nros/src/lib.rs`), which IS the final artifact |
+| amend `ARCHITECTURE.md` §2 | done (W5.f): "**`malloc` is unified per platform; `panic` is the image's**" |
+| a per-image gate | `scripts/check-image-panic-policy.py`, wired into `check-fast` |
+
+```
+$ python3 scripts/check-image-panic-policy.py ; echo $?
+check-image-panic-policy: OK (21 image(s) declare exactly one ending)
+0
+```
+
+### The one library handler that remains, and why it is not this defect
+
+`packages/api/nros-c/src/lib.rs` still defines a `#[panic_handler]`, now gated
+`feature = "panic-platform"` rather than by a `platform-*` feature. That is the
+staticlib qualification THIS ISSUE named as the reason the naive "no library
+ever provides" rule was insufficient: a C/C++ image has no Rust crate in which
+to name a dependency, and rustc requires the lang item when the archive is
+compiled, before cmake links anything. The selector is now the image
+(`nano_ros_entry(… PANIC …)`), which is precisely the change asked for — the
+provider's LOCATION was never the complaint, its SELECTOR was.
+
+### The gate is the half that was missing, and its own docstring says so
+
+> `check-archive-lang-items.sh` counts per LINK LINE, which catches DUPLICATION
+> and is structurally blind to ABSENCE: an image with no provider has no archive
+> to count.
+
+Absence is the failure mode this issue's "none" instances took (0617's
+`#[panic_handler] function required`, and phase-359 W10's threadx-linux leaves,
+where the two errors surfaced ONE AT A TIME). The new gate is buildless and
+reads what each image DECLARES against what it SUPPLIES, so it sees both halves
+without a link.
+
+### Left open elsewhere, deliberately
+
+RFC-0077 remains `Draft`. That is the design record for the three-way split
+(implementation / installation / policy) and continues its own lifecycle; it is
+not a blocker for this issue, whose subject — the defect — is fixed. Issue 0619's
+third singleton, the platform SYMBOL SET, is its own item and is not claimed here.
