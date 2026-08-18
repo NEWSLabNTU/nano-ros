@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-18): **#0672** — `test_ros2_service_xrce_client`'s "wait for the ROS 2 server" was
+a 5 s no-op, so the client raced a server that might not be listening. THREE compounding faults: the rclpy
+helper ran a BUFFERED `python3`; `Ros2DdsProcess` reads STDOUT ONLY while ROS 2 logs to stderr; and the result
+was `let _ =`'d away, so the wait could not fail and the failure could not say whether the server came up.
+Fixed with `python3 -u` + `2>&1` at all FOUR helper spawns and a real wait on
+`output::ROS2_SERVICE_SERVER_READY`: 8.3 s -> 3.4 s, 3/3. Same class the new `check-wait-evidence-discarded`
+gate guards one layer up. See `archived/0672-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#676** — the project-wide `--locked` shim (`scripts/bin/cargo`) skipped
 injection when the caller passed `--offline`, alongside `--locked` and `--frozen`. `--frozen` does mean
 `--locked --offline`; `--offline` does NOT pin resolution — it only restricts cargo to the local cache, and

@@ -617,7 +617,22 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
             );
         }
     };
-    let _ = ros2_server.wait_for_output(Duration::from_secs(5)); // let it reach "Service server ready"
+    // Wait for the server to SAY it is ready, rather than sleeping a fixed
+    // budget and hoping. This used to be `let _ = wait_for_output(5s)`, which
+    // could not work for two compounding reasons: it discarded the output (so a
+    // failure could not say whether the server ever came up), and the rclpy
+    // helper ran under a BUFFERED `python3`, so "Service server ready" was still
+    // sitting in Python's stdio buffer when the wait expired. The wait was
+    // therefore a 5 s timeout that never observed readiness, and the client was
+    // started against a server that might or might not be listening — the race
+    // this test kept losing. The helpers now run `python3 -u`.
+    let server_startup = ros2_server
+        .wait_for_output_count(
+            nros_tests::output::ROS2_SERVICE_SERVER_READY,
+            1,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| format!("<server never reported ready: {e}>"));
     std::thread::sleep(Duration::from_secs(1));
 
     let mut client_cmd = Command::new(&xrce_service_client_binary);
@@ -636,17 +651,23 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         nros_tests::output::SERVICE_RESULT_PREFIX,
         Duration::from_secs(20),
     );
+    // The ROS 2 server's own output is half the evidence: "no reply" from a
+    // client that never had a server to talk to is a DIFFERENT failure from a
+    // client that could not reach a healthy one, and discarding it makes the two
+    // read identically (the shape of issue 0670).
+    let server_output = format!("{server_startup}\n[domain_id={domain_id} agent={addr}]");
     client.kill();
     ros2_server.kill();
     drop(agent);
 
     eprintln!("XRCE service client output:\n{client_output}");
+    eprintln!("ROS 2 add_two_ints server output:\n{server_output}");
     // Phase 233.6 wave 2 — reverse direction (nano-ros XRCE service client →
     // real ROS 2 service server). Hard assert: the client must get a reply.
     assert!(
         client_output.contains(nros_tests::output::SERVICE_RESULT_PREFIX),
         "nano-ros XRCE service client got no reply from the ROS 2 service server \
-         — XRCE-DDS reverse service interop regression. Output:\n{client_output}"
+         — XRCE-DDS reverse service interop regression.\nclient:\n{client_output}\nROS 2 server:\n{server_output}"
     );
     eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
 }

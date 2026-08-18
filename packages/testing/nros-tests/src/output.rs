@@ -327,6 +327,13 @@ pub fn service_request_line(a: impl std::fmt::Display, b: impl std::fmt::Display
     format!("a: {a} b: {b}")
 }
 
+/// Readiness marker the rclpy `add_two_ints` helper logs once its service is
+/// advertised (`ros2.rs`'s `add_two_ints_server_with_domain`). A test that
+/// starts a client against this server waits on THIS rather than sleeping a
+/// budget: the helper runs `python3 -u` precisely so the line arrives while the
+/// waiter is still looking.
+pub const ROS2_SERVICE_SERVER_READY: &str = "Service server ready";
+
 /// Prefix of the service client's single result line
 /// (`"Result of add_two_ints:"`, as in the official demo
 /// `Result of add_two_ints: 5`).

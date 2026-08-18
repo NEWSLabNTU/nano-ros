@@ -208,3 +208,34 @@ gate's self-test caught before the baseline was taken.
 Mutation-checked in both directions: adding one site fails the gate naming the
 file and the growth; the seven-case self-test covers both remedies and an
 unrelated `unwrap_or_default`.
+
+
+## CORRECTION 2026-08-18 — "works by hand" was a MUSEUM BINARY, not the harness
+
+This issue's title and its central finding — *the same three binaries work by
+hand, so the variable is the test harness* — are **wrong**, and the reason is
+worth keeping because it cost hours and produced four confidently-reported
+"ruled out by measurement" results that all measured the wrong artifact.
+
+`require_prebuilt_binary` REDIRECTS a leaf-local path onto the shared cargo group
+dir (phase-340). So:
+
+* the TEST ran `build/cargo-fixtures/linux/nros-relwithdebinfo/…`;
+* the SHELL runs reached a residual
+  `packages/testing/nros-tests/bins/contract-monitor/target/…` copy that predated
+  the regression.
+
+Two different files behind one path spelling, giving opposite verdicts. Running
+the lane's ACTUAL binary from the same shell reproduced the failure immediately,
+with no harness involved — which is what led to the real cause (the unguarded
+`epoch_us` assignment, fixed under #0671).
+
+Ruled out against the wrong binary, and therefore never actually ruled out:
+router type (ROS vs the retired vendored one), undrained pipes, cwd, and
+`activate.sh` env. None of them mattered.
+
+**Rule this earns:** when a fixture "passes by hand but fails in the test", the
+FIRST check is which file each one ran — `ls -l` on the leaf path and the group
+dir — before forming any other hypothesis. The leaf `target/` residue is the
+phase-340 P2 shape issue 0488 tracks; it is not merely wasted disk, it is a
+second artifact a hand-run reaches and the resolver does not.

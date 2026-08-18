@@ -393,7 +393,7 @@ node = Server()
 rclpy.spin(node)
 "#;
         let cmd = format!(
-            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'
+            "{env_setup} && timeout --foreground 60 python3 -u - 2>&1 <<'NROS_PYEOF'
 {python_script}
 NROS_PYEOF"
         );
@@ -984,7 +984,7 @@ rclpy.spin(node)
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
 
         Self::spawn_bash(&cmd, "ros2 add_two_ints_server", Some(config_dir))
@@ -1353,7 +1353,7 @@ rclpy.spin(node)
         // the `\n` is not a newline outside a string — so the server never
         // started and the reverse-direction interop tests timed out.
         let cmd = format!(
-            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds add_two_ints_server")
     }
@@ -1402,7 +1402,7 @@ rclpy.spin(node)
         // Quoted heredoc so the script's real newlines reach python —
         // `python3 -c '<\n literals>'` is a SyntaxError (see add_two_ints_server).
         let cmd = format!(
-            "{env_setup} && timeout --foreground 60 python3 - <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
+            "{env_setup} && timeout --foreground 60 python3 -u - 2>&1 <<'NROS_PYEOF'\n{python_script}\nNROS_PYEOF"
         );
         Self::spawn_bash(&cmd, "ros2-dds fibonacci_action_server")
     }
