@@ -177,3 +177,32 @@ the fixture:
    `qemu_cortex_a53_smp` / `qemu_riscv64_smp` — a new board bring-up, not a
    conf tweak. FreeRTOS SMP needs a multi-core port; `mps2-an385` is a
    single-core Cortex-M3.
+
+### Update (2026-08-18) — the Zephyr arm now ACCEPTS, and it is one arm, not four
+
+[issue 0655](archived/0655-zephyr-core-pin-cannot-succeed-on-running-thread.md)
+is fixed: the board pins a spawned tier between `k_thread_create` and
+`k_thread_start`, which is the only window Zephyr accepts a cpu mask in, and
+the realtime fixture moved its `core` off the boot tier (which has no such
+window) onto a spawned one. `sched_dims_applied_e2e` now reports
+
+```
+sched-dim arm: [zephyr rust CorePin] ACCEPT
+```
+
+so the placement dim has a SECOND runtime accept-arm proof beside posix.
+
+**This does not close this issue, and the reason matters.** The image is
+uniprocessor: pinning to cpu 0 on a one-CPU system proves the API is CALLED
+correctly, not that multi-core placement works. The gap this issue names —
+"no fixture exercises the SMP accept arm" — is untouched by it.
+
+What it does change is the shape of the remaining work:
+
+* **Zephyr's arm is now correct AND compiled**, so an SMP fixture built later
+  would exercise working code rather than discovering 0655 on arrival.
+* **The other three arms are still NEVER COMPILED** (NuttX `CONFIG_SMP`,
+  FreeRTOS `configUSE_CORE_AFFINITY`, ThreadX `TX_THREAD_SMP` — set by no
+  config here). 0655 was found by making ONE of them compile; the same move on
+  the other three is the cheap next step, and whether any shares 0655's bug is
+  unread. Their APIs differ, so it must be checked rather than assumed.

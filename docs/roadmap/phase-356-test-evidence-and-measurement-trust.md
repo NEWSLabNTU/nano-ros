@@ -219,6 +219,16 @@ config in the tree sets any of them**, so every body is deleted by the
 preprocessor in every image. #260 called them "COMPILE-VERIFIED ONLY (against
 headers)"; they are not type-checked at all.
 
+**Fixed 2026-08-18.** #0655 is resolved: the board pins a spawned tier between
+`k_thread_create` and `k_thread_start` (the only window Zephyr accepts a cpu
+mask in), the self-pin is gone from both spawned-tier entries, the boot tier
+reports its structural limitation instead of blaming a Kconfig, and the fixture
+moved its `core` off the boot tier onto a spawned one. `sched_dims_applied_e2e`
+now reports `[zephyr rust CorePin] ACCEPT`, and that cell's `expect:` flipped
+`Fallback -> Accept` — the deliberate edit this field exists to force. The arm
+changed because the bug was fixed, not because an assert was loosened. Still
+uniprocessor, so it proves the call is CORRECT, not SMP placement.
+
 Acting on that immediately found a real defect —
 [issue 0655](../issues/0655-zephyr-core-pin-cannot-succeed-on-running-thread.md):
 the Zephyr arm pins `k_current_get()`, and Zephyr's `cpu_mask_mod` returns

@@ -51,6 +51,13 @@ core = 0
 # number = higher priority). Consumed by the zephyr_entry projection.
 [tiers.high.zephyr]
 priority = 5
+# issue 0655 — the zephyr `core` lives on THIS tier, not on `low`, because
+# `high` is SPAWNED. Zephyr accepts a cpu mask only on a thread that has not
+# started, so the board pins a spawned tier in its `k_thread_create` ->
+# `k_thread_start` window. `low` is the BOOT tier: the kernel started it before
+# nros ran, it has no such window, and a `core` declared there can only ever
+# produce the loud fallback. Declared here, the dim is actually honored.
+core = 0
 # ZEPHYR-SCOPED: fires the kernel-EDF path (k_thread_deadline_set) here and
 # lowers to None (Fifo, unchanged) on posix/nuttx/threadx.
 deadline_us = 10000
@@ -76,7 +83,10 @@ spin_period_us = 10000
 priority = 10
 [tiers.low.zephyr]
 priority = 10
-core = 0
+# issue 0655 — no `core` here on purpose: `low` is the BOOT tier on zephyr and
+# Zephyr cannot pin an already-started thread. The declaration moved to
+# `[tiers.high.zephyr]`, which is spawned. (The nuttx/threadx `core` below stay
+# — those boards apply placement through their own mechanisms.)
 [tiers.low.nuttx]
 priority = 100
 core = 0

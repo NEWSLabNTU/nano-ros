@@ -368,15 +368,16 @@ See `archived/0667-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0652** — seven `required-features` test targets ran in NO lane, so cargo skipped them SILENTLY while they read as coverage. Now laned (`check-required-features-tests`, 18 tests). Running them found three defects that had rotted unobserved: a missing force-link anchor, an unused import fatal under `-D warnings`, and a pre-phase-258 observable whose correct form a SIBLING test already recorded. `loan_e2e` is mis-laned not broken (needs ZPICO_MAX_SESSIONS=2). Baseline 5 -> 2. See `archived/0652-*`. (2026-08-18)
 
-**#0655** (bug, open 2026-08-17) — the Zephyr core-pin ACCEPT arm can never succeed: it pins
-`k_current_get()`, and Zephyr's `cpu_mask_mod` returns `-EINVAL` for a RUNNING thread (the cpu mask is
-only settable before start). It was also gated on `CONFIG_SCHED_CPU_MASK_PIN_ONLY` — strictly narrower
-than the `CONFIG_SCHED_CPU_MASK` the API needs — and NO config in the tree sets either, so the call was
-preprocessed out of every image and no build could catch it. Found by asking #260's question. Gate
-corrected + knob enabled on the uniprocessor fixture (SMP not required): the call compiles for the first
-time and yields a real `rc=-22` where the never-compiled `#else` invented `-88`. The caller-side fix
-(pin between `k_thread_create` and `k_thread_start`) is still open, and the BOOT tier may be unfixable
-as posed. See `0655-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0655** — the Zephyr core-pin ACCEPT arm could never succeed: it pinned
+`k_current_get()`, and Zephyr's `cpu_mask_mod` returns `-EINVAL` for a RUNNING thread (the mask is settable
+only before start). It was also gated on `CONFIG_SCHED_CPU_MASK_PIN_ONLY` — narrower than the
+`CONFIG_SCHED_CPU_MASK` the API needs — and NO config set either, so the call was preprocessed out of every
+image and no build could catch it. FIXED by pinning in the `k_thread_create` -> `k_thread_start` window
+(`core_plus1`/`pin_rc` on the tier shim; self-pin removed from both spawned-tier entries); the BOOT tier has
+no such window and now says so instead of blaming a Kconfig. The fixture also declared its `core` on the boot
+tier — moved to the spawned one. Verified: `nros: core pin tier=`high` cpu=0`, and the cell's declared arm
+flipped Fallback -> Accept. Still UNIPROCESSOR, so it proves the call is correct, not SMP placement (#260).
+See `archived/0655-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
 from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to

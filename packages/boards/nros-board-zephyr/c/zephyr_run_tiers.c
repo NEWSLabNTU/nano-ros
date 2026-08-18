@@ -43,13 +43,20 @@
  *
  * `nros_zephyr_msleep`: real-symbol wrapper around `k_msleep` for the idle /
  * park loops (the k_msleep inline has no exported symbol). */
+/* issue 0655 — `core_plus1` (0 = unpinned) makes the shim create the thread
+ * SUSPENDED and pin it before starting, the only window in which Zephyr
+ * accepts a cpu mask. `pin_rc` returns the kernel's own code so the marker
+ * text stays here, in lockstep with nros_tests::output::ZEPHYR_CORE_PIN_*. */
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
-                                        const char* name, size_t stack_bytes);
+                                        const char* name, size_t stack_bytes,
+                                        uint32_t core_plus1, int* pin_rc);
 extern void nros_zephyr_set_current_priority(int32_t priority);
 extern int32_t nros_zephyr_msleep(int32_t ms);
 /* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
- * Returns 0 on success, -ENOSYS when the image lacks
- * CONFIG_SCHED_CPU_MASK_PIN_ONLY, else the kernel error. */
+ * Returns 0 on success, -ENOSYS when the image lacks CONFIG_SCHED_CPU_MASK,
+ * else the kernel error. issue 0655: for a STARTED thread that error is always
+ * -EINVAL, so this is the BOOT-tier path only — spawned tiers are pinned by
+ * `nros_zephyr_tier_task_create` before their thread starts. */
 extern int nros_zephyr_thread_cpu_pin(int cpu);
 /* phase-296 W5.5 shim — apply an earliest-deadline (µs) on the CALLING
  * thread (`k_thread_deadline_set`, µs→cycles). Returns 1 when the kernel
@@ -76,32 +83,48 @@ static void zephyr_apply_tier_deadline(const char* name, const char* tier_class,
     }
 }
 
-/* phase-296 W5.7 (C/C++ arm) — apply the tier's declared CPU pin on the
- * CALLING thread. `core_plus1` rode the RFC-0052 W2 ABI append but this image
- * never consumed it (a silently-dropped knob — the fail-loud violation
- * class). Mirrors the Rust arm's `apply_tier_core_pin`: an unhonorable pin
- * (CONFIG_SCHED_CPU_MASK_PIN_ONLY off, invalid cpu) warns loud and the tier
- * runs unpinned. */
-static void zephyr_apply_core_pin(const char* name, uint32_t core_plus1) {
+/* issue 0655 — the placement dim's accept/fallback marker, for a tier whose
+ * pin was applied by the shim in its create->start window. ONE spelling shared
+ * by the spawn path here and the Rust arm's `report_core_pin`; the literal
+ * prefixes MIRROR nros_tests::output::ZEPHYR_CORE_PIN_MARKER and
+ * ZEPHYR_CORE_PIN_FALLBACK_MARKER — keep all three in lockstep. */
+static void zephyr_report_core_pin(const char* name, uint32_t core_plus1, int rc) {
+    int cpu = (int)(core_plus1 - 1u);
+    if (rc == 0) {
+        printk("nros: core pin tier=`%s` cpu=%d\n", name, cpu);
+    } else {
+        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "
+               "(-22/EINVAL: the thread was already RUNNING — Zephyr accepts a cpu mask only "
+               "before start, issue 0655; -88/ENOSYS: image lacks CONFIG_SCHED_CPU_MASK) "
+               "— tier runs unpinned\n",
+               name, cpu, rc);
+    }
+}
+
+/* The BOOT tier's placement attempt (issue 0655).
+ *
+ * phase-296 W5.7 added this as a general "pin the calling thread" consumer for
+ * both the boot tier and every spawned tier. It could never work: Zephyr's
+ * `cpu_mask_mod` accepts a mask only on a thread prevented from running, and
+ * `k_current_get()` never is. Spawned tiers now pin in their create->start
+ * window; this remains only for the boot tier, which the kernel started before
+ * run_tiers saw it and which therefore has no such window. A `core` declared on
+ * the boot tier CANNOT be honored on Zephyr — reported as the limitation it is,
+ * per RFC-0052's fail-loud contract. Mirrors the Rust arm's
+ * `apply_boot_tier_core_pin`. */
+static void zephyr_apply_boot_core_pin(const char* name, uint32_t core_plus1) {
     if (core_plus1 == 0u) {
         return; /* unpinned */
     }
     int cpu = (int)(core_plus1 - 1u);
     int rc = nros_zephyr_thread_cpu_pin(cpu);
     if (rc == 0) {
-        /* phase-296 W5.11 — kernel-accept marker (placement dim). Literal
-         * prefix MIRRORS nros_tests::output::ZEPHYR_CORE_PIN_MARKER and the Rust
-         * arm's apply_tier_core_pin ::log::info! — keep all three in lockstep. */
         printk("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
     } else {
-        /* issue 0655 — name the causes that can actually produce each rc; the
-         * old note blamed CONFIG_SCHED_CPU_MASK_PIN_ONLY / a bad cpu, and the
-         * observed -EINVAL is neither. MIRRORS the Rust arm's warn text in
-         * `entry_tiers.rs` — keep in lockstep. */
-        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "
-               "(-22/EINVAL: the thread is already RUNNING and Zephyr only accepts a cpu "
-               "mask before start — issue 0655; -88/ENOSYS: image lacks "
-               "CONFIG_SCHED_CPU_MASK) — tier runs unpinned\n",
+        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d — this is the BOOT tier, which "
+               "Zephyr started before nros ran, and a cpu mask is only settable before a thread "
+               "starts (issue 0655). Declare the `core` on a SPAWNED tier. -88/ENOSYS instead "
+               "means the image lacks CONFIG_SCHED_CPU_MASK. Tier runs unpinned\n",
                (name != NULL) ? name : "?", cpu, rc);
     }
 }
@@ -241,10 +264,10 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
 static void* zephyr_tier_task(void* arg) {
     nros_zephyr_tier_ctx_t* ctx = (nros_zephyr_tier_ctx_t*)arg;
 
-    /* phase-296 W5.7 — self-apply the tier's declared CPU pin (the spawned
-     * task got its PRIORITY at k_thread_create; placement is self-applied,
-     * like the Rust arm). */
-    zephyr_apply_core_pin(ctx->name, ctx->core_plus1);
+    /* issue 0655 — NO core pin here. This runs on the tier's own STARTED
+     * thread, and Zephyr refuses a cpu mask on a started thread, so the
+     * self-apply this line used to do could only ever log -EINVAL. The pin is
+     * applied inside nros_zephyr_tier_task_create, before the start. */
     zephyr_apply_tier_deadline(ctx->name, ctx->tier_class, ctx->deadline_us);
 
     /* Open a borrowed executor that shares the primary session. The primary
@@ -365,13 +388,20 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
         p = (int64_t)INT32_MIN;
     }
 
+    /* issue 0655 — the pin happens INSIDE the shim, between k_thread_create and
+     * k_thread_start. An unpinned tier passes core_plus1 = 0 and keeps the old
+     * K_NO_WAIT path verbatim. */
+    int pin_rc = 0;
     int rc = nros_zephyr_tier_task_create(zephyr_tier_task, ctx, (int32_t)p,
                                           (t->name != NULL) ? t->name : "nros_tier",
-                                          (size_t)t->stack_bytes);
+                                          (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
     if (rc != 0) {
         nros_platform_dealloc(ctx);
         nros_platform_dealloc(tier_exec);
         return -1;
+    }
+    if (t->core_plus1 != 0u) {
+        zephyr_report_core_pin((t->name != NULL) ? t->name : "?", t->core_plus1, pin_rc);
     }
     return 0;
 }
@@ -478,7 +508,7 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
     }
     /* phase-296 W5.5/W5.7 — boot tier self-applies its declared CPU pin +
      * kernel EDF deadline too. */
-    zephyr_apply_core_pin(boot->name, boot->core_plus1);
+    zephyr_apply_boot_core_pin(boot->name, boot->core_plus1);
     zephyr_apply_tier_deadline(boot->name, boot->tier_class, boot->deadline_us);
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as

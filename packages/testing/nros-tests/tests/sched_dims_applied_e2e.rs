@@ -176,13 +176,21 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             stem: "nros: core pin",
             accept: ZEPHYR_CORE_PIN_MARKER,
             fallback: Some(ZEPHYR_CORE_PIN_FALLBACK_MARKER),
-            // #260: native_sim is uniprocessor (no CONFIG_SCHED_CPU_MASK_PIN_ONLY),
-            // so the pin CANNOT be honored — the honest fallback is the only
-            // correct outcome here, and the accept path stays compile-only.
+            // issue 0655 — flipped Fallback -> Accept, which is exactly the
+            // deliberate edit this field exists to force. The arm changed
+            // because the BUG was fixed, not because the assert was loosened:
+            // the board now pins a spawned tier in its `k_thread_create` ->
+            // `k_thread_start` window (Zephyr refuses a cpu mask on a started
+            // thread), the image sets CONFIG_SCHED_CPU_MASK, and the fixture
+            // declares the `core` on the SPAWNED `high` tier rather than the
+            // boot tier, which has no such window. Still uniprocessor: this
+            // proves the API is used CORRECTLY, not multi-core placement,
+            // which is #260's remaining SMP-fixture item.
             shape: AcceptOrFallback {
-                expect: Arm::Fallback,
+                expect: Arm::Accept,
             },
-            note: "uniprocessor native_sim: k_thread_cpu_pin cannot be honored, expect the loud fallback",
+            note: "spawned tier pinned before start (#655); uniprocessor, so this proves the \
+                   call is correct, not SMP placement",
         },
         (SD::CorePin, MP::NuttxArm, ML::Rust) => Exec {
             resolver: || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),

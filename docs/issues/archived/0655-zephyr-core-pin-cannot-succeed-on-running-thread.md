@@ -1,11 +1,12 @@
 ---
 id: 655
 title: "The Zephyr core-pin accept arm can never succeed: it pins `k_current_get()`, and Zephyr rejects a cpu mask on a RUNNING thread — and it was gated on a knob no image sets, so nothing ever compiled it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: boards, testing
 related: [issue-0260, rfc-0052, phase-296, phase-356]
+resolved_in: phase-356
 ---
 
 ## Two defects, and the second is why the first survived
@@ -126,3 +127,69 @@ Zephyr only. The NuttX / FreeRTOS / ThreadX core-pin arms have the same
 `TX_THREAD_SMP` are set by no config here) but their APIs are different and
 each needs its own read — do not assume they share this bug, and do not assume
 they don't.
+
+---
+
+## Fixed 2026-08-18 — pin in the create→start window, and say so when there isn't one
+
+The API wants a thread that has not started, so the board now creates one that
+way. `nros_zephyr_tier_task_create` gained `core_plus1` + `pin_rc`: a tier that
+declares a `core` is created with `K_FOREVER`, pinned by tid, then started.
+A tier with no `core` keeps `K_NO_WAIT` verbatim, so the common path is
+unchanged and nothing pays a start-up round trip for a knob it does not use.
+
+* **`nros_zephyr_thread_cpu_pin_tid(tid, cpu)`** is the new by-tid entry point.
+  The CALLING-thread variant stays, deliberately separate: the two have
+  genuinely different preconditions, and collapsing them is what hid this bug.
+* **The self-pin is gone from both spawned-tier entries** (Rust
+  `tier_task_entry`, C `zephyr_tier_task`). It ran on a started thread and
+  could only ever log `-EINVAL` — over a pin that had by then already
+  succeeded.
+* **The boot tier keeps a self-pin and reports the limitation.** Zephyr starts
+  it before `run_tiers` exists, so it has no create→start window and its
+  `core` cannot be honored by this API at all. `apply_boot_tier_core_pin` /
+  `zephyr_apply_boot_core_pin` name that, and name the remedy (declare the
+  `core` on a spawned tier) rather than blaming a Kconfig.
+* **One marker spelling per arm**, shared by the spawn and boot paths in each
+  language (`report_core_pin`, `zephyr_report_core_pin`), still mirroring
+  `nros_tests::output::ZEPHYR_CORE_PIN_*`.
+
+### The fixture declared its `core` on the one tier that cannot take it
+
+`[tiers.low.zephyr] core = 0`, and `low` is the BOOT tier — so even a correct
+implementation would have produced the fallback. Moved to
+`[tiers.high.zephyr]`, which is spawned. That is this issue's own Direction
+applied to the fixture, and it is what makes the accept arm reachable.
+
+### Verified on the wire
+
+Before (gate corrected, caller not yet):
+
+```
+<wrn> nros: core pin FAILED tier=`low` cpu=0 rc=-22 — this is the BOOT tier …
+```
+
+After:
+
+```
+<inf> nros: core pin tier=`high` cpu=0
+```
+
+No fallback line. `sched_dims_applied_e2e` reports
+`sched-dim arm: [zephyr rust CorePin] ACCEPT`, and its cell's declared arm was
+flipped `Fallback -> Accept` — the deliberate edit phase-356 W3's `expect:`
+field exists to force. The arm changed because the bug was fixed, not because
+an assert was loosened.
+
+### What this does NOT prove
+
+The image is still **uniprocessor**. Pinning to cpu 0 on a one-CPU system
+exercises the mask API correctly but says nothing about multi-core placement.
+[issue 0260](0260-native-dim-kernel-accept-never-exercised.md)'s SMP-fixture
+item stands, and now has a working call to point at instead of one that would
+have failed on arrival.
+
+The NuttX / FreeRTOS / ThreadX core-pin arms remain NEVER COMPILED (their
+`CONFIG_SMP` / `configUSE_CORE_AFFINITY` / `TX_THREAD_SMP` gates are set by no
+config here). Whether any of them shares this bug is unread — the APIs differ,
+so it must be checked, not assumed. Tracked on #260.

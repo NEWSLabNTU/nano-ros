@@ -58,11 +58,28 @@ void nros_zephyr_thread_priority_set(int prio) {
  * nano-ros builds — including any that enabled the API correctly — and no
  * build could catch a mistake inside a branch the preprocessor deleted.
  *
- * NOTE this still returns -EINVAL at runtime for a STARTED thread: see
- * issue 0655. `cpu_mask_mod` requires `z_is_thread_prevented_from_running`,
- * and every caller here passes `k_current_get()`. Correcting the gate is what
- * makes that reachable and therefore diagnosable; the caller-side fix (pin
- * between `k_thread_create` and `k_thread_start`) is tracked there. */
+ * Pin an ALREADY-STARTED thread by tid. `cpu_mask_mod` requires
+ * `z_is_thread_prevented_from_running`, so this succeeds only for a thread
+ * created with `K_FOREVER` and not yet started — which is exactly how
+ * `nros_zephyr_tier_task_create` uses it. Kept separate from the CALLING-thread
+ * variant below because the two have genuinely different preconditions, and
+ * collapsing them is what hid issue 0655. */
+int nros_zephyr_thread_cpu_pin_tid(void* tid, int cpu) {
+#ifdef CONFIG_SCHED_CPU_MASK
+    return k_thread_cpu_pin((k_tid_t)tid, cpu);
+#else
+    (void)tid;
+    (void)cpu;
+    return -ENOSYS;
+#endif
+}
+
+/* Pin the CALLING thread. issue 0655: this CANNOT succeed — `k_current_get()`
+ * is by definition running, so `cpu_mask_mod` returns -EINVAL every time. It
+ * survives only for the BOOT tier, which Zephyr has already started before
+ * `run_tiers` ever sees it and which therefore has no create/start window to
+ * use. Callers must report the failure honestly rather than retry; spawned
+ * tiers go through `nros_zephyr_tier_task_create`'s pinned path instead. */
 int nros_zephyr_thread_cpu_pin(int cpu) {
 #ifdef CONFIG_SCHED_CPU_MASK
     return k_thread_cpu_pin(k_current_get(), cpu);
@@ -357,7 +374,8 @@ static void nros_zephyr_tier_trampoline(void* entry, void* arg, void* unused) {
  * NROS_ZEPHYR_MAX_TIERS spawns).
  */
 int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
-                                 const char* name, size_t stack_bytes) {
+                                 const char* name, size_t stack_bytes, uint32_t core_plus1,
+                                 int* pin_rc) {
     if (entry == NULL || nros_tier_index >= NROS_ZEPHYR_MAX_TIERS) {
         return -1;
     }
@@ -368,14 +386,43 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
                (name != NULL) ? name : "?");
     }
     int idx = nros_tier_index++;
+
+    /* issue 0655 — a tier that declares a `core` is created SUSPENDED
+     * (`K_FOREVER`), pinned, then started.
+     *
+     * Zephyr's cpu mask is settable only on a thread that is "prevented from
+     * running": `cpu_mask_mod` returns -EINVAL otherwise, and under
+     * CONFIG_SCHED_CPU_MASK_PIN_ONLY it additionally asserts
+     * "Running threads cannot change CPU pin". The previous code created every
+     * tier with K_NO_WAIT and then had the tier pin ITSELF from its own entry
+     * — i.e. always from a running thread — so the accept arm could not be
+     * reached on any image, SMP or not. Creating suspended is the whole fix:
+     * the window between create and start is the only place this API works.
+     *
+     * An undeclared core keeps K_NO_WAIT, so the common path is unchanged and
+     * no tier pays a start-up round trip for a knob it does not use. */
+    k_timeout_t start_delay = (core_plus1 != 0u) ? K_FOREVER : K_NO_WAIT;
     k_tid_t tid = k_thread_create(&nros_tier_threads[idx], nros_tier_stacks[idx],
                                   NROS_ZEPHYR_TIER_STACK_SIZE, nros_zephyr_tier_trampoline,
-                                  (void*)entry, arg, NULL, (int)priority, 0, K_NO_WAIT);
+                                  (void*)entry, arg, NULL, (int)priority, 0, start_delay);
     if (tid == NULL) {
         return -1;
     }
     if (name != NULL) {
         (void)k_thread_name_set(tid, name);
+    }
+    if (core_plus1 != 0u) {
+        /* Report the kernel's own return code to the caller, which owns the
+         * accept/fallback marker text (it must stay in lockstep with
+         * `nros_tests::output::ZEPHYR_CORE_PIN_*`). The pin is attempted
+         * whether or not it succeeds, and the thread starts either way — a
+         * tier that cannot be pinned still runs, unpinned and loudly, which
+         * is the RFC-0052 fail-loud contract. */
+        int rc = nros_zephyr_thread_cpu_pin_tid(tid, (int)(core_plus1 - 1u));
+        if (pin_rc != NULL) {
+            *pin_rc = rc;
+        }
+        k_thread_start(tid);
     }
     return 0;
 }
