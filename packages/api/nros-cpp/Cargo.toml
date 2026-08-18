@@ -193,6 +193,9 @@ panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
 # handler. nros-c owns the lang item for the bundled single-runtime staticlib.
 panic-spin = ["nros-c/panic-spin"]
 
+# phase-366 M4 — the entry-selected provider, forwarded like every other.
+panic-platform = ["nros-c/panic-platform"]
+
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via

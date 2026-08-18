@@ -36,4 +36,5 @@ nano_ros_add_executable(zephyr_entry
     LAUNCH  default
     LANG    c
     TYPED
+    PANIC   platform
     DEPLOY  zephyr)

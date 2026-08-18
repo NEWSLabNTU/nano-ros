@@ -213,6 +213,18 @@ panic-halt = ["dep:panic-halt"]
 # `panic-halt` still wins if both are on; `std` supersedes both.
 panic-spin = []
 
+# phase-366 M4 / RFC-0077 — the ENTRY-selected panic provider, set by
+# `nano_ros_entry(… PANIC platform)` through `corrosion_set_features()` after the
+# entry is declared.
+#
+# Distinct from `panic-spin`, which the `platform-*` features select, because the
+# two answer different questions. `platform-*` cannot answer this one: whether
+# anything ELSE already supplies the handler is a property of the entry and its
+# link step, not of the RTOS — the same platform is `own` for a Zephyr-hosted
+# C/C++ image (the `zephyr` crate supplies it) and `platform` for a bare one.
+# `panic-spin` is deleted by R1 once every entry names its policy.
+panic-platform = []
+
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via

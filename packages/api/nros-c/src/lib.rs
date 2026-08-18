@@ -163,7 +163,7 @@ extern crate nros_platform;
 // heap. The gate is unchanged here; what changed is what the handler DOES.
 // W5 moves ownership out of this library entirely, to the entry.
 #[cfg(all(
-    feature = "panic-spin",
+    any(feature = "panic-spin", feature = "panic-platform"),
     not(feature = "std"),
     not(feature = "panic-halt")
 ))]

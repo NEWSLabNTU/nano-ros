@@ -28,4 +28,5 @@ nano_ros_entry(
     LAUNCH  default
     LANG    c
     TYPED
+    PANIC   platform
     DEPLOY  native)

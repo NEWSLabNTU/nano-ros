@@ -94,7 +94,7 @@ function(nano_ros_entry)
     # input (RFC-0052); mutually exclusive with LAUNCH.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR;BRINGUP"
+        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR;BRINGUP;PANIC"
         "SOURCES;DEPLOY;ARGS;LAUNCH_ARGS"
         ${ARGN})
     # phase-326 (issue 0364) — the bake-time host partition is gone with
@@ -109,6 +109,84 @@ function(nano_ros_entry)
             "`host:=${_NRA_HOST}`, e.g. "
             "MODEL config/multihost_${_NRA_HOST}_model.yaml).")
     endif()
+    # ---- phase-366 M4 / RFC-0077 — this image's ending -------------------
+    #
+    # `PANIC platform|halt|own`. Applied to the `nros-c`/`nros-cpp` staticlib
+    # with `corrosion_set_features()`, which APPENDS, so it reaches the archive
+    # even though the crate was imported earlier with its base feature set.
+    #
+    # It has to be the ENTRY that says this, and it has to be applied after the
+    # entry is declared. `nros_feature_set()`'s per-platform table runs at import
+    # time from globals and structurally cannot answer the question: "does
+    # anything else already supply the handler?" is a property of the link step,
+    # not of the RTOS. The same platform gives opposite answers for a
+    # Zephyr-hosted C/C++ image (the `zephyr` crate supplies it, so `own`) and a
+    # bare one linking `libnros_c.a` (nothing does, so `platform`).
+    #
+    # Absent PANIC keeps today's behaviour — the table's `panic-halt` — until M5
+    # flips the default and R2 deletes the table rows.
+    if(_NRA_PANIC)
+        string(TOLOWER "${_NRA_PANIC}" _nra_panic)
+        if(_nra_panic STREQUAL "platform")
+            set(_nra_panic_feature panic-platform)
+        elseif(_nra_panic STREQUAL "halt")
+            set(_nra_panic_feature panic-halt)
+        elseif(_nra_panic STREQUAL "own")
+            # The image supplies its own provider; select neither feature. A
+            # POSITIVE declaration, so the gate can tell deliberate from forgot.
+            set(_nra_panic_feature "")
+        else()
+            message(FATAL_ERROR
+                "nano_ros_entry(${_NRA_NAME}): PANIC '${_NRA_PANIC}' is not a policy "
+                "(expected: platform — route to nros_platform_panic, the board's "
+                "ending; halt — park the core; own — this image supplies its own "
+                "#[panic_handler]).")
+        endif()
+
+        # One staticlib serves every entry in a workspace, so two entries asking
+        # for different endings is not a merge — it is a contradiction, and
+        # silently taking the first would ship an image that ends the way some
+        # OTHER entry asked for.
+        get_property(_nra_panic_seen GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY)
+        if(_nra_panic_seen AND NOT _nra_panic_seen STREQUAL "${_nra_panic}")
+            message(FATAL_ERROR
+                "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} conflicts with "
+                "PANIC ${_nra_panic_seen} already requested by another entry in this "
+                "build. The nros-c/nros-cpp staticlib is shared, so one ending "
+                "applies to all of them — make the entries agree, or build them "
+                "separately.")
+        endif()
+        set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY "${_nra_panic}")
+
+        if(_nra_panic_feature)
+            # Corrosion names the importable target after the crate, and which
+            # spelling exists depends on the crate's `crate-type` and Corrosion's
+            # version — `nros_cpp` here, `nros_cpp-static` where the staticlib is
+            # imported directly. Try both.
+            set(_nra_panic_applied FALSE)
+            foreach(_nra_rust_target
+                    nros_c nros_cpp nros_c-static nros_cpp-static)
+                if(TARGET ${_nra_rust_target})
+                    corrosion_set_features(${_nra_rust_target}
+                        FEATURES ${_nra_panic_feature})
+                    set(_nra_panic_applied TRUE)
+                endif()
+            endforeach()
+            # A silent skip here is the failure this phase exists to remove: the
+            # entry would state its ending, the archive would be built without
+            # it, and nothing would say so until a panic did nothing (or the link
+            # failed four crates away). If no Rust target is importable yet, the
+            # keyword cannot be honoured and that is a build error, not a shrug.
+            if(NOT _nra_panic_applied)
+                message(FATAL_ERROR
+                    "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} cannot be "
+                    "applied — no nros-c/nros-cpp Rust target exists at this point "
+                    "in the configure. The staticlib must be imported before the "
+                    "entry declares its ending.")
+            endif()
+        endif()
+    endif()
+
     foreach(_req NAME DEPLOY)
         if(NOT _NRA_${_req})
             message(FATAL_ERROR

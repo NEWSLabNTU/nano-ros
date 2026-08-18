@@ -8,6 +8,7 @@ project(demo_entry CXX)
 nano_ros_entry(
     NAME demo_entry
     SOURCES src/main.cpp
+    PANIC   platform
     DEPLOY native)
 
 target_link_libraries(demo_entry PRIVATE

@@ -23,4 +23,5 @@ nano_ros_add_executable(native_entry
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
     LAUNCH  default
     TYPED
+    PANIC   platform
     DEPLOY  native)
