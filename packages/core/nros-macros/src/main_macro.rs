@@ -100,6 +100,17 @@ struct MainArgs {
 #[derive(Copy, Clone, PartialEq, Eq, Default)]
 enum PanicPolicy {
     /// Route to `nros_platform_panic` — the board's honest ending.
+    ///
+    /// M5 made this the DEFAULT (was `Own` through M1-M4, which kept every step
+    /// behaviour-identical while the images migrated). An entry that says
+    /// nothing about panics now gets a working ending, which is the ergonomic
+    /// goal of the whole surface.
+    ///
+    /// Safe to flip only because M2/M3 migrated every image and M6 enforces it:
+    /// at the time of the flip, ZERO embedded images called `main!()` without an
+    /// explicit policy — the staticlib-shaped ones are derived (the lib owns the
+    /// item) and hosted ones are excluded by the `cfg` below.
+    #[default]
     Platform,
     /// Park the core, for images that must not print.
     Halt,
@@ -109,12 +120,6 @@ enum PanicPolicy {
     /// `esp-backtrace` or `panic-semihosting` states it, so the build can tell
     /// "deliberate" from "forgot".
     ///
-    /// M1 makes this the DEFAULT, which is what keeps this step behaviour-
-    /// identical while the images that call `panic_to_platform!()` migrate.
-    /// Moving `#[default]` to `Platform` is M5, and only once every image is
-    /// migrated or explicitly `own` — doing it earlier gives those images two
-    /// providers, which is a compile error four crates from the cause.
-    #[default]
     Own,
 }
 

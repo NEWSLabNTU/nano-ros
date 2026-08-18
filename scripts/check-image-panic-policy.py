@@ -114,7 +114,10 @@ def main() -> int:
             continue
         checked += 1
         arg = PANIC_ARG.search(call.group(1))
-        policy = arg.group(1) if arg else "own"   # M1's default; M5 flips it
+        # Must track the macro's default (M5 flipped it Own -> Platform). If the
+        # two drift, this gate demands a provider exactly where the macro emits
+        # one, or vice versa.
+        policy = arg.group(1) if arg else "platform"
         supplies = has_provider(main_rs.parent)
         rel = main_rs.relative_to(root)
         if policy == "own" and not supplies:
