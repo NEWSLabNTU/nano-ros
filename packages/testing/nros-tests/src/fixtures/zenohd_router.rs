@@ -69,14 +69,39 @@ fn kill_listeners_on_port(port: u16) {
 fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
     let path = crate::process::ros_zenohd_path().ok_or_else(|| {
         TestError::RouterUnavailable(format!(
-            "no `rmw_zenoh_cpp/rmw_zenohd` under /opt/ros (ROS_DISTRO={}). \
-             The zenoh lanes run the router a ROS 2 deployment actually runs; \
-             install `ros-<distro>-rmw-zenoh-cpp`, or set NROS_RMW_ZENOHD to \
-             its path. Pairing: {}",
+            "no `rmw_zenoh_cpp/rmw_zenohd` found. Source your ROS setup \
+             (`source /opt/ros/<distro>/setup.bash`) — that exports \
+             AMENT_PREFIX_PATH, which is how it is located; `rmw_zenohd` is NOT \
+             on PATH even when installed. AMENT_PREFIX_PATH={}, ROS_DISTRO={}. \
+             Otherwise install `ros-<distro>-rmw-zenoh-cpp`, or set \
+             NROS_RMW_ZENOHD. Pairing: {}",
+            std::env::var("AMENT_PREFIX_PATH").unwrap_or_else(|_| "unset".into()),
             std::env::var("ROS_DISTRO").unwrap_or_else(|_| "unset".into()),
             crate::process::zenoh_pairing_versions(),
         ))
     })?;
+
+    // Issue 0653 — say which router this is, not just that one was found.
+    //
+    // Only `NROS_RMW_ZENOHD` can land here un-paired: the other search steps
+    // look inside ament prefixes and cannot produce anything else. But that
+    // escape hatch is exactly where a user points at a `zenohd` built from
+    // zenoh's own instructions, whose version has no relationship to the
+    // `rmw_zenoh_cpp` the ROS side is running — the drift RFC-0075 exists to
+    // remove, arriving by the one door left open. A warning rather than an
+    // error: the override is a deliberate act and the lane may be exactly what
+    // the user is testing; what must not happen is it being SILENT.
+    let provenance = crate::process::ros_zenohd_provenance(&path);
+    if !provenance.is_ros_shipped() {
+        nros_log::nros_warn!(
+            nros_log::get_logger("nros_tests"),
+            "zenoh router {} — {}. Interop results from this run say nothing \
+             about the paired configuration (RFC-0075).",
+            path.display(),
+            provenance.describe()
+        );
+    }
+
     let mut cmd = std::process::Command::new(path);
     let mut all: Vec<String> = vec!["scouting/multicast/enabled=false".to_string()];
     all.extend_from_slice(overrides);

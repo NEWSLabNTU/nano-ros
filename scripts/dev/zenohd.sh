@@ -20,24 +20,34 @@
 #
 # Order (issue 0653), most explicit first:
 #   1. NROS_RMW_ZENOHD        an explicit path, for a non-standard install
-#   2. PATH                   where a caller who put it there expects it found
-#   3. AMENT_PREFIX_PATH      every prefix the caller has SOURCED
-#   4. $ROS_DISTRO            under /opt/ros
-#   5. /opt/ros/*             newest distro name last
+#   2. AMENT_PREFIX_PATH      every prefix the caller has SOURCED
+#   3. $ROS_DISTRO            under /opt/ros
+#   4. /opt/ros/*             newest distro name last
 #
-# Steps 2 and 3 are what make "source setup.bash, then run the lanes" true, and
-# `/opt/ros` alone did not, for two separate reasons:
+# Step 2 is what makes "source setup.bash, then run the lanes" true, and
+# `/opt/ros` alone did not: a ROS install need not be there. This repo documents
+# building one on Arch/Fedora/NixOS (docs/development/ros2-on-non-ubuntu.md), and
+# a colcon overlay is a prefix wherever the user chose. AMENT_PREFIX_PATH is the
+# sourced environment's own answer to which prefixes are active, so neither case
+# needs this code to guess a layout.
 #
-#   * ROS does not put this binary on PATH. `rmw_zenohd` installs into
-#     `lib/rmw_zenoh_cpp/` and `setup.bash` exports only `bin/`; ROS's own route
-#     is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So expecting `command -v
-#     rmw_zenohd` to work after sourcing is reasonable and wrong — step 2 honours
-#     it where a user HAS arranged it, rather than depending on it.
-#   * A ROS install need not be under /opt/ros. This repo documents building one
-#     on Arch/Fedora/NixOS (docs/development/ros2-on-non-ubuntu.md), and a colcon
-#     overlay is a prefix wherever the user chose. AMENT_PREFIX_PATH is the
-#     sourced environment's own answer to which prefixes are active, so neither
-#     case needs this code to guess a layout.
+# PATH IS DELIBERATELY NOT SEARCHED. It was, briefly, on the reasoning that a
+# caller who put the router there expects it found — and that is the wrong trade
+# for THIS binary. RFC-0075 exists so the router is the one paired with the
+# `rmw_zenoh_cpp` a ROS node is using, and PATH is exactly where an unrelated
+# router accumulates. On the machine this was written:
+#
+#     $ command -v zenohd
+#     ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd    # retired, zenoh 1.7.2
+#     $ …/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+#     #define ZENOH_C "1.8.0"                            # what ROS actually ships
+#
+# A user following zenoh's own install instructions gets a third. Letting any of
+# them shadow the paired one reintroduces the drift issue 0609 measured, with no
+# version to point at. NROS_RMW_ZENOHD covers the deliberate case.
+#
+# Note the search never looks for the NAME `zenohd` either: that is the retired
+# vendored router, and the store above shows one still installed.
 nros_zenohd_bin() {
     local relative="lib/rmw_zenoh_cpp/rmw_zenohd"
     # The conventional root, overridable ONLY so the parity gate can drive steps
@@ -50,15 +60,7 @@ nros_zenohd_bin() {
         printf '%s\n' "$NROS_RMW_ZENOHD"
         return 0
     fi
-    # 2 — PATH. `rmw_zenohd` only: `zenohd` is the RETIRED vendored router, and
-    # picking one up would resurrect exactly the drift RFC-0075 removed.
-    local on_path
-    on_path="$(command -v rmw_zenohd 2>/dev/null)"
-    if [ -n "$on_path" ]; then
-        printf '%s\n' "$on_path"
-        return 0
-    fi
-    # 3 — the sourced prefixes, in ament's own precedence order.
+    # 2 — the sourced prefixes, in ament's own precedence order.
     #
     # Split with the shell's own field splitting rather than `tr`: this function
     # must not depend on anything outside bash. A resolver that shells out is a
@@ -100,8 +102,10 @@ nros_zenohd_bin() {
     fi
 
     printf 'ERROR: cannot locate `rmw_zenoh_cpp/rmw_zenohd`.\n' >&2
-    printf '       Looked on PATH, in AMENT_PREFIX_PATH=%s, and under %s (ROS_DISTRO=%s).\n' \
+    printf '       Looked in AMENT_PREFIX_PATH=%s and under %s (ROS_DISTRO=%s).\n' \
         "${AMENT_PREFIX_PATH:-unset}" "$opt_ros" "${ROS_DISTRO:-unset}" >&2
+    printf '       PATH is not searched: the router must be the one PAIRED with your\n' >&2
+    printf '       rmw_zenoh_cpp, and a `zenohd` on PATH is usually neither (RFC-0075).\n' >&2
     printf '       The zenoh lanes run the router a ROS 2 deployment actually runs.\n' >&2
     printf '       Source your ROS setup (`source /opt/ros/<distro>/setup.bash`), install\n' >&2
     printf '       `ros-<distro>-rmw-zenoh-cpp`, or set NROS_RMW_ZENOHD to its path.\n' >&2
@@ -120,10 +124,35 @@ nros_zenohd_bin() {
 # Multicast scouting is stated explicitly even though the ROS default config
 # already disables it: it is the one property these lanes depend on, and a
 # default is a thing that can change under us.
+# Warn when `$1` is not the router `rmw_zenoh_cpp` ships (issue 0653).
+#
+# Only NROS_RMW_ZENOHD can reach here un-paired — the search steps look inside
+# ament prefixes and cannot produce anything else. But that override is exactly
+# where a user points at a `zenohd` built from zenoh's own instructions, whose
+# version has no relation to the `rmw_zenoh_cpp` the ROS side runs. A warning,
+# not an error: the override is deliberate. What it must not be is silent.
+nros_zenohd_warn_if_unpaired() {
+    local bin="$1" dir prefix
+    dir="$(dirname "$bin")"
+    if [ "$(basename "$dir")" = "rmw_zenoh_cpp" ] \
+       && [ "$(basename "$(dirname "$dir")")" = "lib" ]; then
+        prefix="$(dirname "$(dirname "$dir")")"
+        [ -f "$prefix/opt/zenoh_cpp_vendor/include/zenoh_configure.h" ] && return 0
+        printf 'WARNING: %s has the ROS layout but its prefix ships no\n' "$bin" >&2
+        printf '         zenoh_cpp_vendor header, so the pairing cannot be confirmed.\n' >&2
+        return 0
+    fi
+    printf 'WARNING: %s is NOT a ROS-shipped router — it is not\n' "$bin" >&2
+    printf '         <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd, so it is paired with no\n' >&2
+    printf '         rmw_zenoh_cpp. Results say nothing about the paired\n' >&2
+    printf '         configuration (RFC-0075).\n' >&2
+}
+
 nros_router_exec() {
     local locator="${1:?nros_router_exec: a locator is required}"
     local bin
     bin="$(nros_zenohd_bin)" || return 1
+    nros_zenohd_warn_if_unpaired "$bin"
     ZENOH_CONFIG_OVERRIDE="listen/endpoints=[\"${locator}\"];scouting/multicast/enabled=false" \
         exec "$bin"
 }

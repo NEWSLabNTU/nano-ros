@@ -168,13 +168,25 @@ is what a future failure gets diffed against — not a version to enforce.
   the escape hatch for a router obtained some other way.
 
   What *was* wrong is that "has ROS" was implemented as "has `/opt/ros`". Both
-  resolvers now read the SOURCED environment — `PATH`, then `AMENT_PREFIX_PATH`,
-  before falling back to `/opt/ros` — so a ROS built from source or installed
-  under a colcon overlay resolves the router the moment its `setup.bash` is
-  sourced. Note `rmw_zenohd` is NOT put on `PATH` by that sourcing: it installs
-  into `lib/rmw_zenoh_cpp/`, and ROS's own route to it is `ros2 run rmw_zenoh_cpp
+  resolvers now read the SOURCED environment — `AMENT_PREFIX_PATH` first, then
+  the `/opt/ros` fallbacks — so a ROS built from source or installed under a
+  colcon overlay resolves the router the moment its `setup.bash` is sourced.
+  Note `rmw_zenohd` is NOT put on `PATH` by that sourcing: it installs into
+  `lib/rmw_zenoh_cpp/`, and ROS's own route to it is `ros2 run rmw_zenoh_cpp
   rmw_zenohd`. `AMENT_PREFIX_PATH` is what makes it findable, which is why the
   fallback that skipped it was the defect.
+
+  **`PATH` is deliberately not searched**, and this RFC is the reason. Its
+  argument is not "get a router" but "get the router PAIRED with the
+  `rmw_zenoh_cpp` in use" — the pairing being the thing a version number could
+  not express. `PATH` is where an unpaired router accumulates: the host this was
+  written on carried a retired `zenohd` **1.7.2** in `~/.nros/sdk` while ROS
+  shipped zenoh-c **1.8.0**, and a user following zenoh's own install
+  instructions gets a third. Letting any of them shadow the paired one restores
+  exactly the drift D1 removed. `NROS_RMW_ZENOHD` remains for the deliberate
+  case, and both resolvers WARN when what it names is not
+  `<prefix>/lib/rmw_zenoh_cpp/rmw_zenohd` beside a `zenoh_cpp_vendor` header —
+  the override is a legitimate act, but it must not be a silent one.
 * **We no longer control the router version.** That is the trade this RFC makes
   deliberately: control over a number we could not use, exchanged for lockstep
   with the component that number was supposed to track.

@@ -133,10 +133,9 @@ now, most explicit first:
 
 ```
 1. NROS_RMW_ZENOHD     an explicit path
-2. PATH                where a caller who put it there expects it found
-3. AMENT_PREFIX_PATH   every prefix the caller has SOURCED, in ament's order
-4. $ROS_DISTRO         under /opt/ros
-5. /opt/ros/*          newest distro name last
+2. AMENT_PREFIX_PATH   every prefix the caller has SOURCED, in ament's order
+3. $ROS_DISTRO         under /opt/ros
+4. /opt/ros/*          newest distro name last
 ```
 
 Verified with the fallbacks disabled, which is the case that was broken:
@@ -153,9 +152,54 @@ $ nros_zenohd_bin
 Worth stating because it is the reasonable expectation and it is wrong: sourcing
 `setup.bash` does **not** make `command -v rmw_zenohd` work. The binary installs
 into `<prefix>/lib/rmw_zenoh_cpp/`, and the setup script exports only `bin/`;
-ROS's own route is `ros2 run rmw_zenoh_cpp rmw_zenohd`. Step 2 above honours a
-`PATH` the user has arranged rather than depending on one, and the book now says
-a silent `command -v` is normal so nobody reads it as a broken install.
+ROS's own route is `ros2 run rmw_zenoh_cpp rmw_zenohd`. The book now says a
+silent `command -v` is normal, so nobody reads it as a broken install.
+
+### `PATH` is not searched, and that is the point
+
+A first cut of this fix put `PATH` at step 2, reasoning that a caller who had put
+the router there expected it found. That is the wrong trade **for this binary**,
+and the machine it was written on demonstrates why:
+
+```
+$ command -v zenohd
+~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd     # retired vendored, zenoh 1.7.2
+$ grep 'define ZENOH_C ' /opt/ros/humble/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+#define ZENOH_C "1.8.0"                             # what ROS actually ships
+```
+
+A stale router from nano-ros's own retired SDK entry was already sitting on
+`PATH`, one minor version behind the paired one — and a user following zenoh's
+own install instructions gets a third. RFC-0075's argument is not "obtain a
+router" but "obtain the router PAIRED with the `rmw_zenoh_cpp` in use", because
+the pairing is precisely what a version number failed to express (issue 0609:
+`rmw-zenoh-cpp` 0.1.1 → 0.1.9 moved vendored zenoh 1.2.0 → 1.8.0, interop going
+from zero samples to 10/10, with our pin taking no part in either). Preferring
+`PATH` would let any unpaired router shadow the right one, silently, and hand
+back the drift the RFC removed.
+
+So the search consults ament prefixes and `/opt/ros` only. It also never looks
+for the NAME `zenohd`, only `rmw_zenohd` — the store above shows why.
+
+### Provenance is asserted, not assumed
+
+Resolving *a* router was never the requirement. `ros_zenohd_provenance` derives
+the prefix from `<prefix>/lib/rmw_zenoh_cpp/rmw_zenohd` and reads
+`opt/zenoh_cpp_vendor/include/zenoh_configure.h` from it, giving three
+distinguishable outcomes rather than a boolean:
+
+| resolved path | verdict |
+| --- | --- |
+| ament prefix + vendor header | ROS-shipped; the zenoh-c version is reported |
+| ROS layout, no vendor header | right place, pairing unconfirmable — an incomplete prefix |
+| anything else (e.g. `…/bin/zenohd`) | not paired with any `rmw_zenoh_cpp` |
+
+Steps 2–4 satisfy the first row by construction; only `NROS_RMW_ZENOHD` can
+produce the others, and that is exactly the door a hand-built `zenohd` walks
+through. Both resolvers WARN there — a warning and not an error, because the
+override is a deliberate act and the run may be the point; what it must not be
+is silent. The one header parse is now shared with `zenoh_pairing_versions`
+instead of written twice.
 
 ### Two resolvers, one table
 
@@ -167,7 +211,9 @@ call the other), so the shared thing is the EXPECTATIONS:
 
 * `scripts/dev/zenohd-resolution-cases.tsv` — nine rows, each decided by a
   different step of the order, each answered wrongly by some plausible
-  alternative order.
+  alternative order. `rejects-a-path-router` is a NEGATIVE row: the shell runner
+  puts a router on `PATH` for every case, so "resolves nothing" there is an
+  assertion that `PATH` was not consulted rather than an absence of setup.
 * `scripts/check-zenohd-resolution-parity.sh` runs the SHELL over it (in
   `just check`).
 * `zenohd_resolution_matches_the_shared_table` runs the RUST over it.

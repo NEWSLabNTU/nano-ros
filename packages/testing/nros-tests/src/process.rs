@@ -1086,26 +1086,43 @@ impl Drop for ManagedProcess {
 ///
 /// Resolution order, most explicit first (issue 0653):
 ///   1. `NROS_RMW_ZENOHD` — an explicit path, for a non-standard install.
-///   2. `PATH` — where a caller who put the router there expects it found.
-///   3. `$AMENT_PREFIX_PATH` — every prefix the caller has SOURCED, in the
+///   2. `$AMENT_PREFIX_PATH` — every prefix the caller has SOURCED, in the
 ///      order ament lists them (most recently sourced first).
-///   4. `$ROS_DISTRO` under `/opt/ros`.
-///   5. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
+///   3. `$ROS_DISTRO` under `/opt/ros`.
+///   4. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
 ///
-/// Steps 2 and 3 are what makes "source `setup.bash`, then run the tests" true.
-/// It is not true through `/opt/ros` alone, for two separate reasons:
+/// Step 2 is what makes "source `setup.bash`, then run the tests" true, and
+/// `/opt/ros` alone did not: a ROS install need not live there. This repo
+/// documents building one on Arch/Fedora/NixOS
+/// (`docs/development/ros2-on-non-ubuntu.md`), and a colcon overlay sits
+/// wherever the user put it. `AMENT_PREFIX_PATH` is the sourced environment's
+/// own answer to "which prefixes are active", so it covers both without this
+/// code guessing a layout.
 ///
-/// * **ROS does not put this binary on `PATH`.** `rmw_zenohd` installs into
-///   `lib/rmw_zenoh_cpp/`, and `setup.bash` exports only `bin/`; ROS's own route
-///   to it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So expecting `command -v
-///   rmw_zenohd` to work after sourcing is reasonable and wrong, and step 2
-///   exists to honour it where a user HAS arranged it rather than to rely on it.
-/// * **A ROS install need not live under `/opt/ros` at all.** This repo
-///   documents building one on Arch/Fedora/NixOS
-///   (`docs/development/ros2-on-non-ubuntu.md`), and a colcon overlay is a
-///   prefix anywhere the user chose. `AMENT_PREFIX_PATH` is the sourced
-///   environment's own answer to "which prefixes are active", so it covers both
-///   without this code guessing a layout.
+/// # `PATH` is deliberately NOT searched
+///
+/// It was, briefly, on the reasoning that a caller who put the router there
+/// expects it found. That is the wrong trade for THIS binary, because the whole
+/// point of RFC-0075 is that the router must be the one paired with the
+/// `rmw_zenoh_cpp` a ROS node is using — and `PATH` is exactly where an
+/// unrelated router accumulates. Measured on the machine this was written on:
+///
+/// ```text
+/// $ command -v zenohd
+/// ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd     # retired, zenoh 1.7.2
+/// $ …/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+/// #define ZENOH_C "1.8.0"                             # what ROS actually ships
+/// ```
+///
+/// A user following zenoh's own install instructions gets a third. Preferring
+/// `PATH` would let any of them shadow the paired one and reintroduce precisely
+/// the drift issue 0609 measured (`rmw-zenoh-cpp` 0.1.1 -> 0.1.9 moving vendored
+/// zenoh 1.2.0 -> 1.8.0, interop going from zero samples to 10/10) with no
+/// version to point at. `NROS_RMW_ZENOHD` remains for the deliberate case, where
+/// the user has said which one they mean.
+///
+/// Note the search never looks for the name `zenohd` either — that is the
+/// RETIRED vendored router, and the store above shows one still installed.
 ///
 /// Returns `None` rather than a fallback path: a caller that cannot find the
 /// ROS router must SKIP (issue 0599), and a `PathBuf` that does not exist would
@@ -1126,7 +1143,6 @@ pub fn ros_zenohd_path() -> Option<std::path::PathBuf> {
 #[derive(Debug, Default, Clone)]
 pub struct ZenohdEnv {
     pub explicit: Option<std::path::PathBuf>,
-    pub path: Vec<std::path::PathBuf>,
     pub ament_prefixes: Vec<std::path::PathBuf>,
     pub ros_distro: Option<String>,
     pub opt_ros: std::path::PathBuf,
@@ -1141,7 +1157,6 @@ impl ZenohdEnv {
         };
         Self {
             explicit: std::env::var_os("NROS_RMW_ZENOHD").map(Into::into),
-            path: split("PATH"),
             ament_prefixes: split("AMENT_PREFIX_PATH"),
             ros_distro: std::env::var("ROS_DISTRO").ok(),
             // Overridable ONLY for the parity gate's synthetic tree; see the
@@ -1161,30 +1176,21 @@ pub fn ros_zenohd_path_in(env: &ZenohdEnv) -> Option<std::path::PathBuf> {
     if let Some(explicit) = &env.explicit {
         return explicit.exists().then(|| explicit.clone());
     }
-    // 2 — PATH. `rmw_zenohd` is the only spelling looked for; `zenohd` is the
-    // retired vendored router and must not be picked up by accident (issue 0654
-    // is the sweep for its remaining mentions).
-    for dir in &env.path {
-        let p = dir.join("rmw_zenohd");
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    // 3 — the sourced prefixes, in ament's own precedence order.
+    // 2 — the sourced prefixes, in ament's own precedence order.
     for prefix in &env.ament_prefixes {
         let p = prefix.join(ROS_ZENOHD_RELATIVE);
         if p.exists() {
             return Some(p);
         }
     }
-    // 4 — the named distro under the conventional prefix.
+    // 3 — the named distro under the conventional prefix.
     if let Some(distro) = &env.ros_distro {
         let p = env.opt_ros.join(distro).join(ROS_ZENOHD_RELATIVE);
         if p.exists() {
             return Some(p);
         }
     }
-    // 5 — any distro under it, newest name last.
+    // 4 — any distro under it, newest name last.
     let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&env.opt_ros)
         .ok()?
         .filter_map(|e| e.ok())
@@ -1193,6 +1199,75 @@ pub fn ros_zenohd_path_in(env: &ZenohdEnv) -> Option<std::path::PathBuf> {
         .collect();
     found.sort();
     found.pop()
+}
+
+/// Where a resolved router came from, and whether it is the ROS-paired one.
+///
+/// Issue 0653 — resolving *a* router is not the requirement; RFC-0075's whole
+/// argument is that it must be the router paired with the `rmw_zenoh_cpp` in
+/// use, because that pairing is what a version number could not express (issue
+/// 0609: `rmw-zenoh-cpp` 0.1.1 -> 0.1.9 moved vendored zenoh 1.2.0 -> 1.8.0 with
+/// no signal). Steps 2..4 of the search satisfy that by construction — they only
+/// ever look inside an ament prefix — but `NROS_RMW_ZENOHD` is an escape hatch
+/// and can point anywhere, including at a `zenohd` a user built from zenoh's own
+/// instructions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZenohdProvenance {
+    /// The install prefix, when the path has the ROS shape.
+    pub prefix: Option<std::path::PathBuf>,
+    /// `ZENOH_C` from that prefix's `zenoh_cpp_vendor` header, when present.
+    pub zenoh_c: Option<String>,
+}
+
+impl ZenohdProvenance {
+    /// True when the binary sits in an ament prefix that also ships the zenoh
+    /// vendor header — i.e. it is `rmw_zenoh_cpp`'s own router, not a loose one.
+    pub fn is_ros_shipped(&self) -> bool {
+        self.prefix.is_some() && self.zenoh_c.is_some()
+    }
+
+    /// One line for a log or an error, naming what was actually resolved.
+    pub fn describe(&self) -> String {
+        match (&self.prefix, &self.zenoh_c) {
+            (Some(prefix), Some(v)) => {
+                format!("ROS-shipped, prefix {}, zenoh-c {v}", prefix.display())
+            }
+            (Some(prefix), None) => format!(
+                "prefix {} has the ROS layout but no zenoh_cpp_vendor header — \
+                 cannot confirm it is rmw_zenoh_cpp's own router",
+                prefix.display()
+            ),
+            _ => "NOT a ROS-shipped router: the path is not <prefix>/lib/rmw_zenoh_cpp/\
+                  rmw_zenohd, so it is not paired with any rmw_zenoh_cpp"
+                .to_string(),
+        }
+    }
+}
+
+/// Describe where `path` came from. See [`ZenohdProvenance`].
+pub fn ros_zenohd_provenance(path: &std::path::Path) -> ZenohdProvenance {
+    // <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd -> <prefix>
+    let prefix = path
+        .parent()
+        .filter(|d| d.file_name().is_some_and(|n| n == "rmw_zenoh_cpp"))
+        .and_then(|d| d.parent())
+        .filter(|d| d.file_name().is_some_and(|n| n == "lib"))
+        .and_then(|d| d.parent())
+        .map(std::path::Path::to_path_buf);
+    let zenoh_c = prefix.as_ref().and_then(|p| read_vendored_zenoh_c(p));
+    ZenohdProvenance { prefix, zenoh_c }
+}
+
+/// `ZENOH_C` out of a prefix's `zenoh_cpp_vendor` header, if it has one.
+fn read_vendored_zenoh_c(prefix: &std::path::Path) -> Option<String> {
+    let header = prefix.join("opt/zenoh_cpp_vendor/include/zenoh_configure.h");
+    let text = std::fs::read_to_string(header).ok()?;
+    text.lines().find_map(|l| {
+        // `#define ZENOH_C "1.6.2"` — the trailing space matters: `ZENOH_C_MAJOR`
+        // sits right below it and a prefix match without it takes the wrong line.
+        let rest = l.trim().strip_prefix("#define ZENOH_C ")?;
+        Some(rest.trim().trim_matches('"').to_string())
+    })
 }
 
 /// phase-362 W2 — the zenoh versions on BOTH sides of the seam.
@@ -1205,20 +1280,12 @@ pub fn ros_zenohd_path_in(env: &ZenohdEnv) -> Option<std::path::PathBuf> {
 /// package version is exactly what produced a wrong version claim in issue
 /// 0609's first filing, so this helper does not offer that route at all.
 pub fn zenoh_pairing_versions() -> String {
+    // One reader, shared with `ros_zenohd_provenance` — the header parse used to
+    // be written out again here, and a second spelling of a parse is a second
+    // thing to get wrong.
     let zenoh_c = ros_zenohd_path()
-        .and_then(|p| {
-            // <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd -> <prefix>
-            let prefix = p.parent()?.parent()?.parent()?.to_path_buf();
-            let header = prefix.join("opt/zenoh_cpp_vendor/include/zenoh_configure.h");
-            let text = std::fs::read_to_string(header).ok()?;
-            text.lines().find_map(|l| {
-                // `#define ZENOH_C "1.6.2"` — the macro is ZENOH_C, and the
-                // trailing space matters: `ZENOH_C_MAJOR` sits right below it
-                // and a prefix match without it takes the wrong line.
-                let rest = l.trim().strip_prefix("#define ZENOH_C ")?;
-                Some(rest.trim().trim_matches('"').to_string())
-            })
-        })
+        .map(|p| ros_zenohd_provenance(&p))
+        .and_then(|prov| prov.zenoh_c)
         .unwrap_or_else(|| "unknown".to_string());
 
     let pico = option_env!("CARGO_MANIFEST_DIR")
@@ -1508,6 +1575,59 @@ mod tests {
         );
     }
 
+    /// Issue 0653 — a router outside an ament prefix is not the paired one.
+    ///
+    /// The search cannot produce such a path (steps 2..4 look only inside ament
+    /// prefixes), but `NROS_RMW_ZENOHD` can, and that is the door a user walks
+    /// through with a `zenohd` built from zenoh's own instructions — whose
+    /// version has no relation to the `rmw_zenoh_cpp` in use. The router fixture
+    /// warns on exactly this predicate, so the predicate is worth pinning.
+    #[test]
+    fn provenance_distinguishes_the_paired_router_from_a_loose_one() {
+        let root = std::env::temp_dir().join(format!("nros-zenohd-prov-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        let paired = root.join("ros").join(ROS_ZENOHD_RELATIVE);
+        std::fs::create_dir_all(paired.parent().unwrap()).unwrap();
+        std::fs::write(&paired, b"").unwrap();
+        let header = root.join("ros/opt/zenoh_cpp_vendor/include/zenoh_configure.h");
+        std::fs::create_dir_all(header.parent().unwrap()).unwrap();
+        std::fs::write(
+            &header,
+            "#define ZENOH_C_MAJOR 1\n#define ZENOH_C \"1.8.0\"\n",
+        )
+        .unwrap();
+
+        let prov = ros_zenohd_provenance(&paired);
+        assert!(prov.is_ros_shipped(), "{}", prov.describe());
+        assert_eq!(prov.zenoh_c.as_deref(), Some("1.8.0"));
+        assert_eq!(prov.prefix.as_deref(), Some(root.join("ros").as_path()));
+
+        // A loose router — the shape `command -v zenohd` finds. This host had a
+        // retired `zenohd` 1.7.2 in `~/.nros/sdk` while ROS shipped 1.8.0, which
+        // is why the search does not consult PATH at all.
+        let loose = root.join("sdk/zenohd/1.7.2/bin/zenohd");
+        std::fs::create_dir_all(loose.parent().unwrap()).unwrap();
+        std::fs::write(&loose, b"").unwrap();
+        let prov = ros_zenohd_provenance(&loose);
+        assert!(!prov.is_ros_shipped());
+        assert!(prov.prefix.is_none(), "a bin/ path is not an ament prefix");
+        assert!(prov.describe().contains("NOT a ROS-shipped router"));
+
+        // The ROS LAYOUT without the vendor header: right place, unconfirmable
+        // pairing. Distinguished from the case above because the remedy differs
+        // — this one is "your prefix is incomplete", not "wrong binary".
+        let unmarked = root.join("nomarker").join(ROS_ZENOHD_RELATIVE);
+        std::fs::create_dir_all(unmarked.parent().unwrap()).unwrap();
+        std::fs::write(&unmarked, b"").unwrap();
+        let prov = ros_zenohd_provenance(&unmarked);
+        assert!(!prov.is_ros_shipped());
+        assert!(prov.prefix.is_some());
+        assert!(prov.describe().contains("no zenoh_cpp_vendor header"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Issue 0653 — the RUST resolver answers the shared resolution table.
     ///
     /// The other consumer is `scripts/check-zenohd-resolution-parity.sh`, which
@@ -1550,7 +1670,6 @@ mod tests {
         for prefix in ["overlay", "underlay", "optros/humble", "optros/jazzy"] {
             touch_exec(&root.join(prefix).join(rel));
         }
-        touch_exec(&root.join("bin/rmw_zenohd"));
         touch_exec(&root.join("explicit/router"));
         std::fs::create_dir_all(root.join("nothing")).unwrap();
 
@@ -1574,26 +1693,24 @@ mod tests {
             let col: Vec<&str> = line.split('\t').collect();
             assert_eq!(
                 col.len(),
-                7,
-                "row {:?} has {} columns, expected 7 — the table's shape is shared \
+                6,
+                "row {:?} has {} columns, expected 6 — the table's shape is shared \
                  with the shell gate, so a ragged row breaks both",
                 col[0],
                 col.len()
             );
             ran += 1;
-            let (name, explicit, path, ament, distro, optros, expected) = (
+            let (name, explicit, ament, distro, optros, expected) = (
                 col[0],
                 expand(col[1]),
                 expand(col[2]),
-                expand(col[3]),
-                col[4],
+                col[3],
+                expand(col[4]),
                 expand(col[5]),
-                expand(col[6]),
             );
 
             let env = ZenohdEnv {
                 explicit: (!explicit.is_empty()).then(|| std::path::PathBuf::from(&explicit)),
-                path: split(&path),
                 ament_prefixes: split(&ament),
                 ros_distro: (!distro.is_empty()).then(|| distro.to_string()),
                 opt_ros: std::path::PathBuf::from(&optros),

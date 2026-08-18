@@ -122,6 +122,16 @@ ROS's own way to reach it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So a silent
 `command -v` is normal and not a broken install — `just <plat> zenohd` finds it
 regardless.
 
+**`PATH` is not searched for the router, on purpose.** nano-ros needs the router
+that ships *with your `rmw_zenoh_cpp`*, because the two share a zenoh build and
+a mismatch shows up as "nothing was delivered" rather than as an error. A
+`zenohd` on `PATH` — one you installed from zenoh's own instructions, or one
+nano-ros itself left behind before it retired the vendored router — is usually a
+different and older zenoh, so picking it up would be the wrong answer arrived at
+quickly. If you do want a specific binary, name it with `NROS_RMW_ZENOHD`; you
+will get a warning if it is not a `rmw_zenoh_cpp` router, and it will still be
+used.
+
 | Task | Needs a ROS 2 install? |
 |---|---|
 | `nros setup`, `nros sync`, message codegen | **No** — interface sources are vendored |

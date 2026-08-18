@@ -406,9 +406,14 @@ daemon) remains the documented ROS-less route; RFC-0075's Consequences amended t
 scoped to interop. The genuine bug underneath was narrower and is fixed: "has ROS" was implemented as
 "has `/opt/ros`", so a user who SOURCED a working ROS built from source, or a colcon overlay — including
 this repo's own Arch/Fedora/NixOS distrobox route — was told there was no router. Both resolvers now read
-the sourced environment (`PATH`, then `AMENT_PREFIX_PATH`, then the `/opt/ros` fallbacks); note
-`rmw_zenohd` is NOT on `PATH` even when installed (it lives in `lib/rmw_zenoh_cpp/`), which the book now
-states so a silent `command -v` is not read as a broken install. `zenohd.sh` had carried "the two must
+the sourced environment (`AMENT_PREFIX_PATH`, then the `/opt/ros` fallbacks); note `rmw_zenohd` is NOT on
+`PATH` even when installed (it lives in `lib/rmw_zenoh_cpp/`), which the book now states so a silent
+`command -v` is not read as a broken install. `PATH` is deliberately NOT searched: RFC-0075 wants the
+router PAIRED with the `rmw_zenoh_cpp` in use, and `PATH` is where an unpaired one accumulates — this host
+carried a retired `zenohd` 1.7.2 in `~/.nros/sdk` while ROS shipped zenoh-c 1.8.0. Provenance is now
+asserted rather than assumed (`ros_zenohd_provenance`: ament prefix + `zenoh_cpp_vendor` header), and both
+resolvers WARN when `NROS_RMW_ZENOHD` names something else — the one door an unpaired router can still
+come through. `zenohd.sh` had carried "the two must
 agree" as a comment since phase-362 with nothing checking it, and they drifted identically; the
 expectations are now ONE table answered twice — `check-zenohd-resolution-parity` for the shell,
 `zenohd_resolution_matches_the_shared_table` for the Rust. See `archived/0653-*`. (2026-08-18)
