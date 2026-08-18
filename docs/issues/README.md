@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0670** (testing/diagnostics, open 2026-08-18) — `contract_monitor_parity`'s violating case is red on main
+and reproduces SOLO. The diagsink emits ONE DIAG line in 32 s — the PUB's `rate-hierarchy-runtime` — and the
+SUB's `max-age-runtime` never arrives, though the sub is receiving the stale headers that should trip it. The
+same three fixtures, env and start order pass by hand against BOTH routers (50 max-age), so phase-362's router
+switch is ruled out; the variable is the harness. The compliant twin cannot catch this — it asserts SILENCE,
+so a dead pipeline passes it. Two harness defects fixed on the way (`wait_for_output_count` dropped its output
+on timeout; the call site `unwrap_or_default()`ed it away) — and a warning in the issue against the tempting
+fix that makes the test pass vacuously. See `0670-*`. (2026-08-18)
 **#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
 in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
 findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not

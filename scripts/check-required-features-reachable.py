@@ -49,24 +49,26 @@ ROOT = Path(__file__).resolve().parent.parent
 # `phase216-substrate` now run in `check-required-features-tests` (20 tests,
 # `signal-fd-wake-test` having joined them from `nros-node` per issue 0612).
 #
-# Shrunk again the same day: `loan-e2e` is wired into `test-zpico-multisession`,
-# which already owns `ZPICO_MAX_SESSIONS=2` and its own target dir. The entry
-# above named that recipe as its home and recorded "verified passing 2/2 under
-# that env" — but the wiring was never added, so the target sat in no lane after
-# all, which is the exact condition this gate exists to make impossible. The
-# gate caught it: adding the recipe line made `loan-e2e` reachable and this file
-# failed until the entry came out. A baseline row is the thing to delete, not a
-# note to keep.
+# Shrunk again the same day, twice and independently, emptying it:
 #
-# What is left:
+#   loan-e2e  wired into `test-zpico-multisession`, which already owns
+#             `ZPICO_MAX_SESSIONS=2` and its own target dir. The old entry NAMED
+#             that recipe as its home and recorded "verified passing 2/2 under
+#             that env" — but the wiring was never added, so the target sat in
+#             no lane after all, which is the exact condition this gate exists
+#             to make impossible. A baseline row is the thing to delete, not a
+#             note to keep.
+#   rmw       `custom_transport_loopback` joined `test-all`'s lane, which is the
+#             fixture-gated one it wanted: `test-all` depends on
+#             `_require-fixtures`, `check-required-features-tests` does not. It
+#             was never broken, only unassessable — on rebuilt fixtures it
+#             passes (3 TCP hops, 3 messages delivered, 0.58 s).
 #
-#   rmw  `custom_transport_loopback` needs a native fixture, so it wants a
-#        fixture-gated lane rather than a `check` one. Verified passing on
-#        rebuilt fixtures (it was fixture staleness, not a defect) — what it
-#        lacks is a lane that can guarantee the fixture, not a fix.
-BASELINE = {
-    "rmw",
-}
+# BASELINE is now EMPTY, which is what a shrinking backlog is for. Do not add a
+# row back without a dated reason and the lane it is waiting on: the promise
+# this file made when it went in with five was that the sixth could not appear
+# silently, and an empty set is the strongest form of that.
+BASELINE: set[str] = set()
 
 # `--features a,b`, `--features "a b"`, `features = ["a"]`, `--all-features`.
 FEATURE_CONTEXT = re.compile(

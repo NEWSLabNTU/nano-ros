@@ -211,6 +211,29 @@ Two are deliberately NOT in it:
 * **`custom_transport_loopback`** needs a native fixture (stale on this host),
   so it wants a fixture-gated lane rather than this one. Still unassessed.
 
+### FOLLOW-UP 2026-08-18 — `custom_transport_loopback` assessed; baseline now 1
+
+The fixture was rebuilt (`just build-test-fixtures lane=native`) and the target
+is **not broken**: 3 TCP hops, 3 messages delivered, PASS in 0.58 s. It was
+never a code failure, only an unassessable one.
+
+It joined `test-all`'s tail rather than `check-required-features-tests`, because
+the distinction this issue drew is real: `test-all` depends on
+`_require-fixtures`, that lane does not, and this is the one target here that
+needs a prebuilt binary.
+
+Reaching it needed one change to `_nextest-platform`, which had no way to name a
+feature. The caller passes the **whole flag** (`"--features rmw"`), not a bare
+feature name — a `--features {{feature_args}}` in the helper would leave `rmw`
+spelled nowhere in the justfile, and this gate reads reachability off the
+literal `--features` text. That would have made the gate narrower than its own
+rule (issue 0196) while reporting green, which is the failure mode this issue
+exists to prevent.
+
+Mutation-checked both ways: with the flag, `Starting 1 test across 1 binary`;
+without it, cargo exits 101 and the issue-#29 guard refuses to mask that as a
+`[SKIPPED]` precondition.
+
 ### Gate baseline shrunk 5 -> 2
 
 `check-required-features-reachable` now baselines only those two, each with its

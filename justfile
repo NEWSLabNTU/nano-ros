@@ -1856,12 +1856,23 @@ test-integration verbose="":
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`
 # recipes in just/<platform>.just so the args/verbose boilerplate lives in
 # one place.
-_nextest-platform test_name verbose="":
+_nextest-platform test_name verbose="" feature_args="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test {{test_name}} --no-fail-fast)
+    # A target behind `required-features` is skipped SILENTLY by cargo — not
+    # reported as filtered, not counted anywhere — so a caller needing one must
+    # ask for its feature. The caller passes the WHOLE FLAG (`--features rmw`),
+    # not a bare feature name, because `check-required-features-reachable` reads
+    # reachability off the literal `--features` text in this file: a
+    # `--features {{{{feature_args}}}}` here would leave the real feature name
+    # spelled nowhere the gate can see, which is the gate-narrower-than-its-rule
+    # shape of issue 0196.
+    if [ -n "{{feature_args}}" ]; then
+        args+=({{feature_args}})
+    fi
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -2573,6 +2584,24 @@ test-all verbose="": _require-fixtures _check-fixtures-stale
     set +e
     failed=0
     just init-test-logs
+    # The workspace run below uses DEFAULT features, so every target behind
+    # `required-features` is silently absent from it — cargo does not report
+    # such a target as filtered, deselected or skipped, it simply never builds
+    # it. `custom_transport_loopback` is the one target behind `rmw`, and it
+    # needs native fixtures, which is why it belongs HERE (`test-all` depends on
+    # `_require-fixtures`) rather than in the fixture-free
+    # `check-required-features-tests`.
+    #
+    # BEFORE the main run, not after, and that ordering is load-bearing: every
+    # `cargo nextest` invocation rewrites `junit.xml`, and `_rewrite-skipped-junit`
+    # re-snapshots `junit-real.xml` from it. A junit-writing lane placed in the
+    # tail therefore overwrites BOTH — the main sweep's real-failure record
+    # (issue 0527's whole purpose) and the input `_check-skip-budget` asserts on
+    # (issue 0584) — leaving a one-test file that reports `0 skip(s)` no matter
+    # what the sweep did. Here it is harmless: the `rm -f "$junit"` below clears
+    # it, and this lane reports its own verdict through its exit status.
+    echo "=== Required-features fixture tests ==="
+    just _nextest-platform custom_transport_loopback "{{verbose}}" "--features rmw" || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)

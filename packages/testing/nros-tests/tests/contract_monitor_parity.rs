@@ -108,12 +108,29 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
 
     // Age fires as soon as a stale message is taken (fast); rate needs two
     // ~5 s windows to measure, so give it a generous ceiling.
-    let age_out = diagsink
-        .wait_for_output_count(RULE_MAX_AGE_RUNTIME, 1, Duration::from_secs(14))
-        .unwrap_or_default();
-    let rate_out = diagsink
-        .wait_for_output_count(RULE_RATE_HIERARCHY_RUNTIME, 1, Duration::from_secs(18))
-        .unwrap_or_default();
+    // The timeout error carries what the diagsink actually printed, and that is
+    // the whole diagnostic — `unwrap_or_default()` used to drop it, leaving an
+    // empty `got:` that cannot distinguish "the rule never fired" from "the
+    // observer printed nothing at all".
+    //
+    // But it must NOT flow into the string the assertions search: the error
+    // text NAMES the pattern it was waiting for (`did not print
+    // `max-age-runtime``), so folding it into `seen` makes
+    // `seen.contains(RULE_MAX_AGE_RUNTIME)` match the complaint about the
+    // missing rule and the test passes exactly when it should fail. Evidence
+    // goes in the panic MESSAGE; only real output goes in `seen`.
+    let mut why = String::new();
+    let mut wait_rule = |proc: &mut ManagedProcess, rule: &str, secs: u64| -> String {
+        match proc.wait_for_output_count(rule, 1, Duration::from_secs(secs)) {
+            Ok(out) => out,
+            Err(e) => {
+                why.push_str(&format!("\n[wait {rule}] {e}"));
+                String::new()
+            }
+        }
+    };
+    let age_out = wait_rule(&mut diagsink, RULE_MAX_AGE_RUNTIME, 14);
+    let rate_out = wait_rule(&mut diagsink, RULE_RATE_HIERARCHY_RUNTIME, 18);
 
     publisher.kill();
     sub.kill();
@@ -122,11 +139,11 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
     let seen = format!("{age_out}{rate_out}");
     assert!(
         seen.contains(RULE_MAX_AGE_RUNTIME),
-        "expected max-age-runtime on /diagnostics (stale stamp), got:\n{seen}"
+        "expected max-age-runtime on /diagnostics (stale stamp), got:\n{seen}{why}"
     );
     assert!(
         seen.contains(RULE_RATE_HIERARCHY_RUNTIME),
-        "expected rate-hierarchy-runtime on /diagnostics (slow publish), got:\n{seen}"
+        "expected rate-hierarchy-runtime on /diagnostics (slow publish), got:\n{seen}{why}"
     );
 }
 

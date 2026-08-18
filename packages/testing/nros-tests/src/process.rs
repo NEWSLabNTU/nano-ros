@@ -850,7 +850,26 @@ impl ManagedProcess {
             if start.elapsed() > timeout {
                 self.handle.stdout = stdout;
                 self.handle.stderr = stderr;
-                return Err(TestError::Timeout);
+                // Carry the output. This is the ONE path where a caller most
+                // needs to see what the process actually printed — it wanted
+                // `pattern` and got something else — and it used to be the only
+                // path that threw it away: `TestError::Timeout` is a unit
+                // variant, so a `.unwrap_or_default()` caller ends up asserting
+                // on `""` and reporting `got:` with nothing after it. The
+                // process-exited branch just below already reports this way; so
+                // do the siblings at `wait_for_output`/`wait_for_all_output`,
+                // which return `Timeout` only when the output is genuinely
+                // empty. `param_live_read_e2e` worked around this by waiting on
+                // a broader pattern; the workaround is no longer needed.
+                return Err(TestError::ProcessFailed(format!(
+                    "{} did not print `{}` {} time(s) within {:?} (saw {}). Output:\n{}",
+                    self.name,
+                    pattern,
+                    expected,
+                    timeout,
+                    output.matches(pattern).count(),
+                    output
+                )));
             }
 
             if let Ok(Some(_)) = self.handle.try_wait() {
