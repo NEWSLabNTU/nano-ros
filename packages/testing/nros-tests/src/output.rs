@@ -410,6 +410,22 @@ pub const RAW_GOAL_PROBE_ORDER: i32 = 7;
 /// not merely that some order arrived.
 pub const RAW_GOAL_DOUBLE_HEADER_ORDER: i32 = 256;
 
+/// The WCET bench's refusal when the cycle counter is dead (issue 0403).
+///
+/// `packages/testing/nros-bench/wcet-cycles-qemu` measures with the Cortex-M
+/// DWT cycle counter. QEMU does not implement DWT counting, so the counter
+/// never advances, and issue 0403 decided the right response is to emit NO
+/// measurements and fail rather than report zeros: a zero is indistinguishable
+/// from "this operation is free", which is the most optimistic WCET there is
+/// and always errs toward "schedulable".
+///
+/// That makes an emulator an unmet CAPABILITY for this benchmark, not a
+/// regression — which is what the consuming test keys on.
+pub const WCET_DEAD_COUNTER_MARKER: &str = "the DWT cycle counter is not counting";
+
+/// The WCET bench's completion line, printed only after real measurements.
+pub const WCET_COMPLETE_MARKER: &str = "Benchmark complete";
+
 /// Action server log line when goal execution starts (`"Executing goal"`).
 pub const ACTION_EXECUTING_MARKER: &str = "Executing goal";
 
