@@ -1,7 +1,7 @@
 ---
 id: 678
 title: "The threadx-riscv64 Cyclone rows cannot link `__emutls_v.errno`: the provisioned toolchain emits EMULATED TLS and the linked picolibc was built with NATIVE TLS"
-status: resolved
+status: open
 type: bug
 severity: high
 area: build, boards
@@ -320,3 +320,166 @@ tracked as [issue 0680](../0680-threadx-newlib-reent-shared-across-threads.md).
 * Zephyr picolibc integration — <https://docs.zephyrproject.org/latest/develop/languages/c/picolibc.html>
 * ThreadX errno / `TX_THREAD_EXTENSION` — <https://learn.microsoft.com/en-us/answers/questions/1245073/integrating-bsd-library-with-azure-threadx-rtos>
 * ThreadX + newlib reentrancy, unanswered — <https://github.com/eclipse-threadx/threadx/issues/448>
+
+## REOPENED 2026-08-19 — the fix reached the cmake path only; cargo still injects picolibc
+
+`066441663` is correct and stays. It did not reach the fourth site, so the
+platform still does not build:
+
+```
+$ just threadx_riscv64 build-fixtures      # clean tree, nothing local
+threadx-riscv64-c-cyclonedds:
+  rust-lld: error: undefined symbol: __emutls_v.errno   (x2, from libddsc.a)
+BUILD_RC=2
+```
+
+### The fourth site
+
+The fix keyed the choice on the picolibc-specs probe's **exit code** — reject
+`picolibc.specs` and this is not a picolibc toolchain, so use its own headers.
+`packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs` asks the
+same question and answers it the opposite way:
+
+```rust
+fn get_picolibc_sysroot() -> Option<PathBuf> {
+    if let Ok(output) = Command::new(...).args([..., "--specs=picolibc.specs",
+                                                "-print-sysroot"]).output()
+        && output.status.success()
+    { ...use it... }
+    // Fallback: known system location
+    let fallback = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
+    if fallback.join("include").exists() { return Some(fallback); }
+```
+
+A FAILED probe falls through to a hardcoded Debian path. Measured on this host:
+
+```
+$ riscv-none-elf-gcc --specs=picolibc.specs -print-sysroot ; echo $?
+riscv-none-elf-gcc: fatal error: cannot read spec file 'picolibc.specs'
+1                                    <- not a picolibc toolchain
+$ ls -d /usr/lib/picolibc/riscv64-unknown-elf/include
+/usr/lib/picolibc/riscv64-unknown-elf/include        <- taken anyway
+```
+
+`get_picolibc_lib_dir()` then feeds `cargo:rustc-link-lib=static=c` from the
+same sysroot. So after the fix the board links **newlib through cmake and
+picolibc through cargo** — two C libraries in one board, which is the shape this
+issue exists to remove, one layer over. The C/C++ leaves go through cmake and
+the Rust leaves through cargo, so which libc a leaf gets depends on what language
+it is written in.
+
+### Why this was not caught
+
+`066441663`'s verification was a clean rebuild that got further than before. It
+did get further — the failure moved from the C++ rows to the C ones — and
+"further" was read as "fixed" for the platform rather than for the sites
+touched. The C Cyclone rows still fail, and they did before the fix as well.
+
+### A trap for whoever fixes this — measured, not predicted
+
+The board defines `int errno;` in `c/board_threadx_qemu_riscv64.c`, commented as
+a bare-metal global. Under newlib that global is genuinely unreachable —
+`<errno.h>` makes `errno` the macro `(*__errno())` — so it reads like dead code.
+**It is not dead on the cargo path**, because that path still links picolibc,
+where `errno` is a real extern symbol, and the board's definition is the one
+near enough to satisfy `libzpico_sys`:
+
+```
+rust-lld: relocation R_RISCV_PCREL_HI20 out of range: -524334 is not in
+          [-524288, 524287]; references 'errno'
+          referenced by libzpico_sys(...endpoint.o)
+          defined in libnros_board_threadx_qemu_riscv64(libc_errno_errno.c.o)
+```
+
+That is what deleting it produces today: twelve out-of-range relocations, because
+the reference falls through to picolibc's own copy half a megabyte away. The
+global becomes removable only AFTER both paths agree on newlib — and that
+ordering is the whole content of this note.
+
+### Fix
+
+Make `get_picolibc_sysroot()` treat a failed specs probe the way the cmake side
+does: not a picolibc toolchain, return `None`, let the compiler use its own
+headers and its own `libc.a`. The hardcoded `/usr/lib/picolibc/...` fallback is
+the defect, not a safety net — it is the line that pairs a distro libc with
+whatever compiler happens to be resolved.
+
+Sequencing that follows from the trap above:
+
+1. cargo path stops injecting picolibc — both paths on the toolchain's libc;
+2. THEN `int errno;` is dead everywhere and can go (issue 0680's note);
+3. THEN newlib's `__retarget_lock_*` are worth wiring, and are wired once
+   rather than into a glue file two different libcs compile.
+
+### Acceptance
+
+Not "the build gets further". `just threadx_riscv64 build-fixtures` to
+`BUILD_RC=0`, with zero `__emutls_v.errno` and zero out-of-range relocations —
+and the C, C++ AND Rust rows all producing artifacts, since each exercises a
+different one of the two paths.
+
+## Root cause of the REOPEN — the fix is correct and existing build trees never see it
+
+The fourth site above is real and fixed below, but it is not why the C rows kept
+failing. That has a sharper cause, and it invalidates the earlier verification
+rather than adding to it.
+
+**`CMAKE_C_FLAGS` is a CACHE variable seeded from `CMAKE_C_FLAGS_INIT` on the
+FIRST configure only.** A toolchain file is not re-applied to an existing build
+directory; CMake rewrites `CMakeCache.txt` on every configure — so its mtime
+looks current — while the flags inside it are the ones computed the first time.
+
+Measured on the leaf that kept failing:
+
+```
+$ ls --time-style=+%m-%d_%H:%M .../c/listener/build-cyclonedds/CMakeCache.txt
+08-19_04:25                                   # today, AFTER the 08-18 17:20 fix
+$ grep -m1 PICOLIBC .../CMakeCache.txt
+CMAKE_CXX_FLAGS:STRING= … -isystem /usr/lib/picolibc/riscv64-unknown-elf/include
+                          -DNROS_LIBC_PICOLIBC=1
+```
+
+Deleting the two C Cyclone build directories and reconfiguring:
+
+```
+picolibc references in the fresh CMakeCache : 0
+__emutls_v.errno errors                     : 0
+```
+
+So `066441663` works. It simply cannot reach a tree that already exists, and
+every tree on this machine did. This is the museum-binary class (issue 0475) in
+its configure-time form: the inputs changed, the artifact did not, and nothing
+said so.
+
+**Consequence for anyone verifying a toolchain-file change:** a rebuild is not a
+test of it. The build directory must be deleted. That is also why the earlier
+"clean rebuild" read as progress — the failure moved between rows because the
+rows had been configured at different times, not because anything was fixed.
+
+## Fixed here — the cargo path's hardcoded fallback
+
+`get_picolibc_sysroot()` fell through to `/usr/lib/picolibc/riscv64-unknown-elf`
+whenever that directory existed, INCLUDING when the specs probe had just failed.
+That fallback is removed: a failed probe means the compiler is not a picolibc
+toolchain, so `None` leaves it to use its own headers and its own `libc.a` —
+the same rule `066441663` applied on the cmake side.
+
+Unlike the cmake side, this one takes effect immediately: cargo re-runs
+`build.rs`, so there is no cache to invalidate.
+
+## Still failing, and NOT this issue
+
+With fresh trees and both paths on the toolchain's libc, the platform gets
+further and stops somewhere new:
+
+```
+error: `#[panic_handler]` function required, but not found
+error: could not compile `nros-c` (lib)
+```
+
+Cause not established. It appeared on the first from-scratch configure this
+board has had in a while, and nothing in this issue's fix touches panic
+handlers, so the likely reading is another failure the picolibc one was standing
+in front of — the third time in this sequence (0674 → 0678 → this). Filed
+separately rather than absorbed here, because "the build gets further" is
+precisely the reasoning this reopen exists to correct.

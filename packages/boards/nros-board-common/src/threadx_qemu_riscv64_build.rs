@@ -411,11 +411,25 @@ fn get_picolibc_sysroot() -> Option<PathBuf> {
             }
         }
     }
-    // Fallback: known system location
-    let fallback = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
-    if fallback.join("include").exists() {
-        return Some(fallback);
-    }
+    // issue 0678 — NO hardcoded fallback.
+    //
+    // This used to fall through to `/usr/lib/picolibc/riscv64-unknown-elf`
+    // whenever that directory existed, INCLUDING when the specs probe above had
+    // just failed. A failed probe is not "picolibc is somewhere else", it is
+    // "this compiler is not a picolibc toolchain" — and taking the fallback
+    // anyway is what paired the provisioned xPack compiler (emulated TLS) with
+    // Debian's picolibc (native TLS), whose `libc.a` therefore cannot define the
+    // `__emutls_v.errno` that compiler emits.
+    //
+    // `066441663` fixed exactly this on the cmake side by keying on the probe's
+    // EXIT CODE. It did not reach here, so the board linked newlib through cmake
+    // and picolibc through cargo — the same two-libc split, decided by which
+    // language a leaf happens to be written in.
+    //
+    // Returning `None` leaves the compiler to use its own headers and its own
+    // `libc.a`, which is Zephyr's stated rule for picolibc ("toolchain-bundled
+    // … guaranteed to be in sync") and the only arrangement where the TLS model
+    // is one decision rather than two.
     None
 }
 

@@ -543,16 +543,24 @@ macros are mutually exclusive). Also surfaced: the port's asm addresses the TCB 
 offsets with no `_Static_assert` — safe today only because every offset used precedes `EXTENSION_0`.
 See `0680-*`. (2026-08-18)
 
-Recently resolved (2026-08-18): **#0678** — the `threadx-riscv64` Cyclone rows could not link
-`__emutls_v.errno`: the provisioned xPack toolchain implements `__thread` as EMULATED TLS while the injected
-Debian picolibc was built with NATIVE TLS and carries zero emutls symbols, so the reference could never be
-defined. Fixed by using the toolchain's OWN newlib and not injecting another libc's headers. The probe's
-RESULT is what distinguishes the two toolchains — Debian's accepts `picolibc.specs` and prints an empty
-sysroot, xPack's fails — so keying on its OUTPUT sent both to the hardcoded Debian path. Three sites carried
-that rule; the one feeding Cyclone (`cmake/platform/nano-ros-threadx.cmake`) also probed a HARDCODED
-`riscv64-unknown-elf-gcc`, so fixing the toolchain file alone left `libddsc.a` still emitting emutls.
-Verified from CLEAN (all four build dirs wiped): 0 emutls, 0 picolibc injections, all four binaries built.
-Lane still red for #0668's panic handler (phase-366, in flight). See `archived/0678-*`. (2026-08-18)
+**#0678** (build/boards, REOPENED 2026-08-19) — `066441663` fixed three sites and the platform still does
+not build: `just threadx_riscv64 build-fixtures` gives `BUILD_RC=2` with `undefined symbol: __emutls_v.errno`
+on `threadx-riscv64-c-cyclonedds`. The fourth site is the cargo path —
+`nros-board-common/src/threadx_qemu_riscv64_build.rs::get_picolibc_sysroot()` asks the same
+`--specs=picolibc.specs` question the cmake side does and answers a FAILED probe the opposite way: it falls
+through to a hardcoded `/usr/lib/picolibc/riscv64-unknown-elf`. So the board now links newlib through cmake
+and picolibc through cargo — two C libraries in one board, which is this issue's own shape one layer over,
+and which libc a leaf gets depends on the language it is written in. The earlier verification saw the
+failure MOVE (C++ rows -> C rows) and read "further" as "fixed". Also recorded, measured: the board's
+`int errno;` looks dead under newlib (where `errno` is the macro `(*__errno())`) but is load-bearing on the
+cargo path, where picolibc makes it a real symbol — deleting it yields twelve `R_RISCV_PCREL_HI20 out of
+range` relocations. It becomes removable only after both paths agree. ROOT CAUSE of the reopen: `CMAKE_C_FLAGS` is a CACHE
+variable seeded from `_INIT` on the FIRST configure only, so a toolchain-file fix never reaches an existing
+build tree — CMake rewrites `CMakeCache.txt` (mtime looks current) without recomputing the flags. Deleting
+the two C Cyclone build dirs gives 0 picolibc references and 0 emutls errors, i.e. `066441663` works and
+simply could not reach any tree that already existed (issue 0475's museum-binary class, configure-time
+form). A rebuild is NOT a test of a toolchain change; the build dir must be deleted. The cargo-path fallback
+is fixed here and needs no such dance, since `build.rs` re-runs. See `0678-*`. (2026-08-19)
 
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
