@@ -379,6 +379,17 @@ tier — moved to the spawned one. Verified: `nros: core pin tier=`high` cpu=0`,
 flipped Fallback -> Accept. Still UNIPROCESSOR, so it proves the call is correct, not SMP placement (#260).
 See `archived/0655-*`. (2026-08-18)
 
+**#0671** (testing/diagnostics, open 2026-08-18) — `contract_monitor_parity` reports NOTHING on
+`/diagnostics`: the assert's `got:` is empty after the full 32 s budget, so it is silence, not a lost race.
+**2/2 SOLO**, which separates it from the seven sibling failures in the same sweep that DO pass solo (the
+documented load flakes). Not caused by the commit that found it (#0655's nine files are not in
+contract-monitor's graph). Lead, explicitly not a diagnosis: `56ea492af` (phase-359 W10) rewrote this
+fixture's four dep-sites to `default-features = false` when it deleted `std` from `nros-diagnostics` + the
+diag msg crates — but the obvious mechanism fails, since contract-monitor still names `"std","alloc","env"`
+on `nros`. And W10's own notes record this test at 5/5 afterwards, so either something later regressed it or
+that 5/5 predates the manifest move. Root cause NOT determined; filed rather than patched because phase-359
+is ACTIVE (the #643 call). Blocks a green tier 1. See `0671-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
 from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to
 interop: zenoh-pico is a client, so ANY two-process zenoh example needs a router. DECIDED: keep the
