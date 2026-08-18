@@ -55,6 +55,16 @@ PAT = re.compile(r"\bzenohd\s+(?:--|-l\s)")
 # own path-independent spelling. This pattern keeps a fourth copy from appearing.
 HARDCODED_PATH = re.compile(r"/opt/ros/[^\s\"']*/lib/rmw_zenoh_cpp/rmw_zenohd")
 
+# The VENDORED router's artifact path. phase-362 / RFC-0075 deleted the
+# submodule, the recipe and the SDK entry that produced `build/zenohd/zenohd`,
+# and the name outlived all three: docs still told readers the harness reads it,
+# `activate.sh` still explained why it was whitelisted onto PATH, and a RETIRED
+# copy in `~/.nros/sdk` kept winning `command -v` for months (issue 0653).
+#
+# Matches the BINARY, not the directory: several files legitimately say
+# "`build/zenohd` is gone", and forbidding the directory would forbid saying so.
+VENDORED_ARTIFACT = re.compile(r"build/zenohd/zenohd")
+
 EXEMPT_PREFIXES = (
     "docs/",          # narrowed below to archived/ only
     "third-party/",
@@ -101,6 +111,7 @@ def main() -> int:
 
     hits: list[tuple[str, int, str]] = []
     path_hits: list[tuple[str, int, str]] = []
+    ghost_hits: list[tuple[str, int, str]] = []
     for rel in listing:
         p = ROOT / rel
         try:
@@ -116,6 +127,27 @@ def main() -> int:
             for n, line in enumerate(lines, 1):
                 if HARDCODED_PATH.search(line):
                     path_hits.append((rel, n, line.strip()[:110]))
+        # `docs/roadmap/book-audit/**` records what was broken on a given day;
+        # rewriting it would be a lie about the past, same as archived issues.
+        if not is_path_exempt(rel) and not rel.startswith("docs/roadmap/book-audit/"):
+            for n, line in enumerate(lines, 1):
+                if VENDORED_ARTIFACT.search(line):
+                    ghost_hits.append((rel, n, line.strip()[:110]))
+
+    if ghost_hits:
+        print("[FAIL] the RETIRED vendored router (issue 0654):")
+        for rel, n, line in ghost_hits:
+            print(f"         {rel}:{n}")
+            print(f"           {line}")
+        print()
+        print("       `build/zenohd/zenohd` has not existed since phase-362 /")
+        print("       RFC-0075 deleted the submodule, the recipe and the SDK")
+        print("       entry. nano-ros ships no router; ROS's `rmw_zenohd` is it,")
+        print("       which is what keeps it in lockstep with `rmw_zenoh_cpp`.")
+        print()
+        print("       Resolve `nros_zenohd_bin`; start `just zenohd`; tell a")
+        print("       human with `nros_router_hint`.")
+        print()
 
     if path_hits:
         print("[FAIL] hardcoded router path (issue 0654):")
@@ -152,11 +184,12 @@ def main() -> int:
               "scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd")
         return 1
 
-    if path_hits:
+    if path_hits or ghost_hits:
         return 1
 
     print(f"check-zenohd-flag-invocations: OK ({len(listing)} tracked file(s); "
-          "no flag invocation and no hardcoded router path outside archived history)")
+          "no flag invocation, no hardcoded router path and no vendored-router "
+          "artifact outside archived history)")
     return 0
 
 

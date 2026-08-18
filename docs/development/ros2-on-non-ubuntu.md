@@ -184,10 +184,10 @@ distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; just test-unit'
 distrobox enter ros2 -- bash -c '. scripts/dev/ros2-box-env.sh; just test-all'
 ```
 
-The test harness reads `build/zenohd/zenohd`, **not** the SDK store, so
-`nros setup --rmw zenoh` alone is not enough: run `just zenohd setup` too, or two
-zenoh tests in `test-unit` fail with `zenohd binary missing at …/build/zenohd/
-zenohd`. (`test-all` depends on `build-zenohd` and provisions it for you.)
+The test harness resolves ROS's `rmw_zenohd` — `nros_zenohd_bin` reads
+`NROS_RMW_ZENOHD`, then `AMENT_PREFIX_PATH`, then `$ROS_DISTRO` under `/opt/ros`.
+So SOURCE the distrobox's ROS before running the zenoh lanes; nano-ros ships no
+router and the SDK store holds none (RFC-0075 / phase-362).
 
 Reading the result: `just test-unit` runs bare `cargo nextest`, which counts a
 `nros_tests::skip!` panic as a FAILURE — only `test-all`'s junit rewrite turns

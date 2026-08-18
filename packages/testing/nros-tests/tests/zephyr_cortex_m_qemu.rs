@@ -36,7 +36,8 @@
 //! - `just zephyr build-fixtures` (the west leaves lane builds the
 //!   `build-cortex-m-*` leaves — `scripts/build/zephyr-fixture-leaves.sh`)
 //! - `qemu-system-arm` with `mps2-an385` machine support
-//! - `zenohd` (`build/zenohd/zenohd`, wired by `activate.sh`)
+//! - a zenoh router — ROS's `rmw_zenohd`, resolved by `ros_zenohd_path`
+//!   (nano-ros ships none; RFC-0075). `just zenohd` starts one.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test zephyr_cortex_m_qemu`
 

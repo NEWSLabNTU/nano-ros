@@ -284,7 +284,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
-  `nros`, `play_launch_parser`, `zenohd`). `just doctor` enforces it. The pre-218
+  `nros`, `play_launch_parser`). `just doctor` enforces it. The pre-218
   `export PATH="$HOME/.nros/bin:$PATH"` is insufficient.
 
 ## Pitfall index
@@ -293,8 +293,18 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 
 - **After clone, run ONE of** `direnv allow` / `source ./activate.sh` / `source ./activate.fish`
   else `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`. Activate files are the env/PATH SSoT.
-- **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico
-  from `packages/rmw/zenoh/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+- **The router is ROS's `rmw_zenohd`; we ship none** (RFC-0075 / phase-362). It links the same
+  `libzenohc.so` as the `rmw_zenoh_cpp` a ROS node uses, so it cannot drift from it — which a
+  pinned vendored router did: issue 0609 measured `ros-humble-rmw-zenoh-cpp` 0.1.1→0.1.9 moving
+  its zenoh 1.2.0→1.8.0 with our pin taking no part. **`third-party/zenoh/zenoh/` and
+  `build/zenohd/` are GONE** — a doc naming either is stale. Resolve it with `nros_zenohd_bin`,
+  start it with `nros_router_exec` / `just zenohd`, and TELL a user with `nros_router_hint`
+  (prints the path-independent `ros2 run rmw_zenoh_cpp rmw_zenohd`); never spell the install path
+  — gated by `check-zenohd-flag-invocations` (issues 0653/0654). Resolution order is
+  `NROS_RMW_ZENOHD` → `AMENT_PREFIX_PATH` → `$ROS_DISTRO` under `/opt/ros`; PATH and a
+  `/opt/ros/*` glob are deliberately NOT searched, because both return a router nobody chose.
+  zenoh-pico stays pinned 1.7.2 at `packages/rmw/zenoh/zpico-sys/zenoh-pico/` — its wire is
+  proto-stable across 1.x, so it interops with a newer ROS zenoh (issue 0291).
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

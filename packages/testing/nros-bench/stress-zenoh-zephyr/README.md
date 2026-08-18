@@ -40,7 +40,7 @@ batched publisher shows flush-cadence bursts, an express one doesn't.
 (cd packages/testing/nros-bench/stress-zenoh && \
   ZPICO_SUBSCRIBER_RING_DEPTH=1024 cargo build --release)
 
-./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:17866"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:17866"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 MODE=listener PAYLOAD_SIZE=64 EXPECTED_COUNT=5000 TIMEOUT_SECS=40 \
   NROS_LOCATOR=tcp/127.0.0.1:17866 \
   packages/testing/nros-bench/stress-zenoh/target/release/zenoh-stress-test &

@@ -246,10 +246,15 @@ fi
 # board, Phase 194.3c). Scope to store bin dirs that hold a whitelisted tool
 # so the build/<tool> convention for qemu is preserved. A system cross-gcc
 # (e.g. /usr/bin/arm-none-eabi-gcc) still resolves when the store has none.
-# zenohd joined the whitelist for the book's first-node flow (issue #204):
-# `nros setup native` installs it to the store and the book tells the user
-# to run `zenohd` — the harness is unaffected (it reads build/zenohd/zenohd
-# by explicit path).
+# `zenohd` was on this whitelist for the book's first-node flow (issue #204),
+# back when `nros setup native` installed a router into the store. It is gone:
+# RFC-0075 / phase-362 retired the vendored router, nothing provisions one, and
+# the entry outlived it — a RETIRED store copy kept winning `command -v` for
+# months (issue 0653). Removing the name from `scripts/sdk-path-tools.txt` is
+# what stopped that; `just doctor` reports a leftover directory.
+#
+# The router is resolved, never found on PATH: `nros_zenohd_bin` reads
+# NROS_RMW_ZENOHD, then AMENT_PREFIX_PATH, then $ROS_DISTRO under /opt/ros.
 _nros_sdk="${NROS_HOME:-$HOME/.nros}/sdk"
 if [ -d "$_nros_sdk" ]; then
     # Depth 3 is the versioned layout `nros setup` writes

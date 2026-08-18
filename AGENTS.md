@@ -64,7 +64,7 @@ Codex sandbox notes:
 
 ## Coding Style & Naming Conventions
 
-Rust uses edition 2024 and `rustfmt.toml` with nightly-only formatting options. Use `cargo +nightly fmt` or `rustup run nightly cargo fmt`; stable rustfmt produces different output. C and C++ follow `.clang-format` based on LLVM, 4-space indentation, and a 100-column limit. **clang-format output drifts across major versions** (e.g. v17 vs v22 reformat `reinterpret_cast<T(*)[N]>` differently → spurious `just format`/`check-{c,cpp}-fmt` diffs), so the version is **pinned in `.clang-format-version`** and provisioned by `just setup-clang-format` as a PROJECT-LOCAL binary at `build/clang-format/bin/clang-format` (the standalone binary extracted from the exact-version PyPI `clang-format` wheel — no venv, no `pip install`, nothing user-wide; like `build/zenohd`/`build/qemu`). Run as part of `just setup`. The `format-*`/`check-*-fmt` recipes resolve that pinned binary via `scripts/dev/clang-format.sh` (`nros_clang_format`), falling back to a PATH `clang-format` with a loud version-skew warning. `just doctor` reports the pin status. Keep crate names and package paths in the existing `nros-*`, `zpico-*`, backend-specific, and platform-specific patterns.
+Rust uses edition 2024 and `rustfmt.toml` with nightly-only formatting options. Use `cargo +nightly fmt` or `rustup run nightly cargo fmt`; stable rustfmt produces different output. C and C++ follow `.clang-format` based on LLVM, 4-space indentation, and a 100-column limit. **clang-format output drifts across major versions** (e.g. v17 vs v22 reformat `reinterpret_cast<T(*)[N]>` differently → spurious `just format`/`check-{c,cpp}-fmt` diffs), so the version is **pinned in `.clang-format-version`** and provisioned by `just setup-clang-format` as a PROJECT-LOCAL binary at `build/clang-format/bin/clang-format` (the standalone binary extracted from the exact-version PyPI `clang-format` wheel — no venv, no `pip install`, nothing user-wide; like `build/qemu`). Run as part of `just setup`. The `format-*`/`check-*-fmt` recipes resolve that pinned binary via `scripts/dev/clang-format.sh` (`nros_clang_format`), falling back to a PATH `clang-format` with a loud version-skew warning. `just doctor` reports the pin status. Keep crate names and package paths in the existing `nros-*`, `zpico-*`, backend-specific, and platform-specific patterns.
 
 Project naming:
 
@@ -82,7 +82,7 @@ Prefer the narrowest tier that covers the change. Reusable Rust integration test
 
 **Test names describe behavior, not phase numbers.** Name a test for what it verifies, e.g. `zephyr_xrce_service_request_reply_e2e`, `rust_talker_to_cpp_listener_delivers`, `main_macro_accepts_no_arg_form`. Do **not** encode roadmap phase numbers in test names or test-file names (`phase212_n9_main_macro_forms`, `phase217_c_fvp_runtime`); phases are planning artifacts that go stale, and a phase-numbered name tells a future reader nothing about what broke. Cross-reference a phase in a doc-comment if useful, not in the identifier.
 
-**Fixture prerequisites are provisioned by `nros setup`.** The build-stage test fixtures (`build-test-fixtures` + `scripts/build/compile-check-fixtures.sh`) need the cross toolchains, `play_launch_parser`, `corrosion`, `cmake`, `zenohd`, etc. These are installed by `nros setup` / `just setup all` (RFC-0014), NOT built ad-hoc. Before a fixture build or a `test-all` run, ensure they are present with `just doctor tier=all` (it lists every tier's prereqs as `[OK]` / `[MISSING]`); run `nros setup <board>` / `just setup all` to fill gaps. A fixture that can't build because a toolchain is absent is an environment gap to fix via setup — not a per-test workaround. (If you find a prereq a fixture needs that `nros setup` does not provision, add it to the SDK index / setup flow rather than hand-installing it.)
+**Fixture prerequisites are provisioned by `nros setup`.** The build-stage test fixtures (`build-test-fixtures` + `scripts/build/compile-check-fixtures.sh`) need the cross toolchains, `play_launch_parser`, `corrosion`, `cmake`, etc. These are installed by `nros setup` / `just setup all` (RFC-0014), NOT built ad-hoc. Before a fixture build or a `test-all` run, ensure they are present with `just doctor tier=all` (it lists every tier's prereqs as `[OK]` / `[MISSING]`); run `nros setup <board>` / `just setup all` to fill gaps. A fixture that can't build because a toolchain is absent is an environment gap to fix via setup — not a per-test workaround. (If you find a prereq a fixture needs that `nros setup` does not provision, add it to the SDK index / setup flow rather than hand-installing it.)
 
 For platform failures, rerun the closest platform recipe first, for example `just zephyr build-all`, `just freertos build-fixtures`, or `just qemu build`, before spending time on root `just build-all`.
 
@@ -125,7 +125,7 @@ its readers agree on where to look. → RFC-0070, phase-334 W2.
 Design rationale → RFC-0014 (`docs/design/0014-nros-setup-toolchain-management.md`). Operational
 contract:
 
-Host toolchains/tools (`qemu`, cross-GCC, `zenohd`, `openocd`) are provisioned by `nros setup`,
+Host toolchains/tools (`qemu`, cross-GCC, `openocd`) are provisioned by `nros setup`,
 not built ad-hoc. `nros-sdk-index.toml` (repo root) is the SSOT: each `[tool.*]` has a per-host
 sha256-pinned prebuilt `dist` **and** a `[tool.*.source]` recipe; `[source.*]` build with the app;
 `[gated.*]` (NVIDIA SPE, ARM FVP) are never fetched, only instructed. Prebuilt assets live on the
@@ -214,7 +214,7 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 ### Platform Pitfalls
 
 - **After clone, run ONE of** `direnv allow` / `source ./activate.sh` / `source ./activate.fish` — else `zpico-sys/build.rs` panics `"FREERTOS_PORT not set"`.
-- **Zenoh pinned 1.7.2** (rmw_zenoh_cpp compat). zenohd from `third-party/zenoh/zenoh/`; zenoh-pico from `packages/rmw/zenoh/zpico-sys/zenoh-pico/`. Tests auto-use `build/zenohd/zenohd`.
+- **The router is ROS's `rmw_zenohd`; nano-ros ships none** (RFC-0075 / phase-362) — `third-party/zenoh/zenoh/` and `build/zenohd/` are GONE, and a doc naming either is stale. Resolve with `nros_zenohd_bin`, start with `nros_router_exec` / `just zenohd`, print for a human with `nros_router_hint`. zenoh-pico stays pinned 1.7.2 at `packages/rmw/zenoh/zpico-sys/zenoh-pico/`; its wire is proto-stable across 1.x, so it interops with a newer ROS zenoh (issue 0291).
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an explicit call. A pure-Rust image needs the REAL backend dep (`rmw-zenoh = ["dep:nros-rmw-zenoh"]`) — and a direct reference, or rustc's staticlib DCE drops the dep's `#[no_mangle]` export (symbol in the rlib, absent from the `.a`).
 - **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on native. `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` — never pin it to a literal in confs (the phase-180 split-brain silently ran every cyclone image on domain 0). Cyclone fixture pairs bake distinct domains (50–58) for parallel SPDP.
@@ -352,3 +352,32 @@ Agent-dispatch contract:
 Submodule init landmine:
 
 * Never `git submodule update --init --recursive` from a worktree — the transitive closure pulls QEMU → OpenSSL → pyca-cryptography (~30 min). Init only what the task needs.
+
+## The zenoh router is ROS's, and we ship none
+
+RFC-0075 / phase-362 retired the vendored `zenohd`: `rmw_zenohd` links the same
+`libzenohc.so` as the `rmw_zenoh_cpp` a ROS node uses, so it cannot drift from
+it, which a pinned copy did (issue 0609 measured the ROS package moving its
+zenoh 1.2.0 → 1.8.0 with our pin taking no part in either the failure or the
+fix).
+
+Consequences that keep being rediscovered, so they are written here once:
+
+* **`nros setup` does not provision a router**, and `zenohd` is not on `PATH`.
+  A leftover `~/.nros/sdk/zenohd/` from an older checkout is a RETIRED entry —
+  `just doctor` reports it with the `rm -rf` to remove it, because the SDK store
+  accumulates and nothing prunes it (issue 0653).
+* **Never spell the install path.** The router's location under the ROS prefix
+  is only the THIRD of three resolution steps, so a line naming it is wrong on a
+  ROS built from source or installed as a colcon overlay. Gated by
+  `check-zenohd-flag-invocations`, which will reject the literal if you write
+  it — including in prose explaining why not to.
+* **One function per job** (`scripts/dev/zenohd.sh`): `nros_zenohd_bin` resolves,
+  `nros_router_exec` starts, `nros_router_hint` prints the line for a human. The
+  Rust twin is `nros_tests::process::ros_zenohd_path`, kept in step by
+  `check-zenohd-resolution-parity` over a shared table. `just zenohd [locator]`
+  is the entry point a human or a doc should name.
+* **`rmw_zenohd` parses no argv.** `--listen` and friends are not rejected, they
+  are UNREAD — the router silently comes up on its defaults, and the wrong port
+  reads as a hang in `Executor::open`. Configuration travels in
+  `ZENOH_CONFIG_OVERRIDE`.

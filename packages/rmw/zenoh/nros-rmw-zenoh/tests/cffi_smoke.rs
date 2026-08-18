@@ -95,7 +95,8 @@ fn router_locator() -> Option<String> {
 /// those tests exercise the same `RustBackendAdapter<ZenohRmw>`
 /// vtable this crate registers.
 ///
-/// Requires zenohd from `nros setup <board> --rmw zenoh` (or build/zenohd).
+/// Requires ROS's `rmw_zenohd` — nano-ros ships no router (RFC-0075). Start
+/// one with `just zenohd`; the harness resolves it via `ros_zenohd_path`.
 #[test]
 #[ignore = "in-process zenoh-pico pubsub is architecturally broken (zpico-sys static-slot limitation); cffi data flow verified by the two-process native_api/nano2nano tests once L.3 default-flip reaches the example Cargo.toml files"]
 fn cffi_pubsub_round_trip() {

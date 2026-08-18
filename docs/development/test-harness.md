@@ -165,7 +165,9 @@ A `[SKIPPED]` testcase is **not a regression** and **not a bug** —
 it is a precondition that the local environment does not satisfy.
 Common reasons:
 
-* `zenohd` binary missing under `build/zenohd/` (run
+* ROS's `rmw_zenohd` not resolvable — source your ROS setup so
+  `AMENT_PREFIX_PATH` is exported, or set `NROS_RMW_ZENOHD` (nano-ros ships no
+  router; RFC-0075). `just zenohd` starts one.
   `just zenohd setup`).
 * `qemu-system-arm` / `qemu-system-riscv64` not on PATH
   (run `just qemu setup-qemu` or install via the distro package).

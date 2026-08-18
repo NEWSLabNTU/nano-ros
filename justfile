@@ -3657,7 +3657,7 @@ check-workspace-features:
 
 # Provision the pinned clang-format (SSoT: `.clang-format-version`) as a
 # PROJECT-LOCAL binary at `build/clang-format/bin/clang-format` — exactly like
-# `build/zenohd/zenohd` / `build/qemu/bin/`. clang-format output drifts across major
+# `build/qemu/bin/`. clang-format output drifts across major
 # versions, so pinning is the only way `just format` / `check-*-fmt` stay consistent
 # between machines + CI. We fetch the exact-version, cross-platform PyPI `clang-format`
 # WHEEL (a zip carrying a standalone `clang_format/data/bin/clang-format` binary) and

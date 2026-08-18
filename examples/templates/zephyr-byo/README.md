@@ -51,7 +51,7 @@ done
 export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
 overlay="$PWD/modules/nano-ros/cmake/zephyr/native-sim-line-3.7.conf"   # NSOS, 3.7 line
 west build -b native_sim/native/64 nano-ros-app/app -- -DCONF_FILE="prj.conf;$overlay"
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &       # the router (~/.nros/sdk/zenohd or build/zenohd)
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &       # the router, from ROS
 ./build/zephyr/zephyr.exe            # → "Published: 1", "Published: 2", …
 ```
 

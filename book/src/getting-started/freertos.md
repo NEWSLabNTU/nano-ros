@@ -129,7 +129,7 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ```bash
 # 1. Start zenohd on the host. The recipe resolves the provisioned
-#    binary (build/zenohd/ or ~/.nros/sdk) and listens on the fixture
+#    router (ROS's `rmw_zenohd`) and listens on the fixture
 #    port 7451 (Slirp forwards guest 10.0.2.2:<p> → host:<p>):
 just freertos zenohd &
 

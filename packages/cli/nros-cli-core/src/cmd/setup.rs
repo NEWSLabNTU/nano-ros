@@ -1532,7 +1532,7 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
 /// symbols at link time.
 ///
 /// Scope, stated rather than implied: this asks about the SHARED STORE. A tool
-/// installed with `--prefix` (the workspace-local `build/zenohd`, `build/qemu`)
+/// installed with `--prefix` (the workspace-local `build/qemu`)
 /// is deliberately outside it and is not answered here — `--prefix` exists so a
 /// checkout can pin its own copy, so "absent from the store" is the correct
 /// answer for those, not a false negative.
