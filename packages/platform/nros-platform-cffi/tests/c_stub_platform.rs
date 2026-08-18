@@ -101,9 +101,7 @@ fn every_category_dispatches_through_cffi_platform() {
     CffiPlatform::random_fill(buf.as_mut_ptr() as *mut c_void, buf.len());
 
     // -- Time --
-    let _ = CffiPlatform::time_now_ms();
-    let _ = CffiPlatform::time_since_epoch_secs();
-    let _ = CffiPlatform::time_since_epoch_nanos();
+    let _ = CffiPlatform::time_now_ns();
 
     // -- Tasks (no real spawn; stubs just bump the counter) --
     let mut task_storage: *mut c_void = core::ptr::null_mut();
