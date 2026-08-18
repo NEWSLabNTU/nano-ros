@@ -48,6 +48,46 @@ which router it can see, including the `just rmw_zenoh setup` overlay, which
 needs BOTH its `setup.bash` sourced and `NROS_RMW_ZENOHD` set or it aborts with
 `ament_index_cpp::PackageNotFoundError`.
 
+## Where the box's storage lands — check `/` before you create it
+
+`ros-humble-desktop` plus the three RMWs is roughly 3–5 GB of image layers and
+apt content, and BOTH docker and rootless podman keep that under `/` by default
+(`/var/lib/docker`, `~/.local/share/containers`). On a workstation whose root
+filesystem is nearly full, the documented `distrobox create` above will either
+fail partway through the apt step or leave the system with no headroom.
+
+Measured on the maintainer host, 2026-08-18: `/` at 97 % (9.1 GB free) while
+`/mnt/wd` — the disk holding the checkout — had 218 GB. Three ways out, in the
+order worth trying:
+
+1. **Put rootless podman's storage on the big disk.** A user-level
+   `~/.config/containers/storage.conf` with `graphroot` pointing at a directory
+   on that disk; no sudo, reversible by deleting the file, and `/` is untouched.
+   Create the box with the default manager afterwards (drop the
+   `DBX_CONTAINER_MANAGER=docker` prefix).
+
+2. **Use docker exactly as documented** and accept the space on `/`. Simplest
+   and matches the Setup section verbatim — fine when `/` has ≥ 15 GB free.
+
+3. **Install `ros-humble-ros-base` instead of `desktop`**, keeping
+   `rmw-{zenoh,cyclonedds,fastrtps}-cpp`. Roughly half the size, and a
+   divergence from `scripts/dev/ros2-distrobox-setup.sh` — so when a lane later
+   wants a package `desktop` would have pulled, that divergence is what you will
+   be chasing. Prefer 1 or 2 unless disk is genuinely scarce.
+
+Whichever you pick, the checkout still has to be mounted at the SAME absolute
+path it has on the host (issue 0375) — see "Two paths to the same checkout".
+
+### What a host without the box gives up
+
+Not a nicety. On a host with no ROS install, `just ci` on 2026-08-18 reported
+**176 `[SKIPPED:capability]`** tests — the whole zenoh-router-dependent surface,
+including every `native_api` interop case — and they are counted as skips only
+because `test-all` rewrites them. The `check-required-features-tests` lane
+(issue 0652) runs a BARE `cargo nextest`, where the same skips are FAILURES, so
+tier 1 cannot go green on such a host at all. The box is what turns that surface
+from "unverified, quietly" into coverage.
+
 ## The box gets its OWN tree (issues 0400, 0401)
 
 Host and box originally shared this checkout, and every build artifact in it is
