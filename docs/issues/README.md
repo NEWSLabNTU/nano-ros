@@ -124,6 +124,18 @@ here: `ManagedProcess::collect_until_count` (the inline `wait_rule`, promoted �
 SEPARATE channels, because `unwrap_or_default()` destroys the evidence and `unwrap_or_else(|e| e.to_string())`
 makes the test pass vacuously), plus `check-wait-evidence-discarded` with the 87 present sites baselined as a
 shrinking backlog rather than swept. See `archived/0670-*`. (2026-08-18)
+**#0681** (build/testing, open 2026-08-19) — `check-tier-preconditions` reports OK and then `just ci` dies
+on a precondition. Its fixture probe runs `_require-fixtures`, which reads the STAMP ("was a build run
+covering this lane's coordinates?"). `_check-fixtures-stale` is a DIFFERENT gate answering a different
+question — per-fixture `.inputsig` FRESHNESS, including the `build/cmake-fixtures/` and
+`build/compile-check-fixtures/` families — and it is never probed. A stamp can cover the lane while
+fixtures have gone stale underneath it, so the probe's own "missing or stale" wording claims more than it
+checks. Observed: preconditions exit 0, then `ci` failed with 10 stale compile-check fixtures after
+reaching `test-all` through every gate — a rebuild plus a full re-run. Defeats the premise #0466 built the
+script on (report every unmet precondition AT ONCE). #0443 already fixed these two gates disagreeing about
+SCOPE vs LANE; this is the same seam one step earlier. Same family as #0677 — the gate is not missing, the
+EDGE to it is. See `0681-*`. (2026-08-19)
+
 **#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
 in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
 findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not
