@@ -138,3 +138,46 @@ Mutation-tested both directions: a target behind an unlisted feature fails, and
 a baselined feature becoming reachable fails with "remove it from BASELINE".
 
 Still open: (1) versus (3) for the nine targets.
+
+
+## The `trigger_conditions` failure, diagnosed and fixed 2026-08-18
+
+Reproducible once `ros-humble-rmw-zenoh-cpp` was installed — this host could
+previously only reach the capability skip, so the audit above could not see it.
+
+`Transport(InvalidConfig)` reads like a bad locator. It was a MISSING BACKEND:
+the file lacked
+
+```rust
+use nros_rmw_zenoh as _;
+```
+
+so rustc dropped the dependency, its `#[no_mangle]` registration never reached
+the test binary, and `Executor::open` had nothing to select. `wake_latency.rs`
+carries that line at its top; `trigger_conditions.rs` did not, which is exactly
+why it was the one target that failed while its siblings passed with an
+identically-shaped config on an adjacent domain.
+
+Third instance of this class in one session, after the `use nros_platform_cffi
+as _;` anchors that issues 0619 and 0612 needed. A dependency nothing references
+is not linked, and the resulting error never names the dependency — worth a gate
+of its own: a test that opens an `Executor` against an RMW must carry the
+anchor.
+
+## Where the nine targets actually stand
+
+With the router present, all nine RUN — 21 tests, 18 passing:
+
+| feature | targets | state |
+| --- | --- | --- |
+| `trigger-test` | trigger_conditions, wake_latency | GREEN (after the anchor above) |
+| `phase216-substrate` | dispatch_strategy | GREEN (after the unused-import fix) |
+| `component-runtime-test` | component_runtime, tier_filter, component_dispatch, component_param | 3 green; `component_param` asserts `left: 0` |
+| `loan-e2e` | loan_e2e | assertion failure |
+| `rmw` | custom_transport_loopback | STALE FIXTURE, not a code failure |
+
+So the issue's option (1) — put them in a lane — is now the right answer for at
+least six of the nine, rather than a guess. The two real failures want triage
+first, and the stale fixture wants a `just build-test-fixtures lane=native`;
+none of that is knowable without the router, which is the point the audit made
+and could not act on.

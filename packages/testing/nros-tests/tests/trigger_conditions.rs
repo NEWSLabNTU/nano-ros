@@ -7,6 +7,17 @@
 //!
 //! Run with: `cargo test -p nros-tests --test trigger_conditions --features trigger-test`
 
+// issue 0652 — force-link the zenoh backend. Without a direct reference rustc
+// drops the dependency, its `#[no_mangle]` registration never reaches the test
+// binary, and `Executor::open` fails with `Transport(InvalidConfig)` — which
+// reads like a bad locator rather than a missing backend. `wake_latency.rs`
+// carries the same line; this file was the one that did not, which is why it
+// was the target that failed while its siblings passed.
+//
+// Same class as the `use nros_platform_cffi as _;` anchors issues 0619 and 0612
+// needed: a dependency nothing references is not linked.
+use nros_rmw_zenoh as _;
+
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
 use std::sync::atomic::{AtomicUsize, Ordering};
