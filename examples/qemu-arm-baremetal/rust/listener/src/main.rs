@@ -12,4 +12,4 @@
 
 use panic_semihosting as _;
 
-nros::main!();
+nros::main!(panic = "own");
