@@ -37,8 +37,16 @@ paths on the two sides is the issue-0375 hazard: `nros sync` writes absolute
 paths, and every path-keyed cache then splits in two.
 
 `ros-humble-desktop` is ~2 GB of apt; the script also installs the book's host
-prerequisites, `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp`, `domain_bridge`,
-`example_interfaces`, `rosidl_adapter`, colcon and rosdep, then verifies each.
+prerequisites, `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp`, `rmw_zenoh_cpp`,
+`domain_bridge`, `example_interfaces`, `rosidl_adapter`, colcon and rosdep, then
+verifies each.
+
+`rmw_zenoh_cpp` is what the zenoh e2e lanes run as their router (phase-362 W1).
+Without it they report `[SKIPPED:capability]`, which reads as green — three
+issues were closed "unverifiable" that way on 2026-08-18. `just doctor` reports
+which router it can see, including the `just rmw_zenoh setup` overlay, which
+needs BOTH its `setup.bash` sourced and `NROS_RMW_ZENOHD` set or it aborts with
+`ament_index_cpp::PackageNotFoundError`.
 
 ## The box gets its OWN tree (issues 0400, 0401)
 

@@ -76,14 +76,27 @@ sudo apt-get install -y --no-install-recommends \
     ros-humble-desktop \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-rmw-fastrtps-cpp \
+    ros-humble-rmw-zenoh-cpp \
     ros-humble-domain-bridge \
     ros-humble-example-interfaces \
     ros-humble-rosidl-adapter \
     python3-colcon-common-extensions \
     python3-rosdep python3-vcstool
-# NOTE: rmw_zenoh_cpp has NO humble apt package (it starts at iron). The zenoh
-# interop cells build it as a pinned source overlay into build/rmw_zenoh_ws/ —
-# `just rmw_zenoh setup` in the repo. Cyclone and FastRTPS interop work without it.
+# rmw_zenoh_cpp: this note used to say there is NO humble apt package. There is
+# now — `ros-humble-rmw-zenoh-cpp`, candidate 0.1.8-1jammy as of 2026-08-18 —
+# so it is installed above rather than built.
+#
+# The alternative is still `just rmw_zenoh setup`, a pinned source overlay in
+# build/rmw_zenoh_ws/. `just/native.just` says that pin exists "so rmw_zenoh_cpp
+# matches our zenoh-pico pin", while AGENTS.md records issue 0291's finding that
+# zenoh's wire is proto-0x09 stable across 1.x and zpico 1.7.2 interops with
+# jazzy's 1.11.2 — i.e. the version match was never what mattered. Those two
+# statements disagree; the apt package is the cheaper of the two and this script
+# takes it. Anyone hitting a wire-level mismatch should read 0291 before
+# assuming the overlay is the answer.
+#
+# Without EITHER, every zenoh e2e lane reports `[SKIPPED:capability]` — a skip
+# that reads as green. `just doctor` says which of the two you have.
 
 echo "=== [4/4] verify"
 # ROS's setup.bash reads AMENT_TRACE_SETUP_FILES and friends without defaults,

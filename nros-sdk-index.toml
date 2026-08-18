@@ -656,6 +656,18 @@ brew = ["libgcrypt"]
 # 1.9 ships the script and no `.pc`. Probes are OR-ed.
 check = { cmd = "libgcrypt-config", pkg_config = "libgcrypt" }
 
+[system.ros-rmw-zenoh-cpp]
+why = "the zenoh ROS interop lanes: the peer runs `source /opt/ros/<distro>/setup.bash && export RMW_IMPLEMENTATION=rmw_zenoh_cpp`, so the RMW must resolve in the ROS prefix. Without it those lanes report `[SKIPPED:capability]`, which reads as green rather than as absent coverage (2026-08-17: three issues closed unverifiable that way). NOTE the apt name is DISTRO-PARAMETRIC — `ros-<distro>-rmw-zenoh-cpp`; humble is declared here because it is the documented default, and `just doctor` probes $ROS_DISTRO rather than assuming it."
+apt = ["ros-humble-rmw-zenoh-cpp"]
+# No dnf/pacman: ROS 2 is not packaged there, and docs/development/ros2-on-non-ubuntu.md
+# routes those hosts through an Ubuntu distrobox, whose setup script installs this.
+#
+# No `check` probe: the artifact is `/opt/ros/<distro>/lib/rmw_zenoh_cpp/rmw_zenohd`,
+# a file under a prefix that is not on PATH and whose `.so` is not on the
+# ldconfig path until ROS is sourced — so none of cmd/sharedlib/pkg_config/header
+# answers honestly here. Reported as `unprobed`, which is the truthful answer;
+# `just doctor` does the real check against $ROS_DISTRO.
+
 [system.doxygen]
 why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
 apt = ["doxygen"]

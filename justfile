@@ -4723,6 +4723,33 @@ doctor tier="":
         echo "  [INFO] sccache not found — builds are uncached (RUSTC_WRAPPER empty);"
         echo "         installing it ~halves clean rebuilds. See docs/development/build-ux-audit.md"
     fi
+    # `rmw_zenoh_cpp` FROM THE ROS INSTALL. The interop lanes need the apt
+    # package, not merely a router binary: the peer runs
+    # `source /opt/ros/<distro>/setup.bash && export
+    # RMW_IMPLEMENTATION=rmw_zenoh_cpp`, so the RMW must resolve in the ROS
+    # prefix. Without it those lanes report `[SKIPPED:capability]`, which reads
+    # as green — three issues were closed "unverifiable" that way on 2026-08-17.
+    #
+    # `just rmw_zenoh setup`'s overlay is NOT a substitute here. It supplies the
+    # peer (`ros2.rs::rmw_zenoh_overlay` sources it on top of the distro setup)
+    # but the ROUTER resolver (`process::ros_zenohd_path`) never looks there —
+    # it checks $NROS_RMW_ZENOHD and /opt/ros only. So an overlay-only host has
+    # a peer that works, a router nothing can find, and a lane that skips.
+    ros_distro="${ROS_DISTRO:-humble}"
+    zenoh_rmw="/opt/ros/${ros_distro}/lib/rmw_zenoh_cpp/rmw_zenohd"
+    if [ -x "$zenoh_rmw" ]; then
+        echo "  [OK] rmw_zenoh_cpp: /opt/ros/${ros_distro} (interop lanes runnable)"
+    elif [ -n "${NROS_RMW_ZENOHD:-}" ] && [ -x "${NROS_RMW_ZENOHD}" ]; then
+        echo "  [WARN] rmw_zenoh_cpp not installed under /opt/ros/${ros_distro};"
+        echo "         NROS_RMW_ZENOHD supplies a ROUTER, but the interop peer"
+        echo "         resolves its RMW from the ROS prefix, so those lanes still fail."
+        echo "         Install:  nros setup --system    (declared in nros-sdk-index.toml)"
+    else
+        echo "  [INFO] rmw_zenoh_cpp not installed — every zenoh interop lane will"
+        echo "         SKIP (\`[SKIPPED:capability]\`), which reads as green rather"
+        echo "         than as absent coverage."
+        echo "         Install:  nros setup --system    (declared in nros-sdk-index.toml)"
+    fi
     just _orchestrate doctor "$chosen_tier"
 
 # Internal: walk every module in `tier` calling the requested recipe
