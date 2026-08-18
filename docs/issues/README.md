@@ -398,16 +398,21 @@ tier — moved to the spawned one. Verified: `nros: core pin tier=`high` cpu=0`,
 flipped Fallback -> Accept. Still UNIPROCESSOR, so it proves the call is correct, not SMP placement (#260).
 See `archived/0655-*`. (2026-08-18)
 
-**#0671** (testing/diagnostics, open 2026-08-18) — `contract_monitor_parity` reports NOTHING on
-`/diagnostics`: the assert's `got:` is empty after the full 32 s budget, so it is silence, not a lost race.
-**2/2 SOLO**, which separates it from the seven sibling failures in the same sweep that DO pass solo (the
-documented load flakes). Not caused by the commit that found it (#0655's nine files are not in
-contract-monitor's graph). Lead, explicitly not a diagnosis: `56ea492af` (phase-359 W10) rewrote this
-fixture's four dep-sites to `default-features = false` when it deleted `std` from `nros-diagnostics` + the
-diag msg crates — but the obvious mechanism fails, since contract-monitor still names `"std","alloc","env"`
-on `nros`. And W10's own notes record this test at 5/5 afterwards, so either something later regressed it or
-that 5/5 predates the manifest move. Root cause NOT determined; filed rather than patched because phase-359
-is ACTIVE (the #643 call). Blocks a green tier 1. See `0671-*`. (2026-08-18)
+Recently resolved (2026-08-18): **#0671** — `contract_monitor_parity` reported NOTHING on `/diagnostics`.
+ROOT CAUSE: in `Executor::open`, `executor.epoch_us_fn = config.epoch_us;` was UNGUARDED, so a config that
+does not SPECIFY an epoch was read as "this target HAS no epoch" and clobbered the constructor's platform
+default. `ExecutorConfig::new` — the path `nros::init_*` + `ctx.config()` takes — leaves `epoch_us: None`
+(unlike `from_env()`/`resolve()`), so EVERY hosted node built that way silently lost its wall clock, and
+`Node::subscription` then never attached the age cell (needs STAMP_OFFSET *and* an epoch): a baked
+`max_age_ms` became a silently-dead monitor, the exact thing RFC-0052 forbids. Only the age half went quiet
+because the rate monitor rides the GUARDED `clock_us_fn` — that asymmetry was the diagnosis, ruling out
+router/wire/reporter/diagsink/msg-crates, which both rules share. The comment above the guarded line records
+this SAME bug already fixed once for `clock_us`; the sibling never got it (one-of-two). Fixed by guarding
+both sites. Measured: probe showed `epoch_now_us=None` with `age_table_len=1`; post-fix 32x
+`max-age-runtime`; parity 2/2 (32 s -> 5.2 s); `diagnostic_verbatim` + `roundtrip_xprocess` 3/3. The filed
+phase-359 W10 lead is REFUTED, and the regression window is explicitly not claimed — both sides date to
+W3b, so the likely trigger was the first fresh fixture build in 16 days exposing a latent defect.
+See `archived/0671-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0653** — RFC-0075 accepted one casualty of sourcing the zenoh router
 from ROS, "a ROS-less host cannot run the zenoh interop lanes", and the consequence is not confined to

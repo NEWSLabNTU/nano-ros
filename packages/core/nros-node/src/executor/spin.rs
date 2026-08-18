@@ -186,7 +186,22 @@ impl<'s> Executor<'s> {
                 executor.clock_us_fn = Some(clock);
                 executor.last_spin_end_us = Some(clock());
             }
-            executor.epoch_us_fn = config.epoch_us;
+            // issue 0671 — the SAME rule as `clock_us` directly above, which is
+            // why that one is guarded: a config that does not SPECIFY an epoch
+            // must not be read as "this target HAS no epoch". Assigning `None`
+            // here clobbered the constructor's platform default
+            // (`Some(default_epoch_us)`), and `ExecutorConfig::new` — the path
+            // `nros::init_*` + `ctx.config()` takes — leaves `epoch_us: None`,
+            // so EVERY hosted node built that way silently lost its wall clock.
+            // With no epoch, `Node::subscription` never attaches the age cell
+            // (it needs `(STAMP_OFFSET, epoch)` both `Some`), so a baked
+            // `max_age_ms` contract becomes a silently-dead monitor — the exact
+            // outcome RFC-0052 says must never happen. The rate monitor rides
+            // the GUARDED `clock_us_fn` and kept working, which is why only the
+            // age half went quiet.
+            if let Some(epoch) = config.epoch_us {
+                executor.epoch_us_fn = Some(epoch);
+            }
         }
         executor.set_node_identity(config.node_name, config.namespace);
         // Issue 0656 — beside the identity, for the same reason: an entity needs
@@ -397,7 +412,22 @@ impl<'s> Executor<'s> {
                 executor.clock_us_fn = Some(clock);
                 executor.last_spin_end_us = Some(clock());
             }
-            executor.epoch_us_fn = config.epoch_us;
+            // issue 0671 — the SAME rule as `clock_us` directly above, which is
+            // why that one is guarded: a config that does not SPECIFY an epoch
+            // must not be read as "this target HAS no epoch". Assigning `None`
+            // here clobbered the constructor's platform default
+            // (`Some(default_epoch_us)`), and `ExecutorConfig::new` — the path
+            // `nros::init_*` + `ctx.config()` takes — leaves `epoch_us: None`,
+            // so EVERY hosted node built that way silently lost its wall clock.
+            // With no epoch, `Node::subscription` never attaches the age cell
+            // (it needs `(STAMP_OFFSET, epoch)` both `Some`), so a baked
+            // `max_age_ms` contract becomes a silently-dead monitor — the exact
+            // outcome RFC-0052 says must never happen. The rate monitor rides
+            // the GUARDED `clock_us_fn` and kept working, which is why only the
+            // age half went quiet.
+            if let Some(epoch) = config.epoch_us {
+                executor.epoch_us_fn = Some(epoch);
+            }
         }
         executor.set_node_identity(config.node_name, config.namespace);
         // Phase 156 — record primary identity for the session-

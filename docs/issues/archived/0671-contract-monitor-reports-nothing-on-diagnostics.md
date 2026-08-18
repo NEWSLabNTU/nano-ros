@@ -1,11 +1,12 @@
 ---
 id: 671
 title: "`contract_monitor_parity` reports NOTHING on /diagnostics — reproducible solo, and the phase that last touched it recorded 5/5"
-status: open
+status: resolved
 type: bug
 severity: high
 area: testing, diagnostics
 related: [phase-359, phase-296, rfc-0050, rfc-0052]
+resolved_in: phase-296
 ---
 
 ## Symptom
@@ -94,3 +95,79 @@ beside the first.
 `just ci` (tier 1) is RED on this. It is one of 8 real failures in the sweep
 that produced it; the other 7 pass solo, so this is the one that blocks a green
 tier 1 rather than the load.
+
+---
+
+## Fixed 2026-08-18 — a config that does not SPECIFY an epoch is not a target that HAS none
+
+Root cause, in `Executor::open` / `from_session_with_config_in`
+(`nros-node/src/executor/spin.rs`), two adjacent lines:
+
+```rust
+if let Some(clock) = config.clock_us {      // GUARDED
+    executor.clock_us_fn = Some(clock);
+    executor.last_spin_end_us = Some(clock());
+}
+executor.epoch_us_fn = config.epoch_us;     // NOT guarded  <- the bug
+```
+
+The constructor installs a platform default (`epoch_us_fn:
+Some(default_epoch_us)` for any `rmw-cffi` or `std` build). The unguarded line
+then overwrote it with whatever the config held — and `ExecutorConfig::new`,
+which is the path `nros::init_with_launch_auto()` + `ctx.config()` takes,
+leaves `epoch_us: None`. (`from_env()` and `resolve()`'s hosted arm both set
+`Some(default_epoch_us)`; `new()` does not.) So every hosted node built through
+`ctx.config()` silently lost its wall clock.
+
+With no epoch, `Node::subscription` never attaches the age cell — it requires
+`(<M as RosMessage>::STAMP_OFFSET, epoch_us_fn)` BOTH `Some` — so a baked
+`max_age_ms` contract became a **silently-dead monitor**, which is precisely
+the outcome RFC-0052's fail-loud contract exists to prevent.
+
+**Why only half the fixture went quiet.** The rate monitor rides
+`clock_us_fn`, which is GUARDED, so `rate-hierarchy-runtime` kept firing while
+`max-age-runtime` never did. That asymmetry is the whole diagnosis: it ruled
+out the router, the wire, the reporter, the diagsink and the message crates,
+all of which both rules share.
+
+**The comment above the guarded line records that this identical bug was
+already found and fixed for `clock_us`.** The sibling line never got the same
+treatment — one of two sites fixed, which is the class CLAUDE.md names.
+
+### Fix
+
+Guard the epoch exactly as the clock is guarded, at BOTH sites (`open` and
+`from_session_with_config_in`). A config that specifies an epoch still wins; a
+config that says nothing now leaves the platform default intact.
+
+### Verified, in this order
+
+| step | result |
+| --- | --- |
+| three bins by hand, pre-fix | pub publishes, sub receives, `rate-hierarchy-runtime` fires, **no `max-age-runtime`** |
+| probe `executor.epoch_now_us()` in the sub | **`None`**, with `age_table_len=1` — table installed, clock absent |
+| same three bins, post-fix | **32x `max-age-runtime`** + `rate-hierarchy-runtime` |
+| `contract_monitor_parity` | 2/2 PASS (the violating case 32 s -> **5.2 s**: it now finds the violation instead of waiting out the budget) |
+| `diagnostic_verbatim`, `roundtrip_xprocess` | 3/3 PASS (W10's other two witnesses) |
+
+### Corrections to this issue as originally filed
+
+* **The phase-359 W10 lead was wrong.** The manifest rewrite (`56ea492af`) is
+  not the cause; `contract-monitor` still enables `std` and the generated
+  `Header` still carries `STAMP_OFFSET = Some(4)`. Filing it as a lead rather
+  than a diagnosis was right, and it is now closed out as refuted.
+* **"Not caused by the commit that found it" stands**, and so does "root cause
+  not determined" — it is determined now.
+* **The regression WINDOW was never pinned and is not claimed.** Both sides of
+  the clobber date to `5cd391466` (the original W3b commit), so this was not
+  introduced by any recent change; the most likely reason it surfaced now is
+  that the fixture binaries had not been rebuilt since 2026-08-02, and the
+  first fresh build in sixteen days exposed a latent defect. That is a
+  hypothesis about VISIBILITY, not about the bug, which was always there.
+
+### Blast radius of the fix
+
+Wider than this fixture: every hosted node that gets its config from
+`ctx.config()` regains a wall clock, so age monitors that were silently
+disabled become live. That is the intended behaviour, and it is why the
+verification above ran the sibling diagnostics tests too.
