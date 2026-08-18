@@ -1,7 +1,7 @@
 ---
 id: 673
 title: "`check-required-features-tests` runs bare nextest, so a capability SKIP is a tier-1 red on any host without the ROS zenoh router"
-status: open
+status: resolved
 type: bug
 area: ci/testing
 related: [phase-362, phase-366]
@@ -81,3 +81,47 @@ Candidates, not a plan.
 Whichever way: the invariant worth keeping is that **`nros_tests::skip!` means
 the same thing in every lane that runs tests.** Today it means "skip" in one and
 "fail" in another.
+
+
+## RESOLVED 2026-08-18 — one interpreter for the marker
+
+Took the first direction: give this lane the junit rewrite, by FACTORING it out
+rather than copying it. `_nextest-tolerant +nextest_args` is now the single place
+`[SKIPPED]` is interpreted; `_nextest-platform` delegates to it (it had carried
+its own copy) and `check-required-features-tests` calls it instead of running
+`cargo nextest` bare.
+
+It takes the nextest arguments verbatim, so callers keep their own `--features` /
+`--test` spelling — which matters because `check-required-features-reachable`
+reads reachability off the literal `--features` text in the justfile, and hiding
+it behind a variable would make that gate narrower than its rule (issue 0196).
+
+### Verified, both directions
+
+This host HAS `ros-humble-rmw-zenoh-cpp`, so a green run proves nothing about
+the case the issue is about. Simulating a router-less host with
+`NROS_RMW_ZENOHD=/nonexistent/rmw_zenohd`:
+
+| | result |
+| --- | --- |
+| fixed lane, no router | `20 tests run: 7 passed, 13 failed` -> **exit 0**, "All failures were [SKIPPED] preconditions" |
+| the OLD bare `cargo nextest` form, same env | **exit 100** — the reported red |
+| a setup failure (`--test no_such_test_target_xyz`) | **exit 1**, "build/setup failed (nextest exit 101) — not a [SKIPPED] precondition" |
+| the lane on this host, router present | `20 tests run: 20 passed` |
+
+The third row is the one that matters for trusting the other two: the tolerance
+is keyed on the MARKER, and a build/setup failure (nextest exit != 100, or no
+junit) is still a hard red. `_check-skip-budget` runs on the success path too, so
+"all failures were skips" cannot quietly become "nothing ran".
+
+Existing `_nextest-platform` callers are unaffected — 7 call sites, and
+`custom_transport_loopback` (the lane added for issue 0652 the same day) still
+passes through the delegation.
+
+### The invariant this restores
+
+`nros_tests::skip!` now means the same thing in every lane that runs tests. It
+previously meant "skip" under `test-all` and `_nextest-platform`, and "fail"
+under this one — which is the CLAUDE.md pitfall "bare `cargo nextest` counts
+`skip!` panics as FAILURES", reached not by a human running nextest by hand but
+by a `just ci` step doing it.

@@ -658,8 +658,16 @@ check-required-features-tests:
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    cargo nextest run "${cargo_nextest_args[@]}" \
-        -p nros-tests --features trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test \
+    # Issue 0673 — through `_nextest-tolerant`, not a bare `cargo nextest run`.
+    # These targets need a real zenoh router, and on a host without
+    # `ros-<distro>-rmw-zenoh-cpp` every one of them raises
+    # `[SKIPPED:capability]` — which a bare run counts as a FAILURE, making tier 1
+    # red for an environment fact and hiding the five steps after it. A real
+    # failure here still fails: the tolerance is keyed on the marker, and a
+    # build/setup error (nextest exit != 100) is never absorbed.
+    just _nextest-tolerant \
+        -p nros-tests --no-fail-fast \
+        --features trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test \
         --test trigger_conditions --test wake_latency \
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
@@ -1887,26 +1895,27 @@ test-integration verbose="":
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`
 # recipes in just/<platform>.just so the args/verbose boilerplate lives in
 # one place.
-_nextest-platform test_name verbose="" feature_args="":
+# Issue 0673 — the ONE place `nros_tests::skip!` is interpreted, so the marker
+# means the same thing in every lane that runs tests.
+#
+# `skip!` panics carrying `[SKIPPED…]` because Rust's harness has no runtime
+# skip, so a BARE `cargo nextest run` counts every unmet precondition as a
+# failure. Only the junit rewrite turns them back into skips — and it used to
+# live inside `test-all` and `_nextest-platform`, so a lane that called nextest
+# directly (`check-required-features-tests`) reported thirteen capability skips
+# as a tier-1 red on any host without `ros-<distro>-rmw-zenoh-cpp`, hiding every
+# step after it.
+#
+# Takes the nextest arguments verbatim; callers keep their own `--features` /
+# `--test` spelling so `check-required-features-reachable` can still read
+# reachability off the literal text.
+[private]
+_nextest-tolerant +nextest_args:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test {{test_name}} --no-fail-fast)
-    # A target behind `required-features` is skipped SILENTLY by cargo — not
-    # reported as filtered, not counted anywhere — so a caller needing one must
-    # ask for its feature. The caller passes the WHOLE FLAG (`--features rmw`),
-    # not a bare feature name, because `check-required-features-reachable` reads
-    # reachability off the literal `--features` text in this file: a
-    # `--features {{{{feature_args}}}}` here would leave the real feature name
-    # spelled nowhere the gate can see, which is the gate-narrower-than-its-rule
-    # shape of issue 0196.
-    if [ -n "{{feature_args}}" ]; then
-        args+=({{feature_args}})
-    fi
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
+    args=({{nextest_args}})
     # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
     # (missing fixture/binary/emulator) — nextest has no native skip, so those
     # count as failures and exit non-zero. Treat a run as passing iff there are
@@ -1939,6 +1948,28 @@ _nextest-platform test_name verbose="" feature_args="":
     # prints. Assert the skips before believing it.
     just _check-skip-budget
     echo "All failures were [SKIPPED] preconditions — treating as pass."
+
+_nextest-platform test_name verbose="" feature_args="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test {{test_name}} --no-fail-fast)
+    # A target behind `required-features` is skipped SILENTLY by cargo — not
+    # reported as filtered, not counted anywhere — so a caller needing one must
+    # ask for its feature. The caller passes the WHOLE FLAG (`--features rmw`),
+    # not a bare feature name, because `check-required-features-reachable` reads
+    # reachability off the literal `--features` text in this file: a
+    # `--features {{{{feature_args}}}}` here would leave the real feature name
+    # spelled nowhere the gate can see, which is the gate-narrower-than-its-rule
+    # shape of issue 0196.
+    if [ -n "{{feature_args}}" ]; then
+        args+=({{feature_args}})
+    fi
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    just _nextest-tolerant "${args[@]}"
 
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.
