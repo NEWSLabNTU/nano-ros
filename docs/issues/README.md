@@ -281,6 +281,15 @@ freshness gate derive its scope from the lane. NOTE the new probe is NOT buildle
 it self-heals cmake cells. Collapsing the two gates (direction 2) left as a follow-up. See
 `archived/0681-*`. (2026-08-19)
 
+**#0688** (build/boards, open 2026-08-19) — `nros-c` fails `#[panic_handler]` in the threadx-rv64 RUST
+Cyclone leaf. #0678's reopen wiped the two C Cyclone build dirs and left three; deleting ALL FIVE builds
+four of them (`c/talker`, `c/listener`, `cpp/talker`, `cpp/listener`), so that residue WAS staleness and
+#0678's fix is complete for those rows. The Rust leaf's tree was wiped in the same sweep and still fails,
+so it is a fresh-configure defect: same crate, same `--features=…,panic-platform`, same target as the
+three leaves that succeed, differing only in which leaf builds it. Method note — ninja interleaves, so
+attributing by the last cargo line before the error names innocent rows and makes the failure look like
+it MOVES; attribute by which artifact is missing. See `0688-*`. (2026-08-19)
+
 **#0687** (api, open 2026-08-19) — the `env` capability is what keeps `std` in the core crates: 31 of the
 ~41 remaining non-test `std::` paths are `env::var`, and phase-359 W10 moved every OTHER host facility
 (clock, wall clock, sleep, tasks, log) onto the platform ABI. An ABI `env_get` is the WRONG analogue — a
