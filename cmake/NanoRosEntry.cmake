@@ -217,6 +217,29 @@ function(nano_ros_entry)
         endif()
         set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY "${_nra_panic}")
 
+        # The Zephyr lane applies the ending itself, in `zephyr/CMakeLists.txt`,
+        # because its Rust side is `nros_cargo_build()` — a custom target plus an
+        # IMPORTED `nros_c_cargo`, not a Corrosion target — and because
+        # `find_package(Zephyr)` fixes the feature list before the app's
+        # `nano_ros_add_executable()` runs. So there is nothing to apply here and
+        # nothing to scan for; what IS worth doing is checking the two agree,
+        # since the entry's keyword is the declaration a reader trusts.
+        get_property(_nra_zephyr_panic GLOBAL PROPERTY NROS_ZEPHYR_PANIC_APPLIED)
+        if(_nra_zephyr_panic)
+            string(TOLOWER "${_nra_zephyr_panic}" _nra_zephyr_panic_lc)
+            if(NOT _nra_zephyr_panic_lc STREQUAL "${_nra_panic}")
+                message(FATAL_ERROR
+                    "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} contradicts "
+                    "the ending already built into this Zephyr image "
+                    "(${_nra_zephyr_panic_lc}). On Zephyr the policy reaches the "
+                    "staticlib through `NROS_ENTRY_PANIC`, which must be set BEFORE "
+                    "`find_package(Zephyr)` — the feature list is fixed there, and "
+                    "this call runs after it. Set that variable to "
+                    "${_nra_panic}, or make the keyword match.")
+            endif()
+            set(_nra_panic_feature "")
+        endif()
+
         if(_nra_panic_feature)
             # Corrosion names the importable target after the crate, and which
             # spelling exists depends on the crate's `crate-type` and Corrosion's

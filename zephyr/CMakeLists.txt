@@ -159,6 +159,51 @@ if(CONFIG_NROS_CPP_API AND
 endif()
 
 # =============================================================================
+# phase-366 / RFC-0077 — the image's ENDING, resolved ONCE for every API path
+# =============================================================================
+#
+# `nano_ros_entry(... PANIC ...)` cannot reach this lane the way it reaches the
+# cmake/Corrosion one. There, PANIC is applied with `corrosion_set_features()`
+# on an imported crate target; here the Rust side is `nros_cargo_build()`, which
+# builds its own `add_custom_target` plus an IMPORTED library named
+# `nros_c_cargo` — not a Corrosion target, and not named `nros_c`. So
+# `NanoRosEntry.cmake`'s scan finds nothing and `PANIC platform` died on "no
+# nros-c/nros-cpp Rust target exists at this point in the configure".
+#
+# Ordering makes it structural rather than a slip: a Zephyr app calls
+# `find_package(Zephyr)` — which runs THIS file, including every
+# `nros_cargo_build()` below — before its `nano_ros_add_executable()`. The
+# feature set is fixed before the entry speaks, which is exactly what phase-366
+# W7.b says must not be true ("the staticlib's feature set has to be computable
+# after entries are declared").
+#
+# The seam Zephyr already has for entry->module facts is a variable set BEFORE
+# `find_package(Zephyr)`, as `NROS_WS_RUST_NODE_DIRS` is; PANIC uses the same
+# one. Unset means `platform`, matching phase-366 M5's default, so entries that
+# say `PANIC platform` need no change.
+#
+# Computed HERE, above both branches, and not inside the C-API one: a C++-only
+# image sets `CONFIG_NROS_CPP_API` with `CONFIG_NROS_C_API` unset, so a
+# computation nested in the C branch silently does not happen — which is how the
+# first attempt at this fix still failed on `workspaces/{c,realtime-c,realtime-cpp}`.
+include("${NROS_REPO_DIR}/cmake/NanoRosFeatureSet.cmake")
+if(NOT DEFINED NROS_ENTRY_PANIC)
+    set(NROS_ENTRY_PANIC platform)
+endif()
+nros_panic_policy_feature(_nros_panic_feature
+    "${NROS_ENTRY_PANIC}" "zephyr NROS_ENTRY_PANIC")
+# Tell `nano_ros_entry()` the ending was applied HERE, and with what, so it
+# verifies agreement instead of scanning for a target this lane never creates.
+set_property(GLOBAL PROPERTY NROS_ZEPHYR_PANIC_APPLIED "${NROS_ENTRY_PANIC}")
+# Appended to every `nros_cargo_build` FEATURES string below. Empty for
+# `PANIC own`, where the image supplies its own `#[panic_handler]` and selecting
+# either feature would be the second provider.
+set(_nros_panic_suffix "")
+if(_nros_panic_feature)
+    set(_nros_panic_suffix ",${_nros_panic_feature}")
+endif()
+
+# =============================================================================
 # C API path: build nros-c via Cargo and link it
 # =============================================================================
 
@@ -213,7 +258,7 @@ if(CONFIG_NROS_C_API)
     # Build nros-c static library via Cargo
     nros_cargo_build(
         PACKAGE nros-c
-        FEATURES "${_nros_features}"
+        FEATURES "${_nros_features}${_nros_panic_suffix}"
     )
     add_dependencies(app nros_c_cargo_build)
 
@@ -372,7 +417,7 @@ if(CONFIG_NROS_CPP_API)
         endif()
         nros_cargo_build(
             PACKAGE nros-c
-            FEATURES "${_nros_c_for_cpp_features}"
+            FEATURES "${_nros_c_for_cpp_features}${_nros_panic_suffix}"
         )
         add_dependencies(app nros_c_cargo_build)
     endif()
@@ -380,7 +425,7 @@ if(CONFIG_NROS_CPP_API)
     # Build nros-cpp static library via Cargo
     nros_cargo_build(
         PACKAGE nros-cpp
-        FEATURES "${_nros_cpp_features}"
+        FEATURES "${_nros_cpp_features}${_nros_panic_suffix}"
     )
     add_dependencies(app nros_cpp_cargo_build)
 

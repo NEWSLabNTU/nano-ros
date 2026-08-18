@@ -346,6 +346,56 @@ it ends the way its board ends. That is the intended ending, but it changes what
 a shipped image does, so it is called out in RFC-0077's migration notes rather
 than arriving as a default flip.
 
+### W7.d — the Zephyr lane lowers PANIC itself (2026-08-19, handed off)
+
+W7.b said the staticlib's feature set "has to be computable after entries are
+declared". On the Zephyr lane it is not, and cannot be: a Zephyr app calls
+`find_package(Zephyr)` — which runs `zephyr/CMakeLists.txt` and every
+`nros_cargo_build()` in it — BEFORE its `nano_ros_add_executable()`. So six C/C++
+workspace entries declaring `PANIC platform` died at configure:
+
+```
+nano_ros_entry(zephyr_entry): PANIC platform cannot be applied — no
+nros-c/nros-cpp Rust target exists at this point in the configure.
+```
+
+Not an ordering slip but a MECHANISM mismatch. M4 applies PANIC with
+`corrosion_set_features()` on an imported crate target; the Zephyr lane's Rust
+side is `nros_cargo_build()`, which makes its own `add_custom_target` plus an
+IMPORTED library named `nros_c_cargo` — not a Corrosion target, and not named
+`nros_c`. The scan could never have matched, on any ordering.
+
+**Fix.** The Zephyr module resolves the policy itself and appends the feature to
+every `nros_cargo_build` FEATURES string, using the seam that lane already has
+for entry->module facts: a variable set before `find_package(Zephyr)`, as
+`NROS_WS_RUST_NODE_DIRS` is. Unset means `platform` (M5's default), so entries
+saying `PANIC platform` needed no edit. `nano_ros_entry()` then VERIFIES
+agreement against a global property instead of scanning — a contradiction is a
+FATAL_ERROR naming both endings, so the keyword stays the declaration a reader
+can trust rather than becoming decoration.
+
+**The first attempt was wrong in a way worth recording.** The computation went
+inside `if(CONFIG_NROS_C_API)`, and a C++-only image sets `CONFIG_NROS_CPP_API`
+with `CONFIG_NROS_C_API` UNSET — so it silently did not happen and all six
+entries still failed. It is hoisted above both branches now. A knob resolved
+inside one API branch is invisible to the other, which is the same shape as this
+phase's own "six providers, five gating idioms".
+
+**Verified**, not assumed: `just zephyr build-fixtures` exits 0 (was 2), zero
+PANIC errors, and the feature is on the real cargo command line —
+
+```
+--features rmw-cffi,cffi-zenoh-cffi,platform-zephyr,ros-humble,std,panic-platform
+```
+
+— and in the built crate's fingerprint, so the ending is compiled in rather than
+silently skipped. Mutation-checked: an entry saying `PANIC halt` against a module
+that built `platform` fails with both endings named.
+
+`PANIC own` remains available on this lane and is what a Rust-on-Zephyr image
+wants (W7.b: `zephyr-lang-rust` links our `rustapp` and the `zephyr` crate
+supplies the handler); it maps to an empty feature, so nothing is selected.
+
 ### W6 — the gate
 
 Extend `scripts/check-archive-lang-items.sh` to the panic lang item
