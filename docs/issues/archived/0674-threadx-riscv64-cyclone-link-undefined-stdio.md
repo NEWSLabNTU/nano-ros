@@ -1,11 +1,12 @@
 ---
 id: 674
 title: "The threadx-riscv64 Cyclone fixture fails to link: `undefined symbol: stdout` / `stderr`, because startup.c defines them only under `#if defined(__PICOLIBC__)` while the link supplies picolibc"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, boards
 related: [issue-0657, issue-0664, phase-251]
+resolved_in: phase-251
 ---
 
 ## Symptom
@@ -131,3 +132,71 @@ covers.
    `stdout`/`stderr`.
 3. **Give the zenoh riscv64 variant a lane row** if it does not have one, so
    "only Cyclone fails" stops being unfalsifiable.
+
+---
+
+## Fixed 2026-08-18 — the code that CHOOSES the libc now publishes the choice
+
+The "not verified" list above was the right thing to write down, and every item
+on it turned out to matter. Answered by probing, in the order the Direction
+asked:
+
+| probe | result |
+| --- | --- |
+| which compiler CMake resolves | the SDK store's xPack `riscv-none-elf-gcc` — a **newlib** toolchain — ahead of PATH's `riscv64-unknown-elf-gcc` |
+| `--specs=picolibc.specs -print-sysroot` on it | **`fatal error: cannot read spec file 'picolibc.specs'`** — so the probe fails and the toolchain file silently falls back to the hardcoded Debian path |
+| `-dM -E` with the real flags | **`__PICOLIBC__` is NOT defined** |
+| Debian's `picolibc.h` | defines **`_PICOLIBC__`** — ONE leading underscore — and `stdio.h` does not include it |
+
+So the guard could never be true on the provisioned toolchain. `__PICOLIBC__`
+is set by `--specs=picolibc.specs`, the xPack gcc ships no such spec file, and
+the header that might otherwise have defined it both spells the macro
+differently and is not reached from `<stdio.h>`. `startup.c` therefore compiled
+its `stdout`/`stderr` definitions away while the link still pulled picolibc's
+`libc.a`, which requires the image to supply them.
+
+**Cyclone was not special.** It was the first consumer to reference the
+symbols (`ddsi_config.c`, `descriptors.cpp`), which is exactly the "coverage
+artifact" this issue warned it might be. Any consumer referencing `stderr`
+would have hit the same wall.
+
+### Fix
+
+The `if(EXISTS ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include)` block in
+`cmake/toolchain/riscv64-threadx.cmake` is where the build DECIDES the C
+library is picolibc. It now emits `-DNROS_LIBC_PICOLIBC=1` alongside the
+`-isystem`, and `startup.c` guards on
+`#if defined(NROS_LIBC_PICOLIBC) || defined(__PICOLIBC__)`.
+
+Two properties that matter more than the one-line diff:
+
+* **the decision and its consumer are the same `if()`**, so compile-time and
+  link-time cannot disagree — the previous design had the toolchain choose and
+  the C file guess;
+* **it is a project-owned macro, not a reserved one.** Relying on
+  `__PICOLIBC__` meant depending on a name whose spelling this very install
+  gets wrong (`_PICOLIBC__`) and whose definition depends on a spec file a
+  supported toolchain does not ship.
+
+`__PICOLIBC__` is kept in the guard so a genuine `--specs=picolibc.specs`
+build, which does define it, still works.
+
+### Verified
+
+`__PICOLIBC__` is guarded at exactly ONE site tree-wide, so there is no
+sibling to sweep. The failing leaf was rebuilt from a WIPED cmake cache (602 MB
+discarded — `CMAKE_C_FLAGS_INIT` only applies at fresh configure, so reusing
+the cache would have made a green result meaningless):
+
+```
+$ bash scripts/build/fixtures-build.sh threadx-riscv64
+RV64=0        # was rc=2
+undefined symbol: 0 occurrences   # was stdout + stderr, 7+ references
+```
+
+### Direction item 3 stands
+
+"Give the zenoh riscv64 variant a lane row" is NOT done. It is now known that
+the bug was never Cyclone-specific, so the coverage gap that made it look that
+way is still open — a zenoh riscv64 row would have caught this sooner and
+should still exist.

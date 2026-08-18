@@ -93,10 +93,36 @@ if(NOT _RISCV_THREADX_PICOLIBC_SYSROOT
         "/usr/lib/picolibc/riscv64-unknown-elf")
 endif()
 if(EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+    # issue 0674 — publish the CHOICE, do not make the code guess it.
+    #
+    # This block is where the build DECIDES the C library is picolibc. The
+    # board's `startup.c` has to know the same thing, because picolibc leaves
+    # `stdout`/`stderr` undefined and expects the image to define them, while
+    # newlib defines them itself (a definition there is then a syntax error).
+    # It used to guess via `#if defined(__PICOLIBC__)`, and that guess is wrong
+    # for the toolchain `nros setup` provisions:
+    #
+    #   * `__PICOLIBC__` is set by `--specs=picolibc.specs`, and the xPack
+    #     `riscv-none-elf-gcc` in the SDK store ships no such spec file (the
+    #     `-print-sysroot` probe above FAILS on it and silently falls back to
+    #     the Debian path, which is how a newlib compiler ends up with
+    #     picolibc headers in the first place);
+    #   * Debian's `picolibc.h` defines `_PICOLIBC__` — ONE leading underscore
+    #     — not `__PICOLIBC__`, and `stdio.h` does not include it anyway.
+    #
+    # So the guard was never true here: `startup.c` compiled its stdio
+    # definitions away while the link still pulled picolibc's `libc.a`, and the
+    # image failed with `undefined symbol: stdout` / `stderr` on whichever
+    # consumer referenced them first (Cyclone's `ddsi_config.c`).
+    #
+    # A project-owned macro instead of the libc's: it is set by the SAME
+    # `if()` that selects the headers, so compile-time and link-time cannot
+    # disagree, and it does not depend on a reserved name any vendor may spell
+    # differently.
     set(CMAKE_C_FLAGS_INIT
-        "${CMAKE_C_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+        "${CMAKE_C_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include -DNROS_LIBC_PICOLIBC=1")
     set(CMAKE_CXX_FLAGS_INIT
-        "${CMAKE_CXX_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+        "${CMAKE_CXX_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include -DNROS_LIBC_PICOLIBC=1")
 endif()
 
 # Phase 155.E — C++ shim headers (`cstdio`, `cstdint`, etc.)

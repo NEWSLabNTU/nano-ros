@@ -451,16 +451,22 @@ tier — moved to the spawned one. Verified: `nros: core pin tier=`high` cpu=0`,
 flipped Fallback -> Accept. Still UNIPROCESSOR, so it proves the call is correct, not SMP placement (#260).
 See `archived/0655-*`. (2026-08-18)
 
-**#0674** (build/boards, open 2026-08-18) — the `threadx-riscv64-c-cyclonedds` fixture fails to LINK:
-`undefined symbol: stdout` / `stderr`, failing the whole `threadx_riscv64` platform on `lane=tier2` (the
-other four platforms build clean). `startup.c` DOES define both — behind `#if defined(__PICOLIBC__)`, which
-#0657 added because this board now builds with either Debian picolibc or the xPack newlib and only
-picolibc wants the image to define them. But the link is unambiguously picolibc (the undefined `stdout` is
-referenced from picolibc's own `printf.c` in `/usr/lib/picolibc/.../libc.a`), so compile-time believed
-newlib while link-time supplied picolibc. NOT verified, and stated as such: that `__PICOLIBC__` is really
-undefined for that TU (dump `-dM -E` first), which compiler CMake resolved, and whether zenoh breaks too —
-no zenoh riscv64 row ran, so "Cyclone-only" may be a coverage artifact. Not caused by the commit that found
-it (#0671 touches one Rust file). See `0674-*`. (2026-08-18)
+Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
+(`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
+define both, behind `#if defined(__PICOLIBC__)` — a guard #0657 added because this board builds against
+either picolibc (image must define them) or newlib (defines them itself). PROBED rather than inferred:
+CMake resolves the SDK store's xPack `riscv-none-elf-gcc`, a NEWLIB toolchain, which ships no
+`picolibc.specs` — so the `-print-sysroot` probe FAILS and silently falls back to Debian's picolibc path
+(that is how a newlib compiler gets picolibc headers), `-dM -E` shows `__PICOLIBC__` UNDEFINED, and
+Debian's `picolibc.h` spells its own macro `_PICOLIBC__` (one underscore) and is not reached from
+`stdio.h`. So the guard was never true and the definitions vanished from an image that still linked
+picolibc. Cyclone was NOT special — just the first consumer to reference the symbols, the coverage
+artifact the issue flagged. FIXED by making the `if()` that SELECTS picolibc's headers also emit
+`-DNROS_LIBC_PICOLIBC=1`, with the guard widened to it: decision and consumer are the same block, so
+compile- and link-time cannot disagree, and it does not depend on a reserved name this install spells
+wrong. Verified from a WIPED cmake cache (602 MB; `CMAKE_C_FLAGS_INIT` only applies at fresh configure):
+rc=2 -> 0, undefined symbols 7+ -> 0. Still open from its Direction: the zenoh riscv64 lane row.
+See `archived/0674-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0671** — `contract_monitor_parity` reported NOTHING on `/diagnostics`.
 ROOT CAUSE: in `Executor::open`, `executor.epoch_us_fn = config.epoch_us;` was UNGUARDED, so a config that

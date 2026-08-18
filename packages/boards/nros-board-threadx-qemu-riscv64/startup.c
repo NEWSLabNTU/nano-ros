@@ -56,7 +56,15 @@ extern int uart_putc(int ch);
  * Both route the bytes through `_write` below, so the console is the same
  * either way — newlib simply reaches it through its own FILE machinery.
  */
-#if defined(__PICOLIBC__)
+/* issue 0674 — `NROS_LIBC_PICOLIBC` is set by the toolchain file's SAME `if()`
+ * that puts picolibc's headers on the include path, so it cannot disagree with
+ * the library actually linked. `__PICOLIBC__` is kept for a build driven by
+ * `--specs=picolibc.specs`, which does define it; the provisioned xPack
+ * `riscv-none-elf-gcc` ships no such spec file, and Debian's `picolibc.h`
+ * spells its own macro `_PICOLIBC__` (one underscore) and is not included by
+ * `stdio.h` — so on that combination `__PICOLIBC__` alone was never true and
+ * these definitions vanished from an image that still linked picolibc. */
+#if defined(NROS_LIBC_PICOLIBC) || defined(__PICOLIBC__)
 static int _uart_put(char c, FILE *f) { (void)f; uart_putc((int)c); return 0; }
 static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WRITE);
 /* picolibc declares `extern FILE *const stdout` but leaves it undefined.
@@ -64,7 +72,7 @@ static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WR
  * not the FILE — so the FILE itself is mutable. */
 FILE *const stdout = &_uart_file;
 FILE *const stderr = &_uart_file;
-#endif /* __PICOLIBC__ */
+#endif /* NROS_LIBC_PICOLIBC || __PICOLIBC__ */
 
 /* picolibc _write syscall for other output (fprintf to fd, etc.) */
 int _write(int fd, const char *buf, int len) {
