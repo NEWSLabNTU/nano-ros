@@ -24,7 +24,7 @@ Both nodes connect to the same Zenoh router (zenohd) or communicate directly in 
 
 ```bash
 # Terminal 1: Start zenoh router
-zenohd --listen tcp/127.0.0.1:7447
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: Run nros talker
 cargo run -p native-rs-talker --features zenoh -- --tcp 127.0.0.1:7447

@@ -14,7 +14,7 @@ LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
 
 # Check dependencies
 if ! pgrep -x zenohd > /dev/null; then
-    echo "ERROR: zenohd not running. Start it with: zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
+    echo "ERROR: zenohd not running. Start it with: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
     exit 1
 fi
 

@@ -20,18 +20,29 @@ NC='\033[0m'
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 
-# Cleanup
+# Issue 0654 — the vendored `zenohd` is retired (phase-362). The router is ROS's
+# `rmw_zenohd`, which takes NO command-line configuration: argv is not parsed, so
+# `--listen` is UNREAD rather than rejected and the router silently binds the
+# default port. `nros_router_exec` resolves the binary and passes the locator by
+# environment; it `exec`s, hence the subshell.
+. "$PROJECT_ROOT/scripts/dev/zenohd.sh"
+
+# Cleanup kills what THIS script started, by PID. `pkill -f <pattern>` matches
+# the shell running it as readily as the target — a self-match that silently
+# kills the script instead of the peer.
+ROUTER_PID=""
+TALKER_PID=""
 cleanup() {
-    pkill -x zenohd 2>/dev/null || true
-    pkill -f "target/release/talker" 2>/dev/null || true
+    [ -n "$ROUTER_PID" ] && kill "$ROUTER_PID" 2>/dev/null
+    [ -n "$TALKER_PID" ] && kill "$TALKER_PID" 2>/dev/null
+    return 0
 }
 trap cleanup EXIT
-cleanup
-sleep 1
 
-# Start zenohd
-log_info "Starting zenohd..."
-zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} > "$LOG_DIR/zenohd.log" 2>&1 &
+# Start the router
+log_info "Starting rmw_zenohd..."
+( nros_router_exec "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" ) > "$LOG_DIR/zenohd.log" 2>&1 &
+ROUTER_PID=$!
 sleep 2
 
 echo ""
@@ -40,14 +51,16 @@ echo ""
 
 # Start nros talker briefly
 timeout 3 "$TALKER" --tcp 127.0.0.1:7447 > "$LOG_DIR/talker.log" 2>&1 &
+TALKER_PID=$!
 sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
 log_info "Subscribing to 0/** to capture nros messages..."
 timeout 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
-# Kill nros talker
-pkill -f "target/release/talker" 2>/dev/null || true
+# Kill nros talker by the PID we started, not by pattern (see cleanup above).
+[ -n "$TALKER_PID" ] && kill "$TALKER_PID" 2>/dev/null
+TALKER_PID=""
 sleep 1
 
 echo ""

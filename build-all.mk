@@ -72,7 +72,10 @@ prereqs:
 	$(call timed_stage,prereq: generate-bindings,just generate-bindings)
 	$(call timed_stage,prereq: build-workspace,just build-workspace)
 	$(call timed_stage,prereq: build-workspace-embedded,just build-workspace-embedded)
-	$(call timed_stage,prereq: build-zenohd,just build-zenohd)
+	# issue 0654 — no `build-zenohd` stage: phase-362 retired the vendored router
+	# and deleted the recipe, so this line invoked a recipe that does not exist
+	# ("justfile does not contain recipe `build-zenohd`"). The router now comes
+	# from ROS (`rmw_zenoh_cpp/rmw_zenohd`) and is not built by this tree at all.
 	$(call timed_stage,prereq: qemu build-zenoh-pico,just qemu build-zenoh-pico)
 	$(call timed_stage,prereq: build-zenoh-posix-fixture,just build-zenoh-posix-fixture)
 

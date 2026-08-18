@@ -8,8 +8,9 @@
 ///
 /// Run after starting zenohd:
 ///
-///     zenohd --listen tcp/127.0.0.1:7447
-///     NROS_LOCATOR=tcp/127.0.0.1:7447 ./build/cpp_logging
+///     ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
+///     /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd NROS_LOCATOR=tcp/127.0.0.1:7447
+///     ./build/cpp_logging
 
 #include <stdio.h>
 #include <stdlib.h>

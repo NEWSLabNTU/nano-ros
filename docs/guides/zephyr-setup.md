@@ -129,7 +129,7 @@ just zephyr talker
 
 ```bash
 # Terminal 1
-build/zenohd/zenohd --listen tcp/127.0.0.1:7456 --no-multicast-scouting
+build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2
 zephyr-workspace/build-listener/zephyr/zephyr.exe --seed=2000

@@ -95,7 +95,7 @@ just status-qemu-network
 
 ```bash
 # Terminal 1: Start zenoh router
-zenohd --listen tcp/0.0.0.0:7447
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: Run QEMU with network
 ./scripts/qemu/launch-mps2-an385.sh \

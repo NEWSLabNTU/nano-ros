@@ -7,7 +7,7 @@
 just build-zenohd
 
 # Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: Talker
 cd examples/native/rust/talker && RUST_LOG=info cargo run --features zenoh
@@ -45,7 +45,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
 
 ```bash
 # Terminal 1: Router with TLS
-./build/zenohd/zenohd --no-multicast-scouting --listen tls/localhost:7447 \
+./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tls/localhost:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd \
   --cfg 'transport/link/tls/listen_certificate:"cert.pem"' \
   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
 
@@ -73,7 +73,7 @@ The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at 
 
 ```bash
 # Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: nros talker
 cd examples/native/rust/talker && RUST_LOG=info cargo run --features zenoh
@@ -88,7 +88,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 
 ```bash
 # Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: Action server (Fibonacci example)
 cd examples/native/rust/action-server && cargo run
@@ -159,7 +159,7 @@ just docker-qemu-test         # Runs zenohd, talker, listener in separate contai
 ```bash
 # Terminal 1: Setup network + start router
 just setup-qemu-network                    # Requires sudo
-./build/zenohd/zenohd --listen tcp/0.0.0.0:7447
+./build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # Terminal 2: Talker (192.0.2.10)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \

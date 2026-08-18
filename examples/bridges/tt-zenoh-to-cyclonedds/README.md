@@ -26,7 +26,7 @@ cargo build -p native-rs-bridge-tt-zenoh-to-cyclonedds
 ## Run
 
 ```sh
-zenohd --listen tcp/127.0.0.1:7447 &          # ingress side (ZENOH_LOCATOR overrides)
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &          # ingress side (ZENOH_LOCATOR overrides)
 cargo run -p native-rs-bridge-tt-zenoh-to-cyclonedds   # ROS_DOMAIN_ID = egress domain
 # feed it: a zenoh /chatter talker (e.g. examples/native/rust/talker)
 # observe: any Cyclone DDS /chatter subscriber, e.g.

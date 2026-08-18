@@ -105,7 +105,7 @@ fn test_cdr_int32_format() {
 }
 
 /// Test full pub/sub cycle (requires working zenoh network)
-/// This test requires a zenoh router running: zenohd --listen tcp/127.0.0.1:7447
+/// This test requires a zenoh router running: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 #[test]
 fn test_pubsub_loopback() {
     let Some(_router) = router() else { return };
@@ -124,7 +124,7 @@ fn test_pubsub_loopback() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen {}", router_locator);
+            eprintln!("Start a router with: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["{}"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd", router_locator);
             panic!("Failed to connect to zenoh router");
         }
     };
@@ -553,7 +553,7 @@ fn test_pubsub_loopback_with_scouting_disabled() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Could not open session: {:?}", e);
-            eprintln!("Start a router with: zenohd --listen {}", router_locator);
+            eprintln!("Start a router with: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["{}"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd", router_locator);
             panic!("Failed to connect to zenoh router");
         }
     };

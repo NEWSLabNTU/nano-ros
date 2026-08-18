@@ -464,6 +464,7 @@ check-fast: _check-skip-reset \
     check-goal-cdr-stripped \
     check-test-domain-assignment \
     check-zenohd-spawn-sites check-zenohd-resolution-parity \
+    check-zenohd-flag-invocations \
     check-wait-evidence-discarded \
     check-path-env-fingerprints check-retired-platform-clock-symbols
     #!/usr/bin/env bash
@@ -1645,6 +1646,14 @@ check-wait-evidence-discarded:
 # sides, not a diff of two languages.
 check-zenohd-resolution-parity:
     @bash scripts/check-zenohd-resolution-parity.sh
+
+# Issue 0654 — the router takes NO command-line configuration, so a `zenohd
+# --listen …` line is not merely a stale name: the flags are UNREAD rather than
+# rejected, and the reader gets a default-configured router with no diagnostic.
+# Gated because the class regenerates by copy-paste from a neighbouring example
+# header — which is how it reached ~95 files.
+check-zenohd-flag-invocations:
+    @python3 scripts/check-zenohd-flag-invocations.py
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute

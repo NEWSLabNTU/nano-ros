@@ -538,12 +538,15 @@ agree" as a comment since phase-362 with nothing checking it, and they drifted i
 expectations are now ONE table answered twice — `check-zenohd-resolution-parity` for the shell,
 `zenohd_resolution_matches_the_shared_table` for the Rust. See `archived/0653-*`. (2026-08-18)
 
-**#0654** (docs/scripts, open 2026-08-17) — ~95 files still say `zenohd --listen …`, and 57 name a
-deleted path (`build/zenohd`, `sdk-path zenohd`). Two failures, the second worse: the binary is gone,
-AND `rmw_zenohd` takes no command-line configuration — it ignores argv and reads
-`ZENOH_CONFIG_OVERRIDE`. So the flags are unread rather than rejected, and a wrong port becomes a silent
-hang at `Executor::open`, which the troubleshooting pages blame on other causes. Wants ONE helper
-(`nros_router_exec` exists) plus a gate, not 95 hand-edits into 95 spellings. See `0654-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0654** — ~95 files invoked the router with command-line flags naming a
+binary phase-362 retired. Two failures, the second worse: the name is gone, AND `rmw_zenohd` takes no
+command-line configuration — it does not parse argv, so the flags were unread rather than rejected and the
+reader got a default-configured router with no diagnostic (a wrong port then reads as a silent hang at
+`Executor::open`, which the troubleshooting pages blamed on other causes). 81 invocations across 62 files
+converted to the `ZENOH_CONFIG_OVERRIDE` env form; the two debug scripts call `nros_router_exec` and kill by
+PID; `build-all.mk` was still running the DELETED `just build-zenohd` recipe — stage and
+`ci/.../build-zenohd.sh` removed. Gated by `check-zenohd-flag-invocations`, mutation-checked both ways, with
+`docs/**/archived/**` exempt. See `archived/0654-*`. (2026-08-18)
 
 **#0628** (build/provisioning, open 2026-08-16) — `nros sdk-path corrosion` constructs only the VERSIONED
 store layout, so a host with the FLAT one (`just workspace install-corrosion`) has its provisioned copy
@@ -2510,8 +2513,8 @@ ALSO (2026-08-17): closing on the code alone would have been wrong — phase-362
 `design/rmw.md` and stopped, leaving the GETTING-STARTED page still describing the deleted binary, so
 `installation.md`, `reference/cli.md`, `user-guide/workflow.md` and `activate.sh` were swept with it.
 That sweep uncovered #0653 (a ROS-less host has no router for the DEFAULT rmw — the consequence
-RFC-0075 scoped to interop lanes only) and #0654 (~95 `zenohd --listen …` invocations whose flags
-`rmw_zenohd` does not read). (2026-08-17)
+RFC-0075 scoped to interop lanes only) and #0654 (~95 router invocations passing command-line flags
+that `rmw_zenohd` does not read). (2026-08-17)
 
 Recently resolved (2026-08-16): **#403** — the WCET bench emitted prose nothing parses, and zeros from a
 dead cycle counter. Fixed in phase-356 W2, both halves. A dead DWT is now a HARD failure: the bench

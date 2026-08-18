@@ -247,7 +247,7 @@ nros check --bringup src/demo_bringup
 nros check --workspace .
 
 # 3. Run the composed Entry binary (boots all nodes in a single process)
-zenohd --listen tcp/127.0.0.1:7447 &   # router — in another shell
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &   # router — in another shell
 cargo run -p native_entry
 ```
 

@@ -15,7 +15,7 @@ cd examples/templates/topic-state-monitor-port
 cmake -B build -S . -DNROS_RMW=zenoh
 cmake --build build -j
 
-zenohd -l tcp/127.0.0.1:7447 &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
 ./build/topic_state_monitor &
 # Publish to topics "a" and "b" from any nano-ros / ROS 2 talker.
 # `topic_state_monitor` publishes `/diagnostics` every 1 s with per-topic

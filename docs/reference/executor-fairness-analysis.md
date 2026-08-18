@@ -97,7 +97,7 @@ LET mode gives **snapshot consistency** — all callbacks see data from the same
 ## Benchmark Results
 
 **Setup:** Native Linux, zenohd, release build, separate publisher/subscriber processes.
-Requires `zenohd --listen tcp/127.0.0.1:7447` running.
+Requires `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447`"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd running.
 
 Run with: `just bench-fairness`
 

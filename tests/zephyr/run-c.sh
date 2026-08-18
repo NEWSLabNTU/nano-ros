@@ -329,7 +329,7 @@ else
     log_info ""
     log_info "Troubleshooting:"
     log_info "  1. Check TAP interface: ip addr show $TAP_INTERFACE"
-    log_info "  2. Check zenohd is accessible: zenohd --listen tcp/0.0.0.0:7447"
+    log_info "  2. Check zenohd is accessible: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
     log_info "  3. Check Zephyr can reach host: ping $HOST_IP (from Zephyr)"
     log_info "  4. Run with --verbose for detailed output"
 fi

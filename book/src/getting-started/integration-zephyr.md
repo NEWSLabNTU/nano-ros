@@ -280,7 +280,7 @@ west build -b qemu_cortex_a9 apps/my_app
 ```
 
 (Verified end-to-end on a fresh BYO west workspace: this builds to `zephyr.exe`
-and runs to `Published: 0` against `zenohd -l tcp/127.0.0.1:7456`. On the 4.4
+and runs to `Published: 0` against `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456`."];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd On the 4.4
 line, `find_package(Python3)` requires ≥ 3.12 and you select the RMW with
 `-S nros-zenoh` instead of the overlay.)
 
@@ -324,7 +324,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 #    same port the example apps' Kconfig defaults pick up:
 just zephyr zenohd &
 #    Or directly:
-#    zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+#    ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7456"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 
 # 2. Boot the app. nano-ros's own in-tree zephyr talker has a
 #    matching just recipe for the canonical `native_sim` build path:

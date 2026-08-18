@@ -235,7 +235,7 @@ first — it shows the multi-RMW
 forwarding and no codegen.
 
 ```sh
-zenohd --listen tcp/127.0.0.1:7447 &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
 build/xrce-agent/MicroXRCEAgent udp4 -p 8888 &
 NROS_XRCE_LOCATOR=udp/127.0.0.1:8888 \
     cargo run -p native-rs-bridge-tt-zenoh-to-xrce
@@ -268,7 +268,7 @@ backend links the vendored CycloneDDS (no `-DNANO_ROS_RMW` needed for the Rust
 binary — the `nros-rmw-cyclonedds-sys` dep is the selection).
 
 ```sh
-zenohd --listen tcp/127.0.0.1:7447 &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
 ROS_DOMAIN_ID=0 cargo run -p native-rs-bridge-tt-zenoh-to-cyclonedds
 # subscribe on Cyclone DDS /chatter (stock ROS 2 or a nano-ros cyclone node on
 # the same ROS_DOMAIN_ID) and publish on zenoh /chatter to see bridged samples.

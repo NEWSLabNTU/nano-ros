@@ -94,7 +94,7 @@ Start the RMW host daemon (installed by `nros setup native`). For
 zenoh:
 
 ```bash
-zenohd --listen tcp/127.0.0.1:7447
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 ```
 
 Run the node directly via `cargo run` (Rust) or

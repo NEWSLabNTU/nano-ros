@@ -10,10 +10,20 @@ Z_SUB="$PROJECT_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico/build/examples/z_su
 echo "=== Liveliness Token Debug ==="
 echo ""
 
-# Ensure zenohd is running
-if ! pgrep -x zenohd > /dev/null; then
-    echo "Starting zenohd..."
-    zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} &
+# Ensure a router is running. Issue 0654 — the vendored `zenohd` is retired
+# (phase-362); the router is ROS's `rmw_zenohd`, which takes NO command-line
+# configuration: it does not parse argv, so `--listen` is not rejected, it is
+# UNREAD, and the router silently comes up on the default port. `nros_router_exec`
+# is the one spelling that resolves the binary and passes the locator by
+# environment; it `exec`s, so it runs in a subshell here.
+. "$PROJECT_ROOT/scripts/dev/zenohd.sh"
+ROUTER_PID=""
+if ! pgrep -x rmw_zenohd > /dev/null; then
+    echo "Starting rmw_zenohd..."
+    ( nros_router_exec "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" ) &
+    ROUTER_PID=$!
+    # Kill by PID, never `pkill -f`: the pattern matches the shell running it.
+    trap '[ -n "$ROUTER_PID" ] && kill "$ROUTER_PID" 2>/dev/null' EXIT
     sleep 2
 fi
 

@@ -181,7 +181,7 @@ Start a Zenoh router first, then boot the Entry binary from the workspace root:
 
 ```bash
 # in another shell:
-zenohd --listen tcp/127.0.0.1:7447 &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
 
 cargo run -p native_entry
 ```

@@ -18,7 +18,7 @@ Open three terminals:
 
 ```bash
 # Terminal 1: Start the zenoh router
-zenohd --listen tcp/127.0.0.1:7447
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 ```
 
 ```bash

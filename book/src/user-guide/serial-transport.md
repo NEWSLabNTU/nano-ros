@@ -98,8 +98,16 @@ char device redirected to /dev/pts/3 (label serial0)
 In another terminal, start zenohd with the serial link:
 
 ```bash
-zenohd --connect serial//dev/pts/3#baudrate=115200
+ZENOH_CONFIG_OVERRIDE='connect/endpoints=["serial//dev/pts/3#baudrate=115200"]' \
+    /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 ```
+
+> The router is ROS 2's `rmw_zenohd` (phase-362 retired the vendored `zenohd`).
+> It takes **no** command-line configuration — argv is not parsed, so a
+> `--connect` flag is not rejected, it is simply unread, and the router comes up
+> on its default configuration with no diagnostic. Configuration travels in
+> `ZENOH_CONFIG_OVERRIDE`. Note this is `connect/endpoints`, not
+> `listen/endpoints`: the router dials the serial link rather than binding it.
 
 The MCU's messages are now bridged to the zenoh network. Any zenoh subscriber (including ROS 2 nodes) can receive them.
 

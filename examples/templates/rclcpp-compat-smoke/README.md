@@ -26,7 +26,7 @@ cmake -B build -S . -DNROS_RMW=zenoh
 cmake --build build -j
 
 # In terminal 1 (host daemon — required for zenoh):
-zenohd -l tcp/127.0.0.1:7447 &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
 
 # In terminal 2:
 ./build/rclcpp_compat_smoke

@@ -178,7 +178,7 @@ talker is pointed at. Start it in another terminal (`nros setup native
 the activate file puts it on PATH):
 
 ```bash
-zenohd --listen tcp/127.0.0.1:7447
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 ```
 
 Default ports: `tcp/127.0.0.1:7447` on POSIX,

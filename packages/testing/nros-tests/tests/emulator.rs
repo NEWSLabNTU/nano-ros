@@ -281,7 +281,7 @@ fn test_arm_toolchain_detection() {
 //   just test-rust-qemu-baremetal-bsp  (uses Docker)
 //
 // Or manually:
-//   zenohd --listen tcp/0.0.0.0:7447
+//   ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 //   ./scripts/qemu/launch-mps2-an385.sh --binary <path>
 
 /// BSP ethernet pub/sub e2e over QEMU slirp — no Docker, no TAP (Phase 203).

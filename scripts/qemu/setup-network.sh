@@ -34,7 +34,7 @@
 #
 # After running this script:
 #   1. Start a zenoh router on the host:
-#      zenohd --listen tcp/0.0.0.0:7447
+#      ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
 #
 #   2. Run QEMU with networking:
 #      ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary your-app.elf
@@ -283,7 +283,7 @@ echo "Owner: $TAP_USER (can run QEMU/ThreadX without sudo)"
 echo ""
 echo "Next steps:"
 echo "  1. Start zenoh router:"
-echo "     zenohd --listen tcp/0.0.0.0:7447"
+echo "     ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
 echo ""
 echo "  2. Run QEMU with networking:"
 echo "     ./scripts/qemu/launch-mps2-an385.sh --tap ${TAP_PREFIX}0 --ip 192.0.2.10 --binary your-app.elf"

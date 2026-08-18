@@ -1,5 +1,5 @@
 BLOCKERS
-1. `just freertos zenohd` (doc Run step 1) hardcodes `build/zenohd/zenohd`, which `nros setup qemu-arm-freertos --rmw zenoh` does not populate. Recipe exits 127 on a fresh post-`nros setup` machine. Doc presents this as the primary "Step 1" of Run and only offers the working inline `zenohd --listen tcp/...` form as a commented-out alternative.
+1. `just freertos zenohd` (doc Run step 1) hardcodes `build/zenohd/zenohd`, which `nros setup qemu-arm-freertos --rmw zenoh` does not populate. Recipe exits 127 on a fresh post-`nros setup` machine. Doc presents this as the primary "Step 1" of Run and only offers the working inline `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/...`"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd form as a commented-out alternative.
 
 FRICTION
 - `just freertos talker` / `_run-qemu` hardcodes `build/qemu/bin/qemu-system-arm` (also not populated by `nros setup`), but falls back to system `qemu-system-arm` via `path_exists`. Works only if system QEMU is already installed — works on this host, would fail on a clean machine.
@@ -9,7 +9,7 @@ CLARITY
 - Run flow CLEAR shape, blocked by the recipe path issue.
 
 MISSING STEPS
-- No fallback hint when `just freertos zenohd` fails (the inline `zenohd --listen …` form is buried as a commented-out line).
+- No fallback hint when `just freertos zenohd` fails (the inline `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["…`"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd form is buried as a commented-out line).
 
 NITs
 - Project-layout tree shows `.cargo/config.toml` + `generated/` for Rust talker but omits the on-disk `CMakeLists.txt`.
@@ -20,7 +20,7 @@ WORKS
 - `nros.toml` doc block byte-accurate.
 - GitHub source links resolve.
 
-Acceptance bar (0 BLOCKERS): **NOT MET** — `just freertos zenohd` recipe still needs to be fixed (or the doc needs to lead with the inline `zenohd --listen ...` form).
+Acceptance bar (0 BLOCKERS): **NOT MET** — `just freertos zenohd` recipe still needs to be fixed (or the doc needs to lead with the inline `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["...`"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd form).
 
 LAST COMMAND: just freertos zenohd
 LAST EXIT CODE: 127
