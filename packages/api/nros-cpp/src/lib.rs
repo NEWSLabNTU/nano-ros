@@ -538,8 +538,16 @@ pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<&'a mut 
 #[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
     core::mem::size_of::<CppContext>() <= CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_EXECUTOR_OPAQUE_U64S too small for CppContext — increase NROS_EXECUTOR_ARENA_SIZE \
-     or NROS_EXECUTOR_MAX_CBS, or adjust the overhead in build.rs"
+    "CPP_EXECUTOR_OPAQUE_U64S too small for CppContext — this is a MEASUREMENT, not a budget. The stated size is \
+     `size_of` taken while building the `nros` facade in the sizes PROBE, and \
+     this compares it against `size_of` in the unit that LINKS. They differ only \
+     when the probe built under a different feature set than this crate resolves \
+     — issue 0665: `std` here forwards `nros/env`, the probe forwarded only the \
+     shared name `std`, and one fat pointer of difference made the number 16 \
+     bytes short. Check the forwarded set \
+     (`nros_sizes_build::resolved_features_for`) before touching any knob. \
+     NROS_EXECUTOR_ARENA_SIZE / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
+     and cannot close a feature-set gap."
 );
 
 // ============================================================================

@@ -56,8 +56,16 @@ pub(crate) const EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::DEFAU
 const _: () = assert!(
     core::mem::size_of::<nros_node::ExecutorInlineStorage>()
         <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "EXECUTOR_OPAQUE_U64S too small for Executor + backing — increase \
-     NROS_EXECUTOR_ARENA_SIZE or NROS_EXECUTOR_MAX_CBS, or adjust the overhead in build.rs"
+    "EXECUTOR_OPAQUE_U64S too small for Executor + backing — this is a MEASUREMENT, not a budget. The stated size is \
+     `size_of` taken while building the `nros` facade in the sizes PROBE, and \
+     this compares it against `size_of` in the unit that LINKS. They differ only \
+     when the probe built under a different feature set than this crate resolves \
+     — issue 0665: `std` here forwards `nros/env`, the probe forwarded only the \
+     shared name `std`, and one fat pointer of difference made the number 16 \
+     bytes short. Check the forwarded set \
+     (`nros_sizes_build::resolved_features_for`) before touching any knob. \
+     NROS_EXECUTOR_ARENA_SIZE / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
+     and cannot close a feature-set gap."
 );
 
 /// Get a mutable reference to the internal executor from opaque storage.

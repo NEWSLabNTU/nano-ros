@@ -89,13 +89,20 @@ edge (`nros-rmw/sync-spin`) on every build of a core crate, to serve zero caller
 delete, port and pay the edge, or keep one hosted module. Left std-gated deliberately, rationale corrected
 in place. See `0669-*`. (2026-08-18)
 
-**#0665** (build/api, open 2026-08-17) — `EXECUTOR_OPAQUE_U64S` is `size_of::<ExecutorInlineStorage>()`
-MEASURED in the `nros` facade's compilation and asserted against the same type under the CONSUMER's feature
-set. phase-359 W10 made `env` an independent capability, so those sets now differ, and the shared cargo group
-dir holds both: two `nros-node` units (`env` present/absent) and two generated values (11191 vs 11189 — 16
-bytes, one fat pointer). The assert is right; its remedy text names knobs that cannot fix it. Exposed by
-#0663's interface tier, NOT caused by it (untouched `workspaces/cpp` trees show the same split). See
-`0665-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0665** — `EXECUTOR_OPAQUE_U64S` is `size_of::<ExecutorInlineStorage>()`
+MEASURED while building the `nros` facade in the sizes probe and asserted against the same type under the
+CONSUMER's feature set; phase-359 W10 made `env` independent, so the sets diverged (11191 vs 11189 — 16
+bytes, one fat pointer). `174542aba` fixed the cause by forwarding what a caller's feature table ENABLES in
+the probed crate, not just shared names — but its parser took ONE LINE PER FEATURE, and `nros-c`'s `std` is
+a single line while `nros-cpp`'s is wrapped, so the crate that reported the bug was fixed and its sibling
+was not. Neither declares its own `env`, so the manifest scan is the only route; `nros-cpp` kept probing
+without it, silently, because `CPP_EXECUTOR_OPAQUE_U64S` covers `CppContext` whose overhead had >16 bytes of
+slack — #0472's hazard in its quiet form. Parser now reads wrapped arrays, guarded BOTH by a fixture of
+`nros-cpp`'s exact shape and by a test over the REAL `packages/api/nros-{c,cpp}/Cargo.toml`, mutation-checked.
+Direction 3 taken: the asserts no longer name `NROS_EXECUTOR_ARENA_SIZE`/`MAX_CBS`, which move both sides
+equally and cannot close a feature-set gap. Direction 1 declined with the reason — the number's other
+consumer is a C macro in a header written by `build.rs`, before the crate compiles, so the probe cannot be
+removed. See `archived/0665-*`. (2026-08-18)
 
 Recently resolved (2026-08-17): **#0664** — the three ThreadX-RV64 Cyclone cells were not hanging, they were
 ABORTING: CycloneDDS's thread bootstrap reaches libgcc's emulated TLS, and `__emutls_get_address` calls plain

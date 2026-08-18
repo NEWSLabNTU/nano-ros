@@ -1030,29 +1030,63 @@ fn features_enabled_on_dep(manifest_dir: &str, dep: &str) -> Result<Vec<String>,
     let prefix = format!("{dep}/");
     let mut out = Vec::new();
     let mut in_features = false;
+    // The row currently being read, when its array spans several lines.
+    //
+    // issue 0665 — the first version of this parser took one line per feature,
+    // and every manifest that WRAPS its array was silently read as empty. That
+    // is not hypothetical formatting: `nros-c`'s `std` happens to be one line
+    // and `nros-cpp`'s is not, so the fix worked for the crate that reported the
+    // bug and did nothing for its sibling — which forwards `nros/env` and
+    // `nros-node/env` from a wrapped array and carries the same
+    // `CPP_EXECUTOR_OPAQUE_U64S` assert. A parse that depends on where somebody
+    // put a newline is not a parse.
+    let mut open_row_active = false;
     for line in text.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
+        // Strip a trailing comment; `#` never appears inside these values, and
+        // `nros-cpp` puts several paragraphs of them INSIDE the array.
+        let raw = match line.find('#') {
+            Some(i) => &line[..i],
+            None => line,
+        };
+        let t = raw.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if !open_row_active && t.starts_with('[') && t.ends_with(']') && !t.contains('=') {
+            // A table header (`[features]`, `[dependencies]`), not an array.
             in_features = t == "[features]";
             continue;
         }
-        if !in_features || t.starts_with('#') {
+        if !in_features {
             continue;
         }
-        let Some((name, rest)) = t.split_once('=') else {
-            continue;
+
+        let body = if open_row_active {
+            // Continuation of a wrapped array.
+            t
+        } else {
+            let Some((name, rest)) = t.split_once('=') else {
+                continue;
+            };
+            let name = name.trim().trim_matches('"');
+            // An array is still open when the line has `[` and no closing `]`.
+            open_row_active = active.contains(name) && rest.contains('[') && !rest.contains(']');
+            if !active.contains(name) {
+                continue;
+            }
+            rest
         };
-        let name = name.trim().trim_matches('"');
-        if !active.contains(name) {
-            continue;
-        }
-        for item in rest.split(&['[', ']', ',', '"'][..]) {
+
+        for item in body.split(&['[', ']', ',', '"'][..]) {
             let item = item.trim();
             if let Some(feat) = item.strip_prefix(&prefix)
                 && !feat.is_empty()
             {
                 out.push(feat.to_string());
             }
+        }
+        if open_row_active && body.contains(']') {
+            open_row_active = false;
         }
     }
     Ok(out)
@@ -1368,6 +1402,106 @@ mod tests {
             &declared,
         );
         assert_eq!(got, vec!["std".to_string()]);
+    }
+
+    /// issue 0665 — a WRAPPED feature array must be read like any other.
+    ///
+    /// The first parser took one line per feature. `nros-c`'s `std` is one line,
+    /// so the fix worked for the crate that reported the bug; `nros-cpp`'s is
+    /// wrapped, so for its sibling the fix did nothing at all — and `nros-cpp`
+    /// forwards `nros/env` + `nros-node/env` from that wrapped array and carries
+    /// the same `CPP_EXECUTOR_OPAQUE_U64S` assert. The shape below is
+    /// `nros-cpp`'s, comments and all.
+    #[test]
+    fn a_wrapped_feature_array_is_read_like_a_single_line_one() {
+        let _guard = env_lock();
+        let dir = std::env::temp_dir().join(format!("nros-probe-wrap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"caller\"\n\n[features]\n\
+             default = [\"panic-spin\"]\n\
+             std = [\n\
+             \x20   \"alloc\",\n\
+             \x20   # phase-359 W10 — `env` rides with `std` HERE, and only here.\n\
+             \x20   #\n\
+             \x20   # A paragraph of prose INSIDE the array, as the real one has.\n\
+             \x20   \"nros/env\",\n\
+             \x20   \"nros-node/env\",\n\
+             \x20   \"nros/std\",\n\
+             ]\n\
+             alloc = [\"nros/alloc\"]\n\
+             unused = [\n    \"nros/never-forwarded\",\n]\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("CARGO_FEATURE_STD", "1");
+            std::env::remove_var("CARGO_FEATURE_ALLOC");
+            std::env::remove_var("CARGO_FEATURE_UNUSED");
+        }
+        let got = features_enabled_on_dep(dir.to_str().unwrap(), "nros").unwrap();
+        unsafe { std::env::remove_var("CARGO_FEATURE_STD") };
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(
+            got.contains(&"env".to_string()),
+            "`nros/env` sits on its own line inside a wrapped array — got {got:?}"
+        );
+        assert!(got.contains(&"std".to_string()), "got {got:?}");
+        assert!(
+            !got.contains(&"never-forwarded".to_string()),
+            "an INACTIVE feature's wrapped array must not be read either — got {got:?}"
+        );
+    }
+
+    /// issue 0665 — the same rule against the REAL manifests, not a fixture.
+    ///
+    /// The two crates that carry an `*_EXECUTOR_OPAQUE_U64S` assert both forward
+    /// `nros/env` from their `std`, one on a single line and one wrapped. A
+    /// synthetic fixture cannot notice when somebody reformats a manifest or
+    /// adds a forward; reading the files can. If this test ever has to be
+    /// relaxed, the parser is wrong — not the manifest.
+    #[test]
+    fn the_real_c_and_cpp_manifests_forward_env_to_the_probed_facade() {
+        let _guard = env_lock();
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root above packages/tooling/nros-sizes-build");
+
+        unsafe {
+            std::env::set_var("CARGO_FEATURE_STD", "1");
+            std::env::set_var("CARGO_FEATURE_ALLOC", "1");
+        }
+        let mut results = Vec::new();
+        for krate in ["nros-c", "nros-cpp"] {
+            let dir = repo.join("packages/api").join(krate);
+            if !dir.join("Cargo.toml").is_file() {
+                continue;
+            }
+            let got = features_enabled_on_dep(dir.to_str().unwrap(), "nros").unwrap_or_default();
+            results.push((krate, got));
+        }
+        unsafe {
+            std::env::remove_var("CARGO_FEATURE_STD");
+            std::env::remove_var("CARGO_FEATURE_ALLOC");
+        }
+
+        assert_eq!(
+            results.len(),
+            2,
+            "both API crates must be present: {results:?}"
+        );
+        for (krate, got) in results {
+            assert!(
+                got.contains(&"env".to_string()),
+                "{krate}: `std` forwards `nros/env`, so the probe must build the \
+                 facade WITH it — otherwise `ExecutorInlineStorage` is measured 16 \
+                 bytes short and the emitted opaque size with it (issue 0665). \
+                 got {got:?}"
+            );
+        }
     }
 
     /// issue 0665 — a caller feature that enables a DIFFERENTLY-NAMED feature of
