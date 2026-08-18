@@ -16,9 +16,15 @@ use crate::{
 /// relied on `spin_once(N ms)` advancing virtual time by N must now
 /// elapse real wall-clock time between calls. MockSession's `drive_io`
 /// is a no-op, so the requested timeout adds no real elapsed.
-#[cfg(feature = "std")]
+// phase-359 W10 — sleeps through the platform, like the code under test does.
+// This helper was the reason six tests below carried a `std` gate: it called
+// `std::thread::sleep`, so everything that elapsed real time inherited the
+// flavour. It now uses the same `nros_platform_sleep_us` the spin loops pace
+// on, which also means these tests exercise that path rather than a parallel
+// one.
+#[cfg(feature = "alloc")]
 fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
-    std::thread::sleep(std::time::Duration::from_millis(ms));
+    super::spin::platform_sleep(core::time::Duration::from_millis(ms));
     executor.spin_once(core::time::Duration::from_millis(0))
 }
 
@@ -3030,7 +3036,7 @@ fn test_promise_try_recv_returns_none_then_some() {
 // sub-ms remainder across calls. This test asserts a 50 ms timer does
 // NOT fire after a single 1 s `spin_once` against a no-op session.
 #[test]
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
     use core::{
         sync::atomic::{AtomicU32, Ordering},
@@ -3778,7 +3784,7 @@ fn deadline_warn_reports_without_skipping() {
 /// `CatchUp` the replayed activations refill the window entirely. The
 /// overrun counter is exact and immediate, and `run_contract_monitors`
 /// turns its delta into a `timer-overrun-runtime` violation.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[test]
 fn a_stalled_timer_reports_a_timer_overrun_violation() {
     let session = MockSession::new();
@@ -3828,7 +3834,7 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
 /// this test can still drain the ring afterwards — the two paths are
 /// independent, and an application that reports violations its own way
 /// is unaffected by the default.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[test]
 fn a_violation_is_logged_and_still_drainable() {
     let session = MockSession::new();
@@ -3864,7 +3870,7 @@ fn a_violation_is_logged_and_still_drainable() {
 /// COUNTED, not silently lost. The ring holds `MAX_VIOLATIONS`; an
 /// application that never drains would otherwise report a stale prefix
 /// of its faults and no indication that a prefix is all it is.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[test]
 fn violations_beyond_the_ring_are_counted() {
     let session = MockSession::new();
@@ -3903,7 +3909,7 @@ fn violations_beyond_the_ring_are_counted() {
 /// mechanism around it: it runs exactly once, only on a non-zero
 /// timeout, and it never touches timer behaviour (the alternation it
 /// warns about is legal — the mean cadence is preserved).
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[test]
 fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
     let session = MockSession::new();
@@ -3935,7 +3941,7 @@ fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
 
 /// Issue #515 — a period that divides the spin period evenly is not a
 /// finding, and neither is a timer with no period.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 #[test]
 fn spin_quantization_audit_accepts_exact_multiples() {
     let session = MockSession::new();

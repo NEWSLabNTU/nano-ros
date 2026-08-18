@@ -7291,7 +7291,7 @@ fn default_platform_clock_us() -> u64 {
 /// `spin_one_period_timed` sleeps off a remainder, which rounds badly at
 /// millisecond granularity on short periods.
 #[cfg(feature = "alloc")]
-fn platform_sleep(d: core::time::Duration) {
+pub(crate) fn platform_sleep(d: core::time::Duration) {
     unsafe extern "C" {
         fn nros_platform_sleep_us(us: usize);
     }
