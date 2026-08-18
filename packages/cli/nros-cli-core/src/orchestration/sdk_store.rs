@@ -95,12 +95,9 @@ pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBu
 /// Returns `None` when neither resolves, so a caller can say which paths it
 /// looked at rather than reporting "not installed".
 pub fn tool_dir_usable(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
-    for cand in tool_dir_candidates(index, tool) {
-        if cand.is_dir() {
-            return Some(cand);
-        }
-    }
-    None
+    tool_dir_candidates(index, tool)
+        .into_iter()
+        .find(|cand| cand.is_dir())
 }
 
 /// The candidates [`tool_dir_usable`] tries, in order — exposed so an error
