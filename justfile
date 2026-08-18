@@ -2133,7 +2133,7 @@ test-zpico-multisession verbose="":
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 [group("main")]
-test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale test-zpico-multisession
+test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multisession
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
@@ -2590,6 +2590,29 @@ _require-build-sources:
 # of silently running a stale binary, via a detect-only dep-info probe
 # (cargo `<binary>.d` / `ninja -t deps`; never rebuilds). Both honour
 # NROS_SKIP_FIXTURE_CHECK=1.
+# Issue 0681 direction 2 — ONE name for "the fixtures this lane needs are ready".
+#
+# Two gates answer two questions and every caller wants both:
+#
+#   `_require-fixtures`      the STAMP — was a build run whose coverage includes
+#                            this lane's coordinates?
+#   `_check-fixtures-stale`  per-fixture FRESHNESS — is each `.inputsig` still
+#                            newer than its inputs?
+#
+# A stamp can cover the lane while fixtures have gone stale underneath it, so
+# neither answer implies the other. Requiring callers to remember the pair is
+# the seam that produced issue 0443 (the two reached the lane under different
+# variable names) and issue 0681 (the precondition batch knew about only one,
+# reported OK, and `just ci` died on the other minutes later).
+#
+# Order is load-bearing: stamp FIRST. With no build at all, the freshness audit
+# has nothing to compare and its message would describe the wrong problem.
+#
+# Both derive their scope from NROS_FIXTURE_LANE (0443), so this takes ONE scope
+# and cannot disagree with itself. Prefer this over naming either half.
+[private]
+_require-fixtures-ready: _require-fixtures _check-fixtures-stale
+
 [private]
 _check-fixtures-stale:
     #!/usr/bin/env bash
@@ -2660,7 +2683,7 @@ _check-fixtures-stale:
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
 [group("full-matrix")]
-test-all verbose="": _require-fixtures _check-fixtures-stale
+test-all verbose="": _require-fixtures-ready
     #!/usr/bin/env bash
     # issue 0659 — reap peer process groups a previous SIGKILLed run left behind,
     # BEFORE nextest starts. Not mid-run: a concurrent test's peers are recorded

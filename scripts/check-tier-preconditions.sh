@@ -105,42 +105,26 @@ fi
 # shellcheck source=scripts/build/fixture-lane.sh
 source scripts/build/fixture-lane.sh
 _fixture_build_lane="$(nros_lane_build_lane "${NROS_FIXTURE_LANE:-all}" 2>/dev/null || echo "${NROS_FIXTURE_LANE:-all}")"
-probe "test fixtures MISSING for this lane (no build stamp covering it)" \
+probe "test fixtures not ready for this lane (missing, or stale under the stamp)" \
     "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
-    just _require-fixtures
+    just _require-fixtures-ready
 
-# 5b. …and whether the fixtures the stamp covers are still FRESH. Issue 0681.
+# 5b. `_require-fixtures-ready` is ONE gate over two questions (issue 0681
+#     direction 2): the STAMP ("was a build run covering this lane?") and
+#     per-fixture FRESHNESS ("is each `.inputsig` newer than its inputs?").
 #
-#     Two gates, two questions, and only the first was probed:
-#     `_require-fixtures` reads the STAMP ("was a build run whose coverage
-#     includes this lane?"), while `_check-fixtures-stale` audits PER-FIXTURE
-#     freshness, comparing each `.inputsig` against its inputs. A stamp can be
-#     present and cover the lane while individual fixtures have gone stale
-#     underneath it — which is ordinary treadmill after a pull, and exactly what
-#     this batch exists to report UP FRONT.
+#     They were separate, and this batch probed only the first — so a stamp that
+#     covered the lane while fixtures had gone stale underneath it reported OK
+#     here and killed `just ci` minutes later, after `check`, `check-fast` and
+#     `rust-rtos-link-check`. Probing both fixed the symptom; collapsing them
+#     removes the seam, which is what produced 0443 and 0681 in the first place.
+#     One remedy answers both, so one line is also the honest report.
 #
-#     Without this line the batch answered "OK" and `just ci` then died on
-#     `_check-fixtures-stale` minutes later, having run `check`, `check-fast`
-#     and `rust-rtos-link-check` first. Reporting OK about a precondition that
-#     is not met is worse than not being asked: it is the premise of issue 0466
-#     (every unmet precondition AT ONCE) inverted into an expensive discovery.
-#     Same family as 0677 — the gate was not missing, the EDGE to it was.
-#
-#     No scope wiring needed here: issue 0443 made `_check-fixtures-stale`
-#     DERIVE its scope from NROS_FIXTURE_LANE, which this script already reads,
-#     so the two gates cannot disagree about what the lane contains.
-#
-#     CAVEAT, stated because it breaks a property the probes above hold: this
-#     one is NOT buildless. `_check-fixtures-stale` self-heals the C/C++ cmake
-#     cells it finds stale ("54 cell(s) … have now been rebuilt"), so this batch
-#     can now do work rather than only reporting. That is the same work `just
-#     ci` would do minutes later, moved earlier, which is the point — but a
-#     future reader comparing this probe to the "buildless and source-free" note
-#     on probes 5 and 6 deserves to know the difference is real and deliberate,
-#     not an oversight.
-probe "test fixtures STALE for this lane (an input is newer than the artifact)" \
-    "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
-    just _check-fixtures-stale
+#     CAVEAT, because it breaks a property probes 1-4 hold: this one is NOT
+#     buildless. The freshness half self-heals the C/C++ cmake cells it finds
+#     stale ("54 cell(s) … have now been rebuilt"), so this batch can do work
+#     rather than only report. Same work `just ci` would do minutes later, moved
+#     earlier — deliberate, not an oversight.
 
 #    NOT added alongside it: `check-artifact-identity-budget`, which issue 0466
 #    lists in the same finding (stop #3, "1.9 GB of Aug-7 rlibs"). Its own

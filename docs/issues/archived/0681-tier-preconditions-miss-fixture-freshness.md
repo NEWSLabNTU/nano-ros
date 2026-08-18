@@ -132,9 +132,37 @@ only report. It is the same work `just ci` would do minutes later, moved
 earlier — but the difference from its neighbours is real, and the script says so
 rather than leaving the next reader to discover it.
 
-### Direction 2 not taken
+### Direction 2 — DONE 2026-08-19, in a follow-up commit
 
-Collapsing the two gates into one is still the better end state — a caller
-having to remember to invoke them in pairs is the seam that produced #0443 and
-this issue. It is a larger change than the edge that was missing, and the edge
-is what made the batch lie. Left as a follow-up rather than bundled here.
+Collapsed after all. `_require-fixtures-ready` is now the one name for "the
+fixtures this lane needs are ready", and it is what `test`, `test-all` and the
+precondition batch call. The two halves stay as private implementation:
+
+    _require-fixtures-ready: _require-fixtures _check-fixtures-stale
+
+Order is load-bearing and stated in place: stamp FIRST, because with no build at
+all the freshness audit has nothing to compare and its message would describe
+the wrong problem. Both halves already derived their scope from
+`NROS_FIXTURE_LANE` (#0443), so the collapsed gate takes ONE scope and cannot
+disagree with itself.
+
+Every caller invoked them as a pair already — `test`, `test-all`, and this
+batch after the fix above — which is what made the collapse safe rather than a
+behaviour change. What it removes is the possibility of a FUTURE caller naming
+one and not the other, which is the seam that produced #0443 and this issue.
+
+The batch is one probe again, since one remedy answers both:
+
+    [x] test fixtures not ready for this lane (missing, or stale under the stamp)
+
+Verified both arms still fire: on a tree with a `native` stamp and stale cells,
+`NROS_FIXTURE_LANE=native` reports the freshness failure; `NROS_FIXTURE_LANE=all`
+reports "fixtures were built for lane 'native', but this run needs ALL of them"
+— the stamp arm, first, as the ordering intends.
+
+**One thing worth knowing for the next justfile edit:** `just --evaluate`
+reported the file as parsing while it was broken. Inserting a comment block
+between an existing `[private]` and its recipe orphaned the attribute
+("extraneous attribute") and silently stripped `_check-fixtures-stale`'s
+privacy; only `just --list` (or running a recipe) surfaced it. Use one of those
+to check a justfile edit, not `--evaluate`.
