@@ -1,7 +1,7 @@
 ---
 id: 602
 title: "`[source.threadx]` declares upstream at a commit we do not pin — inert to provisioning, but it is what set a clone's `origin` to upstream"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0550, issue-0575, phase-363]
@@ -89,3 +89,53 @@ without anyone noticing.
   all — and if they stay, one mechanism that keeps them true;
 * what actually moved the checkout onto the upstream tag is identified, or the
   question is explicitly closed as unanswerable.
+
+
+## RESOLVED 2026-08-19 — the better question, answered: the fields are gone
+
+This issue's remaining acceptance was "a decision recorded on whether `git`/`ref`
+belong on submodule-mode entries at all". They do not, and they have been
+removed from all **14** of them — not the 6 the survey named, which were only
+the ones that had visibly drifted.
+
+### Measured first: the fields are unread
+
+`SdkStore`'s submodule branch takes `src.submodule` (the path) and nothing else:
+
+```
+git submodule update --init <path>          # fast path
+git ls-tree HEAD <path>                     # the gitlink sha, on fallback
+git fetch --depth 1 origin <sha> && git checkout <sha>
+```
+
+The entry's `git`/`ref` are never consulted. So the claim in `SourcePackage`'s
+own doc comment — that they "record the canonical pin (the SSOT — so
+`.gitmodules` and the index can't drift)" — was false in both halves: not the
+SSOT, and no barrier to drift. Six of fourteen had drifted.
+
+### Why removal rather than a gate
+
+`.gitmodules` plus the gitlink already hold provenance authoritatively, and git
+ENFORCES them — a checkout cannot silently disagree with the gitlink the way a
+TOML field can. Keeping the fields and adding a comparison gate would police a
+third recording of one fact; deleting them removes the surface. That is also why
+the gate written during the original investigation was right to be dropped.
+
+Schema-safe: `SourcePackage.git` / `.git_ref` are already `Option<String>`
+(clone-mode entries keep them, where they ARE the only pin). Verified by loading
+the index through the CLI — `SourcePackage` carries `deny_unknown_fields` and
+the whole file deserializes on load, so a successful `nros sdk-path` proves all
+fourteen edited entries parse. `just check-fast` and `check-cli-tests` green.
+
+The doc comment now states the split: clone mode's `git`/`ref` are the pin;
+submodule mode has none and resolves through git.
+
+### Still open from the acceptance list
+
+"What actually moved the checkout onto the upstream tag" is NOT identified. The
+local clone's `origin` pointed at `eclipse-threadx` while `.gitmodules` declared
+the fork, and nothing in this tree writes that remote. It is unreproducible from
+the repository alone — most likely a manual `git remote` or a clone predating
+the fork — and is closed here as unanswerable rather than left implying an
+undiscovered mechanism. The harm it caused (a contributor pushing to upstream)
+is what the removal addresses: the index no longer names a push target at all.

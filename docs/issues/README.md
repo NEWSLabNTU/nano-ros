@@ -815,15 +815,16 @@ consumer of its own default. Fixed by exempting those, REPORTING the exemption r
 silently, and self-testing both directions — a staticlib default passes, an rlib-only one still fails.
 See `archived/0615-*`.
 
-**#602** — `[source.threadx]` declares `eclipse-threadx/threadx` at `4b6e8100` while `.gitmodules` declares the
-`NEWSLabNTU` fork and the gitlink records `13d061a7` (whose parent IS `4b6e8100`; the commit between them is our
-LP64 fix). Filed first as "provisioning reverts the fix" — REFUTED: `provision()` returns `Submodule` whenever
-`submodule` is set, that arm runs `git submodule update --init` against the GITLINK, and `git`/`ref` are read only
-in the Clone arm. The fields are inert here. What survives is a data file naming a push target we do not use — the
-clone's `origin` really was upstream, which is where the vendored-fork workflow would have pushed. Index fixed;
-a gate for it was written and deliberately DROPPED (it would police fields nothing reads). Five siblings drift the
-same way. Open question: what actually moved the checkout, and whether these fields belong at all.
-See `0602-*`. (2026-08-15)
+Recently resolved (2026-08-19): **#602** — `[source.*]`'s `git`/`ref` are GONE from all 14 submodule-mode
+entries. Measured first: the submodule arm reads only `submodule`, then `git submodule update --init` and the
+gitlink sha (`ls-tree HEAD`), so the fields were never consulted — which makes the doc comment's claim that
+they "record the canonical pin (the SSOT — so `.gitmodules` and the index can't drift)" false in both halves.
+Six of the fourteen had drifted, `threadx` naming upstream at a commit one behind our fork's, and the index
+was the only place naming a push target the vendored-fork workflow must not use. Removed rather than gated:
+`.gitmodules` + the gitlink already hold provenance and git ENFORCES them, so a comparison gate would police
+a third recording of one fact. Clone-mode entries keep both fields — there they ARE the pin. Left explicitly
+unanswered: what moved the local checkout onto the upstream tag (unreproducible from the repo; closed as
+such). See `archived/0602-*`. (2026-08-19)
 
 Recently resolved (2026-08-15): **#603** — `nros setup --system --check` reported `libmbedtls` PRESENT on a
 host carrying only the RUNTIME package, so `just build-test-fixtures lane=tier2` built all six embedded

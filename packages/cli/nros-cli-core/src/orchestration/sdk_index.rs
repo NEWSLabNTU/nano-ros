@@ -360,14 +360,26 @@ pub struct ToolSource {
 ///
 /// Phase 195.B — `[source.*]` provisioning is data-driven: `nros setup`
 /// fetches the source into [`dest`](Self::dest) from index data, never a
-/// hardcoded `third-party/` path. `git`/`ref` record the canonical pin (the
-/// SSOT — so `.gitmodules` and the index can't drift); `submodule` is an
-/// optional *mode hint*:
+/// hardcoded `third-party/` path. `submodule` is an optional *mode hint*:
 /// - **clone mode** (`git` + `ref` + `dest`, no `submodule`): fresh
-///   `git clone`@`ref`.
-/// - **submodule mode** (`submodule` + `dest`, `git`/`ref` document the pin):
-///   `git submodule update --init <submodule>` — used when the canonical
-///   source is a committed submodule (the contributor checkout keeps it).
+///   `git clone`@`ref`. Here the two fields ARE the pin — nothing else records
+///   it — so they are required in practice even though the type allows `None`.
+/// - **submodule mode** (`submodule` + `dest`, and NO `git`/`ref`):
+///   `git submodule update --init <submodule>`, then the gitlink sha.
+///
+/// Issue 0602 — submodule mode carried `git`/`ref` too, described here as
+/// recording "the canonical pin (the SSOT — so `.gitmodules` and the index
+/// can't drift)". That claim was false in both halves. The provisioning path
+/// never reads them: it takes `submodule`, runs `submodule update --init`, and
+/// resolves the commit with `ls-tree HEAD <path>`. And `.gitmodules` plus the
+/// gitlink already hold that fact AUTHORITATIVELY, with git enforcing them —
+/// so the index held a third recording that nothing kept true, and it had
+/// drifted on 6 of the 14 entries (threadx named upstream at a commit one
+/// behind our fork's).
+///
+/// They are gone from those entries. Provenance for a submodule is
+/// `.gitmodules` + the gitlink, which is the copy that cannot silently disagree
+/// with what gets checked out.
 ///
 /// A source with no fetch fields at all has no provisioning step (e.g. a
 /// host-built package whose tree already lives in the workspace).

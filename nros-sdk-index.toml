@@ -336,15 +336,11 @@ install = "install -D -m 0755 genromfs {prefix}/bin/genromfs"
 
 [source.freertos-kernel]
 version = "10.6.2"
-git = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
-ref = "0adc196d4bd52a2d91102b525b0aafc1e14a2386"
 dest = "third-party/freertos/kernel"
 submodule = "third-party/freertos/kernel"
 
 [source.lwip]
 version = "2.2.0"
-git = "https://github.com/jerry73204/lwip.git"
-ref = "6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd"
 dest = "third-party/freertos/lwip"
 submodule = "third-party/freertos/lwip"
 
@@ -362,15 +358,11 @@ version = "6.4.1"
 # is the one place stating where ThreadX comes from, and it named a push target
 # we do not use: a clone whose `origin` matched it sends the vendored-fork
 # workflow to upstream, which is what was observed on one machine.
-git = "https://github.com/NEWSLabNTU/threadx.git"
-ref = "13d061a73afd6dd3a3afda5fe71f94bbc411bc34"
 dest = "third-party/threadx/kernel"
 submodule = "third-party/threadx/kernel"
 
 [source.zenoh-pico]
 version = "1.7.2"
-git = "https://github.com/jerry73204/zenoh-pico.git"
-ref = "f68feb77fbe48c2443957fd18639705808a31848"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 
@@ -379,8 +371,6 @@ submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 # provisioned by `nros setup qemu-arm-nuttx`, not hand-checked-out by the user.
 [source.nuttx-libc]
 version = "0.2-nuttx"
-git = "https://github.com/jerry73204/libc.git"
-ref = "10d142a8007b6b3534f893d8aa89f74f8d6e7b71"
 dest = "third-party/nuttx/libc"
 submodule = "third-party/nuttx/libc"
 
@@ -391,8 +381,6 @@ submodule = "third-party/nuttx/libc"
 # the bindings tree only, not the giant PX4-Autopilot submodule.
 [source.px4-rs]
 version = "0.1.0"
-git = "https://github.com/jerry73204/px4-rs.git"
-ref = "b17ce297a456c891445a575ce7250573cff96938"
 dest = "third-party/px4/px4-rs"
 submodule = "third-party/px4/px4-rs"
 
@@ -403,8 +391,6 @@ submodule = "third-party/px4/px4-rs"
 # Provisioned by `nros setup --source cyclonedds-src`.
 [source.cyclonedds-src]
 version = "0.10.5-nros1"
-git = "https://github.com/NEWSLabNTU/cyclonedds.git"
-ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 dest = "third-party/dds/cyclonedds"
 submodule = "third-party/dds/cyclonedds"
 
@@ -416,8 +402,6 @@ submodule = "third-party/dds/cyclonedds"
 # zenoh-pico TLS dep (zpico-sys C build gates on its presence).
 [source.mbedtls]
 version = "3.x"
-git = "https://github.com/Mbed-TLS/mbedtls.git"
-ref = "5e146adef63b326b04282252639bebc2730939c6"
 dest = "packages/rmw/zenoh/zpico-sys/mbedtls"
 submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
 
@@ -425,15 +409,11 @@ submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
 # build.rs compiles (its presence gate prints `git submodule update --init …`).
 [source.micro-xrce-dds-client]
 version = "2.4.3-nros1"
-git = "https://github.com/eProsima/Micro-XRCE-DDS-Client.git"
-ref = "bdfa28090efc8c0e89aa5c95cdf0878c8289a18b"
 dest = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 submodule = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 
 [source.micro-cdr]
 version = "2.0.x"
-git = "https://github.com/eProsima/Micro-CDR.git"
-ref = "99672492c5ef9fc378a8835b0bce9b2f7fa41306"
 dest = "packages/rmw/xrce/xrce-sys/micro-cdr"
 submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
 
@@ -441,8 +421,6 @@ submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
 # threadx board build.rs expect it checked out).
 [source.threadx-netxduo]
 version = "6.4.x"
-git = "https://github.com/NEWSLabNTU/netxduo.git"
-ref = "d0c2e80e2da61e274f8f53505b1974fcad7d1071"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
 
@@ -451,15 +429,11 @@ submodule = "third-party/threadx/netxduo"
 # fork is the separate `[source.nuttx-libc]` (it's a board package).
 [source.nuttx-kernel]
 version = "12.13.0"
-git = "https://github.com/jerry73204/nuttx.git"
-ref = "d230b7d38380b65351fd5acc8d8c9d25473ec967"
 dest = "third-party/nuttx/nuttx"
 submodule = "third-party/nuttx/nuttx"
 
 [source.nuttx-apps]
 version = "12.13.0"
-git = "https://github.com/apache/nuttx-apps.git"
-ref = "e4b84b29d47b98a666df524d6f2d38904c972de5"
 dest = "third-party/nuttx/nuttx-apps"
 submodule = "third-party/nuttx/nuttx-apps"
 
@@ -467,8 +441,6 @@ submodule = "third-party/nuttx/nuttx-apps"
 # bindings) is the separate `[source.px4-rs]`.
 [source.px4-autopilot]
 version = "1.17.0"
-git = "https://github.com/PX4/PX4-Autopilot.git"
-ref = "d6f12ad1c4f70ad3230afd7d86e971421e02fef4"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
 # Phase 232.5 — pin the stable release tag `v1.17.0` (SHA `d6f12ad`) instead of
