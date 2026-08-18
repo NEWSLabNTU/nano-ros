@@ -471,14 +471,17 @@ hand-picked list that would drift from it. The property to preserve is that it s
 expensive edge in front of every fixture build gets deleted. Gate, not warning. See `archived/0677-*`.
 (2026-08-18)
 
-**#0678** (build/boards, open 2026-08-18) — the `threadx-riscv64` C++ Cyclone rows fail to link,
-`undefined symbol: __emutls_v.errno` from `libddsc.a`'s `ddsrt_malloc_s`. UNMASKED by #0674's fix, not caused
-by it: that issue's `stdout`/`stderr` failure killed the platform before any C++ row reached its link. The C
-Cyclone rows in the same tree link and produce binaries, so a working control exists — diff the two link
-lines before theorising. `__emutls_v.errno` is the control object for picolibc's thread-local `errno`, whose
-definition lives in picolibc's `libc.a`; the C++ lane has a deliberately different libc surface
-(`-nostdinc++` + the board `cxx-compat` shim, plus a separately resolved `libstdc++.a`). Distinct from #0664,
-which is the same family at RUNTIME (emutls `malloc` aborting) and links fine. See `0678-*`. (2026-08-18)
+**#0678** (build/boards, open 2026-08-18) — the `threadx-riscv64` Cyclone rows cannot link
+`__emutls_v.errno`. NOT a link-order problem: the provisioned xPack `riscv-none-elf-gcc` has no native TLS
+for this target (`-fno-emulated-tls` is not even a recognised option) and emits EMULATED TLS for picolibc's
+`__thread int errno`, while Debian's picolibc `libc.a` was built with NATIVE TLS — `errno` in `.tbss`, and
+ZERO emutls symbols in the whole archive. Nothing can define the symbol. Correcting this issue as first
+filed: there is NO working control — the "C links, C++ fails" split came from incremental build trees, and
+from clean dirs on unmodified main the **C** leaves fail. Two fixes were tried and REVERTED (sysroot-first
+archive resolution; naming the archive absolutely instead of `-L` + `-lc`) — both are improvements, neither
+addresses the TLS model. Needs a DECISION: use the toolchain's own newlib (measured self-consistent, and
+`startup.c` already has the `__NEWLIB__` arm) or resolve the compiler that built the picolibc being linked.
+See `0678-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
