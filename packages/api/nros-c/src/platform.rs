@@ -32,11 +32,12 @@ unsafe extern "C" {
     /// Sleep at least `us` microseconds.
     fn nros_platform_sleep_us(us: usize);
 
-    /// Whole seconds since the Unix epoch.
-    fn nros_platform_time_since_epoch_secs() -> u32;
-
-    /// Sub-second nanosecond component of the wall clock.
-    fn nros_platform_time_since_epoch_nanos() -> u32;
+    /// Nanoseconds since the Unix epoch (issue 0532).
+    ///
+    /// ONE symbol, replacing the `time_since_epoch_{secs,nanos}` pair. Those are
+    /// RETIRED — nothing defines them any more, so a reference here is not a
+    /// deprecation warning but an undefined symbol at link time.
+    fn nros_platform_time_now_ns() -> u64;
 }
 
 // ============================================================================
@@ -67,23 +68,23 @@ pub fn get_time_ns() -> u64 {
 /// implements it. A caller stamping a message with this on target was getting
 /// time-since-boot presented as time-since-1970.
 pub fn get_system_time_ns() -> i64 {
-    // The ABI spends one instant over TWO symbols and each call samples the
-    // clock separately, so a second boundary between them pairs the old second
-    // with the new sub-second remainder — a stamp that jumps a second
-    // backwards. Bounded re-read; issue 0532's remaining half deletes it.
+    // issue 0532 — this is the "remaining half" the previous comment here
+    // promised, and it is a DELETION rather than a rewrite.
     //
-    // SAFETY (all calls): bare wall-clock reads, no pointer arguments.
-    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
-    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    for _ in 0..2 {
-        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
-        if recheck == secs {
-            break;
-        }
-        secs = recheck;
-        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
-    }
-    secs as i64 * 1_000_000_000 + nanos as i64
+    // The ABI used to spend one instant over TWO symbols, each sampling the
+    // clock separately, so a second boundary between the reads paired the old
+    // whole second with the new sub-second remainder — a stamp that jumps a
+    // second backwards. This function carried a bounded re-read loop to narrow
+    // that window, which could not close it: any loop over two clocks is still
+    // two clocks.
+    //
+    // `nros_platform_time_now_ns` is one read of one clock, so the torn stamp is
+    // not narrowed but impossible, and the loop goes with the symbols. The pair
+    // is retired, not deprecated — leaving the old call here was an undefined
+    // symbol at link time, which is how it was found.
+    //
+    // SAFETY: a bare wall-clock read, no pointer arguments.
+    unsafe { nros_platform_time_now_ns() as i64 }
 }
 
 // ============================================================================

@@ -3075,14 +3075,13 @@ extern uint64_t nros_platform_clock_ns(void);
 extern void nros_platform_sleep_us(size_t us);
 
 /**
- * Whole seconds since the Unix epoch.
+ * Nanoseconds since the Unix epoch (issue 0532).
+ *
+ * ONE symbol, replacing the `time_since_epoch_{secs,nanos}` pair. Those are
+ * RETIRED — nothing defines them any more, so a reference here is not a
+ * deprecation warning but an undefined symbol at link time.
  */
-extern uint32_t nros_platform_time_since_epoch_secs(void);
-
-/**
- * Sub-second nanosecond component of the wall clock.
- */
-extern uint32_t nros_platform_time_since_epoch_nanos(void);
+extern uint64_t nros_platform_time_now_ns(void);
 
 /**
  * Phase 115.C — register a custom transport vtable.
