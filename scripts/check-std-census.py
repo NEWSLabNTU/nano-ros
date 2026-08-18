@@ -163,7 +163,17 @@ BASELINE = {
     # flavour. Two fields the API documented as ignored — `priority` ("advisory
     # ... applied by nobody") and `stack_bytes` ("informational on native") —
     # reach the kernel now, because the ABI attribute carries them.
-    "nros-cpp": {"cfg": 3, "path": 15},
+    #
+    # phase-359 W10: 3 -> 1 cfg. `cpp_diag!` was three arms — `eprintln!` on
+    # hosted, `nros_log` on Zephyr, and a NO-OP on no_std elsewhere ("nothing to
+    # write to"). There is something to write to: `nros_log`'s default sink is
+    # `nros_platform_log_write`, which five ports implement and `nros-c`
+    # installs for every C/C++ image, so FreeRTOS and ThreadX images were
+    # discarding the diagnostics that explain a failed tier. One arm now.
+    # Hosted output stays on stderr — the POSIX port writes there too.
+    #
+    # The 1 that remains is `extern crate std`, which is what the feature IS.
+    "nros-cpp": {"cfg": 1, "path": 14},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

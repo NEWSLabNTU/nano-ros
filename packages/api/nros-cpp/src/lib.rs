@@ -706,33 +706,34 @@ pub unsafe extern "C" fn nros_cpp_init(
 /// which reaches the console when a sink is wired and is silently dropped when
 /// one is not. Never fatal either way. A diagnostic that can kill the image it
 /// is diagnosing is worse than no diagnostic.
-#[cfg(all(feature = "std", not(feature = "platform-zephyr")))]
-#[allow(unused_macros)]
-macro_rules! cpp_diag {
-    // nros-allow-std-stdio: this arm is the `not(feature = "platform-zephyr")`
-    // one — the Zephyr arm below routes through `nros_log`, which is what makes
-    // std stdio safe to spell here at all. `check-no-std-stdio` (issue 0589)
-    // otherwise forbids it in a no_std crate.
-    ($($arg:tt)+) => { std::eprintln!($($arg)+) };
-}
-
-/// Zephyr arm — see [`cpp_diag`]. Routed through `nros_log` rather than std
-/// stdio, because the latter is fatal here.
-#[cfg(feature = "platform-zephyr")]
+// phase-359 W10 — ONE arm, through `nros_log`.
+//
+// There were three: `std::eprintln!` on hosted, `nros_log` on Zephyr, and — on
+// no_std everywhere else — a no-op that discarded the message, because
+// "no-std, non-Zephyr: nothing to write to". There is something to write to.
+// `nros_log`'s default sink forwards to `nros_platform_log_write`, which the
+// POSIX, FreeRTOS, ThreadX, ESP-IDF and Zephyr ports all implement, and which
+// `nros-c` installs for every C/C++ image. So a FreeRTOS or ThreadX C++ image
+// was throwing away exactly the diagnostics ("tier X setup FAILED", "spin_once
+// returned rc=") that explain why it is not working, on the flavours where
+// they are hardest to obtain by other means.
+//
+// Hosted output does not move: the POSIX port's `log_write` writes to stderr,
+// the same stream `eprintln!` used. It gains an `[ERROR] nros_cpp:` prefix,
+// which no test matches against — nothing greps these lines today, and the
+// harness matchers are substring checks rather than line anchors.
+//
+// It also retires this file's std-stdio allowlist marker (the one
+// `check-no-std-stdio` reads): the reason std stdio appeared in a no_std crate
+// was this macro, and it no longer appears. The marker is not written out here
+// on purpose — spelling it in prose is how a gate that greps for it gets told
+// a site is exempt when none is.
 #[allow(unused_macros)]
 macro_rules! cpp_diag {
     ($($arg:tt)+) => {{
         let logger: &'static nros_log::Logger = nros_log::get_logger("nros_cpp");
         nros_log::nros_error!(logger, $($arg)+);
     }};
-}
-
-/// No-std, non-Zephyr: nothing to write to. The return code carries the
-/// information (issue 0586 made every variant map to a specific one).
-#[cfg(all(not(feature = "std"), not(feature = "platform-zephyr")))]
-#[allow(unused_macros)]
-macro_rules! cpp_diag {
-    ($($arg:tt)+) => {{ $( let _ = &$arg; )+ }};
 }
 
 #[allow(unused_imports)]
