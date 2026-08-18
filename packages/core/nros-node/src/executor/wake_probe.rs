@@ -352,7 +352,11 @@ pub fn write_csv<W: core::fmt::Write>(w: &mut W, hist: &Histogram) -> core::fmt:
 /// [`HISTOGRAM_BUCKETS`] array of `(edge_ns, count)`. Caller can
 /// pass through to [`p99_ns`] etc. Returns `Err(&'static str)`
 /// when the format doesn't match the v1 contract.
-#[cfg(feature = "std")]
+// phase-359 W10 — no `std` in the body: `str::lines`, `str::parse` and
+// `&'static str` errors are all `core`. The gate was describing WHO calls this
+// (a host-side analysis tool reading a probe dump) rather than what it needs,
+// and a target that wants to parse its own histogram back was refused for no
+// reason.
 pub fn parse_csv(input: &str) -> Result<([(u64, u32); HISTOGRAM_BUCKETS], u32), &'static str> {
     let mut lines = input.lines();
     let header = lines.next().ok_or("empty input")?;
@@ -400,7 +404,7 @@ pub fn parse_csv(input: &str) -> Result<([(u64, u32); HISTOGRAM_BUCKETS], u32), 
 /// Compute the P-th percentile bucket edge from parsed
 /// `(edge_ns, count)` data. `pct` is `[0, 100]`. Returns `None`
 /// when total is zero.
-#[cfg(feature = "std")]
+// phase-359 W10 — arithmetic over a fixed-size array; nothing here is hosted.
 pub fn percentile_ns(buckets: &[(u64, u32); HISTOGRAM_BUCKETS], pct: u8) -> Option<u64> {
     let total: u32 = buckets.iter().map(|(_, c)| *c).sum();
     if total == 0 {
@@ -417,7 +421,9 @@ pub fn percentile_ns(buckets: &[(u64, u32); HISTOGRAM_BUCKETS], pct: u8) -> Opti
     Some(buckets[HISTOGRAM_BUCKETS - 1].0)
 }
 
-#[cfg(all(test, feature = "std"))]
+// The tests DO need an allocator (they build a CSV string to round-trip), which
+// is the honest gate — `std` was over-asking.
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
@@ -457,7 +463,7 @@ mod tests {
         h.insert(1_500);
         h.insert(50_000);
 
-        let mut out = std::string::String::new();
+        let mut out = alloc::string::String::new();
         write_csv(&mut out, &h).expect("write");
 
         let (parsed, total) = parse_csv(&out).expect("parse");

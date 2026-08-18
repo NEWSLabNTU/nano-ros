@@ -189,7 +189,14 @@ BASELINE = {
     # lands" — it landed, so target builds get the accounting too. Also
     # `measure_us` stops asking `cfg!(feature = "std")` and asks whether a
     # clock exists, which is the question it always meant.
-    "nros-node": {"cfg": 17, "path": 22},
+    #
+    # phase-359 W10: 17 -> 12 cfg. `wake_probe`'s CSV parser and percentile
+    # reader are `core` — `str::lines`, `str::parse`, arithmetic — so their
+    # gates described who CALLS them (a host analysis tool) rather than what
+    # they need; its tests keep a gate, on `alloc`, which is what building a
+    # string actually costs. `node_record` had the same call written twice
+    # under complementary gates, left over from the wake-mirror merge.
+    "nros-node": {"cfg": 12, "path": 22},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},

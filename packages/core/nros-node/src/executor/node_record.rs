@@ -317,11 +317,13 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         // wake callback: arrivals on that session could not short-circuit
         // `spin_once`, and its traffic waited up to the full spin timeout
         // instead of waking on arrival. Silent, latency-only, and no_std-only.
-        // `install_wake_signal_on_extra_alloc` already existed; it simply was
-        // not called here.
-        #[cfg(feature = "std")]
-        self.executor.install_wake_signal_on_extra(idx - 1);
-        #[cfg(all(feature = "alloc", not(feature = "std"), feature = "rmw-cffi"))]
+        // The installer already existed; it simply was not called here.
+        //
+        // phase-359 W10 — one call. These were two arms naming two functions,
+        // `install_wake_signal_on_extra` and its `_alloc` mirror; the mirror is
+        // gone, so what was left was the same call written twice under
+        // complementary gates.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         self.executor.install_wake_signal_on_extra(idx - 1);
         Ok(idx as u8)
     }
