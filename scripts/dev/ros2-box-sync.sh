@@ -160,6 +160,87 @@ rsync -a --delete "${exclusions[@]}" "$src/" "$dst/"
 # touch costs nothing while covering any future edit that drops the exclusion.
 touch "$dst/.nros-box-tree"
 
+# `--delete` CANNOT remove a directory whose surviving content is EXCLUDED.
+#
+# rsync protects excluded paths from deletion — deliberately, because that is
+# what keeps the box's own `target/` and `build/` output alive across a re-sync.
+# The cost is that a directory RETIRED upstream never leaves the mirror once it
+# holds any build output: rsync deletes the tracked files inside it, then stops
+# at the excluded ones and reports
+#
+#   cannot delete non-empty directory: examples/workspaces/ws-bridge-rust
+#
+# — a warning, on stderr, in the middle of a long transfer, and the sync still
+# exits 0. Measured on 2026-08-19: eleven retired `ws-*` workspaces (phase-331
+# W3 deleted them; CLAUDE.md says "verified zero remain") plus
+# `examples/stm32f4`, retired by phase-337 W7.a and still holding 1.2 GB of
+# build output. The tree the box builds against therefore disagreed with the
+# tree the host committed, in exactly the direction that makes a museum binary:
+# the artifact is present, nothing rebuilds it, and no gate looks for a
+# directory that is not supposed to exist.
+#
+# So: after the transfer, delete every mirror directory whose SOURCE
+# counterpart is gone. Output dirs are skipped by NAME (they are the box's own
+# and legitimately have no counterpart) and not descended into — the box's
+# `build/cargo-fixtures/**` is thousands of paths the source will never have.
+# The tops this script excludes outright are box-owned for the same reason.
+_nros_prune_orphans() {
+    python3 - "$src" "$dst" <<'PRUNE_PY'
+import os, shutil, sys
+
+src, dst = sys.argv[1], sys.argv[2]
+
+# Box-owned by construction: this script excludes them from the transfer, so
+# the source has no counterpart and never will.
+EXEMPT = {"tmp", "test-logs", ".cargo-target-box",
+          os.path.join("third-party", "make"), os.path.join("third-party", "ninja")}
+
+
+def is_output(name):
+    return name in ("target", "build") or name.startswith(("target-", "build-"))
+
+
+removed, freed = [], 0
+stack = [""]
+while stack:
+    rel = stack.pop()
+    try:
+        entries = sorted(os.listdir(os.path.join(dst, rel)))
+    except OSError:
+        continue
+    for name in entries:
+        if name == ".git" or is_output(name):
+            continue
+        child = os.path.join(rel, name) if rel else name
+        if child in EXEMPT:
+            continue
+        path = os.path.join(dst, child)
+        if not os.path.isdir(path) or os.path.islink(path):
+            continue
+        if os.path.exists(os.path.join(src, child)):
+            stack.append(child)
+            continue
+        # Retired upstream. Everything under it is build output rsync could not
+        # reach; the source says this directory should not exist at all.
+        for walk_root, _, files in os.walk(path):
+            for f in files:
+                try:
+                    freed += os.lstat(os.path.join(walk_root, f)).st_size
+                except OSError:
+                    pass
+        shutil.rmtree(path, ignore_errors=True)
+        removed.append(child)
+
+for r in removed:
+    print(f"ros2-box-sync: pruning retired directory (absent from source): {r}")
+if removed:
+    print(f"ros2-box-sync: pruned {len(removed)} retired director"
+          f"{'y' if len(removed) == 1 else 'ies'}, {freed / 1e9:.2f} GB")
+PRUNE_PY
+}
+
+_nros_prune_orphans
+
 # A CMakeCache.txt records the ABSOLUTE source and build directories it was
 # generated for. One copied from the source tree therefore points at the source
 # tree, and cmake refuses outright:

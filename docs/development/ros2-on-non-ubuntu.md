@@ -120,6 +120,22 @@ Re-run `nros sync` inside the box for anything you build there: leaf
 `.cargo/config.toml` files carry absolute paths (RFC-0048 W9), so a mirrored
 leaf still points at the source tree. Same rule as any moved checkout.
 
+The sync also prunes directories that are gone from the source. It has to do
+that itself, because `rsync --delete` cannot remove a directory whose surviving
+content is EXCLUDED — and excluding build output is what keeps the box's own
+`target/` and `build/` alive across a re-sync. So a directory retired upstream
+stayed in the mirror forever once it held any output, and rsync said so only as
+a mid-transfer warning on stderr while still exiting 0:
+
+```
+cannot delete non-empty directory: examples/workspaces/ws-bridge-rust
+```
+
+That is a museum binary by construction — present, never rebuilt, and no gate
+looks for a directory that is not supposed to exist. First sweep found twelve:
+the eleven retired `ws-*` workspaces (phase-331 W3) and `examples/stm32f4`
+(phase-337 W7.a), the latter still holding 1.2 GB.
+
 `ros2-box-env.sh` detects a box-owned tree by its `.nros-box-tree` marker and
 does NOT redirect `CARGO_TARGET_DIR` there. A checkout without the marker is
 treated as shared and keeps the old redirect, because there the alternative is
