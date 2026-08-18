@@ -96,7 +96,13 @@ fn run_param_dispatch(locator: &str) {
         param_register(&mut ctx).expect("component register");
     }
 
-    assert_eq!(runtime.component_count(), 1);
+    // The `*_register(&mut ctx)` wrapper installs through `install_node_typed`,
+    // which enrolls into the EXECUTOR's component-tick registry — not the
+    // runtime's `components` Vec. So the slot count lives on the executor, as
+    // `component_dispatch.rs` already records for the identical path; this file
+    // kept the pre-phase-258 observable and, being in no lane (issue 0652),
+    // nobody ran it to find out.
+    assert_eq!(runtime.executor().component_slot_count(), 1);
 
     // The Parameter arm must have lazily registered the param services and
     // seeded the default (7) — both observable on the live executor.

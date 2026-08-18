@@ -553,6 +553,7 @@ check-build: \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
     check-c check-cpp check-rmw-cyclonedds check-cli-tests check-node-std-tests \
+    check-required-features-tests \
     check-feature-set-ssot \
     check-no-tracked-file-find \
     native::check
@@ -622,6 +623,36 @@ check-node-std-tests:
     set -e
     cargo test -p nros-node --lib --features std --quiet
     echo "nros-node std-gated tests passed!"
+
+# Issue 0652 — the `required-features` targets that were in NO lane.
+#
+# Cargo skips such a target SILENTLY: not reported as filtered, simply never
+# built, so it reads as coverage while running nothing. Seven of them sat that
+# way, and running them found three real defects that had rotted unobserved —
+# a missing force-link anchor (`trigger_conditions` failed
+# `Transport(InvalidConfig)`, which reads like a bad locator), an unused import
+# fatal under `-D warnings` (`dispatch_strategy` did not compile at all), and a
+# pre-phase-258 observable (`component_param` asserted the runtime's Vec where
+# the seam moved to the executor's registry).
+#
+# `loan_e2e` is NOT here: it opens two in-process sessions and needs
+# `ZPICO_MAX_SESSIONS=2`, which is a BUILD input — it belongs to
+# `test-zpico-multisession`, which already owns that env and its own target dir.
+# `custom_transport_loopback` is not here either; it needs a native fixture, so
+# it wants a fixture-gated lane rather than this one.
+[group("test")]
+check-required-features-tests:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-tests --features trigger-test,component-runtime-test,phase216-substrate \
+        --test trigger_conditions --test wake_latency \
+        --test component_runtime --test tier_filter \
+        --test component_dispatch --test component_param \
+        --test dispatch_strategy
+    echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
 # packages/cli, so ~107 warnings accreted unnoticed. Mirrors check-cli-tests

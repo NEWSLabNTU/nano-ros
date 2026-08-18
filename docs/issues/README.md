@@ -343,14 +343,7 @@ then exempts the carrier *because* it compiles into `app` — a target edge. FIX
 source the same file-level edge, `APPEND`ed so the interface-codegen module's stamp is not clobbered;
 verified in the generated ninja (an IMPLICIT `|` dep, not `||`) rather than by one green build, since a
 race that goes the right way proves nothing. See `archived/0638-*`. (2026-08-16)
-**#0652** (testing, open 2026-08-17) — `required-features` test targets in `nros-tests` are in NO lane:
-nothing in `just/` or the `justfile` mentions `trigger-test`, so those targets are never compiled or run by
-`check`/`ci`/`test-all`. Two things were sitting behind that — `trigger_conditions` fails outright
-(`Failed to open session: Transport(InvalidConfig)`, 0.15 s, zenohd present and `require_zenohd()` passed,
-so not a skip), and the feature carried a stale `"nros-node/std"` forward that no target needed (removing it
-leaves `wake_latency` + `component_runtime` 6/6 green). The 0319 class one level down: the gate is not
-missing, the TARGET is unreachable, and an unreachable target still reads as coverage. Wants an audit over
-every `required-features` target, not a fix for these two by name. See `0652-*`. (2026-08-17)
+Recently resolved (2026-08-18): **#0652** — seven `required-features` test targets ran in NO lane, so cargo skipped them SILENTLY while they read as coverage. Now laned (`check-required-features-tests`, 18 tests). Running them found three defects that had rotted unobserved: a missing force-link anchor, an unused import fatal under `-D warnings`, and a pre-phase-258 observable whose correct form a SIBLING test already recorded. `loan_e2e` is mis-laned not broken (needs ZPICO_MAX_SESSIONS=2). Baseline 5 -> 2. See `archived/0652-*`. (2026-08-18)
 
 **#0655** (bug, open 2026-08-17) — the Zephyr core-pin ACCEPT arm can never succeed: it pins
 `k_current_get()`, and Zephyr's `cpu_mask_mod` returns `-EINVAL` for a RUNNING thread (the cpu mask is

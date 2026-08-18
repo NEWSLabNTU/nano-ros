@@ -2,7 +2,7 @@
 id: 652
 title: "`required-features` test targets are in NO lane, so one of them has been
   failing unobserved and a stale feature forward sat in the manifest"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0319, issue-0599, phase-359, phase-329]
@@ -181,3 +181,44 @@ least six of the nine, rather than a guess. The two real failures want triage
 first, and the stale fixture wants a `just build-test-fixtures lane=native`;
 none of that is knowable without the router, which is the point the audit made
 and could not act on.
+
+
+## Resolved 2026-08-18 — laned, and the three defects that were hiding
+
+Running the targets is what found them. Each had rotted precisely because
+nothing ran it:
+
+| target | symptom | cause |
+| --- | --- | --- |
+| `trigger_conditions` | `Transport(InvalidConfig)` | missing `use nros_rmw_zenoh as _;` — the backend was never linked, and the error reads like a bad locator |
+| `dispatch_strategy` | did not compile | unused import, fatal under `-D warnings` |
+| `component_param` | `assert_eq!(…, 1)` got 0 | pre-phase-258 observable: the seam moved to the executor's component-tick registry, and `component_dispatch.rs` had ALREADY recorded the correct one for the identical path |
+
+The last is the sharpest version of this issue's thesis. The right answer was
+written down, in a sibling file, for the same code path — and this file kept the
+stale one because no lane ever executed it.
+
+### The lane
+
+`check-required-features-tests` runs seven targets, 18 tests, in `check-build`.
+
+Two are deliberately NOT in it:
+
+* **`loan_e2e` is not broken — it is mis-laned.** It opens two in-process
+  sessions and needs `ZPICO_MAX_SESSIONS=2`, which is a BUILD input with its own
+  target dir. Verified 2/2 passing under `test-zpico-multisession`'s env; it
+  belongs there.
+* **`custom_transport_loopback`** needs a native fixture (stale on this host),
+  so it wants a fixture-gated lane rather than this one. Still unassessed.
+
+### Gate baseline shrunk 5 -> 2
+
+`check-required-features-reachable` now baselines only those two, each with its
+reason in the source. A shrinking backlog rather than an exemption — which is
+what the gate's own comment promised when it went in with five.
+
+### Not reproducible before today
+
+Every one of these needed `ros-humble-rmw-zenoh-cpp`. The audit above could see
+that the targets were unreachable but not what was wrong inside them, because
+this host could only reach `[SKIPPED:capability]`.

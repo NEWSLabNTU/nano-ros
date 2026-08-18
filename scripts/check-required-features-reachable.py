@@ -45,11 +45,17 @@ ROOT = Path(__file__).resolve().parent.parent
 #   loan-e2e                loan_e2e
 #   phase216-substrate      dispatch_strategy
 #   rmw                     custom_transport_loopback
+# Shrunk 2026-08-18: `trigger-test`, `component-runtime-test` and
+# `phase216-substrate` now run in `check-required-features-tests` (18 tests).
+# What is left is what still cannot join that lane:
+#
+#   loan-e2e  opens two in-process sessions, so it needs ZPICO_MAX_SESSIONS=2 —
+#             a BUILD input, hence its own target dir. Belongs to
+#             `test-zpico-multisession`; verified passing 2/2 under that env.
+#   rmw       `custom_transport_loopback` needs a native fixture, so it wants a
+#             fixture-gated lane. Unassessed: the fixture is stale here.
 BASELINE = {
-    "trigger-test",
-    "component-runtime-test",
     "loan-e2e",
-    "phase216-substrate",
     "rmw",
 }
 
