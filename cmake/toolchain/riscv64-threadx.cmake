@@ -80,19 +80,42 @@ set(CMAKE_ASM_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany")
 # include path, codegen-output `.c` files (`std_msgs__nano_ros_c`
 # etc.) that don't go through `nros_threadx_setup_picolibc`
 # fail at `fatal error: stdint.h: No such file or directory`.
+# Issue 0678 — the RESULT of this probe, not its output, is what says whether
+# this compiler HAS picolibc. Both toolchains produce an unusable sysroot string
+# (Debian's succeeds and prints nothing; xPack's fails), so the old
+# "output empty or no include dir -> use the Debian path" fallback sent BOTH to
+# picolibc — which is how a newlib compiler ended up with picolibc headers.
+#
+# That is not a cosmetic mismatch, it is unlinkable: picolibc declares `errno`
+# `__thread`, the xPack compiler implements `__thread` as EMULATED TLS
+# (`__emutls_v.errno`), and Debian's picolibc `libc.a` was built with NATIVE TLS
+# — it contains zero emutls symbols, so nothing can ever define that reference.
+# `-fno-emulated-tls` does not exist on this compiler. Measured:
+#
+#   xPack + picolibc headers -> U __emutls_v.errno ; picolibc libc.a: errno in
+#     .tbss, `nm | grep -c emutls` = 0                       (unlinkable)
+#   xPack + its OWN newlib   -> U __errno          ; xPack libc.a: T __errno in
+#     libc_a-errno.o, 0 emutls                               (self-consistent)
+#
+# So: picolibc ONLY when the compiler accepts its spec file. Otherwise the
+# compiler brings its own libc and we must not inject another one's headers.
 execute_process(
     COMMAND ${_NROS_RISCV64_PREFIX}-gcc -march=rv64gc -mabi=lp64d
             --specs=picolibc.specs -print-sysroot
+    RESULT_VARIABLE _RISCV_THREADX_PICOLIBC_RC
     OUTPUT_VARIABLE _RISCV_THREADX_PICOLIBC_SYSROOT
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET)
-if(NOT _RISCV_THREADX_PICOLIBC_SYSROOT
+if(NOT _RISCV_THREADX_PICOLIBC_RC EQUAL 0)
+    # No picolibc.specs => not a picolibc toolchain. Use its own libc headers.
+    set(_RISCV_THREADX_PICOLIBC_SYSROOT "")
+elseif(NOT _RISCV_THREADX_PICOLIBC_SYSROOT
         OR NOT EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
     # Debian / Ubuntu picolibc-riscv64-unknown-elf install path
     set(_RISCV_THREADX_PICOLIBC_SYSROOT
         "/usr/lib/picolibc/riscv64-unknown-elf")
 endif()
-if(EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+if(_RISCV_THREADX_PICOLIBC_SYSROOT AND EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
     # issue 0674 — publish the CHOICE, do not make the code guess it.
     #
     # This block is where the build DECIDES the C library is picolibc. The

@@ -1,7 +1,7 @@
 ---
 id: 678
 title: "The threadx-riscv64 Cyclone rows cannot link `__emutls_v.errno`: the provisioned toolchain emits EMULATED TLS and the linked picolibc was built with NATIVE TLS"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, boards
@@ -169,3 +169,109 @@ Not a flag. Pick which C library this board uses with the provisioned toolchain:
 
 Either is defensible; they are not interchangeable, and the choice belongs to
 whoever owns the board's libc story rather than to whoever hits the link error.
+
+
+## RESOLVED 2026-08-18 — option 1: the board uses the toolchain's own libc
+
+The decision above was taken: **use the toolchain's own newlib and stop injecting
+Debian picolibc's headers.**
+
+### The defect, precisely
+
+Every site resolving picolibc keyed on the probe's OUTPUT. That cannot
+distinguish the two toolchains, because both produce an unusable sysroot string:
+
+| toolchain | `--specs=picolibc.specs -print-sysroot` | old behaviour |
+| --- | --- | --- |
+| Debian `riscv64-unknown-elf-gcc` | rc=0, prints **nothing** | falls back to the Debian path — correct |
+| xPack `riscv-none-elf-gcc` (what `nros setup` provisions) | **rc=1**, "cannot read spec file" | falls back to the Debian path — **wrong** |
+
+So a NEWLIB compiler was handed picolibc's headers. The probe's **exit status**
+is the fact that separates them, and all three sites now use it.
+
+### It was in THREE places, and fixing one was not enough
+
+The first attempt fixed only `cmake/toolchain/riscv64-threadx.cmake`. A clean
+rebuild then showed picolibc gone from the app TUs while `__emutls_v.errno`
+survived — because the references live in `libddsc.a` (`heap.c`,
+`ddsi_config.c`), and Cyclone gets its includes from a different file:
+
+| file | role | extra defect |
+| --- | --- | --- |
+| `cmake/toolchain/riscv64-threadx.cmake` | app + codegen TUs | — |
+| `packages/api/nros-c/cmake/nros-threadx.cmake` | `nros_threadx_setup_picolibc()` | — |
+| `cmake/platform/nano-ros-threadx.cmake` | **feeds Cyclone** via `include_directories(SYSTEM …)` | probed a HARDCODED `riscv64-unknown-elf-gcc`, so an xPack build asked Debian's compiler |
+
+The third also skips the include entirely when there is no picolibc, rather than
+injecting an empty path.
+
+### Verified from CLEAN, which is the only test that counts here
+
+All four `build-cyclonedds` dirs deleted, then `just threadx_riscv64
+build-fixtures`:
+
+```
+0   __emutls_v references
+0   `-isystem /usr/lib/picolibc` injections
+c_talker      7 061 048      cpp_talker    7 094 536
+c_listener    7 060 352      cpp_listener  7 094 016
+```
+
+Full builds (`[1067/1067]`, `[1034/1034]`), not relinks. This matters because an
+earlier attempt to close this issue rested on `ninja` in build dirs configured
+five days before — those relink against whatever `-L` order the stale configure
+captured, which is the same trap that produced this issue's "the C rows are a
+working control" claim. **Wipe the build dirs or the result means nothing.**
+
+### The lane is still red, for #0668
+
+`build-fixture-extras` now fails at `rust/talker` with "`#[panic_handler]`
+function required, but not found" in `nros-c`. That is
+[issue 0668](0668-threadx-rv64-example-shape-differs-from-every-other-standalone.md)
+— ThreadX-RV64 being the only standalone example with two entry points — and
+phase-366 is actively landing on it. Untouched here.
+
+### Neither reverted attempt is needed
+
+Attempt 1 (sysroot-first archive resolution) selected picolibc, the archive whose
+TLS model this compiler cannot use; the fix goes the other way. Attempt 2
+(absolute archive path instead of `-L` + `-lc`) addressed a real order dependency
+that no longer decides anything once one libc is on the line — worth doing on its
+own merits, not as part of this.
+
+
+### Why this is not #0679's refuted attempt B
+
+[#0679](0679-riscv64-forces-picolibc-headers-onto-newlib-toolchain.md), filed
+independently for the same failure, records that defining `__thread int errno;`
+in `startup.c` also makes all four rows link — and that it is **unsound**: the
+emulated-TLS definition is a different storage from the `.tbss` slot picolibc's
+own code reads, so libc sets one `errno` and the application reads another, with
+no diagnostic. Its conclusion is the right one: *linking is not the acceptance
+criterion for a symbol whose purpose is to carry a value between two pieces of
+code.*
+
+This fix is not that, and the images say so. On `c_listener` from the clean
+build:
+
+```
+nm | grep -c emutls            5      (Rust's own thread-locals + __emutls_get_address)
+nm | grep -c __emutls_v.errno  0      <- errno is NOT emulated-TLS here
+nm | grep -w errno             B errno      \  ONE storage, newlib's
+nm | grep -w __errno           T __errno    /
+nm --print-file-name | grep -c picolibc   0
+nm -u | wc -l                  0      (no undefined symbols)
+```
+
+There is one C library in the image and one `errno` in it. The surviving emutls
+objects are `thread_context`, `tsd_thread_state` and `freelist_inner_idx` —
+Rust's thread-locals, each defined in the same image that references them, which
+is emulated TLS used consistently rather than two models meeting.
+
+#0679's attempt A (making the `-isystem` conditional on the compiler having its
+own headers) is also distinct: it left picolibc on the LINK while dropping
+`NROS_LIBC_PICOLIBC`, so `startup.c` stopped defining `stdout`/`stderr` that
+picolibc still expected — one undefined symbol became three. Here picolibc
+leaves the link entirely (`nros_threadx_setup_picolibc` returns before
+publishing its lib dir), so newlib defines that stdio itself and `startup.c`
+correctly must not.

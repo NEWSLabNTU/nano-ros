@@ -298,12 +298,34 @@ endfunction()
 # ----------------------------------------------------------------------
 function(nros_threadx_setup_picolibc)
     cmake_parse_arguments(_NTSP "" "CXX_COMPAT_DIR" "" ${ARGN})
+    # Issue 0678 — the same rule as `cmake/toolchain/riscv64-threadx.cmake`, and
+    # it must stay the same: the probe's RESULT says whether this compiler HAS
+    # picolibc; its OUTPUT does not. Debian's gcc accepts the spec file and
+    # prints an empty sysroot; xPack's fails outright. Keying on the output sent
+    # BOTH to the hardcoded Debian path, so the toolchain that bundles NEWLIB was
+    # handed picolibc's headers — and picolibc declares `errno` `__thread` while
+    # this compiler implements `__thread` as EMULATED TLS. Debian's picolibc
+    # `libc.a` holds zero emutls symbols, so `__emutls_v.errno` can never be
+    # defined and every image referencing `errno` fails to link.
+    #
+    # Fixing only the toolchain file left this one still injecting picolibc into
+    # Cyclone's sub-build, which is where the surviving `__emutls_v.errno`
+    # references came from (`heap.c`/`ddsi_config.c` in `libddsc.a`).
     execute_process(
         COMMAND ${CMAKE_C_COMPILER} -march=rv64gc -mabi=lp64d
                 --specs=picolibc.specs -print-sysroot
+        RESULT_VARIABLE _picolibc_rc
         OUTPUT_VARIABLE _sysroot
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
+    if(NOT _picolibc_rc EQUAL 0)
+        # Not a picolibc toolchain: it brings its own libc headers (newlib).
+        # Injecting another libc's headers here is what issue 0678 is about.
+        message(STATUS
+            "picolibc not available on ${CMAKE_C_COMPILER} — using the "
+            "toolchain's own C library headers (issue 0678)")
+        return()
+    endif()
     if(NOT _sysroot OR NOT EXISTS "${_sysroot}/include")
         # Debian / Ubuntu picolibc-riscv64-unknown-elf install path
         set(_sysroot "/usr/lib/picolibc/riscv64-unknown-elf")

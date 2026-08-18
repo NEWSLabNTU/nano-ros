@@ -155,11 +155,31 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
     # against — a clean compile and a runtime corruption.
     set(_tx_port_override_inc
         "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-threadx-port-riscv64/port/inc")
-    # picolibc sysroot (host tool query) — match the cross-probe's resolution.
+    # picolibc sysroot — match the cross-probe's resolution (issue 0678).
+    #
+    # TWO defects lived in this probe, and this is the site that feeds CYCLONE:
+    # the `include_directories(SYSTEM ...)` below lands on ddsc/ddsrt, so a
+    # picolibc header injected here is what put `__emutls_v.errno` into
+    # `libddsc.a`'s `heap.c` and `ddsi_config.c`.
+    #
+    #   1. it asked a HARDCODED `riscv64-unknown-elf-gcc` — Debian's — no matter
+    #      which compiler the build actually uses, so an xPack build queried a
+    #      toolchain it does not compile with;
+    #   2. it keyed on the probe's OUTPUT, and Debian's gcc succeeds while
+    #      printing nothing, so both toolchains fell through to the hardcoded
+    #      Debian path.
+    #
+    # Ask THIS compiler, and believe its exit status: no `picolibc.specs` means
+    # the toolchain brings its own libc (newlib), whose `errno` is a plain
+    # symbol rather than picolibc's `__thread` one that this compiler can only
+    # implement as emulated TLS.
     execute_process(
-        COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d --specs=picolibc.specs -print-sysroot
+        COMMAND ${CMAKE_C_COMPILER} -march=rv64gc -mabi=lp64d --specs=picolibc.specs -print-sysroot
+        RESULT_VARIABLE _tx_picolibc_rc
         OUTPUT_VARIABLE _tx_picolibc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-    if(NOT _tx_picolibc OR NOT EXISTS "${_tx_picolibc}/include")
+    if(NOT _tx_picolibc_rc EQUAL 0)
+        set(_tx_picolibc "")
+    elseif(NOT _tx_picolibc OR NOT EXISTS "${_tx_picolibc}/include")
         set(_tx_picolibc "/usr/lib/picolibc/riscv64-unknown-elf")
     endif()
     # Phase 203 — use directory-level include_directories/add_compile_options
@@ -170,7 +190,9 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
     # per-target compile commands. Directory properties (include dirs, compile
     # options, compile definitions) survive the nested project() reset and
     # propagate to every subdirectory target (ddsc, ddsrt, …).
-    include_directories(SYSTEM "${_tx_picolibc}/include")
+    if(_tx_picolibc)
+        include_directories(SYSTEM "${_tx_picolibc}/include")
+    endif()
     include_directories(
         "${_tx_port_override_inc}"
         "${THREADX_CONFIG_DIR}"

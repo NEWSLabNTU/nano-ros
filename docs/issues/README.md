@@ -482,17 +482,16 @@ own, silently. Also records the measurement error that made an earlier attempt l
 reused stale caches; the `PARENT_SCOPE`/two-C-libraries explanation built on that is RETRACTED.
 See `archived/0679-*`. (2026-08-18)
 
-**#0678** (build/boards, open 2026-08-18) — the `threadx-riscv64` Cyclone rows cannot link
-`__emutls_v.errno`. NOT a link-order problem: the provisioned xPack `riscv-none-elf-gcc` has no native TLS
-for this target (`-fno-emulated-tls` is not even a recognised option) and emits EMULATED TLS for picolibc's
-`__thread int errno`, while Debian's picolibc `libc.a` was built with NATIVE TLS — `errno` in `.tbss`, and
-ZERO emutls symbols in the whole archive. Nothing can define the symbol. Correcting this issue as first
-filed: there is NO working control — the "C links, C++ fails" split came from incremental build trees, and
-from clean dirs on unmodified main the **C** leaves fail. Two fixes were tried and REVERTED (sysroot-first
-archive resolution; naming the archive absolutely instead of `-L` + `-lc`) — both are improvements, neither
-addresses the TLS model. Needs a DECISION: use the toolchain's own newlib (measured self-consistent, and
-`startup.c` already has the `__NEWLIB__` arm) or resolve the compiler that built the picolibc being linked.
-See `0678-*`. (2026-08-18)
+Recently resolved (2026-08-18): **#0678** — the `threadx-riscv64` Cyclone rows could not link
+`__emutls_v.errno`: the provisioned xPack toolchain implements `__thread` as EMULATED TLS while the injected
+Debian picolibc was built with NATIVE TLS and carries zero emutls symbols, so the reference could never be
+defined. Fixed by using the toolchain's OWN newlib and not injecting another libc's headers. The probe's
+RESULT is what distinguishes the two toolchains — Debian's accepts `picolibc.specs` and prints an empty
+sysroot, xPack's fails — so keying on its OUTPUT sent both to the hardcoded Debian path. Three sites carried
+that rule; the one feeding Cyclone (`cmake/platform/nano-ros-threadx.cmake`) also probed a HARDCODED
+`riscv64-unknown-elf-gcc`, so fixing the toolchain file alone left `libddsc.a` still emitting emutls.
+Verified from CLEAN (all four build dirs wiped): 0 emutls, 0 picolibc injections, all four binaries built.
+Lane still red for #0668's panic handler (phase-366, in flight). See `archived/0678-*`. (2026-08-18)
 
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
