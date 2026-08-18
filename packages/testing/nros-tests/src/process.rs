@@ -517,14 +517,18 @@ impl ManagedProcess {
         &mut self.handle
     }
 
-    /// Wait for output with timeout
+    /// Drain STDOUT until the process exits or `timeout` elapses, then KILL it.
     ///
-    /// Collects stdout from the process until:
-    /// - The timeout is reached
-    /// - The process exits
-    /// - An error occurs
+    /// **A terminal drain, not a wait-for-readiness.** There is no stop
+    /// pattern, so a process that keeps running always reaches the timeout, and
+    /// reaching it kills the process group. To wait for a process you intend to
+    /// KEEP, call [`Self::wait_for_output_pattern`].
     ///
-    /// The process is killed when the timeout is reached.
+    /// It also reads STDOUT ONLY, so a process logging to stderr produces
+    /// nothing here and the early return is unreachable. Issue 0672 was that
+    /// pair on the sibling type: a readiness wait that could observe nothing,
+    /// which is worse than a sleep — a sleep leaves the process alive, and this
+    /// killed the ROS 2 server the test went on to talk to.
     pub fn wait_for_output(&mut self, timeout: Duration) -> Result<String, TestError> {
         use std::io::Read;
         #[cfg(unix)]

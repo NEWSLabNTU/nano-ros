@@ -542,8 +542,18 @@ NROS_PYEOF"
         Ok((output, matched))
     }
 
-    /// Drain output until the process exits or `timeout` elapses. Unchanged
-    /// behaviour; now a thin caller of [`Self::collect_until`].
+    /// Drain STDOUT until the process exits or `timeout` elapses, then KILL it.
+    ///
+    /// **A terminal drain, not a wait-for-readiness.** `collect_until(None, …)`
+    /// has no stop condition, so a process that keeps running always reaches
+    /// the timeout — and reaching it calls `kill_process_group`. To wait for
+    /// readiness and KEEP the process, use [`Self::wait_for_output_count`].
+    ///
+    /// Issue 0672 called the misuse "a 5 s sleep that never observed anything",
+    /// which understates it in the direction that matters: a sleep leaves the
+    /// server running, and this one killed it. The client was then started
+    /// against a server that was reliably gone, not one that might not have
+    /// been listening.
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         self.collect_until(None, timeout).map(|(out, _)| out)
     }
@@ -1512,8 +1522,18 @@ rclpy.spin(node)
         Ok((output, matched))
     }
 
-    /// Drain output until the process exits or `timeout` elapses. Unchanged
-    /// behaviour; now a thin caller of [`Self::collect_until`].
+    /// Drain STDOUT until the process exits or `timeout` elapses, then KILL it.
+    ///
+    /// **A terminal drain, not a wait-for-readiness.** `collect_until(None, …)`
+    /// has no stop condition, so a process that keeps running always reaches
+    /// the timeout — and reaching it calls `kill_process_group`. To wait for
+    /// readiness and KEEP the process, use [`Self::wait_for_output_count`].
+    ///
+    /// Issue 0672 called the misuse "a 5 s sleep that never observed anything",
+    /// which understates it in the direction that matters: a sleep leaves the
+    /// server running, and this one killed it. The client was then started
+    /// against a server that was reliably gone, not one that might not have
+    /// been listening.
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         self.collect_until(None, timeout).map(|(out, _)| out)
     }
