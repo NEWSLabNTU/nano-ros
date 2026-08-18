@@ -1,6 +1,6 @@
 ---
 rfc: 0078
-title: "A WCET is declared per measurement profile, never per callback alone"
+title: "An execution-time BOUND is declared per measurement profile — and a measured maximum is not one"
 status: Draft
 since: 2026-08
 last-reviewed: 2026-08
@@ -10,7 +10,7 @@ supersedes: []
 superseded-by: null
 ---
 
-# RFC-0078 — A WCET is declared per measurement profile, never per callback alone
+# RFC-0078 — An execution-time BOUND is declared per measurement profile — and a measured maximum is not one
 
 ## The problem, stated as the consumer sees it
 
@@ -71,6 +71,45 @@ An extra indirection for the simple case. A project with one board writes a
 profile with one member and selects it once. That is the price of not having to
 migrate every declaration the first time a second board appears.
 
+## Decision 1b — a measured maximum is EVIDENCE, not a bound
+
+Revised 2026-08-18 after checking this design against the WCET literature. The
+first version of this RFC took `max_cycles` from the bench and converted it
+straight into `exec_ms`, calling the result a WCET. That is wrong, and the field
+is unambiguous about why.
+
+The longest time observed over N runs is a **high-water mark**, not a bound:
+
+> As it is generally impossible to observe all potential executions of a
+> real-world program, this approach cannot provide any guarantees about the
+> calculated WCET estimate.
+> — Wilhelm et al., *The Worst-Case Execution Time Problem*
+
+Measurement-based estimates are optimistic by an unknown amount. Handing one to
+a feasibility check is issue 0259's failure in better clothes: 0259 is an ABSENT
+number counted as zero; this would have been an UNDER-estimate counted as
+measured, which is worse for being hard to see.
+
+So observation and bound are separate fields, and **observation alone converts
+to nothing**:
+
+* `max_observed_cycles` — what the bench saw. Evidence.
+* `bound_cycles` — an explicit bound, typically from static analysis, the only
+  method that yields a guarantee. Wins when present.
+* `margin_percent` — the industrial practice of inflating the high-water mark.
+  ~20% is the common figure, and the literature is blunt that it has "very
+  little justification … save for historical confidence". Requiring it to be
+  WRITTEN DOWN does not make it justified; it makes it visible.
+
+A profile with neither yields no `exec_ms`. The declaration is still valid and
+still records the measurement — it simply refuses to let the measurement
+masquerade as a guarantee.
+
+`coverage` is a free-text field for what the run exercised, and `None` is an
+admission rather than an omission. Measurement-based estimation is only as good
+as its coverage, and this tree's bench runs fixed synthetic inputs — so a
+reviewer seeing `None` should discount accordingly.
+
 ## Decision 2 — declare cycles AND the rate; convert at the boundary of our repo
 
 The consumer's slot is milliseconds and that is a **cross-repo design
@@ -95,6 +134,13 @@ nano-ros converts to `ms` when it populates `exec_ms`. Both halves matter:
 
 The conversion is therefore a named, testable step inside this repo, sitting
 between two formats that each refuse to guess.
+
+This shape has independent precedent. Eclipse AMALTHEA/APP4MC declares
+execution demand in *ticks* — "a generic abstraction of time for software,
+independent of hardware … one may think of ticks as clock ticks or cycles" —
+and "to obtain execution times, the number of ticks is divided by the individual
+frequency of each processing unit". It also carries lower/average/upper bounds
+per runnable, where this schema carries min/max observed plus an explicit bound.
 
 ### Consequence
 
@@ -180,15 +226,23 @@ measured_at_commit = "a1b2c3d4e5f6"
 counter_valid      = true
 source             = "nros.wcet.measurements/1"
 
+margin_percent     = 20.0   # inflates the high-water mark into a bound
+coverage           = "fixed synthetic inputs; worst path not established"
+
 [wcet.profiles.stm32f4-168mhz-release.boundaries]
-"perception_node/on_scan" = { min_cycles = 41_120, max_cycles = 68_940, iterations = 1000 }
+"/perception_node/on_scan" = { min_observed_cycles = 41_120, max_observed_cycles = 68_940, iterations = 1000 }
 ```
 
-Selected by a board, `perception_node/on_scan` yields
+Selected by a board, `/perception_node/on_scan` yields
 
 ```
-exec_ms = 68_940 / 168_000_000 * 1000 = 0.4104 ms
+bound  = ceil(68_940 * 1.20)            = 82_728 cycles
+exec_ms = 82_728 / 168_000_000 * 1000   = 0.4924 ms
 ```
+
+Drop `margin_percent` and the same declaration yields NO `exec_ms` — the
+observation is recorded and the boundary stays in
+`ChainFeasibleWithoutWcet`.
 
 which populates that boundary's `MapperPath::exec_ms`. Every other boundary in
 the system stays `None`, and `ChainFeasibleWithoutWcet` continues to name them.
@@ -204,6 +258,18 @@ the system stays `None`, and `ChainFeasibleWithoutWcet` continues to name them.
 * **Automatic staleness invalidation** — see Decision 4.
 * **Whether primitives can ever compose into a callback.** Out of scope, and
   the reason granularity is per-boundary.
+
+## What the literature says this design still cannot claim
+
+Even with a margin, this is a measurement-based estimate, and no margin makes it
+a guarantee. The honest description of what a declaration produced this way
+carries is "a high-water mark inflated by a number someone chose". Systems that
+need a real bound need static analysis (`bound_cycles`), and this schema has a
+field for that precisely so the stronger claim has somewhere to go.
+
+Boundary keys are `<node_fqn>/<path_name>` where the FQN is a ROS name — it
+begins with `/` and may carry namespaces, so `/perception/front/on_scan` is node
+`/perception/front`, path `on_scan`.
 
 ## Open question this design cannot close by itself
 

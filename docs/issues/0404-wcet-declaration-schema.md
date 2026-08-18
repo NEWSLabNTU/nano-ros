@@ -94,6 +94,12 @@ answers all four questions above:
 * **keyed on** a named measurement profile (`stm32f4-168mhz-release`). Board id
   and platform family both collapse into it — the first is a profile with one
   member, the second is a profile that omits the rate it needs anyway;
+* **what converts**: NOT the measured maximum. Revised 2026-08-18 after
+  checking the design against the WCET literature — the longest observed time is
+  a high-water mark, not a bound ("this approach cannot provide any guarantees",
+  Wilhelm et al.), so converting it would count an under-estimate as measured.
+  Observation (`max_observed_cycles`) and bound (`bound_cycles`, or a declared
+  `margin_percent`) are separate, and observation alone yields no `exec_ms`;
 * **unit**: declare CYCLES plus the profile's `clock_hz`, and convert to `ms`
   inside this repo. rlm's slot is milliseconds by cross-repo agreement and
   cannot be redefined here; declaring `ms` directly would put the conversion

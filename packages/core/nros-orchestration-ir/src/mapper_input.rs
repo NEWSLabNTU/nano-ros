@@ -41,6 +41,8 @@ fn parse_criticality(s: &str) -> Option<Criticality> {
 /// `min_rate_hz` contract for it. Used as the fire rate of a periodic (timer)
 /// path — a path with no `input` fires on a clock, and its output endpoint's
 /// contracted rate is the honest "how often" fact.
+use crate::wcet::WcetProfile;
+
 fn pub_rate_hz(model: &SystemModel, endpoint_ref: &str) -> Option<f64> {
     model
         .contracts
@@ -52,7 +54,7 @@ fn pub_rate_hz(model: &SystemModel, endpoint_ref: &str) -> Option<f64> {
 /// Derive one node's causal paths from `contracts.node_paths`. A node path is
 /// keyed `"<node_fqn>/<path_name>"`; a path belongs to `fqn` when its key has
 /// that prefix and the remainder is a single segment (the path name).
-fn node_paths_for(model: &SystemModel, fqn: &str) -> Vec<MapperPath> {
+fn node_paths_for(model: &SystemModel, fqn: &str, wcet: Option<&WcetProfile>) -> Vec<MapperPath> {
     let prefix = format!("{fqn}/");
     let mut out = Vec::new();
     for (path_ref, pc) in &model.contracts.node_paths {
@@ -81,8 +83,13 @@ fn node_paths_for(model: &SystemModel, fqn: &str) -> Vec<MapperPath> {
             name: name.to_string(),
             effective_trigger,
             max_latency_ms: pc.max_latency_ms,
-            // No WCET in the contract vocabulary — never invent one.
-            exec_ms: None,
+            // RFC-0078 — the ONLY source of a WCET is a declaration, looked up
+            // at rlm's own boundary identity (`path_ref` is `node_fqn/path`,
+            // which is exactly what `boundaries_without_wcet` reports). `None`
+            // when undeclared, when the profile carries no clock rate, or when
+            // there is no profile at all — and `None` is not zero: rlm counts
+            // the boundary as undeclared and says so. Never invent one.
+            exec_ms: wcet.and_then(|w| w.exec_ms(path_ref)),
             inputs: pc.input.clone(),
             outputs: pc.output.clone(),
         });
@@ -95,6 +102,21 @@ fn node_paths_for(model: &SystemModel, fqn: &str) -> Vec<MapperPath> {
 /// from `structure.nodes` + their `contracts.node_paths`; chains are empty in
 /// v1 (the model carries no chain declarations).
 pub fn mapper_input_from_model(model: &SystemModel) -> MapperInput {
+    mapper_input_from_model_with_wcet(model, None)
+}
+
+/// As [`mapper_input_from_model`], with a selected RFC-0078 measurement profile
+/// supplying `exec_ms` for the boundaries it declares.
+///
+/// Separate entry point rather than a changed signature so that ABSENT remains
+/// the default at the API level too: a caller that knows nothing about WCETs
+/// gets exactly what it got before, which is `None` everywhere. Which profile
+/// is selected is deliberately not decided here — RFC-0078 leaves that to
+/// `system.toml` / SystemModel, and this function takes the answer.
+pub fn mapper_input_from_model_with_wcet(
+    model: &SystemModel,
+    wcet: Option<&WcetProfile>,
+) -> MapperInput {
     let mut nodes = Vec::with_capacity(model.structure.nodes.len());
     for (fqn, node) in &model.structure.nodes {
         let criticality = node.criticality.as_deref().and_then(parse_criticality);
@@ -102,7 +124,7 @@ pub fn mapper_input_from_model(model: &SystemModel) -> MapperInput {
             name: fqn.clone(),
             scope: node.scope.clone(),
             criticality,
-            paths: node_paths_for(model, fqn),
+            paths: node_paths_for(model, fqn, wcet),
             ..Default::default()
         });
     }
@@ -127,6 +149,130 @@ mod tests {
         TopicContract,
     };
     use std::collections::BTreeMap;
+
+    /// RFC-0078 — a declared profile reaches `MapperPath::exec_ms`, and nothing
+    /// else does.
+    ///
+    /// The fixture's boundaries are `/sensor/acquire` and `/planner/plan`, which
+    /// is the real key shape: a ROS node FQN begins with `/` and may carry
+    /// namespaces. Writing this test is what caught a validator rule that
+    /// required exactly two segments and would have rejected every boundary in
+    /// the tree.
+    #[test]
+    fn a_declared_wcet_reaches_exec_ms_and_an_undeclared_one_stays_absent() {
+        use crate::wcet::{BoundaryWcet, WcetProfile};
+
+        let model = model_with_two_nodes();
+        let profile = WcetProfile {
+            cpu: "cortex-m4f".into(),
+            clock_hz: Some(1_000_000),
+            profile: "release".into(),
+            measured_at_commit: "a1b2c3d4e5f6".into(),
+            counter_valid: true,
+            source: "nros.wcet.measurements/1".into(),
+            // A margin is what turns the high-water mark into a bound. Without
+            // it this profile would declare an observation and yield NO
+            // exec_ms — which is the behaviour `an_observation_alone_reaches_
+            // nothing` below pins.
+            margin_percent: Some(0.0),
+            coverage: Some("fixture: fixed inputs".into()),
+            boundaries: BTreeMap::from([(
+                "/sensor/acquire".to_string(),
+                BoundaryWcet {
+                    min_observed_cycles: 1_000,
+                    max_observed_cycles: 2_500,
+                    iterations: 100,
+                    bound_cycles: None,
+                },
+            )]),
+        };
+        assert!(profile.validate().is_empty(), "{:?}", profile.validate());
+
+        let input = mapper_input_from_model_with_wcet(&model, Some(&profile));
+        let exec = |node: &str, path: &str| {
+            input
+                .nodes
+                .iter()
+                .find(|n| n.name == node)
+                .and_then(|n| n.paths.iter().find(|p| p.name == path))
+                .and_then(|p| p.exec_ms)
+        };
+
+        // 2_500 cycles at 1 MHz = 2.5 ms.
+        let declared = exec("/sensor", "acquire").expect("declared boundary must carry exec_ms");
+        assert!((declared - 2.5).abs() < 1e-9, "got {declared}");
+
+        // The other boundary was not declared. Absent, not zero — rlm will count
+        // it as undeclared and say so via ChainFeasibleWithoutWcet.
+        assert_eq!(
+            exec("/planner", "plan"),
+            None,
+            "an undeclared boundary must stay absent; a zero here would claim \
+             measured headroom nobody has"
+        );
+    }
+
+    /// An observation with no bound reaches `exec_ms` as `None`, even though
+    /// the boundary IS declared and the rate IS known.
+    ///
+    /// This is the research finding wired end to end: a maximum observed over N
+    /// runs is a high-water mark, and letting it through would hand rlm an
+    /// under-estimate that looks measured.
+    #[test]
+    fn an_observation_alone_reaches_nothing() {
+        use crate::wcet::{BoundaryWcet, WcetProfile};
+
+        let model = model_with_two_nodes();
+        let profile = WcetProfile {
+            cpu: "cortex-m4f".into(),
+            clock_hz: Some(1_000_000),
+            profile: "release".into(),
+            measured_at_commit: "a1b2c3d4e5f6".into(),
+            counter_valid: true,
+            source: "nros.wcet.measurements/1".into(),
+            margin_percent: None, // no bound derived from the observation
+            coverage: None,
+            boundaries: BTreeMap::from([(
+                "/sensor/acquire".to_string(),
+                BoundaryWcet {
+                    min_observed_cycles: 1_000,
+                    max_observed_cycles: 2_500,
+                    iterations: 100,
+                    bound_cycles: None,
+                },
+            )]),
+        };
+        assert!(
+            profile.validate().is_empty(),
+            "the declaration is well-formed"
+        );
+
+        let input = mapper_input_from_model_with_wcet(&model, Some(&profile));
+        assert!(
+            input
+                .nodes
+                .iter()
+                .flat_map(|n| &n.paths)
+                .all(|p| p.exec_ms.is_none()),
+            "an observation without a declared bound must not reach exec_ms"
+        );
+    }
+
+    /// Without a profile the derivation is byte-for-byte what it was before
+    /// RFC-0078 — absent is the default at the API level, not just in the data.
+    #[test]
+    fn no_profile_means_no_exec_ms_anywhere() {
+        let model = model_with_two_nodes();
+        let input = mapper_input_from_model(&model);
+        assert!(
+            input
+                .nodes
+                .iter()
+                .flat_map(|n| &n.paths)
+                .all(|p| p.exec_ms.is_none()),
+            "the no-profile path must invent nothing"
+        );
+    }
 
     fn model_with_two_nodes() -> SystemModel {
         let mut nodes = indexmap::IndexMap::new();

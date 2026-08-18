@@ -51,6 +51,8 @@ pub mod model_location;
 pub mod qos_override;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
+/// RFC-0078 — declared WCETs, keyed per named measurement profile.
+pub mod wcet;
 
 // =============================================================================
 // Board key → board ZST path mapping
