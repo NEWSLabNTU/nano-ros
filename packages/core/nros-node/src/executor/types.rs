@@ -1315,6 +1315,29 @@ pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
     ((us / 1_000_000) as i32, ((us % 1_000_000) * 1_000) as u32)
 }
 
+/// The default wall clock, or `None` when this build has neither a platform port
+/// nor a host to ask.
+///
+/// phase-359 W10 — the symmetric twin of `default_clock_us_fn`. The predicate
+/// "does this build have a wall clock" used to be spelled at the `Executor`
+/// struct literal, in two arms, duplicating the cfgs that already decide
+/// whether `default_epoch_us` exists at all. One place answers it now.
+// Its only caller is the `Executor` constructor, which is itself compiled only
+// when a backend exists (`any(has_rmw, test)`), so builds without one have this
+// with nothing to call it. Saying so once beats a cfg predicate that has to
+// track the constructor's.
+#[allow(dead_code)]
+pub(crate) fn default_epoch_us_fn() -> Option<fn() -> u64> {
+    #[cfg(any(feature = "rmw-cffi", feature = "std"))]
+    {
+        Some(default_epoch_us)
+    }
+    #[cfg(not(any(feature = "rmw-cffi", feature = "std")))]
+    {
+        None
+    }
+}
+
 /// RFC-0052 W3b.2 — the default wall-clock source: µs since the UNIX epoch.
 ///
 /// phase-359 W10 — this was `std_epoch_us`, `std`-gated, `SystemTime`. It is

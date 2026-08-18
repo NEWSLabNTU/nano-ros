@@ -1446,16 +1446,17 @@ impl<'s> Executor<'s> {
             last_spin_end_us: default_clock_us_fn().map(|clock| clock()),
             clock_us_fn: default_clock_us_fn(),
             consecutive_io_failures: 0,
-            // RFC-0052 W3b.5 — hosted builds get a wall clock by default so
-            // native age monitors activate without extra wiring; embedded
-            // builds install `config.epoch_us` from the board in
-            // `from_session_in`/`open` (the `not(std)` blocks above).
-            #[cfg(any(feature = "rmw-cffi", feature = "std"))]
-            epoch_us_fn: Some(super::types::default_epoch_us),
-            // Only a build with neither a port nor `std` has no wall clock to
-            // default to; the board installs `config.epoch_us` there.
-            #[cfg(not(any(feature = "rmw-cffi", feature = "std")))]
-            epoch_us_fn: None,
+            // RFC-0052 W3b.5 — a build with a wall clock gets one by default so
+            // age monitors activate without extra wiring; a build with neither a
+            // platform port nor a host gets `None`, and its board installs
+            // `config.epoch_us` in `from_session_in`/`open`.
+            //
+            // phase-359 W10 — the cfg pair that used to be here moved into
+            // `default_epoch_us_fn`, beside the `default_clock_us_fn` it
+            // mirrors. (The old comment pointed at "the `not(std)` blocks
+            // above" for the board install; those blocks are no longer
+            // cfg-gated — the config override applies on every flavour now.)
+            epoch_us_fn: super::types::default_epoch_us_fn(),
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
             age_table: &[],
