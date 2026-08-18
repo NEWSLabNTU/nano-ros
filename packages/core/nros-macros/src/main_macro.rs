@@ -2555,10 +2555,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // phase-366 W7.a / RFC-0077 — the image's ending, emitted from the entry
     // because the entry IS part of the final artifact and a dependency is not.
     //
-    // Gated `target_os = "none"`, which is the same condition the emitted `main`
-    // above uses to tell a bare-metal image from a hosted one. A hosted image
-    // links libstd, which already defines the lang item, so an ungated emit
-    // would be a duplicate on exactly the platforms that need no help.
+    // Gated on the target NOT being a hosted one, rather than on
+    // `target_os = "none"`. The narrow spelling looked right — it is what the
+    // emitted `main` above uses — and is wrong here: NuttX builds
+    // `armv7a-nuttx-eabihf`, whose `target_os` is `"nuttx"`, so a
+    // `target_os = "none"` gate emits NOTHING for a `no_std` family that needs a
+    // handler, which is issue 0617's `#[panic_handler] function required` from
+    // the other direction. ESP-IDF (`target_os = "espidf"`) is the same shape.
+    //
+    // The question this gate is really asking is "does libstd already define the
+    // lang item here?", and that is answered by the hosted list, which is short
+    // and closed for this tree: native and threadx-linux are Linux, and macOS is
+    // a supported host for the native family.
     //
     // …unless this package also produces a `staticlib`, in which case the LIB
     // owns the item for BOTH artifacts and emitting here would be a duplicate.
@@ -2569,11 +2577,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     } else {
         match args.panic {
             PanicPolicy::Platform => quote! {
-                #[cfg(target_os = "none")]
+                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
                 ::nros::panic_to_platform!();
             },
             PanicPolicy::Halt => quote! {
-                #[cfg(target_os = "none")]
+                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
                 ::nros::panic_halt!();
             },
             // `own` emits nothing — the image said it brings its own.
