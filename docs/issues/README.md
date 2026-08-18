@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#446** — "the same crate is compiled ~21x across leaf target dirs". Answered
+and closed after the build campaign. Direction 3 (normalise `--target`) done by phase-340 W3; direction 2
+(`incremental` in the shared profile) done, which also SUPERSEDED the unmeasured sccache question — the
+interaction is not a cache miss but an abort. Direction 1 (share by identity via one `CARGO_TARGET_DIR`) is
+REFUTED by #0616: `-C metadata` includes the PATH SPELLING a crate was reached by, so two workspace roots
+sharing a directory get two units of every shared crate — "collisions and no sharing", and live ones, since
+`nros-platform` holds the one `#[global_allocator]`. The residue is structural: per-RMW variant dirs,
+Corrosion's hashed per-workspace dirs, the metadata probe (#0522) and the copy-out contract (phase-340 P4
+WITHDRAWN). phase-340 measured the lane it was opened against at 6794 s -> 581 s (11.7x). The durable output is
+one new row in its factor table: the path spelling blocks reuse. See `archived/0446-*`. (2026-08-19)
+
 Retired (2026-08-19): **#685** — duplicate. A concurrent session found the same probe-key splitter
 (`NROS_ZEPHYR_RUNNER_RECORD`, a timestamp+pid OUTPUT path) and recorded it in **#446** the same day, with the
 better fix: the variable has NO READERS — the driver set it and passed the identical path positionally, and
@@ -2769,16 +2780,6 @@ DECLARATION). Same binary, five runs: `telem 0`, then three crossed (`ctrl 0 / t
 one correct. Fixed by serializing per-tier `setup` behind a mutex; 5/5 clean after. **A race is never
 cleared by one green run** — a single passing rebuild here nearly got it misfiled as a stale fixture.
 See `archived/0447-*`. (2026-08-06)
-
-**#446** — the same crate is compiled ~21x across leaf target dirs: 106 `nros-core` rlibs, **5**
-distinct `-C metadata` identities (45 of them the same compilation). Measured the exact
-incompatibility factors — profile, feature set, RUSTFLAGS, and **explicit `--target` even for the
-host triple** (so corrosion builds can never share with plain cargo builds). Separately,
-`incremental = true` keeps the identity but destroys byte-reproducibility across dirs
-(CGU session token), which blocks any content-addressed reuse; phase-336 made that profile the
-default everywhere. Isolation is applied per-DIRECTORY while incompatibility lives per-IDENTITY, and
-those are not the same partition. sccache's role is UNVERIFIED — measure before acting. See
-`0446-*`. (2026-08-06)
 
 Recently resolved (2026-08-07): **#422** — the runtime-E2E triage INDEX; it closes when its rows do,
 and all four "remaining, untriaged" entries now have an answer. `test_ros2_action_xrce_client` was **#448**

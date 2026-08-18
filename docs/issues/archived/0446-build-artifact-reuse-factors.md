@@ -1,7 +1,7 @@
 ---
 id: 446
-title: "the same crate is compiled ~21x across leaf target dirs — what actually makes those builds incompatible"
-status: open
+title: "the same crate is compiled ~21x across leaf target dirs — answered: profile/features/target/RUSTFLAGS, AND the path spelling the crate was reached by"
+status: resolved
 type: perf
 area: build
 related: [issue-0400, phase-336, phase-334]
@@ -436,3 +436,22 @@ table:
 
 That last row is the one nobody had, and it is why "share by identity" cannot be
 done by pointing two roots at one directory.
+
+## Closed 2026-08-19
+
+Every direction is settled — 3 and 2 done, 1 refuted, the probe dir fixed and
+its residue reclaimed, and both successor issues (0522, 0488) resolved. What the
+census still shows is either legitimately distinct identities or an isolation
+contract the tree has decided to keep.
+
+The question in the title is answered, with one more row than the original
+factor table had:
+
+| Factor | Blocks reuse? |
+| --- | --- |
+| profile / features / `--target` / RUSTFLAGS | yes (measured 2026-08-06) |
+| **the path spelling the crate was reached by** | **yes (issue 0616)** |
+
+That last row is why the fix this issue proposed — point two workspace roots at
+one `CARGO_TARGET_DIR` — cannot work: the metadata hash is an identity, not an
+equivalence class over locations.
