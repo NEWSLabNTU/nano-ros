@@ -444,7 +444,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3126,6 +3126,12 @@ check-no-std-stdio:
 [group("ci")]
 check-just-recipe-refs:
     @python3 scripts/check-just-recipe-refs.py
+# phase-366 M6 / RFC-0077 — every image declares exactly one ending, and what it
+# declares matches what it supplies. `check-archive-lang-items` counts per LINK
+# LINE, which catches duplication and is blind to ABSENCE (an image with no
+# provider has no archive to count — issue 0617). Buildless, source-level.
+check-image-panic-policy:
+    @python3 scripts/check-image-panic-policy.py
 
 # Issue 0604 — `packages/cli/cli-source-dirs.txt` must equal cargo's resolve.
 #
