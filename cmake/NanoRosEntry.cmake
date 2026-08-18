@@ -112,6 +112,64 @@ function(nano_ros_entry)
             "`host:=${_NRA_HOST}`, e.g. "
             "MODEL config/multihost_${_NRA_HOST}_model.yaml).")
     endif()
+    foreach(_req NAME DEPLOY)
+        if(NOT _NRA_${_req})
+            message(FATAL_ERROR
+                "nano_ros_entry: ${_req} required")
+        endif()
+    endforeach()
+    # SOURCES becomes optional when LAUNCH present — the generated TU
+    # carries `int main()`. Standalone single-Node entry still needs
+    # SOURCES (the caller provides their own `main`).
+    if(NOT _NRA_LAUNCH AND NOT _NRA_MODEL AND NOT _NRA_SOURCES)
+        message(FATAL_ERROR
+            "nano_ros_entry: SOURCES required when LAUNCH is absent "
+            "(single-Node self-bringup mode).")
+    endif()
+    # Phase 235.B — derive the board key from the Phase 215 board import.
+    # `nano_ros_use_board(<name>)` caches `NROS_BOARD_RUNNER`
+    # (armfvp / qemu / native / …). When the caller didn't pass an
+    # explicit BOARD and an *embedded* board was imported (runner is set
+    # and not "native"), default the codegen board key to "zephyr" — the
+    # single metadata-driven embedded adapter (RFC-0032 §8a). Everything
+    # board-specific (Zephyr BOARD id, DTS overlay, default RMW, runner)
+    # already came from board.cmake at the `nano_ros_use_board` call, so
+    # the C++ adapter needs only native-vs-Zephyr granularity here.
+    if(NOT _NRA_BOARD AND DEFINED NROS_BOARD_RUNNER
+       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL ""
+       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL "native")
+        set(_NRA_BOARD "zephyr")
+        message(STATUS
+            "nano_ros_entry(${_NRA_NAME}): embedded board imported "
+            "(runner=${NROS_BOARD_RUNNER}) — codegen board key => zephyr "
+            "(nros::board::ZephyrBoard).")
+    endif()
+
+    # DEPLOY gate. `native` is always allowed. A non-`native` DEPLOY
+    # target is the embedded path (Phase 235.B) and REQUIRES a resolved
+    # BOARD — either passed explicitly or derived above from the Phase 215
+    # import. Without one, fail loudly (the pre-235 native-only rule).
+    foreach(_t IN LISTS _NRA_DEPLOY)
+        if(NOT _t STREQUAL "native" AND NOT _NRA_BOARD)
+            message(FATAL_ERROR
+                "nano_ros_entry: DEPLOY target '${_t}' rejected — "
+                "embedded Entry pkgs need a Board. Either import a board "
+                "via `nano_ros_use_board(<name>)` (sets NROS_BOARD_RUNNER) "
+                "or pass `BOARD <key>` (e.g. zephyr). Native pkgs use "
+                "`DEPLOY native`.")
+        endif()
+    endforeach()
+
+    # phase-366 — resolved AFTER the argument gates above, not before them.
+    #
+    # This block ends the configure with a FATAL_ERROR when no nros-c/nros-cpp
+    # Rust target is importable, which is the right answer for a real entry and
+    # the WRONG one to reach first: a malformed call (embedded DEPLOY with no
+    # Board, missing DEPLOY, ...) has no Rust target either, so running this
+    # early replaced every one of those diagnostics with a complaint about the
+    # panic policy. `cmake_node_register_misuse` caught exactly that — it asserts
+    # the embedded-deploy rejection and got "PANIC platform cannot be applied"
+    # instead. Validate the call, then act on it.
     # ---- phase-366 M4 / RFC-0077 — this image's ending -------------------
     #
     # `PANIC platform|halt|own`. Applied to the `nros-c`/`nros-cpp` staticlib
@@ -187,54 +245,6 @@ function(nano_ros_entry)
             endif()
         endif()
     endif()
-
-    foreach(_req NAME DEPLOY)
-        if(NOT _NRA_${_req})
-            message(FATAL_ERROR
-                "nano_ros_entry: ${_req} required")
-        endif()
-    endforeach()
-    # SOURCES becomes optional when LAUNCH present — the generated TU
-    # carries `int main()`. Standalone single-Node entry still needs
-    # SOURCES (the caller provides their own `main`).
-    if(NOT _NRA_LAUNCH AND NOT _NRA_MODEL AND NOT _NRA_SOURCES)
-        message(FATAL_ERROR
-            "nano_ros_entry: SOURCES required when LAUNCH is absent "
-            "(single-Node self-bringup mode).")
-    endif()
-    # Phase 235.B — derive the board key from the Phase 215 board import.
-    # `nano_ros_use_board(<name>)` caches `NROS_BOARD_RUNNER`
-    # (armfvp / qemu / native / …). When the caller didn't pass an
-    # explicit BOARD and an *embedded* board was imported (runner is set
-    # and not "native"), default the codegen board key to "zephyr" — the
-    # single metadata-driven embedded adapter (RFC-0032 §8a). Everything
-    # board-specific (Zephyr BOARD id, DTS overlay, default RMW, runner)
-    # already came from board.cmake at the `nano_ros_use_board` call, so
-    # the C++ adapter needs only native-vs-Zephyr granularity here.
-    if(NOT _NRA_BOARD AND DEFINED NROS_BOARD_RUNNER
-       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL ""
-       AND NOT "${NROS_BOARD_RUNNER}" STREQUAL "native")
-        set(_NRA_BOARD "zephyr")
-        message(STATUS
-            "nano_ros_entry(${_NRA_NAME}): embedded board imported "
-            "(runner=${NROS_BOARD_RUNNER}) — codegen board key => zephyr "
-            "(nros::board::ZephyrBoard).")
-    endif()
-
-    # DEPLOY gate. `native` is always allowed. A non-`native` DEPLOY
-    # target is the embedded path (Phase 235.B) and REQUIRES a resolved
-    # BOARD — either passed explicitly or derived above from the Phase 215
-    # import. Without one, fail loudly (the pre-235 native-only rule).
-    foreach(_t IN LISTS _NRA_DEPLOY)
-        if(NOT _t STREQUAL "native" AND NOT _NRA_BOARD)
-            message(FATAL_ERROR
-                "nano_ros_entry: DEPLOY target '${_t}' rejected — "
-                "embedded Entry pkgs need a Board. Either import a board "
-                "via `nano_ros_use_board(<name>)` (sets NROS_BOARD_RUNNER) "
-                "or pass `BOARD <key>` (e.g. zephyr). Native pkgs use "
-                "`DEPLOY native`.")
-        endif()
-    endforeach()
 
     # Phase 241.D3-rev — infer LANG from the source extensions when not given.
     # The C and C++ umbrellas are now DISTINCT staticlibs (`libnros_c.a` vs
