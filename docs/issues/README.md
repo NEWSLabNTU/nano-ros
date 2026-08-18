@@ -1787,15 +1787,17 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
 
-**#507** (rmw, open 2026-08-10) — the cyclonedds fork carries TWO nano-ros-only lock changes
-upstream lacks: striped addrset locks (`942dda3c`) and the Zephyr-native ddsrt sync backend
-(`a09babf3`). Upstream `5e82de60` still has the per-addrset mutex and no Zephyr backend, so this
-is a standing rebase cost, not a wait-for-release. Every rebase must re-establish that nothing new
-holds two addrset locks or one across a callback (the striping makes either a deadlock;
-`addrset_striped_lock_concurrency` is mutation-validated cover). The addrset half is the one worth
-upstreaming — not Zephyr-specific, removes an allocation per addrset everywhere, and its two
-nesting fixes are correctness wins. Needs a `WITH_ZEPHYR` option in cyclone's own ddsrt CMake,
-which nano-ros never needed. See `0507-*`. (2026-08-10)
+**#507** (rmw, open 2026-08-10) — the cyclonedds fork carries FIFTEEN nano-ros-only commits upstream lacks
+(the census corrected the original "two"), the load-bearing ones being striped addrset locks (`942dda3c`)
+and the Zephyr-native ddsrt sync backend (`a09babf3`). Re-verified 2026-08-19: still exactly 15, fork tip ==
+the superproject gitlink (`8601ca66`, nothing unpushed), upstream `5e82de60` still has the per-addrset mutex
+and no Zephyr sync backend. DECISION: upstream PRs are FUTURE WORK — the fork is maintained as-is, and the
+grouping of what would be offered (10 offerable, 5 permanently ours — the ThreadX NetX port is a platform
+upstream has no CI for) stays as the record. Two traps for anyone verifying: the census recipe names
+`releases/0.10.x`, which no longer exists on the fork (use `5041f356..nano-ros`, cross-checked by author =
+15; `master..nano-ros` gives 58 because it sweeps in upstream 0.10.x releases), and the submodule checkout
+is SHALLOW, so half the census commits read as absent objects until `git fetch --unshallow`.
+See `0507-*`. (2026-08-19)
 
 Recently resolved (2026-08-12): **#508** (rmw) — the freertos/threadx ddsrt sync ports `abort()`ed on
 init failure with nothing logged. Fixed in `cyclonedds@8601ca66` (pushed, pin bumped): one helper per

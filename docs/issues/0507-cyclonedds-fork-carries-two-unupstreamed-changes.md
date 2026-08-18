@@ -146,3 +146,54 @@ Cyclone creates exactly one rwlock in production code (the log sink in
 `ddsrt/src/log.c`) so it is not a scaling term, and `pthread_once_t` is
 caller-owned rather than pooled. The consequence is only that
 `CONFIG_MAX_PTHREAD_MUTEX_COUNT` cannot go to zero — 256 is ample.
+
+
+## Verified 2026-08-19 — the census holds; PRs deferred, fork maintained
+
+Re-measured against the fork. Every claim above is still true and the debt has
+not grown:
+
+| claim | result |
+| --- | --- |
+| 15 nano-ros-only commits | **exact** — matches the table 1:1 |
+| fork tip vs superproject gitlink | **identical** (`8601ca66`) — nothing unpushed, nothing drifted |
+| upstream still `ddsrt_mutex_init (&as->lock)` | **true** — `5e82de60:src/core/ddsi/src/ddsi_addrset.c:86` |
+| upstream has no Zephyr sync backend | **true** — its `src/ddsrt/src/sync/` is freertos, posix, windows |
+
+Upstream DOES carry `ports/zephyr/*` (build + board integration, not a ddsrt
+sync backend), which strengthens rather than weakens the "additive, behind
+`DDSRT_WITH_ZEPHYR`" case: there is already a place for it to sit.
+
+### DECISION — upstream PRs are future work
+
+Submission is deferred; the fork is maintained as-is. The grouping above stays
+as the record of what WOULD be offered, so the decision is retrievable when
+someone picks it up, rather than re-derived from scratch. This is a deliberate
+"carry it" — not the default drift the issue was opened to stop.
+
+### Two corrections, both of which cost time to rediscover
+
+**The census recipe names a ref that no longer exists.** It cites
+`origin/releases/0.10.x..fork/nano-ros`, but the fork now carries only `master`
+(`5e82de60`) and `nano-ros` (`8601ca66`). Counting `master..nano-ros` gives
+**58**, not 15, because it sweeps in upstream 0.10.x release commits (version
+bumps, iceoryx fixes, deserializer patches) that are not ours.
+
+Two recipes that do not depend on a vanished ref, cross-checking each other:
+
+```sh
+# by boundary: 5041f356 is the newest upstream 0.10.x commit our stack sits on
+git log --oneline 5041f356..nano-ros          # -> 15
+
+# by authorship, as an independent check
+git log --oneline --author=jerry73204 5e82de60..nano-ros   # -> 15
+```
+
+**The submodule checkout is SHALLOW**, and that reproduces this issue's own
+false alarm. With the default clone, `git rev-list --count HEAD` is 8 and
+`942dda3c`, `902f7707`, `12b4af2c` all report as absent objects — which reads
+exactly like "the superproject records commits nobody can fetch". It is not:
+`git fetch --unshallow origin` restores 2375 commits and every one resolves. The
+correction paragraph above warned about stale remote-tracking refs; this is the
+same trap by a different mechanism, so verification of ANY claim here must start
+by unshallowing.
