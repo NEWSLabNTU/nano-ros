@@ -245,10 +245,11 @@ fn shipped_session_config() -> Option<serde_json::Value> {
 pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, tempfile::TempDir) {
     let config_dir = write_zenoh_session_config(locator);
     let config_path = config_dir.path().join("session_config.json5");
-    // Source the pinned overlay on top of the distro setup so
-    // rmw_zenoh_cpp comes from `build/rmw_zenoh_ws/install/` (wire-matched
-    // to our zenoh-pico pin). Fall through to the distro install when the
-    // overlay is missing.
+    // The distro's `rmw_zenoh_cpp` is the DEFAULT and the normal case. The
+    // opt-in overlay is layered on top only when someone has built it to
+    // reproduce a specific pairing (RFC-0075); "wire-matched to our zenoh-pico
+    // pin" was the old reason here and issue 0291 refuted it — the wire is
+    // proto-stable across 1.x.
     let overlay_snippet = match rmw_zenoh_overlay() {
         Some(path) => format!(" && source {}", path.display()),
         None => String::new(),
