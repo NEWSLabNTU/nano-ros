@@ -24,11 +24,28 @@
 # the bash one and not the fish one, so the same host behaved differently in
 # two shells. One file, read by both.
 #
+# RETIRED ENTRIES
+#
+#   zenohd   removed 2026-08-18 (issue 0653). phase-362 / RFC-0075 replaced the
+#            vendored router with ROS's `rmw_zenoh_cpp/rmw_zenohd`, and the SDK
+#            index entry went with it — but this line stayed, so any host that
+#            had ever provisioned it kept putting `~/.nros/sdk/zenohd/<v>/bin`
+#            on PATH forever. That is not merely dead weight: it is a RETIRED
+#            router shadowing the paired one. Measured on the machine that found
+#            it — `command -v zenohd` gave the store's 1.7.2 while ROS shipped
+#            zenoh-c 1.8.0, 801 MB of it, still first on PATH months after the
+#            retirement. The router is also never invoked by bare name (the
+#            resolvers take an absolute path), so it never belonged on this list
+#            once it came from ROS.
+#
+# Removing a name here does NOT delete the store directory; nothing does, since
+# the store is documented to accumulate (issue 0500). `just doctor` reports a
+# retired entry that is still installed so it can be removed deliberately.
+#
 # Format: one bare tool name per line; `#` comments and blanks ignored.
 # A cross-gcc needs no entry — both shells detect `*-gcc` in the dir directly.
 
 genromfs
 sccache
 espflash
-zenohd
 idlc

@@ -15,7 +15,7 @@
 #
 # Each row is decided by a DIFFERENT step of the order, and each would be
 # answered wrongly by some plausible alternative order — a table where every row
-# is settled by step 1 proves nothing about steps 2..4.
+# is settled by step 1 proves nothing about steps 2..3.
 #
 # `PATH` is not a column because it is not searched, and `rejects-a-path-router`
 # is the row that keeps it that way: a router sitting on PATH must NOT be chosen
@@ -35,9 +35,14 @@
 #   @/overlay  @/underlay  @/optros/humble  @/optros/jazzy  @/bin/rmw_zenohd
 #   @/explicit/router     @/nothing (created EMPTY — no router)
 #
-# `optros` is the conventional root steps 3 and 4 search, a column rather than a
+# `optros` is the conventional root step 3 searches, a column rather than a
 # constant so the last rows can say "no router anywhere" at all. Both runners
 # pass it as NROS_ZENOHD_OPT_ROS, which is the only reason that override exists.
+#
+# `rejects-an-unnamed-distro` is the other negative row: the root holds TWO
+# distros and the caller named neither, so the answer must be nothing. Globbing
+# it would return jazzy — a router the user never asked for, indistinguishable
+# from the right one by looking at it.
 #
 explicit-wins	@/explicit/router	@/overlay	humble	@/optros	@/explicit/router
 ament-before-opt-ros		@/overlay	humble	@/optros	@/overlay/$rel
@@ -45,6 +50,6 @@ ament-order-overlay-first		@/overlay:@/underlay	humble	@/optros	@/overlay/$rel
 ament-order-underlay-first		@/underlay:@/overlay	humble	@/optros	@/underlay/$rel
 ament-skips-prefix-without-router		@/nothing:@/underlay	humble	@/optros	@/underlay/$rel
 opt-ros-named-distro			humble	@/optros	@/optros/humble/$rel
-opt-ros-newest-name-last				@/optros	@/optros/jazzy/$rel
+rejects-an-unnamed-distro				@/optros	
 rejects-a-path-router			humble	@/nothing	
 nothing-anywhere			humble	@/nothing	

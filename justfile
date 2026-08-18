@@ -4788,6 +4788,29 @@ doctor tier="":
     else
         echo "  [MISSING] nros CLI — run: just setup-cli"
     fi
+    # issue 0653 — a RETIRED SDK store entry that is still installed.
+    #
+    # The store accumulates and nothing prunes it (issue 0500), so a tool that
+    # nano-ros stopped shipping stays where it was put — and until this was
+    # found, `zenohd` also stayed on PATH, because it was still named in
+    # `scripts/sdk-path-tools.txt`. That is worse than wasted disk: `command -v
+    # zenohd` returned a RETIRED router (1.7.2) months after RFC-0075 moved the
+    # router to ROS's `rmw_zenohd` (zenoh-c 1.8.0). Reported rather than deleted
+    # — doctor is read-only, and this is the user's machine.
+    retired_store=""
+    while IFS= read -r retired_tool; do
+        case "$retired_tool" in ''|\#*) continue ;; esac
+        d="${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool"
+        [ -d "$d" ] || continue
+        retired_store="$retired_store $retired_tool"
+    done < "{{justfile_directory()}}/scripts/sdk-retired-tools.txt"
+    if [ -n "$retired_store" ]; then
+        echo "  [WARN] retired SDK store entries still installed:$retired_store"
+        echo "         nano-ros no longer ships these; nothing prunes the store."
+        for retired_tool in $retired_store; do
+            echo "         rm -rf ${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool"
+        done
+    fi
     # clang-format pin (consistent C/C++ formatting across machines + CI).
     want_cf="$(cat "{{justfile_directory()}}/.clang-format-version" 2>/dev/null || echo 17.0.6)"
     pinned_cf="{{justfile_directory()}}/build/clang-format/bin/clang-format"

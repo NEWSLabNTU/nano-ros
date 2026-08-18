@@ -1,0 +1,23 @@
+# SDK store entries nano-ros no longer ships — issue 0653.
+#
+# The store ACCUMULATES by design (issue 0500: prefixes are enumerated
+# newest-first precisely because old ones linger), and nothing prunes it. So
+# retiring a tool from `nros-sdk-index.toml` stops new installs and leaves every
+# existing one exactly where it was.
+#
+# That is not just disk. `zenohd` was also still named in
+# `scripts/sdk-path-tools.txt`, so activate.sh kept prepending its bin dir, and
+# `command -v zenohd` returned the RETIRED vendored router (1.7.2) months after
+# phase-362 / RFC-0075 moved the router to ROS's `rmw_zenoh_cpp/rmw_zenohd`
+# (zenoh-c 1.8.0). A stale tool on PATH is a stale tool that gets USED.
+#
+# `just doctor` reports an entry listed here that is still present, with the
+# `rm -rf` to remove it. It does not delete anything: doctor is read-only and
+# the store is the user's.
+#
+# Add a name here when you retire it from the index — the index removal is what
+# makes it stop arriving, this is what makes an existing one visible.
+#
+# Format: one store directory name per line; `#` comments and blanks ignored.
+
+zenohd

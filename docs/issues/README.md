@@ -424,12 +424,17 @@ scoped to interop. The genuine bug underneath was narrower and is fixed: "has RO
 this repo's own Arch/Fedora/NixOS distrobox route — was told there was no router. Both resolvers now read
 the sourced environment (`AMENT_PREFIX_PATH`, then the `/opt/ros` fallbacks); note `rmw_zenohd` is NOT on
 `PATH` even when installed (it lives in `lib/rmw_zenoh_cpp/`), which the book now states so a silent
-`command -v` is not read as a broken install. `PATH` is deliberately NOT searched: RFC-0075 wants the
-router PAIRED with the `rmw_zenoh_cpp` in use, and `PATH` is where an unpaired one accumulates — this host
-carried a retired `zenohd` 1.7.2 in `~/.nros/sdk` while ROS shipped zenoh-c 1.8.0. Provenance is now
-asserted rather than assumed (`ros_zenohd_provenance`: ament prefix + `zenoh_cpp_vendor` header), and both
-resolvers WARN when `NROS_RMW_ZENOHD` names something else — the one door an unpaired router can still
-come through. `zenohd.sh` had carried "the two must
+`command -v` is not read as a broken install. Nothing the user did not NAME is searched: RFC-0075 wants the
+router PAIRED with the `rmw_zenoh_cpp` in use, so neither `PATH` (this host carried TWO unpaired routers —
+`/usr/bin/zenohd` v1.4.0 and a retired `~/.nros/sdk` 1.7.2 — against ROS's zenoh-c 1.8.0) nor a
+`/opt/ros/*` glob (which returns jazzy over humble by collation, both being real ROS routers, so a lane
+runs green against the distro nobody was testing). Provenance is asserted rather than assumed
+(`ros_zenohd_provenance`: ament prefix + `zenoh_cpp_vendor` header), and both resolvers WARN when
+`NROS_RMW_ZENOHD` names something else — the one door an unpaired router can still come through.
+Retiring the router from the SDK index had NOT retired it from hosts: the store accumulates by design
+(#0500) and `scripts/sdk-path-tools.txt` still wired it onto `PATH`, so a retired 1.7.2 won `command -v`
+months later. Fixed there, plus `scripts/sdk-retired-tools.txt` + a `just doctor` line reporting a retired
+entry that is still installed. `zenohd.sh` had carried "the two must
 agree" as a comment since phase-362 with nothing checking it, and they drifted identically; the
 expectations are now ONE table answered twice — `check-zenohd-resolution-parity` for the shell,
 `zenohd_resolution_matches_the_shared_table` for the Rust. See `archived/0653-*`. (2026-08-18)

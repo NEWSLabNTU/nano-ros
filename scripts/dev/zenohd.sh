@@ -18,11 +18,11 @@
 # parses both and enforces it — the sentence above was here on its own for a
 # phase, and the two drifted anyway.
 #
-# Order (issue 0653), most explicit first:
+# Order (issue 0653), most explicit first. Every step is something the USER
+# stated; nothing here searches for a router the user did not name:
 #   1. NROS_RMW_ZENOHD        an explicit path, for a non-standard install
 #   2. AMENT_PREFIX_PATH      every prefix the caller has SOURCED
-#   3. $ROS_DISTRO            under /opt/ros
-#   4. /opt/ros/*             newest distro name last
+#   3. $ROS_DISTRO            under /opt/ros — the distro the caller named
 #
 # Step 2 is what makes "source setup.bash, then run the lanes" true, and
 # `/opt/ros` alone did not: a ROS install need not be there. This repo documents
@@ -37,17 +37,17 @@
 # `rmw_zenoh_cpp` a ROS node is using, and PATH is exactly where an unrelated
 # router accumulates. On the machine this was written:
 #
-#     $ command -v zenohd
-#     ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd    # retired, zenoh 1.7.2
-#     $ …/opt/zenoh_cpp_vendor/include/zenoh_configure.h
-#     #define ZENOH_C "1.8.0"                            # what ROS actually ships
+#     /usr/bin/zenohd                            # a system install: zenohd v1.4.0
+#     ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd  # nano-ros's own RETIRED entry: 1.7.2
+#     #define ZENOH_C "1.8.0"                    # what ROS actually ships
 #
-# A user following zenoh's own install instructions gets a third. Letting any of
-# them shadow the paired one reintroduces the drift issue 0609 measured, with no
-# version to point at. NROS_RMW_ZENOHD covers the deliberate case.
+# TWO unpaired routers, four and one minor versions behind, and one of them was
+# first on PATH because nano-ros itself put it there. Letting either shadow the
+# paired one reintroduces the drift issue 0609 measured, with no version to point
+# at. NROS_RMW_ZENOHD covers the deliberate case.
 #
 # Note the search never looks for the NAME `zenohd` either: that is the retired
-# vendored router, and the store above shows one still installed.
+# vendored router, and both paths above carry one.
 nros_zenohd_bin() {
     local relative="lib/rmw_zenoh_cpp/rmw_zenohd"
     # The conventional root, overridable ONLY so the parity gate can drive steps
@@ -83,23 +83,12 @@ nros_zenohd_bin() {
         printf '%s\n' "$opt_ros/$ROS_DISTRO/$relative"
         return 0
     fi
-    # Newest distro name last, so a host with several picks one deterministically.
-    #
-    # A glob rather than `ls | sort | tail`, for the builtins-only reason above,
-    # and under `LC_ALL=C` because a glob expands in COLLATION order and the
-    # locale decides that — issue 0485 is a counter split across locales by
-    # exactly this. Distro names are ASCII, so C order is the intended one.
-    local candidate="" d
-    local saved_lc="${LC_ALL-}"
-    LC_ALL=C
-    for d in "$opt_ros"/*/; do
-        [ -x "$d$relative" ] && candidate="$d$relative"
-    done
-    if [ -n "$saved_lc" ]; then LC_ALL="$saved_lc"; else unset LC_ALL; fi
-    if [ -n "$candidate" ]; then
-        printf '%s\n' "$candidate"
-        return 0
-    fi
+    # There is deliberately no fourth step. Globbing "$opt_ros"/* and taking the
+    # newest name resolves a router the user never asked for: on a host with
+    # humble AND jazzy installed it picks jazzy by COLLATION, whatever the user
+    # sourced or intended. Same defect as searching PATH — an answer arrived at
+    # quickly and belonging to somebody else — and worse here, because both are
+    # plausible, so nothing about the result looks wrong.
 
     printf 'ERROR: cannot locate `rmw_zenoh_cpp/rmw_zenohd`.\n' >&2
     printf '       Looked in AMENT_PREFIX_PATH=%s and under %s (ROS_DISTRO=%s).\n' \

@@ -134,9 +134,11 @@ now, most explicit first:
 ```
 1. NROS_RMW_ZENOHD     an explicit path
 2. AMENT_PREFIX_PATH   every prefix the caller has SOURCED, in ament's order
-3. $ROS_DISTRO         under /opt/ros
-4. /opt/ros/*          newest distro name last
+3. $ROS_DISTRO         under /opt/ros — the distro the caller named
 ```
+
+Every step is something the **user stated**. Nothing searches for a router the
+user did not name — see the two subsections below, which are the same rule twice.
 
 Verified with the fallbacks disabled, which is the case that was broken:
 
@@ -163,14 +165,15 @@ and the machine it was written on demonstrates why:
 
 ```
 $ command -v zenohd
-~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd     # retired vendored, zenoh 1.7.2
+/usr/bin/zenohd                               # a system install: zenohd v1.4.0
+~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd     # nano-ros's own RETIRED entry: 1.7.2
 $ grep 'define ZENOH_C ' /opt/ros/humble/opt/zenoh_cpp_vendor/include/zenoh_configure.h
-#define ZENOH_C "1.8.0"                             # what ROS actually ships
+#define ZENOH_C "1.8.0"                       # what ROS actually ships
 ```
 
-A stale router from nano-ros's own retired SDK entry was already sitting on
-`PATH`, one minor version behind the paired one — and a user following zenoh's
-own install instructions gets a third. RFC-0075's argument is not "obtain a
+**Two** unpaired routers on one ordinary host — four and one minor versions
+behind the paired one — and the second was first on `PATH` because nano-ros
+itself put it there (see "The retired entry was still being wired" below). RFC-0075's argument is not "obtain a
 router" but "obtain the router PAIRED with the `rmw_zenoh_cpp` in use", because
 the pairing is precisely what a version number failed to express (issue 0609:
 `rmw-zenoh-cpp` 0.1.1 → 0.1.9 moved vendored zenoh 1.2.0 → 1.8.0, interop going
@@ -178,8 +181,22 @@ from zero samples to 10/10, with our pin taking no part in either). Preferring
 `PATH` would let any unpaired router shadow the right one, silently, and hand
 back the drift the RFC removed.
 
-So the search consults ament prefixes and `/opt/ros` only. It also never looks
-for the NAME `zenohd`, only `rmw_zenohd` — the store above shows why.
+It also never looks for the NAME `zenohd`, only `rmw_zenohd` — both paths above
+show why.
+
+### `/opt/ros/*` is not globbed either, for the same reason
+
+The first cut also ended with "any distro under `/opt/ros`, newest name last".
+That is the PATH mistake wearing different clothes: on a host with **humble and
+jazzy both installed** it returns jazzy, by collation, whatever the user sourced
+or intended. And it is worse than the PATH case, because both candidates are
+real ROS routers — nothing about the answer looks wrong, so a lane could run
+green against the distro the user was not testing.
+
+`$ROS_DISTRO` stays, because that is the user naming one. The glob is gone; when
+neither the environment nor an explicit path names a router, saying so is the
+correct answer. The shared table's `rejects-an-unnamed-distro` row pins it: a
+root holding two distros, neither named, must resolve nothing.
 
 ### Provenance is asserted, not assumed
 
@@ -246,3 +263,39 @@ a glob under `LC_ALL=C` for step 5 — the locale being issue 0485's class).
 `NROS_ZENOHD_OPT_ROS` exists solely so the gate can drive steps 4 and 5 over a
 synthetic tree; no non-test caller sets it. The alternative was a gate that
 checks the two new steps and leaves the two legacy ones unwatched on both sides.
+
+
+## Follow-on — the retired entry was still being wired onto `PATH`
+
+Finding `~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd` first on `PATH` raised the
+question of what put it there, months after phase-362 retired it. Three things
+had to be true, and all three were:
+
+1. `nros-sdk-index.toml` **had** dropped the entry — so it stops ARRIVING.
+2. The SDK store **accumulates** and nothing prunes it (issue 0500 documents the
+   accumulation as deliberate), so every host that ever provisioned it kept
+   801 MB of retired router.
+3. `scripts/sdk-path-tools.txt` — the list of tools that must be reachable by
+   BARE NAME — still named `zenohd`. So `activate.sh` and `activate.fish` kept
+   prepending its bin dir on every activation.
+
+(3) is the one that turns dead weight into a hazard: a retired router does not
+merely sit there, it wins `command -v`. And it never belonged on that list once
+the router came from ROS, because the router is resolved by ABSOLUTE PATH — the
+bare name is not how anything invokes it.
+
+Fixed:
+
+* `zenohd` removed from `scripts/sdk-path-tools.txt`, with the retirement
+  recorded there rather than the line silently vanishing.
+* `check-activate-shells.sh` used `zenohd` as the synthetic tool for its
+  "versioned store reaches PATH" assertion — it now uses `espflash`. A gate
+  demonstrating the rule with a name the rule no longer covers proves the
+  opposite of the rule.
+* `scripts/sdk-retired-tools.txt` + a `just doctor` line: a retired entry that is
+  still installed is REPORTED, with the `rm -rf` to remove it. Doctor is
+  read-only and the store belongs to the user, so it does not delete.
+
+The 801 MB copy on the machine that found this was removed. `/usr/bin/zenohd`
+v1.4.0 was left alone — it is not ours, and after this change it is not
+consulted.

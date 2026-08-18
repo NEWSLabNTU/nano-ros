@@ -122,15 +122,26 @@ ROS's own way to reach it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So a silent
 `command -v` is normal and not a broken install — `just <plat> zenohd` finds it
 regardless.
 
-**`PATH` is not searched for the router, on purpose.** nano-ros needs the router
-that ships *with your `rmw_zenoh_cpp`*, because the two share a zenoh build and
-a mismatch shows up as "nothing was delivered" rather than as an error. A
-`zenohd` on `PATH` — one you installed from zenoh's own instructions, or one
-nano-ros itself left behind before it retired the vendored router — is usually a
-different and older zenoh, so picking it up would be the wrong answer arrived at
-quickly. If you do want a specific binary, name it with `NROS_RMW_ZENOHD`; you
-will get a warning if it is not a `rmw_zenoh_cpp` router, and it will still be
-used.
+**Only what you name is used.** nano-ros needs the router that ships *with your
+`rmw_zenoh_cpp`*: the two share a zenoh build, and a mismatch shows up as
+"nothing was delivered" rather than as an error. So the search is
+`NROS_RMW_ZENOHD`, then the prefixes you sourced, then `$ROS_DISTRO` — and
+nothing else. In particular:
+
+* **`PATH` is not searched.** A `zenohd` there — installed from zenoh's own
+  instructions, or left behind by an older nano-ros — is usually a different and
+  older zenoh. The machine this was written on had two, at v1.4.0 and 1.7.2,
+  against ROS's 1.8.0.
+* **`/opt/ros/*` is not globbed.** If you have humble and jazzy installed,
+  guessing between them is not better than saying nothing. Source the one you
+  want, or set `ROS_DISTRO`.
+
+If you do want a specific binary, name it with `NROS_RMW_ZENOHD`; it is used as
+given, with a warning if it is not an `rmw_zenoh_cpp` router.
+
+If you once used an older nano-ros, run `just doctor`: it reports a retired SDK
+store entry that is still installed, `zenohd` included, with the command to
+remove it.
 
 | Task | Needs a ROS 2 install? |
 |---|---|

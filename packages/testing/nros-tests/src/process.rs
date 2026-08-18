@@ -1084,12 +1084,12 @@ impl Drop for ManagedProcess {
 /// deployment runs `rmw_zenohd`. Testing against ours tested a configuration
 /// nobody deploys.
 ///
-/// Resolution order, most explicit first (issue 0653):
+/// Resolution order, most explicit first (issue 0653). Every step is something
+/// the USER stated; nothing here searches for a router the user did not name:
 ///   1. `NROS_RMW_ZENOHD` — an explicit path, for a non-standard install.
 ///   2. `$AMENT_PREFIX_PATH` — every prefix the caller has SOURCED, in the
 ///      order ament lists them (most recently sourced first).
-///   3. `$ROS_DISTRO` under `/opt/ros`.
-///   4. `/opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd`, newest name last.
+///   3. `$ROS_DISTRO` under `/opt/ros` — the distro the caller named.
 ///
 /// Step 2 is what makes "source `setup.bash`, then run the tests" true, and
 /// `/opt/ros` alone did not: a ROS install need not live there. This repo
@@ -1108,21 +1108,20 @@ impl Drop for ManagedProcess {
 /// unrelated router accumulates. Measured on the machine this was written on:
 ///
 /// ```text
-/// $ command -v zenohd
-/// ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd     # retired, zenoh 1.7.2
-/// $ …/opt/zenoh_cpp_vendor/include/zenoh_configure.h
-/// #define ZENOH_C "1.8.0"                             # what ROS actually ships
+/// /usr/bin/zenohd                            # a system install: zenohd v1.4.0
+/// ~/.nros/sdk/zenohd/1.7.2-nros2/bin/zenohd  # nano-ros's own RETIRED entry: 1.7.2
+/// #define ZENOH_C "1.8.0"                    # what ROS actually ships
 /// ```
 ///
-/// A user following zenoh's own install instructions gets a third. Preferring
-/// `PATH` would let any of them shadow the paired one and reintroduce precisely
-/// the drift issue 0609 measured (`rmw-zenoh-cpp` 0.1.1 -> 0.1.9 moving vendored
-/// zenoh 1.2.0 -> 1.8.0, interop going from zero samples to 10/10) with no
-/// version to point at. `NROS_RMW_ZENOHD` remains for the deliberate case, where
-/// the user has said which one they mean.
+/// TWO unpaired routers, four and one minor versions behind, and one of them was
+/// first on `PATH` because nano-ros itself put it there. Preferring `PATH` would
+/// let either shadow the paired one and reintroduce precisely the drift issue
+/// 0609 measured (`rmw-zenoh-cpp` 0.1.1 -> 0.1.9 moving vendored zenoh 1.2.0 ->
+/// 1.8.0, interop going from zero samples to 10/10) with no version to point at.
+/// `NROS_RMW_ZENOHD` remains for the deliberate case.
 ///
 /// Note the search never looks for the name `zenohd` either — that is the
-/// RETIRED vendored router, and the store above shows one still installed.
+/// RETIRED vendored router, and both paths above carry one.
 ///
 /// Returns `None` rather than a fallback path: a caller that cannot find the
 /// ROS router must SKIP (issue 0599), and a `PathBuf` that does not exist would
@@ -1190,15 +1189,15 @@ pub fn ros_zenohd_path_in(env: &ZenohdEnv) -> Option<std::path::PathBuf> {
             return Some(p);
         }
     }
-    // 4 — any distro under it, newest name last.
-    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&env.opt_ros)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path().join(ROS_ZENOHD_RELATIVE))
-        .filter(|p| p.exists())
-        .collect();
-    found.sort();
-    found.pop()
+    // There is deliberately no fourth step. Globbing `/opt/ros/*` and taking the
+    // newest name resolves a router the user never asked for: on a host with
+    // humble AND jazzy installed it picks jazzy by COLLATION, whatever the user
+    // sourced or intended. That is the same defect as searching `PATH` — an
+    // answer arrived at quickly and belonging to somebody else — and it is worse
+    // here because the two are both plausible, so nothing about the result looks
+    // wrong. If neither the environment nor an explicit path names a router,
+    // saying so is the correct answer.
+    None
 }
 
 /// Where a resolved router came from, and whether it is the ROS-paired one.

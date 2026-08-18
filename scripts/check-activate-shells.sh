@@ -7,7 +7,7 @@
 # zsh)" and "the script never errors", but two unmatched SDK-store globs made
 # zsh abort it mid-file — at line 92 before `nros setup`, at line 115 after it
 # — silently dropping every export below the failure (the SDK PATH loop that
-# wires zenohd, pinned ninja/make, .env, sdk-env.sh). No lane sourced these
+# wires the SDK store, pinned ninja/make, .env, sdk-env.sh). No lane sourced these
 # files under anything but bash, so it went unnoticed. Anything that reaches
 # the shell's word expansion as a glob can regress this; the check is cheap,
 # so it runs in check-fast.
@@ -159,9 +159,13 @@ mkdir -p "$empty_store"
 # Case 2 — versioned store only: the state `nros setup` actually leaves behind
 # (sdk/<tool>/<version>/bin), which is what made the second glob site fatal.
 versioned_store="$tmp/versioned"
-mkdir -p "$versioned_store/sdk/zenohd/1.7.2-nros2/bin"
-: >"$versioned_store/sdk/zenohd/1.7.2-nros2/bin/zenohd"
-chmod +x "$versioned_store/sdk/zenohd/1.7.2-nros2/bin/zenohd"
+# `espflash`, not `zenohd`: the router was retired with phase-362 / RFC-0075 and
+# is off `scripts/sdk-path-tools.txt` (issue 0653), so a fixture built on it
+# would assert that a name nothing wires any more reaches PATH — a gate proving
+# the opposite of the rule. The tool here must be one the list still carries.
+mkdir -p "$versioned_store/sdk/espflash/4.5.0-nros1/bin"
+: >"$versioned_store/sdk/espflash/4.5.0-nros1/bin/espflash"
+chmod +x "$versioned_store/sdk/espflash/4.5.0-nros1/bin/espflash"
 mkdir -p "$versioned_store/sdk/play_launch_parser/0.5.0/bin"
 : >"$versioned_store/sdk/play_launch_parser/0.5.0/bin/play_launch_parser"
 chmod +x "$versioned_store/sdk/play_launch_parser/0.5.0/bin/play_launch_parser"
@@ -176,7 +180,7 @@ done
 # above. bash is mandatory, so assert the wiring there.
 path_out="$(NROS_HOME="$versioned_store" NROS_QUIET_ACTIVATE=1 bash -c \
     ". '$REPO_ROOT/activate.sh'; printf '%s' \"\$PATH\"" 2>/dev/null)"
-for tool in zenohd play_launch_parser; do
+for tool in espflash play_launch_parser; do
     if ! printf '%s' "$path_out" | tr ':' '\n' | grep -q "^$versioned_store/sdk/$tool/"; then
         fail "activate.sh: versioned $tool bin dir never reached PATH"
     fi
