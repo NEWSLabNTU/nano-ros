@@ -600,12 +600,11 @@ pub struct SystemToml {
     /// block (node stays a plain node).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<SystemLifecycle>,
-    // Phase 256 — `[param_persistence]` is DISABLED at the config surface: the
-    // feature is incomplete (only the hosted `file` `ParamStore` backend exists;
-    // the embedded flash/NVS backends are unbuilt — issue 0080). The typed field
-    // is intentionally absent, so `deny_unknown_fields` REJECTS a
-    // `[param_persistence]` block until the backends land. The runtime `ParamStore`
-    // seam (`nros-params`) + the codegen path are kept dormant for re-enable.
+    // `[param_persistence]` has no typed field, so `deny_unknown_fields` REJECTS
+    // such a block. Not "until the backends land" — issue 0080 ruled on-device
+    // parameter persistence a NON-GOAL (2026-07-10; launch-baked defaults are
+    // the model), and phase-359 W10 deleted the dormant seam it was waiting on.
+    // The rejection is now permanent rather than provisional.
 }
 
 /// `[wcet]` — RFC-0078 declared execution-time bounds.

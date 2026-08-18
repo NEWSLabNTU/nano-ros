@@ -32,18 +32,14 @@ pub struct NrosPlan {
     /// output when absent so non-lifecycle plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<PlanLifecycle>,
-    /// Phase 172.H — runtime parameter-override persistence backend. Additive;
-    /// absent ⇒ no persistence (generated runtime keeps no param services).
-    /// Omitted from output when absent so plans stay byte-identical.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub param_persistence: Option<PlanParamPersistence>,
     /// Phase 250 (Wave 3) — the ROS 2 parameter SERVER (the 6 get/set/list/
     /// describe services) for external query/update, WITHOUT persistence. The
     /// user writes normal `declare_parameter`/`get_parameter` in node source; a
     /// declared `[param_services]` axis lowers this on so the generated entry
     /// carries `nros/param-services` and the runtime registers the services on
-    /// the first declared parameter. Distinct from `param_persistence` (which
-    /// also pulls the feature but additionally attaches a backing store).
+    /// the first declared parameter. (It used to be distinguished from a
+    /// `param_persistence` sibling; issue 0080 retired that, so the SERVER is
+    /// now the only parameter capability a plan carries.)
     /// Additive; absent ⇒ no server, omitted so plans stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param_services: Option<PlanParamServices>,
@@ -116,16 +112,6 @@ pub struct PlanBridgeEndpoint {
     pub domain: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
-}
-
-/// Phase 172.H — where the generated runtime persists parameter overrides set
-/// after boot, so they survive a restart. `backend` selects the store kind
-/// (only `"file"`, a hosted text file, today); `path` is its location.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlanParamPersistence {
-    pub backend: String,
-    pub path: String,
 }
 
 /// Phase 250 (Wave 3) — the declared parameter-server capability. A pure

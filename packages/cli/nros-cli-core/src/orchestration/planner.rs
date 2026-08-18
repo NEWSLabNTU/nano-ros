@@ -640,11 +640,6 @@ fn schema_plan_json(
     if let Some(lifecycle) = lifecycle {
         obj.insert("lifecycle".to_string(), lifecycle);
     }
-    // Phase 256 — `[param_persistence]` is DISABLED at the config surface: the
-    // feature is incomplete (only the hosted `file` backend exists; the embedded
-    // flash/NVS `ParamStore` backends are unbuilt — issue 0080). No config source
-    // emits it to the plan, so `apply_param_persistence` stays a no-op. The runtime
-    // `ParamStore` seam + the codegen path are kept dormant for re-enable.
 
     // Phase 250/261 — parameter-server capability, before `build` (NrosPlan
     // field order); absent ⇒ omitted, plan stays byte-identical. The axis is on

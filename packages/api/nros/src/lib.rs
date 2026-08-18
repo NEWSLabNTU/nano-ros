@@ -970,10 +970,6 @@ pub use nros_params::{
     ParameterError, ParameterServer, ParameterType, ParameterValue, ParameterVariant,
     ReadOnlyParameter, SetParameterResult,
 };
-// Phase 172.H — runtime parameter-override persistence backends.
-/// Hosted file-backed parameter store (the only built-in backend today).
-pub use nros_params::{NullParamStore, ParamStore, ParamStoreError};
-
 /// Prelude module for convenient imports
 ///
 /// Import everything you need with a single statement:

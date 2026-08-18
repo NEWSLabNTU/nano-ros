@@ -39,13 +39,16 @@ extern crate std;
 extern crate alloc;
 
 pub(crate) mod config;
-pub mod persist;
+// phase-359 W10 / issue 0080 — `persist` is GONE. It held the parameter
+// PERSISTENCE seam (`ParamStore`, `NullParamStore`, `ParamStoreError`,
+// `FileParamStore`), which 0080 ruled a non-goal in July: nano-ros does not
+// persist parameters on-device, and launch-baked defaults are the supported
+// model. Runtime get/set/describe — the `server` module — stay.
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
-pub use persist::{NullParamStore, ParamStore, ParamStoreError};
 pub use server::{LegacyParameterBuilder, ParameterServer};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,

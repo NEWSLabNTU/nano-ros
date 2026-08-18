@@ -58,7 +58,9 @@ use heapless::{FnvIndexMap, mpmc::MpMcQueue};
 use portable_atomic::{AtomicBool, Ordering};
 use portable_atomic_util::Arc;
 
-use super::{node_wake::NodeWake, platform_task::PlatformTask};
+use nros_platform_api::task::PlatformTask;
+
+use super::node_wake::NodeWake;
 
 /// Mailbox depth per worker. Power of two — `MpMcQueue` requires it.
 ///
