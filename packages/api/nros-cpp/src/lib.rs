@@ -2702,35 +2702,30 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
 /// into microseconds. Phase 89.2.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_time_ns() -> u64 {
-    #[cfg(feature = "std")]
-    {
-        use std::time::Instant;
-        static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-        let epoch = EPOCH.get_or_init(Instant::now);
-        Instant::now().duration_since(*epoch).as_nanos() as u64
+    // RFC-0073 / phase-352: the platform clock IS nanoseconds now, so this
+    // stopped scaling microseconds up (phase-243 had to, and the extra zeros
+    // were never real precision).
+    //
+    // phase-359 W10 — ONE implementation. The `std` arm kept its own epoch in a
+    // `OnceLock<Instant>`, so a hosted image and a target image answered "what
+    // time is it" from different clocks, and `nros::Future::wait()` — the
+    // caller this exists for — budgeted its spin against whichever one the
+    // build happened to have.
+    //
+    // Reached through the C symbol rather than
+    // `<nros_platform::ConcretePlatform as PlatformClock>`: `ConcretePlatform`
+    // exists only when a `platform-*` feature is selected, which made this
+    // crate uncompilable in its own default configuration once phase-361 W3
+    // stopped defaulting to `std` — a bare `cargo check -p nros-cpp` died on a
+    // type that is really a LINK-time fact, not a compile-time one. Every port
+    // exports this symbol through the same contract the wake primitives rely
+    // on, which is how `nros-node` and `nros-c` reach the same clock.
+    unsafe extern "C" {
+        fn nros_platform_clock_ns() -> u64;
     }
-    #[cfg(not(feature = "std"))]
-    {
-        // RFC-0073 / phase-352: the platform clock IS nanoseconds now, so
-        // this stopped scaling microseconds up (phase-243 had to, and the
-        // extra zeros were never real precision).
-        //
-        // phase-359 W10 — reached through the C symbol rather than
-        // `<nros_platform::ConcretePlatform as PlatformClock>`. `ConcretePlatform`
-        // exists only when a `platform-*` feature is selected, which made this
-        // crate uncompilable in its own default configuration once phase-361 W3
-        // stopped defaulting to `std` — a bare `cargo check -p nros-cpp` died on
-        // a type that is really a LINK-time fact, not a compile-time one. Every
-        // port exports this symbol through the same contract the wake primitives
-        // rely on, which is how `nros-node` reaches the same clock
-        // (`default_platform_clock_us`).
-        unsafe extern "C" {
-            fn nros_platform_clock_ns() -> u64;
-        }
-        // SAFETY: bare query of the platform's monotonic ns counter; the symbol
-        // is guaranteed by whichever platform port linked the binary.
-        unsafe { nros_platform_clock_ns() }
-    }
+    // SAFETY: bare query of the platform's monotonic ns counter; the symbol is
+    // guaranteed by whichever platform port linked the binary.
+    unsafe { nros_platform_clock_ns() }
 }
 
 // ============================================================================

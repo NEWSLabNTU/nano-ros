@@ -20,13 +20,23 @@
 // Atomics no longer cross the FFI at all — they use `core::sync::atomic` on both
 // std and no_std (see below).
 // cbindgen:ignore
-#[cfg(not(feature = "std"))]
+//
+// phase-359 W10 — no longer `no_std`-only. Every consumer of this crate is a C
+// image, and a C image links a platform port; asking the port is what the rest
+// of the tree does on both flavours since this campaign unified `nros-node`'s
+// clock. The `std` twins these replaced are described at each function.
 unsafe extern "C" {
     /// Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
     fn nros_platform_clock_ns() -> u64;
 
     /// Sleep at least `us` microseconds.
     fn nros_platform_sleep_us(us: usize);
+
+    /// Whole seconds since the Unix epoch.
+    fn nros_platform_time_since_epoch_secs() -> u32;
+
+    /// Sub-second nanosecond component of the wall clock.
+    fn nros_platform_time_since_epoch_nanos() -> u32;
 }
 
 // ============================================================================
@@ -35,50 +45,45 @@ unsafe extern "C" {
 
 /// Get current monotonic time in nanoseconds.
 ///
-/// For `std` builds, uses `std::time::Instant`.
-/// For `no_std` builds, calls the C platform function.
-#[cfg(feature = "std")]
-pub fn get_time_ns() -> u64 {
-    use std::time::Instant;
-
-    // Use a static reference point for monotonic time
-    static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let epoch = EPOCH.get_or_init(Instant::now);
-    Instant::now().duration_since(*epoch).as_nanos() as u64
-}
-
-/// Get current monotonic time in nanoseconds (no_std version).
+/// phase-359 W10 — one implementation. The `std` twin kept its own epoch in a
+/// `OnceLock<Instant>` while the platform already had one, so the two flavours
+/// answered "how long have we been running" from different clocks.
 ///
-/// RFC-0073 made nanoseconds the ABI's own unit, so this stopped
-/// fabricating them by multiplying microseconds (`clock_us * 1000`, which
-/// advertised a precision the source did not have) and now reads the
-/// platform clock directly. What the low digits are worth is a question
-/// `nros_platform_clock_resolution_ns` answers.
-#[cfg(not(feature = "std"))]
+/// RFC-0073 made nanoseconds the ABI's own unit, so this stopped fabricating
+/// them by multiplying microseconds. What the low digits are worth is a
+/// question `nros_platform_clock_resolution_ns` answers.
 pub fn get_time_ns() -> u64 {
+    // SAFETY: a bare counter read, no pointer arguments, guaranteed by whichever
+    // port linked the image.
     unsafe { nros_platform_clock_ns() }
 }
 
-/// Get system time in nanoseconds since Unix epoch.
+/// Get system time in nanoseconds since the Unix epoch.
 ///
-/// For `std` builds, uses `std::time::SystemTime`.
-/// For `no_std` builds, returns monotonic time (no Unix epoch available).
-#[cfg(feature = "std")]
+/// phase-359 W10 — this FIXES the no_std answer rather than merely merging two.
+/// The `no_std` twin returned `get_time_ns()`, the MONOTONIC counter,
+/// documented as "returns monotonic time as system time is not available". It
+/// IS available: the ABI has `nros_platform_time_since_epoch_*` and every port
+/// implements it. A caller stamping a message with this on target was getting
+/// time-since-boot presented as time-since-1970.
 pub fn get_system_time_ns() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_nanos() as i64,
-        Err(_) => 0,
+    // The ABI spends one instant over TWO symbols and each call samples the
+    // clock separately, so a second boundary between them pairs the old second
+    // with the new sub-second remainder — a stamp that jumps a second
+    // backwards. Bounded re-read; issue 0532's remaining half deletes it.
+    //
+    // SAFETY (all calls): bare wall-clock reads, no pointer arguments.
+    let mut secs = unsafe { nros_platform_time_since_epoch_secs() };
+    let mut nanos = unsafe { nros_platform_time_since_epoch_nanos() };
+    for _ in 0..2 {
+        let recheck = unsafe { nros_platform_time_since_epoch_secs() };
+        if recheck == secs {
+            break;
+        }
+        secs = recheck;
+        nanos = unsafe { nros_platform_time_since_epoch_nanos() };
     }
-}
-
-/// Get system time in nanoseconds (no_std version).
-///
-/// Note: For no_std, this returns monotonic time as system time is not available.
-#[cfg(not(feature = "std"))]
-pub fn get_system_time_ns() -> i64 {
-    get_time_ns() as i64
+    secs as i64 * 1_000_000_000 + nanos as i64
 }
 
 // ============================================================================
@@ -87,19 +92,12 @@ pub fn get_system_time_ns() -> i64 {
 
 /// Sleep for the specified duration in nanoseconds.
 ///
-/// For `std` builds, uses `std::thread::sleep`.
-/// For `no_std` builds, calls the C platform function.
-#[cfg(feature = "std")]
+/// phase-359 W10 — one implementation, the platform's own pacing primitive.
+/// Rounded to microseconds because that is the ABI's unit; the `std` twin took
+/// nanoseconds and handed them to `thread::sleep`, whose sub-microsecond
+/// precision is nominal on every OS this runs on.
 pub fn sleep_ns(ns: u64) {
-    use std::time::Duration;
-    std::thread::sleep(Duration::from_nanos(ns));
-}
-
-/// Sleep for the specified duration in nanoseconds (no_std version).
-///
-/// phase-243: forwarded to the canonical platform µs sleep (`sleep_us(ns/1000)`).
-#[cfg(not(feature = "std"))]
-pub fn sleep_ns(ns: u64) {
+    // SAFETY: a bare pacing call with no pointer arguments.
     unsafe { nros_platform_sleep_us((ns / 1000) as usize) }
 }
 

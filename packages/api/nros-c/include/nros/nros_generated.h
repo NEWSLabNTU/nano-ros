@@ -3075,6 +3075,16 @@ extern uint64_t nros_platform_clock_ns(void);
 extern void nros_platform_sleep_us(size_t us);
 
 /**
+ * Whole seconds since the Unix epoch.
+ */
+extern uint32_t nros_platform_time_since_epoch_secs(void);
+
+/**
+ * Sub-second nanosecond component of the wall clock.
+ */
+extern uint32_t nros_platform_time_since_epoch_nanos(void);
+
+/**
  * Phase 115.C — register a custom transport vtable.
  *
  * Must be called BEFORE `nros_support_init`. Subsequent calls

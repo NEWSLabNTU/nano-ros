@@ -282,7 +282,7 @@ pub unsafe extern "C" fn nros_executor_init(
         return NROS_RET_NOT_INIT;
     }
 
-    // `mut` only needed under `feature = "std"` where the
+    // `mut` only needed under `feature = "env"` where the
     // env-var-driven primary-identity block below mutates it;
     // on `no_std` (FreeRTOS / NuttX / ThreadX) the mutation
     // path compiles out and `-D unused-mut` would otherwise
@@ -305,7 +305,10 @@ pub unsafe extern "C" fn nros_executor_init(
     // names the same backend the support session opened
     // against. Mirror env-var resolution `open_session` uses so
     // primary picks line up.
-    #[cfg(feature = "std")]
+    // phase-359 W10 — `env`, not `std`: reading `$NROS_RMW` is the process
+    // environment CAPABILITY, the same one `ExecutorConfig::from_env`,
+    // `nros::init*` and `nros-node`'s selector already moved onto.
+    #[cfg(feature = "env")]
     {
         let name = std::env::var("NROS_RMW").unwrap_or_default();
         let support_locator =

@@ -706,7 +706,9 @@ pub unsafe extern "C" fn nros_cdr_read_string(
 // resolve in a `--no-default-features` build, breaking the workspace-
 // wide `cargo test --no-run` smoke gate. Wrap the whole `mod tests`
 // in the std-feature cfg so it's silently dropped when std is off.
-#[cfg(all(test, feature = "std"))]
+// phase-359 W10 — these tests contain no `std::` path at all; the gate was
+// inherited, not required.
+#[cfg(test)]
 mod tests {
     use super::*;
 

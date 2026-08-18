@@ -28,7 +28,13 @@ default = ["panic-spin"]
 # phase-359 W10 — `env` rides with `std` here; see the same note in `nros-cpp`.
 # `std` on the C API has always meant "hosted", and a hosted C entry resolves
 # its locator/domain from the environment at runtime.
-std = ["alloc", "nros/std", "nros/env", "nros-node/std", "nros-node/env", "nros-rmw/std"]
+# phase-359 W10 — the process-environment CAPABILITY, named here so this crate's
+# own `#[cfg]` can ask for it. `std` continues to imply it, which preserves what
+# a C image linking the std flavour has always had: `$NROS_RMW` backend
+# selection. Without this feature the cfg would be permanently false and that
+# selection would vanish from the C API silently.
+env = ["nros/env", "nros-node/env"]
+std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (cffi vtable dispatch) — every backend ships as a cffi

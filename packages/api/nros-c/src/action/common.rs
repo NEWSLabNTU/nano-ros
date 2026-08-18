@@ -186,21 +186,24 @@ pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) ->
 
     let uuid = &mut *uuid;
 
-    #[cfg(feature = "std")]
+    // phase-359 W10 — one generator, and the no_std one was the bug.
+    //
+    // The `std` arm mixed a wall-clock nanosecond stamp with a counter. The
+    // `no_std` arm used a bare `static mut COUNTER`, so every boot re-issued the
+    // same goal IDs from 1 — colliding with the previous run of the same node,
+    // and with any sibling node on the bus. The stamp is what carried uniqueness
+    // across processes, and target builds simply did not have it.
+    //
+    // They do: `platform::get_system_time_ns()` reads the ABI wall clock every
+    // port implements. This also retires a `static mut`, which edition 2024
+    // rejects for exactly the reason it was risky here.
     {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        // Simple UUID generation using system time and a counter
-        // Not cryptographically secure, but sufficient for goal IDs.
         // AtomicU32, not AtomicU64: 32-bit targets without 64-bit atomics
-        // (riscv32imac NuttX, thumbv7m) don't have the type at all (#134);
-        // the nanosecond timestamp carries the uniqueness across processes.
+        // (riscv32imac NuttX, thumbv7m) don't have the type at all (#134); the
+        // nanosecond timestamp carries the uniqueness across processes.
         static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        let nanos = now.as_nanos() as u64;
+        let nanos = crate::platform::get_system_time_ns() as u64;
         let count = COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed) as u64;
 
         // Fill UUID with time-based values
@@ -210,19 +213,6 @@ pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) ->
         // Set version (4) and variant bits for UUID v4-like format
         uuid.uuid[6] = (uuid.uuid[6] & 0x0f) | 0x40;
         uuid.uuid[8] = (uuid.uuid[8] & 0x3f) | 0x80;
-
-        NROS_RET_OK
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        // For no_std, use a simple counter-based approach
-        static mut COUNTER: u64 = 0;
-        COUNTER = COUNTER.wrapping_add(1);
-
-        uuid.uuid = [0u8; 16];
-        let counter_bytes = COUNTER.to_le_bytes();
-        uuid.uuid[0..8].copy_from_slice(&counter_bytes);
 
         NROS_RET_OK
     }

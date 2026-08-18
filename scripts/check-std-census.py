@@ -117,7 +117,15 @@ BASELINE = {
     # which is what the note above prescribes — three separate merges here have
     # now produced a number that is neither side's nor their arithmetic.
     "nros": {"cfg": 11, "path": 15},
-    "nros-c": {"cfg": 13, "path": 8},
+    #
+    # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
+    # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
+    # port, so all three are one implementation reading the ABI. One of them was
+    # a defect, not a split: the no_std "system time since the Unix epoch"
+    # returned the MONOTONIC counter. Goal-ID generation had the same shape and
+    # the same fix. `$NROS_RMW` selection moved onto `env`, which this crate now
+    # names. What remains is `extern crate std` and the lang-item plumbing.
+    "nros-c": {"cfg": 2, "path": 1},
     #
     # phase-359 W10 (backend tier): 3 -> 5. Two arms select the WALL CLOCK —
     # the platform's `time_since_epoch_*` when a port is linked, the steady
@@ -127,7 +135,13 @@ BASELINE = {
     # forward carried. Two counted sites here, three backends' worth of
     # implicit `std` removed from every native graph.
     "nros-core": {"cfg": 5, "path": 2},
-    "nros-cpp": {"cfg": 9, "path": 21},
+    #
+    # phase-359 W10: 9 -> 7 cfg, 21 -> 18 path. `nros_cpp_time_ns` was the same
+    # clock pair, and it is what `nros::Future::wait()` budgets its spin
+    # against — so a hosted image and a target image were timing that loop from
+    # different clocks. The remaining sites are the `cpp_diag!` stdio macro and
+    # the native-runtime component API, which wants its own pass.
+    "nros-cpp": {"cfg": 7, "path": 18},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.
