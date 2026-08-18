@@ -660,6 +660,65 @@ of the opt-out: an image that brings `esp-backtrace` or `panic-semihosting`
 STATES it, so the build can tell "deliberate" from "forgot" — which is the
 distinction the current design cannot make.
 
+### Amendment 2026-08-18 — the policy is declared, the PLACEMENT is derived
+
+Implementing M1 surfaced a third case the two-surface table does not cover, and
+resolving it removes a user-facing choice rather than adding one.
+
+**The case.** `nros::main!()` expands in `main.rs`, the bin target. Six examples
+— `examples/qemu-riscv64-threadx/rust/*` — are `crate-type = ["staticlib",
+"rlib"]` and produce TWO final artifacts from one crate: a bin (cargo/zenoh) and
+a `.a` (CMake/CycloneDDS, whose C `startup.c::main` dispatches to `app_main`).
+rustc demands the lang item when it compiles the staticlib, which is built from
+`lib.rs`'s module tree, so a handler emitted in `main.rs` never reaches the `.a`,
+while one in the lib reaches BOTH — the bin links the rlib and inherits it.
+
+**The wrong fix, recorded because it is the obvious one.** Declare those six
+`panic = "own"` and leave their `panic_to_platform!()` where it is. It works, and
+it destroys the only thing `own` is for: `own` would then mean either "I bring my
+own provider" or "my provider lives in the other artifact's macro", and the gate
+could no longer tell deliberate from forgot — the distinction this whole decision
+exists to create. It also asks the author of a talker example to know a Rust
+linkage rule in order to answer a question about panics.
+
+**The rule.** One sentence, covering every family:
+
+> The entry macro of a final artifact emits that artifact's handler.
+
+Each artifact already has exactly one entry macro, and after phase-366 W7's
+rename none of them is named for an RMW:
+
+| artifact | entry macro | families |
+| --- | --- | --- |
+| bin (cargo) | `nros::main!()` | native, freertos, nuttx, arm-baremetal, ThreadX-RV64 zenoh |
+| `.a` (CMake) | `<board>::app_main!()` | ThreadX-RV64 cyclone |
+| `.a` (west) | `nros::zephyr_component_main!()` | zephyr |
+| `.a` (C/C++ image) | `nano_ros_entry(… PANIC …)` → one cargo feature | nros-c / nros-cpp |
+
+**How the dual-artifact crate avoids emitting twice.** `main!()` already parses
+the entry's `Cargo.toml` (three sites in `main_macro.rs`). It reads `[lib]
+crate-type`: if the package produces a `staticlib`, the lib owns the item for
+both artifacts and `main!()` emits nothing. Derived from the manifest, never
+chosen by the author.
+
+**Hosted images are excluded structurally.** The emit is gated
+`#[cfg(target_os = "none")]`, the same condition `main!()` already uses to tell a
+bare-metal image from a hosted one. libstd defines the lang item, so without this
+gate M5's default flip would break every native example at once.
+
+**Two adjacent facts, established while implementing this and recorded so they
+are not re-derived.** `nros_board_threadx_qemu_riscv64::cyclonedds_app_main!()`
+was renamed `app_main!()`: its body is `run_app_thread($register)` and nothing in
+it is CycloneDDS — Cyclone is merely the one backend whose embedded build must be
+CMake-linked, which is a BUILD-SYSTEM property. An entry macro named for a
+backend contradicts the RMW-portability promise; the divergence that produced the
+name is issue 0666. And `examples/threadx-linux/rust/*` declared
+`crate-type = ["rlib", "staticlib"]` with nothing consuming the `.a` — dropped,
+same removal and reasoning as phase-359 W7 on qemu-arm-nuttx. A `staticlib` is a
+final artifact and carries a lang-item obligation; declaring one nothing builds
+is an obligation with no consumer, invisible there only because the family is
+hosted and libstd satisfied it.
+
 ### Why a default is safe here, given there are no weak lang items
 
 Rust has no overridable `#[panic_handler]`; two definitions is a compile error.

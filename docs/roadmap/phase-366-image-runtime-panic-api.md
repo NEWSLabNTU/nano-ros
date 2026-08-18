@@ -1,7 +1,8 @@
 # Phase 366 — The panic platform API, and one fatal path per image
 
-**Status (2026-08-17).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W5.e is
-BLOCKED on W7 (review found it is a Rust-entry-only answer); W5.f and W7 remain.
+**Status (2026-08-18).** IN PROGRESS — W1–W4, W5.a–W5.d and W6 landed. W7.a
+(M1, Rust half) landed. W5.e stays BLOCKED as R1 of the retirement list; W5.f is
+R4; W7.b–W7.d and M2–M6 remain.
 
 The lang item now belongs to the image on all three boards. `nros-board-nuttx`,
 `nros-board-threadx-qemu-riscv64` and `nros-board-mps2-an385-freertos` no longer
@@ -239,6 +240,42 @@ the cmake surface, lowering to ONE cargo feature on the staticlib build
 `cmake/NanoRosFeatureSet.cmake`'s hardcoded `panic-halt` at lines 120, 126, 140
 and 147 — a library decision made on the image's behalf by a table its author
 never sees, which is this phase's own defect one language over.
+
+**W7.a is LANDED (M1, Rust half).** `nros::main!(panic = "platform" | "halt" |
+"own")`, defaulting to `own`, so behaviour is identical to today. The emit is
+gated `target_os = "none"` — libstd owns the lang item on hosted targets, so
+without that gate M5's flip breaks every native example at once. `halt` needed a
+body: `nros::panic_halt!()` joins `panic_to_platform!()` in the facade (mask
+interrupts through the platform critical section, then spin) rather than making
+an entry take a `panic-halt` dependency to spell one word in a macro it already
+calls.
+
+**W7.a-bis — placement is DERIVED, not chosen (RFC-0077 amendment 2026-08-18).**
+`main!()` expands in the bin target, but six examples produce two final artifacts
+from one crate, and the staticlib's lang item must come from the lib. The rule
+covering every family is one sentence — *the entry macro of a final artifact
+emits that artifact's handler* — and the dual-artifact case is resolved by
+`main!()` reading `[lib] crate-type` from the manifest it already parses: a
+package that produces a `staticlib` gets nothing from `main!()`, because the lib
+owns it for both artifacts.
+
+Declaring those six `panic = "own"` instead was considered and rejected: it would
+overload `own` to mean both "I bring my own provider" and "my provider is in the
+other artifact", which destroys the deliberate-vs-forgot distinction `own` exists
+for, and asks an example author to know a Rust linkage rule to answer a question
+about panics. Numbers, since an earlier count in this phase was wrong: 21 images
+invoke `panic_to_platform!()`, of which 6 are staticlib-shaped — not the 13-of-28
+first reported, which came from grepping manifests for the WORD `staticlib` and
+matching a comment about a crate that had stopped being one.
+
+**Two cleanups this made visible, both landed.** The board's C-ABI entry macro
+`cyclonedds_app_main!()` is now `app_main!()`: its body is
+`run_app_thread($register)`, nothing in it is CycloneDDS, and an entry macro
+named for a backend contradicts the RMW-portability promise. Cyclone is merely
+the one backend whose embedded build must be CMake-linked — a build-system fact,
+tracked as issue 0666. And `examples/threadx-linux/rust/*` dropped a
+`crate-type` `staticlib` that nothing consumed (no CMakeLists, no C runtime, no
+fixture row naming a `.a`), the same removal phase-359 W7 made on qemu-arm-nuttx.
 
 **W7.c — migration, M1-M6 of RFC-0077.** Ordered so no commit leaves an image
 with two providers or none: add the argument defaulting to `own` (behaviour
