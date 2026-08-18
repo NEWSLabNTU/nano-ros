@@ -1640,6 +1640,25 @@ check-zenohd-spawn-sites:
 check-wait-evidence-discarded:
     @python3 scripts/check-wait-evidence-discarded.py
 
+# Start the zenoh router — issue 0654's SSoT entry point.
+#
+# Eight per-platform `just <plat> zenohd` recipes already delegate to
+# `nros_router_exec`; they differ only in which locator that platform's images
+# dial. This is the same call without a platform, for the common case of "start
+# a router on localhost" — and it is the command documentation can name instead
+# of pasting a command line, which is how 92 copies of one accreted.
+#
+# The router itself is resolved by `nros_zenohd_bin` (issue 0653): an explicit
+# `NROS_RMW_ZENOHD`, the prefixes you have SOURCED, then `$ROS_DISTRO` under
+# /opt/ros. Nothing is searched that you did not name.
+[group("main")]
+zenohd locator="tcp/127.0.0.1:7447":
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/dev/zenohd.sh
+    source "{{justfile_directory()}}/scripts/dev/zenohd.sh"
+    nros_router_exec "{{locator}}"
+
 # Issue 0653 — the shell and Rust router resolvers must resolve the SAME router.
 #
 # `just <plat> zenohd` is shell and the test harness is Rust; neither can call
@@ -4994,10 +5013,17 @@ doctor tier="":
     # but the ROUTER resolver (`process::ros_zenohd_path`) never looks there —
     # it checks $NROS_RMW_ZENOHD and /opt/ros only. So an overlay-only host has
     # a peer that works, a router nothing can find, and a lane that skips.
+    # issue 0654 — ask the SSoT where the router is, do not construct a path.
+    # Constructing `/opt/ros/$ROS_DISTRO/...` here reported "not installed" on a
+    # host whose ROS lives anywhere else, which is the case `AMENT_PREFIX_PATH`
+    # was added to `nros_zenohd_bin` for (issue 0653). doctor telling a working
+    # host it is broken is the failure mode doctor exists to prevent.
+    # shellcheck source=scripts/dev/zenohd.sh
+    . "{{justfile_directory()}}/scripts/dev/zenohd.sh"
     ros_distro="${ROS_DISTRO:-humble}"
-    zenoh_rmw="/opt/ros/${ros_distro}/lib/rmw_zenoh_cpp/rmw_zenohd"
-    if [ -x "$zenoh_rmw" ]; then
-        echo "  [OK] rmw_zenoh_cpp: /opt/ros/${ros_distro} (interop lanes runnable)"
+    zenoh_rmw="$(nros_zenohd_bin 2>/dev/null)" || zenoh_rmw=""
+    if [ -n "$zenoh_rmw" ] && [ -x "$zenoh_rmw" ]; then
+        echo "  [OK] rmw_zenoh_cpp: ${zenoh_rmw} (interop lanes runnable)"
     elif [ -n "${NROS_RMW_ZENOHD:-}" ] && [ -x "${NROS_RMW_ZENOHD}" ]; then
         echo "  [WARN] rmw_zenoh_cpp not installed under /opt/ros/${ros_distro};"
         echo "         NROS_RMW_ZENOHD supplies a ROUTER, but the interop peer"

@@ -3,6 +3,8 @@
 # This will tell us the exact RIHS01 hash we need
 
 set -e
+# shellcheck source=../dev/zenohd.sh
+. "$(dirname "$0")/../dev/zenohd.sh"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 Z_SUB="$PROJECT_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico/build/examples/z_sub"
@@ -18,7 +20,11 @@ echo ""
 # Check zenohd is running
 if ! pgrep -x zenohd > /dev/null; then
     echo "ERROR: zenohd not running"
-    echo "Start it with: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    # issue 0654 — the start line comes from `nros_router_hint`, not from a
+    # copy of it. Nine scripts each spelled this themselves and the literal path
+    # they used is wrong on any host whose ROS is not under /opt/ros.
+    echo "Start it with:"
+    nros_router_hint "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

@@ -21,7 +21,7 @@ deployment.
 source ./activate.sh && nros sync
 nros codegen-system --bringup deploy_bringup
 cmake -S . -B build && cmake --build build
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 ./build/src/native_entry/native_entry
 ```
 

@@ -87,7 +87,7 @@ In separate terminals:
 
 ```bash
 # 1. zenoh router (background)
-<nano-ros-checkout>/build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd &
+<nano-ros-checkout>/build/zenohd/ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # 2. C talker
 ./src/pkg_c_talker/build/pkg_c_talker

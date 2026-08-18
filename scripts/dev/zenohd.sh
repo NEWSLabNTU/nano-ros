@@ -113,6 +113,28 @@ nros_zenohd_bin() {
 # Multicast scouting is stated explicitly even though the ROS default config
 # already disables it: it is the one property these lanes depend on, and a
 # default is a thing that can change under us.
+# The canonical "how to start the router" line, as TEXT — issue 0654.
+#
+# `nros_router_exec` is for callers that can start it. A caller that can only
+# TELL somebody how needs the same knowledge, and until now composed its own
+# string: eight scripts each hand-rolled the `ZENOH_CONFIG_OVERRIDE` spelling
+# and a `/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd` path. That is one
+# fact in nine places, and it drifted — a rewrite of those strings broke five
+# scripts twice over (see issue 0654's own note), and the hardcoded path
+# contradicts the resolver: issue 0653 established that `/opt/ros/$ROS_DISTRO`
+# is only the THIRD of three steps, so the printed line fails on exactly the
+# hosts `AMENT_PREFIX_PATH` was added for.
+#
+# `ros2 run rmw_zenoh_cpp rmw_zenohd` is the spelling printed instead. It is
+# ROS's own documented invocation, needs only a sourced ROS, and is therefore
+# correct wherever the router is installed — including the source builds and
+# colcon overlays that the literal path misses. Verified to honour
+# ZENOH_CONFIG_OVERRIDE.
+nros_router_hint() {
+    local locator="${1:-tcp/127.0.0.1:7447}"
+    printf "ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"%s\"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd\n" "$locator"
+}
+
 # Warn when `$1` is not the router `rmw_zenoh_cpp` ships (issue 0653).
 #
 # Only NROS_RMW_ZENOHD can reach here un-paired — the search steps look inside

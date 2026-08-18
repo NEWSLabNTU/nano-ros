@@ -3,6 +3,8 @@
 # Uses GNU Parallel to run talker and z_sub concurrently
 
 set -e
+# shellcheck source=../dev/zenohd.sh
+. "$(dirname "$0")/../dev/zenohd.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -14,7 +16,11 @@ LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
 
 # Check dependencies
 if ! pgrep -x zenohd > /dev/null; then
-    echo "ERROR: zenohd not running. Start it with: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    # issue 0654 — the start line comes from `nros_router_hint`, not from a
+    # copy of it. Nine scripts each spelled this themselves and the literal path
+    # they used is wrong on any host whose ROS is not under /opt/ros.
+    echo "ERROR: zenohd not running. Start it with:"
+    nros_router_hint "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

@@ -29,17 +29,22 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # RMW does, so it cannot drift from it). This script kept pointing at the
 # deleted path.
 #
-# Resolution mirrors `nros_tests::process::ros_zenohd_path`: an explicit
-# `NROS_RMW_ZENOHD`, else `$ROS_DISTRO`, else the newest `/opt/ros/*` that has
-# one.
-ZENOHD="${NROS_RMW_ZENOHD:-}"
-if [ -z "$ZENOHD" ]; then
-    if [ -n "${ROS_DISTRO:-}" ] && [ -x "/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd" ]; then
-        ZENOHD="/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
-    else
-        ZENOHD="$(ls -d /opt/ros/*/lib/rmw_zenoh_cpp/rmw_zenohd 2>/dev/null | sort | tail -1)"
-    fi
-fi
+# issue 0654 — resolution is `nros_zenohd_bin`, not a private copy of it.
+#
+# This carried its own three-step resolver, written to "mirror" the Rust one.
+# It had already drifted: it still globs `/opt/ros/*` and takes the newest name,
+# which issue 0653 REMOVED from both real resolvers precisely because it returns
+# a distro the user never chose — on a host with humble and jazzy installed it
+# picks jazzy by collation, and both are genuine ROS routers, so nothing about
+# the answer looks wrong. It also never learned `AMENT_PREFIX_PATH`, so a ROS
+# built from source or a colcon overlay resolved nothing here while working
+# everywhere else.
+#
+# A mirror maintained by hand is a third implementation; sourcing the shared one
+# is the whole point of it existing.
+# shellcheck source=../../scripts/dev/zenohd.sh
+. "$(dirname "$0")/../../scripts/dev/zenohd.sh"
+ZENOHD="$(nros_zenohd_bin)" || ZENOHD=""
 
 # =============================================================================
 # phase-277 W2.a — mirror of the talker/listener log-line prefixes.
@@ -329,7 +334,7 @@ else
     log_info ""
     log_info "Troubleshooting:"
     log_info "  1. Check TAP interface: ip addr show $TAP_INTERFACE"
-    log_info "  2. Check zenohd is accessible: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    log_info "  2. Check zenohd is accessible: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd"
     log_info "  3. Check Zephyr can reach host: ping $HOST_IP (from Zephyr)"
     log_info "  4. Run with --verbose for detailed output"
 fi

@@ -634,8 +634,9 @@ apt = ["ros-humble-rmw-zenoh-cpp"]
 # No dnf/pacman: ROS 2 is not packaged there, and docs/development/ros2-on-non-ubuntu.md
 # routes those hosts through an Ubuntu distrobox, whose setup script installs this.
 #
-# No `check` probe: the artifact is `/opt/ros/<distro>/lib/rmw_zenoh_cpp/rmw_zenohd`,
-# a file under a prefix that is not on PATH and whose `.so` is not on the
+# No `check` probe: the artifact is the `rmw_zenohd` binary inside the
+# `rmw_zenoh_cpp` package's lib dir — a file under a prefix that is not on
+# PATH, and whose `.so` is not on the
 # ldconfig path until ROS is sourced — so none of cmd/sharedlib/pkg_config/header
 # answers honestly here. Reported as `unprobed`, which is the truthful answer;
 # `just doctor` does the real check against $ROS_DISTRO.

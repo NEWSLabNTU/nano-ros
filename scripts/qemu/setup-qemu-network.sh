@@ -15,6 +15,8 @@
 # See: docs/roadmap/phase-2-zephyr-qemu.md
 
 set -e
+# shellcheck source=../dev/zenohd.sh
+. "$(dirname "$0")/../dev/zenohd.sh"
 
 BRIDGE="br-nano"
 TAP="tap-qemu"
@@ -107,7 +109,11 @@ echo "  Listener:   192.0.3.3"
 echo ""
 echo "Usage:"
 echo "  1. Start zenoh router on host:"
-echo "     ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+# issue 0654 — printed by `nros_router_hint`, the one place that knows how to
+# start the router. The literal this replaced hardcoded /opt/ros/$ROS_DISTRO,
+# which is only the third of the resolver's three steps (issue 0653).
+printf '     '
+nros_router_hint tcp/0.0.0.0:7447
 echo ""
 echo "  2. Build and run Zephyr example:"
 echo "     west build -b qemu_x86 nros/examples/zephyr/rust/talker -- -DCONF_FILE='prj.conf;prj-zenoh.conf'"

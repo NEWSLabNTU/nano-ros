@@ -335,7 +335,7 @@ clean:
 # Usage:
 #   just freertos trace talker    # single example
 #   # For a pair, start zenohd first, then run in separate terminals:
-#   #   terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7800"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
+#   #   terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7800"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 #   #   terminal 2: just freertos trace talker
 #   #   terminal 3: just freertos trace listener
 #

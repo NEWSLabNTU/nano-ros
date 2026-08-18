@@ -640,15 +640,18 @@ agree" as a comment since phase-362 with nothing checking it, and they drifted i
 expectations are now ONE table answered twice — `check-zenohd-resolution-parity` for the shell,
 `zenohd_resolution_matches_the_shared_table` for the Rust. See `archived/0653-*`. (2026-08-18)
 
-Recently resolved (2026-08-18): **#0654** — ~95 files invoked the router with command-line flags naming a
-binary phase-362 retired. Two failures, the second worse: the name is gone, AND `rmw_zenohd` takes no
-command-line configuration — it does not parse argv, so the flags were unread rather than rejected and the
-reader got a default-configured router with no diagnostic (a wrong port then reads as a silent hang at
-`Executor::open`, which the troubleshooting pages blamed on other causes). 81 invocations across 62 files
-converted to the `ZENOH_CONFIG_OVERRIDE` env form; the two debug scripts call `nros_router_exec` and kill by
-PID; `build-all.mk` was still running the DELETED `just build-zenohd` recipe — stage and
-`ci/.../build-zenohd.sh` removed. Gated by `check-zenohd-flag-invocations`, mutation-checked both ways, with
-`docs/**/archived/**` exempt. See `archived/0654-*`. (2026-08-18)
+Recently resolved (2026-08-19): **#0654** — ~95 files told readers to run a `zenohd` that no longer exists,
+with flags `rmw_zenohd` does not parse (it reads `ZENOH_CONFIG_OVERRIDE`, so the flags were UNREAD and the
+router came up on its defaults). First pass (08-18) replaced them with one canonical string and gated the
+flag form. SECOND PASS (08-19): that string spelled the router's install path under the ROS prefix — the
+THIRD of the resolver's three steps (#0653) — so the canonical line was wrong on exactly the hosts
+`AMENT_PREFIX_PATH` was added for, in 92 places at once. 92 copies of a literal is not an SSoT. Added
+`nros_router_hint` (prints `ros2 run rmw_zenoh_cpp rmw_zenohd`, path-independent, verified to honour the
+config override) and a root `just zenohd [locator]`; deleted the private copies — `tests/zephyr/run-c.sh` had
+its OWN resolver still globbing `/opt/ros/*`, and `just doctor` CONSTRUCTED the path and called a working host
+broken. 73 occurrences in 58 files rewritten path→command with quoting untouched, unlike the first pass which
+restructured lines and broke five scripts twice. Gate extended to reject the hardcoded path outside the two
+resolvers. See `archived/0654-*`. (2026-08-19)
 
 Recently resolved (2026-08-16): **#633** — issue 0601's runnability probe could not fire in a build dir that
 had already resolved an unusable `idlc`. The resolved path was cached as `NROS_RMW_CYCLONEDDS_IDLC:INTERNAL`

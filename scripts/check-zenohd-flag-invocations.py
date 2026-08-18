@@ -40,6 +40,21 @@ ROOT = Path(__file__).resolve().parent.parent
 # names the router, and issue 0653 (a ROS-less host has none) is a separate axis.
 PAT = re.compile(r"\bzenohd\s+(?:--|-l\s)")
 
+# issue 0654 (second half) — the HARDCODED router path.
+#
+# The first pass replaced 92 `zenohd --listen …` lines with a canonical string
+# that spelled `/opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd`. That trades a
+# command nobody can run for one that runs only on a host whose ROS lives under
+# `/opt/ros` — and issue 0653 had already established that prefix is the THIRD of
+# three resolution steps, after `NROS_RMW_ZENOHD` and `AMENT_PREFIX_PATH`. So the
+# canonical form was wrong on exactly the hosts (source builds, colcon overlays)
+# that step 2 exists for, and it was wrong in 92 places at once.
+#
+# Executables ask `nros_zenohd_bin`; anything that TELLS a human asks
+# `nros_router_hint`, which prints `ros2 run rmw_zenoh_cpp rmw_zenohd` — ROS's
+# own path-independent spelling. This pattern keeps a fourth copy from appearing.
+HARDCODED_PATH = re.compile(r"/opt/ros/[^\s\"']*/lib/rmw_zenoh_cpp/rmw_zenohd")
+
 EXEMPT_PREFIXES = (
     "docs/",          # narrowed below to archived/ only
     "third-party/",
@@ -61,6 +76,23 @@ def is_exempt(path: str) -> bool:
     return False
 
 
+def is_path_exempt(path: str) -> bool:
+    """Files allowed to spell the router's install path.
+
+    The two RESOLVERS, which exist to turn the environment into that path, and
+    the machinery that tests them. Everything else asks one of them.
+    """
+    if is_exempt(path):
+        return True
+    return path in {
+        "scripts/dev/zenohd.sh",                              # the shell resolver
+        "packages/testing/nros-tests/src/process.rs",          # the Rust resolver
+        "scripts/check-zenohd-resolution-parity.sh",           # drives both
+        "scripts/dev/zenohd-resolution-cases.tsv",             # their shared table
+        "docs/design/0075-zenoh-router-provenance-and-the-unstable-seam.md",
+    } or path.startswith("docs/issues/") and "0653" in path
+
+
 def main() -> int:
     listing = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files"],
@@ -68,17 +100,40 @@ def main() -> int:
     ).stdout.split()
 
     hits: list[tuple[str, int, str]] = []
+    path_hits: list[tuple[str, int, str]] = []
     for rel in listing:
-        if is_exempt(rel):
-            continue
         p = ROOT / rel
         try:
             text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
             continue
-        for n, line in enumerate(text.splitlines(), 1):
-            if PAT.search(line):
-                hits.append((rel, n, line.strip()[:110]))
+        lines = text.splitlines()
+        if not is_exempt(rel):
+            for n, line in enumerate(lines, 1):
+                if PAT.search(line):
+                    hits.append((rel, n, line.strip()[:110]))
+        if not is_path_exempt(rel):
+            for n, line in enumerate(lines, 1):
+                if HARDCODED_PATH.search(line):
+                    path_hits.append((rel, n, line.strip()[:110]))
+
+    if path_hits:
+        print("[FAIL] hardcoded router path (issue 0654):")
+        for rel, n, line in path_hits:
+            print(f"         {rel}:{n}")
+            print(f"           {line}")
+        print()
+        print("       `/opt/ros/<distro>/lib/rmw_zenoh_cpp/rmw_zenohd` is the")
+        print("       THIRD of the resolver's three steps (issue 0653), so this")
+        print("       line is wrong on a host whose ROS was built from source or")
+        print("       installed as a colcon overlay — the hosts step 2")
+        print("       (AMENT_PREFIX_PATH) exists for.")
+        print()
+        print("       To START it:  `nros_router_exec <locator>`  (or `just zenohd`)")
+        print("       To RESOLVE it: `nros_zenohd_bin`")
+        print("       To TELL a human: `nros_router_hint <locator>`, which prints")
+        print("       `ros2 run rmw_zenoh_cpp rmw_zenohd` — path-independent.")
+        print()
 
     if hits:
         print("[FAIL] router invoked with command-line flags (issue 0654):")
@@ -92,13 +147,16 @@ def main() -> int:
         print("       hang in `Executor::open`.")
         print()
         print("       Shell: use `nros_router_exec <locator>` (scripts/dev/zenohd.sh).")
-        print("       Prose: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"<loc>\"];"
-              "scouting/multicast/enabled=false' \\")
-        print("              /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd")
+        print("       Prose: `nros_router_hint` prints the line; it is")
+        print("              ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"<loc>\"];"
+              "scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd")
+        return 1
+
+    if path_hits:
         return 1
 
     print(f"check-zenohd-flag-invocations: OK ({len(listing)} tracked file(s); "
-          "no flag invocation outside archived history)")
+          "no flag invocation and no hardcoded router path outside archived history)")
     return 0
 
 

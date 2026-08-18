@@ -142,3 +142,67 @@ applied at all (a `str.replace` with no assertion, which is its own recurring
 lesson). `bash -n` over every modified script is what caught both rounds; a
 grep-based sweep of this size needs a syntax check as its acceptance, not a diff
 skim.
+
+## Second pass 2026-08-19 — the canonical form was a literal, not a single source
+
+The 2026-08-18 resolution replaced 92 unrunnable `zenohd --listen …` lines with
+one canonical string. That fixed the reported defect and left a subtler one: the
+string spells the router's install path.
+
+```
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["<loc>"];…' \
+    /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
+```
+
+`/opt/ros/$ROS_DISTRO/...` is the **third** of the resolver's three steps
+(issue 0653: `NROS_RMW_ZENOHD`, then `AMENT_PREFIX_PATH`, then that prefix). So
+the canonical line is wrong on exactly the hosts step 2 was added for — a ROS
+built from source, or a colcon overlay — and it was wrong in 92 places at once.
+Copying one correct-looking literal 92 times is not a single source of truth;
+it is 92 copies with a shorter changelog.
+
+### What a single source needs, and what was missing
+
+`nros_router_exec` already covered callers that can START the router. Nothing
+covered callers that can only TELL somebody how, so nine of them hand-rolled the
+same string — which is how the wrong path propagated.
+
+* **`nros_router_hint [locator]`** (new, `scripts/dev/zenohd.sh`) prints the
+  start line. It prints `ros2 run rmw_zenoh_cpp rmw_zenohd`: ROS's own
+  documented invocation, needing only a sourced ROS, therefore correct wherever
+  the router is installed. Verified to honour `ZENOH_CONFIG_OVERRIDE`.
+* **`just zenohd [locator]`** (new, root) — the SSoT entry point for a human.
+  Eight per-platform `just <plat> zenohd` recipes already delegated to
+  `nros_router_exec` and differ only in locator; this is the same call without a
+  platform, and the command documentation can name instead of pasting a line.
+
+### Private copies deleted
+
+* `tests/zephyr/run-c.sh` carried its **own three-step resolver**, written to
+  "mirror" the Rust one, and had drifted: it still globs `/opt/ros/*` and takes
+  the newest name — which issue 0653 REMOVED from both real resolvers because it
+  returns a distro nobody chose — and it never learned `AMENT_PREFIX_PATH`. Now
+  sources `nros_zenohd_bin`.
+* `just doctor` CONSTRUCTED `/opt/ros/${ROS_DISTRO}/lib/...` and reported
+  "not installed" for any ROS elsewhere. doctor telling a working host it is
+  broken is the failure doctor exists to prevent. Now asks `nros_zenohd_bin` and
+  prints the path it got.
+* `scripts/debug/{capture-ros2-keyexpr,debug-keyexpr}.sh` and
+  `scripts/qemu/setup-{network,qemu-network}.sh` composed the hint themselves;
+  they call `nros_router_hint`.
+
+73 further occurrences across 58 files rewritten from the path to the portable
+command. The substitution is path→command with the surrounding quoting
+untouched — deliberately unlike the first pass, whose failure was that it
+restructured the whole line and broke five scripts twice.
+
+### Gate extended rather than added
+
+`check-zenohd-flag-invocations` now also rejects
+`/opt/ros/<anything>/lib/rmw_zenoh_cpp/rmw_zenohd` outside the two resolvers,
+their parity harness and the archived record. Mutation-checked: reintroducing
+one literal fails it, reverting passes.
+
+The exemption list is the honest statement of where this knowledge lives — the
+shell resolver, the Rust resolver, the table that drives both, and RFC-0075.
+Anywhere else asks one of them.

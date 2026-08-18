@@ -34,7 +34,8 @@
 #
 # After running this script:
 #   1. Start a zenoh router on the host:
-#      ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
+#      ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
+#          ros2 run rmw_zenoh_cpp rmw_zenohd
 #
 #   2. Run QEMU with networking:
 #      ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary your-app.elf
@@ -43,6 +44,8 @@
 #   sudo ./scripts/qemu/setup-network.sh --down
 
 set -e
+# shellcheck source=../dev/zenohd.sh
+. "$(dirname "$0")/../dev/zenohd.sh"
 
 # Phase 192.4 — overridable via NROS_QEMU_* so concurrent runs / CI agents on
 # the same host don't collide on bridge name or subnet.
@@ -283,7 +286,11 @@ echo "Owner: $TAP_USER (can run QEMU/ThreadX without sudo)"
 echo ""
 echo "Next steps:"
 echo "  1. Start zenoh router:"
-echo "     ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+# issue 0654 — printed by `nros_router_hint`, the one place that knows how to
+# start the router. The literal this replaced hardcoded /opt/ros/$ROS_DISTRO,
+# which is only the third of the resolver's three steps (issue 0653).
+printf '     '
+nros_router_hint tcp/0.0.0.0:7447
 echo ""
 echo "  2. Run QEMU with networking:"
 echo "     ./scripts/qemu/launch-mps2-an385.sh --tap ${TAP_PREFIX}0 --ip 192.0.2.10 --binary your-app.elf"

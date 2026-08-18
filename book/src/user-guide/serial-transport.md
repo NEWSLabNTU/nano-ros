@@ -99,7 +99,7 @@ In another terminal, start zenohd with the serial link:
 
 ```bash
 ZENOH_CONFIG_OVERRIDE='connect/endpoints=["serial//dev/pts/3#baudrate=115200"]' \
-    /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
+    ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
 > The router is ROS 2's `rmw_zenohd` (phase-362 retired the vendored `zenohd`).

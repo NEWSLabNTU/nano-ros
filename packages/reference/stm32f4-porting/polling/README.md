@@ -34,7 +34,7 @@ sudo ip addr add 192.168.1.1/24 dev eth0
 sudo ip link set eth0 up
 
 # Start zenoh router
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
 ## Building

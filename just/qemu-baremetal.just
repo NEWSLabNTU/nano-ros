@@ -363,7 +363,7 @@ test-zenoh: build
     echo ""
     echo "Prerequisites:"
     echo "  1. TAP network: sudo ./scripts/qemu/setup-network.sh"
-    echo "  2. zenohd running: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    echo "  2. zenohd running: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd"
     echo ""
     echo "This test requires QEMU 7.0+ for reliable TAP networking."
     echo "Ubuntu 22.04 ships QEMU 6.2.0 which has TAP issues."
@@ -372,7 +372,7 @@ test-zenoh: build
     qemu-system-arm --version | head -1
     echo ""
     echo "To run manually:"
-    echo "  Terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' /opt/ros/$ROS_DISTRO/lib/rmw_zenoh_cpp/rmw_zenohd"
+    echo "  Terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd"
     echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary {{FIXTURE_TARGET}}/qemu-bsp-talker"
     echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary {{FIXTURE_TARGET}}/qemu-bsp-listener"
     echo ""
