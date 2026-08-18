@@ -118,6 +118,65 @@ bucket. Note the present hazard: a tight-deadline path marked `criticality:
 low` currently sorts BELOW a slack path marked `high` — priority inversion by
 adjective.
 
+## Partly addressed 2026-08-19 — `B_i` derived; the ceiling is a TAUTOLOGY today
+
+RFC-0078 gave callbacks a way to carry WCETs, which unblocked the numeric half
+of this issue. One of the two terms named in finding 3 is now derived; the other
+turns out to be a no-op at the current model granularity, and that is the more
+useful finding.
+
+### Derived: the blocking term `B_i`
+
+`RealizedNode.blocking_us` — the longest a callback on this node can wait for a
+mutually-exclusive sibling. A node's callbacks are serialised within their tier
+task (v1 treats every `CallbackGroupDecl` as mutually exclusive), so a ready
+callback waits for whichever sibling is running, and the worst case is the
+longest sibling: the SECOND-largest WCET on the node, since the longest callback
+cannot block itself.
+
+`None` when fewer than two callbacks carry a WCET, and `None` means NOT
+DERIVABLE rather than "no blocking". A feasibility check that reads it as zero
+reproduces exactly the optimism this issue is about — the same distinction
+`ChainFeasibleWithoutWcet` draws upstream.
+
+### NOT derived, and deliberately: the preemption threshold
+
+Finding 3's rule is `ceiling = max urgency among the group's members`. Over a
+node's own callbacks that is, today, **the node's own priority** — by
+construction:
+
+* `dense_node_ranks` assigns each node the MINIMUM (best) rank among its path
+  items;
+* `rank_to_priority` turns that into the task priority.
+
+So `ceiling(node's callbacks) == priority(node)`, and emitting
+`preempt_threshold = ceiling` would set the threshold equal to the priority for
+every node in every system. It would satisfy "a dim is derived" while saying
+nothing — which is what this issue's own acceptance warns against ("do not close
+0259 on a schema alone").
+
+A preemption threshold earns its keep only when callbacks **inside one task hold
+different priorities** and a lower one must not be preempted by a higher
+sibling. The emitted plan collapses each node to a single priority, so that
+situation is not currently representable.
+
+**What non_preempt actually requires**, then, is not a realizer change but a
+model change: per-callback priorities within a tier, carried through
+`RealizedNode` and the emitted `TierDef`, plus a runtime dispatch that honours
+them. That is the prerequisite, and it should be scoped as its own work item
+rather than attempted inside the realizer.
+
+### Still open
+
+`placement` is untouched and still needs the interference/utilisation model
+finding 2 describes. `B_i` is derived but nothing consumes it yet — wiring it
+into a feasibility check is the next step, and is where the number stops being
+inert.
+
+Caveat on evidence: on a host with no hardware lane every WCET feeding this is
+declared rather than measured (RFC-0078's `SYNTHETIC` caveat), so the derivation
+is demonstrably correct and not demonstrably informed.
+
 ## Re-verified 2026-08-03 — every claim still holds
 
 Checked against the current tree, not assumed from the write-up:

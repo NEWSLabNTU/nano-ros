@@ -24,7 +24,16 @@ Three orchestration issues that are one dependency chain, not three tasks.
   The acceptance's "worked example carrying one real measured callback" is NOT
   met and cannot be here: the RFC's example is marked SYNTHETIC because no run
   has ever produced an artifact (QEMU cannot measure, no hardware lane).
-* **W2 (#259, quantitative scheduling)** — blocked on W1, by construction.
+* **W2 (#259, quantitative scheduling)** — partly done 2026-08-19. The blocking
+  term `B_i` is DERIVED (`RealizedNode.blocking_us`: the longest
+  mutually-exclusive sibling, i.e. the second-largest WCET on the node, `None`
+  when fewer than two callbacks carry one). The preemption THRESHOLD is
+  deliberately not derived: over a node's own callbacks the ceiling equals the
+  node's priority by construction, so it would be a tautology — what
+  `non_preempt` actually needs is per-callback priorities within a tier, a
+  MODEL change scoped in 0259. `placement` untouched. Acceptance NOT met: `B_i`
+  is derived but nothing consumes it yet, and `nros explain` shows no
+  derivation inputs.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.

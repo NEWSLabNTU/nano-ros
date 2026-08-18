@@ -77,6 +77,14 @@ pub struct RealizedNode {
     pub budget_us: Option<u64>,
     pub core: Option<u32>,
     pub preempt_threshold: Option<i64>,
+    /// Issue 0259 — the derived BLOCKING term `B_i`, µs: the longest a callback
+    /// on this node can be made to wait for a mutually-exclusive sibling.
+    ///
+    /// Derived, never authored. `None` means "not derivable" — fewer than two
+    /// callbacks carry a WCET — and specifically NOT "no blocking". A
+    /// feasibility check that reads `None` as zero is the optimism issue 0259
+    /// is about; one that reads it as unknown is correct.
+    pub blocking_us: Option<u64>,
     pub deadline_real: DimRealization,
     pub budget_real: DimRealization,
     pub preempt_real: DimRealization,
@@ -210,6 +218,21 @@ struct NodeFacts {
     /// Timer period (ms) when the node has a periodic path; `None` when the
     /// node is purely event-driven.
     period_ms: Option<f64>,
+    /// Issue 0259 — the BLOCKING term `B_i`: the longest WCET among this node's
+    /// OTHER callbacks.
+    ///
+    /// A node's callbacks are mutually exclusive within their tier task (that
+    /// is what `CallbackGroupDecl { type: "MutuallyExclusive" }` means, and v1
+    /// treats every group that way), so a callback that becomes ready while a
+    /// sibling is executing waits for that sibling to finish. The longest
+    /// sibling is the worst case, and it is exactly the term a feasibility
+    /// check must add to a response time.
+    ///
+    /// `None` when the node has fewer than two callbacks carrying a WCET —
+    /// there is then no sibling to wait for, or no measurement of one. NOT
+    /// zero: absent blocking and zero blocking are different claims, and
+    /// issue 0259 is what happens when they are conflated.
+    blocking_ms: Option<f64>,
 }
 
 fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
@@ -218,12 +241,18 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         let mut deadline_ms: Option<f64> = None;
         let mut budget_ms: Option<f64> = None;
         let mut period_ms: Option<f64> = None;
+        // Every declared WCET on this node, so the blocking term can name the
+        // longest one that is NOT the callback being blocked. Collected rather
+        // than folded because `B_i` is a max over a set with one element
+        // removed, which a running max cannot express.
+        let mut execs: Vec<f64> = Vec::new();
         for p in &node.paths {
             if let Some(d) = p.max_latency_ms {
                 deadline_ms = Some(deadline_ms.map_or(d, |cur: f64| cur.min(d)));
             }
             if let Some(b) = p.exec_ms {
                 budget_ms = Some(budget_ms.map_or(b, |cur: f64| cur.max(b)));
+                execs.push(b);
             }
             if let EffectiveTrigger::Timer { rate_hz } = &p.effective_trigger
                 && *rate_hz > 0.0
@@ -232,12 +261,21 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
                 period_ms = Some(period_ms.map_or(per, |cur: f64| cur.min(per)));
             }
         }
+        // `B_i` for the WORST-placed callback on this node: the longest
+        // sibling any one of them can be made to wait for. With every callback
+        // in one mutually-exclusive group, that is the longest WCET among the
+        // others — i.e. the second-largest overall, since the largest cannot
+        // block itself.
+        execs.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+        let blocking_ms = execs.get(1).copied();
+
         out.insert(
             node.name.as_str(),
             NodeFacts {
                 deadline_ms,
                 budget_ms,
                 period_ms,
+                blocking_ms,
             },
         );
     }
@@ -344,7 +382,23 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
             }
         };
 
-        // non_preempt_scope + placement: not derived from the model yet.
+        // Issue 0259 — the blocking term IS derivable now that callbacks can
+        // carry WCETs (RFC-0078). `B_i` is the longest mutually-exclusive
+        // sibling; the executor serialises a node's callbacks within their tier
+        // task, so a ready callback waits for whichever sibling is running.
+        let blocking_us = f
+            .and_then(|f| f.blocking_ms)
+            .map(|ms| (ms * 1000.0).round().max(0.0) as u64);
+
+        // non_preempt_scope + placement: still not derived, and deriving the
+        // preemption THRESHOLD here would be a tautology rather than progress.
+        // Issue 0259's rule is `ceiling = max urgency among the group's
+        // members`; `dense_node_ranks` already gives a node the MINIMUM (best)
+        // rank among its own paths, so that ceiling is the node's own priority
+        // by construction and `preempt_threshold == priority` would say
+        // nothing. A threshold earns its keep only when callbacks inside ONE
+        // task hold DIFFERENT priorities, which this plan does not yet model —
+        // recorded in 0259 rather than papered over with a derived no-op.
         let preempt_real = DimRealization::NotRequested;
         let placement_real = DimRealization::NotRequested;
 
@@ -357,6 +411,7 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
             budget_us,
             core: None,
             preempt_threshold: None,
+            blocking_us,
             deadline_real,
             budget_real,
             preempt_real,
@@ -654,5 +709,87 @@ mod tests {
                 .iter()
                 .any(|d| d.node == "/hi" && d.dim == "deadline")
         );
+    }
+
+    // ---- issue 0259: the derived blocking term `B_i` -----------------------
+
+    fn node_with_execs(name: &str, execs: &[Option<f64>]) -> MapperNode {
+        MapperNode {
+            name: name.to_string(),
+            scope: "/".to_string(),
+            criticality: Some(Criticality::High),
+            paths: execs
+                .iter()
+                .enumerate()
+                .map(|(i, e)| timer_path(&format!("p{i}"), 50.0, Some(10.0), *e))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn realize_one(node: MapperNode) -> RealizedNode {
+        let input = MapperInput {
+            nodes: vec![node],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        plan.nodes.into_iter().next().expect("one node realized")
+    }
+
+    /// `B_i` is the longest OTHER callback — the second largest overall, since
+    /// the longest cannot block itself.
+    #[test]
+    fn blocking_is_the_longest_sibling_not_the_longest_callback() {
+        let n = realize_one(node_with_execs("/n", &[Some(3.0), Some(9.0), Some(5.0)]));
+        assert_eq!(n.budget_us, Some(9_000), "budget is this node's own worst");
+        assert_eq!(
+            n.blocking_us,
+            Some(5_000),
+            "B_i must be the longest SIBLING (5ms), not the longest callback (9ms)"
+        );
+    }
+
+    /// One callback cannot be blocked by a sibling it does not have. Absent,
+    /// not zero — a feasibility check reading `None` as 0 is exactly the
+    /// optimism issue 0259 is about.
+    #[test]
+    fn a_single_callback_has_no_blocking_term() {
+        let n = realize_one(node_with_execs("/n", &[Some(4.0)]));
+        assert_eq!(n.budget_us, Some(4_000));
+        assert_eq!(n.blocking_us, None, "no sibling means no blocking term");
+    }
+
+    /// Undeclared WCETs yield no blocking term. The siblings exist; what is
+    /// missing is any measurement of them, and inventing 0 would claim a
+    /// callback waits for nothing.
+    #[test]
+    fn siblings_without_wcets_yield_no_blocking_term() {
+        let n = realize_one(node_with_execs("/n", &[None, None, None]));
+        assert_eq!(n.blocking_us, None);
+        assert_eq!(n.budget_us, None);
+    }
+
+    /// A partially-measured node reports blocking only when TWO callbacks carry
+    /// a WCET — one measured sibling is not a bound on the others.
+    #[test]
+    fn one_measured_callback_among_many_is_not_a_blocking_term() {
+        let n = realize_one(node_with_execs("/n", &[Some(7.0), None, None]));
+        assert_eq!(n.budget_us, Some(7_000));
+        assert_eq!(
+            n.blocking_us, None,
+            "a lone measurement says nothing about how long the others run"
+        );
+    }
+
+    /// The preemption THRESHOLD is deliberately still not derived: over a
+    /// node's own callbacks the issue's ceiling equals the node's priority by
+    /// construction, so deriving it would emit a tautology.
+    #[test]
+    fn the_preemption_threshold_is_not_derived_as_a_tautology() {
+        let n = realize_one(node_with_execs("/n", &[Some(3.0), Some(9.0)]));
+        assert_eq!(n.preempt_real, DimRealization::NotRequested);
+        assert_eq!(n.preempt_threshold, None);
     }
 }
