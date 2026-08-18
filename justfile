@@ -2157,8 +2157,30 @@ test verbose="": _require-build-sources _require-fixtures _check-fixtures-stale 
 # comes from `lane-coords`, the same binary `_lane-gate` uses, so the build, the
 # staleness gate and the test run derive from ONE computation, which is what
 # `ci_lane.rs` already claimed and only two of the three actually did.
+#
+# issue 0677 — `check-fast` runs FIRST, before anything expensive.
+#
+# Every other dependency here asks "is the ENVIRONMENT ready to build?"
+# (`_require-build-sources`, `_require-leaf-includes`, the generators). None
+# asked "is the TREE in a state where building is MEANINGFUL?", so a defect a
+# static gate already names was discovered by a multi-hour multi-platform
+# compile instead: #0532 item 5 retired the wall-clock pair, `nros-c` kept
+# calling it, and `check-retired-platform-clock-symbols` — which names both
+# symbols and was already failing — sat in a lane nothing on this path ran.
+# The link error surfaced two fixture rebuilds later.
+#
+# `check-fast` is the right edge precisely because of the contract documented
+# on it: BUILDLESS and SOURCE-FREE, no CLI, no `nros sync`, no provisioned
+# toolchain, green in 23s on a pristine detached worktree. That is what makes
+# this dependency affordable in front of a build measured in hours, and it is
+# the property to preserve — a gate added to `check-fast` that needs the
+# environment makes THIS edge expensive, and an expensive edge gets deleted.
+#
+# "Run `just ci` first" is not a substitute: fixtures must already be fresh for
+# `test-all` to mean anything, so the honest order is build-then-test, which
+# puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh

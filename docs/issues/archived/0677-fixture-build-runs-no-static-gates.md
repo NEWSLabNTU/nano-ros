@@ -1,11 +1,12 @@
 ---
 id: 677
 title: "`build-test-fixtures` runs none of the static gates that protect the compilation it is about to do, so a 23-second lane's finding is discovered by a multi-hour build instead"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: build, testing
 related: [issue-0319, issue-0532, issue-0674, phase-318, rfc-0061]
+resolved_in: phase-318
 ---
 
 ## What happened
@@ -97,3 +98,59 @@ uninvoked gate reads as coverage to everyone downstream of it.
 The `nros-c` defect itself is fixed. This issue is only about the missing edge
 that let a link error, rather than a 23-second gate, be the thing that reported
 it.
+
+---
+
+## Fixed 2026-08-18 — the edge, not a new gate
+
+`build-test-fixtures` now depends on `check-fast`, listed FIRST so it runs
+before any generator or compile:
+
+```
+build-test-fixtures lane="all": check-fast _require-build-sources \
+    _clear-fixture-stamp generate-bindings setup-launch-resolve \
+    build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+```
+
+No gate was written. The one that would have caught #0532 item 5 already
+existed and was already failing; what was missing was a path from the
+expensive step to it.
+
+### Why `check-fast` is the right subset, and not merely a convenient one
+
+Direction item 1 asked for "the gates that read only tracked sources and need
+no CLI, no `nros sync` and no provisioned toolchain". That is not a subset that
+had to be assembled — it is `check-fast`'s stated contract, verified rather
+than asserted (issue 0466):
+
+> Fast tier — BUILDLESS, SOURCE-FREE gates only … it needs neither the nros CLI
+> nor any provisioned source … a pristine detached worktree with no CLI, no
+> sources and no `nros sync` runs this lane green in 23s.
+
+So the whole lane qualifies, and depending on it wholesale is stronger than
+hand-picking members: a hand-picked list is a second spelling that drifts from
+`check-fast` the moment someone adds a gate to one and not the other.
+
+### The property to preserve
+
+This edge is affordable *because* `check-fast` is environment-free. A gate
+added there that needs the CLI, a provisioned toolchain or `nros sync` makes
+this dependency expensive, and an expensive edge in front of every fixture
+build is one somebody deletes. `check-fast`'s own doc comment already carries
+the rule ("If you add a gate here, check it against [a pristine detached
+worktree], not against your own provisioned tree") — that rule now protects two
+things, and the comment on `build-test-fixtures` says so.
+
+Direction item 3 (gate vs warning) resolved as **gate**: a dependency fails the
+build, which is what `check-tier-preconditions` does for the environment half
+and what stops hours being spent producing an artifact that cannot be valid.
+
+### Verified
+
+* `just --evaluate` parses; `just --dry-run build-test-fixtures lane=tier1`
+  shows `check-fast`'s gates (`check-platform-abi-mirror` first) ahead of the
+  generators — the edge is real and cycle-free.
+* `check-fast` on the current tree: 12 gates `: OK`, zero `FAIL` lines.
+  (Wall-clock was NOT measured honestly — a multi-hour fixture build was
+  saturating the machine at the time, so the 23s figure is the justfile's
+  verified claim, not a number this issue re-measured under load.)

@@ -451,17 +451,17 @@ tier — moved to the spawned one. Verified: `nros: core pin tier=`high` cpu=0`,
 flipped Fallback -> Accept. Still UNIPROCESSOR, so it proves the call is correct, not SMP placement (#260).
 See `archived/0655-*`. (2026-08-18)
 
-**#0677** (build/testing, open 2026-08-18) — `build-test-fixtures` runs none of the static gates that
-protect the compilation it is about to do. #0532 item 5 retired the wall-clock pair and left `nros-c`
-calling it; every embedded image linking `nros-c` then died with `undefined reference`. A gate for exactly
-this ALREADY existed, ALREADY named both symbols, and was ALREADY failing —
-`check-retired-platform-clock-symbols`, wired into `check-fast` (justfile:467). The fixture build's
-preconditions (`_require-build-sources`, `_require-leaf-includes`, …) all ask "is the ENVIRONMENT ready to
-build?"; none asks "is the TREE in a state where building is meaningful?". `check-fast` is documented as
-green in 23 s on a pristine worktree; the tier-2 build is a multi-hour compile — so the cheap lane knew and
-the expensive one reported. "Run `ci` first" does not fix it: fixtures must be fresh for `test-all` to mean
-anything, so the workflow legitimately puts the expensive step first. Same shape as #0319 — the gate is not
-missing, the EDGE to it is, and an uninvoked gate reads as coverage. See `0677-*`. (2026-08-18)
+Recently resolved (2026-08-18): **#0677** — `build-test-fixtures` ran none of the static gates protecting
+the compilation it was about to do. #0532 item 5 retired the wall-clock pair and left `nros-c` calling it;
+`check-retired-platform-clock-symbols` ALREADY named both symbols and was ALREADY failing, but nothing on
+the fixture path ran it, so a multi-hour multi-platform compile reported what a 23-second lane knew. Every
+existing precondition asked "is the ENVIRONMENT ready?"; none asked "is the TREE meaningful to build?".
+FIXED by the EDGE, not a new gate: `build-test-fixtures` now depends on `check-fast`, listed first.
+`check-fast` is the right subset by its own verified contract (BUILDLESS, SOURCE-FREE, no CLI / sources /
+`nros sync`, green in 23s on a pristine detached worktree, #0466) — depending on it wholesale beats a
+hand-picked list that would drift from it. The property to preserve is that it stays environment-free: an
+expensive edge in front of every fixture build gets deleted. Gate, not warning. See `archived/0677-*`.
+(2026-08-18)
 
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
