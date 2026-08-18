@@ -322,6 +322,24 @@ entry writing only `nano_ros_entry(…)`, both link and panic through
 item. An image that says `own` and supplies nothing fails at the coordinate gate
 rather than at the linker. `grep -rn "panic-spin" packages/ cmake/` is empty.
 
+**R2 had a second route nobody had counted, and issue 0369 found it.** The
+rename reached `nano_ros_entry(PANIC ...)`, which appends the feature to an
+already-imported nros-c/nros-cpp with `corrosion_set_features()`. In a
+workspace the linked archive is not that import: it is the synthesized
+`nros_ws_runtime` umbrella, whose nros-cpp dependency says `default-features =
+false`, so the crate default never applies and nothing appended the entry's
+choice. The entry's generated header expected `panic-platform`, the umbrella's
+nros-cpp was built without it, and the two met at the link as the variant
+anchor's `undefined symbol:
+nros_cpp_config_variant_alloc_panic_platform_..._std` — the anchor working as
+designed, catching a feature split instead of shipping a mismatched ABI. Fixed
+by reading `NROS_ENTRY_PANIC_POLICY` in `nros_synth_runtime_umbrella` (it runs
+after the SUBDIRS loop, so every entry has already recorded its policy) and
+baking the feature into the dep line, with the policy→feature mapping factored
+into `nros_panic_policy_feature()` so the two routes share one spelling. Zephyr
+was already consistent — that lane passes the SAME feature string to nros-cpp
+and to the umbrella and selects no panic feature at all.
+
 **Carries a behaviour change, and it is not silent.** A C/C++ embedded image
 halts on panic today because the table says `panic-halt`; under `PANIC platform`
 it ends the way its board ends. That is the intended ending, but it changes what
