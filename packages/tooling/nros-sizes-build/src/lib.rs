@@ -1026,21 +1026,67 @@ fn features_enabled_on_dep(manifest_dir: &str, dep: &str) -> Result<Vec<String>,
     let text = std::fs::read_to_string(Path::new(manifest_dir).join("Cargo.toml"))
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
 
-    let active: std::collections::HashSet<String> = forwarded_features().into_iter().collect();
+    let table = parse_features_table(&text);
     let prefix = format!("{dep}/");
-    let mut out = Vec::new();
-    let mut in_features = false;
-    // The row currently being read, when its array spans several lines.
+
+    // Cargo feature unification is TRANSITIVE, so this walk has to be. A first
+    // version collected only the `dep/<feat>` items written DIRECTLY on an
+    // active row, which reads `std = ["alloc", "nros/env", ...]` correctly and
+    // `std = ["alloc", "env", ...]` — where the caller's OWN `env` feature is
+    // what enables `nros/env` — as forwarding nothing.
     //
-    // issue 0665 — the first version of this parser took one line per feature,
-    // and every manifest that WRAPS its array was silently read as empty. That
-    // is not hypothetical formatting: `nros-c`'s `std` happens to be one line
-    // and `nros-cpp`'s is not, so the fix worked for the crate that reported the
-    // bug and did nothing for its sibling — which forwards `nros/env` and
-    // `nros-node/env` from a wrapped array and carries the same
-    // `CPP_EXECUTOR_OPAQUE_U64S` assert. A parse that depends on where somebody
-    // put a newline is not a parse.
-    let mut open_row_active = false;
+    // That is not hypothetical either: phase-359 W10 rewrote `nros-c`'s row from
+    // the first shape to the second, and the probe silently went back to
+    // measuring an env-less `ExecutorInlineStorage` — 16 bytes short, the exact
+    // regression issue 0665 exists to prevent, reintroduced by a refactor the
+    // gate could not see. Same shape as the one-line-per-feature parser that
+    // issue fixed: a parse that depends on how the author chose to spell an
+    // equivalent feature set is not a parse.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: Vec<String> = forwarded_features();
+    let mut out = Vec::new();
+    while let Some(feat) = queue.pop() {
+        if !seen.insert(feat.clone()) {
+            continue;
+        }
+        let Some(items) = table.get(&feat) else {
+            continue;
+        };
+        for item in items {
+            match item.strip_prefix(&prefix) {
+                Some(f) if !f.is_empty() => out.push(f.to_string()),
+                // A bare name is one of THIS crate's own features; follow it.
+                // Anything with a `/` belongs to some other dependency.
+                _ if !item.contains('/') => queue.push(item.clone()),
+                _ => {}
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// Parse a `[features]` table into `feature -> items`.
+///
+/// issue 0665 — the original parser took one line per feature, so every
+/// manifest that WRAPS its array was silently read as empty. That is not
+/// hypothetical formatting: `nros-c`'s `std` happens to be one line and
+/// `nros-cpp`'s is not, so the first fix worked for the crate that reported the
+/// bug and did nothing for its sibling — which forwards `nros/env` and
+/// `nros-node/env` from a wrapped array and carries the same
+/// `CPP_EXECUTOR_OPAQUE_U64S` assert. A parse that depends on where somebody
+/// put a newline is not a parse.
+///
+/// Best-effort by design: a shape this simple parser does not expect yields
+/// nothing rather than an error, because under-forwarding is what the caller
+/// fixes and a hard error here would break every probe.
+fn parse_features_table(text: &str) -> std::collections::HashMap<String, Vec<String>> {
+    let mut table: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut in_features = false;
+    // The feature whose array is still open across lines, if any.
+    let mut open_row: Option<String> = None;
     for line in text.lines() {
         // Strip a trailing comment; `#` never appears inside these values, and
         // `nros-cpp` puts several paragraphs of them INSIDE the array.
@@ -1052,7 +1098,7 @@ fn features_enabled_on_dep(manifest_dir: &str, dep: &str) -> Result<Vec<String>,
         if t.is_empty() {
             continue;
         }
-        if !open_row_active && t.starts_with('[') && t.ends_with(']') && !t.contains('=') {
+        if open_row.is_none() && t.starts_with('[') && t.ends_with(']') && !t.contains('=') {
             // A table header (`[features]`, `[dependencies]`), not an array.
             in_features = t == "[features]";
             continue;
@@ -1061,35 +1107,34 @@ fn features_enabled_on_dep(manifest_dir: &str, dep: &str) -> Result<Vec<String>,
             continue;
         }
 
-        let body = if open_row_active {
+        let (name, body) = match &open_row {
             // Continuation of a wrapped array.
-            t
-        } else {
-            let Some((name, rest)) = t.split_once('=') else {
-                continue;
-            };
-            let name = name.trim().trim_matches('"');
-            // An array is still open when the line has `[` and no closing `]`.
-            open_row_active = active.contains(name) && rest.contains('[') && !rest.contains(']');
-            if !active.contains(name) {
-                continue;
+            Some(name) => (name.clone(), t),
+            None => {
+                let Some((name, rest)) = t.split_once('=') else {
+                    continue;
+                };
+                let name = name.trim().trim_matches('"').to_string();
+                // An array is still open when the line has `[` and no closing `]`.
+                if rest.contains('[') && !rest.contains(']') {
+                    open_row = Some(name.clone());
+                }
+                (name, rest)
             }
-            rest
         };
 
+        let entry = table.entry(name).or_default();
         for item in body.split(&['[', ']', ',', '"'][..]) {
             let item = item.trim();
-            if let Some(feat) = item.strip_prefix(&prefix)
-                && !feat.is_empty()
-            {
-                out.push(feat.to_string());
+            if !item.is_empty() && item != "=" {
+                entry.push(item.to_string());
             }
         }
-        if open_row_active && body.contains(']') {
-            open_row_active = false;
+        if open_row.is_some() && body.contains(']') {
+            open_row = None;
         }
     }
-    Ok(out)
+    table
 }
 
 fn forwarded_features() -> Vec<String> {
@@ -1452,6 +1497,56 @@ mod tests {
         assert!(
             !got.contains(&"never-forwarded".to_string()),
             "an INACTIVE feature's wrapped array must not be read either — got {got:?}"
+        );
+    }
+
+    /// issue 0665 — a caller feature that enables another of the caller's OWN
+    /// features, which is what enables the `dep/<feat>` entry.
+    ///
+    /// This is `nros-c`'s shape after phase-359 W10 rewrote
+    /// `std = ["alloc", "nros/env", ...]` into `std = ["alloc", "env", ...]`
+    /// with `env = ["nros/env", ...]` beside it. Cargo unifies features
+    /// transitively, so the two spellings enable exactly the same set; a
+    /// one-level walk reads the first as forwarding `nros/env` and the second as
+    /// forwarding nothing, and the probe silently went back to measuring an
+    /// env-less `ExecutorInlineStorage` — 16 bytes short, this issue's own
+    /// regression, reintroduced by a refactor the gate could not see.
+    #[test]
+    fn a_feature_reached_through_another_of_the_callers_own_features_is_forwarded() {
+        let _guard = env_lock();
+        let dir = std::env::temp_dir().join(format!("nros-probe-indirect-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"caller\"\n\n[features]\n\
+             env = [\"nros/env\", \"nros-node/env\"]\n\
+             std = [\"alloc\", \"env\", \"nros/std\"]\n\
+             alloc = [\"nros/alloc\"]\n\
+             unused = [\"never = [\", \"nros/never-forwarded\"]\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("CARGO_FEATURE_STD", "1");
+            std::env::remove_var("CARGO_FEATURE_ALLOC");
+            std::env::remove_var("CARGO_FEATURE_UNUSED");
+        }
+        let got = features_enabled_on_dep(dir.to_str().unwrap(), "nros").unwrap();
+        unsafe { std::env::remove_var("CARGO_FEATURE_STD") };
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(
+            got.contains(&"env".to_string()),
+            "`std` enables the caller's own `env`, which enables `nros/env` — got {got:?}"
+        );
+        assert!(got.contains(&"std".to_string()), "got {got:?}");
+        assert!(
+            got.contains(&"alloc".to_string()),
+            "`std` enables `alloc`, which enables `nros/alloc` — got {got:?}"
+        );
+        assert!(
+            !got.contains(&"never-forwarded".to_string()),
+            "an INACTIVE feature must not be reached — got {got:?}"
         );
     }
 
