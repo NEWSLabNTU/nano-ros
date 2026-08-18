@@ -180,22 +180,18 @@ fn platform_wall_clock() -> Option<Time> {
     unsafe extern "C" {
         fn nros_platform_time_now_ns() -> u64;
     }
-    // SAFETY: a bare query of the platform's wall clock, guaranteed by
-    // whichever port linked the binary — the same contract
-    // `nros_platform_clock_ns` relies on. Documented never to error; a port
-    // with no clock returns 0.
+    // SAFETY: a bare wall-clock read, no pointer arguments, guaranteed by
+    // whichever port linked the binary — the same contract `nros-node` relies
+    // on for `nros_platform_clock_ns`.
     //
-    // ONE read. Issue 0532 item 5 collapsed the old
-    // `time_since_epoch_secs` + `time_since_epoch_nanos` pair into this, and
-    // the bounded re-read loop that used to live here went with it: the split
-    // spent one instant over two symbols sampled separately, so a second
-    // boundary landing between them paired the OLD second with the NEW
-    // sub-second remainder — a timestamp that jumped a full second BACKWARDS,
-    // rarely and silently. A single u64 cannot tear.
+    // ONE symbol, so one sample: issue 0532 collapsed the former
+    // `time_since_epoch_{secs,nanos}` pair, which this was written against and
+    // which needed a bounded re-read to survive a second boundary landing
+    // between the two calls. That loop is what the collapse deletes.
     let ns = unsafe { nros_platform_time_now_ns() };
-    // A port with no wall clock answers 0. Reporting the Unix epoch as "now"
-    // would be a wrong answer stated confidently, so say nothing instead and
-    // let the counter fallback stand.
+    // A port with no RTC returns 0. Reporting the Unix epoch as "now" would be
+    // a wrong answer stated confidently, so say nothing and let the caller's
+    // counter fallback stand.
     if ns == 0 {
         return None;
     }

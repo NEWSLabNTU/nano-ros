@@ -141,7 +141,22 @@ BASELINE = {
     # against — so a hosted image and a target image were timing that loop from
     # different clocks. The remaining sites are the `cpp_diag!` stdio macro and
     # the native-runtime component API, which wants its own pass.
-    "nros-cpp": {"cfg": 7, "path": 18},
+    #
+    # phase-359 W10: 7 -> 5 cfg, 18 -> 16 path. The two hosted COMPONENT
+    # entries resolve their locator, domain and spin bound from the process
+    # environment and build a `CString` — `env` plus `alloc`, no flavour — so
+    # they say that now, and this crate gained the `env` feature to say it with.
+    #
+    # The four that remain are real: `extern crate std`, the `cpp_diag!` stdio
+    # macro pair (printing IS the hosted thing), and the tier runtime
+    # `nros_board_native_run_tiers` with its `NativeTierSpecC`, which spawns one
+    # `std::thread` per tier. That one is portable in principle — the platform
+    # task ABI carries name, stack and priority — but `nros-node`'s
+    # allocate-spawn-join helper is `pub(crate)`, so porting it means either
+    # exposing that internal surface or writing a THIRD copy of the sequence
+    # (`nros-node` and `nros-board-nuttx` have the other two). That is an API
+    # decision, not a flavour cleanup.
+    "nros-cpp": {"cfg": 5, "path": 16},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

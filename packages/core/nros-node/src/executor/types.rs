@@ -1350,16 +1350,11 @@ pub fn default_epoch_us() -> u64 {
     unsafe extern "C" {
         fn nros_platform_time_now_ns() -> u64;
     }
-    // ONE read, and therefore no retry loop. Issue 0532 item 5 collapsed the
-    // wall clock to a single symbol; the loop that used to sit here existed
-    // because the ABI spent one instant over TWO symbols sampled separately, so
-    // a second boundary landing between them paired the old second with the new
-    // sub-second remainder — a timestamp that jumped a full second BACKWARDS.
-    // A single u64 cannot tear, so the whole hazard is gone rather than bounded.
+    // SAFETY: a bare wall-clock read, no pointer arguments, guaranteed by
+    // whichever port linked the binary.
     //
-    // SAFETY: a bare wall-clock query, no pointer arguments, guaranteed by
-    // whichever port linked the binary — the contract the clock, sleep and wake
-    // symbols in this crate already rely on.
+    // ONE symbol since issue 0532; the bounded re-read this carried against the
+    // former `time_since_epoch_{secs,nanos}` pair is gone with it.
     unsafe { nros_platform_time_now_ns() / 1_000 }
 }
 

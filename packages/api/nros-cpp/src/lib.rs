@@ -1064,7 +1064,10 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
 /// `session_name` must be NULL or a valid null-terminated string.
 /// `setup` must be a valid function pointer; it is invoked once with the executor
 /// handle (a `*mut CppContext`) before the spin loop.
-#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+// phase-359 W10 — `env`, not `std`: this entry resolves its locator, domain
+// and spin bound from the PROCESS ENVIRONMENT, which is the capability, and
+// `CString` is `alloc`. Nothing here needs the flavour.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_components_named(
     session_name: *const c_char,
@@ -1087,7 +1090,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
     let locator = std::env::var("NROS_LOCATOR")
         .ok()
         .filter(|s| !s.is_empty())
-        .and_then(|s| std::ffi::CString::new(s).ok());
+        .and_then(|s| alloc::ffi::CString::new(s).ok());
     let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
@@ -1151,7 +1154,10 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
 ///
 /// # Safety
 /// `setup` must be a valid function pointer.
-#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+// phase-359 W10 — `env`, not `std`: this entry resolves its locator, domain
+// and spin bound from the PROCESS ENVIRONMENT, which is the capability, and
+// `CString` is `alloc`. Nothing here needs the flavour.
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_components(
     setup: Option<unsafe extern "C" fn(executor: *mut c_void) -> i32>,
@@ -2532,7 +2538,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     let locator = std::env::var("NROS_LOCATOR")
         .ok()
         .filter(|s| !s.is_empty())
-        .and_then(|s| std::ffi::CString::new(s).ok());
+        .and_then(|s| alloc::ffi::CString::new(s).ok());
     let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())

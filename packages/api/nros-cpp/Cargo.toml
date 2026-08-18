@@ -26,6 +26,7 @@ crate-type = ["staticlib", "lib"]
 # own provider, so nothing downstream is affected.
 default = ["panic-spin"]
 std = [
+    "env",
     "alloc",
     # phase-359 W10 — `env` rides with `std` HERE, and only here.
     #
@@ -52,6 +53,11 @@ std = [
     "nros-bridge?/std",
 ]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc"]
+# phase-359 W10 — the process-environment CAPABILITY, named so this crate's own
+# `#[cfg]` can ask for it (the same reason `nros-c` gained one). `std` implies
+# it, so a C++ image linking the std flavour keeps exactly what it had: the
+# hosted component entry resolving its locator and domain from the environment.
+env = ["nros/env", "nros-node/env", "nros-c/env"]
 
 # Phase 241.D3-rev — single-runtime umbrella. `nros-cpp` bundles `nros-c` (the C
 # ABI + the cffi shim + the force-linked backend) as an rlib dep, so `libnros_cpp.a`

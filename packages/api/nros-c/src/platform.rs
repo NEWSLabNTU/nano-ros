@@ -62,6 +62,10 @@ pub fn get_time_ns() -> u64 {
 /// Get system time in nanoseconds since the Unix epoch.
 ///
 /// phase-359 W10 — this FIXES the no_std answer rather than merely merging two.
+/// (Amended: written against `time_since_epoch_{secs,nanos}`, which issue 0532
+/// collapsed into ONE `nros_platform_time_now_ns` mid-flight. One symbol means
+/// one sample, so the bounded re-read this used to carry is gone — exactly the
+/// deletion 0532 promised.)
 /// The `no_std` twin returned `get_time_ns()`, the MONOTONIC counter,
 /// documented as "returns monotonic time as system time is not available". It
 /// IS available: the ABI has a wall clock and every port implements it. A
