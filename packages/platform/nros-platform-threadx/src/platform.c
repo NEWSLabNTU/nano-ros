@@ -339,6 +339,14 @@ int8_t nros_platform_task_init(void *task, void *attr,
     size_t stack_bytes = (a != NULL && a->stack_bytes > 0u)
                              ? a->stack_bytes
                              : NROS_THREADX_DEFAULT_STACK_BYTES;
+    /* issue 0612 — raise a below-floor request to this port's minimum. Here the
+     * clamp also decides how much memory the allocation below asks for, so it
+     * has to happen before it: `tx_thread_create` answers TX_SIZE_ERROR for a
+     * stack under TX_MINIMUM_STACK, which this port would then report as a
+     * generic failure. */
+    if (stack_bytes < (size_t) TX_MINIMUM_STACK) {
+        stack_bytes = (size_t) TX_MINIMUM_STACK;
+    }
     void *stack = (a != NULL) ? a->stack_mem : NULL;
     if (stack == NULL) {
         stack = nros_platform_alloc(stack_bytes);

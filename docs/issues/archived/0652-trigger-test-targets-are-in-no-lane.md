@@ -222,3 +222,31 @@ what the gate's own comment promised when it went in with five.
 Every one of these needed `ros-humble-rmw-zenoh-cpp`. The audit above could see
 that the targets were unreachable but not what was wrong inside them, because
 this host could only reach `[SKIPPED:capability]`.
+
+## Follow-on 2026-08-18 — `loan_e2e` was named a home and not given one
+
+The section above concluded `loan_e2e` "belongs to `test-zpico-multisession`,
+which already owns that env and its own target dir", and recorded it verified
+2/2 under that env. The recipe was never edited, so the target stayed in exactly
+the state this issue is about: in no lane, with a note explaining where it ought
+to be.
+
+That is the failure mode a baseline invites, and the gate caught it. Adding the
+two `cargo nextest` lines to `test-zpico-multisession` made `loan-e2e` reachable
+and `check-required-features-reachable` failed with *"baselined feature(s) now
+reachable — remove them from BASELINE; it is a shrinking backlog, not an
+exemption"*. Baseline 2 → 1.
+
+The test also now asserts `ZPICO_MAX_SESSIONS >= 2` and names the recipe. The
+remedy for that failure is a rebuild under a different environment, which no
+runtime error can express — left to itself the test reports
+`Transport(InvalidConfig)`, which reads as a bad locator. That is the same
+misdirection `trigger_conditions` gave, from the other cause.
+
+Remaining: `rmw` / `custom_transport_loopback`. Recorded here as "unassessed —
+the fixture is stale"; it has since been run on rebuilt fixtures and **passes**.
+So it is not broken either, and what it lacks is a lane that can guarantee the
+fixture rather than a fix.
+
+`signal_fd_wake` joined the lane from `nros-node` (issue 0612), taking it to
+20 tests. Its first real execution failed outright → issue 0667.

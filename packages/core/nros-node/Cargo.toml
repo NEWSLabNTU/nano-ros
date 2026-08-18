@@ -234,12 +234,17 @@ nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 # so the unification path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-types" }
-# issue 0612 — `tests/signal_fd_wake.rs` could not LINK in any configuration:
-# turning `signal-fd-wake` on makes the `NodeWake` path live, and it calls the
-# platform ABI (`nros_platform_wake_*`, `nros_platform_task_*`) that this crate
-# never provided. `posix-c-port` compiles the host C port that supplies them.
-# Host-only by construction — this table is already target-scoped so embedded
-# targets see an empty dev-dep set (see the note above).
+# phase-359 W10 — the crate's own UNIT tests link the POSIX C port for
+# `nros_platform_{task,wake}_*`, which `src/` reaches through bare `extern "C"`
+# declarations and never names. `src/lib.rs` carries the matching
+# `#[cfg(test)] extern crate nros_platform_cffi as _;` — without that line rustc
+# drops the dev-dep and the symbols come back undefined.
+#
+# Host-only by construction: this table is already target-scoped, so embedded
+# targets see an empty dev-dep set (see the note above). It was ALSO what let
+# `tests/signal_fd_wake.rs` link (issue 0612); that test now lives in
+# `nros-tests`, where a registered backend and a router fixture exist, so this
+# entry is here for the unit tests alone.
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 248 (C2) — the `nros-rmw-cyclonedds[bridge-stub]` dev-dep was
 # removed along with the cyclone smoke test. That test moved into the

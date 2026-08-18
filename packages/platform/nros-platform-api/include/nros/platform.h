@@ -309,7 +309,17 @@ typedef struct {
     /** Task name for the kernel's own tables and crash dumps. `NULL` = the
      *  port's default. Ports whose kernel has no name concept ignore it. */
     const char *name;
-    /** Stack size in BYTES. `0` = the port's default.
+    /** Minimum stack size in BYTES. `0` = the port's default.
+     *
+     *  A FLOOR, not an exact size (issue 0612). Every port has a minimum of its
+     *  own — `PTHREAD_STACK_MIN`, `configMINIMAL_STACK_SIZE`, `TX_MINIMUM_STACK`
+     *  — and those differ by an order of magnitude, and on POSIX differ by
+     *  ARCHITECTURE (16384 on glibc/x86_64, 131072 on glibc/aarch64). So no
+     *  portable caller can name a number that is legal everywhere, and a port
+     *  that treats a small request as an error turns a reasonable ask into a
+     *  dead capability: that is exactly how `Executor::signal_fd()` returned
+     *  `NotInitialized` on every Linux host. A port raises this to its own
+     *  minimum; it never lowers it, and never refuses for being too small.
      *
      *  Always bytes, never words: FreeRTOS's `xTaskCreate` takes words, and the
      *  private struct it replaced called the field `stack_depth` while ThreadX's

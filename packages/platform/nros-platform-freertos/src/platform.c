@@ -388,6 +388,15 @@ int8_t nros_platform_task_init(void *task, void *attr,
     size_t stack_bytes = (a != NULL && a->stack_bytes > 0u)
                              ? a->stack_bytes
                              : (size_t) (20480);
+    /* issue 0612 — `stack_bytes` is a FLOOR, and this port has one of its own.
+     * Passing a smaller request straight through does not refuse it, which
+     * would at least be visible; it creates a task whose stack overflows later,
+     * somewhere else. The POSIX port had the same defect in its loud form (a
+     * refusal that killed `signal_fd()` on every Linux host); this is the quiet
+     * form of it. */
+    if (stack_bytes < (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t))) {
+        stack_bytes = (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t));
+    }
     /* phase-364 W3 — BYTES to WORDS. `xTaskCreate` takes a stack DEPTH in
      * words; the ABI speaks bytes because the private struct this replaced
      * called the field `stack_depth` and meant words here while ThreadX's

@@ -84,12 +84,25 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let locator = zenohd_unique.locator();
-
     // Two separate executors → two zenoh-pico sessions. Same-process
     // pub/sub on a SINGLE session hits zenoh-pico's write filter; the
-    // executors here are independent sessions that round-trip through
-    // zenohd. Pattern mirrors `trigger_conditions.rs`'s workaround.
+    // executors here are independent sessions that round-trip through zenohd.
+    //
+    // issue 0652 — the session pool is a COMPILE-TIME size defaulting to ONE,
+    // so under any other build the subscriber executor fails with
+    // `Transport(InvalidConfig)`, which reads as a bad locator rather than
+    // "this build allows one session and you asked for two". Asserted here
+    // because the remedy is a rebuild with a different environment, which no
+    // runtime error could otherwise name. `just test-zpico-multisession` sets it.
+    assert!(
+        nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS >= 2,
+        "this build allows ZPICO_MAX_SESSIONS={} and the test opens two \
+         sessions (publisher + subscriber, in one process). Run \
+         `just test-zpico-multisession`, which builds with the pool this needs.",
+        nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS
+    );
+
+    let locator = zenohd_unique.locator();
 
     // Subscriber thread setup.
     static RX_COUNT: AtomicUsize = AtomicUsize::new(0);

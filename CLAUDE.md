@@ -202,6 +202,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   then promote. Temp files in `$project/tmp/` (gitignored), not `/tmp`; use Write/Edit not heredoc.
 - **Tests must fail on unmet preconditions** (`assert!`/`bail!`/`nros_tests::skip!`). Bare
   `eprintln!`+`return` reports PASS — never. Same for runtime: panic, not silent early-return.
+  **A target behind `required-features` that no recipe enables is the same lie one level up** —
+  cargo skips it SILENTLY (not reported as filtered, simply never built) so it reads as coverage.
+  Gate: `check-required-features-reachable`; lane: `just check-required-features-tests`. When the
+  laned targets finally ran, four were broken and one capability was entirely non-functional
+  (issues 0652/0612/0667). Assert LOWER bounds on timing too: an upper-bound-only wake test
+  passes a `spin_once` that never waited.
 - **No compilation inside tests** — never `cargo`/`cmake`/`idf.py`/`west build` at run time. Compile in
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. → AGENTS.md Testing.
@@ -228,7 +234,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
   tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
-  reads STALE. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
+  reads STALE. **`just format` is one of these and does not look like one:** `native::format`
+  runs `cargo fmt` per example leaf, which formats that leaf's `generated/` members too, so
+  every native fixture re-stales at one timestamp. Format BEFORE building fixtures, never
+  after or during — a `format` run overlapping a fixture build costs the whole build. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
   (issue 0466)** — and the order is load-bearing: rebuild the CLI FIRST (`just setup-cli`),
   THEN fixtures, because fixtures key on that stamp; doing it the other way re-stales
   everything you just built. `just check-tier-preconditions` reports every unmet
@@ -340,6 +349,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `Z_FEATURE_LOCAL_SUBSCRIBER=1`. → platform-implementation-notes.md (issues 0129/0139).
 - **NuttX spin uses `sem_timedwait`** (pthread condvar hangs). → platform-implementation-notes.md.
 - **NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not `INT` ms** (deadlock otherwise).
+- **A task's `stack_bytes` is a FLOOR the PORT raises, never a size the caller can get right**
+  (issue 0667). Every port's minimum differs — `PTHREAD_STACK_MIN`, `configMINIMAL_STACK_SIZE`,
+  `TX_MINIMUM_STACK` — and on POSIX it differs by ARCHITECTURE (16384 on glibc/x86_64, 131072 on
+  glibc/aarch64), so no portable caller can name a legal number. Refusing a below-floor request
+  killed `Executor::signal_fd()` on every Linux host for two phases (the worker asks 8192);
+  FreeRTOS/ESP-IDF/ThreadX had the quieter form, forwarding it to a task that overflows later.
+  Same "ask, do not assume" as the storage probes (0570). Zephyr honours none of it and says so.
   → platform-implementation-notes.md.
 - **smoltcp multicast:** join the GROUP addr, not `0.0.0.0`; LAN9118 needs promiscuous in QEMU.
   → platform-implementation-notes.md.

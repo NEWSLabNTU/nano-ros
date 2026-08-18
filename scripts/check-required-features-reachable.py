@@ -46,16 +46,25 @@ ROOT = Path(__file__).resolve().parent.parent
 #   phase216-substrate      dispatch_strategy
 #   rmw                     custom_transport_loopback
 # Shrunk 2026-08-18: `trigger-test`, `component-runtime-test` and
-# `phase216-substrate` now run in `check-required-features-tests` (18 tests).
-# What is left is what still cannot join that lane:
+# `phase216-substrate` now run in `check-required-features-tests` (20 tests,
+# `signal-fd-wake-test` having joined them from `nros-node` per issue 0612).
 #
-#   loan-e2e  opens two in-process sessions, so it needs ZPICO_MAX_SESSIONS=2 —
-#             a BUILD input, hence its own target dir. Belongs to
-#             `test-zpico-multisession`; verified passing 2/2 under that env.
-#   rmw       `custom_transport_loopback` needs a native fixture, so it wants a
-#             fixture-gated lane. Unassessed: the fixture is stale here.
+# Shrunk again the same day: `loan-e2e` is wired into `test-zpico-multisession`,
+# which already owns `ZPICO_MAX_SESSIONS=2` and its own target dir. The entry
+# above named that recipe as its home and recorded "verified passing 2/2 under
+# that env" — but the wiring was never added, so the target sat in no lane after
+# all, which is the exact condition this gate exists to make impossible. The
+# gate caught it: adding the recipe line made `loan-e2e` reachable and this file
+# failed until the entry came out. A baseline row is the thing to delete, not a
+# note to keep.
+#
+# What is left:
+#
+#   rmw  `custom_transport_loopback` needs a native fixture, so it wants a
+#        fixture-gated lane rather than a `check` one. Verified passing on
+#        rebuilt fixtures (it was fixture staleness, not a defect) — what it
+#        lacks is a lane that can guarantee the fixture, not a fix.
 BASELINE = {
-    "loan-e2e",
     "rmw",
 }
 

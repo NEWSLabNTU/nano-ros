@@ -344,6 +344,20 @@ then exempts the carrier *because* it compiles into `app` — a target edge. FIX
 source the same file-level edge, `APPEND`ed so the interface-codegen module's stamp is not clobbered;
 verified in the generated ninja (an IMPLICIT `|` dep, not `||`) rather than by one green build, since a
 race that goes the right way proves nothing. See `archived/0638-*`. (2026-08-16)
+Recently resolved (2026-08-18): **#0667** — `nros_platform_task_init` refused a stack request BELOW the
+port's own minimum, so `Executor::signal_fd()` returned `NotInitialized` on every Linux host. The signalfd
+worker asks for 8192 ("the smallest stack any port will honour"); glibc's `PTHREAD_STACK_MIN` on x86_64 is
+16384, so `pthread_attr_setstacksize` failed and the POSIX port called that a caller-side impossibility. It
+is not: asking for a stack smaller than the platform's minimum is asking for "small". No portable caller can
+pick a better number either — the floor is 16384 on glibc/x86_64, 131072 on glibc/aarch64, and
+`TX_MINIMUM_STACK`/`configMINIMAL_STACK_SIZE` elsewhere — the same "ask, do not assume" reasoning as the
+storage probes (#0570). FreeRTOS/ESP-IDF/ThreadX had the QUIETER form: they forwarded a below-floor request
+to a task that overflows later. FIXED by documenting `stack_bytes` as a FLOOR and clamping in each port;
+Zephyr already documents that it cannot honour the field. Introduced by phase-359 W10 (`std::thread` clamps;
+a platform task did not) and invisible because the one test was #0612's, which no lane could run. The other
+`PlatformTask::spawn` caller survived by one byte: `WORKER_STACK_BYTES` is 16384, exactly this arch's floor.
+See `archived/0667-*`. (2026-08-18)
+
 Recently resolved (2026-08-18): **#0652** — seven `required-features` test targets ran in NO lane, so cargo skipped them SILENTLY while they read as coverage. Now laned (`check-required-features-tests`, 18 tests). Running them found three defects that had rotted unobserved: a missing force-link anchor, an unused import fatal under `-D warnings`, and a pre-phase-258 observable whose correct form a SIBLING test already recorded. `loan_e2e` is mis-laned not broken (needs ZPICO_MAX_SESSIONS=2). Baseline 5 -> 2. See `archived/0652-*`. (2026-08-18)
 
 **#0655** (bug, open 2026-08-17) — the Zephyr core-pin ACCEPT arm can never succeed: it pins
@@ -653,7 +667,7 @@ fails loudly if upstream moves that line; and `board-facts` accepts the leaf sha
 the configure message. Still unmeasured: the C/C++ Zephyr cells, which #0590 stops before they configure.
 See `archived/0605-*`. (2026-08-16)
 
-**#612** (testing, open 2026-08-16) — `tests/signal_fd_wake.rs` cannot LINK in any configuration and no
+Recently resolved (2026-08-18): **#612** — `tests/signal_fd_wake.rs` could not LINK in any configuration and no
 lane enables the feature, so `signal-fd-wake` has never been runtime-tested. `nros-node` carries no platform
 provider in its dev-dependencies, so the moment the test's feature set pulls `NodeWake` in, every
 `nros_platform_wake_*` is undefined; sibling test binaries link only because nothing references them.
@@ -667,7 +681,16 @@ dev-dep and its `-l` with it (same lesson as #0619). That exposed a THIRD cause 
 both tests silently SKIPPED and reported PASS, and the gating makes the wake path unreachable by ANY
 invocation — `NodeWake` needs `rmw-cffi`, which is exactly what excludes `nros_node::mock`, the only session
 a bare `cargo test` can open. Skips now panic. Lane deliberately NOT added yet: it would only add a red, and
-pressure the next person toward loosening the `#![cfg]`. (2026-08-16)
+pressure the next person toward loosening the `#![cfg]`. RESOLVED 2026-08-18: the gating was never going to
+resolve inside `nros-node` — any fix confined there is a second mock behind the same feature, or the `#![cfg]`
+loosening this issue warns against. What was missing is a registered backend and a router, and a crate with
+both already exists: the test moved to `nros-tests` behind a new `signal-fd-wake-test` feature, its `#![cfg]`
+NARROWER than before, and joined #0652's `check-required-features-tests` (18 tests -> 20). Both cases now
+assert a LOWER bound as well as an upper one — mutation-checked with `spin_once(0)`, which the old assertions
+passed. Its first real execution failed: `nros_platform_task_init` refused the 8192-byte stack the signalfd
+worker asks for (glibc `PTHREAD_STACK_MIN` is 16384), so `Executor::signal_fd()` had been dead on every Linux
+host since phase-359 W10 -> **#0667**. A test no lane runs is not weaker coverage; it is a claim of coverage
+over a capability that did not work. See `archived/0612-*`. (2026-08-18)
 
 Recently resolved (2026-08-16): **#0608** — a group-built row resolved at the AMBIENT cargo profile, so every group-built NuttX Rust row was looked up under `nros-relwithdebinfo` while the builder wrote `nros-minsizerel`. Fixed with ONE derivation (`nros_cargo_profile::platform_profile`, the Rust twin of `cargo.sh`'s switch, gated by a test that PARSES the shell) applied at the `require_prebuilt_row_binary` chokepoint rather than at nine call sites; covers the `freertos-qemu` sibling too. See `archived/0608-*`. (2026-08-16)
 

@@ -230,6 +230,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
     size_t stack_bytes = (a != NULL && a->stack_bytes > 0u)
                              ? a->stack_bytes
                              : (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t));
+    /* issue 0612 — raise a below-floor request rather than pass it through; see
+     * the FreeRTOS port for why the quiet form of this is the worse one. This
+     * port's `xTaskCreate` takes BYTES, so the floor is expressed in bytes too. */
+    if (stack_bytes < (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t))) {
+        stack_bytes = (size_t) (configMINIMAL_STACK_SIZE * sizeof(StackType_t));
+    }
     /* phase-364 W3 — ESP-IDF's `xTaskCreate` takes the stack size in BYTES,
      * unlike vanilla FreeRTOS which takes words. The ABI speaks bytes, so this
      * port passes the value straight through — and that difference is exactly

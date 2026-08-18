@@ -238,9 +238,29 @@ int8_t nros_platform_task_init(void *task, void *attr,
         }
         pattr_p = &pattr;
         if (a->stack_bytes > 0u) {
-            /* Below PTHREAD_STACK_MIN the call fails; treat that as the caller
-             * asking for something impossible rather than a shortage. */
-            if (pthread_attr_setstacksize(&pattr, a->stack_bytes) != 0) {
+            /* issue 0612 — `stack_bytes` is a FLOOR the caller needs, not an
+             * exact size, so a request under this port's own minimum is raised
+             * to it rather than refused.
+             *
+             * Refusing was a live bug, not a theoretical one: the signalfd
+             * worker asks for 8192 ("the smallest stack any port will honour"),
+             * glibc's PTHREAD_STACK_MIN on x86_64 is 16384, so
+             * `pthread_attr_setstacksize` failed, `task_init` returned INVALID,
+             * and `Executor::signal_fd()` returned `NotInitialized` on EVERY
+             * Linux host. The capability was dead from the day it moved to a
+             * platform task, and the one test that would have said so could not
+             * run (issue 0612's other half).
+             *
+             * The floor is not a constant across POSIX either — it is 16384 on
+             * glibc/x86_64 and 131072 on glibc/aarch64 — so no caller can pick a
+             * portable number by hand. Only the port knows, which is why the
+             * port is where the clamp belongs. Same "ask, do not assume"
+             * reasoning as the storage-size probes (issue 0570). */
+            size_t want = a->stack_bytes;
+            if (want < (size_t) PTHREAD_STACK_MIN) {
+                want = (size_t) PTHREAD_STACK_MIN;
+            }
+            if (pthread_attr_setstacksize(&pattr, want) != 0) {
                 (void) pthread_attr_destroy(&pattr);
                 return NROS_PLATFORM_RET_INVALID;
             }

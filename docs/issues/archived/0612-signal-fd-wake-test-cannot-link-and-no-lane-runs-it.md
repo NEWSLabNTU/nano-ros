@@ -2,10 +2,10 @@
 id: 612
 title: "`tests/signal_fd_wake.rs` cannot link in any configuration, and no lane
   enables the feature — so `signal-fd-wake` has never been runtime-tested"
-status: open
+status: resolved
 type: bug
 area: testing
-related: [issue-0577, issue-0196, phase-359]
+related: [issue-0577, issue-0196, issue-0652, issue-0667, phase-359]
 ---
 
 ## Symptom
@@ -135,3 +135,66 @@ The assertions are upper-bound only (`elapsed < TRIGGER_DELAY_MS + 100`). A
 `spin_once` that never blocks at all passes them. Whoever resolves cause 3
 should add the lower bound (`elapsed >= TRIGGER_DELAY_MS`) — otherwise the test
 still cannot distinguish "woke on the eventfd" from "never waited".
+
+## Resolution 2026-08-18 — cause 3 fixed by moving the test, cause 2 by giving it a lane
+
+The 2026-08-16 update fixed cause 1 (cannot link) and left the two that decide
+whether this is coverage. Both are closed now, in the order that update
+prescribed: resolve the gating first, then add the lane.
+
+### Cause 3 — the test moved to where a session exists
+
+The gating was never going to resolve inside `nros-node`. `NodeWake` is gated
+`all(alloc, rmw-cffi)`; `nros_node::mock` is gated `all(test, not(rmw-cffi))`;
+the crate registers no cffi backend of its own. Any fix confined to that crate
+is either a second mock behind the same feature or the `#![cfg]` loosening this
+issue warns against.
+
+What was missing is not a cfg but a **registered backend and a router**, and a
+crate that has both already exists. The test is now
+`packages/testing/nros-tests/tests/signal_fd_wake.rs`, behind a new
+`signal-fd-wake-test` feature (`trigger-test` + `nros-node/signal-fd-wake`):
+`zenohd_unique` supplies the session, `use nros_rmw_zenoh as _;` supplies the
+backend, and `nros-tests`'s `lib.rs` already force-links the platform C port.
+The `#![cfg]` is NARROWER than before, not wider — `nros-node`'s own test file
+is deleted, not relaxed.
+
+`nros-node` keeps its `nros-platform-cffi` dev-dependency: `src/lib.rs` carries
+a `#[cfg(test)] extern crate nros_platform_cffi as _;` for the crate's own unit
+tests (254 of them, `just check-node-std-tests`). Its comment now says that is
+what the entry is for.
+
+### Cause 2 — the lane
+
+`just check-required-features-tests`, issue 0652's lane, which landed
+independently and in parallel with this work. This target joins it: 18 tests
+became 20, green.
+
+### The assertions were upper-bound only, and it mattered
+
+Both cases now assert `elapsed >= TRIGGER_DELAY_MS` as well as the upper bound,
+per this issue's closing note. Mutation-checked by replacing
+`spin_once(1000ms)` with `spin_once(0)`:
+
+```
+spin_once returned after 58.979µs, before the eventfd write at +30 ms —
+it did not block, so this run proves nothing about the wake path
+```
+
+Without the lower bound that run passes, which is the whole objection.
+
+### What running it found
+
+**`signal-fd-wake` was broken, not merely untested.** The first real execution
+failed with `NotInitialized`, from `nros_platform_task_init` returning
+`NROS_PLATFORM_RET_INVALID` (-7): the worker asks for an 8192-byte stack and
+glibc's `PTHREAD_STACK_MIN` on x86_64 is 16384, so the POSIX port refused it.
+`Executor::signal_fd()` had therefore been dead on every Linux host since
+phase-359 W10 moved the worker to a platform task — and three other ports had
+the same defect in its quieter form (forwarding a below-floor request to a task
+that overflows later). → **issue 0667**, where the fix lives: `stack_bytes` is a
+FLOOR, and each port raises it to its own minimum.
+
+That is the return on this issue. A test that no lane runs is not weaker
+coverage than one that runs; it is a claim of coverage over a capability that
+did not work.

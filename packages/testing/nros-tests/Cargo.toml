@@ -150,6 +150,18 @@ trigger-test = [
     # harness and uses std freely; what it stops doing is imposing that on
     # `nros-node`.
 ]
+# issue 0612 — the POSIX signalfd wake path. `signal-fd-wake` needs `alloc`,
+# `rmw-cffi` and `std` on `nros-node` (three `compile_error!`s say so); the
+# first two arrive with `trigger-test`, the third with this crate's own
+# `nros-node` feature list. What `trigger-test` supplies that `nros-node`'s own
+# test dir could not is a REGISTERED BACKEND and a router fixture: the wake path
+# is gated `all(alloc, rmw-cffi)`, and turning `rmw-cffi` on is exactly what
+# removes `nros_node::mock`, so in that crate no invocation both compiled the
+# code under test and could open a session.
+signal-fd-wake-test = [
+    "trigger-test",
+    "nros-node/signal-fd-wake",
+]
 # Phase 169.2 — multi-RMW bridge test deleted with the retired Rust
 # DDS backend.
 # Feature kept commented for archaeology.
@@ -248,6 +260,11 @@ required-features = ["trigger-test"]
 name = "wake_latency"
 path = "tests/wake_latency.rs"
 required-features = ["trigger-test"]
+
+[[test]]
+name = "signal_fd_wake"
+path = "tests/signal_fd_wake.rs"
+required-features = ["signal-fd-wake-test"]
 
 [[test]]
 name = "rtos_e2e"

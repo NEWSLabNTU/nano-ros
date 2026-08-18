@@ -640,6 +640,16 @@ check-node-std-tests:
 # `test-zpico-multisession`, which already owns that env and its own target dir.
 # `custom_transport_loopback` is not here either; it needs a native fixture, so
 # it wants a fixture-gated lane rather than this one.
+#
+# `signal_fd_wake` joined later (issue 0612), from `nros-node`, where it could
+# not pass by construction: `NodeWake` is gated `all(alloc, rmw-cffi)` and
+# `nros_node::mock` is gated `not(rmw-cffi)`, so the feature set that makes the
+# wake path live is the one that removes the only session that crate can open.
+# What it needed was a registered backend and a router fixture, which is what
+# this crate has. Its first real execution failed outright — the signalfd worker
+# asks for an 8192-byte stack against glibc's PTHREAD_STACK_MIN of 16384, so
+# `Executor::signal_fd()` had been dead on every Linux host (issue 0667). Same
+# thesis as the three above, one capability further out.
 [group("test")]
 check-required-features-tests:
     #!/usr/bin/env bash
@@ -647,11 +657,11 @@ check-required-features-tests:
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     cargo nextest run "${cargo_nextest_args[@]}" \
-        -p nros-tests --features trigger-test,component-runtime-test,phase216-substrate \
+        -p nros-tests --features trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test \
         --test trigger_conditions --test wake_latency \
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
-        --test dispatch_strategy
+        --test dispatch_strategy --test signal_fd_wake
     echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
@@ -2004,6 +2014,17 @@ test-zpico-multisession verbose="":
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    # issue 0652 — `loan_e2e` for the same reason, and it is why the feature is
+    # off `check-required-features-tests`: it runs a publisher and a subscriber
+    # in ONE process (same-process pub/sub on a single session hits zenoh-pico's
+    # write filter), so it needs the pool this lane's env provides. #0652 named
+    # this recipe as its home and left the wiring undone, so the target stayed
+    # in no lane after all.
+    loan_args=(-p nros-tests --features loan-e2e --test loan_e2e --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        loan_args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${loan_args[@]}"
 
 #
 # Heavy groups are skipped via a CLI `-E` predicate keyed off nextest
