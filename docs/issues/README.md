@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
+in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
+findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not
+use, when the only hosted thing in the file is `std::sync::Mutex` — and freeing it costs a NEW dependency
+edge (`nros-rmw/sync-spin`) on every build of a core crate, to serve zero callers. Wants a decision:
+delete, port and pay the edge, or keep one hosted module. Left std-gated deliberately, rationale corrected
+in place. See `0669-*`. (2026-08-18)
+
 **#0665** (build/api, open 2026-08-17) — `EXECUTOR_OPAQUE_U64S` is `size_of::<ExecutorInlineStorage>()`
 MEASURED in the `nros` facade's compilation and asserted against the same type under the CONSUMER's feature
 set. phase-359 W10 made `env` an independent capability, so those sets now differ, and the shared cargo group

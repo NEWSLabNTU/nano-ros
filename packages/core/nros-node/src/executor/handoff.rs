@@ -45,13 +45,25 @@
 //! the low-pri drain doesn't priority-invert the high-pri
 //! push.
 //!
-//! `std`-gated for now — the `alloc`-only path needs a
-//! lock-free SPSC queue (heapless::spsc requires a `.split()`
-//! call that doesn't compose with Arc-sharing across
-//! callbacks). Tracked under follow-up if no_std bridges
-//! become a use case.
-
-#![cfg(feature = "std")]
+//! `std`-gated, and phase-359 W10 measured WHY — the reason recorded above was
+//! not the one that holds.
+//!
+//! It said the `alloc` path "needs a lock-free SPSC queue (heapless::spsc
+//! requires a `.split()` call that doesn't compose with Arc-sharing)". That
+//! describes a design this module does not use: what is here is a
+//! `heapless::Vec` behind a MUTEX, and the only thing keeping it hosted is
+//! `std::sync::Mutex`.
+//!
+//! A portable one exists — `nros_rmw::sync::Mutex`, spin or critical-section —
+//! but `nros-node` depends on `nros-rmw` with `default-features = false` and
+//! neither sync feature is on, so reaching it means adding a dependency edge
+//! (`spin`) to EVERY build of this crate. `Handoff` has no consumer anywhere in
+//! the tree — not one call site in `packages/` or `examples/` — so that trade
+//! is not obviously worth making, and making it silently would be worse.
+//!
+//! Left std-gated deliberately. The decision this wants is whether an unused
+//! public API justifies a dependency in a core crate, which is a question for
+//! whoever owns the API rather than for the flavour campaign.
 
 use std::sync::Mutex;
 

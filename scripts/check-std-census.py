@@ -196,7 +196,13 @@ BASELINE = {
     # they need; its tests keep a gate, on `alloc`, which is what building a
     # string actually costs. `node_record` had the same call written twice
     # under complementary gates, left over from the wake-mirror merge.
-    "nros-node": {"cfg": 12, "path": 22},
+    #
+    # phase-359 W10: 12 -> 11 cfg. `handoff` carried its gate TWICE — an inner
+    # `#![cfg]` and the `#[cfg]` on its `mod` line — so one of the two was pure
+    # duplication. The module stays hosted on purpose: freeing it costs a `spin`
+    # dependency edge in a core crate for a public type with no caller anywhere,
+    # which is issue 0669's decision to make, not this campaign's.
+    "nros-node": {"cfg": 11, "path": 22},
     "nros-params": {"cfg": 7, "path": 1},
     "nros-rmw": {"cfg": 1, "path": 0},
     "nros-serdes": {"cfg": 1, "path": 0},
