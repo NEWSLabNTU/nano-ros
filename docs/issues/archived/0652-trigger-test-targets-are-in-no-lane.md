@@ -250,3 +250,37 @@ fixture rather than a fix.
 
 `signal_fd_wake` joined the lane from `nros-node` (issue 0612), taking it to
 20 tests. Its first real execution failed outright → issue 0667.
+
+## The lane cannot pass on a host without ROS (noted 2026-08-18, by another session)
+
+`check-required-features-tests` runs a BARE `cargo nextest`, and a bare run
+counts `nros_tests::skip!` panics as FAILURES — only `test-all`'s junit rewrite
+turns them into skips (CLAUDE.md records this). Eleven of the lane's targets
+reach `zenohd_router`, which on a host with no ROS install skips:
+
+```
+[SKIPPED:capability] no `rmw_zenoh_cpp/rmw_zenohd` under /opt/ros (ROS_DISTRO=unset)
+…
+Summary [0.020s] 18 tests run: 7 passed, 11 failed, 0 skipped
+error: recipe `check-required-features-tests` failed with exit code 100
+```
+
+So `just ci` is red here for a reason that is not a defect in anything the lane
+tests. This is consistent with the commit's own note — *"None of this was
+reproducible before `ros-humble-rmw-zenoh-cpp` was installed"* — the lane was
+written and verified on a host that has ROS, and tier 1 is meant to run
+everywhere.
+
+Not touched from here; it is an hour-old gate and its owner should pick the
+shape. The two that fit existing precedent:
+
+* route the lane's output through `rewrite-skipped-junit`, as `test-all` does,
+  so a capability skip stays a skip; or
+* let the lane deselect the router-dependent targets when no router is
+  resolvable, the way `lane_scope` narrows a run by coordinate — with the skip
+  REPORTED, so the green states what it did not cover (issue 0650's rule).
+
+Evidence it is not a regression from the concurrent `#0659` work: the lane
+appears zero times in two `just ci` logs from before that rebase and twice
+after, and the sibling gate's own line changed across it
+(`5 declared, 5 baselined backlog` → `5 declared, 2 baselined backlog`).
