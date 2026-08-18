@@ -64,9 +64,15 @@ pub fn get_time_ns() -> u64 {
 /// phase-359 W10 — this FIXES the no_std answer rather than merely merging two.
 /// The `no_std` twin returned `get_time_ns()`, the MONOTONIC counter,
 /// documented as "returns monotonic time as system time is not available". It
-/// IS available: the ABI has `nros_platform_time_since_epoch_*` and every port
-/// implements it. A caller stamping a message with this on target was getting
-/// time-since-boot presented as time-since-1970.
+/// IS available: the ABI has a wall clock and every port implements it. A
+/// caller stamping a message with this on target was getting time-since-boot
+/// presented as time-since-1970.
+///
+/// That sentence used to name `nros_platform_time_since_epoch_*` as the symbols
+/// providing it. Issue 0532 retired them, so the doc comment was left asserting
+/// that a pair nothing defines is implemented everywhere — four lines above the
+/// comment explaining their deletion. Naming the FACT rather than the spelling
+/// keeps it true across the next rename.
 pub fn get_system_time_ns() -> i64 {
     // issue 0532 — this is the "remaining half" the previous comment here
     // promised, and it is a DELETION rather than a rewrite.
