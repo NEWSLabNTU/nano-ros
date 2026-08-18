@@ -1,6 +1,6 @@
 # Phase 354 — Contract seams: the places two sides disagree about one fact
 
-**Status (2026-08-16). W1, W2 and W4 DONE; W3 open.** This header said
+**Status (2026-08-17). W1–W4 DONE.** This header said
 "PLANNING — nothing implemented" after work had landed — corrected here.
 
 * **W1 (#493, two workspace roots / one corrosion dir)** — **DONE.** Both halves
@@ -8,7 +8,10 @@
 * **W2 (#466, tier-1's unstated setup contract)** — DONE. `d38a409ff` took
   finding (a): one gate joins the precondition batch, one is declined WITH
   evidence. #466 resolved.
-* **W3 (#454, `*_send_goal_raw` does not strip the CDR header)** — OPEN.
+* **W3 (#454, `*_send_goal_raw` does not strip the CDR header)** — **DONE.** The
+  strip landed, and the wire demonstration the acceptance asked for now exists
+  and is falsifiable. Two further defects fell out of writing the caller — see
+  the W3 section. #454 resolved.
 * **W4 (#532, clock ABI resolution)** — **DONE.** The check ran: phase-352
   covers items 1-3 and answers the open question; item 4 is a recorded
   deferral; item 5 (the wall clock) is untouched. #532 restated to that
@@ -150,6 +153,71 @@ active driver, so it is not the home for this despite the topic overlap.
 **Acceptance.** A `PollingActionClient` goal round-trips against a real peer
 with exactly one encapsulation header, demonstrated on the wire rather than by
 reading the encoder.
+
+### DONE 2026-08-17 — the caller, and the two defects it found
+
+The strip itself was one line per arm (`core.send_goal_raw(strip_cdr_header(
+slice))`, C and C++) plus `scripts/check-goal-cdr-stripped.py`. The acceptance
+was the hard half: it asks for a WIRE demonstration, and there was no caller to
+build one from. Nothing in the tree invoked `nros_action_client_send_goal_raw` —
+no example, no fixture, no test — which is the whole reason the defect shipped.
+
+**The caller.** `packages/testing/nros-tests/bins/action-raw-goal-probe` — a
+CMake C leaf with its own `[[fixture]]` row (`linux/c/zenoh`), built by the same
+`fixtures-build.sh linux c zenoh` group as every native C example. It builds a
+Fibonacci goal WITH its encapsulation header, ships it through the raw FFI, and
+round-trips accept + get_result against the C `action-server` example.
+`tests/action_raw_goal_e2e.rs` asserts on the SERVER's log, not the probe's: the
+probe can only report what it believes it sent, and only the peer reports what
+arrived.
+
+It is under `packages/testing/` rather than `examples/` deliberately — a
+regression probe is not a copy-out user project. That needed a dir-relative
+resolver, so `build_example_cmake_rmw` is now a thin wrapper over
+`build_cmake_leaf_rmw`: one locator, not a second spelling.
+
+**Falsifiable, and falsified.** With the strip removed, rebuilt, the test fails
+with the server reporting order **256** against the 7 sent. Restored, it passes
+in ~4.6 s. The value is worth recording because the obvious prediction was
+wrong: "the header bytes land in `order`, so the peer reads 0x00010000 = 65536"
+ignores that the parsed request is `[encap][GoalId(16)][order]` — the extra four
+bytes shift the tail and `order` reads a straddle. `RAW_GOAL_DOUBLE_HEADER_ORDER`
+is the measured 256, and its doc says so.
+
+**Defect 1 — the polling arms never got phase-338 W3's channel-type fix.** The
+first run failed with the goal never reaching the server. Cause: `init_polling`
+in `nros-c` and `nros-cpp` advertised the BARE action type
+(`…::dds_::Fibonacci_`) on send_goal / get_result / feedback, where ROS 2
+expects `…Fibonacci_SendGoal_`. The type name is baked into the keyexpr, so
+query and queryable are different keys and every goal times out — the exact
+failure `action_channel_type`'s own doc records from the raw REGISTER path.
+phase-338 W3 fixed that path and left these; nothing called them, so nothing
+caught it. Fixed at all six remaining sites (`nros-c` polling client + server,
+`nros-cpp` polling client + server, and `Node::create_action_{server,client}_raw_sized`),
+with `action_channel_type` promoted from `pub(crate)` to a `nros_node` /`nros`
+export so there is one implementation rather than a fifth transcription.
+
+**Defect 2 — actions ignore `ROS_DOMAIN_ID` ([issue 0656](../issues/0656-action-raw-register-ignores-ros-domain-id.md)).**
+With the type names agreeing, the goal still did not arrive: the C action server
+prints `Domain ID: 42` and then declares its queryables under `0/fibonacci/…`,
+because `register_action_server_raw*` never passes a domain. Every existing
+action test agreed on `0/` on both sides, so it passed for everyone. Filed, not
+fixed here — it is a distinct defect with its own blast radius (actions are not
+domain-isolated at all), and the test runs both peers on the default domain with
+a comment naming 0656.
+
+**Why the gate stays.** `check-goal-cdr-stripped.py` still covers what the test
+cannot: the C++ arm, and any arm added later with no peer to point at.
+
+**Defect 3, found while establishing a tier-2 baseline for this wave and fixed
+([issue 0658](../issues/archived/0658-lane-skip-nested-in-aggregator-reads-as-real-failure.md)).**
+Five tier-2 reds were lane SKIPS: each of five matrix aggregators tested
+`msg.contains("[SKIPPED]")`, the BARE marker, so every classed `[SKIPPED:lane]`
+was filed as a FAILED cell — and by the time it reached junit the marker was
+nested inside an aggregate panic, where the rewriter's start-anchored match
+cannot (and should not) look. `nros_tests::skip_marker` is now the one Rust
+spelling, `check-skip-marker-matching` guards it, and a nested marker is NAMED
+by `name-real-failures.py` rather than read as real. Tier-2 reds 9 → 3.
 
 ## W4 — Verify #532 against phase-352 before planning anything (#532)
 

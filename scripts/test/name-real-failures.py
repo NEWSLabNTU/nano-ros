@@ -57,6 +57,24 @@ def is_skip(node: ET.Element, case: ET.Element | None = None) -> bool:
     )
 
 
+def has_nested_marker(node: ET.Element, case: ET.Element) -> bool:
+    """Issue 0658 — the payload CONTAINS a marker, but not where `is_skip` looks.
+
+    `is_skip` is start-anchored on purpose: a real failure may legitimately
+    quote the word, and a substring search would make those vanish from the
+    real-failure count — the opposite defect, and a worse one. But a marker
+    sitting mid-payload is not nothing: it means some inner layer produced a
+    skip and an outer layer re-reported it as a failure. That is how five
+    tier-2 lane skips read as reds.
+
+    So: still counted as a real failure (only the aggregator can know), but
+    NAMED, so nobody has to rediscover it by hand-triaging a tier.
+    """
+    texts = [node.get("message") or "", node.text or ""]
+    texts.extend(skip_marker.testcase_streams(case))
+    return any(skip_marker.PREFIX in t for t in texts)
+
+
 def real_failures(path: Path) -> list[str]:
     try:
         root = ET.parse(path).getroot()
@@ -68,7 +86,14 @@ def real_failures(path: Path) -> list[str]:
             node = case.find(tag)
             if node is not None and not is_skip(node, case):
                 cls = case.get("classname") or "?"
-                out.append(f"{cls} {case.get('name') or '?'}")
+                name = f"{cls} {case.get('name') or '?'}"
+                if has_nested_marker(node, case):
+                    name += (
+                        "  <- a skip marker is NESTED in this failure; the test "
+                        "should classify it with `nros_tests::skip_marker` "
+                        "(issue 0658)"
+                    )
+                out.append(name)
                 break
     return out
 

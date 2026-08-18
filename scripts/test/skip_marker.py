@@ -53,6 +53,11 @@ SKIP_CLASS_RE = re.compile(r"\[SKIPPED(?::([a-z_]+))?\]")
 
 # Anchored form, for the `<failure message=…>` / body case: the payload IS the
 # panic message there, so the marker starts it.
+#: The marker's invariant prefix. `[SKIPPED]` and `[SKIPPED:<class>]` both start
+#: with it — matching the BARE spelling is issue 0658. Mirrors
+#: `nros_tests::skip_marker::PREFIX` on the Rust side.
+PREFIX = "[SKIPPED"
+
 SKIP_AT_START_RE = re.compile(r"^\[SKIPPED(?::([a-z_]+))?\]")
 
 # Stream form: the marker is the panic message, i.e. the line right after the

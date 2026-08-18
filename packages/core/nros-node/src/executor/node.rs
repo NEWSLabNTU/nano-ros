@@ -692,13 +692,20 @@ impl<'a> NodeHandle<'a> {
     > {
         let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
 
+        // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare
+        // action type (see `action_channel_type`). These two `_raw_sized`
+        // constructors are the last holders of the phase-338 W3 defect: the
+        // type name is baked into the keyexpr, so `…Fibonacci_` never matches a
+        // peer advertising `…Fibonacci_SendGoal_`.
+        let send_goal_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "SendGoal");
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &send_goal_keyexpr,
-            type_name,
+            &send_goal_type,
             type_hash,
         );
         let send_goal_server = self
@@ -720,13 +727,15 @@ impl<'a> NodeHandle<'a> {
             .create_service(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
+        let get_result_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "GetResult");
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &get_result_keyexpr,
-            type_name,
+            &get_result_type,
             type_hash,
         );
         let get_result_server = self
@@ -734,13 +743,15 @@ impl<'a> NodeHandle<'a> {
             .create_service(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
+        let feedback_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "FeedbackMessage");
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &feedback_keyexpr,
-            type_name,
+            &feedback_type,
             type_hash,
         );
         let feedback_publisher = self
@@ -819,13 +830,20 @@ impl<'a> NodeHandle<'a> {
     {
         let action_info = Self::action_info(self.domain_id, action_name, type_name, type_hash);
 
+        // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare
+        // action type (see `action_channel_type`). These two `_raw_sized`
+        // constructors are the last holders of the phase-338 W3 defect: the
+        // type name is baked into the keyexpr, so `…Fibonacci_` never matches a
+        // peer advertising `…Fibonacci_SendGoal_`.
+        let send_goal_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "SendGoal");
         let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
         let send_goal_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &send_goal_keyexpr,
-            type_name,
+            &send_goal_type,
             type_hash,
         );
         let send_goal_client = self
@@ -847,13 +865,15 @@ impl<'a> NodeHandle<'a> {
             .create_client(&cancel_goal_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
+        let get_result_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "GetResult");
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info = Self::service_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &get_result_keyexpr,
-            type_name,
+            &get_result_type,
             type_hash,
         );
         let get_result_client = self
@@ -861,13 +881,15 @@ impl<'a> NodeHandle<'a> {
             .create_client(&get_result_info, QosSettings::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
+        let feedback_type: heapless::String<256> =
+            super::action_core::action_channel_type(type_name, "FeedbackMessage");
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic = Self::topic_info(
             self.domain_id,
             &self.name,
             &self.namespace,
             &feedback_keyexpr,
-            type_name,
+            &feedback_type,
             type_hash,
         );
         let feedback_subscriber = self

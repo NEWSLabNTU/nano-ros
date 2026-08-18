@@ -374,6 +374,35 @@ pub fn goal_order_in(log: &str) -> Option<i32> {
         .and_then(|tok| tok.trim_end_matches(['.', ',']).parse().ok())
 }
 
+/// Issue 0454 / phase-354 W3 — the raw-goal wire probe's readiness line.
+pub const RAW_GOAL_PROBE_READY_MARKER: &str = "raw-goal probe ready";
+
+/// The probe's success line: it saw a result consistent with the order it sent.
+pub const RAW_GOAL_SINGLE_HEADER_MARKER: &str = "raw goal shipped exactly one encapsulation header";
+
+/// The order the raw-goal probe sends.
+///
+/// Deliberately NOT [`ACTION_GOAL_ORDER`]: the examples' 10 would also be a
+/// plausible misparse of some other layout, whereas 7 is not reachable from the
+/// double-header shift (which yields 65536). Must match `GOAL_ORDER` in
+/// `packages/testing/nros-tests/bins/action-raw-goal-probe/src/main.c` — a
+/// mismatch fails the test rather than weakening it.
+pub const RAW_GOAL_PROBE_ORDER: i32 = 7;
+
+/// What the server actually reads as the order when the goal carries TWO
+/// encapsulation headers: **256**, MEASURED by reintroducing the defect and
+/// reading the server's own log, not derived on paper.
+///
+/// The obvious arithmetic — "the header bytes `00 01 00 00` land in `order`, so
+/// a little-endian peer reads 0x00010000 = 65536" — is wrong, because the
+/// request the server parses is `[encap][GoalId(16)][order]`: the extra four
+/// bytes shift the whole tail, so what lands in `order` is a straddle reading
+/// 0x00000100. Issue 0461 recorded the same 256 from the other direction.
+///
+/// Named so the test can assert the regression's exact signature is absent,
+/// not merely that some order arrived.
+pub const RAW_GOAL_DOUBLE_HEADER_ORDER: i32 = 256;
+
 /// Action server log line when goal execution starts (`"Executing goal"`).
 pub const ACTION_EXECUTING_MARKER: &str = "Executing goal";
 

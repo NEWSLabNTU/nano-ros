@@ -220,7 +220,8 @@ pub use executor::{
     EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream,
     GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
-    RecvView, SessionHandle, Subscription, executor_storage_layout, executor_storage_u64_len,
+    RecvView, SessionHandle, Subscription, action_channel_type, executor_storage_layout,
+    executor_storage_u64_len,
 };
 #[cfg(any(has_rmw, test))]
 pub use executor::{ExecutorInlineStorage, ExecutorSizing};

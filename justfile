@@ -451,7 +451,7 @@ check-fast: _check-skip-reset \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
-    check-lane-skip-protocol \
+    check-lane-skip-protocol check-skip-marker-matching \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
     check-board-facts-delivery check-deploy-board-resolves \
@@ -4030,6 +4030,16 @@ _check-skip-reset:
     # shellcheck source=scripts/build/check-skip.sh
     source scripts/build/check-skip.sh
     nros_check_skip_reset
+
+# issue 0658 — `[SKIPPED:<class>]` does not contain `[SKIPPED]`, so a hand-rolled
+# literal match reclassifies every CLASSED skip as a FAILURE. Five matrix
+# aggregators had written that literal independently, turning five tier-2 lane
+# skips into tier-2 reds. One helper per language now owns the match
+# (`nros_tests::skip_marker`, `scripts/test/skip_marker.py`). Self-tests its own
+# matcher against the actual pre-fix line on every run.
+[private]
+check-skip-marker-matching:
+    @python3 scripts/check-skip-marker-matching.py
 
 # issue 0490 — a `cargo:rerun-if-changed` naming a path that does not exist makes
 # cargo treat the unit as permanently dirty, so the build script and everything

@@ -201,6 +201,9 @@ static C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-action-client binary
 static C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the raw-goal wire probe (issue 0454 / phase-354 W3)
+static ACTION_RAW_GOAL_PROBE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the c-xrce-talker binary
 static C_XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -985,6 +988,18 @@ impl Rmw {
         }
     }
 
+    /// The `rmw` field's spelling in `examples/fixtures.toml` — the third
+    /// element of a fixture COORDINATE.
+    ///
+    /// Delegates to [`cmake_value`](Self::cmake_value) rather than repeating the
+    /// match: the manifest and `NROS_RMW` share one vocabulary, and that is a
+    /// fact worth stating in code instead of leaving two identical tables to
+    /// drift. A separate name because they are separate facts — if the manifest
+    /// ever renames a backend, this is the one that moves.
+    pub fn coord_token(self) -> &'static str {
+        self.cmake_value()
+    }
+
     /// Per-RMW C / C++ build dir name. Same isolation pattern as
     /// `target_dir()` but for cmake.
     pub fn build_dir(self) -> &'static str {
@@ -1060,17 +1075,30 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
 /// `cmake -B build-<rmw> -S . -DNROS_RMW=<rmw> && cmake --build
 /// build-<rmw>` invocation belongs to `just <plat> build-fixtures`.
 pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/{}", name));
+    build_cmake_leaf_rmw(&format!("examples/{}", name), binary_name, rmw)
+}
 
-    if !example_dir.exists() {
+/// The same resolution for a CMake C/C++ leaf that is NOT under `examples/`.
+///
+/// `rel_dir` is repo-relative (e.g.
+/// `"packages/testing/nros-tests/bins/action-raw-goal-probe"`). Regression
+/// probes are not examples — examples are standalone copy-out user projects —
+/// but they are built by the same `fixtures-build.sh <plat> <lang> <rmw>` group
+/// off a `[[fixture]]` row, so they must resolve by the same rule.
+/// [`build_example_cmake_rmw`] is a thin wrapper over this, deliberately: one
+/// locator, not a second spelling that drifts from it.
+pub fn build_cmake_leaf_rmw(rel_dir: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    let root = project_root();
+    let leaf_dir = root.join(rel_dir);
+
+    if !leaf_dir.exists() {
         return Err(TestError::BuildFailed(format!(
-            "Example directory not found: {}",
-            example_dir.display()
+            "CMake leaf directory not found: {}",
+            leaf_dir.display()
         )));
     }
 
-    let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
+    let binary_path = leaf_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
     // phase-278 W2 — the cmake build dir (`build-<rmw>/`) is the binary's parent.
     require_prebuilt_binary_fresh_cmake(&binary_path)
 }
@@ -4832,7 +4860,11 @@ pub fn xrce_listener_binary() -> PathBuf {
 /// `just px4 build-fixtures` to `examples/px4/rust/companion/px4-stub/target-xrce/`.
 pub fn build_px4_stub() -> TestResult<&'static Path> {
     PX4_STUB_BINARY
-        .get_or_try_init(|| build_example_rmw("px4/rust/companion/px4-stub", "px4-stub", Rmw::Xrce))
+        .get_or_try_init(|| {
+            let dir = "px4/rust/companion/px4-stub";
+            crate::fixtures::lane::require_coord_in_lane(&px4_companion_coord(), dir)?;
+            build_example_rmw(dir, "px4-stub", Rmw::Xrce)
+        })
         .map(|p| p.as_path())
 }
 
@@ -4844,15 +4876,38 @@ pub fn px4_stub_binary() -> PathBuf {
         .to_path_buf()
 }
 
+/// The coordinate of the px4 companion leaves — issue 0658 follow-up.
+///
+/// `examples/px4/rust/companion/*` has NO `[[fixture]]` row: it is built by
+/// `just px4 build-fixtures`, in its own lane, behind its own SDK
+/// prerequisites. `attribute_path` therefore cannot place it, and the lane
+/// machinery's rule for an unattributable path is deliberately "never skip" —
+/// so under a narrowed lane these leaves reported STALE (a hard failure)
+/// instead of "not in this lane".
+///
+/// That is the right rule and the wrong outcome. `require_coord_in_lane` exists
+/// for exactly this case — "a resolver that selected its row by configuration
+/// knows the coordinate outright" — so state the coordinate here rather than
+/// relaxing attribution or inventing a manifest row for a lane that does not
+/// build from the manifest.
+///
+/// ONE spelling for both leaves: two accessors drifting apart is how the
+/// `[SKIPPED]` literal reached five call sites (issue 0658).
+fn px4_companion_coord() -> crate::fixtures::lane::Coord {
+    (
+        "px4".to_string(),
+        "rust".to_string(),
+        Rmw::Xrce.coord_token().to_string(),
+    )
+}
+
 /// Resolve the prebuilt px4 offboard-companion example binary (Phase 233.4).
 pub fn build_px4_companion() -> TestResult<&'static Path> {
     PX4_COMPANION_BINARY
         .get_or_try_init(|| {
-            build_example_rmw(
-                "px4/rust/companion/offboard-companion",
-                "offboard-companion",
-                Rmw::Xrce,
-            )
+            let dir = "px4/rust/companion/offboard-companion";
+            crate::fixtures::lane::require_coord_in_lane(&px4_companion_coord(), dir)?;
+            build_example_rmw(dir, "offboard-companion", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -5216,6 +5271,24 @@ pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example_cmake_rmw("native/c/action-server", "c_action_server", Rmw::Zenoh)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build the raw-goal wire probe (cached).
+///
+/// Issue 0454 / phase-354 W3 — the only caller of
+/// `nros_action_client_send_goal_raw`. Not an example: it lives under
+/// `packages/testing/nros-tests/bins/`, so it resolves through
+/// [`build_cmake_leaf_rmw`] rather than the `examples/`-rooted wrapper.
+pub fn build_action_raw_goal_probe() -> TestResult<&'static Path> {
+    ACTION_RAW_GOAL_PROBE_BINARY
+        .get_or_try_init(|| {
+            build_cmake_leaf_rmw(
+                "packages/testing/nros-tests/bins/action-raw-goal-probe",
+                "action_raw_goal_probe",
+                Rmw::Zenoh,
+            )
         })
         .map(|p| p.as_path())
 }
@@ -5746,6 +5819,24 @@ mod tests {
     /// the path it went looking for.
     #[test]
     fn the_row_resolver_uses_the_carve_out_profile() {
+        // Neutralize any LANE narrowing first. This test drives the resolver
+        // with a FABRICATED row (`GroupRow::for_test`, an artifact_root that
+        // does not exist) to read back which profile the lookup asked for. Under
+        // a narrowed lane — `just ci-matrix` exports `NROS_TEST_COORDS` — the
+        // resolver's coordinate skip fires BEFORE it composes that path, so the
+        // assertion reads `[SKIPPED:lane] out of lane: … nuttx,rust,zenoh`
+        // instead of the profile dir, and the test can never pass in tier 2.
+        //
+        // A lane skip is ABSORBING (issue 0445): whatever the call would have
+        // reported is replaced by a message explaining itself. A synthetic row
+        // has no manifest identity to narrow ON, so the narrowing is meaningless
+        // here rather than merely inconvenient.
+        //
+        // SAFETY: nextest runs each test in its own process, so this mutates no
+        // other test's environment; it must precede the first `lane::run_coords`
+        // call, which latches a `OnceLock`.
+        unsafe { std::env::remove_var(crate::fixtures::lane::RUN_COORDS_ENV) };
+
         let ambient = cargo_target_profile_dir();
         let want = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
         assert_ne!(

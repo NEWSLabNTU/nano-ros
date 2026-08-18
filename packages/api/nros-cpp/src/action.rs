@@ -2020,9 +2020,16 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         }
     }
 
+    // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare action
+    // type. The type name is baked into the keyexpr, so `…Fibonacci_` where ROS
+    // 2 expects `…Fibonacci_SendGoal_` makes query and queryable different keys
+    // and every goal times out. Same defect phase-338 W3 fixed on the raw
+    // register path; these polling arms had no caller to expose it.
     let send_goal_keyexpr: nros::heapless::String<256> = action_info.send_goal_key();
+    let send_goal_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "SendGoal");
     let send_goal_info = with_node(
-        ServiceInfo::new(&send_goal_keyexpr, type_str, hash_str)
+        ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hash_str)
             .with_domain(ctx.domain_id)
             .with_namespace(ns_str),
         node_name_str,
@@ -2051,8 +2058,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         };
 
     let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
+    let get_result_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "GetResult");
     let get_result_info = with_node(
-        ServiceInfo::new(&get_result_keyexpr, type_str, hash_str)
+        ServiceInfo::new(&get_result_keyexpr, &get_result_type, hash_str)
             .with_domain(ctx.domain_id)
             .with_namespace(ns_str),
         node_name_str,
@@ -2064,7 +2073,9 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         };
 
     let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
-    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)
+    let feedback_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "FeedbackMessage");
+    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
     if let Some(n) = node_name_str
@@ -2412,9 +2423,16 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         }
     }
 
+    // Issue 0454 / phase-354 W3 — per-CHANNEL DDS type, not the bare action
+    // type. The type name is baked into the keyexpr, so `…Fibonacci_` where ROS
+    // 2 expects `…Fibonacci_SendGoal_` makes query and queryable different keys
+    // and every goal times out. Same defect phase-338 W3 fixed on the raw
+    // register path; these polling arms had no caller to expose it.
     let send_goal_keyexpr: nros::heapless::String<256> = action_info.send_goal_key();
+    let send_goal_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "SendGoal");
     let send_goal_info = with_node(
-        ServiceInfo::new(&send_goal_keyexpr, type_str, hash_str)
+        ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hash_str)
             .with_domain(ctx.domain_id)
             .with_namespace(ns_str),
         node_name_str,
@@ -2443,8 +2461,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         };
 
     let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
+    let get_result_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "GetResult");
     let get_result_info = with_node(
-        ServiceInfo::new(&get_result_keyexpr, type_str, hash_str)
+        ServiceInfo::new(&get_result_keyexpr, &get_result_type, hash_str)
             .with_domain(ctx.domain_id)
             .with_namespace(ns_str),
         node_name_str,
@@ -2456,7 +2476,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         };
 
     let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
-    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)
+    let feedback_type: nros::heapless::String<256> =
+        nros::action_channel_type(type_str, "FeedbackMessage");
+    let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, hash_str)
         .with_domain(ctx.domain_id)
         .with_namespace(ns_str);
     if let Some(n) = node_name_str

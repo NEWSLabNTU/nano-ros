@@ -129,6 +129,108 @@ macro_rules! skip_class {
     };
 }
 
+/// Recognising a skip marker in a captured panic message — issue 0658.
+///
+/// The ONE Rust spelling. Five matrix aggregators independently wrote
+/// `msg.contains("[SKIPPED]")`, which is the BARE marker: `[SKIPPED:lane]` does
+/// not contain that substring, so every classed skip [`skip_class!`] produces
+/// was filed as a FAILED cell. That turned five lane skips into five tier-2
+/// reds, and the junit rewriter could not rescue them because by then the
+/// marker sat nested inside an aggregate panic body rather than starting it.
+///
+/// This mirrors `scripts/test/skip_marker.py`, which does the same job on the
+/// junit side. Two languages, but one rule, and both are tested.
+pub mod skip_marker {
+    /// The marker's invariant prefix. `[SKIPPED]` and `[SKIPPED:<class>]` both
+    /// start with it — matching on this is what the five call sites got wrong.
+    pub const PREFIX: &str = "[SKIPPED";
+
+    /// The class of the skip this message carries, or `None` if it is a real
+    /// failure.
+    ///
+    /// An unclassed `[SKIPPED]` reads as `"capability"`, matching
+    /// [`skip_class!`]'s documented default and the Python side.
+    ///
+    /// Searches ANYWHERE in the message, deliberately: a captured panic from an
+    /// inner cell arrives wrapped in the outer test's own prose, and that
+    /// nesting is exactly what defeated the naive check. Callers classifying a
+    /// message they know to be a whole panic body should prefer
+    /// [`starts_with_skip`].
+    pub fn class_in(msg: &str) -> Option<&str> {
+        let rest = &msg[msg.find(PREFIX)? + PREFIX.len()..];
+        match rest.strip_prefix(':') {
+            None => rest.starts_with(']').then_some("capability"),
+            Some(tail) => {
+                let end = tail.find(']')?;
+                let class = &tail[..end];
+                (!class.is_empty() && class.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+                    .then_some(class)
+            }
+        }
+    }
+
+    /// True when this message is a skip rather than a real failure.
+    pub fn is_skip(msg: &str) -> bool {
+        class_in(msg).is_some()
+    }
+
+    /// True when the message BEGINS with a marker — the stricter form the junit
+    /// rewriter applies to a `<failure>` payload, where a real failure may
+    /// legitimately quote the word.
+    pub fn starts_with_skip(msg: &str) -> bool {
+        class_in(msg).is_some() && msg.trim_start().starts_with(PREFIX)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_bare_marker_reads_as_capability() {
+            assert_eq!(class_in("[SKIPPED] zenohd not found"), Some("capability"));
+        }
+
+        #[test]
+        fn a_classed_marker_yields_its_class() {
+            assert_eq!(class_in("[SKIPPED:lane] out of lane: …"), Some("lane"));
+            assert_eq!(class_in("[SKIPPED:resource] no port"), Some("resource"));
+        }
+
+        /// Issue 0658 itself. The five aggregators wrote
+        /// `msg.contains("[SKIPPED]")`, which is false for BOTH of these.
+        #[test]
+        fn the_bare_literal_would_have_missed_these() {
+            let classed = "[SKIPPED:lane] out of lane: workspace-c-native-robot2";
+            assert!(!classed.contains("[SKIPPED]"), "the premise of 0658");
+            assert!(is_skip(classed));
+
+            let nested = "entry_matrix: 1 of 15 cell(s) FAILED:\n                            zephyr/c/entry_pubsub: [SKIPPED:lane] out of lane: …";
+            assert!(!nested.contains("[SKIPPED]"));
+            assert!(is_skip(nested), "a nested classed marker is still a skip");
+        }
+
+        /// The nesting the junit rewriter cannot see is exactly what `is_skip`
+        /// must see — and `starts_with_skip` must NOT, since that is the
+        /// rewriter's own stricter rule.
+        #[test]
+        fn nesting_separates_the_two_predicates() {
+            let nested = "outer prose\n  inner: [SKIPPED] reason";
+            assert!(is_skip(nested));
+            assert!(!starts_with_skip(nested));
+            assert!(starts_with_skip("  [SKIPPED] reason"));
+        }
+
+        #[test]
+        fn a_real_failure_that_merely_mentions_the_word_is_not_a_skip() {
+            assert_eq!(class_in("expected the [SKIPPED prefix, got nothing"), None);
+            assert_eq!(class_in("assertion failed: skipped == 0"), None);
+            assert_eq!(class_in("[SKIPPED:] empty class"), None);
+            assert_eq!(class_in("[SKIPPED:Lane] uppercase is not a class"), None);
+            assert_eq!(class_in("[SKIPPEDX] not the marker"), None);
+        }
+    }
+}
+
 use std::{
     io::{BufRead, BufReader},
     net::TcpStream,

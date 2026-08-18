@@ -846,7 +846,7 @@ pub use nros_node::{
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream,
     GoalFeedbackStream, LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec,
-    Subscription,
+    Subscription, action_channel_type,
 };
 
 // phase-271 (issue #110) — per-entry executor sizing helper: the orchestration

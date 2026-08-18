@@ -2226,6 +2226,18 @@ lang = "c"
 rmw = "cyclonedds"
 dir = "examples/native/c/action-client"
 
+# Issue 0454 / phase-354 W3 — the raw-goal WIRE proof. Not an example (it is a
+# regression probe, so it lives under packages/testing/ per the examples-are-
+# copy-out-projects rule), but it is a CMake C leaf like any other and builds
+# through the same `linux c zenoh` group. It is the ONLY caller of
+# `nros_action_client_send_goal_raw` in the tree: the FFI shipped a double
+# encapsulation header precisely because nothing called it.
+[[fixture]]
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
+
 # Phase 275 W2 (#102 H3) — native/c variant examples that shipped with zero
 # fixtures. All use the standard `-DNROS_RMW` cmake path (default zenoh), so a
 # zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-platform +

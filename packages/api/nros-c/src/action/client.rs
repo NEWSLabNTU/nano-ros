@@ -1101,8 +1101,18 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
         let action_info =
             ActionInfo::new(action_str, type_str, type_hash_str).with_domain(domain_id);
 
+        // Issue 0454 / phase-354 W3 — the per-CHANNEL DDS type, not the bare
+        // action type. The type name is baked into the keyexpr, so advertising
+        // `…Fibonacci_` where ROS 2 expects `…Fibonacci_SendGoal_` makes the
+        // client's query and the server's queryable different keys: every goal
+        // times out. phase-338 W3 fixed this on the raw REGISTER path
+        // (`action_channel_type`'s own doc records it); these polling arms are
+        // the same defect, unfixed because nothing called them until the
+        // raw-goal probe did.
         let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info = ServiceInfo::new(&send_goal_keyexpr, type_str, type_hash_str)
+        let send_goal_type: nros_core::heapless::String<256> =
+            nros_node::action_channel_type(type_str, "SendGoal");
+        let send_goal_info = ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash_str)
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
@@ -1128,10 +1138,13 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
             };
 
         let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
-        let get_result_info = ServiceInfo::new(&get_result_keyexpr, type_str, type_hash_str)
-            .with_domain(domain_id)
-            .with_node_name(node_name_str)
-            .with_namespace(namespace_str);
+        let get_result_type: nros_core::heapless::String<256> =
+            nros_node::action_channel_type(type_str, "GetResult");
+        let get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash_str)
+                .with_domain(domain_id)
+                .with_node_name(node_name_str)
+                .with_namespace(namespace_str);
         let get_result_client =
             match session.create_client(&get_result_info, QosSettings::services_default()) {
                 Ok(h) => h,
@@ -1139,7 +1152,9 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
             };
 
         let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
-        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, type_hash_str)
+        let feedback_type: nros_core::heapless::String<256> =
+            nros_node::action_channel_type(type_str, "FeedbackMessage");
+        let feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash_str)
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);

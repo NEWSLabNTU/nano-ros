@@ -22,13 +22,17 @@ An `extern "C"` function whose parameter is named `goal_cdr` must call
 `tick_ctx` arm is a stub that discards its arguments and returns an error, so it
 sends nothing).
 
-WHY A GATE RATHER THAN A TEST
+WHY A GATE *AND* A TEST
 
-There is no test, because there is no CALLER: no example and no fixture invokes
-these arms, which is precisely why the defect survived review and shipped. A
-wire-level demonstration needs a C caller that does not exist yet, and phase-354
-W3 still owes it. Until then this at least stops the strip being dropped again,
-and names the reason.
+The wire-level demonstration phase-354 W3 owed now exists:
+`packages/testing/nros-tests/bins/action-raw-goal-probe` is the C caller these
+arms never had (nothing invoked them, which is exactly why the defect survived
+review and shipped), and `tests/action_raw_goal_e2e.rs` asserts the EFFECT
+against a real peer — the C action server logs the order it decoded, 7 with the
+strip and a measured 256 without.
+
+This gate stays because it covers what the test cannot: the C++ arm, and any
+future arm added without a peer to point at.
 """
 
 import re

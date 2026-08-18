@@ -313,7 +313,7 @@ fn multihost() {
                 .cloned()
                 .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "<non-string panic>".to_string());
-            if msg.contains("[SKIPPED]") {
+            if nros_tests::skip_marker::is_skip(&msg) {
                 skipped.push(format!("{label}: {msg}"));
             } else {
                 failed.push(format!("{label}: {msg}"));

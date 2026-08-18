@@ -104,7 +104,7 @@ pub use action::{
     RawActionServerSpec,
 };
 #[cfg(any(has_rmw, test))]
-pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
+pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal, action_channel_type};
 #[cfg(any(has_rmw, test))]
 pub use arena::TimerOverrunPolicy;
 #[cfg(any(has_rmw, test))]

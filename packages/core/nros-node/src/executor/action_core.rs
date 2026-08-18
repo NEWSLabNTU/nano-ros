@@ -60,7 +60,7 @@ pub(crate) fn action_service_base_type<'a>(
 /// result replaces that suffix with `_<Channel>_`. Returns the bare type
 /// unchanged if it has an unexpected shape, matching the typed path's
 /// fallback.
-pub(crate) fn action_channel_type<const N: usize>(
+pub fn action_channel_type<const N: usize>(
     action_type: &str,
     channel: &str,
 ) -> heapless::String<N> {

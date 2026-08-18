@@ -658,7 +658,13 @@ fn entry_matrix() {
                 .cloned()
                 .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "<non-string panic>".to_string());
-            if msg.contains("[SKIPPED]") {
+            // issue 0658 — `is_skip`, NOT `msg.contains("[SKIPPED]")`. The bare
+            // literal misses every CLASSED marker (`[SKIPPED:lane]`), so a cell
+            // the lane deliberately excluded was filed as FAILED and this test
+            // panicked with the skip verdict nested three lines into its own
+            // prose, where the junit rewriter's start-anchored match cannot see
+            // it. Five aggregators had written the same literal independently.
+            if nros_tests::skip_marker::is_skip(&msg) {
                 skipped.push(format!("{label}: {msg}"));
             } else {
                 failed.push(format!("{label}: {msg}"));
