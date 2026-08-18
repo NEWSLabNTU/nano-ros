@@ -179,6 +179,7 @@ static RV64_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static RV64_C_ERRNO_ISOLATION_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -236,6 +237,15 @@ pub fn build_rv64_c_action_server() -> TestResult<&'static Path> {
 pub fn build_rv64_c_action_client() -> TestResult<&'static Path> {
     RV64_C_ACTION_CLIENT_BINARY
         .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
+        .map(|p| p.as_path())
+}
+
+/// issue 0680 — the per-thread-`errno` probe. Self-contained: one image, two
+/// tasks, no peer and no messaging, so it is resolved like any other cmake
+/// example but run alone.
+pub fn build_rv64_c_errno_isolation() -> TestResult<&'static Path> {
+    RV64_C_ERRNO_ISOLATION_BINARY
+        .get_or_try_init(|| build_cmake_example("c", "errno-isolation", "c_errno_isolation"))
         .map(|p| p.as_path())
 }
 

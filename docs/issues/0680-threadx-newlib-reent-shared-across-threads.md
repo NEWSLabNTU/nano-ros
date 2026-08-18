@@ -213,3 +213,96 @@ A test that can distinguish the fix from its absence, which the suite cannot
 today: two ThreadX threads, one driven into a failing libc call (`write()` to a
 closed fd sets `EBADF`), asserting the other thread's `errno` is unchanged
 across it. Without that, both the bug and the fix are invisible.
+
+---
+
+## Implementation 2026-08-19 — B was tried first, and B does not work here
+
+**The recommendation above was wrong, and the runtime test is what caught it.**
+`TX_ENABLE_EXECUTION_CHANGE_NOTIFY` makes the board HANG: with the macro defined
+the image reaches both tasks, prints their entry lines, and then never returns
+from the FIRST `tx_thread_sleep`. Nothing survives a wake that needs the timer.
+Same tree, same fixture, macro removed → runs to completion.
+
+The reason the design exploration missed it is visible in its own list of call
+sites: the macro does not only enable `_tx_execution_thread_enter`, it also
+enables `_tx_execution_isr_enter`/`_isr_exit` in
+`tx_thread_context_save.S`/`_restore.S`. Those run on the interrupt path,
+including the timer interrupt. "No assembly changes at all" was true and still
+meant taking on the ISR path.
+
+Two corrections to the exploration's factual claims, both load-bearing:
+
+* **The `.S` files DO include `tx_port.h`.** The exploration assumed they take
+  no headers, which is why B looked like the only way to reach them without a
+  `-D`. Because they include it, A's guard and offset reach the assembly from
+  the same header that defines the field — no build-system coupling at all.
+* **The notify contract is FIVE symbols, not the four the call sites suggest.**
+  `_tx_execution_initialize` is called from kernel init; omitting it is a link
+  error. (Found by hitting it.)
+
+### What landed: A
+
+Three instructions in `tx_thread_schedule.S`, immediately after
+`_tx_thread_current_ptr` is committed — where interrupts are already locked out
+by the `csrci` above and `t2`/`t3` are dead until the next instruction reloads
+them. The ISR path is untouched.
+
+The swap goes through a port-owned indirection, `nros_tx_impure_slot`, rather
+than naming `_impure_ptr` directly. This is not incidental: the same kernel
+archive links into pure-Rust `no_std` images that carry no newlib
+(`logging-smoke-threadx-riscv64`), where a direct reference is
+`undefined symbol: _impure_ptr`. A **weak** reference does not help — it
+resolves to absolute 0, which `la` cannot reach:
+`relocation R_RISCV_PCREL_HI20 out of range: -524302`. A real object in the
+port's own data is PC-reachable in every image; `nros_platform_task_init` fills
+it with `&_impure_ptr` (that being the only path that also allocates a reent),
+and a libc-less image leaves it 0 and skips the store.
+
+The hand-maintained-offset hazard the exploration flagged is now guarded:
+`TX_TCB_NROS_REENT_OFF` (288) is asserted against
+`offsetof(TX_THREAD, nros_reent)` in `reent.c`, alongside the eight pre-existing
+offsets it also gained asserts for. Assembly cannot use `offsetof`, so without
+that assert a future layout change would have the scheduler storing a pointer
+through whatever field landed at 288.
+
+### The test, and why the first version of it was worthless
+
+`examples/qemu-riscv64-threadx/c/errno-isolation/`, cell
+`(ThreadxRiscv64, C, Zenoh, Errno, Example, Runtime)`, body
+`test_threadx_riscv64_errno_is_per_thread`.
+
+Acceptance above proposed `write()` to a closed fd. **That cannot work on this
+board**: `_write` in `startup.c` is `(void)fd;` followed by an unconditional UART
+loop returning `len`, so a write to a closed descriptor SUCCEEDS. The probe is
+`strtol` overflow → `ERANGE` instead, which needs no syscall stub and still goes
+through a real `_r` entry point (the path an `__errno()` override would miss).
+
+The first version passed on an UNFIXED board. The victim ran to completion
+before the observer ever entered, so the observer's own `errno = 0` overwrote
+the value it existed to detect, and both reads were 0 whether or not `errno` was
+shared. Priority does not order two ThreadX threads. There is now an explicit
+`observer_ready` handshake, and the test was re-verified against a build with
+the swap removed:
+
+| build | observer's `errno` after victim | verdict |
+| --- | --- | --- |
+| no swap | `34` (the victim's `ERANGE`) | `FAIL shared errno` |
+| notify macro (B) | — | no verdict; board hangs |
+| **schedule.S swap (A)** | `0` | **`PASS per-thread errno`** |
+
+All three verdict markers share an `errno-isolation: verdict` prefix so the
+harness waits for "the fixture decided" rather than for one outcome — waiting on
+PASS alone turns a real FAIL into a timeout, which reads as a hang and hides the
+finding.
+
+### Still open
+
+* `__retarget_lock_*` on `TX_MUTEX` landed with this (the "other half" above),
+  including a fix for a check-then-create race in the lazy mutex init
+  (`TX_DISABLE`/`TX_RESTORE`). It is NOT covered by the errno fixture — that
+  test passes with the locks in any state — so the lock half remains unproven at
+  runtime.
+* Other ThreadX ports (`threadx-linux` compiles the mechanism out; no other
+  ThreadX port carries it) would each need their own three instructions. That is
+  A's known cost, now paid once.

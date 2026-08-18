@@ -2741,6 +2741,17 @@ rmw = "zenoh"
 dir = "examples/qemu-riscv64-threadx/c/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
+# issue 0680 — the discriminator for per-thread newlib `errno`. No message
+# dependency and no RMW traffic on purpose: it asserts a property of the C
+# library and the scheduler, so it must not gain a reason to fail for RMW
+# reasons. `rmw = "zenoh"` only because a row needs a coordinate; the image
+# never opens a session.
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/errno-isolation"
+
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"

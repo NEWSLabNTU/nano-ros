@@ -103,6 +103,31 @@ _tx_thread_schedule_loop:
     la      t0, _tx_thread_current_ptr                  // Pickup current thread pointer address
     STORE   t1, 0(t0)                                   // Set current thread pointer
 
+#ifdef NROS_TX_PORT_HAS_REENT
+
+    /* issue 0680 — give the incoming thread its OWN newlib reent, so `errno`
+       and the stdio state behind it are per-thread.
+
+       Here because this is the one place the scheduler has the new TCB in hand
+       with interrupts already locked out (csrci above), so the store needs no
+       critical section of its own. t2/t3 are dead until the run-count reload
+       on the next instruction.
+
+       A NULL field means the thread was created outside
+       `nros_platform_task_init` (a bare `tx_thread_create`), which allocates
+       no reent. Those threads keep whatever `_impure_ptr` was already set --
+       the shared `_impure_data` -- which is the pre-0680 behaviour rather
+       than a null deref inside libc.  */
+
+    LOAD    t2, TX_TCB_NROS_REENT_OFF(t1)               // Thread's own struct _reent *
+    beqz    t2, 1f                                      // NULL -> leave _impure_ptr alone
+    la      t3, nros_tx_impure_slot                     // Port-owned; holds &_impure_ptr, or 0
+    LOAD    t3, 0(t3)
+    beqz    t3, 1f                                      // No newlib in this image -> nothing to swap
+    STORE   t2, 0(t3)                                   // Publish this thread's reent
+1:
+#endif
+
     /* Increment the run count for this thread.  */
     /* _tx_thread_current_ptr -> tx_thread_run_count++;  */
 
@@ -315,3 +340,25 @@ _tx_thread_synch_return:
     ret                                                 // Return to thread
 
 /* }  */
+
+
+#ifdef NROS_TX_PORT_HAS_REENT
+
+/* Indirection to newlib's `_impure_ptr`, filled in by `nros_platform_task_init`
+   (C, and only in images that HAVE a libc); zero everywhere else.
+   
+   Not a direct reference to `_impure_ptr`, and not a weak one either. This same
+   kernel archive links into pure-Rust `no_std` images that carry no newlib:
+   a strong reference is `undefined symbol: _impure_ptr` for those, and a WEAK
+   reference resolves to absolute 0, which `la` cannot reach --
+   `relocation R_RISCV_PCREL_HI20 out of range: -524302` from rust-lld. A real
+   object in this port's own data is PC-reachable in every image, and a
+   libc-less one simply leaves it 0 and skips the store.  */
+
+    .section .data
+    .p2align 3
+    .global  nros_tx_impure_slot
+nros_tx_impure_slot:
+    .dword   0
+
+#endif

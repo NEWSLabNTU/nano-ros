@@ -304,6 +304,12 @@ uint64_t nros_platform_time_now_ns(void)              { return 0; }
  * a pointer beside the control block and can OWN a stack it allocated when the
  * caller supplied none. `attr == NULL` therefore means the same here as
  * everywhere else. */
+#ifdef NROS_TX_PORT_HAS_REENT
+/* Defined in the port assembly (`tx_thread_schedule.S`): holds `&_impure_ptr`
+ * once this port has a reent to install, 0 otherwise. */
+extern struct _reent **nros_tx_impure_slot;
+#endif
+
 typedef struct {
     TX_THREAD thread;
     /** Non-NULL when this port allocated the stack and must release it. */
@@ -367,16 +373,26 @@ int8_t nros_platform_task_init(void *task, void *attr,
 
 #ifdef NROS_TX_PORT_HAS_REENT
     /* issue 0680 — give this task its own newlib reentrancy block BEFORE the
-     * thread can run. `tx_thread_create` below starts it (TX_AUTO_START), and
-     * the scheduler's execution-notify hook reads `nros_reent` on the way in,
-     * so a slot filled afterwards would leave the first scheduling of this
-     * thread pointing at the shared `_impure_data`.
+     * thread can run. The thread is created suspended and resumed only after
+     * `nros_reent` is filled, because `tx_thread_schedule.S` reads that field
+     * on the way in: a field filled afterwards would leave the first
+     * scheduling of this thread pointing at the shared `_impure_data`.
      *
      * `_REENT_INIT_PTR` is newlib's own initialiser; zeroing is not
      * sufficient, the block carries non-zero fields (stdio pointers, the
      * locale pointer). A failure here is NOMEM like the stack's, not a silent
      * fallback to the shared block — sharing `errno` is the bug this exists to
      * fix, and doing it quietly is how it stayed invisible. */
+    /* Point the port's scheduler slot at newlib's `_impure_ptr`. The swap in
+     * `tx_thread_schedule.S` goes through this indirection rather than naming
+     * `_impure_ptr` itself, because the same kernel archive links into
+     * pure-Rust `no_std` images with no libc at all, where any reference to it
+     * fails to link (and a weak one is out of PC-relative range). Assigning it
+     * HERE means it is set by the only code path that also allocates a reent:
+     * an image that never calls this has no per-thread reent to install, and
+     * the slot stays 0 so the scheduler skips the store. Idempotent. */
+    nros_tx_impure_slot = &_impure_ptr;
+
     slot->owned_reent = (struct _reent *) nros_platform_alloc(sizeof(struct _reent));
     if (slot->owned_reent == NULL) {
         if (slot->owned_stack != NULL) {

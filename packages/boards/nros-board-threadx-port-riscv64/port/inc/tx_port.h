@@ -51,6 +51,20 @@
 #define TX_TCB_TIME_SLICE_OFF       36
 #define TX_TCB_NEW_TIME_SLICE_OFF   40
 
+/* issue 0680 — byte offset of the TX_THREAD_EXTENSION_3 reent pointer.
+ *
+ * `tx_thread_schedule.S` swaps `_impure_ptr` to the incoming thread's own
+ * `struct _reent`, and assembly cannot use `offsetof`, so this literal is the
+ * only spelling available there. `reent.c` carries a `_Static_assert` tying it
+ * to the real member: if the TCB layout ever moves, that assert fails at build
+ * time rather than the scheduler storing through the wrong field at run time. */
+#define TX_TCB_NROS_REENT_OFF       288
+
+/* Also needed by the assembly, so it lives ABOVE the __ASSEMBLER__ split. It
+ * used to sit in the C-only branch, where `tx_thread_schedule.S` could not see
+ * it and the swap would have compiled out silently. */
+#define NROS_TX_PORT_HAS_REENT 1
+
 #ifdef __ASSEMBLER__
 
 #if __riscv_xlen == 64
@@ -189,27 +203,20 @@ struct _reent; /* <sys/reent.h>; only the pointer is needed here */
  * `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` one selected below. */
 #define TX_THREAD_EXTENSION_3   struct _reent *nros_reent;
 
-/* The port declares the capability so shared code can ask for it rather than
- * test the board. `nros-platform-threadx` is compiled for threadx-linux too,
- * where the host libc already gives every pthread its own `errno` and this
- * whole mechanism must compile out. */
-#define NROS_TX_PORT_HAS_REENT 1
-
-/* Turn on the four execution-notify call sites the port assembly ALREADY
- * carries (`tx_thread_schedule.S`, `tx_thread_system_return.S`,
- * `tx_thread_context_save.S`, `tx_thread_context_restore.S`). That is what
- * makes this a C-only change: `_tx_execution_thread_enter` runs after
- * `_tx_thread_current_ptr` is stored, which is exactly where `_impure_ptr`
- * has to be swapped. The alternative — three instructions in
- * `tx_thread_schedule.S` — is cheaper at runtime and has to be repeated for
- * every port that ever needs this.
+/* HOW the swap happens: `tx_thread_schedule.S` stores this field into
+ * `_impure_ptr` right after it commits `_tx_thread_current_ptr`, under
+ * `NROS_TX_PORT_HAS_REENT` and using `TX_TCB_NROS_REENT_OFF` (both hoisted
+ * above the __ASSEMBLER__ split so the assembly can see them).
  *
- * The macro is NOT defined here. The `.S` files include no headers, so it
- * reaches them only as a `-D` on the assembler line; defining it here as well
- * would let C and assembly disagree — C would compile the hook while the
- * assembly kept the call sites out, and the swap would silently never happen.
- * One definition, in `nros_threadx_build_kernel`, reaching both languages.
- * `nros_threadx_reent.c` fails to compile if it does not arrive. */
+ * The rejected alternative was `TX_ENABLE_EXECUTION_CHANGE_NOTIFY`, whose
+ * `_tx_execution_thread_enter` hook runs at that same point and would have kept
+ * this a C-only change. It does not work on this port: the macro also enables
+ * the ISR call sites in `tx_thread_context_save.S`/`_restore.S`, and with it on
+ * the board HANGS on the first `tx_thread_sleep` — no thread ever survives a
+ * wake that needs the timer. Measured with the `errno-isolation` fixture: macro
+ * off runs to completion, macro on produces no verdict at all. Three
+ * instructions per context switch, repeated per port, is the price of not
+ * touching the interrupt path. */
 
 /* Define the port extensions of the remaining ThreadX objects.  */
 

@@ -309,6 +309,10 @@ pub enum Workload {
     /// Launch/model `<remap>` + `~` private names reach the WIRE remapped
     /// (phase-306 W4, issue 0255).
     Remap,
+    /// Platform-ABI capability, no messaging: two tasks spawned through
+    /// `nros_platform_task_init` prove `errno` is PER-THREAD (issue 0680).
+    /// Single image, self-contained, no peer.
+    Errno,
 }
 
 impl Workload {
@@ -331,6 +335,9 @@ impl Workload {
             Workload::RealtimeTiers => 91,
             Workload::Multihost => 92,
             Workload::Remap => 93,
+            // Needs no port: the fixture opens no socket and has no peer.
+            // The offset only has to be unique within the band.
+            Workload::Errno => 94,
         }
     }
 
@@ -618,6 +625,11 @@ pub const CELLS: &[Cell] = &[
          BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")),
     cell(ThreadxRiscv64, Cpp,  Zenoh, Action, Example,
          BuildOnly("dropped from the action run matrix in 182.5 (wall-clock); examples + rtos_e2e builders exist")),
+    // issue 0680 — per-thread `errno`. Not a messaging workload: the fixture
+    // spawns two tasks and asserts one cannot see the other's `errno`. It is a
+    // cell so the fixture has an owner that RUNS it; before the fix it fails
+    // with `FAIL shared errno`, which is what makes it worth a coordinate.
+    cell(ThreadxRiscv64, C,    Zenoh, Errno, Example, Runtime),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
     // issue #235 — the cpp cyclone riscv64 fixtures existed (distinct

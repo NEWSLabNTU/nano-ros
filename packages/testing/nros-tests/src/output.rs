@@ -811,6 +811,28 @@ pub const POSIX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// `FAILED` literal in `nros-board-linux/src/lib.rs` — keep in lockstep.
 pub const POSIX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// issue 0680 — the `errno-isolation` fixture's verdict lines.
+///
+/// The fixture proves newlib's `errno` is PER-THREAD on threadx-riscv64: one
+/// task is driven into a failing `write(-1, …)` while another observes its
+/// own. Before issue 0680 both resolved through one `_impure_ptr`.
+///
+/// Three markers rather than one, because "no PASS" has three very different
+/// causes and a test that cannot tell them apart is the kind this fixture
+/// exists to replace: SETUP means the probe never fired (the image could not
+/// spawn, or `write(-1, …)` did not fail) and proves NOTHING about errno;
+/// FAIL means the observer saw the victim's value, which is the bug; PASS
+/// means isolation held. MIRRORS the `printf` literals in
+/// `examples/qemu-riscv64-threadx/c/errno-isolation/src/main.c` — keep in
+/// lockstep.
+/// Common prefix of ALL three verdicts, so a harness can wait for "the fixture
+/// decided" rather than for one outcome — waiting on PASS alone turns a real
+/// FAIL into a timeout, which reads as a hang and hides the finding.
+pub const ERRNO_ISOLATION_VERDICT: &str = "errno-isolation: verdict";
+pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread errno";
+pub const ERRNO_ISOLATION_FAIL: &str = "errno-isolation: verdict FAIL shared errno";
+pub const ERRNO_ISOLATION_SETUP: &str = "errno-isolation: verdict SETUP failed";
+
 /// Extract the trimmed text after a marker in a line.
 ///
 /// Returns `None` if the marker is not found.

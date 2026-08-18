@@ -459,3 +459,54 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
         ),
     }
 }
+
+// =============================================================================
+// issue 0680 — per-thread `errno`
+// =============================================================================
+
+/// Two tasks spawned through `nros_platform_task_init` must not share `errno`.
+///
+/// **Why this is not a cell body in `rtos_e2e.rs`:** it is not a delivery test.
+/// There is no peer, no zenohd and no message — one image spawns two tasks, one
+/// provokes a real libc failure (`strtol` overflow -> `ERANGE`), and the other
+/// checks that its own `errno` is untouched. The `matrix::CELLS` row exists so
+/// the fixture has an owner that RUNS it; the body lives here with the other
+/// one-off topologies.
+///
+/// This test is a discriminator, not a smoke test: on a board without the
+/// `tx_thread_schedule.S` reent swap it reports `FAIL shared errno` with the
+/// victim's `errno` visible from the observer. That was verified by running it
+/// against a build with the swap removed, which is the only reason to trust a
+/// pass here.
+#[test]
+fn test_threadx_riscv64_errno_is_per_thread() {
+    if !require_threadx_riscv64() {
+        nros_tests::skip!("require_threadx_riscv64 check failed");
+    }
+    if !is_qemu_riscv64_available() {
+        nros_tests::skip!("qemu-system-riscv64 not found");
+    }
+
+    let binary = match nros_tests::fixtures::threadx_riscv64::build_rv64_c_errno_isolation() {
+        Ok(p) => p,
+        Err(e) => nros_tests::skip!("errno-isolation fixture unavailable: {e}"),
+    };
+
+    // Self-contained image: the netdev exists only because the board brings up
+    // NetX at boot, and nothing in this test talks to it.
+    let mut qemu = QemuProcess::start_riscv64_virt(binary, 0).expect("start errno-isolation QEMU");
+
+    // Wait for a VERDICT, not just the pass marker: waiting on PASS alone
+    // would turn a real FAIL into a 60s timeout, reported as a hang -- which
+    // hides the exact finding this fixture exists to produce.
+    let out = qemu.collect_until(
+        nros_tests::output::ERRNO_ISOLATION_VERDICT,
+        Duration::from_secs(60),
+    );
+
+    assert!(
+        out.contains(nros_tests::output::ERRNO_ISOLATION_PASS),
+        "errno is SHARED between ThreadX tasks on threadx-riscv64, or the \
+         fixture never reached a verdict (issue 0680).\nOutput:\n{out}"
+    );
+}

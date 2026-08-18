@@ -225,15 +225,15 @@ if(NOT TARGET threadx_kernel)
         EXTRA_INCLUDES "${NETX_DIR}/common/inc"
                        "${NETX_DIR}/addons/BSD"
                        "${VIRTIO_DRIVER_DIR}/include"
-        # issue 0680 — `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` turns on the four
-        # execution-notify call sites the port ASSEMBLY already carries. Those
-        # `.S` files include no headers, so it reaches them only as a `-D`;
-        # `reent.c` (in the glue below) refuses to compile without the same
-        # define, so the two halves cannot drift apart silently — a C hook
-        # compiled against assembly that never calls it would leave `errno`
-        # shared with nothing to show for it.
+        # issue 0680 — deliberately NO `TX_ENABLE_EXECUTION_CHANGE_NOTIFY`.
+        # That macro would have let the `_impure_ptr` swap live entirely in C,
+        # but it also turns on the ISR call sites in
+        # `tx_thread_context_save.S`/`_restore.S`, and with it defined this
+        # board HANGS on the first `tx_thread_sleep` — nothing survives a wake
+        # that needs the timer. The swap is three instructions in
+        # `tx_thread_schedule.S` instead, needing no define here at all.
         EXTRA_DEFINES NX_INCLUDE_USER_DEFINE_FILE NROS_PLATFORM_BAREMETAL
-                      TX_ENABLE_EXECUTION_CHANGE_NOTIFY)
+)
 endif()
 
 if(NOT TARGET netxduo)
@@ -305,13 +305,7 @@ if(NOT TARGET threadx_glue)
         DEFINES NROS_PLATFORM_BAREMETAL
                 NX_BSD_ENABLE_NATIVE_API
                 NX_INCLUDE_USER_DEFINE_FILE
-                # issue 0680 — the SAME define the kernel gets above, for the
-                # SAME reason, on adjacent lines so the pair stays visible:
-                # the kernel's copy turns on the assembly call sites, this one
-                # lets `reent.c` compile the hook they call. `reent.c` has an
-                # `#error` on its absence, so a half-applied pair fails loudly
-                # instead of yielding an image with a shared `errno`.
-                TX_ENABLE_EXECUTION_CHANGE_NOTIFY)
+)
     # The kernel's includes (qemu_virt board, netxduo BSD, virtio) are
     # already on threadx_kernel's INTERFACE — pull them onto threadx_glue
     # so app_define.c finds <nx_bsd.h>, <virtio_net.h>, etc.

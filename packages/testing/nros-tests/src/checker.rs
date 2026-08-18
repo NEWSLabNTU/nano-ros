@@ -55,6 +55,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // final line appeared".
         Workload::Logging => output::LISTENER_LOG_PREFIX,
         Workload::Params | Workload::Lifecycle | Workload::Safety => output::LISTENER_LOG_PREFIX,
+        // Not delivery at all — the fixture's own verdict line. `assert_delivery`
+        // counting it once is exactly the contract.
+        Workload::Errno => output::ERRNO_ISOLATION_PASS,
     }
 }
 

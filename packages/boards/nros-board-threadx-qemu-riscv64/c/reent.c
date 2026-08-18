@@ -30,58 +30,22 @@
 
 #include "tx_api.h"
 
-/* The call sites live in the port assembly (`tx_thread_schedule.S` and the
- * three ISR/return paths) and are compiled out unless the assembler is given
- * `-DTX_ENABLE_EXECUTION_CHANGE_NOTIFY`. Those files include no headers, so
- * the macro reaches them only from the build. If it did not reach THIS
- * translation unit either, the functions below would compile as unreferenced
- * dead code and the swap would silently never happen — the failure mode is
- * silence, so refuse instead. `nano-ros-board-riscv64-qemu.cmake` passes the
- * define to the kernel (assembly) and to the board sources (this file) from
- * adjacent lines for exactly this reason. */
-#ifndef TX_ENABLE_EXECUTION_CHANGE_NOTIFY
-#error "issue 0680: reent.c needs TX_ENABLE_EXECUTION_CHANGE_NOTIFY, which is \
-what turns on the port assembly's execution-notify call sites. Without it the \
-per-thread errno swap is never invoked and errno is shared across threads."
-#endif
+/* `_tx_thread_current_ptr` is read by the lock helpers below to tell
+ * single-threaded startup from a running scheduler. The reent swap does not go
+ * through this file at all -- `tx_thread_schedule.S` does it directly from the
+ * TCB, guarded by `NROS_TX_PORT_HAS_REENT` and offset by
+ * `TX_TCB_NROS_REENT_OFF`, both from `tx_port.h`, which that `.S` includes. */
 
 extern TX_THREAD *_tx_thread_current_ptr;
 
-/* Called from `tx_thread_schedule.S` immediately after `_tx_thread_current_ptr`
- * is stored, which is the one point where the incoming thread is known and its
- * first C instruction has not run yet.
+/* The `_impure_ptr` swap itself is in `tx_thread_schedule.S`, not here.
  *
- * A thread nros did not create — ThreadX's own system/timer thread, and any
- * application thread built straight on `tx_thread_create` — has a NULL slot
- * and gets newlib's static `_impure_data`. That keeps `_impure_ptr` valid at
- * every instant, which matters because ISR context reads it too. */
-VOID _tx_execution_thread_enter(VOID)
-{
-    TX_THREAD *t = _tx_thread_current_ptr;
-
-    if ((t != TX_NULL) && (t->nros_reent != (struct _reent *) 0)) {
-        _impure_ptr = t->nros_reent;
-    } else {
-        _impure_ptr = &_impure_data;
-    }
-}
-
-/* The remaining hooks are part of the same port contract and must all exist
- * once the macro is on — the kernel and the port assembly reference FIVE
- * symbols, not the four the call sites in the `.S` files suggest:
- * `_tx_execution_initialize` is called from kernel initialisation, and
- * omitting it is a link error rather than a silent gap (which is how it was
- * found).
- *
- * Nothing here needs them. The enter hook already makes `_impure_ptr` correct
- * for whoever is running, and an ISR borrows the interrupted thread's reent,
- * which is what newlib expects on a single-stack interrupt model. They stay
- * empty rather than absent because the contract is "define these", and a
- * missing one takes the whole image down. */
-VOID _tx_execution_initialize(VOID)   { }
-VOID _tx_execution_thread_exit(VOID)  { }
-VOID _tx_execution_isr_enter(VOID)    { }
-VOID _tx_execution_isr_exit(VOID)     { }
+ * This file used to implement the five `_tx_execution_*` hooks that
+ * `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` calls, which would have kept the whole
+ * fix in C. That macro hangs this port on the first timer wake (rationale in
+ * `tx_port.h`), so the hooks are gone. What stays on the C side is the reent
+ * ALLOCATION (`nros-platform-threadx`) and the libc lock retargeting below;
+ * the per-switch store is three instructions of assembly.  */
 
 /* ===================================================================== *
  * issue 0680, second half — newlib's retargetable locks on TX_MUTEX
@@ -134,9 +98,29 @@ static inline UINT nros_tx_multithreaded(VOID)
     return (_tx_thread_current_ptr != TX_NULL) ? 1u : 0u;
 }
 
+/* Lazy creation, made atomic against itself.
+ *
+ * The check and the create MUST be one critical section. Without that, two
+ * tasks reaching `printf` concurrently both observe `created == 0` and both
+ * call `tx_mutex_create` on the SAME object — the second re-initialises a
+ * mutex the first may already hold, and every subsequent acquire blocks
+ * forever. That is not theoretical: it is what this board did, and the symptom
+ * was an image that printed one line per task and then went silent, with no
+ * fault and no diagnostic. The `errno-isolation` fixture found it.
+ *
+ * `TX_DISABLE`/`TX_RESTORE` (interrupt lockout) rather than another mutex,
+ * because this IS the path that creates mutexes — anything else is circular.
+ * The section is a compare and a create, both bounded. */
 static VOID nros_lock_ensure(_LOCK_T lock)
 {
-    if ((lock != (_LOCK_T) 0) && (lock->created == 0u)) {
+    TX_INTERRUPT_SAVE_AREA
+
+    if (lock == (_LOCK_T) 0) {
+        return;
+    }
+
+    TX_DISABLE
+    if (lock->created == 0u) {
         /* TX_INHERIT: a low-priority holder of the malloc lock is lifted to
          * the waiter's priority, which is the whole point of using the
          * kernel's mutex rather than a spin flag on a priority-scheduled
@@ -145,6 +129,7 @@ static VOID nros_lock_ensure(_LOCK_T lock)
             lock->created = 1u;
         }
     }
+    TX_RESTORE
 }
 
 VOID __retarget_lock_init(_LOCK_T *lock)             { if (lock != 0) { nros_lock_ensure(*lock); } }
@@ -214,6 +199,12 @@ int __retarget_lock_try_acquire_recursive(_LOCK_T lock) { return __retarget_lock
  * scheduler writing a stack pointer into the wrong field.
  *
  * Worth having whether or not per-thread reentrancy stays. */
+/* The scheduler stores through TX_TCB_NROS_REENT_OFF as a LITERAL, because
+ * assembly has no offsetof. This is what keeps the two spellings in agreement. */
+_Static_assert(offsetof(TX_THREAD, nros_reent) == TX_TCB_NROS_REENT_OFF,
+               "TX_TCB_NROS_REENT_OFF disagrees with TX_THREAD; "
+               "tx_thread_schedule.S would swap _impure_ptr through the wrong field");
+
 _Static_assert(offsetof(TX_THREAD, tx_thread_id) == TX_TCB_ID_OFF,
                "TX_TCB_ID_OFF disagrees with TX_THREAD — the port assembly is mis-addressing the TCB");
 _Static_assert(offsetof(TX_THREAD, tx_thread_run_count) == TX_TCB_RUN_COUNT_OFF,
