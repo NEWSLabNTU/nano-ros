@@ -42,7 +42,10 @@
 //! `configure()` declares one node's entities at a time, so a cursor is the
 //! correct model — not a heuristic.
 
-use std::{string::String, sync::Mutex, vec::Vec};
+use alloc::{string::String, vec::Vec};
+// phase-359 W10 — `Mutex` is the only thing in this file that `alloc` cannot
+// supply, so it is the only thing still named through `std`.
+use std::sync::Mutex;
 
 use crate::node_metadata::{
     EntityId, EntityKind, EntityMetadataSpec, MetadataRecorder, NodeId, SourceMetadataExport,
@@ -74,7 +77,7 @@ fn state() -> &'static Mutex<State> {
 }
 
 fn intern(s: &str) -> &'static str {
-    std::boxed::Box::leak(String::from(s).into_boxed_str())
+    alloc::boxed::Box::leak(String::from(s).into_boxed_str())
 }
 
 /// Discard everything recorded so far. For tests; a probe records once.
@@ -122,7 +125,7 @@ pub fn record_entity(
     let type_name = intern(type_name);
     st.leaked.push(type_name);
     st.seq += 1;
-    let id = std::format!("{}#{}", source_name, st.seq);
+    let id = alloc::format!("{}#{}", source_name, st.seq);
     let spec = EntityMetadataSpec {
         id: EntityId::new(&id),
         node_id: NodeId::new(&node_id),
@@ -190,9 +193,9 @@ mod tests {
         for i in 0..5 {
             assert!(record_entity(
                 EntityKind::Timer,
-                &std::format!("tick{i}"),
+                &alloc::format!("tick{i}"),
                 "",
-                Some(&std::format!("tick{i}")),
+                Some(&alloc::format!("tick{i}")),
                 Some(100)
             ));
         }

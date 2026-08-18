@@ -75,7 +75,7 @@ fn record(kind: nros::node_metadata::EntityKind, prefix: &str, period_ms: Option
     use core::sync::atomic::{AtomicUsize, Ordering};
     static SEQ: AtomicUsize = AtomicUsize::new(0);
     let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let id = std::format!("{prefix}{n}");
+    let id = alloc::format!("{prefix}{n}");
     if !nros::metadata_mode::record_entity(kind, &id, "", Some(&id), period_ms) {
         panic!(
             "nros metadata mode: recorder rejected `{id}` — an executor sized from \

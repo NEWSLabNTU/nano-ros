@@ -79,7 +79,7 @@ pub struct Context {
     /// ROS 2 domain ID (`ROS_DOMAIN_ID`, default 0).
     pub domain_id: u32,
     /// Middleware locator (`NROS_LOCATOR` / legacy `ZENOH_LOCATOR`).
-    pub locator: std::string::String,
+    pub locator: alloc::string::String,
     /// Session mode (`NROS_SESSION_MODE` / legacy `ZENOH_MODE`, default `Client`).
     pub mode: SessionMode,
     /// RMW implementation hint (`RMW_IMPLEMENTATION` /  `NROS_RMW`).
@@ -87,7 +87,7 @@ pub struct Context {
     /// Empty when neither var is set. The runtime uses this to pick a
     /// primary backend when multiple are linked; see
     /// `crate::internals::open_session`.
-    pub rmw: std::string::String,
+    pub rmw: alloc::string::String,
     /// Source of this context — useful for diagnostics + tests.
     pub source: ContextSource,
 }

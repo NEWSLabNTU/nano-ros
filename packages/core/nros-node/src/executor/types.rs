@@ -347,11 +347,11 @@ impl<'a> ExecutorConfig<'a> {
 
 #[cfg(feature = "env")]
 struct EnvCache {
-    locator: std::string::String,
+    locator: alloc::string::String,
     domain_id: u32,
     mode: SessionMode,
     /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
-    node_name: std::string::String,
+    node_name: alloc::string::String,
 }
 
 #[cfg(feature = "env")]

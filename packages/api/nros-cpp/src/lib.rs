@@ -2515,14 +2515,12 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     tiers: *const NativeTierSpecC,
     n_tiers: usize,
 ) -> i32 {
-    use std::{
-        string::String,
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-        vec::Vec,
-    };
+    // phase-359 W10 — `alloc`/`core`, not `std`: every one of these has a home
+    // outside the standard library, and naming them through `std` made this
+    // function look like it needed the flavour when what it needs is the
+    // process ENVIRONMENT (see the `env` gate above).
+    use alloc::{string::String, sync::Arc, vec::Vec};
+    use core::sync::atomic::{AtomicBool, Ordering};
 
     if tiers.is_null() || n_tiers == 0 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -2627,7 +2625,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
         }));
         // The port copies what it keeps, but the pointer must be valid FOR the
         // call, so the CString outlives it here.
-        let task_name = alloc::ffi::CString::new(std::format!("nros-tier-{tier_name}"))
+        let task_name = alloc::ffi::CString::new(alloc::format!("nros-tier-{tier_name}"))
             .unwrap_or_else(|_| c"nros-tier".into());
         // SAFETY: `ctx` stays live until the trampoline reclaims it — on the
         // spawned task, after its loop exits.
@@ -2692,14 +2690,14 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
 /// moves to another task.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 struct NativeTierCtx {
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    shutdown: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
     period_us: u64,
     n_groups: usize,
     groups: usize,
     session: usize,
     setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
     domain_id: u32,
-    name: std::string::String,
+    name: alloc::string::String,
 }
 
 /// One tier's loop, as a platform-task entry.
@@ -2709,7 +2707,7 @@ struct NativeTierCtx {
 /// passed exactly once.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
-    use std::sync::atomic::Ordering;
+    use core::sync::atomic::Ordering;
 
     // SAFETY: the caller's contract — this task is the only consumer of the
     // pointer, and reclaiming it here is what frees the context when the loop

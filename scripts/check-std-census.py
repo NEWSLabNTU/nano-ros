@@ -119,7 +119,13 @@ BASELINE = {
     #
     # Then 12 -> 10: the `env` capability took `init` (above), and the
     # `FileParamStore` re-export went with the type issue 0080 retired.
-    "nros": {"cfg": 10, "path": 15},
+    #
+    # phase-359 W10 — the SPELLING pass. Items that live in `alloc` or `core`
+    # were named through `std`: `format!`, `String`, `Vec`, `Box`, `Arc`,
+    # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
+    # crate look like it wanted the flavour. What still names `std` is what only
+    # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
+    "nros": {"cfg": 10, "path": 11},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -176,7 +182,13 @@ BASELINE = {
     # Hosted output stays on stderr — the POSIX port writes there too.
     #
     # The 1 that remains is `extern crate std`, which is what the feature IS.
-    "nros-cpp": {"cfg": 1, "path": 14},
+    #
+    # phase-359 W10 — the SPELLING pass. Items that live in `alloc` or `core`
+    # were named through `std`: `format!`, `String`, `Vec`, `Box`, `Arc`,
+    # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
+    # crate look like it wanted the flavour. What still names `std` is what only
+    # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
+    "nros-cpp": {"cfg": 1, "path": 7},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.
@@ -251,7 +263,13 @@ BASELINE = {
     # duplication. The module stays hosted on purpose: freeing it costs a `spin`
     # dependency edge in a core crate for a public type with no caller anywhere,
     # which is issue 0669's decision to make, not this campaign's.
-    "nros-node": {"cfg": 11, "path": 22},
+    #
+    # phase-359 W10 — the SPELLING pass. Items that live in `alloc` or `core`
+    # were named through `std`: `format!`, `String`, `Vec`, `Box`, `Arc`,
+    # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
+    # crate look like it wanted the flavour. What still names `std` is what only
+    # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
+    "nros-node": {"cfg": 11, "path": 20},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`
