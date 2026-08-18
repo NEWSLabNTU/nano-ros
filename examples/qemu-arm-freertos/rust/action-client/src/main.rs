@@ -12,11 +12,4 @@
 #![no_std]
 #![no_main]
 
-// phase-366 W5.c — this image's ending, declared by the image. Forwards to
-// `nros_platform_panic`, which on this board is semihosting + `bkpt` + halt
-// (`nros-platform-mps2-an385`'s `PlatformPanic`). Swap for
-// `use panic_semihosting as _;` with `features = ["exit"]` if you want a panic
-// to end the QEMU run, as the logging smoke fixture does.
-nros::panic_to_platform!();
-
-nros::main!();
+nros::main!(panic = "platform");
