@@ -4,10 +4,11 @@
 //! other scheduled-platform copy (the `example_portability` gate compares logic
 //! files and ignores glue).
 //!
-//! This cannot live in `src/main.rs`: the CycloneDDS/CMake path links the
-//! **staticlib**, which is built from `lib.rs`'s module tree, and a
-//! `#[no_mangle]` symbol defined in the `main.rs` bin target never reaches it.
-//! So the glue is a module of the lib, not a second crate root.
+//! phase-369 W3 — `src/main.rs` is GONE; this is the crate's only entry.
+//! It lives in the lib's module tree because the CMake path links the
+//! **staticlib**, which is built from `lib.rs`'s module tree — a `#[no_mangle]`
+//! symbol in a bin target would never reach it. Both RMWs build this way now,
+//! so there is no second crate root to disagree with.
 
 extern crate alloc;
 
@@ -45,4 +46,3 @@ compile_error!("`rmw-cyclonedds` allocates: add \"alloc\" (--features rmw-cyclon
 // copies from `native` (2026-08-16).
 //
 // Swap for `use panic_halt as _;`, or write a handler that logs and reboots.
-nros::panic_to_platform!();

@@ -25,7 +25,8 @@ rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
 # Opt in to the heap. Required by `rmw-cyclonedds`; the zenoh path does not need it.
 alloc            = ["nros/alloc"]
 
-# Phase 245 — app-node shape. `nros::main!()` (src/main.rs) reads
+# Phase 245 — app-node shape; phase-369 moved the entry to `src/app_main.rs`
+# (`app_main!`), and the deploy key below is still what names the board. Reads
 # `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"` (the macro maps
 # it to `nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64`) and runs this
 # crate's `register` (from `src/lib.rs`'s `nros::node!()`).

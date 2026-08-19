@@ -2,7 +2,7 @@
 //!
 //! Publishes `std_msgs/String` (`Hello World: N`) on `/chatter` once per
 //! second, matching the official ROS 2 `demo_nodes_cpp` talker. This is an **app
-//! node** (it owns `main`, via `src/main.rs`'s `nros::main!()`), not a workspace
+//! node** (it owns the image's entry, via `src/app_main.rs`), not a workspace
 //! Node lib — but the *logic* is still platform/RMW-agnostic: `register()`
 //! declares node + publisher + timer; `on_callback("on_tick")` runs the body. The
 //! board (`nros-board-threadx-qemu-riscv64`, `BoardEntry::run`) owns `nros::init`,
@@ -15,9 +15,10 @@
 mod app_main;
 
 // Keep the board crate (panic handler + allocator + critical-section impl)
-// linked into the standalone `staticlib` even on the zenoh/cargo path, where
-// only `main.rs`'s `nros::main!()` names it (issue #205 — the per-example
-// critical-section anchor moved into the board crate).
+// linked into the `staticlib`. phase-369 — `app_main!` names it on both RMW
+// paths now, so this anchor is belt-and-braces rather than load-bearing
+// (issue #205 — the per-example critical-section anchor moved into the board
+// crate).
 
 use core::fmt::Write as _;
 use nros::{
@@ -72,8 +73,8 @@ nros::node!(Talker);
 // `tx_kernel_enter()` and dispatches to this `app_main` *inside* the ThreadX app
 // thread — so the kernel is already running here. `run_app_thread` runs the
 // post-kernel body (open executor + `register` + spin); it must NOT re-enter the
-// kernel via `BoardEntry::run`. The zenoh/cargo path uses `src/main.rs`'s
-// `nros::main!()` instead and never compiles this. Both are thin — the board owns
+// kernel via `BoardEntry::run`. phase-369 — BOTH RMWs build through CMake and
+// compile this; the cargo `main.rs` path is gone. It is thin — the board owns
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the Talker. No manual `Executor::open` / `register_rmw` /
 // spin loop / hardcoded locator in the example (Phase 245 / issue 0049 P1/P3/P4/P6).

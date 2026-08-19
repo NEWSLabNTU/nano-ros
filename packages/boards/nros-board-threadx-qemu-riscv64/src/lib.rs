@@ -296,7 +296,38 @@ where
 /// `extern crate` anchor needed.
 #[macro_export]
 macro_rules! app_main {
+    // phase-369 W6 — saying nothing gets `platform`, matching what
+    // `nros::main!` does and what ARCHITECTURE §2 says: the DEFAULT is the
+    // library's to pick, the POLICY is not.
     ($register:path) => {
+        $crate::app_main!($register, panic = platform);
+    };
+
+    ($register:path, panic = platform) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> ! {
+            $crate::run_app_thread($register)
+        }
+        // The image's ending. This used to be a hand-written
+        // `nros::panic_to_platform!()` beside every invocation — six copies of
+        // one decision. Emitting it HERE keeps the choice at the image (the
+        // caller still names it, or takes the default) without making the
+        // caller restate the mechanism.
+        //
+        // NOTE this expands in the CALLER's crate, so `::nros` resolves against
+        // the leaf's dependency graph. All six leaves depend on `nros`; a
+        // consumer that does not must use the `panic = own` arm rather than
+        // gain a dependency to satisfy a macro.
+        ::nros::panic_to_platform!();
+    };
+
+    // The image brings its own `#[panic_handler]`. The macro emits NONE — this
+    // arm is what makes the policy the image's rather than this library's
+    // (issue 0618's complaint about a library choosing what it cannot know).
+    //
+    // UNTESTED BY CONSTRUCTION: no leaf uses it today, so its first user will
+    // find its bugs. Said plainly rather than implied to be exercised.
+    ($register:path, panic = own) => {
         #[unsafe(no_mangle)]
         pub extern "C" fn app_main() -> ! {
             $crate::run_app_thread($register)
