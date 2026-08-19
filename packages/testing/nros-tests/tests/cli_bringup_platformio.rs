@@ -77,6 +77,31 @@ fn pio_bin() -> Option<PathBuf> {
 
 #[test]
 fn platformio_zephyr_framework_2_component_bringup_builds() {
+    // issue 0704 — OPT-IN, and it runs BEFORE the lane check below because the
+    // reason matters: PlatformIO is not a supported integration at present, so
+    // the suite should not run in ANY lane by default. The lane gate that
+    // follows (issue 0700) is about tier hygiene and stays: if the integration
+    // becomes supported again, deleting this block restores it to a correctly
+    // lane-scoped test rather than an unscoped one.
+    //
+    // The cost is also real. `pio run` DOWNLOADS its platform package, so this
+    // hit the 60 s per-test budget to the millisecond on a cold cache — the
+    // last real failure in tier 2 — while passing in 3.4 s once cached. A gate
+    // whose verdict depends on whether the machine has run it before is worse
+    // than a permanent red. The offline markers below were written to tolerate
+    // exactly this, but the timeout kills the process before they are reached.
+    //
+    // A visible skip, not a silent deselect in `env_exclude`: the run says the
+    // suite did not execute and why, and the budget counts it. One env var
+    // brings it back for anyone working on the adapter.
+    if std::env::var_os("NROS_ENABLE_PLATFORMIO").is_none() {
+        nros_tests::skip!(
+            "platformio is not a supported integration at present (issue 0704); \
+             `pio run` also fetches its platform package over the network and \
+             exceeds the 60s per-test budget. Set NROS_ENABLE_PLATFORMIO=1 to run it."
+        );
+    }
+
     // Issue 0700 — the LANE decides before the toolchain does.
     //
     // This test selects on "is `pio` on PATH", while the fixture it needs is

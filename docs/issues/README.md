@@ -94,6 +94,22 @@ does not have, so it reported the `RUST_BACKTRACE` note. It now takes the line a
 on POSITION like `skip_marker`, not a substring search. A/B on one host: pristine `EXIT=1` "harness failed
 (exit -1)", fixed `EXIT=0` "2 rebuilt". See `archived/0699-*`. (2026-08-19)
 
+**#0704** (testing/integrations, open 2026-08-20) — the PlatformIO bringup test runs `pio run`, which
+DOWNLOADS its platform package, so it hits the 60s per-test budget to the millisecond on a cold cache and
+passes in 3.4s on a warm one — a gate that depends on whether the machine has run it before. It was the
+last real failure in tier 2. PlatformIO is not a supported integration at present, so the suite is now
+OPT-IN (`NROS_ENABLE_PLATFORMIO=1`), skipping VISIBLY with a reason rather than being deselected silently
+in `env_exclude`. Closing it means either supporting the integration again — with the `pio run` moved to
+the BUILD stage, since "no compilation inside tests" is the real complaint — or deleting it.
+See `0704-*`. (2026-08-20)
+
+**#0699** (cli/orchestration, open 2026-08-20) — `nros sync` on the canonical copy-out template fails
+`Metadata(NameTooLong)` when the workspace path is ~100 chars deep; the identical tree at 34 chars syncs
+clean. Four frames name a component and "exit -1", never a length or path — the real panic only shows by
+re-running the staged harness by hand. Smells like an AF_UNIX `sun_path` (108-byte) or bounded-string path
+buffer in the metadata-mode register. Lands exactly on the "copy the template anywhere" surface phase-368
+promotes. See `0699-*`. (2026-08-20)
+
 Recently resolved (2026-08-19): **#0696** — every native C/C++ fixture read STALE against
 `nros-tests/src/lib.rs`, a file in none of their dep graphs, so no build could clear it. Cause is
 `zpico_recorded_inputs`, which this issue had ruled out by inspecting WHAT was recorded rather than HOW it
