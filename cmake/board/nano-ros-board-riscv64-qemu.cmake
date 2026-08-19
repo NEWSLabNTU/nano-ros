@@ -542,7 +542,7 @@ endfunction()
 # the app's own interface declaration).
 #
 #   nros_generate_interfaces(std_msgs "msg/String.msg" LANGUAGE C SKIP_INSTALL)
-#   nros_threadx_rv64_rust_app(riscv64_threadx_rust_talker_cyclonedds
+#   nros_threadx_rv64_rust_app(riscv64_threadx_rust_talker
 #       CRATE qemu-riscv64-threadx-talker
 #       LINK  std_msgs__nano_ros_c)
 #

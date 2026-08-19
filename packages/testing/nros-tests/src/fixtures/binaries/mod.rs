@@ -3558,24 +3558,23 @@ pub fn build_threadx_rv64_rust_example_rmw(
             example_dir.display()
         )));
     }
-    if rmw == Rmw::Cyclonedds {
-        // The cyclonedds row is `builder = "cmake"` (phase-344 W2), and the
-        // cargo group export carries cargo rows only — so this branch keeps the
-        // path route. `rmw.build_dir()` and `cmake_build_subdir`'s default are
-        // the same expression, `build-<rmw>`.
-        let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
-        return require_prebuilt_binary_fresh(&binary_path);
-    }
-    let row = crate::fixtures::groups::select_row(
-        &format!("examples/qemu-riscv64-threadx/rust/{case}"),
-        &crate::fixtures::groups::FixtureVariant::rmw(rmw),
-    )?;
-    let rel = PathBuf::from(format!(
-        "riscv64gc-unknown-none-elf/{}/{}",
-        cargo_target_profile_dir(),
-        binary_name
-    ));
-    require_prebuilt_row_binary_fresh(row, &rel)
+    // phase-369 W4 — BOTH RMWs resolve through the cmake build dir.
+    //
+    // The zenoh arm used to fall through to `select_row()`, the CARGO row, because
+    // the zenoh image was a cargo bin built from `src/main.rs`. W2/W3 moved it onto
+    // the same cmake seam as cyclone and deleted that entry point, so the artifact
+    // now lives at `<dir>/build-zenoh/<target>` exactly as cyclone's lives at
+    // `<dir>/build-cyclonedds/<target>`. `Rmw::build_dir()` already spells both.
+    // Both rows are `builder = "cmake"` now (cyclonedds since phase-344 W2, zenoh
+    // since phase-369 W2), and `rmw.build_dir()` and `cmake_build_subdir`'s
+    // default are the same expression, `build-<rmw>`.
+    //
+    // The cargo route that used to follow — `select_row()` plus a
+    // `riscv64gc-unknown-none-elf/<profile>/<bin>` join — is DELETED rather than
+    // left unreachable: after W3 there is no cargo bin to find, because
+    // `src/main.rs` and the `[[bin]]` section are gone.
+    let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
+    require_prebuilt_binary_fresh(&binary_path)
 }
 
 /// Phase 118.B.7 — collapsed-shape threadx-linux Rust example resolver.

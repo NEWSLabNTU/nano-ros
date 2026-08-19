@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(riscv64_threadx_rust_service_server_cyclonedds VERSION 0.1.0 LANGUAGES C CXX ASM)
+project(riscv64_threadx_rust_service_server VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -49,6 +49,6 @@ nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP
 # executable, and platform/RMW link calls collapse into the board-overlay
 # seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
 # `app_main!(register)` (board macro) provides `app_main`.
-nros_threadx_rv64_rust_app(riscv64_threadx_rust_service_server_cyclonedds
+nros_threadx_rv64_rust_app(riscv64_threadx_rust_service_server
     CRATE qemu-riscv64-threadx-service-server
     LINK  example_interfaces__nano_ros_c)

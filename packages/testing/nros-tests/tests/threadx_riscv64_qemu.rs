@@ -250,7 +250,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
 
     let talker_bin = build_threadx_rv64_rust_example_rmw(
         "talker",
-        "riscv64_threadx_rust_talker_cyclonedds",
+        "riscv64_threadx_rust_talker",
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {

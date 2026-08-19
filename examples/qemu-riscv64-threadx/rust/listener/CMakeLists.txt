@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(riscv64_threadx_rust_listener_cyclonedds VERSION 0.1.0 LANGUAGES C CXX ASM)
+project(riscv64_threadx_rust_listener VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -55,6 +55,6 @@ nros_generate_interfaces(std_msgs "msg/String.msg" LANGUAGE C SKIP_INSTALL)
 # executable, and platform/RMW link calls collapse into the board-overlay
 # seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
 # `app_main!(register)` (board macro) provides `app_main`.
-nros_threadx_rv64_rust_app(riscv64_threadx_rust_listener_cyclonedds
+nros_threadx_rv64_rust_app(riscv64_threadx_rust_listener
     CRATE qemu-riscv64-threadx-listener
     LINK  std_msgs__nano_ros_c)
