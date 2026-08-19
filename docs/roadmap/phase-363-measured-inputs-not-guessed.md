@@ -545,6 +545,43 @@ dir — a tree whose fixture has never been built by cargo. It is over-broad and
 fails SAFE, and removing it would trade a rare false-STALE for a rare museum
 binary, which is the worse direction.
 
+### Audited 2026-08-19 — the guard is narrower than it looks, and correctly so
+
+`zpico_c_source_newer` opens with `if !build_dir.contains("zenoh") { return None }`,
+a substring test on a path. That reads like a guess this phase should have
+converted, and the first pass through it here concluded exactly that — wrongly.
+Recorded so the inference is not repeated.
+
+**Provenance.** The guard arrived in `96e6d7729` (2026-08-02) and its doc comment
+states its scope: *"when the fixture is a zenoh-backed CMAKE build (cyclone
+fixtures don't link zpico → gate on the `build-zenoh` marker to avoid false
+stales)"*. It is keyed on the cmake build-dir marker `build-<rmw>`, not on an
+example layout, and that marker is still live: **76** `examples/**/build-zenoh/`
+dirs, all 76 carrying a recorded `zpico-sys-*/output`.
+
+**What looked like a hole is covered by a better measurement.** phase-340 moved
+cargo fixtures into coordinate-keyed group dirs (`build/cargo-fixtures/linux-<hash>/`),
+whose names contain no "zenoh" — so the guard declines them, and 237 fixture rows
+declare `rmw = "zenoh"`. That is not a gap: **cargo folds a build script's
+`rerun-if-changed` paths into the crate's dep-info**, so the zenoh group dir's
+`talker.d` carries 9 in-repo zpico C/H paths —
+
+```
+…/zpico-sys/c/platform/errno_override.h
+…/zpico-sys/c/zenoh-pico-version.h.in
+…/zpico-sys/c/platform/bare-metal/platform.h
+```
+
+— and `dep_info_newer_source` reads that file. Those fixtures are therefore
+covered by the strongest form this phase asks for: the tool that owns the graph,
+answering for itself. The XRCE coordinate dir builds no `zpico-sys` at all, so
+declining it is right too.
+
+**So the guard's only failure mode is declining to check something already
+checked better elsewhere.** It is a conservative marker for the one population
+cargo cannot speak for — the cmake leaves, where ninja produces the binary and
+there is no `.d` to consult. Left as it is.
+
 Everything else the thesis names is measured: bindgen reports what it read (W1),
 cmake re-globs (W2), signatures enumerate through the git index with no type
 filter (W3), every builder contributes its own dependency record (W4), and the
