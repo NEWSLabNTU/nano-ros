@@ -1,7 +1,7 @@
 ---
 id: 668
 title: "ThreadX-RV64 is the only standalone example that owns two entry points, so it is the only one where the panic handler has a placement question"
-status: open
+status: resolved
 type: tech-debt
 area: build/examples
 related: [issue-0666, issue-0618]
@@ -74,3 +74,45 @@ The `#[global_allocator]` sits in the same place and has the same shape problem.
 It is not included here because 0616/0594 already own the allocator's per-image
 story and the two should not be conflated; the fix for this issue should just not
 make that one worse.
+
+## Resolved 2026-08-19 — phase-369, and one prediction was wrong
+
+One entry. `src/main.rs` and the `[[bin]]` section are gone from all six;
+`crate-type` stays `["staticlib", "rlib"]` and the lib-side `app_main!` is the
+only entry — the Zephyr shape this issue named.
+
+The hand-written panic line is gone too, but **not for the reason predicted
+here.** This issue said:
+
+> Once it is one entry point ... these six lose their last hand-written panic
+> line — the entry macro emits it like everywhere else.
+
+That holds for `nros::main!`, which does emit one. It does not hold for the
+entry that SURVIVES: `app_main!` emitted only the extern function. So after the
+`main.rs` deletion the hand-written `nros::panic_to_platform!()` was not
+redundant — it was THE provider, and deleting it would have left the leaf
+staticlib, a FINAL artifact, with no handler and reproduced 0688/0692's
+`#[panic_handler] function required`.
+
+Caught by reading the macro before running anything. The phase wave that would
+have deleted the line (W5) was closed as not-applicable, and W6 delivered the
+same end state properly: `app_main!` now TAKES the policy —
+`panic = platform | own`, defaulting to platform, mirroring `nros::main!(panic = …)`.
+
+The `own` arm is the load-bearing part. Emitting unconditionally would have made
+the policy the library's, which is issue 0618's complaint and what phase-366
+spent a phase undoing. RFC-0077 puts policy with the IMAGE; the image now names
+it or takes the default.
+
+### Verified
+
+12/12 images carry exactly one `rust_begin_unwind`; 0 hand-written
+`panic_to_platform` lines remain. The count is bound LOCAL (`t`) rather than
+GLOBAL in the final ELF — 0692's `t`/`T` distinction is about ARCHIVES, and a
+linked image legitimately localises the symbol. One provider, no duplicates,
+which is the property that matters.
+
+### Out of scope, as filed
+
+`#[global_allocator]` has the same shape in the same files and is still
+0616/0594's. This phase did not make it worse and did not try to fix it.

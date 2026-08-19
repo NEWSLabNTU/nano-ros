@@ -1,7 +1,7 @@
 ---
 id: 666
 title: "ThreadX-RV64 builds one example two ways — cargo for zenoh, CMake for CycloneDDS — and the RMW is what picks the build system"
-status: open
+status: resolved
 type: tech-debt
 area: build/examples
 related: [issue-0205, issue-0651]
@@ -125,3 +125,42 @@ takes it:
 * The seam is still the only board function of its kind in the tree, so any
   machinery added to `nano_ros_entry()` in future will miss it again unless the
   paths converge.
+
+## Resolved 2026-08-19 — phase-369, the Zephyr shape
+
+One build path. Both RMWs go through the CMake seam; the cargo route is gone.
+
+The seam `nros_threadx_rv64_rust_cyclone_app()` hardcoded cyclonedds twice — the
+crate features and the `nano_ros_link_rmw()` call — which is why zenoh had to be
+built by cargo from `src/main.rs` instead. It is now
+`nros_threadx_rv64_rust_app()`, parameterised on `NROS_RMW`, with the feature set
+as an explicit per-RMW TABLE rather than a pattern: cyclone must name `alloc`
+(phase-361 W8.e stopped `rmw-cyclonedds` enabling the heap), zenoh must not.
+An unknown RMW is a `FATAL_ERROR`, not an import with no backend that fails at
+link minutes later.
+
+The six `rmw = "zenoh"` rows became `builder = "cmake"` rows, and `build-examples`
+stopped calling the cargo builder for them.
+
+### What the divergence actually cost, now measured
+
+This issue argued the cost was more than tidiness, and the phase confirmed it
+twice:
+
+* **Issue 0688** — the seam is not `nano_ros_entry()`, so nothing applied the
+  image's panic policy to `nros-c`, and the build died four crates from the
+  cause.
+* **The artifact was misnamed.** `build-zenoh/` contained
+  `riscv64_threadx_rust_talker_cyclonedds` — the leaf hardcoded its target name,
+  so the zenoh ELF carried the cyclone suffix. Nothing noticed because nothing
+  else read that path. Fixed in W4 before the test resolver could cement it in a
+  second place.
+
+Both are the same shape: **a bespoke path silently misses machinery the shared
+one applies.**
+
+### Verified
+
+From wiped trees (this board is not testable incrementally — issue 0678):
+12/12 leaf x RMW ELFs built and named `riscv64_threadx_rust_<leaf>`, 0 build
+errors, and `build_threadx_rv64_rust_example_rmw` resolves both RMWs by one rule.

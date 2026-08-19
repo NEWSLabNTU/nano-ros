@@ -1,6 +1,6 @@
 # Phase 369 — ThreadX-RV64 gets ONE entry point and ONE build path
 
-**Status (2026-08-19). W1-W3 LANDED; W4 in flight; W5 CLOSED as not-applicable; W6 is a decision.** Direction chosen: the **Zephyr shape** —
+**Status (2026-08-19). COMPLETE — archived.** W1-W4 and W6 landed and verified; W5 closed as not-applicable, its premise refuted before any code moved. #0666 and #0668 resolved. Direction chosen: the **Zephyr shape** —
 both RMWs build through CMake, the lib-side entry is the only entry, and
 `src/main.rs` goes away.
 
