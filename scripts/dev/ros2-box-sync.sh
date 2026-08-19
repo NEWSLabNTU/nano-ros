@@ -85,6 +85,27 @@ fi
 # to work.
 exclusions=(
     --include '/scripts/build/***'
+    # …and the same carve-out for the vendored Zephyr, which is NOT tracked, so
+    # the `git ls-files` reasoning above did not cover it. Zephyr ships four
+    # source directories named `build`:
+    #
+    #   zephyr/scripts/build        zephyr/scripts/tests/build
+    #   zephyr/doc/build            zephyr/share/sysbuild/build
+    #
+    # and without them the mirror's Zephyr is subtly broken rather than absent:
+    # cmake gets far enough to print a version and a board, then dies with
+    #
+    #   python3: can't open file '…/zephyr/scripts/build/dir_is_writeable.py'
+    #   CMake Error at …/boards.cmake:198: Error finding board: mps2
+    #
+    # — which reads as a bad board argument, not as a missing file. So the box
+    # could never build ANY Zephyr target, and the reason was two directories
+    # totalling 340 KB. Zephyr's own build OUTPUT is `build-<name>/`, still
+    # excluded below, so this costs ~2 MB (`doc/build` is the bulk).
+    #
+    # `third-party/` needs no equivalent: it has no directory named `build` at
+    # all, measured, and if one appears it will be output.
+    --include '/zephyr-workspace/**/build/***'
     --exclude 'target/'
     --exclude 'target-*/'
     --exclude 'build/'

@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#0698** — every SDK-toolchain Zephyr board failed to CONFIGURE under CMake 4,
+which took tier 2 with it (1-wise over platform ⇒ the zephyr lane failing at configure fails the tier). Zephyr
+3.7's `FindZephyr-sdk.cmake:35` interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so unset makes the line
+`if("zephyr" STREQUAL )` — tolerated by CMake 3.x, rejected by 4.x. Fixed by NAMING the variant, which is not a
+version switch: `zephyr` is the value Zephyr would have chosen, so both lines take the same branch. That
+matters because Ubuntu 22.04 ships CMake 3.22 and ROS Humble is bound to it. Verified as a full 2x2 of real
+configures — including 3.22-with-unset, the cell showing the fix changed nothing where it already worked —
+plus `== zephyr == OK` through the real fixture path on 4.4.2; repeatable via
+`scripts/zephyr/cmake-variant-probe.sh`. One helper for the three sites that spelled the rule separately.
+`ZEPHYR_SDK_INSTALL_DIR` and `-DCMAKE_POLICY_VERSION_MINIMUM` were measured and do NOT work. Fell out of
+testing the 3.22 half: the box could not build ANY Zephyr target because `ros2-box-sync.sh` stripped Zephyr's
+four SOURCE dirs named `build` — fixed here too. See `archived/0698-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0678** — the threadx-riscv64 Cyclone rows could not link
 `__emutls_v.errno`: the provisioned xPack toolchain emits EMULATED TLS while Debian's picolibc (whose headers
 were being injected) was built for NATIVE TLS, and picolibc's archive contains no emutls symbols at all, so
@@ -61,17 +74,6 @@ linking. It looked unfixed for a day because `CMAKE_C_COMPILER` is sticky — 22
 resolving Debian's compiler until wiped, so on this board a toolchain change is NOT testable incrementally.
 The failure behind it (`nros-c` panic handler in the RUST leaf) was 0688 -> 0692, fixed by `eb54c1170`, so the
 0674 -> 0678 -> 0692 sequence is closed end to end. See `archived/0678-*`. (2026-08-19)
-
-**#0698** (build/zephyr, open 2026-08-19) — every SDK-toolchain Zephyr board fails to CONFIGURE under CMake 4,
-so `just ci-matrix` does not run at all on such a host (1-wise over platform ⇒ the zephyr lane failing at
-configure fails the tier; tier 1 is native-only and cannot see it). Zephyr 3.7's `FindZephyr-sdk.cmake:35`
-interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so when it is unset the line becomes
-`if("zephyr" STREQUAL )` — tolerated by CMake 3.x, rejected by 4.x. Measured on one snippet, one machine:
-3.22.1 (in the ROS distrobox) takes the branch, 4.4.2 (host) errors. Unset is the DESIGNED state for real
-boards — `zephyr-fixture-run-one.sh` sets the variant for `native_sim` only, which is also why issue 0087's
-carve-out hid this. `ZEPHYR_SDK_INSTALL_DIR` alone does NOT help (the whole argument list must parse first).
-Direction: set `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` for SDK boards in BOTH runners — verified to get the real
-`mps2_an385` configure past the toolchain stage. See `0698-*`. (2026-08-19) FIX APPLIED 2026-08-19 (direction 1, both call sites); still OPEN because the host that applied it has CMake 3.22.1 and no Zephyr SDK — behaviour-neutrality on CMake 3 was verified on the issue's own snippet, clearing the CMake 4 error was not re-verified. Closing wants one real-board `just zephyr build-fixtures` on a CMake >= 4 host, which is also the run proving tier 2 is unblocked.
 
 Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
 The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not
