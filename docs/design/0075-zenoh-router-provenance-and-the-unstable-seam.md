@@ -219,16 +219,30 @@ chase a host package.
 inside one ROS distro with no signal, so there is no version to pin *to*. It also
 preserves the deeper flaw — validating a router nobody runs.
 
-**Vendor `rmw_zenoh_cpp` too, and pin the whole ROS side.** This is the existing
-`build/rmw_zenoh_ws` overlay, and it works. Rejected as the default because it
-inverts the goal: users run the distro's RMW, so pinning ours makes the tested
-configuration *less* like production, not more. Keep it as an opt-in for
-reproducing a specific pairing.
+**Vendor `rmw_zenoh_cpp` too, and pin the whole ROS side.** This was the
+`build/rmw_zenoh_ws` overlay, built from a `third-party/zenoh/rmw_zenoh`
+submodule. Rejected as the default because it inverts the goal: users run the
+distro's RMW, so pinning ours makes the tested configuration *less* like
+production, not more.
+
+*Amended 2026-08-19: the overlay and its submodule are DELETED, not kept as an
+opt-in.* This RFC originally kept them for "reproducing a specific pairing", and
+in the time since, nothing ever did. Measured before removing: the submodule was
+never initialised in any checkout; its only references were the recipe that
+initialised it on demand; the `ros-editions` image installs the apt package and
+left the source pin as a `WITH_ZENOH_PIN` layer that was never written; and
+every harness call site began from the distro install and layered the overlay
+only if it happened to exist. The pairing rationale had also been refuted
+independently by issue 0291 — zenoh's wire is proto-`0x09`-stable across 1.x, so
+zpico 1.7.2 interoperates with a far newer distro RMW, and that investigation's
+real finding was the keyexpr type-hash. An opt-in nobody opts into is a
+maintenance surface with a story attached, and the story was wrong.
 
 **Require the overlay whenever ROS is present.** Rejected: after the 0.1.9
 upgrade the distro RMW interoperates, so requiring an hour-long build to run the
-suite would be cost without benefit. The overlay is one way to obtain a matched
-RMW, not the only one.
+suite would be cost without benefit. That reasoning is what eventually removed
+the overlay outright (above) — if it is never required and never chosen, it is
+not a fallback, it is dead weight.
 
 → issue 0609 (both causes and the measurements), RFC-0056 (ROS edition axis),
 issue 0374 (the prebuilt-toolchain promise), issue 0599 (a lane that cannot run

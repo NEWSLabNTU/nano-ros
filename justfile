@@ -73,7 +73,6 @@ mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
 mod workspace 'just/workspace.just'
 mod verification 'just/verification.just'
-mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod ros_editions 'just/ros-editions.just'
@@ -5008,11 +5007,9 @@ doctor tier="":
     # prefix. Without it those lanes report `[SKIPPED:capability]`, which reads
     # as green — three issues were closed "unverifiable" that way on 2026-08-17.
     #
-    # `just rmw_zenoh setup`'s overlay is NOT a substitute here. It supplies the
-    # peer (`ros2.rs::rmw_zenoh_overlay` sources it on top of the distro setup)
-    # but the ROUTER resolver (`process::ros_zenohd_path`) never looks there —
-    # it checks $NROS_RMW_ZENOHD and /opt/ros only. So an overlay-only host has
-    # a peer that works, a router nothing can find, and a lane that skips.
+    # There is no source overlay to fall back on: it and its submodule were
+    # removed once measurement showed nothing used them (RFC-0075, amended
+    # 2026-08-19). The apt package is the only source of the peer.
     # issue 0654 — ask the SSoT where the router is, do not construct a path.
     # Constructing `/opt/ros/$ROS_DISTRO/...` here reported "not installed" on a
     # host whose ROS lives anywhere else, which is the case `AMENT_PREFIX_PATH`

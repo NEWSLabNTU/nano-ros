@@ -56,13 +56,16 @@ edition container.
 | Zenoh | `rmw-zenoh` (zpico 1.7.2) | `rmw_zenohd` router (host-net) | `rmw_zenoh_cpp` |
 | XRCE | `rmw-xrce` | micro-XRCE Agent (UDP) | `rmw_fastrtps_cpp` |
 
-**Wire-compat (decided):** the image's apt `rmw_zenoh_cpp` is 0.2.9 (some zenoh
-1.x) — NOT guaranteed to match zpico's pinned 1.7.2. So the images **bake the
-pinned zenoh 1.7.2 + `rmw_zenoh_cpp` overlay from source** (replicating
-`just rmw_zenoh setup`: colcon `zenoh_cpp_vendor rmw_zenoh_cpp` from
-`third-party/zenoh/rmw_zenoh`), and the micro-XRCE Agent from source
-(`scripts/xrce-agent/build.sh`). These are heavy per-edition source builds — the
-RFC-0058-deferred overlay work, now required for a real zenoh lane.
+**Wire-compat (decided, then REVERSED — 2026-08-19).** This said the image's apt
+`rmw_zenoh_cpp` is "NOT guaranteed to match zpico's pinned 1.7.2", so the images
+would bake a pinned overlay from source. That was never implemented: the
+Dockerfile installs the apt package and left the source pin as a
+`WITH_ZENOH_PIN` layer that exists only in a comment. Issue 0291 then refuted the
+premise — zenoh's wire is proto-`0x09`-stable across 1.x, so zpico 1.7.2
+interoperates with a far newer distro RMW, and the real finding was the keyexpr
+type-hash. The overlay and its `third-party/zenoh/rmw_zenoh` submodule are now
+deleted (RFC-0075, amended). The images use apt; only the micro-XRCE Agent is
+still a source build (`scripts/xrce-agent/build.sh`).
 
 ## Work items
 
@@ -78,7 +81,7 @@ RFC-0058-deferred overlay work, now required for a real zenoh lane.
 
 ### W2 — pinned zenoh 1.7.2 + rmw_zenoh overlay in the edition image
 - Extend `docker/ros-editions/Dockerfile` (or a follow-on build step) to colcon-
-  build `zenoh_cpp_vendor` + `rmw_zenoh_cpp` from `third-party/zenoh/rmw_zenoh`
+  install `rmw_zenoh_cpp` from apt (the from-source plan was reversed; see above)
   (the pinned 1.7.2 source) into `/opt/nros-overlay`, sourced alongside the ROS
   setup. Include `rmw_zenohd`.
 - **Acceptance:** `image-check <distro>` shows `rmw_zenoh_cpp` from the overlay

@@ -43,9 +43,7 @@ fn nros_zephyr_publisher_reaches_ros2_topic_echo() {
     if !require_ros2() {
         skip!(
             "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml). \
-             The `just rmw_zenoh setup` source overlay is an OPT-IN for \
-             reproducing a specific pairing (RFC-0075), not the way to get one."
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
         );
     }
     let entry = build_zephyr_workspace_rust_qos_entry()

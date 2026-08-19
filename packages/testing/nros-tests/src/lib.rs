@@ -615,13 +615,6 @@ pub mod kind {
     /// Lived at the repo root as `target-zenoh-fixture-posix/` until issue 0535
     /// moved it under the one build root (R1).
     pub const ZENOH_FIXTURE_POSIX: &str = "zenoh-fixture-posix";
-
-    /// The `rmw_zenoh_cpp` colcon overlay. Spelled with UNDERSCORES, unlike
-    /// every other kind — it mirrors the upstream workspace name rather than
-    /// this repo's kebab vocabulary. Left as-is: renaming moves a real cache
-    /// dir, and the R5 gate now names the constant instead of the word, so the
-    /// inconsistency is visible in one place rather than at a call site.
-    pub const RMW_ZENOH_WS: &str = "rmw_zenoh_ws";
 }
 
 /// RFC-0070 R1 — the ONE build-cache root, Rust side.

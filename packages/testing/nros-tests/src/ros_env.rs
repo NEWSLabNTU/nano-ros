@@ -41,8 +41,8 @@ use crate::{
 /// `ros2::ros2_env_setup_*` variants so [`HostRosEnv`] can delegate.
 #[derive(Debug, Clone)]
 pub enum Middleware {
-    /// `rmw_zenoh_cpp` with a client-mode session pointed at `locator` (the
-    /// pinned overlay in `build/rmw_zenoh_ws/` is sourced when present). The
+    /// `rmw_zenoh_cpp` with a client-mode session pointed at `locator`, from
+    /// the distro install (`ros-<distro>-rmw-zenoh-cpp`). The
     /// `domain_id` scopes discovery — it is the FIRST segment of the rmw_zenoh
     /// keyexpr, so a peer and the nano-ros node MUST share it to match.
     Zenoh { locator: String, domain_id: u8 },

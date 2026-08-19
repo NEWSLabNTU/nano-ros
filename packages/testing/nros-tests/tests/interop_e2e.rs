@@ -151,9 +151,7 @@ fn require_cell_env(scenario: Scenario) {
     } else if !require_ros2() {
         skip!(
             "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml). \
-             The `just rmw_zenoh setup` source overlay is an OPT-IN for \
-             reproducing a specific pairing (RFC-0075), not the way to get one."
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
         );
     }
 }

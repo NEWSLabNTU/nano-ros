@@ -44,9 +44,7 @@ verifies each.
 `rmw_zenoh_cpp` is what the zenoh e2e lanes run as their router (phase-362 W1).
 Without it they report `[SKIPPED:capability]`, which reads as green — three
 issues were closed "unverifiable" that way on 2026-08-18. `just doctor` reports
-which router it can see, including the `just rmw_zenoh setup` overlay, which
-needs BOTH its `setup.bash` sourced and `NROS_RMW_ZENOHD` set or it aborts with
-`ament_index_cpp::PackageNotFoundError`.
+which router it can see.
 
 ## Where the box's storage lands — check `/` before you create it
 
@@ -248,9 +246,9 @@ is the same checkout, so `NROS_REPO_DIR` matches the host either way.
 - **`zstd` is not in a stock Ubuntu 22.04**, and the prebuilt dists are
   `.tar.zst`, so the first prebuilt install fails with `tar (child): zstd:
   Cannot exec`. `sudo apt-get install zstd` inside the box. → issue 0385
-- **`rmw_zenoh_cpp` has no humble apt package** (it starts at iron). Cyclone and
-  FastRTPS interop work out of the box; zenoh interop needs the pinned source
-  overlay (`just rmw_zenoh setup`).
+- **`rmw_zenoh_cpp` is an apt package on humble+** (`ros-<distro>-rmw-zenoh-cpp`;
+  this note used to say humble had none). Install it like the others — there is
+  no source overlay to build any more (RFC-0075, amended 2026-08-19).
 - **ROS's `setup.bash` dies under `set -u`** (`AMENT_TRACE_SETUP_FILES: unbound
   variable`). Any script sourcing it needs `set +u` around the source.
 - **The stale-CLI guard fires after any pull that touched CLI sources**

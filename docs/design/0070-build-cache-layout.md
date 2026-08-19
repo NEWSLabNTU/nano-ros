@@ -129,9 +129,10 @@ became a two-line change once each kind had a named constant — one edit per
 language, with the scripts and the subcommand untouched, which is exactly what
 the extraction was for.
 
-One kind keeps a non-conforming SPELLING deliberately: `rmw_zenoh_ws` uses
-underscores because it mirrors the upstream colcon workspace name rather than
-this repo's kebab vocabulary.
+One kind used to keep a non-conforming SPELLING deliberately — `rmw_zenoh_ws`,
+underscored because it mirrored an upstream colcon workspace name. It was
+removed with the overlay it named (RFC-0075, amended 2026-08-19), so every
+remaining kind is kebab.
 
 **What a kind rename actually costs, measured.** Moving the directory does NOT
 preserve the cache: `build/fixtures-cargo` held `CMakeCache.txt` files with the

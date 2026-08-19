@@ -86,14 +86,13 @@ sudo apt-get install -y --no-install-recommends \
 # now — `ros-humble-rmw-zenoh-cpp`, candidate 0.1.8-1jammy as of 2026-08-18 —
 # so it is installed above rather than built.
 #
-# The alternative is still `just rmw_zenoh setup`, a pinned source overlay in
-# build/rmw_zenoh_ws/. `just/native.just` says that pin exists "so rmw_zenoh_cpp
-# matches our zenoh-pico pin", while AGENTS.md records issue 0291's finding that
-# zenoh's wire is proto-0x09 stable across 1.x and zpico 1.7.2 interops with
-# jazzy's 1.11.2 — i.e. the version match was never what mattered. Those two
-# statements disagree; the apt package is the cheaper of the two and this script
-# takes it. Anyone hitting a wire-level mismatch should read 0291 before
-# assuming the overlay is the answer.
+# There is no longer an alternative to build: the pinned source overlay and its
+# submodule were removed (RFC-0075, amended 2026-08-19) after measuring that
+# nothing ever used them. The rationale they carried — "so rmw_zenoh_cpp matches
+# our zenoh-pico pin" — was refuted by issue 0291: zenoh's wire is proto-0x09
+# stable across 1.x and zpico 1.7.2 interops with jazzy's 1.11.2, so the version
+# match was never what mattered. Anyone hitting a wire-level mismatch should read
+# 0291 before assuming versions are the cause.
 #
 # Without EITHER, every zenoh e2e lane reports `[SKIPPED:capability]` — a skip
 # that reads as green. `just doctor` says which of the two you have.

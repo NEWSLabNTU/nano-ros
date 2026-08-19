@@ -15,27 +15,6 @@ use std::{
 /// Default ROS 2 distro to use
 pub const DEFAULT_ROS_DISTRO: &str = "humble";
 
-/// Locate the pinned `rmw_zenoh_cpp` overlay built by `just rmw_zenoh setup`.
-///
-/// Returns the overlay's `setup.bash` path when the ament install is present,
-/// so a caller can reproduce a SPECIFIC `rmw_zenoh_cpp` pairing. When absent —
-/// which is the normal case — callers fall back to the distro install.
-///
-/// This used to say the overlay matched "our pinned `zenoh-pico` / `zenohd`".
-/// Half of that is gone: nano-ros pins no router at all now, ROS supplies it
-/// (RFC-0075). The other half was refuted by issue 0291 — zenoh's wire is
-/// proto-`0x09`-stable across 1.x, so zpico 1.7.2 interops with a much newer
-/// distro RMW and the real fix was the keyexpr type-hash, not a version match.
-///
-/// So the overlay is an OPT-IN, not a prerequisite: RFC-0075 rejected both
-/// making it the default (pinning our own RMW makes the tested configuration
-/// LESS like production) and requiring it when ROS is present (an hour-long
-/// build for no benefit).
-pub fn rmw_zenoh_overlay() -> Option<PathBuf> {
-    let overlay = crate::build_dir(crate::kind::RMW_ZENOH_WS, &["install"]).join("setup.bash");
-    overlay.exists().then_some(overlay)
-}
-
 /// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
 /// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
 /// and `skip!` when absent, instead of everything assuming humble. Returns false
@@ -85,12 +64,11 @@ pub fn require_ros2() -> bool {
 
 /// Check if rmw_zenoh_cpp is available.
 ///
-/// Prefers the pinned overlay built by `just rmw_zenoh setup`; falls back to
-/// a distro-installed `rmw_zenoh_cpp` if the overlay is absent.
+/// The distro install is the only source. The opt-in `build/rmw_zenoh_ws`
+/// source overlay it used to prefer is gone — nothing automated ever built it,
+/// and its stated reason (wire-matching our zenoh-pico pin) was refuted by issue
+/// 0291: zenoh's wire is proto-stable across 1.x.
 pub fn is_rmw_zenoh_available() -> bool {
-    if rmw_zenoh_overlay().is_some() {
-        return true;
-    }
     Command::new("bash")
         .args([
             "-c",
@@ -195,9 +173,9 @@ fn write_zenoh_session_config(locator: &str) -> tempfile::TempDir {
 
 /// `rmw_zenoh_cpp`'s own `DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5`, parsed.
 ///
-/// Searched in the order the RMW itself would be found: the wire-matched
-/// overlay first (`build/rmw_zenoh_ws`, when it has been built), then the
-/// distro install. Returns `None` when neither exists or the file will not
+/// Searched where the RMW itself would be found: the distro install. (A
+/// source overlay used to be searched first; it is gone — RFC-0075, amended
+/// 2026-08-19.) Returns `None` when it does not exist or the file will not
 /// parse — the caller falls back rather than failing, because a host without
 /// ROS 2 must still be able to call this.
 ///
@@ -206,13 +184,6 @@ fn write_zenoh_session_config(locator: &str) -> tempfile::TempDir {
 fn shipped_session_config() -> Option<serde_json::Value> {
     const REL: &str = "share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5";
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(overlay) = rmw_zenoh_overlay() {
-        // `<ws>/install/setup.bash` -> `<ws>/install/rmw_zenoh_cpp/<REL>`
-        if let Some(install) = overlay.parent() {
-            candidates.push(install.join("rmw_zenoh_cpp").join(REL));
-            candidates.push(install.join(REL));
-        }
-    }
     for distro in ["humble", "iron", "jazzy", "rolling"] {
         candidates.push(PathBuf::from(format!("/opt/ros/{distro}")).join(REL));
     }
@@ -245,17 +216,10 @@ fn shipped_session_config() -> Option<serde_json::Value> {
 pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, tempfile::TempDir) {
     let config_dir = write_zenoh_session_config(locator);
     let config_path = config_dir.path().join("session_config.json5");
-    // The distro's `rmw_zenoh_cpp` is the DEFAULT and the normal case. The
-    // opt-in overlay is layered on top only when someone has built it to
-    // reproduce a specific pairing (RFC-0075); "wire-matched to our zenoh-pico
-    // pin" was the old reason here and issue 0291 refuted it — the wire is
-    // proto-stable across 1.x.
-    let overlay_snippet = match rmw_zenoh_overlay() {
-        Some(path) => format!(" && source {}", path.display()),
-        None => String::new(),
-    };
+    // The distro's `rmw_zenoh_cpp`, and only that. A source overlay used to be
+    // layered on top when present; it is gone (see `is_rmw_zenoh_available`).
     let cmd = format!(
-        "source /opt/ros/{distro}/setup.bash{overlay_snippet} && \
+        "source /opt/ros/{distro}/setup.bash && \
          ros2 daemon stop >/dev/null 2>&1; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
          export ZENOH_SESSION_CONFIG_URI={config_path}",
