@@ -23,8 +23,11 @@
 //!   requirement. Resolution is whatever the platform delivers (issue #502:
 //!   sub-tick on FreeRTOS Cortex-M, tick-quantized on ThreadX).
 //! - **`std` without a port**: [`std::time::Instant`], anchored at first use.
-//!   That configuration is real and shipped — the metadata probe compiles node
-//!   code with `std` and no port — so the arm is load-bearing, not vestigial.
+//!   The claim that stood here — "real and shipped, the metadata probe compiles
+//!   node code with `std` and no port" — was WRONG. The probe links
+//!   `nros-platform-cffi` with `posix-c-port` and resolves `rmw-cffi`, so it
+//!   takes the arm above. This arm has no in-tree consumer: nothing calls
+//!   `now()` anywhere in the tree.
 //! - **Neither**: no clock source; this module is absent.
 //!
 //! The order used to be the other way round, `std` first, which meant every

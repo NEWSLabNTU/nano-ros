@@ -1234,9 +1234,9 @@ pub fn default_epoch_us_fn() -> Option<fn() -> u64> {
 /// the same story the monotonic clock had one commit ago: `rmw-cffi` means a
 /// platform port is linked, every port exports the wall clock, so a hosted
 /// build reads the same source an embedded one does. `SystemTime` survives
-/// only where there is no port to ask — which is a SHIPPED configuration, not a
-/// test-only one: the metadata probe compiles node code with `std` and no
-/// `rmw-cffi` (see `default_clock_us_fn` for the measurement).
+/// only where there is no port to ask. The claim that stood here — that the
+/// metadata probe is that configuration — was WRONG; the probe links a port and
+/// resolves `rmw-cffi`. See `default_clock_us_fn` for what was measured.
 #[cfg(feature = "rmw-cffi")]
 pub fn default_epoch_us() -> u64 {
     unsafe extern "C" {

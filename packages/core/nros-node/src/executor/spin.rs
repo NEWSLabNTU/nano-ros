@@ -7289,12 +7289,19 @@ pub(crate) fn platform_sleep(d: core::time::Duration) {
 /// `Instant` on one and the platform on the other. `Instant` survives only
 /// where there is no port to ask: `std` without `rmw-cffi`.
 ///
-/// phase-359 W10 follow-up — that configuration was recorded here as "the
-/// mock-session test configuration", and it is not only that. `nros-rmw-metadata`
-/// and every generated metadata PROBE crate take `nros` with `std` and no
-/// `rmw-cffi`, so they compile arbitrary node code with no port linked. The
-/// fallback is shipped, not vestigial, which is why it cannot simply be deleted
-/// to close the campaign's last `Instant` site.
+/// phase-359 W10 follow-up — this comment claimed the metadata PROBE was that
+/// configuration, and **it is not**. The probe's generated manifest deps
+/// `nros-platform-cffi` with `posix-c-port` (issue 0288 layer 5, so it links),
+/// and its `nros` resolves with `rmw-cffi` ON — feature-unified from the
+/// component's board crate. Measured on a real probe tree: `alloc default
+/// macros rmw-cffi ros-humble std`. It takes the PORT arm.
+///
+/// What is real: `nros-rmw-metadata` and `nros-tests` do resolve `nros` with
+/// `std` and no `rmw-cffi`, and have no port crate in their graphs. But nothing
+/// in either uses this arm — deleting it and building the workspace
+/// `--all-targets` is clean, and there is no in-tree caller of
+/// `nros::time::now` at all. So the arm serves an OUT-OF-TREE contract only: a
+/// consumer with `std`, no `rmw-cffi`, and its own `Session`.
 pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     #[cfg(feature = "rmw-cffi")]
     {

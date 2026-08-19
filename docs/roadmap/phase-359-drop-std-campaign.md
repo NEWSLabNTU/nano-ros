@@ -815,14 +815,35 @@ the two sources apart on POSIX — and it needed the `std,platform-clock`
 combination added to `check-node-std-tests`, because that combination was in no
 lane, which is how the `not(std)` gate survived.
 
-**What this class does NOT do is shrink the count, and the reason is worth
-recording**: the `std` arms remain as the no-port fallback, and that
-configuration is SHIPPED, not vestigial. `nros-rmw-metadata` and every generated
-metadata-probe crate take `nros` with `std` and no `rmw-cffi` — they compile
-arbitrary node code with no port linked. A node package that uses
-`nros::time::now` for `dt` would fail to build its own metadata probe if the arm
-were deleted. Both sites now say so, against the earlier note that called it
-"the mock-session test configuration".
+**What this class does NOT do is shrink the count**: the `std` arms remain as
+the no-port fallback.
+
+**The reason first recorded for keeping them was WRONG, and the correction is
+the useful part.** This paragraph claimed the metadata probe is the no-port
+configuration — "a node package that uses `nros::time::now` for `dt` would fail
+to build its own metadata probe if the arm were deleted". Checked afterwards
+rather than when it was written:
+
+* the probe's generated manifest (`metadata_build.rs`) deps
+  `nros-platform-cffi` with `posix-c-port` — issue 0288 layer 5 added it
+  precisely so the probe LINKS the ~90 `nros_platform_*` symbols on the host;
+* and its `nros` resolves with `rmw-cffi` ON, feature-unified from the
+  component's board crate. Measured on a real probe tree: `alloc default macros
+  rmw-cffi ros-humble std`.
+
+So the probe takes the PORT arm and always did. Two builds DO select the
+`std`-without-`rmw-cffi` arms — `nros-rmw-metadata` and `nros-tests`, neither
+with a port crate in its graph — so the configuration exists; the reason given
+for it did not.
+
+**And the arms are dead even there.** Simulating the deletion (both fallbacks,
+`nros::time::now`'s `std` arm, and the `time` module narrowed to `rmw-cffi`)
+builds `nros-rmw-metadata`, `nros-tests` and the whole workspace
+`--all-targets` with zero errors, and there is no in-tree caller of
+`nros::time::now` at all. What the arms serve is an OUT-OF-TREE contract: a
+consumer with `std`, no `rmw-cffi`, and its own `Session`. That is a decision
+about a supported population, not a dependency of this tree — which is what
+W10 needs to rule on rather than infer.
 
 **And env does not finish the campaign.** Three classes remain after it, each
 with its own question rather than a mechanical answer: the `Mutex`/`OnceLock`
