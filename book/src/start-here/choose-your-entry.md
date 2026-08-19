@@ -15,38 +15,41 @@ it's worth playing with.
   paragraph for the maturity signal.
 - If you stay interested, jump to one of the starters below.
 
-## 🔌 I have an ESP32 on my desk right now
+## 🔌 I have a board (or a vendored SDK tree) on my desk
 
-Already have hardware? Two-step path:
+Already have hardware — an ESP32, an STM32Cube or MCUXpresso project, a
+Zephyr or NuttX workspace? Two-step path:
 
-1. **Linux first** — [First Node — Rust](../getting-started/first-node-rust.md)
-   on your host to verify the stack in ~10 minutes
-   (`nros setup native --rmw zenoh` then `cargo run`).
-2. **Then ESP32** — once Linux works, follow
-   [ESP32 (esp-hal)](../getting-started/esp32.md) for the Rust
-   cross-compile path. You need a second machine (or the host
-   itself) running `zenohd` on your Wi-Fi network — the board
-   needs network reach to the router. For a C-only path use
-   [ESP32 (ESP-IDF component)](../getting-started/integration-esp-idf.md)
-   if you already have ESP-IDF set up.
+1. **Linux first** — [First Project](../getting-started/first-project.md)
+   on your host verifies the whole stack in ~10 minutes, with no daemon
+   and no ROS 2 install (`nros setup native --rmw cyclonedds`, one
+   scaffold command, `cmake`).
+2. **Then your target** — start at
+   **[How Integration Works](../getting-started/how-integration-works.md)**:
+   your RTOS keeps its own build tool (west, make, idf.py, your IDE) and
+   nano-ros plugs into it. One chapter per host build system follows it.
 
 ## 🚀 I want to get started shipping something
 
-You've decided to use nano-ros and want a working talker on Linux
-first, then maybe move to an MCU.
+You've decided to use nano-ros and want a working system on Linux
+first, then move it to your target.
 
-1. **[Install + first build](../getting-started/installation.md)**
-   — install the `nros` CLI, then `nros setup native --rmw zenoh`.
-2. **First Node** in your language:
-   [Rust](../getting-started/first-node-rust.md) ·
-   [C](../getting-started/first-node-c.md) ·
-   [C++](../getting-started/first-node-cpp.md).
-3. Building two or more nodes? Move next to
-   **[Multi-Node Project Layout](../getting-started/workspace-from-app-node.md)**.
-4. **[Troubleshooting — First 10 Minutes](../getting-started/troubleshooting-first-10-min.md)**
+1. **[Install](../getting-started/installation.md)** — two commands:
+   `./scripts/bootstrap.sh`, then `nros setup native --rmw cyclonedds`.
+2. **[First Project](../getting-started/first-project.md)** — one
+   scaffolded workspace, C++ and CMake, publishing with nothing else
+   running. Rust variant on the same page.
+3. **[Anatomy of What You Just Built](../getting-started/anatomy.md)**
+   — the three package roles and the one configuration file; every
+   later addition is another instance of these.
+4. Growing: nodes, parameters, more deploy targets — the
+   [Multi-Node Projects](../getting-started/workspace-from-app-node.md)
+   group; other languages —
+   [Rust, C, and Mixed](../getting-started/workspace-languages.md).
+5. **[Troubleshooting — First 10 Minutes](../getting-started/troubleshooting-first-10-min.md)**
    if anything goes sideways.
-5. Cross-compile for an RTOS via the
-   [Embedded Starters](../getting-started/freertos.md) section.
+6. Talking to a ROS 2 system needs the zenoh backend —
+   [Choosing an RMW](../user-guide/rmw-choosing.md).
 
 ## 🔬 I'm evaluating capabilities
 

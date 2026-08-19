@@ -3,18 +3,27 @@
 [Introduction](./introduction.md)
 [Choose Your Entry](./start-here/choose-your-entry.md)
 
-# Getting Started (Linux first)
+# Quick Start (Linux first)
 
-- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
-- [Install + first build](./getting-started/installation.md)
-- [First Node — Rust](./getting-started/first-node-rust.md)
-- [First Node — C](./getting-started/first-node-c.md)
-- [First Node — C++](./getting-started/first-node-cpp.md)
-- [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
+- [Install](./getting-started/installation.md)
+- [First Project](./getting-started/first-project.md)
+- [Anatomy of What You Just Built](./getting-started/anatomy.md)
 - [Your own message package](./getting-started/your-own-msg-package.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
-# Multi-Node Projects
+# Single-Node Examples
+
+- [First Node — Rust](./getting-started/first-node-rust.md)
+- [First Node — C](./getting-started/first-node-c.md)
+- [First Node — C++](./getting-started/first-node-cpp.md)
+
+# Choosing an RMW
+
+- [Choosing an RMW Backend](./user-guide/rmw-choosing.md)
+- [Switching RMW in Config](./user-guide/rmw-switching.md)
+- [Backend Reference](./user-guide/rmw-backends.md)
+
+# Growing Your Project
 
 - [Project layout](./getting-started/workspace-from-app-node.md)
 - [Node packages](./getting-started/workspace-node-pkgs.md)
@@ -22,9 +31,10 @@
 - [Entry packages](./getting-started/workspace-entry-pkg.md)
 - [C / C++ multi-node workspaces](./getting-started/workspace-cpp.md)
 - [Mixed-language workspaces](./getting-started/workspace-mixed-language.md)
+- [Rust, C, and Mixed — per-language notes](./getting-started/workspace-languages.md)
 - [Role reference](./user-guide/component-and-entry-pkg.md)
 
-# Embedded Starters
+# Bring Your Own RTOS
 
 - [How Integration Works](./getting-started/how-integration-works.md)
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
@@ -52,10 +62,6 @@
 - [Build Profiles](./user-guide/build-profiles.md)
 - [Profiling Your Build](./user-guide/build-profiling.md)
 - [Deployment Workflow](./user-guide/deployment.md)
-- [ROS 2 Interoperability](./getting-started/ros2-interop.md)
-- [Choosing an RMW Backend](./user-guide/rmw-choosing.md)
-  - [Backend Reference](./user-guide/rmw-backends.md)
-  - [Switching RMW in Config](./user-guide/rmw-switching.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [TX Throughput & Latency Tuning](./user-guide/tx-tuning.md)
@@ -64,8 +70,11 @@
 - [Embassy Integration](./user-guide/embassy-integration.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
 
-# ROS 2 Orientation
+# Coming From ROS 2
 
+- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
+- [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
+- [ROS 2 Interoperability](./getting-started/ros2-interop.md)
 - [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
 - [nano-ros vs micro-ROS](./concepts/comparison-vs-microros.md)
 - [Migration Guide](./start-here/migration-guide.md)

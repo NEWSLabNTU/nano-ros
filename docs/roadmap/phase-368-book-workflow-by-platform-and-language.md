@@ -1,9 +1,9 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W7 landed; W4 in flight; the
-maintainer-approved TARGET DESIGN below adds W8–W14 (restructure the book for
-user personas: C++-first workspace quick start, cyclonedds default, no `just`
-on the user track).
+**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W9, W11, W13 landed; W4, W10,
+W12 in flight; W14 next. The maintainer-approved TARGET DESIGN below defines
+W8–W14 (restructure the book for user personas: C++-first workspace quick
+start, cyclonedds default, no `just` on the user track).
 
 Implements the fix for [issue 0694](../issues/0694-platform-starters-omit-nros-sync.md).
 
@@ -324,20 +324,39 @@ everywhere, so there is no shape switch to unlearn.
 
 ## Work items — target design
 
-**W8 — `nros new <name> --workspace`.** One-shot minimal workspace scaffold:
-`--lang cpp|rust` (default cpp), `--rmw` (default cyclonedds), node pkg +
-bringup + entry from the canonical templates with the RMW baked into every
-place that spells it (one `BACKEND` word for C++; the three Rust spots).
-Acceptance: scaffold → build → run publishes, both langs, no hand edits;
-covered by a CLI test asserting the scaffold builds (as a build-stage fixture,
-not a compile-in-test).
+**W8 — `nros new <name> --workspace`. LANDED.** One-shot minimal workspace
+scaffold, `--lang cpp` (default) / `rust`, `--rmw cyclonedds` (default) /
+`zenoh` / `xrce`. The file bodies are `include_str!` of the canonical
+templates — one copy, no drift — and the RMW is a rewrite of known anchors,
+each asserted to appear exactly once so a template edit that moves one fails
+the scaffold loudly. Verified: scaffold → build → run publishes, BOTH langs,
+no hand edits, no router. The `include_str!` freshness edge is closed:
+`gen-cli-source-dirs.py` now folds parent-relative embedded-file directories
+into the CLI stamp closure (the 0627 class, one layer down).
 
-**W9 — template repairs.** `multi-node-workspace-cpp`: default
-`BACKEND cyclonedds`, add `board = "native"` to `[deploy.native]`, README off
-the retired `MODEL` spelling. `multi-node-workspace`: same defaults; README
-off `model =`; entry doc-comment off the `config/system_model.yaml` path
-(models are build artifacts, phase-330). Investigate and resolve the Rust
-immediate-exit asymmetry before Part IV's Rust chapter lands.
+On the original acceptance's "CLI test asserting the scaffold builds as a
+build-stage fixture": deliberately NOT done that way. Scaffold output ≡
+template bytes + tested anchor substitutions; the templates themselves are
+already built by the fixture lane and run by cpp_multi_node_entry's E2E, so
+the only seam a new fixture would add coverage for is the substitution — which
+6 unit tests assert directly. A second build of the same bytes buys latency,
+not coverage.
+
+**W9 — template repairs. LANDED.** C++ template defaults `BACKEND
+cyclonedds` via an overridable `NROS_RMW` (the fixture lane pins
+`-DNROS_RMW=zenoh` so cpp_multi_node_entry's zenoh E2E keeps its coordinate —
+user default and test coordinate now differ ON PURPOSE, each spelled where it
+belongs); `[deploy.native]` gained `board = "native"` in both templates;
+READMEs and the entry doc-comment moved off the retired `MODEL`/`model =`
+spellings. The Rust immediate-exit asymmetry RESOLVED: not an RMW bug —
+the hosted `nros::main!` default is the `NROS_ENTRY_SPIN_MS`-gated bounded
+spin (issue 0274), which exits right after registering when the env is
+absent. The template entry now says `spin = "forever"`, and the talker/
+listener gained `log::info!` lines (the linux board's stdout log bridge
+prints them with zero setup) so a first run visibly ticks. Verified: fresh
+Rust copy-out on cyclonedds prints interleaved Publishing/I heard at 1 Hz.
+The Rust template's COMMITTED default stays zenoh (its E2E coordinate);
+the scaffold bakes the user default.
 
 **W10 — Part I, the C++ quick start.** New pages: first-project (verified
 command transcript), anatomy (three roles, `system.toml` as the one config
