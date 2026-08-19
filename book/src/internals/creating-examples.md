@@ -110,7 +110,7 @@ auto-registration path for targets where `linkme`'s distributed-slice
 contribution isn't picked up by the linker (FreeRTOS, NuttX, Zephyr,
 ESP-IDF).
 
-There is no `find_package(NanoRos)` path deleted it along
+There is no `find_package(NanoRos)` path — it was deleted along
 with `just install-local`, every `install(...)` rule, and every
 `Config.cmake.in` template.
 

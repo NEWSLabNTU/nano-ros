@@ -32,13 +32,26 @@ import re
 import subprocess
 import sys
 
-# `](./foo.md)` / `](../bar/baz.md)`, with an optional `#anchor` that we do
-# not follow — an anchor is a heading, and heading drift is a different gate
-# than file existence.
-LINK_RE = re.compile(r"\]\((\.{1,2}/[^)#\s]+)(?:#[^)\s]*)?\)")
+# Any inline link target, with an optional `#anchor` that we do not follow —
+# an anchor is a heading, and heading drift is a different gate than file
+# existence.
+#
+# Deliberately NOT restricted to `./` and `../`. The first version of this
+# gate matched only those two prefixes and reported "469 links OK" while
+# skipping every bare-filename link in the book — and the book writes plenty
+# of them (`](custom-platform.md)`, `](no-std.md)`, six and six). A gate whose
+# green is narrower than its message is the thing it was written to prevent.
+LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?\)")
 
-# `just book` writes these; the source tree never has them.
-GENERATED_API = re.compile(r"/api/.*\.html$")
+# Not ours to resolve: absolute URLs, protocol-relative, mail, and same-page
+# anchors (which LINK_RE's optional group already strips to an empty target).
+EXTERNAL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//)", re.I)
+
+# `just book` generates this tree (rustdoc + doxygen copied into
+# `book/book/api/`); the source tree never has it, so its absence means
+# nothing. Anchored at a path boundary so `api/rust/…` counts as well as
+# `../api/rust/…`.
+GENERATED_API = re.compile(r"(?:^|/)api/.*\.html$")
 
 
 def main() -> int:
@@ -57,6 +70,8 @@ def main() -> int:
         page = repo_root / rel
         for match in LINK_RE.finditer(page.read_text()):
             link = match.group(1)
+            if not link or EXTERNAL.match(link) or link.startswith("/"):
+                continue
             if GENERATED_API.search(link):
                 continue
             links += 1

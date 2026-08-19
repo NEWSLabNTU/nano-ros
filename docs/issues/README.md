@@ -51,6 +51,21 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0696** (testing/build, open 2026-08-19) — 15 native C/C++ tests fail tier 1 with a STALE verdict naming
+`packages/testing/nros-tests/src/lib.rs` as newer than `examples/native/c/talker/build-zenoh/c_talker`. That
+file is in NONE of the fixture's dep graphs (`ninja -t deps`: 0; `libnros_c.d`: 0; nothing under the build dir
+names it), and `just native build-c` exits 0 leaving the binary's mtime unchanged — so the verdict is
+unclearable by any documented action. Triggered by a plain `git pull` rewriting the harness file's mtime. The
+0445 consecutive-verdict counter surfaced it ("4th consecutive … suspect the probe"). Which probe arm supplies
+the path is not yet identified. See `0696-*`. (2026-08-19)
+
+**#0695** (build/testing, open 2026-08-19) — one missing `nros` on PATH, two policies inside
+`compile-check-fixtures.sh`: `cmake_fixture_prereqs_ok` prints "skipping" and returns 1 (run continues,
+summary says `cmake=0`, indistinguishable from "none to build"), while the staging path returns 2 for the
+same condition and fails the build. The skipping half does not use `nros_lane_skip_note`, which exists
+(0650) so a skip is recorded rather than silent. Only reachable without `source ./activate.sh`, but its
+effect is a partial fixture set that later reads as complete. See `0695-*`. (2026-08-19)
+
 **#0694** (docs/build, open 2026-08-19) — every platform starter's Rust build fails on a fresh clone. The
 Rust example leaves carry a `.cargo/config.toml` that `include`s the gitignored, `nros sync`-generated
 `nros-patch.toml`, and cargo treats a missing include as a HARD manifest-parse error (0463) whose four frames

@@ -1,6 +1,6 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-19).** IN PROGRESS — W1, W2, W3, W5, W6 landed; W4 planned.
+**Status (2026-08-19).** IN PROGRESS — W1, W2, W3, W5, W6, W7 landed; W4 in flight.
 
 Implements the fix for [issue 0694](../issues/0694-platform-starters-omit-nros-sync.md).
 
@@ -80,6 +80,22 @@ after: `[build] target` is set by the Cortex-M leaves only, not universally
 page provisions with `nros setup zephyr` plus a license-gated binary, not the
 `fvp-aemv8r-smp` index row. Both would have read as authoritative.
 
+**Regenerating W2's builder grid** (so it can be re-derived rather than
+re-remembered — it will drift as cells are added):
+
+```bash
+python3 scripts/build/fixtures-manifest.py coords | python3 -c "
+import sys, collections
+cells=collections.defaultdict(set)
+for ln in sys.stdin:
+    f=ln.rstrip(chr(10)).split(chr(31))
+    if len(f)>=8: cells[(f[1],f[2])].add(f[7])
+plats=sorted({k[0] for k in cells})
+for p in plats:
+    print(p, [','.join(sorted(cells.get((p,l),['-']))) for l in ('rust','c','cpp','mixed')])
+"
+```
+
 **W3 — currency of `user-guide/workflow.md`. LANDED.** Its step 5 showed
 `nros metadata` / `nros plan` / `nros check` as the multi-component build path.
 Those commands are real, but they are the INSPECTION path — they produce and
@@ -99,14 +115,30 @@ ask. Pointing users at a hidden gate seam is not documenting a workflow; the
 page says `nros model-path` instead, which is public and prints the resolved
 path.
 
-**W4 — probe coverage.** `probe=` covers 3 blocks on 2 pages, and both are pages
-that already had the step right; the pages that were wrong were exactly the
-unprobed ones. Extend the tagged set so a starter's build block is executed in
-the clean container rather than asserted. Acceptance: at least the native and
-one cross-compiled Rust starter path run under `just probe bootstrap`.
-Explicitly out of scope: starters needing hardware, a vendor SDK, or a QEMU
-image the probe container does not provision — for those, W2's table is the
-guarantee and the phase says so rather than pretending coverage.
+**W4 — probe coverage. IN FLIGHT.** `probe=` covered 3 blocks on 2 pages, and
+both were pages that already had the step right; the pages that were wrong were
+exactly the unprobed ones.
+
+`first-node-c.md`'s build block is now `probe=40`, which makes the clean-room
+run assert the claim W2's page makes — that a C leaf needs no `nros sync`,
+because its bindings are generated inside CMake and it carries no
+`.cargo/config.toml`. A prose claim about a missing step is exactly the kind
+that should be executed rather than believed.
+
+The book's C chapter is written for a reader at the repo root; the probe is ONE
+shell sitting in `examples/native/rust/talker` when step 40 begins. That is what
+`--subst` is for, and the substitution resolves through `git rev-parse
+--show-toplevel` rather than a literal `$HOME/nano-ros`, so it does not assume
+where the clone landed — the same move `verify-first-node.sh` already makes.
+Extraction verified with `PROBE_EXTRACT_ONLY` (4 steps, correct cd).
+
+Remaining before this can be called landed: the container run itself.
+
+Out of scope, and stated rather than quietly skipped: starters needing hardware,
+a vendor SDK, or a QEMU image the probe container does not provision. A
+cross-compiled Rust starter would need `nros setup qemu-arm-freertos` inside the
+container — a large fetch for one assertion. For those pages W2's table is the
+guarantee, and this phase does not pretend otherwise.
 
 **W5 — in-checkout vs copied-out, said once.** Found while verifying W1: the
 starter pages' `cd <leaf> && cargo build` writes `examples/**/target/`, which
@@ -131,7 +163,83 @@ the reference means. A rendered link is a PATH, and no gate asked that question.
 reads tracked files, resolves paths, never invokes mdbook). Self-tested: a dead
 link makes it exit 1, and the page restores byte-identical.
 
+**The gate's own first version had the defect it exists to catch.** It matched
+only `./` and `../` prefixes and reported "469 links OK" — while skipping every
+bare-filename link in the book, of which there are plenty
+(`](custom-platform.md)` and `](custom-board.md)`, six each). A green whose
+scope is narrower than its message is exactly what `check-fast`'s own
+"1 check(s) did NOT run … this green is narrower than it looks" footer exists to
+prevent. Widened to every non-external target: 525 links now, all resolving, and
+the self-test covers BOTH spellings.
+
 Note for W4: `mdbook` is not installed on this host and `just book` additionally
 fails on a pre-existing rustdoc intra-doc link error in `nros` (`no item named
 'std' in scope`), unrelated to this phase. The link gate is what verified the
 book here; a real render has not been done.
+
+**W7 — the rest of the currency sweep. LANDED.** Auditing what the book tells a
+reader to *type*, beyond the sync step, against what exists:
+
+* **Three `just` recipes that name nothing.** `just test-nuttx` (→ `just nuttx
+  test` / `test-all`), `just test-qemu` (no such recipe — the serial page now
+  names the actual test, `cargo nextest run -p nros-tests --test emulator
+  test_qemu_serial_pubsub_e2e`, with the skip-counts-as-failure caveat), and
+  `just nuttx build-fixtures-make`, retired by phase-212 M-F.16 in favour of
+  `scripts/nuttx/stage-external-apps.sh --bringup <dir>` — the justfile says so
+  in a comment where the recipe used to be. Checked all 293 `just` invocations
+  in the book; the rest resolve (the noise is English prose — "just works",
+  "just a", "just like").
+* **A stale artifact path in `reference/build-commands.md`.** It pointed the
+  manual QEMU test at `examples/qemu-arm-baremetal/rust/talker/target/…/release/`.
+  Since phase-340 P2 that build lands in `build/cargo-fixtures/<group>/` under
+  the `nros-relwithdebinfo` profile. Both the directory and the profile were
+  wrong, and following it is also what produces the W5 residue. The page now
+  gives the current path AND says it is computed, naming
+  `nros_fixture_row_artifact_dir` as the SSoT rather than inviting the next
+  literal.
+* **A porting instruction for a crate that was deleted.**
+  `porting/custom-platform.md` told a porter to add a `myos = []` ABI marker to
+  `packages/rmw/xrce/xrce-sys/Cargo.toml`. That crate was deleted in phase-321
+  W1.d — the directory is now a submodule host whose README says "do not re-add
+  a crate here" — and phase-129.C.1 had already deleted XRCE's whole
+  `platform-<rtos>` feature mechanism in favour of `target_os` selection. So the
+  step was wrong twice over and would have had a porter re-create the forbidden
+  crate. zenoh's half of the instruction is still correct and stays.
+* **A sentence broken by a mechanical edit.** `internals/creating-examples.md`
+  read "There is no `find_package(NanoRos)` path deleted it along with…" — the
+  "strip Phase N references" commit removed the em-dash clause and left the
+  remains. Checked that commit for siblings; this was the only one.
+
+## Verification, and what it could not reach
+
+`check-fast` GREEN (the lane every gate in this phase lives in), plus
+`check-doc-refs`, `check-book-links`, `check-issue-index`,
+`check-roadmap-status`. One check did not run and therefore verified nothing:
+`check-abi-bindings` (bindgen-cli not installed) — irrelevant here, no header
+was touched.
+
+**Tier 1 could not be brought green on this host, for a cause this phase did not
+create.** Filed as [issue 0696](../issues/0696-stale-verdict-names-an-input-that-is-not-one.md):
+33 native C/C++ tests read STALE against `packages/testing/nros-tests/src/lib.rs`,
+a file in none of their dep graphs, which `just native build-c` cannot clear
+(exit 0, artifact mtime unchanged). With the bypass the message itself names,
+every one of them passes.
+
+The residue after that bypass is 6 reds and NONE is a real failure:
+
+| test | what it is |
+|---|---|
+| `baremetal_board_run_executes_run_plan` | capability skip, rewritten by the junit pass |
+| `entry_matrix` | capability skip, rewritten |
+| `nano2nano::test_peer_mode_communication` | documented skip (issue 0682), rewritten |
+| `case_18_cpp_xrce_action` | in-sweep flake — 2/2 solo |
+| `zenoh_integration::two_sessions_…_router` | `skip!` for `ZPICO_MAX_SESSIONS=1` that the rewrite does not reach, because it is not an `nros-tests` suite (recorded on issue 0695) |
+| `a_stale_verdict_reports_its_own_reasoning_and_its_age` | asserts the staleness verdict — the `NROS_SKIP_FIXTURE_CHECK=1` I set to work around 0696 is exactly what it is written to catch |
+
+Also seen and retested rather than assumed: `nros_rmw_cyclonedds_ros2_srv_e2e`
+failed once in-sweep (34.7 s) and passes 5/5 solo (7.0 s) — the host runs a live
+88-process Autoware/CARLA stack contending for DDS discovery, which the
+maintainer has already identified as environmental.
+
+This phase's diff is markdown, one buildless Python gate, and one probe shell
+script. None of the above is reachable from it.

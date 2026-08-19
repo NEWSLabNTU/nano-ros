@@ -254,13 +254,25 @@ just qemu setup-network                    # Requires sudo
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Talker (192.0.2.10)
-./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
-    --binary examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker
+bin=build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
+./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary "$bin/qemu-bsp-talker"
 
 # Terminal 3: Listener (192.0.2.11)
-./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
-    --binary examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
+./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary "$bin/qemu-bsp-listener"
 ```
+
+Build those first with `just qemu build-fixtures` (or `just
+build-test-fixtures lane=native`).
+
+**The artifact directory is computed, not fixed.** Since phase-340 P2 a
+platform's cargo fixtures build into a shared group directory under
+`build/cargo-fixtures/<group>/` rather than each leaf's own `target/`,
+and the profile is `nros-relwithdebinfo`, not `release`. The group name
+can carry a hash suffix when a row builds with distinct env, so treat
+the path above as *what it is on a default build*, not as a guarantee —
+`scripts/build/fixtures-target-dir.sh` (`nros_fixture_row_artifact_dir`)
+is the single source of truth, and it is what the test side uses to
+find the same file.
 
 Run `just qemu help` for more options.
 

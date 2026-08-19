@@ -56,6 +56,7 @@ fi
 CHAPTERS=(
     book/src/getting-started/installation.md
     book/src/getting-started/first-node-rust.md
+    book/src/getting-started/first-node-c.md
 )
 
 workdir="$(mktemp -d)"
@@ -66,7 +67,14 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --distro "$PROBE_DISTRO" \
     --subst 'git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros' \
     --subst 'nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw zenoh' \
+    --subst 'cd examples/native/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/native/c/talker"' \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
+
+# The `cd` subst above is the same class as the two before it: the book's C
+# chapter is written for a reader sitting at the repo root, and the probe is
+# ONE shell whose cwd is `examples/native/rust/talker` when step 40 starts.
+# Resolved through `git rev-parse` rather than a literal so it does not
+# assume where the clone landed — the same move `verify-first-node.sh` makes.
 
 # Probe-owned runtime verification (the book's Run section is interactive).
 cat "$SCRIPT_DIR/verify-first-node.sh" >>"$workdir/probe.sh"

@@ -209,11 +209,11 @@ count at 1, matching the official ROS 2 demo talker. If no
 
 ### Auto-configure glue (NSH built-in registration)
 
-The `make`-driven build above relies on a host-side glue layer that
-the in-tree `just nuttx build-fixtures-make` recipe owns end-to-end
-(see [`just/nuttx.just::build-fixtures-make`](https://github.com/NEWSLabNTU/nano-ros/blob/main/just/nuttx.just)).
-If you wire a NuttX workspace by hand, reproduce the same three
-steps:
+The `make`-driven build above relies on a host-side glue layer. In-tree
+that is `scripts/nuttx/stage-external-apps.sh --bringup <dir>`, the only
+supported NuttX make path since phase-212 M-F.16 retired the per-example
+`build-fixtures-make` recipe. If you wire a NuttX workspace by hand,
+reproduce the same three steps:
 
 1. **Swap in the nano-ros board defconfig.** Stock NuttX
    `qemu-armv7a/nsh` ships without `CONFIG_NET=y`, virtio-net, or

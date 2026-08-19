@@ -136,11 +136,16 @@ call in `CMakeLists.txt` (see
 
 ## Build
 
-```bash
+```bash probe=40
 cd examples/native/c/talker
 cmake -B build
 cmake --build build
 ```
+
+No `nros sync` here — a C leaf's message bindings are generated inside
+CMake, and unlike the Rust leaves it carries no `.cargo/config.toml` to
+resolve. See
+[Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
 The first configure pulls and builds nano-ros's Rust staticlibs
 (~3 minutes). Re-builds finish in seconds.

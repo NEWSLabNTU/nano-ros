@@ -217,8 +217,15 @@ The integration test `test_qemu_serial_pubsub_e2e` in `packages/testing/nros-tes
 Run it with:
 
 ```bash
-just test-qemu
+source ./activate.sh
+just qemu build-fixtures                  # the test consumes a prebuilt
+                                          # qemu-arm-baremetal fixture
+cargo nextest run -p nros-tests --test emulator test_qemu_serial_pubsub_e2e
 ```
+
+(A bare `cargo nextest` counts a skipped-precondition test as a FAILURE;
+`just test-all` is what rewrites those into skips. Read the panic text
+before treating a red here as a regression.)
 
 ## Baud Rate Tuning
 

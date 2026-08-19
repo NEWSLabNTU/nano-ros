@@ -136,6 +136,26 @@ and nowhere else:
 So the fix is not "paste `nros sync` into 12 files". It is to state the
 language-conditional rule once and route each page to it.
 
+## Correction to the first framing: there are TWO failure modes
+
+The account above (a committed `.cargo/config.toml` whose `include` is
+missing) is one of two, and it is the loud one. `.gitignore` excludes
+`**/.cargo/config.toml` globally; the 50 tracked leaf configs are force-added
+exceptions. On a synced checkout 67 Rust example leaves have such a file — so
+17 of them, `examples/native/rust/talker` among them, have NO config in a
+fresh clone at all.
+
+Those leaves fail *silently*. There is no include to fail on, so cargo reads a
+leaf with no `[patch.crates-io]` table and the nano-ros crates it names resolve
+against the public crates.io instead of this checkout — the exact class the
+CLI's own stale-guard message warns about ("a dropped `[patch.crates-io]` entry
+resolves from crates.io instead of this checkout WITHOUT failing", issues 0363
+and 0197).
+
+So the missing step costs a hard error on some leaves and a wrong resolution on
+others, and the pages that omit it cover both. Recorded because the first
+version of this issue described only the error I happened to reproduce.
+
 ## A second defect in the same blocks
 
 The same `cd <leaf> && cargo build` also writes `examples/**/target/`,

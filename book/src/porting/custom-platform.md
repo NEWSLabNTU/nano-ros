@@ -110,11 +110,16 @@ What you add is a **pure ABI marker** feature so each transport crate's
 # packages/rmw/zenoh/zpico-sys/Cargo.toml  (rmw-zenoh)
 [features]
 myos = []   # ABI marker only — no shim dependency
-
-# packages/rmw/xrce/xrce-sys/Cargo.toml  (rmw-xrce)
-[features]
-myos = []   # ABI marker only
 ```
+
+**Only zenoh needs one.** XRCE-DDS has no per-platform feature to add:
+phase-129.C.1 deleted all of `nros-rmw-xrce-cffi`'s `platform-<rtos>`
+features, and its build selection is driven by `target_os` instead, over
+a platform-blind `transport_nros_udp.c`. There is also no crate left to
+add one to — the `xrce-sys` crate was deleted in phase-321 W1.d and the
+directory is now a submodule host for `micro-xrce-dds-client/` and
+`micro-cdr/`, whose README says in as many words: do not re-add a crate
+here. If your port targets XRCE only, skip this step entirely.
 
 The alias TU (default-on `platform-aliases`) covers the full `z_*` surface —
 memory, sleep, random, time, yield, threading, condvar, clock, and network.

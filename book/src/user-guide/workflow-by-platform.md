@@ -15,15 +15,19 @@ follows from your **language**, and the toolchain follows from your
 **Rust leaves need `nros sync` before their first build. C and C++
 leaves do not.**
 
-Every Rust example carries a `.cargo/config.toml` whose first line
-includes a patch table that `nros sync` generates and `.gitignore`
-excludes:
+A Rust leaf resolves its nano-ros dependencies through a
+`[patch.crates-io]` table in its own `.cargo/config.toml`, and that
+table is generated — `.gitignore` excludes it, so a fresh clone does not
+have it. Sixty-seven Rust example leaves have such a file on a synced
+checkout; fifty of them are committed shells that `include` the
+generated central table:
 
 ```toml
 include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
 ```
 
-A fresh clone does not have that file, and cargo treats a missing
+**Skipping the sync fails in two different ways, and the quieter one is
+worse.** Where the config is committed, cargo treats the missing
 `include` as a hard error while *parsing the manifest* — before it
 builds anything, and before any message about nano-ros could appear:
 
@@ -46,19 +50,26 @@ Caused by:
 Nothing in those five frames says `nros sync`. If you see it, this is
 what it means.
 
+Where the whole config is generated — the native leaves, for instance —
+there is no file at all in a fresh clone, so there is no error to read.
+The patch table simply is not there, and the nano-ros crates your leaf
+names go looking for themselves on crates.io instead of in your
+checkout. That one does not announce itself.
+
 The `just` recipes — `just <module> build-fixtures` and friends — run
 `nros sync` for you, so they work from a fresh clone. It is the
 hand-run `cd <leaf> && cargo build` that needs you to run it yourself.
 
-C and C++ leaves have no `.cargo/config.toml` at all — their message
-bindings are generated inside CMake by `nros_find_interfaces()`, and the
-cargo builds CMake drives resolve against the repo-root config, which
-carries no `include`. Running `nros sync` for a C/C++ build is harmless
-but buys nothing.
+C and C++ leaves have no `.cargo/config.toml` at all — not committed,
+not generated. Their message bindings are produced inside CMake by
+`nros_find_interfaces()`, and the cargo builds CMake drives resolve
+against the repo-root config, which carries no `include`. Running
+`nros sync` for a C/C++ build is harmless but buys nothing.
 
 You need it **once per checkout location**, not once per build. Re-run
-it after editing a `.msg`, `.srv`, or `.action` file, and after moving
-the checkout (the paths it writes are absolute).
+it after editing a `.msg`, `.srv`, or `.action` file, and — because the
+central table it writes holds absolute paths — after moving the
+checkout, or after one of the patched crates moves *within* it.
 
 ## Which builder your cell uses
 
@@ -66,6 +77,12 @@ Each cell is the builder that nano-ros's own CI uses for that pair, read
 from `examples/fixtures.toml` — the manifest the fixture builds and the
 staleness probe both consume. A dash means the pair has no in-tree
 coverage today, not that it is forbidden.
+
+The row names are the manifest's, which are shorter than the ones you
+type: `freertos` here is the platform whose board is
+`qemu-arm-freertos` and whose examples live in
+`examples/qemu-arm-freertos/`. The per-platform table further down maps
+all three spellings.
 
 | platform | rust | c | cpp | mixed |
 |---|---|---|---|---|
@@ -109,25 +126,6 @@ Cortex-M ones), so no `--target` on the command line. Others get it from
 the platform's recipe instead — `just --list <module>` shows which
 recipe builds what, and using the recipe avoids having to know.
 
-### In the checkout, or copied out?
-
-The commands above are written as `cd <leaf>` inside the nano-ros
-checkout, which is the fastest way to see something run. For anything
-beyond that, copy the example directory out — examples are standalone
-copy-out projects with no workspace walk-up, so a copied one builds on
-its own.
-
-The distinction matters for one reason: a bare `cargo build` writes
-`target/` next to the leaf. In *your* project that is exactly right. In
-the nano-ros checkout it is residue the repo's own gate rejects
-(`check-example-leaf-target-dirs`) — in-tree builds are expected to go
-through `just <module> …`, which writes into a shared build directory
-instead. One in-repo `cargo build --release` of a Cortex-M example
-leaves 269 MB behind.
-
-So: exploring in the checkout, prefer the recipe. Building your own
-thing, copy the example out and `cargo build` normally.
-
 ### cmake — C and C++
 
 ```bash
@@ -152,20 +150,47 @@ module wiring; the Rust leaves under `examples/zephyr/rust/` still need
 `nros sync` first, because west drives cargo and cargo reads the leaf
 config either way.
 
+### In the checkout, or copied out?
+
+The commands above are written as `cd <leaf>` inside the nano-ros
+checkout, which is the fastest way to see something run. For anything
+beyond that, copy the example directory out — examples are standalone
+copy-out projects with no workspace walk-up, so a copied one builds on
+its own.
+
+The distinction matters for one reason: a bare `cargo build` writes
+`target/` next to the leaf. In *your* project that is exactly right. In
+the nano-ros checkout it is residue the repo's own gate rejects
+(`check-example-leaf-target-dirs`) — in-tree builds are expected to go
+through `just <module> …`, which writes into a shared build directory
+instead. One in-repo `cargo build --release` of a Cortex-M example
+leaves 269 MB behind.
+
+So: exploring in the checkout, prefer the recipe. Building your own
+thing, copy the example out and `cargo build` normally.
+
 ## Per platform
 
-| platform | `nros setup <board>` | recipes | starter page |
-|---|---|---|---|
-| Linux host | `native` | `just native …` | [Native POSIX](../platform-guides/native-posix.md) |
-| FreeRTOS (QEMU MPS2-AN385) | `qemu-arm-freertos` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
-| NuttX (Arm) | `qemu-arm-nuttx` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
-| NuttX (RISC-V) | `qemu-riscv-nuttx` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
-| ThreadX (Linux sim) | `threadx-linux` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
-| ThreadX (QEMU RISC-V 64) | `qemu-riscv64-threadx` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
-| Zephyr | `zephyr` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
-| ESP32 | `qemu-esp32-baremetal` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
-| Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
-| Arm FVP (Cortex-A SMP) | `zephyr` + a license-gated FVP binary | — | [ARM FVP](../getting-started/arm-fvp.md) |
+| platform | grid row | `nros setup <board>` | examples under | recipes | starter page |
+|---|---|---|---|---|---|
+| Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native POSIX](../platform-guides/native-posix.md) |
+| FreeRTOS (QEMU MPS2-AN385) | `freertos` | `qemu-arm-freertos` | `examples/qemu-arm-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
+| NuttX (Arm) | `nuttx` | `qemu-arm-nuttx` | `examples/qemu-arm-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| NuttX (RISC-V) | `nuttx-riscv` | `qemu-riscv-nuttx` | `examples/qemu-riscv-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | `examples/threadx-linux/` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
+| ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `qemu-riscv64-threadx` | `examples/qemu-riscv64-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
+| Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
+| ESP32 | `qemu-esp32-baremetal` (single-node), `esp32` (workspace) | `qemu-esp32-baremetal` | `examples/qemu-esp32-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
+| Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `qemu-arm-baremetal` | `examples/qemu-arm-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
+| Arm FVP (Cortex-A SMP) | — | `zephyr` + a license-gated FVP binary | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
+
+Multi-node workspace examples do not follow that directory rule: they
+all live under `examples/workspaces/`, selected by fixture row rather
+than by directory. That is why ESP32 has two grid rows —
+`qemu-esp32-baremetal` for its single-node examples and `esp32` for its
+share of the workspace ones. Zephyr's two rows split differently:
+`zephyr` and `zephyr-cortex-m` build the SAME examples for different
+boards.
 
 Each module's recipes are discoverable rather than memorized:
 

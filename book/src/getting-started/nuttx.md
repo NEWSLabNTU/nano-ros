@@ -126,7 +126,8 @@ runtime lanes cover the multi-tier scheduling path on this board.
 ## Testing
 
 ```bash
-just test-nuttx
+just nuttx test        # arm QEMU integration tests
+just nuttx test-all    # including the networked E2E lanes
 ```
 
 Tests run under `qemu-system-arm -M virt` with TAP networking. Each QEMU
