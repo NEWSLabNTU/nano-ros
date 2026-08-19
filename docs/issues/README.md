@@ -51,6 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0694** — the platform starters' unrunnable Rust build. Resolved by the
+whole of phase-368: the sync step landed where hand-run builds are taught, the book restructured so `nros
+sync` leaves the critical path (C++/CMake quick start, cyclonedds, no daemon), and `just probe bootstrap` now
+EXECUTES the quick start in a pristine container (PROBE=0 both languages) so an unrunnable page fails CI.
+Three gates ride along: `check-book-links`, `check-book-no-just`, `check-emitter-just-spelling`. See
+`archived/0694-*`. (2026-08-20)
+
 Recently resolved (2026-08-19): **#0699** — `nros sync` failed `Metadata(NameTooLong)` on the canonical
 copy-out template at a ~100-char workspace depth. Not a `sun_path` socket as filed:
 `SourceLocation::caller()` copied `Location::file()` into a 128-byte `MetadataString`, and rustc emits that
@@ -83,15 +90,6 @@ lanes too, since the class is "a count that means two things". The junit half wa
 `skip_marker.py` (`58d4b62eb`), whose docstring opens on this issue's own zenoh example. Residue recorded:
 `check-lane-skip-protocol.py` scans only `justfile`/`just/`, so it could never have seen a defect in
 `scripts/build/`. See `archived/0695-*`. (2026-08-19)
-
-**#0694** (docs/build, open 2026-08-19) — every platform starter's Rust build fails on a fresh clone. The
-Rust example leaves carry a `.cargo/config.toml` that `include`s the gitignored, `nros sync`-generated
-`nros-patch.toml`, and cargo treats a missing include as a HARD manifest-parse error (0463) whose four frames
-never name sync. `nros sync` appears ZERO times across 12 platform pages carrying 26 build commands — the step
-is documented only in the Linux/Getting-Started cluster, which is not where an embedded reader is routed. The
-requirement is per-LANGUAGE: a tracked leaf `.cargo/config.toml` exists under `rust/` leaves and nowhere else,
-so C/C++ (cmake) needs no sync. Invisible to contributors (the file is generated once per checkout) and to CI
-(`probe=` covers 3 blocks on the 2 pages that already document it). See `0694-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0698** — every SDK-toolchain Zephyr board failed to CONFIGURE under CMake 4,
 which took tier 2 with it (1-wise over platform ⇒ the zephyr lane failing at configure fails the tier). Zephyr

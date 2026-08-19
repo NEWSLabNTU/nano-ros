@@ -1,7 +1,7 @@
 ---
 id: 694
 title: "Every platform starter's Rust build fails on a fresh clone — 12 pages, 26 build commands, zero mentions of `nros sync`"
-status: open
+status: resolved
 type: bug
 severity: high
 area: docs, build
@@ -229,3 +229,15 @@ This one is worth noting beyond its own fix: it is the same failure mode this
 issue is about — a starter page teaching a command that cannot run — and it
 survived because nothing executes these blocks. It was found by running them,
 not by reading them, which is what the `probe=` column is for.
+
+## Resolution (2026-08-20, phase-368)
+
+Fixed far beyond the filed scope. The three pages teaching a bare
+`cd <leaf> && cargo build` gained the sync step with the failure mode spelled
+out; the book was restructured so `nros sync` leaves the critical path
+entirely (the quick start is a scaffolded C++/CMake workspace on cyclonedds —
+sync is introduced in the Rust chapter, labeled, after first success); and
+the clean-container probe now EXECUTES the quick start end to end (PROBE=0,
+both languages), so a page teaching an unrunnable flow fails CI instead of
+waiting for a reader. Gates added along the way: `check-book-links`,
+`check-book-no-just`, `check-emitter-just-spelling`.
