@@ -91,6 +91,18 @@ lanes too, since the class is "a count that means two things". The junit half wa
 `check-lane-skip-protocol.py` scans only `justfile`/`just/`, so it could never have seen a defect in
 `scripts/build/`. See `archived/0695-*`. (2026-08-19)
 
+Recently resolved (2026-08-19): **#0702** — eight tests wore ONE shape: print a diagnosis, report PASS. The
+roll-call spans `test_action_binaries_exist` (passing when the binaries did not exist), three `SKIP: cc not
+found` returns in a file whose purpose is "the generated C compiles", thirteen `/opt/ros/jazzy` bails on a
+humble host (#0693), four `Ok => assert / Err => println("expected in some environments")` arms green over
+a capability never present (#0682), Placeholder-stub skips (#0683/#0686), and six readiness waits whose
+`Err` arm printed "exited early" as the test's LAST statement. Each survived months; each was found only
+because somebody went looking. Now gated: `scripts/check-tests-can-fail.py` on the fast line rejects an
+`Err` arm that prints and decides nothing, while leaving `skip!`, asserting/propagating arms, and the
+`require_*` "yield None to a caller" pattern alone. Self-testing every run — which caught two defects in the
+gate itself during development. Landing it fixed eight more sites and corrected the gate twice where the
+code was right. See `archived/0702-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0698** — every SDK-toolchain Zephyr board failed to CONFIGURE under CMake 4,
 which took tier 2 with it (1-wise over platform ⇒ the zephyr lane failing at configure fails the tier). Zephyr
 3.7's `FindZephyr-sdk.cmake:35` interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so unset makes the line

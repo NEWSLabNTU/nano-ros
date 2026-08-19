@@ -68,11 +68,17 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
     ) {
         Ok(_) => eprintln!("xrce-talker started and published successfully"),
         Err(_) => {
-            if talker.is_running() {
-                eprintln!("xrce-talker running (no publish marker yet)");
-            } else {
-                eprintln!("xrce-talker exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                talker.is_running(),
+                "xrce-talker exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("xrce-talker running (no readiness marker yet)");
         }
     }
 }
@@ -99,11 +105,17 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
     ) {
         Ok(_) => eprintln!("xrce-listener started successfully"),
         Err(_) => {
-            if listener.is_running() {
-                eprintln!("xrce-listener running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-listener exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                listener.is_running(),
+                "xrce-listener exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("xrce-listener running (no readiness marker yet)");
         }
     }
 
@@ -178,11 +190,17 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     ) {
         Ok(_) => eprintln!("xrce-serial-talker started and published successfully"),
         Err(_) => {
-            if talker.is_running() {
-                eprintln!("xrce-serial-talker running (no publish marker yet)");
-            } else {
-                eprintln!("xrce-serial-talker exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                talker.is_running(),
+                "xrce-serial-talker exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("xrce-serial-talker running (no readiness marker yet)");
         }
     }
 }
@@ -215,11 +233,17 @@ fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     ) {
         Ok(_) => eprintln!("xrce-serial-listener started successfully"),
         Err(_) => {
-            if listener.is_running() {
-                eprintln!("xrce-serial-listener running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-serial-listener exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                listener.is_running(),
+                "xrce-serial-listener exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("xrce-serial-listener running (no readiness marker yet)");
         }
     }
 

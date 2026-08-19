@@ -466,7 +466,8 @@ check-fast: _check-skip-reset \
     check-zenohd-flag-invocations \
     check-interface-glob-configure-depends \
     check-wait-evidence-discarded \
-    check-path-env-fingerprints check-retired-platform-clock-symbols
+    check-path-env-fingerprints check-retired-platform-clock-symbols \
+    check-tests-can-fail
     #!/usr/bin/env bash
     set -e
     # issue 0650 — the closing sentence is REPORTED, not asserted. Six gates in
@@ -4332,6 +4333,15 @@ check-build-rs-rerun-paths:
 [private]
 check-path-env-fingerprints:
     @python3 scripts/check-path-env-fingerprints.py
+
+# issue 0702 — a test that cannot fail is worse than no test. Rejects an `Err`
+# arm that prints a diagnosis and decides nothing, which is the shape eight
+# separate tests had been wearing for months (see the script's docstring for the
+# roll-call). Buildless: it reads tracked test sources, so it belongs on the
+# fast line beside the other source gates.
+[private]
+check-tests-can-fail:
+    @python3 scripts/check-tests-can-fail.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single

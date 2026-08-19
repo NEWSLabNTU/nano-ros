@@ -235,25 +235,24 @@ fn test_array_of_arrays() -> Result<(), GeneratorError> {
     let msg_def = r#"int32[5][10] matrix
 "#;
 
-    // This might not be valid ROS IDL, but if it parses, we should handle it
-    match parse_message(msg_def) {
-        Ok(msg) => {
-            // If it parses, we should be able to generate
-            let result = generate_message_package("test_msgs", "Matrix", &msg, &HashSet::new());
-            // Either it works or it returns a clear error
-            match result {
-                Ok(_) => {}
-                Err(e) => {
-                    // Expected: array of arrays might not be supported
-                    eprintln!("Array of arrays not supported: {:?}", e);
-                }
-            }
-        }
-        Err(_) => {
-            // Expected: parser doesn't support this syntax
-            eprintln!("Parser doesn't support array of arrays syntax");
-        }
-    }
+    // Issue 0702 — this used to accept all THREE outcomes (parses and generates,
+    // parses and fails to generate, does not parse), printing whichever
+    // happened. A test that welcomes every result asserts nothing: it would have
+    // stayed green if the parser started accepting `int32[5][10]` and emitted
+    // nonsense, and equally if it began panicking on a shape ROS 2 does not have.
+    //
+    // Measured behaviour today: the parser REJECTS it. ROS 2 IDL has no
+    // multi-dimensional array type, so rejecting is correct, and that is the
+    // fact worth pinning. If this ever starts parsing, that is a real change in
+    // what the parser accepts and this test should be REWRITTEN to say what the
+    // generator must then do — not relaxed back into accepting anything.
+    let parsed = parse_message(msg_def);
+    assert!(
+        parsed.is_err(),
+        "`int32[5][10]` parsed, but ROS 2 IDL has no multi-dimensional arrays. \
+         If the parser now accepts this deliberately, decide what \
+         `generate_message_package` must emit and assert THAT."
+    );
 
     Ok(())
 }

@@ -69,11 +69,17 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     ) {
         Ok(_) => eprintln!("native-rs-talker started successfully"),
         Err(_) => {
-            if talker.is_running() {
-                eprintln!("native-rs-talker running (no readiness marker yet)");
-            } else {
-                eprintln!("native-rs-talker exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                talker.is_running(),
+                "native-rs-talker exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("native-rs-talker running (no readiness marker yet)");
         }
     }
 }
@@ -100,11 +106,17 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     ) {
         Ok(_) => eprintln!("native-rs-listener started successfully"),
         Err(_) => {
-            if listener.is_running() {
-                eprintln!("native-rs-listener running (no readiness marker yet)");
-            } else {
-                eprintln!("native-rs-listener exited early");
-            }
+            // Issue 0702 — the readiness marker did not arrive. That is only
+            // acceptable if the process is STILL RUNNING (a slow start under
+            // load); a process that EXITED is the failure this test exists to
+            // catch, and it used to be reported as a printed note on a green
+            // run, because this `match` is the test's last statement.
+            assert!(
+                listener.is_running(),
+                "native-rs-listener exited before printing its readiness marker — it did \
+                 not start. Output above is the whole story this test has."
+            );
+            eprintln!("native-rs-listener running (no readiness marker yet)");
         }
     }
 }
