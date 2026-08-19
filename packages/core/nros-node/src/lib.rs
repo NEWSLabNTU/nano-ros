@@ -235,6 +235,11 @@ pub use executor::SessionSpec;
 #[cfg(all(feature = "alloc", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;
 
+// issue 0687 — the single source of truth for "which RMW backend did the user
+// select". Public because the hosted callers (`nros`, `nros-c`) consume it
+// rather than reading `$NROS_RMW` a second and third time.
+pub use executor::rmw_selector;
+
 // ---------------------------------------------------------------------------
 // phase-361 W8.e / issue 0594 — capabilities REQUIRE the heap / the standard
 // library, they do not enable it. Turning `alloc` or `std` on for the user

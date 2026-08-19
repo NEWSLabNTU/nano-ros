@@ -1315,6 +1315,56 @@ pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
     ((us / 1_000_000) as i32, ((us % 1_000_000) * 1_000) as u32)
 }
 
+/// **The** answer to "which RMW backend did the user select" — one reader, one
+/// semantic, for every consumer.
+///
+/// phase-359 W10 / issue 0687. This variable had FOUR readers with THREE
+/// semantics: `Executor::open` read it as raw OS bytes, `nros`'s
+/// `open_session` as a UTF-8 string filtered for empty, `nros-c`'s entry as a
+/// string passed through EVEN WHEN EMPTY, and `nros::init` as a string with an
+/// `RMW_IMPLEMENTATION` fallback the other three did not have. "Which backend
+/// did the user ask for" had four answers in one process.
+///
+/// Two decisions are baked in, and both are deliberate:
+///
+/// * **`$NROS_RMW` only.** `$RMW_IMPLEMENTATION` is NOT folded in, though it
+///   was tempting and one reader did it. The two carry different vocabularies:
+///   this selector is matched against the cffi registry's canonical names
+///   (`zenoh`, `dds`, `cyclonedds`), while `RMW_IMPLEMENTATION` holds ROS names
+///   (`rmw_cyclonedds_cpp`). Feeding a ROS name to `resolve_backend` yields
+///   `Unknown` — an ERROR — where today it is ignored and the unique-backend
+///   path runs. Unifying them without a mapping would convert "ignored" into
+///   "fails to start". `nros::init` keeps its fallback for the `Context.rmw`
+///   HINT, which is a different quantity.
+/// * **Empty or non-UTF-8 means unset.** A name that is not UTF-8 cannot match
+///   a registry entry, so treating it as absent is what the caller wants; the
+///   old raw-bytes reader would have reported `Unknown` instead.
+///
+/// The return is `heapless::String`, not `String`: this is called from
+/// `Executor::open`, which compiles in builds with NO allocator, and the
+/// private reader it replaced returned `Option<&'static [u8]>` for exactly that
+/// reason. `RMW_SELECTOR_CAP` is the same 32 the executor already uses for
+/// `primary_rmw_name`; a longer value cannot name a registry slot, so it is
+/// reported as unset rather than truncated into a different backend's name.
+#[cfg(feature = "env")]
+pub fn rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>> {
+    let raw = std::env::var_os("NROS_RMW")?;
+    let s = raw.to_str()?;
+    if s.is_empty() {
+        return None;
+    }
+    heapless::String::try_from(s).ok()
+}
+
+/// No environment, no selector. See [`rmw_selector`].
+#[cfg(not(feature = "env"))]
+pub fn rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>> {
+    None
+}
+
+/// Capacity of a backend selector, matching `Executor::primary_rmw_name`.
+pub const RMW_SELECTOR_CAP: usize = 32;
+
 /// The default wall clock, or `None` when this build has neither a platform port
 /// nor a host to ask.
 ///

@@ -144,8 +144,14 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
         "peer" => SessionMode::Peer,
         _ => SessionMode::Client,
     };
-    let rmw = std::env::var("NROS_RMW")
-        .or_else(|_| std::env::var("RMW_IMPLEMENTATION"))
+    // issue 0687 — the `$NROS_RMW` half comes from the shared selector; the
+    // `RMW_IMPLEMENTATION` fallback stays HERE and only here. `Context.rmw` is
+    // a ROS-vocabulary HINT (`rmw_cyclonedds_cpp`), not the cffi registry
+    // selector (`cyclonedds`) — folding the two together would hand a ROS name
+    // to `resolve_backend`, which answers `Unknown` and fails the open.
+    let rmw = nros_node::rmw_selector()
+        .map(|s| alloc::string::String::from(s.as_str()))
+        .or_else(|| std::env::var("RMW_IMPLEMENTATION").ok())
         .unwrap_or_default();
     Ok(Context {
         domain_id,

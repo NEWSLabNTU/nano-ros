@@ -318,10 +318,16 @@ pub unsafe extern "C" fn nros_executor_init(
     // `nros::init*` and `nros-node`'s selector already moved onto.
     #[cfg(feature = "env")]
     {
-        let name = std::env::var("NROS_RMW").unwrap_or_default();
+        // issue 0687 — the shared selector. This used to read `$NROS_RMW`
+        // directly AND pass an empty string through as the identity when it was
+        // unset; `rmw_selector` reports unset as `None`, and the
+        // `unwrap_or_default` below preserves the empty-identity behaviour the
+        // C path expects.
+        let name = nros_node::rmw_selector().unwrap_or_default();
+        let name = name.as_str();
         let support_locator =
             core::str::from_utf8_unchecked(&support_ref.locator[..support_ref.locator_len]);
-        rust_exec.set_primary_identity(&name, support_locator);
+        rust_exec.set_primary_identity(name, support_locator);
         // Issue 0656 — the domain, beside the identity, for the same reason.
         // `from_session_ptr_in` takes a session and no config, so the executor
         // floors its domain to 0; every entity the C binding declares through

@@ -99,14 +99,8 @@ impl<'s> Executor<'s> {
         //    Zero registered → `NoBackend`; more than one →
         //    `Ambiguous` (user must set `$NROS_RMW` or use
         //    `Executor::open_multi`).
-        let selector = read_rmw_selector_env();
-        // `as_deref()` on `Option<Vec<u8>>` yields `Option<&[u8]>`;
-        // on the no_std `Option<&'static [u8]>` variant it's a
-        // no-op the lint catches but the std signature still
-        // requires the call. Allowed locally.
-        #[allow(clippy::needless_option_as_deref)]
-        let sel_ref = selector.as_deref();
-        match nros_rmw_cffi::resolve_backend(sel_ref) {
+        let selector = super::types::rmw_selector();
+        match nros_rmw_cffi::resolve_backend(selector.as_deref().map(str::as_bytes)) {
             nros_rmw_cffi::BackendResolution::Single(_) => {}
             // Issue 0436 — these are SELECTION outcomes, not transport failures,
             // and calling them `ConnectionFailed` actively misleads: a PX4 bridge
@@ -152,14 +146,11 @@ impl<'s> Executor<'s> {
             namespace: config.namespace,
             properties: &[],
         };
-        let session = if let Some(name) = sel_ref {
+        let session = if let Some(name) = selector.as_deref() {
             // Selector path: route to the specific named backend so
             // the env-var-disambiguated outcome matches what the
             // resolver above identified.
-            nros_rmw_cffi::CffiRmw::open_with_rmw(
-                core::str::from_utf8(name).unwrap_or(""),
-                &rmw_config,
-            )
+            nros_rmw_cffi::CffiRmw::open_with_rmw(name, &rmw_config)
         } else {
             nros_rmw_cffi::CffiRmw.open(&rmw_config)
         }
@@ -223,11 +214,8 @@ impl<'s> Executor<'s> {
         // stable even if the trailing `(rmw=...)` detail changes.
         #[cfg(feature = "log")]
         {
-            if let Some(name) = sel_ref {
-                log::info!(
-                    "nros: session open (rmw={})",
-                    core::str::from_utf8(name).unwrap_or("?")
-                );
+            if let Some(name) = selector.as_deref() {
+                log::info!("nros: session open (rmw={name})");
             } else {
                 log::info!("nros: session open");
             }
@@ -507,26 +495,9 @@ impl<'cfg> SessionSpec<'cfg> {
 // available; resolution always falls through to the single-backend
 // or ambiguous path. Embedded users with multiple backends use the
 // bridge surface `Executor::open_multi` instead.
-// phase-359 W10 — the gate is `env`, not `std`. Reading `$NROS_RMW` is the
-// process-environment CAPABILITY, exactly as `ExecutorConfig::from_env` and
-// `nros::init*` are; `std` is merely what that capability is built on today.
-// Gating it on the flavour is what made "which backend did this image pick"
-// depend on whether some crate in the graph happened to name the standard
-// library.
-#[cfg(all(feature = "env", feature = "rmw-cffi"))]
-fn read_rmw_selector_env() -> Option<alloc::vec::Vec<u8>> {
-    let raw = std::env::var_os("NROS_RMW")?;
-    let bytes = raw.as_encoded_bytes();
-    if bytes.is_empty() {
-        return None;
-    }
-    Some(bytes.to_vec())
-}
-
-#[cfg(all(not(feature = "env"), feature = "rmw-cffi"))]
-fn read_rmw_selector_env() -> Option<&'static [u8]> {
-    None
-}
+// phase-359 W10 / issue 0687 — the private reader that stood here is gone;
+// `super::types::rmw_selector` is the one answer, shared with `nros` and
+// `nros-c`, which each used to read `$NROS_RMW` their own way.
 
 // ============================================================================
 // SessionStore — owned or borrowed session

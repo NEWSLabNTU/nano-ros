@@ -808,9 +808,11 @@ pub mod internals {
         // C-side `nros_support_init` decodes the variant into a
         // specific `NROS_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
-        #[cfg(feature = "env")]
-        if let Some(name) = std::env::var("NROS_RMW").ok().filter(|s| !s.is_empty()) {
-            return nros_rmw_cffi::CffiRmw::open_with_rmw(&name, &config);
+        // phase-359 W10 / issue 0687 — the ONE selector reader, shared with
+        // `Executor::open` and the C entry. This used to read `$NROS_RMW`
+        // itself, with its own empty-string rule.
+        if let Some(name) = nros_node::rmw_selector() {
+            return nros_rmw_cffi::CffiRmw::open_with_rmw(name.as_str(), &config);
         }
         nros_rmw_cffi::CffiRmw.open(&config)
     }

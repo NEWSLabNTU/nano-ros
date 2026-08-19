@@ -125,7 +125,7 @@ BASELINE = {
     # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
     # crate look like it wanted the flavour. What still names `std` is what only
     # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
-    "nros": {"cfg": 10, "path": 11},
+    "nros": {"cfg": 10, "path": 9},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -134,7 +134,10 @@ BASELINE = {
     # returned the MONOTONIC counter. Goal-ID generation had the same shape and
     # the same fix. `$NROS_RMW` selection moved onto `env`, which this crate now
     # names. What remains is `extern crate std` and the lang-item plumbing.
-    "nros-c": {"cfg": 2, "path": 1},
+    #
+    # issue 0687 — path 1 -> 0. Its only `std::` was a third reading of
+    # `$NROS_RMW`; it consumes `nros_node::rmw_selector` now.
+    "nros-c": {"cfg": 2, "path": 0},
     #
     # phase-359 W10 (backend tier): 3 -> 5. Two arms select the WALL CLOCK —
     # the platform's `time_since_epoch_*` when a port is linked, the steady

@@ -79,6 +79,23 @@ set expecting exactly that (`ros_env.rs` pins the selector so the choice is
 a one-site win is a behavioural gamble against a live harness, so it was not
 taken.
 
+**Resolved differently, 2026-08-19 — one READER, not one site.** The
+disagreement was never that three crates read the variable; it was that they
+read it with three semantics (raw OS bytes; UTF-8 filtered for empty; UTF-8
+passed through EVEN WHEN EMPTY) and a fourth reader in `nros::init` added an
+`RMW_IMPLEMENTATION` fallback the others did not have. `nros_node::rmw_selector`
+is now the single answer to "which backend did the user ask for": empty and
+non-UTF-8 both mean unset, and it returns `heapless::String<32>` so
+`Executor::open` can call it in a build with no allocator. The three edge
+callers keep their own edges — the core read is NOT deleted, so the harness
+behaviour this section defends is untouched — but they now share one semantic.
+`$RMW_IMPLEMENTATION` stays OUT: it holds ROS names (`rmw_cyclonedds_cpp`) where
+the selector holds registry names (`cyclonedds`), so unifying them without a
+mapping converts today's "ignored" into `Unknown` = failed open. `nros::init`
+keeps that fallback locally, for the `Context.rmw` hint, which is a different
+quantity. This does not shrink the `from_env` problem below; it removes the
+smaller of the two env questions from it.
+
 ### `from_env` has 86 call sites
 
 | where | callers |

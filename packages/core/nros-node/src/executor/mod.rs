@@ -107,3 +107,7 @@ pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, executor_storage_layout, executor_storage_u64_len,
 };
 pub use types::*;
+
+// issue 0687 — the one `$NROS_RMW` reader, reachable by the hosted callers
+// (`nros`, `nros-c`) that used to each read the variable themselves.
+pub use types::rmw_selector;
