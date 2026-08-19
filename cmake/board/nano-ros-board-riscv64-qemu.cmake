@@ -268,10 +268,28 @@ if(NOT TARGET threadx_glue)
         "${THREADX_BOARD_DIR}/entry.s"
         "${THREADX_BOARD_DIR}/trap.c"
         "${THREADX_BOARD_DIR}/syscalls.c"
-        # issue 0680 — per-thread newlib reentrancy: the execution-notify hook
-        # that swaps `_impure_ptr` on context switch.
-        "${THREADX_BOARD_DIR}/reent.c"
         "${THREADX_BOARD_DIR}/hwtimer.c")
+
+    # issue 0680 — per-thread newlib reentrancy: the execution-notify hook that
+    # swaps `_impure_ptr` on context switch.
+    #
+    # NEWLIB ONLY, and the guard is the point (issue 0678). newlib keeps `errno`
+    # in one global `struct _reent` reached through `_impure_ptr`, so a board
+    # running sockets on several threads shares one `errno` until something
+    # swaps that pointer. picolibc has no such problem — it keeps `errno` in
+    # compiler TLS, so every thread gets its own for free — and it ships no
+    # `<sys/reent.h>` at all, so compiling this file there is not merely
+    # pointless but impossible:
+    #
+    #   reent.c:29:10: fatal error: sys/reent.h: No such file or directory
+    #
+    # Which libc this board links is a per-TOOLCHAIN fact since 0678 (xPack
+    # bundles newlib, Debian's riscv64-unknown-elf ships picolibc), so this
+    # cannot be decided once for the board. It reads the choice the toolchain
+    # PUBLISHES rather than re-deriving it.
+    if(NROS_RISCV64_LIBC STREQUAL "newlib")
+        list(APPEND _glue_srcs "${THREADX_BOARD_DIR}/reent.c")
+    endif()
     nros_threadx_build_glue(
         SOURCES ${_glue_srcs}
         # Phase 155.E — `NX_BSD_ENABLE_NATIVE_API` flips the

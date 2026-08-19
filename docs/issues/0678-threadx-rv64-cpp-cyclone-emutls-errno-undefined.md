@@ -483,3 +483,61 @@ handlers, so the likely reading is another failure the picolibc one was standing
 in front of — the third time in this sequence (0674 → 0678 → this). Filed
 separately rather than absorbed here, because "the build gets further" is
 precisely the reasoning this reopen exists to correct.
+
+
+## 2026-08-19 — both libc halves verified on a WIPED tree; the third failure is isolated
+
+`just threadx_riscv64 build-fixtures` with every `examples/qemu-riscv64-threadx/*/*/build-*`
+deleted first — the only run that means anything here, since a toolchain fix
+cannot reach an existing tree:
+
+| | count |
+| --- | --- |
+| `__emutls_v` | **0** |
+| `sys/reent.h: No such file` | **0** |
+| `riscv64-threadx libc = newlib` | 32 configures, all agreeing |
+
+### What the reent failure actually was (issue 0680's half)
+
+0680's `reent.c` is newlib-only — it swaps `_impure_ptr`, and picolibc has no
+`<sys/reent.h>` at all because its `errno` lives in compiler TLS. Since THIS
+issue made the libc a per-toolchain fact, that file cannot be unconditional.
+
+The guard reads the choice the toolchain PUBLISHES rather than re-deriving it:
+`NROS_RISCV64_LIBC` (CACHE, so it survives `try_compile` re-execution), and the
+board appends `reent.c` only when it says `newlib`. That is issue 0674's rule —
+"the code that CHOOSES the libc now publishes the choice" — applied to CMake
+instead of `startup.c`. Before it, the choice reached the preprocessor and
+nothing else, so a CMakeLists deciding whether to COMPILE a libc-specific source
+had to guess, and 0680 guessed newlib for every host.
+
+### A correction to this issue's own reopen note
+
+The reopen says a stale tree cannot see the fix, and that is right. I first read
+the Debian compiler in those trees as a PREFIX-SELECTION bug — it is not. A
+fresh configure picks the xPack toolchain and prints `libc = newlib`;
+`CMAKE_C_COMPILER` is simply sticky, so a tree first configured before the SDK
+toolchain existed keeps its original compiler and its `*_AR`/`*_RANLIB`
+siblings. The selection logic is correct; only the cache is old.
+
+### Still failing, now isolated — and it is NOT this issue
+
+```
+→ examples/qemu-riscv64-threadx/rust/talker (-DNROS_RMW=cyclonedds, build-cyclonedds/)
+   Compiling nros-c v0.5.0
+error: `#[panic_handler]` function required, but not found
+```
+
+The C/C++ cyclone leaves build `nros-c` WITH `panic-platform` on the same run
+(`--features=ros-humble,rmw-cffi,alloc,platform-threadx,panic-platform`), so the
+corrosion path is fine. The RUST leaf is the one that fails, and the mechanism is
+issue 0644's: `nros-c` is `crate-type = ["staticlib", "cdylib", "lib"]`, a
+staticlib is a FINAL artifact, so rustc demands the lang item while compiling it
+— while the Rust image already declares its own ending in `app_main.rs`
+(`nros::panic_to_platform!()`), so it cannot also take `nros-c/panic-platform`
+without shipping two providers.
+
+That is the per-image singleton question of RFC-0077 / issues 0618 and 0668 for
+a Rust image that also links the C staticlib, not a libc problem. Filed as its
+own thing rather than absorbed here — the third distinct failure this sequence
+has uncovered (0674 → 0678 → this), each standing in front of the next.

@@ -99,8 +99,27 @@ set(CMAKE_ASM_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany")
 #
 # So: picolibc ONLY when the compiler accepts its spec file. Otherwise the
 # compiler brings its own libc and we must not inject another one's headers.
+# Issue 0678/0680 — probe the compiler CMake will ACTUALLY USE, not the one this
+# file would choose.
+#
+# `CMAKE_C_COMPILER` is a CACHE variable and sticky: a build tree first
+# configured before the SDK toolchain existed keeps its original compiler
+# forever, and a toolchain-file change cannot move it. So on such a tree the
+# resolved prefix says xPack (newlib) while every compile still runs Debian's
+# `riscv64-unknown-elf-gcc` (picolibc) — and a libc answer derived from the
+# prefix is then a statement about a compiler this build does not use.
+#
+# That is not hypothetical: it is what made `NROS_RISCV64_LIBC=newlib` coexist
+# with `fatal error: sys/reent.h: No such file or directory` on ten leaves,
+# because 0680's newlib-only `reent.c` was compiled on the strength of the
+# prefix's answer and handed to picolibc's compiler.
+if(CMAKE_C_COMPILER AND EXISTS "${CMAKE_C_COMPILER}")
+    set(_riscv_libc_probe_cc "${CMAKE_C_COMPILER}")
+else()
+    set(_riscv_libc_probe_cc "${_NROS_RISCV64_PREFIX}-gcc")
+endif()
 execute_process(
-    COMMAND ${_NROS_RISCV64_PREFIX}-gcc -march=rv64gc -mabi=lp64d
+    COMMAND ${_riscv_libc_probe_cc} -march=rv64gc -mabi=lp64d
             --specs=picolibc.specs -print-sysroot
     RESULT_VARIABLE _RISCV_THREADX_PICOLIBC_RC
     OUTPUT_VARIABLE _RISCV_THREADX_PICOLIBC_SYSROOT
@@ -147,6 +166,28 @@ if(_RISCV_THREADX_PICOLIBC_SYSROOT AND EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT
     set(CMAKE_CXX_FLAGS_INIT
         "${CMAKE_CXX_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include -DNROS_LIBC_PICOLIBC=1")
 endif()
+
+# Issues 0678 / 0680 — publish WHICH libc, not just a define on the compile line.
+#
+# `NROS_LIBC_PICOLIBC` above reaches the preprocessor and nothing else, so a
+# CMakeLists deciding whether to COMPILE a libc-specific source has to guess —
+# and issue 0680 guessed newlib for every host. Its `reent.c` includes
+# `<sys/reent.h>`, which newlib ships and picolibc does not, so on a host whose
+# resolved toolchain is the Debian picolibc one the board stopped building:
+#
+#   nros-board-threadx-qemu-riscv64/c/reent.c:29:10:
+#     fatal error: sys/reent.h: No such file or directory
+#
+# That is issue 0674's rule one layer up — "the code that CHOOSES the libc now
+# publishes the choice" — applied to CMake rather than to `startup.c`. A CACHE
+# variable so it survives the `try_compile` re-executions of this file and is
+# readable by every consumer.
+if(_RISCV_THREADX_PICOLIBC_SYSROOT AND EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+    set(NROS_RISCV64_LIBC "picolibc" CACHE INTERNAL "C library this toolchain links")
+else()
+    set(NROS_RISCV64_LIBC "newlib" CACHE INTERNAL "C library this toolchain links")
+endif()
+message(STATUS "nano-ros: riscv64-threadx libc = ${NROS_RISCV64_LIBC}")
 
 # Phase 155.E — C++ shim headers (`cstdio`, `cstdint`, etc.)
 # that wrap picolibc's C headers in the `std::` namespace.
