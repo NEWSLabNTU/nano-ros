@@ -72,12 +72,12 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // Validate directories
     assert!(
         threadx_dir.join("common/inc").exists(),
-        "ThreadX common/inc/ not found at {} — run `just setup-threadx`",
+        "ThreadX common/inc/ not found at {} — run `nros setup qemu-riscv64-threadx`",
         threadx_dir.display()
     );
     assert!(
         netx_dir.join("common/inc").exists(),
-        "NetX Duo common/inc/ not found at {} — run `just setup-threadx`",
+        "NetX Duo common/inc/ not found at {} — run `nros setup qemu-riscv64-threadx`",
         netx_dir.display()
     );
 

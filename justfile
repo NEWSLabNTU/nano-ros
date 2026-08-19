@@ -447,7 +447,7 @@ check-fast: _check-skip-reset \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-issue-index check-roadmap-status check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-lane-skip-protocol check-skip-marker-matching \
@@ -1601,6 +1601,15 @@ check-book-links:
 [private]
 check-book-no-just:
     @python3 scripts/check-book-no-just.py
+
+# Tool-emitted messages must not prescribe a bare `just` recipe — users do
+# not have it; the front door covers both binaries. Found live: the exact
+# error a fresh user hits first said `just setup-launch-resolve`, and a
+# threadx board error named `just setup-threadx`, a recipe that does not
+# exist. Same class as check-book-no-just, one layer down.
+[private]
+check-emitter-just-spelling:
+    @bash scripts/check-emitter-just-spelling.sh
 
 # The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
 # docs/issues/. The rule is already written in that file's Conventions #3 —
