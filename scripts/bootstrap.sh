@@ -246,9 +246,14 @@ build_in_tree_cli() {
     # packages/cli/nros-launch-resolve/target/release/ — resolution rule 3
     # in `resolve_launch_resolver` (the per-checkout build path).
     # profile-literal-ok: host tool: the launch resolver's own binary
+    # `|| return 1`, NOT the CLI step's `|| return 0`: the first probe run of
+    # this step failed on a missing libclang, the swallow printed the happy
+    # "next →" banner anyway, and the failure surfaced two commands later as
+    # a cmake configure error naming a `just` recipe. A front door that
+    # cannot build what the quick start needs must say so HERE.
     run_cmd "building nros-launch-resolve (the launch resolver)" \
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \
-        || return 0
+        || { echo "bootstrap: nros-launch-resolve build FAILED — the workspace quick start needs it (see error above; libclang missing is the common cause)" >&2; return 1; }
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
 }
 
