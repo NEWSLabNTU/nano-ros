@@ -19,6 +19,8 @@ cd "$repo_root"
 NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
+# shellcheck source=scripts/build/zephyr-toolchain.sh
+source "$repo_root/scripts/build/zephyr-toolchain.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
@@ -223,26 +225,11 @@ while IFS= read -r record; do
     [ -n "$board" ] && args+=(-b "$board")
     args+=("$repo_root/$src/$subdir")
     [ -n "$extra" ] && args+=(-- "$extra")
-    # issue #87 — native_sim builds with host gcc (no Zephyr SDK); board-keyed,
-    # so the FVP board_import entry (empty board → board.cmake) stays SDK-gated.
-    #
-    # issue 0698 — the SAME branch as `zephyr-fixture-run-one.sh`, and it has to
-    # be in both or it is the half-fix class: real boards state
-    # `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` rather than leaving it unset, because
-    # Zephyr 3.7 interpolates it unquoted and CMake 4 rejects the resulting
-    # `if("zephyr" STREQUAL )`.
-    #
-    # The empty-board case (FVP `board_import`, which resolves via board.cmake)
-    # is left ALONE deliberately: it is not a board name this case can key on,
-    # and the issue's measurements cover named SDK boards only.
-    tc_env=()
-    if [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ]; then
-        case "$board" in
-            native_sim*) tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
-            "") : ;;
-            *) tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=zephyr) ;;
-        esac
-    fi
+    # issues #87 + 0698 — native_sim builds with host gcc (no Zephyr SDK); every
+    # other board, the FVP board_import entry (empty board → board.cmake)
+    # included, names `zephyr` rather than leaving the variant unset, which is
+    # what CMake 4 rejects. Shared rule: scripts/build/zephyr-toolchain.sh.
+    tc_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board")")
     # The stamp gate is `output` EXISTS, for both builders — not west's exit
     # code. A `west-configure` row is expected to stop before linking, and a
     # `west-build` row that exits 0 without its image is not built either. One

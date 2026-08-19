@@ -38,12 +38,13 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     if [ -n "$venvbin" ]; then
         west_cmd=("$(realpath "$venvbin")/python" -m west)
     fi
-    # issue #87 — host gcc toolchain for native_sim on ANY line (board-keyed,
-    # not version-keyed). Real boards leave the variant unset → SDK. The venv
-    # python switch above stays 4.4-specific (find_package Python3>=3.12).
-    case "{{board}}" in
-    native_sim*) export ZEPHYR_TOOLCHAIN_VARIANT="${ZEPHYR_TOOLCHAIN_VARIANT:-host}" ;;
-    esac
+    # issues #87 + 0698 — host gcc toolchain for native_sim on ANY line
+    # (board-keyed, not version-keyed); real boards name `zephyr` rather than
+    # leaving the variant unset, which is what CMake 4 rejects. Shared rule:
+    # scripts/build/zephyr-toolchain.sh. The venv python switch above stays
+    # 4.4-specific (find_package Python3>=3.12).
+    source scripts/build/zephyr-toolchain.sh
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "{{board}}")"
     # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
