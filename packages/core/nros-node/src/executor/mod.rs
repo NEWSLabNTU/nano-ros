@@ -31,8 +31,16 @@ mod arena;
 pub(crate) mod dispatcher;
 #[cfg(any(has_rmw, test))]
 mod handles;
-#[cfg(feature = "std")]
-pub mod handoff;
+// issue 0669 / phase-359 W10 — `pub mod handoff` stood here. `Handoff<M, N>`
+// was optional sugar over `Arc<Mutex<heapless::Vec<M, N>>>` for the
+// cross-priority bridge pattern (phase-104.E.3), it was `std`-gated on
+// `std::sync::Mutex` alone, and it had no consumer anywhere in the tree — not
+// one call site in `packages/` or `examples/` since it landed. Deleted rather
+// than ported: the only portable mutex reachable from here costs a `spin`
+// dependency edge on every build of this crate (measured: `spin` is in NO
+// board's graph today), and an API with no consumer has no evidence its shape
+// is the right one. The pattern it wrapped is six lines and is written out in
+// issue 0669.
 #[cfg(any(has_rmw, test))]
 pub mod monitor;
 #[cfg(any(has_rmw, test))]

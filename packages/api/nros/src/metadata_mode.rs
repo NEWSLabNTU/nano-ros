@@ -43,9 +43,18 @@
 //! correct model — not a heuristic.
 
 use alloc::{string::String, vec::Vec};
-// phase-359 W10 — `Mutex` is the only thing in this file that `alloc` cannot
-// supply, so it is the only thing still named through `std`.
-use std::sync::Mutex;
+// issue 0687 follow-up — the PORTABLE mutex, not `std::sync::Mutex`. This was
+// the only thing in the file `alloc` could not supply, and it was keeping
+// `metadata-mode` a `std` capability for no reason the code supports: the guard
+// beside the feature said "writes a file and exits", but the file write is in
+// `nros-cpp`'s `metadata_hooks`, not here.
+//
+// A spin lock is the right shape rather than a compromise: this module is
+// compiled only under `metadata-mode`, whose documented contract (above) is a
+// SINGLE-THREADED probe process, so the lock exists to make a global `Sync`,
+// not to arbitrate contention that happens. The `spin` edge rides the feature,
+// so a build without `metadata-mode` — every firmware image — does not get it.
+use nros_rmw::sync::Mutex;
 
 use crate::node_metadata::{
     EntityId, EntityKind, EntityMetadataSpec, MetadataRecorder, NodeId, SourceMetadataExport,
@@ -82,27 +91,29 @@ fn intern(s: &str) -> &'static str {
 
 /// Discard everything recorded so far. For tests; a probe records once.
 pub fn reset() {
-    let mut st = state().lock().expect("metadata recorder poisoned");
-    st.recorder = MetadataRecorder::new();
-    st.current_node = None;
-    st.seq = 0;
+    state().with(|st| {
+        st.recorder = MetadataRecorder::new();
+        st.current_node = None;
+        st.seq = 0;
+    });
 }
 
 /// Open a node and make it current. Returns false if the recorder is full or
 /// the node is a duplicate — never silently drops, because a dropped node makes
 /// every entity after it vanish from the count.
 pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
-    let mut st = state().lock().expect("metadata recorder poisoned");
-    let id = String::from(name);
-    if st
-        .recorder
-        .push_node(NodeId::new(&id), name, namespace, domain_id)
-        .is_err()
-    {
-        return false;
-    }
-    st.current_node = Some(id);
-    true
+    state().with(|st| {
+        let id = String::from(name);
+        if st
+            .recorder
+            .push_node(NodeId::new(&id), name, namespace, domain_id)
+            .is_err()
+        {
+            return false;
+        }
+        st.current_node = Some(id);
+        true
+    })
 }
 
 /// Record one entity against the current node.
@@ -118,48 +129,43 @@ pub fn record_entity(
     callback_id: Option<&str>,
     period_ms: Option<u64>,
 ) -> bool {
-    let mut st = state().lock().expect("metadata recorder poisoned");
-    let Some(node_id) = st.current_node.clone() else {
-        return false;
-    };
-    let type_name = intern(type_name);
-    st.leaked.push(type_name);
-    st.seq += 1;
-    let id = alloc::format!("{}#{}", source_name, st.seq);
-    let spec = EntityMetadataSpec {
-        id: EntityId::new(&id),
-        node_id: NodeId::new(&node_id),
-        kind,
-        source_name,
-        type_name,
-        type_hash: "",
-        qos: crate::QosSettings::default(),
-    };
-    let Ok(mut entity) = entity_metadata(spec) else {
-        return false;
-    };
-    entity.period_ms = period_ms;
-    if let Some(cb) = callback_id {
-        entity.callback_id = crate::node_metadata::metadata_string(cb).ok();
-    }
-    st.recorder.push_entity(entity).is_ok()
+    state().with(|st| {
+        let Some(node_id) = st.current_node.clone() else {
+            return false;
+        };
+        let type_name = intern(type_name);
+        st.leaked.push(type_name);
+        st.seq += 1;
+        let id = alloc::format!("{}#{}", source_name, st.seq);
+        let spec = EntityMetadataSpec {
+            id: EntityId::new(&id),
+            node_id: NodeId::new(&node_id),
+            kind,
+            source_name,
+            type_name,
+            type_hash: "",
+            qos: crate::QosSettings::default(),
+        };
+        let Ok(mut entity) = entity_metadata(spec) else {
+            return false;
+        };
+        entity.period_ms = period_ms;
+        if let Some(cb) = callback_id {
+            entity.callback_id = crate::node_metadata::metadata_string(cb).ok();
+        }
+        st.recorder.push_entity(entity).is_ok()
+    })
 }
 
 /// Serialize everything recorded so far, through the one schema emitter.
 pub fn to_json(export: &SourceMetadataExport<'_>) -> Result<String, core::fmt::Error> {
-    let st = state().lock().expect("metadata recorder poisoned");
-    st.recorder.to_source_metadata_json(export)
+    state().with(|st| st.recorder.to_source_metadata_json(export))
 }
 
 /// Entities recorded so far — for adapter tests and the probe's own sanity
 /// check ("a component that declared nothing is a bug, not an empty sidecar").
 pub fn entity_count() -> usize {
-    state()
-        .lock()
-        .expect("metadata recorder poisoned")
-        .recorder
-        .entities()
-        .len()
+    state().with(|st| st.recorder.entities().len())
 }
 
 #[cfg(test)]
@@ -170,7 +176,11 @@ mod tests {
     /// The recorder is process-global by design, so tests that touch it cannot
     /// run concurrently under cargo's thread-per-test harness. Serialize them
     /// rather than making the production type carry a test-only mode.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    // `std::sync::Mutex`, NOT the portable one the module now uses: these tests
+    // genuinely contend (cargo runs them on a thread each) and hold the lock
+    // across a whole test body, which is exactly the case a spin lock is wrong
+    // for. Production never contends — see the module doc.
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// The C++ shape that motivates phase-307 and 308 together: one
     /// subscription the SystemModel can see, plus timers it cannot. Recorded

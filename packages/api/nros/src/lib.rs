@@ -1106,8 +1106,15 @@ mod tests {
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
-compile_error!("`metadata-mode` writes a file and exits: add \"std\" to this crate's features");
+// issue 0687 follow-up — `alloc`, not `std`. The reason recorded here ("writes
+// a file and exits") was never this crate's: the file write is `nros-cpp`'s
+// `metadata_hooks`. What `metadata_mode.rs` actually needed was a `Sync`
+// global, and it named `std::sync::Mutex` for it; on the portable mutex the
+// capability is `String` + `format!` + a lock, i.e. the heap and nothing more.
+#[cfg(all(feature = "metadata-mode", not(feature = "alloc")))]
+compile_error!(
+    "`metadata-mode` records into a heap-allocated global: add \"alloc\" to this crate's features"
+);
 // Emitted here as well as in `nros-node`, and NOT for the reason it first
 // looks like. `nros = { features = ["env"] }` alone does not reach this line:
 // `env` forwards to `nros-node/env`, nros-node is compiled first, and its own

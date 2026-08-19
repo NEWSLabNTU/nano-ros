@@ -141,7 +141,15 @@ BASELINE = {
     # `$ROS_DOMAIN_ID` that silently resolved a malformed value to domain 0.
     # Both go through `try_resolve_hosted` now. What is left is the reader
     # itself plus `Mutex`/`OnceLock`, `Path` and the test module's `EnvGuard`.
-    "nros": {"cfg": 10, "path": 16},
+    #
+    # issue 0669 sibling — 10/16 -> 9/15: `metadata-mode` stopped being a `std`
+    # capability. Its only `std` was `std::sync::Mutex` guarding a process-global
+    # recorder, and the guard beside it claimed a reason ("writes a file") that
+    # belongs to `nros-cpp`. On `nros_rmw::sync::Mutex` the capability is heap +
+    # a lock, so it requires `alloc`; the `spin` edge rides the feature, so no
+    # firmware image gains it. The `OnceLock` in `env.rs` is NOT going the same
+    # way, and the file says why: that module calls `std::env::var`.
+    "nros": {"cfg": 9, "path": 15},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -306,7 +314,13 @@ BASELINE = {
     # at every call site in the tree). The 7 that remain are `Mutex`/`OnceLock`,
     # `Instant` and `ffi`, each carrying its own design question (issue 0687's
     # closing list).
-    "nros-node": {"cfg": 10, "path": 7},
+    #
+    # issue 0669 — 10/7 -> 9/6: `executor::handoff` is deleted. Unused public
+    # API (no call site in the tree since phase 104), `std`-gated on
+    # `std::sync::Mutex` alone, and the portable mutex would have cost a `spin`
+    # edge on EVERY build of this crate — measured: `spin` is in no board's
+    # graph. The six-line pattern it wrapped is written out in the issue.
+    "nros-node": {"cfg": 9, "path": 6},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`

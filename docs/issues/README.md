@@ -381,13 +381,15 @@ its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
-**#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
-in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two
-findings from phase-359 W10: its recorded reason was wrong — it cited a lock-free SPSC design it does not
-use, when the only hosted thing in the file is `std::sync::Mutex` — and freeing it costs a NEW dependency
-edge (`nros-rmw/sync-spin`) on every build of a core crate, to serve zero callers. Wants a decision:
-delete, port and pay the edge, or keep one hosted module. Left std-gated deliberately, rationale corrected
-in place. See `0669-*`. (2026-08-18)
+Recently resolved (2026-08-19): **#0669** — `executor::handoff::Handoff` was public API with NO consumer
+anywhere in the tree (phase-104.E.1) and gated on `std` for one `std::sync::Mutex`. DELETED. The
+measurement that decided it: `spin` is in NO board's dependency graph today (`cargo tree -e normal` over
+all six board crates), so porting was not a feature flip but a new crate in every image, for zero callers.
+A fourth option — gate the type on its own feature that pulls `nros-rmw/sync-spin` — was rejected as
+issue-0652's class: a feature nothing enables is code nothing compiles. The six-line pattern it wrapped is
+written out in the archived issue. Its sibling `nros::metadata_mode` had the SAME shape and was PORTED in
+the same commit, because there the lock was the only `std` in the file and moving it took the whole
+capability from `std` to `alloc` — ask what the edge buys and who pays. See `archived/0669-*`. (2026-08-19)
 
 Recently resolved (2026-08-18): **#0665** — `EXECUTOR_OPAQUE_U64S` is `size_of::<ExecutorInlineStorage>()`
 MEASURED while building the `nros` facade in the sizes probe and asserted against the same type under the

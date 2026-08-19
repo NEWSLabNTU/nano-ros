@@ -50,7 +50,7 @@ ffi-size-markers = []
 # imply it: the feature list is `[]` and the `compile_error!` beside
 # `metadata_mode` names `std` for the consumer to add. ARCHITECTURE.md §2
 # clause (a); `= ["std"]` would also make that guard unreachable.
-metadata-mode = []
+metadata-mode = ["nros-rmw/sync-spin"]
 # phase-359 W10 / issue 0687 — a CAPABILITY, not the `std` flavour, and it
 # lives HERE now: `src/env.rs` is the one place in the tree that reads the
 # process environment. It forwards to nothing, because there is nothing below

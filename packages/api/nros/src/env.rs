@@ -43,6 +43,15 @@ struct EnvCache {
     rmw: Option<String>,
 }
 
+// `std::sync::OnceLock`, and it stays that way deliberately. The portable
+// `nros_rmw::sync::Mutex` would cost a `spin` edge to remove a `std::` path
+// from a module whose next line calls `std::env::var` — this whole file is
+// compiled only under `env`, which REQUIRES `std` because a process
+// environment is a `std` facility. Porting it would move the census number
+// without changing what the build links, which is the definition of gaming the
+// ratchet. (`metadata_mode`'s mutex was the opposite case and did move: there
+// the lock was the ONLY std thing, so porting it made the capability
+// `alloc`-only.)
 static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 
 /// The process-global env cache — and why tests do not share it.
