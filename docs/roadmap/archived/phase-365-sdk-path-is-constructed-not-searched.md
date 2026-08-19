@@ -218,11 +218,23 @@ Fixing it also cured a wart that predates this phase: presence was tested as
 leaves `.nros-provenance`, not `.installed-version`) also read MISSING. Presence
 is now "the pinned prefix holds a usable Corrosion".
 
-**Still hand-joined, deliberately not converted:** `play_launch_parser` in
-`just/workspace.just`. It is installed UNVERSIONED (`<store>/play_launch_parser/`),
-so converting the reader alone would point it at a directory the installer never
-writes — exactly the break above. It needs W5's treatment (move the installer
-first), which is its own change and belongs with whoever owns that tool.
+**Was hand-joined; CONVERTED 2026-08-19.** `play_launch_parser` in
+`just/workspace.just` was left alone because it installs UNVERSIONED
+(`<store>/play_launch_parser/`), so converting the reader alone would have
+pointed it at a directory the installer never writes — exactly the break above.
+
+The blocker was the CONSTRUCTOR, not this tool: `nros sdk-path` built only the
+versioned shape. Issue 0628 taught it both (versioned first, then flat with an
+install marker), so the reader converted with no installer move at all — the
+prerequisite dissolved rather than being met.
+
+Both sites now ask the constructor: the installer (`install-play-launch-parser`)
+and `workspace doctor`. Doctor keeps the hand-join as a FALLBACK when `nros` is
+absent from PATH, because "nros not on PATH" is one of the two failure modes
+doctor exists to report and must not become a hard error inside it.
+
+That was the last hand-joined store path, so every consumer in the tree now
+reaches a provisioned tool through one constructor.
 
 ### W4 — make the class uncommittable — LANDED
 

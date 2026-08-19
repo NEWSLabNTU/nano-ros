@@ -229,8 +229,22 @@ install-play-launch-parser:
     #!/usr/bin/env bash
     set -euo pipefail
     want="{{PLAY_LAUNCH_PARSER_VERSION}}"
-    # Honour NROS_HOME — see the corrosion recipe above.
-    prefix="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser"
+    # `nros sdk-path` is the single constructor (phase-365 W2), so the installer
+    # and every consumer cannot disagree about where the tool lives.
+    #
+    # This was the LAST hand-joined store path, left that way by phase-365 W3b
+    # for a real reason: this tool installs UNVERSIONED (`<store>/<tool>/`), and
+    # at the time `sdk-path` constructed only the VERSIONED shape, so converting
+    # the reader alone would have pointed it at a directory the installer never
+    # writes — the exact break W5 hit and reverted. Issue 0628 taught the
+    # constructor both layouts, so the reader can be converted without moving
+    # the installer first.
+    prefix="$(nros sdk-path play_launch_parser 2>/dev/null || true)"
+    if [ -z "$prefix" ]; then
+        echo "[play_launch_parser] cannot resolve the pinned install path — is \`nros\` on PATH?" >&2
+        echo "                     (source ./activate.sh, or use \`nros setup --tool play_launch_parser\`)" >&2
+        exit 1
+    fi
     stamp="$prefix/.installed-version"
     if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
         echo "[play_launch_parser] $want already installed ($prefix)"
@@ -384,8 +398,17 @@ doctor:
     # ./activate.sh` (the script that PATH-prepends
     # `~/.nros/sdk/play_launch_parser/bin/`). Tailored hints distinguish
     # the two failure modes.
-    plp_stamp="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/.installed-version"
-    plp_bin="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser"
+    # Same constructor the installer uses, so doctor cannot look somewhere the
+    # install never wrote (phase-365 W2; the flat layout resolves since 0628).
+    # Falls back to the hand-join only when `nros` is not on PATH — which is one
+    # of the two failure modes this very check exists to report, so it must not
+    # become a hard error here.
+    plp_prefix="$(nros sdk-path play_launch_parser 2>/dev/null || true)"
+    if [ -z "$plp_prefix" ]; then
+        plp_prefix="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser"
+    fi
+    plp_stamp="$plp_prefix/.installed-version"
+    plp_bin="$plp_prefix/bin/play_launch_parser"
     plp_install_ok=0
     if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ] && [ -x "$plp_bin" ]; then
         plp_install_ok=1
