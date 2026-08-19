@@ -103,13 +103,6 @@ in `env_exclude`. Closing it means either supporting the integration again — w
 the BUILD stage, since "no compilation inside tests" is the real complaint — or deleting it.
 See `0704-*`. (2026-08-20)
 
-**#0699** (cli/orchestration, open 2026-08-20) — `nros sync` on the canonical copy-out template fails
-`Metadata(NameTooLong)` when the workspace path is ~100 chars deep; the identical tree at 34 chars syncs
-clean. Four frames name a component and "exit -1", never a length or path — the real panic only shows by
-re-running the staged harness by hand. Smells like an AF_UNIX `sun_path` (108-byte) or bounded-string path
-buffer in the metadata-mode register. Lands exactly on the "copy the template anywhere" surface phase-368
-promotes. See `0699-*`. (2026-08-20)
-
 Recently resolved (2026-08-19): **#0696** — every native C/C++ fixture read STALE against
 `nros-tests/src/lib.rs`, a file in none of their dep graphs, so no build could clear it. Cause is
 `zpico_recorded_inputs`, which this issue had ruled out by inspecting WHAT was recorded rather than HOW it

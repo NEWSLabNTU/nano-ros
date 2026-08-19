@@ -161,3 +161,48 @@ bringup rows are attributed by other means — and a `[[fixture]]` row would nee
 a builder kind that can drive `idf-fixtures.sh`, which does not exist. The
 coordinate-in-code route reaches the same outcome through a mechanism already
 used and tested.
+
+
+---
+
+## Addendum 2026-08-20 — the fixture ALSO could not build, and the builder said it could
+
+The resolution above makes tier 2 stop demanding this fixture. Separately, and
+not covered by it: on a host that DOES run the builder, the fixture failed to
+build, and nothing surfaced it.
+
+`just esp32 build-fixtures` ran `scripts/build/idf-fixtures.sh`, which ran
+`idf.py build` with a fully provisioned toolchain, and `nros-c` failed for
+`riscv32imc-unknown-none-elf`:
+
+```
+error: `#[panic_handler]` function required, but not found
+error[E0599]: no method named `fetch_add` found for struct `Atomic<u32>`
+```
+
+The result was downgraded three times on the way out — `idf build produced no
+...elf (no stamp; test will report)`, `idf fixtures built (0/1).`, `ESP32
+fixtures built.` — and then discarded entirely by `|| true` at the call site. The
+lane build returned **RC=0 having produced nothing**.
+
+Both halves are fixed:
+
+* **`#[panic_handler]`** — `integrations/nano-ros/CMakeLists.txt` (the ESP-IDF
+  component shim) does `add_subdirectory` + `NanoRos::NanoRos` and never calls
+  `nano_ros_entry()`, so nothing applied a panic policy to an `nros-c` imported
+  `--no-default-features`. THIRD site of the shape in
+  [#0692](0692-rust-cyclone-image-links-two-rust-staticlibs.md) /
+  [#0666](../0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md).
+* **`fetch_add`** — `nros-c`'s `action/common.rs` named
+  `core::sync::atomic::AtomicU32`. riscv32imc has no hardware atomics, so core's
+  type exists while its RMW methods are gated behind `target_has_atomic`. Now
+  `portable_atomic::AtomicU32`, the polyfill this crate already depends on for
+  exactly this target.
+* **The reporting** — both fixture builders (`idf-fixtures.sh`,
+  `west-fixtures.sh`) now exit non-zero when a build was ATTEMPTED and produced
+  nothing, and neither call site discards that with `|| true`. An absent
+  toolchain still exits 0: unprovisioned is a skip, provisioned-and-empty is a
+  failure.
+
+Verified: `idf fixtures built (1/1).` RC=0, 3.3 MB ELF, and
+`cli_bringup_esp_idf` PASSES.
