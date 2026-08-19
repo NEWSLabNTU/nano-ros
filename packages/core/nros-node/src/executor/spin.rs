@@ -93,14 +93,18 @@ impl<'s> Executor<'s> {
         // ctor before `main` (RFC-0042 §D3.3), so the registry is
         // already populated — no runtime section walk.
         //
-        // 1. Consult `$NROS_RMW` (when std/env is available) for
-        //    explicit override, mirroring ROS 2's `RMW_IMPLEMENTATION`.
+        // 1. Honour `config.rmw` — the caller's explicit backend selection,
+        //    mirroring ROS 2's `RMW_IMPLEMENTATION`. On a hosted build
+        //    `nros::ExecutorConfigEnvExt::from_env` / `nros::env::resolve_hosted`
+        //    fill it from `$NROS_RMW`; issue 0687 moved that read to the edge,
+        //    because reading a process environment is what kept `std` in this
+        //    crate and an RTOS image has no environment to read.
         // 2. With no selector, pick the unique registered backend.
         //    Zero registered → `NoBackend`; more than one →
-        //    `Ambiguous` (user must set `$NROS_RMW` or use
+        //    `Ambiguous` (user must select one, or use
         //    `Executor::open_multi`).
-        let selector = super::types::rmw_selector();
-        match nros_rmw_cffi::resolve_backend(selector.as_deref().map(str::as_bytes)) {
+        let selector = config.rmw;
+        match nros_rmw_cffi::resolve_backend(selector.map(str::as_bytes)) {
             nros_rmw_cffi::BackendResolution::Single(_) => {}
             // Issue 0436 — these are SELECTION outcomes, not transport failures,
             // and calling them `ConnectionFailed` actively misleads: a PX4 bridge
@@ -146,7 +150,7 @@ impl<'s> Executor<'s> {
             namespace: config.namespace,
             properties: &[],
         };
-        let session = if let Some(name) = selector.as_deref() {
+        let session = if let Some(name) = selector {
             // Selector path: route to the specific named backend so
             // the env-var-disambiguated outcome matches what the
             // resolver above identified.
@@ -214,7 +218,7 @@ impl<'s> Executor<'s> {
         // stable even if the trailing `(rmw=...)` detail changes.
         #[cfg(feature = "log")]
         {
-            if let Some(name) = selector.as_deref() {
+            if let Some(name) = selector {
                 log::info!("nros: session open (rmw={name})");
             } else {
                 log::info!("nros: session open");
@@ -495,9 +499,10 @@ impl<'cfg> SessionSpec<'cfg> {
 // available; resolution always falls through to the single-backend
 // or ambiguous path. Embedded users with multiple backends use the
 // bridge surface `Executor::open_multi` instead.
-// phase-359 W10 / issue 0687 — the private reader that stood here is gone;
-// `super::types::rmw_selector` is the one answer, shared with `nros` and
-// `nros-c`, which each used to read `$NROS_RMW` their own way.
+// phase-359 W10 / issue 0687 — the private reader that stood here is gone, and
+// so is the shared one that briefly replaced it. `ExecutorConfig::rmw` carries
+// the selection instead: `nros::rmw_selector` reads the variable ONCE, at the
+// hosted edge, and every consumer takes the value.
 
 // ============================================================================
 // SessionStore — owned or borrowed session

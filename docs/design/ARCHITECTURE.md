@@ -70,7 +70,11 @@ end**. Three consequences that come up constantly:
 > `env` is `ExecutorConfig::from_env`, i.e. `std::env` — it emits a
 > `compile_error!` naming the feature to add, and the consumer names `std`.
 > `env = ["std"]` is the spelling phase-359 W10 removed: it puts the standard
-> library into an image through a door nobody declared.
+> library into an image through a door nobody declared. Issue 0687 then moved
+> the capability itself: `env` lives on `nros` (`nros::env`, the hosted edge)
+> and NOT on the core, which takes resolved values (`ExecutorConfig::
+> resolve_with` + `EnvRung`). A capability whose facility exists on one platform
+> family belongs at the edge, not behind a per-port ABI stub.
 >
 > **A purely INTERNAL requirement is the other way round, and the distinction is
 > the whole rule.** `metadata-mode` is `["std"]` because `metadata_mode.rs`

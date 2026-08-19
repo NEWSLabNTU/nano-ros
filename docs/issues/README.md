@@ -367,14 +367,19 @@ archived for its diagnosis history — in particular that ninja interleaves para
 a failure to the last cargo invocation printed before it names innocent rows. See `archived/0688-*`.
 (2026-08-19)
 
-**#0687** (api, open 2026-08-19) — the `env` capability is what keeps `std` in the core crates: 31 of the
-~41 remaining non-test `std::` paths are `env::var`, and phase-359 W10 moved every OTHER host facility
-(clock, wall clock, sleep, tasks, log) onto the platform ABI. An ABI `env_get` is the WRONG analogue — a
-clock is something every RTOS has, a process environment is not, and five of six ports would implement it
-as `return 0`. The fit is to push env resolution to the hosted EDGE (`nros-board-linux`, the entry macro,
-`nros-c` init) and let core crates take a resolved `ExecutorConfig`, which is already how embedded works.
-Records what env does NOT finish: `Mutex`/`OnceLock` caches, the `Instant`/`SystemTime` no-port fallbacks,
-and `fs`/`Path` host-only features. See `0687-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0687** — the `env` capability kept `std` in the core crates (31 of the
+~41 remaining non-test `std::` paths were `env::var`), and an ABI `env_get` was the wrong analogue: a clock
+is something every RTOS has, a process environment is not, and five of six ports would have implemented it
+as `return 0`. Resolved by pushing env resolution to the hosted EDGE: `nros-node` has NO `env` feature,
+`nros::env` is the tree's one reader, and the core takes VALUES
+(`ExecutorConfig::resolve_with(baked, Option<EnvRung>)`). `from_env` is `nros::ExecutorConfigEnvExt` — in
+the prelude, so 25 of ~27 call sites did not change (the "86" was an overcount: it included `from_env` on
+unrelated types). Two by-products: `hosted_env: bool` was a compile-time constant at EVERY call site
+(`true` at one board plus the two FFI entries) and is now two functions; `$NROS_RMW` became
+`ExecutorConfig::rmw`, so `Executor::open` no longer reads the environment while every hosted path keeps
+its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 unchanged — the sites moved
+to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
+`fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
 **#0669** (api, open 2026-08-18) — `executor::handoff::Handoff` is public API with NO consumer anywhere
 in the tree (phase-104.E.1; `grep` finds no call site outside the module) and is gated on `std`. Two

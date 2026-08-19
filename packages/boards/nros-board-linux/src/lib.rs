@@ -305,13 +305,13 @@ impl LinuxBoard {
         // resolver (RFC-0045 precedence model A): env > baked > compiled default.
         // Only `node_name` is mapped from the overlay; locator/domain/namespace
         // stay `None` so env keeps authority over them (issue #48 preserved).
-        let exec_cfg = ::nros::ExecutorConfig::resolve(
-            ::nros::BootConfig {
-                node_name: deploy.node_name,
-                ..Default::default()
-            },
-            /* hosted_env = */ true,
-        );
+        // issue 0687 — the ONE `hosted_env = true` in the tree, now spelled as
+        // what it is: this board runs on a host, so it resolves through the
+        // edge that reads the environment. Every other board passed `false`.
+        let exec_cfg = ::nros::env::resolve_hosted(::nros::BootConfig {
+            node_name: deploy.node_name,
+            ..Default::default()
+        });
         // phase-271 — open at the entry's declared sizing when supplied.
         let opened = match sizing {
             None => ::nros::Executor::open(&exec_cfg),
@@ -415,6 +415,9 @@ impl LinuxBoard {
 
         // Open the one session on the boot task; it owns the session for
         // the program's life (the boot tier's spin loop never returns).
+        // issue 0687 — `from_env` is an extension trait now (the environment is
+        // read at `nros`'s edge, not in the core), so it needs to be in scope.
+        use ::nros::ExecutorConfigEnvExt as _;
         let exec_cfg = ::nros::ExecutorConfig::from_env();
         let boot_exec = match ::nros::Executor::open(&exec_cfg) {
             Ok(e) => e,

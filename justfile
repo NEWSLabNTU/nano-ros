@@ -620,11 +620,19 @@ check-cli-tests:
 # Same shape as issue 0319 (a backend suite with no lane, red on main for two
 # days) and the issue-0196 rule generally: a gate whose coverage is narrower
 # than the thing it is supposed to enforce.
+#
+# issue 0687 added the second entry: `nros`'s `env` module — the tree's one
+# reader of the process environment — is behind a non-default `env` feature for
+# the same reason, so its 11 tests were in no lane the hour they were written.
+# Same recipe, because it is the same defect class, not a new one.
 check-node-std-tests:
     #!/usr/bin/env bash
     set -e
     cargo test -p nros-node --lib --features std --quiet
-    echo "nros-node std-gated tests passed!"
+    # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
+    # extern the linker wants a platform port for, and this lane links none.
+    cargo test -p nros --lib --features env,std --quiet
+    echo "non-default-feature unit tests passed (nros-node std, nros env)!"
 
 # Issue 0652 — the `required-features` targets that were in NO lane.
 #

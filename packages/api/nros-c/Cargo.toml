@@ -33,7 +33,7 @@ default = ["panic-platform"]
 # a C image linking the std flavour has always had: `$NROS_RMW` backend
 # selection. Without this feature the cfg would be permanently false and that
 # selection would vanish from the C API silently.
-env = ["nros/env", "nros-node/env"]
+env = ["nros/env"]
 std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 

@@ -153,15 +153,12 @@ where
     // unchanged from the board config (NOT env vars — bare-metal libc has no
     // host `getenv` trampoline on QEMU).
     let baked = boot_config.map(BootConfig::from_baked).unwrap_or_default();
-    let exec_cfg = ExecutorConfig::resolve(
-        BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(cfg.zenoh_locator),
-            domain_id: Some(cfg.domain_id),
-            namespace: None,
-        },
-        /* hosted_env = */ false,
-    );
+    let exec_cfg = ExecutorConfig::resolve(BootConfig {
+        node_name: baked.node_name.or(Some("nros_app")),
+        locator: Some(cfg.zenoh_locator),
+        domain_id: Some(cfg.domain_id),
+        namespace: None,
+    });
     let executor = match Executor::open(&exec_cfg) {
         Ok(executor) => executor,
         Err(err) => {

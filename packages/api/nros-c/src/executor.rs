@@ -323,7 +323,7 @@ pub unsafe extern "C" fn nros_executor_init(
         // unset; `rmw_selector` reports unset as `None`, and the
         // `unwrap_or_default` below preserves the empty-identity behaviour the
         // C path expects.
-        let name = nros_node::rmw_selector().unwrap_or_default();
+        let name = nros::rmw_selector().unwrap_or_default();
         let name = name.as_str();
         let support_locator =
             core::str::from_utf8_unchecked(&support_ref.locator[..support_ref.locator_len]);

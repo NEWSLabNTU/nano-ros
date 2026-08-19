@@ -273,6 +273,19 @@ pub struct ExecutorConfig<'a> {
     /// silently-dead monitor). On `std` targets the executor falls back
     /// to `SystemTime::now()` when unset.
     pub epoch_us: Option<fn() -> u64>,
+    /// The RMW backend the caller selected, by the cffi registry's canonical
+    /// name (`zenoh`, `cyclonedds`, `xrce`, `uorb`). `None` = no selection:
+    /// [`Executor::open`](crate::Executor::open) then takes the unique
+    /// registered backend, and reports `Ambiguous` when there is more than one.
+    ///
+    /// issue 0687 — this used to be read from `$NROS_RMW` INSIDE
+    /// `Executor::open`, which is why the core crate needed a process
+    /// environment at all. A backend selection is a decision the hosted edge
+    /// makes and hands down, exactly like the locator beside it;
+    /// `nros::ExecutorConfigEnvExt::from_env` and `nros::env::resolve_hosted`
+    /// fill this from `$NROS_RMW`, and an embedded image bakes it or leaves it
+    /// `None`.
+    pub rmw: Option<&'a str>,
 }
 
 impl<'a> ExecutorConfig<'a> {
@@ -288,6 +301,7 @@ impl<'a> ExecutorConfig<'a> {
             namespace: "",
             clock_us: None,
             epoch_us: None,
+            rmw: None,
         }
     }
 
@@ -343,128 +357,11 @@ impl<'a> ExecutorConfig<'a> {
         self.clock_us = Some(clock);
         self
     }
-}
 
-#[cfg(feature = "env")]
-struct EnvCache {
-    locator: alloc::string::String,
-    domain_id: u32,
-    mode: SessionMode,
-    /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
-    node_name: alloc::string::String,
-}
-
-#[cfg(feature = "env")]
-static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
-
-/// The process-global env cache — and why tests do not share it.
-///
-/// Issue 0607 — `try_resolve` reads env PRESENCE live but env VALUES from here,
-/// and a `OnceLock` freezes at whichever caller touched it first. Under
-/// `cargo test` every unit test shares one process, so a later test's
-/// `EnvGuard` moves what `std::env::var` reports while the cached VALUE stays
-/// behind. The two then disagree and `noop_resolve_matches_from_env` fails:
-///
-/// ```text
-/// assertion `left == right` failed
-///   left: ""
-///  right: "tcp/env:7447"
-/// ```
-///
-/// It failed ~1 run in 5, never single-threaded, and the module's `env_lock()`
-/// cannot help: a mutex serialises MUTATION, and this is a stale READ of a
-/// cache already populated. Two tests had been weakened to tolerate it.
-///
-/// So tests rebuild per call — live env is the only coherent answer when the
-/// env is what they are varying. Production keeps the `OnceLock`: nothing there
-/// mutates the environment, so freezing it once is both correct and the point.
-///
-/// The test/production split is `cfg!(test)` at RUNTIME rather than two
-/// `#[cfg]` attributes, and the builder is a nested `fn` rather than a
-/// cfg-gated one, so this fix adds no `feature = "std"` cfg sites —
-/// `check-std-census` counts those and phase-359 is removing them.
-#[cfg(feature = "env")]
-fn env_cache() -> &'static EnvCache {
-    fn build() -> EnvCache {
-        // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
-        // names with a stderr deprecation warning.
-        let locator = std::env::var("NROS_LOCATOR")
-            .or_else(|_| {
-                std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                    nros_log::nros_warn!(
-                        nros_log::get_logger("nros"),
-                        "ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead"
-                    );
-                })
-            })
-            // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
-            // active backend substitutes its own default.
-            .unwrap_or_default();
-        let domain_id = std::env::var("ROS_DOMAIN_ID")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let mode_str = std::env::var("NROS_SESSION_MODE")
-            .or_else(|_| {
-                std::env::var("ZENOH_MODE").inspect(|_| {
-                    nros_log::nros_warn!(
-                        nros_log::get_logger("nros"),
-                        "ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead"
-                    );
-                })
-            })
-            .ok();
-        let mode = match mode_str.as_deref() {
-            Some("peer") => SessionMode::Peer,
-            _ => SessionMode::Client,
-        };
-        let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
-        EnvCache {
-            locator,
-            domain_id,
-            mode,
-            node_name,
-        }
-    }
-
-    if cfg!(test) {
-        // `alloc`, not `std::boxed` — the crate already has `extern crate
-        // alloc`, and `check-std-census` counts `std::` paths that phase-359 is
-        // removing. A fix should not add to the ledger it is unrelated to.
-        alloc::boxed::Box::leak(alloc::boxed::Box::new(build()))
-    } else {
-        ENV_CACHE.get_or_init(build)
-    }
-}
-
-#[cfg(feature = "env")]
-impl ExecutorConfig<'static> {
-    /// Create a configuration from environment variables.
-    ///
-    /// Reads:
-    /// - `NROS_LOCATOR` — Middleware locator. Unset ⇒ empty (issue 0330: the
-    ///   active RMW backend applies its own default; e.g. zenoh dials
-    ///   `nros_rmw_zenoh::DEFAULT_LOCATOR`).
-    ///   Legacy name `ZENOH_LOCATOR` is accepted with a deprecation warning.
-    /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`).
-    /// - `NROS_SESSION_MODE` — Session mode: `"client"` or `"peer"` (default:
-    ///   `"client"`). Legacy name `ZENOH_MODE` is accepted with a deprecation warning.
-    ///
-    /// Env-var values are cached in a process-global `OnceLock` on the
-    /// first call and reused for the process lifetime — repeated calls
-    /// do NOT re-read the environment and do NOT accrete memory. The
-    /// returned `&'static str` fields point into the cache.
-    pub fn from_env() -> Self {
-        let cache = env_cache();
-        Self {
-            locator: cache.locator.as_str(),
-            mode: cache.mode,
-            domain_id: cache.domain_id,
-            node_name: "node",
-            namespace: "",
-            clock_us: None,
-            epoch_us: Some(default_epoch_us),
-        }
+    /// issue 0687 — select the RMW backend by its canonical registry name.
+    pub const fn rmw(mut self, rmw: &'a str) -> Self {
+        self.rmw = Some(rmw);
+        self
     }
 }
 
@@ -479,7 +376,7 @@ impl ExecutorConfig<'static> {
 /// [`ExecutorConfig::resolve`] is:
 ///
 /// ```text
-/// env (only if hosted_env && the var is set)
+/// env rung (a Some field on the [`EnvRung`] the caller supplies)
 ///   > baked (a Some field here)
 ///     > compiled default
 /// ```
@@ -489,7 +386,7 @@ impl ExecutorConfig<'static> {
 ///
 /// Note: `mode` (session mode) is **not** configurable through `BootConfig`.
 /// `BootConfig` carries only `node_name`, `locator`, `domain_id`, and `namespace`.
-/// Session mode falls through to the env-cache default (`SessionMode::Client`).
+/// Session mode comes from the env rung, defaulting to `SessionMode::Client`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BootConfig<'a> {
     /// Node name override.  Maps to [`ExecutorConfig::node_name`].
@@ -502,137 +399,122 @@ pub struct BootConfig<'a> {
     pub namespace: Option<&'a str>,
 }
 
+/// The environment rung of precedence model A, as VALUES.
+///
+/// issue 0687 — `try_resolve` used to take `hosted_env: bool` and read the
+/// process environment itself, which is why this crate needed `std`. A rung is
+/// a set of values, not a place they come from: the hosted edge
+/// (`nros::env::resolve_hosted`) reads `$NROS_LOCATOR`, `$ROS_DOMAIN_ID`,
+/// `$NROS_SESSION_MODE`, `$NROS_NODE_NAME` and `$NROS_RMW` and fills this in;
+/// an embedded caller that wants the same precedence from some other source (a
+/// settings partition, a Kconfig blob) can fill it too, which the bool could
+/// never express.
+///
+/// `None` on a field means "the environment did not speak" — resolution falls
+/// through to `baked`, then to the compiled default. The old bool's
+/// `hosted_env=false` is `None` here at the whole-rung level.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct EnvRung<'a> {
+    /// `$NROS_LOCATOR` / legacy `$ZENOH_LOCATOR`.
+    pub locator: Option<&'a str>,
+    /// `$ROS_DOMAIN_ID`, already parsed — a malformed value is the EDGE's
+    /// error ([`BootConfigError::DomainIdParse`]), reported before it gets
+    /// here, because only the edge knows the text.
+    pub domain_id: Option<u32>,
+    /// `$NROS_SESSION_MODE` / legacy `$ZENOH_MODE`.
+    pub mode: Option<SessionMode>,
+    /// `$NROS_NODE_NAME`.
+    pub node_name: Option<&'a str>,
+    /// `$NROS_RMW` — the backend selector, resolved through
+    /// `nros::rmw_selector` so every reader agrees on what "unset" means.
+    pub rmw: Option<&'a str>,
+}
+
 impl<'a> ExecutorConfig<'a> {
-    /// Resolve boot config under precedence model A (RFC-0045).
+    /// Resolve boot config under precedence model A (RFC-0045), with no
+    /// environment rung: `baked > compiled default`.
     ///
-    /// Per-field precedence (evaluated independently):
-    /// `env (hosted_env && var set) > baked > compiled default`.
+    /// Panics on invalid identity input — fail-loud (repo rule): a bad domain
+    /// id at boot is a configuration error, never a silent domain-0 node. FFI
+    /// shims that need an error code call [`try_resolve`](Self::try_resolve).
+    pub fn resolve(baked: BootConfig<'a>) -> ExecutorConfig<'a> {
+        Self::resolve_with(baked, None)
+    }
+
+    /// [`resolve`](Self::resolve) with an environment rung on top.
     ///
-    /// `hosted_env=true` enables the env-override layer (`std` only).
-    /// Embedded callers always pass `false`; the env layer compiles out
-    /// on `no_std` regardless of the flag value.
-    ///
-    /// When `hosted_env=true` the env layer is queried fresh from the
-    /// process environment at call time; string storage for env-derived
-    /// fields comes from the process-global [`EnvCache`] (same backing
-    /// store as [`ExecutorConfig::from_env`]).  Passing
-    /// `BootConfig::default()` with `hosted_env=true` is therefore
-    /// equivalent to calling `from_env()` directly.
-    ///
-    /// **Note on env coupling:** The env-presence checks below
-    /// (`NROS_LOCATOR`/`ZENOH_LOCATOR`/`ROS_DOMAIN_ID`) must stay in sync
-    /// with the env vars that [`env_cache()`] reads. If a new locator or
-    /// domain env var is added there, add the corresponding presence check
-    /// here too.
-    pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> {
-        match Self::try_resolve(baked, hosted_env) {
+    /// Hosted callers reach this through `nros::env::resolve_hosted`, which
+    /// fills the rung from the process environment.
+    pub fn resolve_with(baked: BootConfig<'a>, env: Option<EnvRung<'a>>) -> ExecutorConfig<'a> {
+        match Self::try_resolve_with(baked, env) {
             Ok(cfg) => cfg,
-            // Fail-loud (repo rule): invalid identity config at boot is a
-            // configuration error, never a silent domain-0 node. FFI shims
-            // that need an error code call `try_resolve` directly.
             Err(e) => panic!("nros boot-config resolution failed: {e}"),
         }
     }
 
-    /// RFC-0045 / issue #206 — fallible resolve. Same precedence model A as
-    /// [`resolve`](Self::resolve); returns [`BootConfigError`] instead of
-    /// panicking on malformed / out-of-range identity input, so the C / C++
-    /// FFI shims can surface a return code. Validation is uniform across
-    /// languages:
+    /// RFC-0045 / issue #206 — fallible [`resolve`](Self::resolve).
+    pub fn try_resolve(baked: BootConfig<'a>) -> Result<ExecutorConfig<'a>, BootConfigError> {
+        Self::try_resolve_with(baked, None)
+    }
+
+    /// RFC-0045 / issue #206 — fallible resolve with an environment rung.
+    /// Returns [`BootConfigError`] instead of panicking on out-of-range
+    /// identity input, so the C / C++ FFI shims can surface a return code.
+    /// Validation is uniform across languages: any resolved domain id >
+    /// [`DOMAIN_ID_MAX`] is [`BootConfigError::DomainIdRange`], INCLUDING a
+    /// baked one (the DDS backend would only fail later).
     ///
-    /// - `ROS_DOMAIN_ID` set but non-numeric → `DomainIdParse` (the pre-#206
-    ///   C++ header silently collapsed this to domain 0; this resolver
-    ///   silently ignored it — both were wrong).
-    /// - any resolved domain id > [`DOMAIN_ID_MAX`] → `DomainIdRange`
-    ///   (including a BAKED value — the DDS backend would only fail later).
-    /// - `NROS_NODE_NAME` joins the hosted env rung (model A parity).
-    pub fn try_resolve(
+    /// Fields resolve **independently**: an env locator and a baked
+    /// `node_name` can both apply in the same call.
+    pub fn try_resolve_with(
         baked: BootConfig<'a>,
-        hosted_env: bool,
+        env: Option<EnvRung<'a>>,
     ) -> Result<ExecutorConfig<'a>, BootConfigError> {
-        // ── hosted path (the `env` capability) ──────────────────────────────
-        //
-        // phase-359 W10 — was `feature = "std"`. What this branch needs is not
-        // the std FLAVOUR but a process ENVIRONMENT to read, which is exactly
-        // what `env` names; a `std` build without it falls through to the baked
-        // path below, as a target build always did.
-        #[cfg(feature = "env")]
-        if hosted_env {
-            let env = env_cache();
-
-            // Check current process environment (fresh read, not cached) so
-            // tests that set/unset vars with EnvGuard see the correct result
-            // even when the OnceLock was pre-initialized by an earlier test.
-            let locator_from_env =
-                std::env::var("NROS_LOCATOR").is_ok() || std::env::var("ZENOH_LOCATOR").is_ok();
-            let domain_id_from_env = match std::env::var("ROS_DOMAIN_ID") {
-                Ok(s) if !s.is_empty() => {
-                    // #206 — malformed is an ERROR, not a silent skip.
-                    let v = s
-                        .trim()
-                        .parse::<u32>()
-                        .map_err(|_| BootConfigError::DomainIdParse)?;
-                    if v > DOMAIN_ID_MAX {
-                        return Err(BootConfigError::DomainIdRange);
-                    }
-                    true
-                }
-                _ => false,
-            };
-            let node_name_from_env = std::env::var("NROS_NODE_NAME")
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
-
-            let domain_id = if domain_id_from_env {
-                env.domain_id
-            } else {
-                baked.domain_id.unwrap_or(0)
-            };
+        let Some(env) = env else {
+            // ── no environment rung: baked > compiled default ──────────────
+            let domain_id = baked.domain_id.unwrap_or(0);
             if domain_id > DOMAIN_ID_MAX {
                 return Err(BootConfigError::DomainIdRange);
             }
-
             return Ok(ExecutorConfig {
-                locator: if locator_from_env {
-                    // String value from cache (same source as from_env()).
-                    env.locator.as_str()
-                } else {
-                    // Issue 0330 — bottom rung: leave it ABSENT (`""`). A
-                    // router endpoint is a backend fact; this crate is
-                    // RMW-blind, so the empty string travels to whichever
-                    // backend is linked and THAT backend applies its own
-                    // default (e.g. `nros_rmw_zenoh::DEFAULT_LOCATOR`).
-                    // Matches the embedded path below, which has always
-                    // resolved to `""`.
-                    baked.locator.unwrap_or_default()
-                },
-                mode: env.mode,
+                locator: baked.locator.unwrap_or(""),
+                mode: nros_rmw::SessionMode::Client,
                 domain_id,
-                node_name: if node_name_from_env {
-                    env.node_name.as_str()
-                } else {
-                    baked.node_name.unwrap_or("node")
-                },
+                node_name: baked.node_name.unwrap_or("node"),
                 namespace: baked.namespace.unwrap_or(""),
                 clock_us: None,
-                epoch_us: Some(default_epoch_us),
+                epoch_us: None,
+                rmw: None,
             });
-        }
+        };
 
-        // ── embedded / hosted_env=false path (also compiles on no_std) ─────
-        let _ = hosted_env; // suppress unused-var on no_std
-        let domain_id = baked.domain_id.unwrap_or(0);
+        let domain_id = env.domain_id.or(baked.domain_id).unwrap_or(0);
         if domain_id > DOMAIN_ID_MAX {
             return Err(BootConfigError::DomainIdRange);
         }
+
         Ok(ExecutorConfig {
-            locator: baked.locator.unwrap_or(""),
-            mode: nros_rmw::SessionMode::Client,
+            locator: env
+                .locator
+                // Issue 0330 — bottom rung: leave it ABSENT (`""`). A router
+                // endpoint is a backend fact; this crate is RMW-blind, so the
+                // empty string travels to whichever backend is linked and THAT
+                // backend applies its own default (e.g.
+                // `nros_rmw_zenoh::DEFAULT_LOCATOR`). Matches the no-rung path
+                // above, which has always resolved to `""`.
+                .or(baked.locator)
+                .unwrap_or(""),
+            mode: env.mode.unwrap_or(SessionMode::Client),
             domain_id,
-            node_name: baked.node_name.unwrap_or("node"),
+            node_name: env.node_name.or(baked.node_name).unwrap_or("node"),
             namespace: baked.namespace.unwrap_or(""),
             clock_us: None,
-            epoch_us: None,
+            // A rung means a hosted caller, and a hosted caller has a wall
+            // clock — the same one `from_env` installs. `default_epoch_us_fn`
+            // answers "does this build have one" in the single place that
+            // knows, rather than at two struct literals.
+            epoch_us: default_epoch_us_fn(),
+            rmw: env.rmw,
         })
     }
 }
@@ -1315,54 +1197,12 @@ pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
     ((us / 1_000_000) as i32, ((us % 1_000_000) * 1_000) as u32)
 }
 
-/// **The** answer to "which RMW backend did the user select" — one reader, one
-/// semantic, for every consumer.
+/// Capacity of a backend selector name, matching `Executor::primary_rmw_name`.
 ///
-/// phase-359 W10 / issue 0687. This variable had FOUR readers with THREE
-/// semantics: `Executor::open` read it as raw OS bytes, `nros`'s
-/// `open_session` as a UTF-8 string filtered for empty, `nros-c`'s entry as a
-/// string passed through EVEN WHEN EMPTY, and `nros::init` as a string with an
-/// `RMW_IMPLEMENTATION` fallback the other three did not have. "Which backend
-/// did the user ask for" had four answers in one process.
-///
-/// Two decisions are baked in, and both are deliberate:
-///
-/// * **`$NROS_RMW` only.** `$RMW_IMPLEMENTATION` is NOT folded in, though it
-///   was tempting and one reader did it. The two carry different vocabularies:
-///   this selector is matched against the cffi registry's canonical names
-///   (`zenoh`, `dds`, `cyclonedds`), while `RMW_IMPLEMENTATION` holds ROS names
-///   (`rmw_cyclonedds_cpp`). Feeding a ROS name to `resolve_backend` yields
-///   `Unknown` — an ERROR — where today it is ignored and the unique-backend
-///   path runs. Unifying them without a mapping would convert "ignored" into
-///   "fails to start". `nros::init` keeps its fallback for the `Context.rmw`
-///   HINT, which is a different quantity.
-/// * **Empty or non-UTF-8 means unset.** A name that is not UTF-8 cannot match
-///   a registry entry, so treating it as absent is what the caller wants; the
-///   old raw-bytes reader would have reported `Unknown` instead.
-///
-/// The return is `heapless::String`, not `String`: this is called from
-/// `Executor::open`, which compiles in builds with NO allocator, and the
-/// private reader it replaced returned `Option<&'static [u8]>` for exactly that
-/// reason. `RMW_SELECTOR_CAP` is the same 32 the executor already uses for
-/// `primary_rmw_name`; a longer value cannot name a registry slot, so it is
-/// reported as unset rather than truncated into a different backend's name.
-#[cfg(feature = "env")]
-pub fn rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>> {
-    let raw = std::env::var_os("NROS_RMW")?;
-    let s = raw.to_str()?;
-    if s.is_empty() {
-        return None;
-    }
-    heapless::String::try_from(s).ok()
-}
-
-/// No environment, no selector. See [`rmw_selector`].
-#[cfg(not(feature = "env"))]
-pub fn rmw_selector() -> Option<heapless::String<RMW_SELECTOR_CAP>> {
-    None
-}
-
-/// Capacity of a backend selector, matching `Executor::primary_rmw_name`.
+/// issue 0687 — the READER moved to `nros::rmw_selector` (it needs a process
+/// environment, which this crate no longer has), but the CAP belongs here: it
+/// is the executor's own identity storage, and a selector longer than this
+/// cannot name a registry slot.
 pub const RMW_SELECTOR_CAP: usize = 32;
 
 /// The default wall clock, or `None` when this build has neither a platform port
@@ -1377,7 +1217,7 @@ pub const RMW_SELECTOR_CAP: usize = 32;
 // with nothing to call it. Saying so once beats a cfg predicate that has to
 // track the constructor's.
 #[allow(dead_code)]
-pub(crate) fn default_epoch_us_fn() -> Option<fn() -> u64> {
+pub fn default_epoch_us_fn() -> Option<fn() -> u64> {
     #[cfg(any(feature = "rmw-cffi", feature = "std"))]
     {
         Some(default_epoch_us)
@@ -1420,93 +1260,31 @@ pub fn default_epoch_us() -> u64 {
 #[cfg(test)]
 mod boot_config_tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
 
-    /// Process-wide mutex that serialises all env-touching tests.
-    ///
-    /// `cargo test` runs `#[test]`s in parallel within a single binary by
-    /// default.  Tests that mutate `NROS_LOCATOR` / `ROS_DOMAIN_ID` must
-    /// hold this lock for the duration to avoid races with each other.
-    /// (`cargo nextest` runs each test in its own process so the lock is
-    /// always uncontended, but taking it is still correct.)
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
+    // issue 0687 — these tests no longer touch the process environment, and
+    // that is the point of the move: resolution takes an [`EnvRung`] of
+    // VALUES, so its precedence can be asserted without a mutex serialising
+    // `set_var` across a shared process (the race issue 0607 chased) and
+    // without this crate having an environment at all. The mapping FROM env
+    // vars TO a rung is asserted at the edge that performs it, in
+    // `nros::env`.
 
-    /// RAII guard that saves and restores a single env var.
-    struct EnvGuard {
-        key: &'static str,
-        prev: Option<std::ffi::OsString>,
-    }
-
-    impl EnvGuard {
-        /// Set `key` to `value`, saving the old value for restoration.
-        ///
-        /// # Safety
-        /// Tests serialise all env mutations through [`env_lock()`].
-        fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var_os(key);
-            // SAFETY: serialised via env_lock().
-            unsafe { std::env::set_var(key, value) };
-            Self { key, prev }
-        }
-
-        /// Remove `key` from the environment, saving its previous value.
-        ///
-        /// # Safety
-        /// Tests serialise all env mutations through [`env_lock()`].
-        fn unset(key: &'static str) -> Self {
-            let prev = std::env::var_os(key);
-            // SAFETY: serialised via env_lock().
-            unsafe { std::env::remove_var(key) };
-            Self { key, prev }
+    /// A rung standing in for "the hosted edge read the environment and found
+    /// a locator", the shape most of these tests need.
+    fn rung_locator(locator: &str) -> EnvRung<'_> {
+        EnvRung {
+            locator: Some(locator),
+            ..EnvRung::default()
         }
     }
 
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            // SAFETY: serialised via env_lock().
-            unsafe {
-                match &self.prev {
-                    Some(v) => std::env::set_var(self.key, v),
-                    None => std::env::remove_var(self.key),
-                }
-            }
-        }
-    }
+    // ── T2: no rung ignores everything but baked ────────────────────────────
 
-    // ── T1: no-op regression — resolve(default, true) ≡ from_env() ─────────
-
-    /// `resolve(BootConfig::default(), true)` must be field-for-field
-    /// identical to `from_env()`, regardless of what env vars are set.
-    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
-    #[cfg(feature = "env")]
+    /// With no env rung, resolution is `baked > compiled default` and nothing
+    /// else — the embedded path.
     #[test]
-    fn noop_resolve_matches_from_env() {
-        let _g = env_lock().lock().unwrap();
-
-        let resolved = ExecutorConfig::resolve(BootConfig::default(), true);
-        let env_cfg = ExecutorConfig::from_env();
-
-        assert_eq!(resolved.locator, env_cfg.locator);
-        assert_eq!(resolved.mode, env_cfg.mode);
-        assert_eq!(resolved.domain_id, env_cfg.domain_id);
-        assert_eq!(resolved.node_name, env_cfg.node_name);
-        assert_eq!(resolved.namespace, env_cfg.namespace);
-    }
-
-    // ── T2: hosted_env=false ignores env ─────────────────────────────────────
-
-    /// When `hosted_env=false`, env vars must be completely ignored even if
-    /// they are set in the process environment.
-    #[test]
-    fn embedded_ignores_env_vars() {
-        let _g = env_lock().lock().unwrap();
-        let _e1 = EnvGuard::set("NROS_LOCATOR", "tcp/should-be-ignored:1234");
-        let _e2 = EnvGuard::set("ROS_DOMAIN_ID", "99");
-
-        let resolved = ExecutorConfig::resolve(BootConfig::default(), false);
+    fn no_rung_uses_compiled_defaults() {
+        let resolved = ExecutorConfig::resolve(BootConfig::default());
 
         // Embedded compiled defaults: locator="" (ExecutorConfig::new("")),
         // domain_id=0, node_name="node", namespace="".
@@ -1514,12 +1292,13 @@ mod boot_config_tests {
         assert_eq!(resolved.domain_id, 0);
         assert_eq!(resolved.node_name, "node");
         assert_eq!(resolved.namespace, "");
+        assert_eq!(resolved.rmw, None);
     }
 
     // ── T3: baked overrides compiled default (embedded path) ─────────────────
 
-    /// Baked fields override the compiled default on the `hosted_env=false`
-    /// path; unspecified baked fields keep their compiled default.
+    /// Baked fields override the compiled default on the no-rung path;
+    /// unspecified baked fields keep their compiled default.
     #[test]
     fn baked_overrides_compiled_default() {
         let baked = BootConfig {
@@ -1527,7 +1306,7 @@ mod boot_config_tests {
             domain_id: Some(7),
             ..Default::default()
         };
-        let resolved = ExecutorConfig::resolve(baked, false);
+        let resolved = ExecutorConfig::resolve(baked);
 
         assert_eq!(resolved.node_name, "talker");
         assert_eq!(resolved.domain_id, 7);
@@ -1536,115 +1315,73 @@ mod boot_config_tests {
         assert_eq!(resolved.namespace, "");
     }
 
-    // ── T4: env overrides baked on hosted ────────────────────────────────────
+    // ── T4: env rung overrides baked ─────────────────────────────────────────
 
-    /// When `hosted_env=true` and `NROS_LOCATOR` is set in the process
-    /// environment, the env value must win over a baked locator.
-    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
-    #[cfg(feature = "env")]
+    /// A rung locator wins over a baked one, with its own value.
     #[test]
-    fn env_overrides_baked_on_hosted() {
-        let _g = env_lock().lock().unwrap();
-        let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
-
+    fn env_rung_overrides_baked() {
         let baked = BootConfig {
             locator: Some("tcp/baked:9999"),
             ..Default::default()
         };
-        let resolved = ExecutorConfig::resolve(baked, true);
-        let env_cfg = ExecutorConfig::from_env();
+        let resolved = ExecutorConfig::resolve_with(baked, Some(rung_locator("tcp/env:7447")));
 
-        // Issue 0607 — the exact env string is observable again: tests read
-        // live env rather than a process-global cache that whichever test ran
-        // first had already frozen. This was an `assert_ne!` against the baked
-        // value for exactly that reason.
         assert_eq!(
             resolved.locator, "tcp/env:7447",
             "env locator must win over baked, with its own value"
         );
-
-        // Secondary check: env value matches the cache (both draw from
-        // the same source, so they are always consistent).
-        assert_eq!(
-            resolved.locator, env_cfg.locator,
-            "env locator should win over baked locator"
-        );
     }
 
-    // ── T5: baked used when env var is unset on hosted ───────────────────────
+    // ── T5: baked used when the rung is silent on that field ─────────────────
 
-    /// When `hosted_env=true` but `NROS_LOCATOR` is absent, the baked
-    /// locator must be used.
+    /// A rung that says nothing about the locator falls through to baked —
+    /// the case a hosted caller hits when `$NROS_LOCATOR` is unset.
     #[test]
-    fn baked_used_when_env_unset_on_hosted() {
-        let _g = env_lock().lock().unwrap();
-        let _e1 = EnvGuard::unset("NROS_LOCATOR");
-        let _e2 = EnvGuard::unset("ZENOH_LOCATOR");
-
+    fn baked_used_when_rung_silent() {
         let baked = BootConfig {
             locator: Some("tcp/baked-only:8888"),
             ..Default::default()
         };
-        let resolved = ExecutorConfig::resolve(baked, true);
+        let resolved = ExecutorConfig::resolve_with(baked, Some(EnvRung::default()));
 
         assert_eq!(
             resolved.locator, "tcp/baked-only:8888",
-            "baked locator must be used when env var is absent"
+            "baked locator must be used when the rung is silent"
         );
     }
 
     // ── T6: per-field independence ────────────────────────────────────────────
 
-    /// A baked `node_name` and an env-derived `locator` must both apply
+    /// A baked `node_name` and a rung `locator` must both apply
     /// independently in the same `resolve` call.
-    // phase-359 W10 — exercises the `env` CAPABILITY, so it is gated on it.
-    #[cfg(feature = "env")]
     #[test]
     fn per_field_independence_baked_name_env_locator() {
-        let _g = env_lock().lock().unwrap();
-        let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
-
         let baked = BootConfig {
             node_name: Some("my_talker"),
-            // No locator baked — env should supply it.
+            // No locator baked — the rung should supply it.
             ..Default::default()
         };
-        let resolved = ExecutorConfig::resolve(baked, true);
-        let env_cfg = ExecutorConfig::from_env();
+        let resolved = ExecutorConfig::resolve_with(baked, Some(rung_locator("tcp/env:7447")));
 
-        // Env supplies the locator.
         assert_eq!(
-            resolved.locator, env_cfg.locator,
-            "env locator must apply when locator is not baked"
+            resolved.locator, "tcp/env:7447",
+            "rung locator must apply when locator is not baked"
         );
-        // Baked supplies the node name.
         assert_eq!(
             resolved.node_name, "my_talker",
-            "baked node_name must apply even when locator comes from env"
+            "baked node_name must apply even when the locator comes from the rung"
         );
     }
-    // ── #206 / RFC-0045 — try_resolve validation + env parity ──────────────
 
-    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
-    #[cfg(feature = "env")]
+    // ── #206 / RFC-0045 — try_resolve validation + rung parity ──────────────
+
     #[test]
-    fn try_resolve_malformed_domain_env_errors() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::set("ROS_DOMAIN_ID", "not-a-number");
-        let err = match ExecutorConfig::try_resolve(BootConfig::default(), true) {
-            Err(e) => e,
-            Ok(_) => panic!("expected DomainIdParse error"),
+    fn try_resolve_rung_domain_over_max_errors() {
+        let rung = EnvRung {
+            domain_id: Some(233),
+            ..EnvRung::default()
         };
-        assert_eq!(err, BootConfigError::DomainIdParse);
-    }
-
-    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
-    #[cfg(feature = "env")]
-    #[test]
-    fn try_resolve_domain_env_over_max_errors() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::set("ROS_DOMAIN_ID", "233");
-        let err = match ExecutorConfig::try_resolve(BootConfig::default(), true) {
+        let err = match ExecutorConfig::try_resolve_with(BootConfig::default(), Some(rung)) {
             Err(e) => e,
             Ok(_) => panic!("expected DomainIdRange error"),
         };
@@ -1653,26 +1390,20 @@ mod boot_config_tests {
 
     #[test]
     fn try_resolve_baked_domain_over_max_errors_both_paths() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::unset("ROS_DOMAIN_ID");
         let baked = BootConfig {
             domain_id: Some(DOMAIN_ID_MAX + 1),
             ..BootConfig::default()
         };
         assert!(matches!(
-            ExecutorConfig::try_resolve(baked, true),
+            ExecutorConfig::try_resolve_with(baked, Some(EnvRung::default())),
             Err(BootConfigError::DomainIdRange)
         ));
-        let baked = BootConfig {
-            domain_id: Some(DOMAIN_ID_MAX + 1),
-            ..BootConfig::default()
-        };
         assert!(
             matches!(
-                ExecutorConfig::try_resolve(baked, false),
+                ExecutorConfig::try_resolve(baked),
                 Err(BootConfigError::DomainIdRange)
             ),
-            "embedded path validates the baked value too"
+            "the no-rung path validates the baked value too"
         );
     }
 
@@ -1696,81 +1427,68 @@ mod boot_config_tests {
             ..BootConfig::default()
         };
         assert!(matches!(
-            ExecutorConfig::try_resolve(baked, false),
+            ExecutorConfig::try_resolve(baked),
             Err(BootConfigError::DomainIdRange)
         ));
-        // Explicit zero resolves to domain 0 even on the embedded path
-        // (no env rung to save it).
+        // Explicit zero resolves to domain 0 even with no rung to save it.
         let baked = BootConfig {
             domain_id: baked_domain_from_c_abi(DOMAIN_ID_EXPLICIT_ZERO_C_ABI),
             ..BootConfig::default()
         };
-        let cfg = match ExecutorConfig::try_resolve(baked, false) {
+        let cfg = match ExecutorConfig::try_resolve(baked) {
             Ok(c) => c,
             Err(e) => panic!("explicit zero must resolve: {e}"),
         };
         assert_eq!(cfg.domain_id, 0);
     }
 
-    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
-    #[cfg(feature = "env")]
     #[test]
     fn try_resolve_domain_max_is_valid() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::unset("ROS_DOMAIN_ID");
         let baked = BootConfig {
             domain_id: Some(DOMAIN_ID_MAX),
             ..BootConfig::default()
         };
-        let cfg = match ExecutorConfig::try_resolve(baked, false) {
+        let cfg = match ExecutorConfig::try_resolve(baked) {
             Ok(c) => c,
             Err(e) => panic!("DOMAIN_ID_MAX must be valid: {e}"),
         };
         assert_eq!(cfg.domain_id, DOMAIN_ID_MAX);
     }
 
-    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
-    #[cfg(feature = "env")]
     #[test]
-    fn try_resolve_node_name_env_rung() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::set("NROS_NODE_NAME", "env_node");
+    fn try_resolve_node_name_rung_wins() {
+        let rung = EnvRung {
+            node_name: Some("env_node"),
+            ..EnvRung::default()
+        };
         let baked = BootConfig {
             node_name: Some("baked_node"),
             ..BootConfig::default()
         };
-        let cfg = match ExecutorConfig::try_resolve(baked, true) {
+        let cfg = match ExecutorConfig::try_resolve_with(baked, Some(rung)) {
             Ok(c) => c,
             Err(e) => panic!("resolve failed: {e}"),
         };
-        // Issue 0607 — the VALUE, not just "not the baked one". This used to be
-        // an `assert_ne!` because a process-global env cache could freeze before
-        // this test's EnvGuard ran; tests now read live env, so the env rung is
-        // observable exactly.
         assert_eq!(
             cfg.node_name, "env_node",
-            "env rung must override baked with its own value"
+            "the rung must override baked with its own value"
         );
     }
 
-    // phase-359 W10 — asserts the HOSTED (`env`) resolution rung.
-    #[cfg(feature = "env")]
+    /// issue 0687 — the selector rides the same rung as the locator, so a
+    /// hosted `$NROS_RMW` reaches `Executor::open` through the config rather
+    /// than through a second read inside it.
     #[test]
-    fn try_resolve_env_overrides_baked_locator_model_a() {
-        let _l = env_lock().lock().unwrap();
-        let _g = EnvGuard::set("NROS_LOCATOR", "tcp/10.0.0.9:9999");
-        let baked = BootConfig {
-            locator: Some("tcp/1.2.3.4:1"),
-            ..BootConfig::default()
+    fn rung_carries_the_rmw_selector() {
+        let rung = EnvRung {
+            rmw: Some("cyclonedds"),
+            ..EnvRung::default()
         };
-        let cfg = match ExecutorConfig::try_resolve(baked, true) {
-            Ok(c) => c,
-            Err(e) => panic!("resolve failed: {e}"),
-        };
-        assert_ne!(
-            cfg.locator, "tcp/1.2.3.4:1",
-            "model A: hosted env overrides the baked/explicit value"
-        );
+        let cfg = ExecutorConfig::resolve_with(BootConfig::default(), Some(rung));
+        assert_eq!(cfg.rmw, Some("cyclonedds"));
+        // …and no rung means no selection, which is what an embedded image
+        // with exactly one registered backend relies on.
+        assert_eq!(ExecutorConfig::resolve(BootConfig::default()).rmw, None);
     }
 }
 

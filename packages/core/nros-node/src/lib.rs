@@ -204,8 +204,8 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 // Re-export types that don't depend on RMW (always available)
 pub use executor::{
     BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
-    BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, ExecutorConfig,
-    ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
+    BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, EnvRung,
+    ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
     NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawAcceptedCallback,
     RawCancelCallback, RawGoalCallback, RawResponseCallback, RawServiceCallback,
     RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
@@ -226,6 +226,11 @@ pub use executor::{
 #[cfg(any(has_rmw, test))]
 pub use executor::{ExecutorInlineStorage, ExecutorSizing};
 
+// issue 0687 — the selector's CAP (its reader lives at the hosted edge, in
+// `nros::env`) and the hosted wall clock the edge installs on a resolved
+// config. Both are consumed by `nros`, which builds what this crate takes.
+pub use executor::{RMW_SELECTOR_CAP, default_epoch_us_fn};
+
 // Phase 173.5 — bridge multi-session spec (consumed by the generated
 // orchestration package's `Executor::open_multi`). Gated to match
 // `executor::SessionSpec` (needs the cffi vtable surface).
@@ -234,11 +239,6 @@ pub use executor::SessionSpec;
 
 #[cfg(all(feature = "alloc", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;
-
-// issue 0687 — the single source of truth for "which RMW backend did the user
-// select". Public because the hosted callers (`nros`, `nros-c`) consume it
-// rather than reading `$NROS_RMW` a second and third time.
-pub use executor::rmw_selector;
 
 // ---------------------------------------------------------------------------
 // phase-361 W8.e / issue 0594 — capabilities REQUIRE the heap / the standard
@@ -273,15 +273,8 @@ compile_error!(
 // What the feature actually needs is the allocator the context is built on.
 #[cfg(all(feature = "signal-fd-wake", not(feature = "alloc")))]
 compile_error!("`signal-fd-wake` builds on the `alloc`-gated wake context: add \"alloc\"");
-// phase-359 W10 made the process environment a CAPABILITY rather than a
-// flavour of the core, which was right; the manifest then wrote
-// `env = ["std"]`, which grants what it should have required. `from_env`
-// reads `std::env::var`, so `env` genuinely needs `std` — but a capability
-// that turns `std` on for the user is how a build acquires the standard
-// library without anyone naming it, and that is what this whole block exists
-// to prevent. Requiring it changes nothing about what links; it only makes
-// the manifest say so.
-#[cfg(all(feature = "env", not(feature = "std")))]
-compile_error!(
-    "`env` reads the process environment, which needs the standard library: add \"std\" to this crate's features"
-);
+// issue 0687 — `env` used to be declared here, and to require `std` for the
+// same reason every capability in this block does. It is gone: reading the
+// process environment moved to the hosted edge (`nros::env`), so the guard has
+// nothing left to guard. What replaced it is a VALUE — `ExecutorConfig::
+// resolve_with` takes an `EnvRung` — which needs no capability at all.

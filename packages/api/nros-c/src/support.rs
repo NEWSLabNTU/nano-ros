@@ -207,7 +207,12 @@ pub unsafe extern "C" fn nros_support_init_named(
         domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: None,
     };
-    let resolved = match nros_node::ExecutorConfig::try_resolve(baked, true) {
+    // issue 0687 — the environment rung comes from the hosted edge now. This
+    // call passed `hosted_env: true` unconditionally and relied on the core's
+    // `env` cfg to make it inert on a target build; the cfg is HERE now, where
+    // the capability is, so a no-`env` C image says so instead of asking for a
+    // rung that cannot exist.
+    let resolved = match resolve_boot(baked) {
         Ok(cfg) => cfg,
         Err(_) => return NROS_RET_INVALID_ARGUMENT,
     };
@@ -416,5 +421,25 @@ impl nros_support_t {
     /// Get the locator string
     pub(crate) fn get_locator(&self) -> &[u8] {
         &self.locator[..self.locator_len]
+    }
+}
+
+/// Resolve boot config, with the environment rung when this build has the
+/// `env` capability.
+///
+/// issue 0687 — `ExecutorConfig::try_resolve` used to take `hosted_env: bool`
+/// and read the process environment inside the core crate. The core takes
+/// values now, so the cfg that decides whether there IS an environment lives at
+/// the edge that has one.
+fn resolve_boot(
+    baked: nros_node::BootConfig<'_>,
+) -> Result<nros_node::ExecutorConfig<'_>, nros_node::BootConfigError> {
+    #[cfg(feature = "env")]
+    {
+        nros::env::try_resolve_hosted(baked)
+    }
+    #[cfg(not(feature = "env"))]
+    {
+        nros_node::ExecutorConfig::try_resolve(baked)
     }
 }

@@ -639,7 +639,9 @@ pub unsafe extern "C" fn nros_cpp_init(
         domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: Some(ns_str),
     };
-    let config = match nros_node::ExecutorConfig::try_resolve(baked, true) {
+    // issue 0687 — see the same call in `nros-c`: the env rung is the hosted
+    // edge's to supply, so the capability cfg sits at the call site.
+    let config = match resolve_boot(baked) {
         Ok(cfg) => cfg,
         Err(_) => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
@@ -3022,3 +3024,23 @@ mod qos_override_tests {
 // ---------------------------------------------------------------------------
 #[cfg(all(feature = "bridge", not(feature = "alloc")))]
 compile_error!("`bridge` boxes every entity handle: add \"alloc\" to this crate's features");
+
+/// Resolve boot config, with the environment rung when this build has the
+/// `env` capability.
+///
+/// issue 0687 — `ExecutorConfig::try_resolve` used to take `hosted_env: bool`
+/// and read the process environment inside the core crate. The core takes
+/// values now, so the cfg that decides whether there IS an environment lives at
+/// the edge that has one.
+fn resolve_boot(
+    baked: nros_node::BootConfig<'_>,
+) -> Result<nros_node::ExecutorConfig<'_>, nros_node::BootConfigError> {
+    #[cfg(feature = "env")]
+    {
+        nros::env::try_resolve_hosted(baked)
+    }
+    #[cfg(not(feature = "env"))]
+    {
+        nros_node::ExecutorConfig::try_resolve(baked)
+    }
+}

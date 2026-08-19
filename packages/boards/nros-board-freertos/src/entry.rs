@@ -186,15 +186,12 @@ where
         .boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        ::nros::BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(ctx.config.base.zenoh_locator),
-            domain_id: Some(ctx.config.base.domain_id),
-            namespace: None,
-        },
-        /* hosted_env = */ false,
-    );
+    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
+        node_name: baked.node_name.or(Some("nros_app")),
+        locator: Some(ctx.config.base.zenoh_locator),
+        domain_id: Some(ctx.config.base.domain_id),
+        namespace: None,
+    });
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -601,15 +598,12 @@ where
         .boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        ::nros::BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(ctx.config.base.zenoh_locator),
-            domain_id: Some(ctx.config.base.domain_id),
-            namespace: None,
-        },
-        /* hosted_env = */ false,
-    );
+    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
+        node_name: baked.node_name.or(Some("nros_app")),
+        locator: Some(ctx.config.base.zenoh_locator),
+        domain_id: Some(ctx.config.base.domain_id),
+        namespace: None,
+    });
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
@@ -772,7 +766,10 @@ where
 /// legitimate design (hard-RT control that would rather lose packets than a
 /// deadline); what is not legitimate is choosing it by accident. Both effective
 /// values are printed so the comparison needs no arithmetic from the reader.
-fn report_tiers_above_transport<B: BoardPrint>(config: &Config, tiers: &'static [TierSpec<'static>]) {
+fn report_tiers_above_transport<B: BoardPrint>(
+    config: &Config,
+    tiers: &'static [TierSpec<'static>],
+) {
     // The band's FLOOR: the lowest-priority transport task is the first to be
     // starved, so it decides whether transport makes progress at all.
     let read = config.zenoh_read_priority as u32;

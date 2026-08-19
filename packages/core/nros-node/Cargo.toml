@@ -23,19 +23,15 @@ default = []
 # whose `cfg` sites use it. (phase-359 W2 collapses the five std/alloc field
 # pairs onto `portable_atomic_util::Arc` for BOTH flavours, which is why the dep
 # must not be std-conditional.)
-# phase-359 W10 — a CAPABILITY, not the `std` flavour.
+# phase-359 W10 / issue 0687 — the `env` capability is GONE from this crate.
 #
-# `ExecutorConfig::from_env` reads the process environment, which a target
-# simply does not have — and it is public API with ~39 call sites, most of them
-# in user-facing native examples. Deleting it with the `std` feature would break
-# every native Rust consumer's code; keeping it gated on `std` would keep `std`
-# as an implicit flavour of the core, which is what this campaign removes.
-#
-# So it moves onto its own name. A hosted build that wants `from_env` says
-# `env`; a target build says nothing and never compiles it. `std` stops being a
-# flavour, the capability stays reachable, and no user's CODE changes — only
-# which feature their manifest names.
-env = []
+# It was the last thing keeping a process environment in the core: `from_env`,
+# the env cache and `try_resolve`'s hosted rung all called `std::env::var`. The
+# capability itself was never wrong — a target has no environment, so gating it
+# on `std` would have made `std` an implicit flavour of the core again — but its
+# HOME was. Reading the environment is something the hosted EDGE does; the core
+# takes values (`ExecutorConfig::resolve_with` + `EnvRung`). `from_env` now
+# lives in `nros` as `ExecutorConfigEnvExt`, and consumers name `nros/env`.
 
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util", "nros-platform-api/alloc"]

@@ -2,7 +2,7 @@
 id: 687
 title: "The `env` capability keeps `std` in the core crates, and an ABI env
   getter is the wrong fix — env resolution belongs at the hosted EDGE"
-status: open
+status: resolved
 type: design
 area: api
 related: [phase-359, rfc-0054, issue-0080]
@@ -127,6 +127,49 @@ or import at all 86 sites, or keeps a shim.
 **Recommendation: (1), as its own phase item with the 86 sites in scope**, not
 folded into a flavour cleanup. It is an API change and should be reviewed as
 one.
+
+## Landed 2026-08-19 — mechanism (1), and the 86 was an overcount
+
+`nros-node` has no `env` feature. `src/env.rs` in `nros` is the tree's one
+reader of the process environment.
+
+**What moved:** `EnvCache` + `env_cache()`, `from_env`, `try_resolve`'s hosted
+rung, and `rmw_selector`. **What replaced it in the core:** values —
+`ExecutorConfig::resolve_with(baked, Option<EnvRung>)`, where `EnvRung` is the
+environment rung of precedence model A as already-resolved fields.
+
+Three findings that only surfaced by doing it:
+
+1. **~27 call sites, not 86.** The costing counted every `from_env` in the tree,
+   including `LinkFeatures::from_env`, `AmentIndex::from_env`,
+   `env_logger::Builder::from_env` and `nros-node`'s own tests. Real
+   `ExecutorConfig::from_env` sites outside the core: ~27, and 25 of them go
+   through `nros::prelude::*`, which now carries `ExecutorConfigEnvExt`. Two
+   needed an import added. The API break is real but its blast radius was a
+   quarter of the estimate.
+2. **`hosted_env: bool` was a compile-time constant everywhere** — `true` at
+   `nros-board-linux` plus `nros-c`/`nros-cpp`'s entries, `false` at the other
+   five boards. A parameter with one value per call site is a fork in disguise,
+   so it became two functions.
+3. **`$NROS_RMW` had to move too, and that is what made it honest.** This issue
+   argued the core read should stay because callers reaching `Executor::open`
+   directly rely on it. The answer is neither "keep the read" nor "delete it":
+   the selection became `ExecutorConfig::rmw`, filled by `from_env` /
+   `resolve_hosted`, so every hosted path keeps the behaviour while
+   `Executor::open` stops reading the environment. `nros::open_session` keeps a
+   direct read, because it takes a caller-built config that has no selector in
+   it.
+
+Side effect worth naming: the core's boot-config tests no longer touch the
+process environment, so the shared-mutex-plus-frozen-cache race of issue 0607
+cannot recur there. It survives only where env is genuinely under test, in
+`nros::env`'s own tests.
+
+Census: `nros-node` cfg 11 -> 10, path 20 -> 7; `nros` path 9 -> 22; total 38,
+unchanged — the sites moved from the core to the edge, which is the goal, not
+the number.
+
+The three classes listed below are NOT closed by this and keep their questions.
 ## What this does NOT finish
 
 Deleting `std` from the nine crates needs three more answers, none of them env:

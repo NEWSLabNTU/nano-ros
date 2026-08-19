@@ -28,7 +28,12 @@
 use core::time::Duration;
 
 use nros::{
-    Executor, ExecutorConfig,
+    Executor,
+    ExecutorConfig,
+    // `ExecutorConfig::from_env()` is an extension trait: nano-ros reads the
+    // process environment at the `nros` edge, so the core works on targets that
+    // have no environment at all. `use nros::prelude::*` brings it in too.
+    ExecutorConfigEnvExt as _,
     lifecycle::{LifecycleCallbacks, TransitionResult},
 };
 use nros_log::{Logger, nros_info};

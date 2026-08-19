@@ -763,6 +763,34 @@ core take values — which is already how embedded works (a board installs
 from). `ExecutorConfig` is the boundary; `from_env` is the only constructor that
 reaches behind it. Filed as issue 0687 with the readers named.
 
+**Done, 2026-08-19 — and the total did not move, which is the honest report.**
+The move landed as issue 0687 describes it: `nros-node` lost the `env` feature
+entirely (cfg 11 -> 10, `std::` paths 20 -> 7) and `nros` gained the same reads
+in one new module, `src/env.rs` (9 -> 22). Total: 38, unchanged. That is what
+"push it to the edge" means arithmetically — the campaign's target is the CORE,
+so a site that moves from `nros-node` to the facade is progress even though the
+ratchet's grand total stands still. Three things are worth recording because
+they were not obvious before the work:
+
+* **`from_env` is an extension trait, and ~26 of ~27 call sites did not change.**
+  `ExecutorConfigEnvExt` is in `nros::prelude`, and every native example already
+  writes `use nros::prelude::*`. Two sites needed an added import
+  (`examples/native/rust/lifecycle-node`, `nros-board-linux`) — against the 86
+  the issue costed, because that count included `from_env` methods on unrelated
+  types and `nros-node`'s own tests.
+* **`hosted_env: bool` was never a parameter.** It was `true` at exactly one
+  board plus the two FFI entries and `false` at the other five boards — a
+  compile-time constant at every site. It is two functions now
+  (`ExecutorConfig::resolve` in the core, `nros::env::resolve_hosted` at the
+  edge) plus `resolve_with(baked, Option<EnvRung>)` for the general case, which
+  an embedded caller can also fill from a settings partition — something the
+  bool could not express.
+* **`$NROS_RMW` moved into the config.** `Executor::open` read the variable
+  itself, which is why the core needed an environment at all; it takes
+  `ExecutorConfig::rmw` now, and the hosted constructors fill it. The core's
+  boot-config tests stopped touching the process environment as a side effect,
+  which retires the shared-mutex/stale-cache race issue 0607 chased.
+
 **And env does not finish the campaign.** Three classes remain after it, each
 with its own question rather than a mechanical answer: the `Mutex`/`OnceLock`
 process-global caches (a dependency edge, the trade issue 0669 records), the

@@ -440,15 +440,12 @@ where
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        ::nros::BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(config.locator()),
-            domain_id: Some(config.domain_id()),
-            namespace: None,
-        },
-        /* hosted_env = */ false,
-    );
+    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
+        node_name: baked.node_name.or(Some("nros_app")),
+        locator: Some(config.locator()),
+        domain_id: Some(config.domain_id()),
+        namespace: None,
+    });
 
     // #131 — register the linked zenoh CFFI backend before `Executor::open`.
     #[cfg(feature = "rmw-zenoh")]
@@ -790,15 +787,12 @@ where
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        ::nros::BootConfig {
-            node_name: baked.node_name.or(Some("nros_app")),
-            locator: Some(config.locator()),
-            domain_id: Some(config.domain_id()),
-            namespace: None,
-        },
-        /* hosted_env = */ false,
-    );
+    let exec_cfg = ::nros::ExecutorConfig::resolve(::nros::BootConfig {
+        node_name: baked.node_name.or(Some("nros_app")),
+        locator: Some(config.locator()),
+        domain_id: Some(config.domain_id()),
+        namespace: None,
+    });
 
     // #131 — register the linked zenoh CFFI backend before `Executor::open`.
     // ThreadX is `target_os = "none"`: the `nros_rmw_register_backend!`

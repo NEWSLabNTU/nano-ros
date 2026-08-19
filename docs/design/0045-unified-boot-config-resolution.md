@@ -105,15 +105,26 @@ pub struct BootConfig<'a> {          // session-identity subset; all optional = 
 
 impl<'a> ExecutorConfig<'a> {
     /// Resolve precedence-model-A into a ready ExecutorConfig.
-    /// `hosted_env = true` enables the env-override layer (std only); embedded passes false.
-    pub fn resolve(baked: BootConfig<'a>, hosted_env: bool) -> ExecutorConfig<'a> { /* … */ }
+    pub fn resolve(baked: BootConfig<'a>) -> ExecutorConfig<'a> { /* … */ }
+    /// …with an environment rung on top, supplied by the caller.
+    pub fn resolve_with(baked: BootConfig<'a>, env: Option<EnvRung<'a>>) -> ExecutorConfig<'a> { /* … */ }
 }
 ```
+
+> **Amended by issue 0687 (2026-08-19).** The signature above shipped as
+> `resolve(baked, hosted_env: bool)`, with the core reading `std::env::var`
+> itself when the flag was set. The flag turned out to be a compile-time
+> constant at every call site in the tree — `true` at one board plus the two FFI
+> entries, `false` at the other five boards — and it was the last thing keeping
+> a process environment in `nros-node`. It is now a VALUE: the caller passes an
+> `EnvRung` of already-resolved fields, and `nros::env::resolve_hosted` is the
+> hosted edge that fills one from the environment. The precedence model below is
+> unchanged; only who reads the variables moved.
 
 Three thin call-sites map their source into `BootConfig`, then call `resolve`:
 
 - **Rust boards:** unpack `DeployOverlay { node_name, locator, domain_id }` → `BootConfig` →
-  `ExecutorConfig::resolve(.., hosted_env = is_hosted)`. One line per board, replacing the
+  `ExecutorConfig::resolve(..)` (hosted boards: `nros::env::resolve_hosted(..)`). One line per board, replacing the
   current hardcoded `.node_name("nros_app")`. This is what makes #98 land on *every* board.
   NuttX gains a `run_with_deploy` override (it has none today) so the overlay stops being
   dropped.

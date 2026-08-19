@@ -268,8 +268,7 @@ impl Config {
                     // before the units were unified keep their schedule.
                     ("node.rt", "app_priority") => {
                         if let Some(v) = parse_u32(value) {
-                            config.app_priority =
-                                Self::to_freertos_priority(v.min(31) as u8) as u8;
+                            config.app_priority = Self::to_freertos_priority(v.min(31) as u8) as u8;
                         }
                     }
                     // ...and `[node.rt.freertos]` is RAW, mirroring

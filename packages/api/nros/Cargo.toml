@@ -51,19 +51,16 @@ ffi-size-markers = []
 # `metadata_mode` names `std` for the consumer to add. ARCHITECTURE.md §2
 # clause (a); `= ["std"]` would also make that guard unreachable.
 metadata-mode = []
-# phase-359 W10 — a CAPABILITY, not the `std` flavour.
+# phase-359 W10 / issue 0687 — a CAPABILITY, not the `std` flavour, and it
+# lives HERE now: `src/env.rs` is the one place in the tree that reads the
+# process environment. It forwards to nothing, because there is nothing below
+# to forward to — the core takes VALUES (`ExecutorConfig::resolve_with` +
+# `EnvRung`), which is what let `nros-node` drop the capability entirely.
 #
-# `ExecutorConfig::from_env` reads the process environment, which a target
-# simply does not have — and it is public API with ~39 call sites, most of them
-# in user-facing native examples. Deleting it with the `std` feature would break
-# every native Rust consumer's code; keeping it gated on `std` would keep `std`
-# as an implicit flavour of the core, which is what this campaign removes.
-#
-# So it moves onto its own name. A hosted build that wants `from_env` says
-# `env`; a target build says nothing and never compiles it. `std` stops being a
-# flavour, the capability stays reachable, and no user's CODE changes — only
-# which feature their manifest names.
-env = ["nros-node/env"]
+# A hosted build that wants `from_env` says `env`; a target build says nothing
+# and never compiles it. Clause (a): it REQUIRES `std` (`compile_error!` below)
+# rather than granting it.
+env = []
 
 std = [
     "alloc",

@@ -184,15 +184,12 @@ impl Esp32QemuEntry {
         // domain come from `Config` (NOT env — embedded libc `getenv` has no
         // host trampoline on QEMU). `clock_us` feeds the timer wheel.
         let baked = boot_config.map(BootConfig::from_baked).unwrap_or_default();
-        let exec_config = ExecutorConfig::resolve(
-            BootConfig {
-                node_name: baked.node_name.or(Some("nros_app")),
-                locator: Some(config.zenoh_locator),
-                domain_id: Some(config.domain_id),
-                namespace: None,
-            },
-            /* hosted_env = */ false,
-        )
+        let exec_config = ExecutorConfig::resolve(BootConfig {
+            node_name: baked.node_name.or(Some("nros_app")),
+            locator: Some(config.zenoh_locator),
+            domain_id: Some(config.domain_id),
+            namespace: None,
+        })
         .clock_us(nros_platform_esp32_qemu::clock::clock_us);
         let executor = match nros::Executor::open(&exec_config) {
             Ok(executor) => executor,

@@ -125,7 +125,16 @@ BASELINE = {
     # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
     # crate look like it wanted the flavour. What still names `std` is what only
     # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
-    "nros": {"cfg": 10, "path": 9},
+    #
+    # issue 0687 — path 9 -> 22, deliberately, and it is the SAME 13 sites that
+    # left `nros-node` (20 -> 7). Reading the process environment moved to this
+    # crate's `src/env.rs`, which is the whole point: `nros` is the hosted edge
+    # and may have an environment; the core may not. The campaign's target is
+    # the core, so a number that moves from `nros-node` to `nros` is progress
+    # even though the TOTAL does not move. Reducing this crate's count needs a
+    # different decision (a host-side crate below the facade), not more
+    # spelling.
+    "nros": {"cfg": 10, "path": 22},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -272,7 +281,17 @@ BASELINE = {
     # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
     # crate look like it wanted the flavour. What still names `std` is what only
     # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
-    "nros-node": {"cfg": 11, "path": 20},
+    #
+    # issue 0687 — cfg 11 -> 10, path 20 -> 7. The `env` capability is GONE from
+    # the core: `from_env`, the env cache and `try_resolve`'s hosted rung all
+    # read `std::env::var`, and all three moved to `nros::env`. What the core
+    # takes instead is a VALUE — `ExecutorConfig::resolve_with(baked,
+    # Some(EnvRung { .. }))` — which is both `no_std` and more expressive than
+    # the `hosted_env: bool` it replaces (that flag was a compile-time constant
+    # at every call site in the tree). The 7 that remain are `Mutex`/`OnceLock`,
+    # `Instant` and `ffi`, each carrying its own design question (issue 0687's
+    # closing list).
+    "nros-node": {"cfg": 10, "path": 7},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`

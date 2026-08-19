@@ -168,6 +168,14 @@ pub mod node_runtime;
 #[cfg(feature = "env")]
 pub mod init;
 
+/// issue 0687 — the hosted edge of configuration: every env var nano-ros
+/// honours is read here, and the core takes values.
+#[cfg(feature = "env")]
+pub mod env;
+
+#[cfg(feature = "env")]
+pub use env::{ExecutorConfigEnvExt, rmw_selector};
+
 #[cfg(feature = "env")]
 pub use init::{
     Context, ContextSource, InitError, init, init_with_args, init_with_launch,
@@ -809,9 +817,14 @@ pub mod internals {
         // specific `NROS_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
         // phase-359 W10 / issue 0687 — the ONE selector reader, shared with
-        // `Executor::open` and the C entry. This used to read `$NROS_RMW`
-        // itself, with its own empty-string rule.
-        if let Some(name) = nros_node::rmw_selector() {
+        // `ExecutorConfig::from_env` and the C entry. This used to read
+        // `$NROS_RMW` itself, with its own empty-string rule. `open_session`
+        // takes an arbitrary caller-built config, so it consults the reader
+        // rather than `config.rmw`: a config the caller assembled by hand has
+        // no selector in it, and this entry point has always honoured the
+        // variable.
+        #[cfg(feature = "env")]
+        if let Some(name) = crate::rmw_selector() {
             return nros_rmw_cffi::CffiRmw::open_with_rmw(name.as_str(), &config);
         }
         nros_rmw_cffi::CffiRmw.open(&config)
@@ -1011,6 +1024,14 @@ pub mod prelude {
         ExecutorConfig, GuardConditionHandle, HandleId, HandleSet, InvocationMode, NodeError,
         SessionMode, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, TransportError, Trigger,
     };
+
+    // issue 0687 — `ExecutorConfig::from_env()` is an extension trait now (the
+    // environment is read at this crate's edge, not in the core), so the
+    // spelling only works where the trait is in scope. It is in the prelude
+    // precisely so that the consumers written against the inherent method —
+    // the native examples, the benches — keep compiling unchanged.
+    #[cfg(feature = "env")]
+    pub use crate::ExecutorConfigEnvExt;
 
     // Re-export RMW-dependent executor + handle types
     #[cfg(feature = "rmw-cffi")]

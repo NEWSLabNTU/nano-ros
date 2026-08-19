@@ -149,7 +149,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
     // a ROS-vocabulary HINT (`rmw_cyclonedds_cpp`), not the cffi registry
     // selector (`cyclonedds`) — folding the two together would hand a ROS name
     // to `resolve_backend`, which answers `Unknown` and fails the open.
-    let rmw = nros_node::rmw_selector()
+    let rmw = crate::rmw_selector()
         .map(|s| alloc::string::String::from(s.as_str()))
         .or_else(|| std::env::var("RMW_IMPLEMENTATION").ok())
         .unwrap_or_default();
