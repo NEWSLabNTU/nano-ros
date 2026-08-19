@@ -210,10 +210,49 @@ byte-identical plan and byte-identical `explain` output. The test builds its
 plan by DESERIALISING one rather than constructing the struct, so it fails if
 the field ever stops round-tripping through the schema.
 
+### Derived: system utilisation — and why it stops at a uniprocessor
+
+`U_i = C_i / T_i` is the fraction of a processor a periodic task needs. Summed,
+it is a NECESSARY condition in the same family as the per-node check: a taskset
+demanding more than one processor cannot run on one, whatever the priorities.
+Reported as `Degradation { node: "<system>", dim: "utilization" }` with the
+percentage, so it lands in `nros-plan.json` and `nros explain` alongside the
+rest.
+
+Three deliberate restraints:
+
+* **Only reported when it EXCEEDS capacity.** A utilisation that fits says
+  nothing on its own — the rate-monotonic bound is `n(2^(1/n)-1)`, not 1.0 — so
+  this makes no schedulability claim below 100%.
+* **Unmeasured nodes are NAMED in the message.** A total under 1.0 must not read
+  as "the system fits" when half the taskset contributed nothing for want of a
+  WCET. The verdict says how many were skipped and that the real total is
+  higher.
+* **Silent on SMP.** See below.
+
+### Why `placement` cannot be derived at all: nothing counts the cores
+
+`SchedCaps` carries `affinity: bool` and **no core count**, and neither does
+anything else in the tree (`grep -rn "n_cores\|core_count\|num_cores"` over
+`packages/core` and `packages/boards` returns nothing). Finding 2 asks the
+realizer to derive performance placement from per-core utilisation — but there
+is no denominator to divide by, and no set of cores to assign to.
+
+So `placement` is not blocked on an algorithm; it is blocked on a board fact
+nobody records. The utilisation check above therefore stays silent on an SMP
+board rather than guessing a core count, which is the same restraint for the
+same reason.
+
+**What placement needs first:** a core count in the board descriptor, reaching
+`SchedCaps`. Until then any placement derivation would be inventing its own
+hardware model.
+
 ### Still open
 
-`placement` is untouched and still needs the interference/utilisation model
-finding 2 describes. The check is a NECESSARY condition, not a sufficient one:
+`placement` needs a CORE COUNT before it needs an algorithm (above), and then
+the interference model finding 2 describes. `non_preempt` needs per-callback
+priorities within a tier. Both are missing model INPUTS rather than missing
+realizer logic — which is why neither is a realizer change. The check is a NECESSARY condition, not a sufficient one:
 it cannot say a system IS schedulable, only that a declaration is not. Saying
 the former needs the taskset model — and WCETs on every callback, which needs
 hardware.

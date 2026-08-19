@@ -461,6 +461,63 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
     }
 
     nodes.sort_by(|a, b| a.name.cmp(&b.name));
+    // Issue 0259 — system-level utilisation, the other quantitative term W1's
+    // WCETs unlock.
+    //
+    // `U_i = C_i / T_i` is the fraction of a processor a periodic task needs.
+    // Summed, it is a NECESSARY condition in the same family as the per-node
+    // check above: a taskset demanding more than one processor cannot run on
+    // one, whatever the priorities. Reported only when it EXCEEDS capacity,
+    // because a utilisation that fits says nothing on its own — Liu & Layland's
+    // bound is `n(2^(1/n)-1)` for rate-monotonic, and this makes no claim about
+    // schedulability BELOW 1.0.
+    //
+    // Only on a uniprocessor. `SchedCaps` carries `affinity: bool` but NO CORE
+    // COUNT, and neither does anything else in the tree — so on an SMP board
+    // there is no denominator and the honest answer is silence rather than a
+    // guess. That missing input is also why `placement` cannot be derived at
+    // all (issue 0259): you cannot assign cores you cannot count.
+    //
+    // Nodes with an unknown C or T contribute nothing and are NAMED in the
+    // message, so a total under 1.0 cannot be mistaken for "the system fits"
+    // when half the taskset was unmeasured.
+    if !caps.affinity {
+        let mut total = 0.0_f64;
+        let mut counted = 0usize;
+        let mut unmeasured: Vec<&str> = Vec::new();
+        for n in &nodes {
+            match (n.budget_us, n.period_us) {
+                (Some(c), Some(t)) if t > 0 => {
+                    total += (c as f64) / (t as f64);
+                    counted += 1;
+                }
+                _ => unmeasured.push(n.name.as_str()),
+            }
+        }
+        if counted > 0 && total > 1.0 {
+            let caveat = if unmeasured.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " — and {} node(s) contributed NOTHING for want of a WCET or a \
+                     period ({}), so the real total is higher",
+                    unmeasured.len(),
+                    unmeasured.join(", ")
+                )
+            };
+            degradations.push(Degradation {
+                node: "<system>".to_string(),
+                dim: "utilization",
+                reason: format!(
+                    "the {counted} measured periodic node(s) demand {:.1}% of one \
+                     processor{caveat}. A uniprocessor cannot run this taskset at any \
+                     priority assignment (issue 0259).",
+                    total * 100.0
+                ),
+            });
+        }
+    }
+
     RtosPlan {
         nodes,
         degradations,
@@ -937,5 +994,110 @@ mod tests {
         };
         let plan = realize_one_plan(n);
         assert!(!plan.degradations.iter().any(|d| d.dim == "feasibility"));
+    }
+
+    // ---- issue 0259: system utilisation ------------------------------------
+
+    /// Two nodes each needing 60% of a processor cannot share one.
+    #[test]
+    fn oversubscribed_uniprocessor_is_reported_with_its_percentage() {
+        // 6ms every 10ms = 60% each.
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let u = plan
+            .degradations
+            .iter()
+            .find(|d| d.dim == "utilization")
+            .expect("120% of one processor must be reported");
+        assert_eq!(u.node, "<system>");
+        assert!(u.reason.contains("120.0%"), "{}", u.reason);
+        assert!(u.reason.contains("2 measured"), "{}", u.reason);
+    }
+
+    /// A taskset that fits is NOT reported. Below 1.0 says nothing about
+    /// schedulability on its own, so silence is the only honest output.
+    #[test]
+    fn a_taskset_that_fits_is_not_reported() {
+        let input = MapperInput {
+            nodes: vec![node_with_rate("/a", 100.0, 3.0)],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        assert!(!plan.degradations.iter().any(|d| d.dim == "utilization"));
+    }
+
+    /// Unmeasured nodes are NAMED, so a total cannot be read as "the system
+    /// fits" when part of the taskset contributed nothing.
+    #[test]
+    fn unmeasured_nodes_are_named_in_the_utilization_verdict() {
+        let mut unmeasured = node_with_rate("/silent", 100.0, 0.0);
+        unmeasured.paths[0].exec_ms = None;
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+                unmeasured,
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let u = plan
+            .degradations
+            .iter()
+            .find(|d| d.dim == "utilization")
+            .expect("still oversubscribed");
+        assert!(u.reason.contains("/silent"), "{}", u.reason);
+        assert!(
+            u.reason.contains("the real total is higher"),
+            "{}",
+            u.reason
+        );
+    }
+
+    /// On an SMP board there is no core COUNT anywhere in the model, so there
+    /// is no denominator and the check stays silent rather than guessing. This
+    /// is the same missing input that makes `placement` underivable.
+    #[test]
+    fn smp_gets_no_utilization_verdict_because_cores_are_uncountable() {
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let smp = SchedCaps {
+            affinity: true,
+            ..caps(false, false, false)
+        };
+        let plan = realize_rtos(&ranked, &input, &smp);
+        assert!(
+            !plan.degradations.iter().any(|d| d.dim == "utilization"),
+            "no core count means no denominator; silence beats a guess"
+        );
+    }
+
+    fn node_with_rate(name: &str, rate_hz: f64, exec_ms: f64) -> MapperNode {
+        MapperNode {
+            name: name.to_string(),
+            scope: "/".to_string(),
+            criticality: Some(Criticality::High),
+            paths: vec![timer_path("p", rate_hz, None, Some(exec_ms))],
+            ..Default::default()
+        }
     }
 }

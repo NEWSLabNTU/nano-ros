@@ -38,8 +38,13 @@ Three orchestration issues that are one dependency chain, not three tasks.
   `nros-plan.json` carries an additive `sched_warnings` array and `nros explain`
   renders it above the SchedContext table, so the derivation's inputs are
   visible to a reader rather than only in the bake's scrollback. Acceptance for
-  the `budget`/feasibility strand is met; `placement` and `non_preempt` remain
-  underived (the latter needs per-callback priorities, a MODEL change).
+  the `budget`/feasibility strand is met. System UTILISATION is derived too
+  (`U = ΣC_i/T_i`, reported only when it exceeds one processor, naming the nodes
+  that contributed nothing). `placement` and `non_preempt` remain underived, and
+  BOTH are blocked on missing model INPUTS rather than on realizer logic:
+  placement needs a CORE COUNT (nothing in the tree records one, so the
+  utilisation check stays silent on SMP for the same reason), non_preempt needs
+  per-callback priorities within a tier.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.
