@@ -1,4 +1,11 @@
 // Utilities for comparing generated code with reference outputs from rosidl_generator_rs
+//
+// Issue 0693 — this module is `mod`-included by BOTH `comparison_test` and
+// `parity_test`, and each binary compiles the whole file. A helper used by only
+// one of them is dead code in the other, which `-D warnings` rejects; the
+// alternative is duplicating the ROS-discovery logic per binary, which is the
+// drift this file exists to prevent.
+#![allow(dead_code)]
 use similar::{ChangeTag, TextDiff};
 
 /// Normalize whitespace in code for comparison
@@ -188,5 +195,102 @@ fn foo() {}
         let code1 = "fn foo() {}";
         let code2 = "fn bar() {}";
         assert!(!print_diff("ours", "reference", code1, code2));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ROS installation discovery — issue 0693
+// ---------------------------------------------------------------------------
+
+/// The `share/` root of the installed ROS 2 distro, or `None` when there is no
+/// ROS on this host.
+///
+/// Issue 0693 — the comparison and parity suites read `/opt/ros/jazzy/...` as a
+/// literal. This project installs **humble** (`DEFAULT_ROS_DISTRO` in
+/// `nros-tests`), so every one of those reads failed, every test took its
+/// `eprintln!("Skipping"); return Ok(())` arm, and the suites answered
+/// "19 tests, 0.027 s, all green" while running nothing. The inputs were
+/// present the whole time, one directory over.
+///
+/// Resolution order, most explicit first:
+///   1. `$ROS_DISTRO` — set by `source /opt/ros/<distro>/setup.bash`, and what
+///      the rest of the repo keys on.
+///   2. the sole entry under `/opt/ros`, when there is exactly one. Ambiguity
+///      is not resolved by guessing: with several installed and no
+///      `$ROS_DISTRO`, this returns `None` rather than picking.
+pub fn ros_share_root() -> Option<std::path::PathBuf> {
+    if let Ok(distro) = std::env::var("ROS_DISTRO") {
+        let p = std::path::PathBuf::from(format!("/opt/ros/{distro}/share"));
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    let entries: Vec<_> = std::fs::read_dir("/opt/ros")
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().join("share").is_dir())
+        .collect();
+    match entries.as_slice() {
+        [only] => Some(only.path().join("share")),
+        _ => None,
+    }
+}
+
+/// `<share>/<package>/msg/<message>.msg` for the installed distro.
+pub fn ros_msg_path(package: &str, message: &str) -> Option<std::path::PathBuf> {
+    Some(
+        ros_share_root()?
+            .join(package)
+            .join("msg")
+            .join(format!("{message}.msg")),
+    )
+}
+
+/// Print the one line a reader needs when a ROS-dependent test cannot run.
+///
+/// `cargo test` has no runtime skip and this crate lives in the `packages/cli`
+/// sub-workspace, which `check-cli-tests` runs with a plain `cargo test` — no
+/// junit, so no `nros_tests::skip!` rewrite is available here. Early-returning
+/// is therefore the only option, and the mitigation is
+/// `ros_discovery_is_not_silently_broken` below: whenever ROS IS installed,
+/// that test FAILS if discovery returns `None`. So "no ROS" stays quiet and
+/// "discovery regressed" does not.
+pub fn note_no_ros(test: &str) {
+    eprintln!(
+        "[NO-ROS] {test}: no ROS 2 install found (set ROS_DISTRO or install one under /opt/ros) \
+         — this test did not run. See issue 0693."
+    );
+}
+
+#[cfg(test)]
+mod ros_discovery_tests {
+    use super::*;
+
+    /// Issue 0693 — the guard that makes the early return above safe.
+    ///
+    /// A suite that bails when ROS is absent is indistinguishable from a suite
+    /// that bails because its path is wrong — which is exactly how a hardcoded
+    /// `/opt/ros/jazzy` went unnoticed on a humble host. This test cannot tell
+    /// you ROS is installed, but it CAN tell you that when it is, discovery
+    /// finds it.
+    #[test]
+    fn ros_discovery_is_not_silently_broken() {
+        let any_ros = std::fs::read_dir("/opt/ros")
+            .map(|d| d.flatten().any(|e| e.path().join("share").is_dir()))
+            .unwrap_or(false);
+        if !any_ros {
+            note_no_ros("ros_discovery_is_not_silently_broken");
+            return;
+        }
+        let root = ros_share_root().expect(
+            "an ROS install exists under /opt/ros but discovery returned None — \
+             the parity/comparison suites are silently running nothing (issue 0693)",
+        );
+        assert!(
+            root.join("std_msgs/msg/Bool.msg").is_file(),
+            "discovered {} but it has no std_msgs/msg/Bool.msg — the suites that \
+             read from here will bail and report PASS",
+            root.display()
+        );
     }
 }

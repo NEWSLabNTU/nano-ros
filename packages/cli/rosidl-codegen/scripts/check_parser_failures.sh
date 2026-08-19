@@ -26,8 +26,27 @@ TOTAL_MESSAGES=0
 TOTAL_FAILURES=0
 FAILED_MESSAGES=()
 
+# Issue 0693 — resolve the INSTALLED distro instead of naming one. This said
+# `jazzy` while the project installs humble, so every package reported
+# "No msg directory" and the script checked nothing while exiting 0.
+ROS_SHARE=""
+if [ -n "${ROS_DISTRO:-}" ] && [ -d "/opt/ros/${ROS_DISTRO}/share" ]; then
+    ROS_SHARE="/opt/ros/${ROS_DISTRO}/share"
+else
+    _found=(/opt/ros/*/share)
+    if [ ${#_found[@]} -eq 1 ] && [ -d "${_found[0]}" ]; then
+        ROS_SHARE="${_found[0]}"
+    fi
+fi
+if [ -z "$ROS_SHARE" ]; then
+    echo "no ROS 2 install found (set ROS_DISTRO or install one under /opt/ros)" >&2
+    echo "this script checks message parsing against a real distro; nothing to check" >&2
+    exit 1
+fi
+echo "using ROS share: $ROS_SHARE"
+
 for pkg in "${PACKAGES[@]}"; do
-    MSG_DIR="/opt/ros/jazzy/share/${pkg}/msg"
+    MSG_DIR="${ROS_SHARE}/${pkg}/msg"
 
     if [ ! -d "$MSG_DIR" ]; then
         echo "⊘ ${pkg}: No msg directory"

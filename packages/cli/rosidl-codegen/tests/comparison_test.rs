@@ -4,7 +4,7 @@ use rosidl_parser::parse_message;
 use std::{collections::HashSet, fs, path::PathBuf};
 
 mod parity_helpers;
-use parity_helpers::{normalize_code, print_diff};
+use parity_helpers::{normalize_code, note_no_ros, print_diff, ros_msg_path};
 
 /// Helper to load reference output from fixtures
 fn load_reference_output(package: &str, message: &str, layer: &str) -> Result<String, String> {
@@ -18,14 +18,24 @@ fn load_reference_output(package: &str, message: &str, layer: &str) -> Result<St
 }
 
 /// Helper to read and parse a ROS message file
+/// Issue 0693 — resolve the INSTALLED distro instead of naming one. This read
+/// `/opt/ros/jazzy/...` as a literal while the project installs humble, so
+/// every caller took its "skipping" arm and the suite reported green over work
+/// it never did.
 fn read_and_parse_ros_message(
     package: &str,
     message: &str,
 ) -> Result<rosidl_parser::Message, String> {
-    let path = format!("/opt/ros/jazzy/share/{}/msg/{}.msg", package, message);
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {} (is ROS installed?)", path, e))?;
-    parse_message(&content).map_err(|e| format!("Failed to parse {}: {:?}", path, e))
+    let path =
+        ros_msg_path(package, message).ok_or_else(|| "no ROS 2 install found".to_string())?;
+    let content = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "Failed to read {}: {} (is ROS installed?)",
+            path.display(),
+            e
+        )
+    })?;
+    parse_message(&content).map_err(|e| format!("Failed to parse {}: {:?}", path.display(), e))
 }
 
 #[test]
@@ -34,7 +44,7 @@ fn test_compare_std_msgs_bool() -> Result<(), GeneratorError> {
     let msg = match read_and_parse_ros_message("std_msgs", "Bool") {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Skipping test: {}", e);
+            note_no_ros(&format!("comparison_test ({e})"));
             return Ok(());
         }
     };
@@ -91,7 +101,7 @@ fn test_compare_std_msgs_string() -> Result<(), GeneratorError> {
     let msg = match read_and_parse_ros_message("std_msgs", "String") {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Skipping test: {}", e);
+            note_no_ros(&format!("comparison_test ({e})"));
             return Ok(());
         }
     };
@@ -143,7 +153,7 @@ fn test_compare_geometry_msgs_point() -> Result<(), GeneratorError> {
     let msg = match read_and_parse_ros_message("geometry_msgs", "Point") {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Skipping test: {}", e);
+            note_no_ros(&format!("comparison_test ({e})"));
             return Ok(());
         }
     };
