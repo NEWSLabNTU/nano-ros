@@ -111,8 +111,19 @@ elif [ -f /opt/ros/humble/setup.bash ]; then
 fi
 
 if [ -n "$_nros_ros_setup" ]; then
+    # ROS's setup scripts are not `set -u`-clean (`AMENT_TRACE_SETUP_FILES:
+    # unbound variable` at setup.bash:8) — a strict-mode shell (`set -u`, the
+    # probe's extracted script, any CI runner using `set -euo pipefail`) dies
+    # INSIDE the sourced file, which reads as an activate.sh failure. Sourcing
+    # someone else's script inherits their hygiene: suspend nounset for the
+    # duration, restore whatever the caller had. `case $-` is POSIX and works
+    # in bash and zsh (zsh's $- carries the same letters for set-options).
+    case $- in *u*) _nros_had_nounset=1 ;; *) _nros_had_nounset="" ;; esac
+    set +u
     # shellcheck disable=SC1090,SC1091
     . "$_nros_ros_setup"
+    if [ -n "$_nros_had_nounset" ]; then set -u; fi
+    unset _nros_had_nounset
     # Sourcing can succeed and set nothing (the zsh/`setup.bash` case above).
     # Say so rather than leave a build to discover it as `code=127` later.
     if [ -z "${ROS_DISTRO:-}" ]; then

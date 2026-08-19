@@ -17,6 +17,15 @@ bootstrap:
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal
 # glob in activate.sh all survived. Opt-in, not part of any tier — these are
 # the shapes to re-run before a release, or after touching activate*/bootstrap.
+# The zenoh/ROS-interop track (phase-368 follow-up): the same probe on
+# ros:humble with `--rmw zenoh`, running first-node-rust's zenoh-default build
+# and replaying the interop page's three terminals — router, nano-ros talker,
+# and `ros2 topic echo` proving cross-stack delivery. This is the flow that
+# left the default track when its rmw moved to cyclonedds.
+[group("main")]
+zenoh:
+    PROBE_TRACK=zenoh ./scripts/probe/run-bootstrap-probe.sh
+
 [group("main")]
 bootstrap-arch:
     PROBE_DISTRO=arch PROBE_IMAGE=archlinux:base-devel \

@@ -18,6 +18,16 @@
 #   PROBE_BRANCH     branch to clone (default: current branch)
 #   PROBE_IMAGE      container image (default: ubuntu:24.04)
 #   PROBE_KEEP       set to 1 to keep the container on failure (debug)
+#   PROBE_TRACK      quickstart (default) | zenoh — which documented flow runs.
+#                    `zenoh` is the ROS-interop story (phase-368 follow-up):
+#                    image defaults to ros:humble (the interop page's own
+#                    prerequisite), setup provisions `--rmw zenoh`,
+#                    first-node-rust.md joins the chapter list (its
+#                    zenoh-default build needs the zenoh-pico source that only
+#                    `--rmw zenoh` provisions), and the verifier replays the
+#                    interop page's three terminals: the documented router
+#                    invocation, the nano-ros talker, and `ros2 topic echo`
+#                    proving cross-stack delivery.
 #   PROBE_EXTRACT_ONLY=<path>  extract the probe script to <path> and exit
 #                    (drift check — no docker, no execution)
 
@@ -30,7 +40,13 @@ if [[ -z "${PROBE_EXTRACT_ONLY:-}" ]]; then
     command -v docker >/dev/null || { echo "probe: docker required"; exit 1; }
 fi
 
-PROBE_IMAGE="${PROBE_IMAGE:-ubuntu:24.04}"
+PROBE_TRACK="${PROBE_TRACK:-quickstart}"
+case "$PROBE_TRACK" in
+    quickstart) default_image="ubuntu:24.04" ;;
+    zenoh)      default_image="ros:humble" ;;
+    *) echo "probe: unknown PROBE_TRACK '$PROBE_TRACK' (want quickstart|zenoh)" >&2; exit 2 ;;
+esac
+PROBE_IMAGE="${PROBE_IMAGE:-$default_image}"
 # issue 0373 — the book's install path was only ever exercised on ubuntu+bash,
 # which is why three Arch-only defects (an apt-only prereq block, a `just`
 # contradiction, an unactionable ROS warning) and a zsh-fatal glob in
@@ -60,10 +76,28 @@ fi
 # cmake path, which bootstraps them at configure) — that page's flow belongs
 # to a future zenoh-track probe run under `--rmw zenoh`. Rust coverage lives
 # in verify-first-node.sh's scaffolded-workspace run instead.
-CHAPTERS=(
-    book/src/getting-started/installation.md
-    book/src/getting-started/first-node-c.md
-)
+C_CD_SUBST=()
+if [[ "$PROBE_TRACK" = "zenoh" ]]; then
+    # first-node-rust.md is IN this track: its zenoh-default `nros sync &&
+    # cargo build` is exactly what a reader on the interop path runs, and it
+    # needs the zenoh-pico source that only `--rmw zenoh` provisions.
+    CHAPTERS=(
+        book/src/getting-started/installation.md
+        book/src/getting-started/first-node-rust.md
+    )
+    PROBE_RMW="zenoh"
+    VERIFIER="verify-zenoh-interop.sh"
+else
+    CHAPTERS=(
+        book/src/getting-started/installation.md
+        book/src/getting-started/first-node-c.md
+    )
+    PROBE_RMW="cyclonedds"
+    VERIFIER="verify-first-node.sh"
+    # The C-chapter `cd` subst rides only this track (each --subst must match
+    # EXACTLY ONCE, and the zenoh track does not extract that chapter).
+    C_CD_SUBST=(--subst 'cd examples/native/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/native/c/talker"')
+fi
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
@@ -72,18 +106,16 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --out "$workdir/probe.sh" \
     --distro "$PROBE_DISTRO" \
     --subst 'git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros' \
-    --subst 'nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw cyclonedds' \
-    --subst 'cd examples/native/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/native/c/talker"' \
+    --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw $PROBE_RMW" \
+    ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 
-# The `cd` subst above is the same class as the two before it: the book's C
-# chapter is written for a reader sitting at the repo root, and the probe is
-# ONE shell whose cwd is `examples/native/rust/talker` when step 40 starts.
-# Resolved through `git rev-parse` rather than a literal so it does not
-# assume where the clone landed — the same move `verify-first-node.sh` makes.
+# (The C-chapter cd subst is declared with its track above; it resolves the
+# repo root through `git rev-parse` rather than a literal so it does not
+# assume where the clone landed — the same move the verifiers make.)
 
-# Probe-owned runtime verification (the book's Run section is interactive).
-cat "$SCRIPT_DIR/verify-first-node.sh" >>"$workdir/probe.sh"
+# Probe-owned runtime verification (the book's Run sections are interactive).
+cat "$SCRIPT_DIR/$VERIFIER" >>"$workdir/probe.sh"
 
 if [[ -n "${PROBE_EXTRACT_ONLY:-}" ]]; then
     cp "$workdir/probe.sh" "$PROBE_EXTRACT_ONLY"
@@ -94,7 +126,7 @@ fi
 rm_flag=(--rm)
 [[ "${PROBE_KEEP:-0}" = 1 ]] && rm_flag=()
 
-echo "probe: image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL branch=$PROBE_BRANCH url=$PROBE_CLONE_URL"
+echo "probe: track=$PROBE_TRACK image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL branch=$PROBE_BRANCH url=$PROBE_CLONE_URL"
 
 # Two host-configuration shims, not book prerequisites: `sudo` (the book's
 # prereq block uses it; real user machines have it, the root container doesn't)
