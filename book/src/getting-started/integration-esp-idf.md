@@ -14,8 +14,8 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    host tools you use for testing) come from the `nros` CLI:
 >
 >    ```bash
+>    ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
 >    source ./activate.sh        # OR: direnv allow / source ./activate.fish
->    just setup-cli              # builds packages/cli/target/release/nros (Phase 218)
 >    nros setup qemu-esp32-baremetal --rmw zenoh     # lands the RMW host daemon
 >                                     # (zenohd for zenoh, the
 >                                     # Micro-XRCE-DDS agent for xrce)
@@ -105,9 +105,9 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-QEMU ESP32 testing path: see the `just esp_idf` recipes — they
-boot the IDF binary in `qemu-system-xtensa` via Espressif's
-patched QEMU.
+**Contributors (in-tree checkout):** for the QEMU ESP32 testing path
+see the `just esp_idf` recipes — they boot the IDF binary in
+`qemu-system-xtensa` via Espressif's patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by

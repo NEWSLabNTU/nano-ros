@@ -50,12 +50,12 @@ let dst = cmake::Config::new(&zenoh_pico_build)
     .build();
 ```
 
-**Zephyr builds**: The `just zephyr setup` recipe automatically patches zenoh-pico's `config.h` to disable these features. If you set up the workspace manually or the patch wasn't applied, run:
-```bash
-just zephyr setup  # Updates and patches existing workspace
-```
+**Zephyr builds**: edit
+`modules/lib/zenoh-pico/include/zenoh-pico/config.h` as shown below.
+(Contributors working in the nano-ros checkout: `just zephyr setup`
+applies the same patch to the in-tree workspace automatically.)
 
-Or manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
+Manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
 ```c
 // Change from:
 #define Z_FEATURE_INTEREST 1
@@ -315,7 +315,7 @@ ip addr show tap0
 # Default location: $repo/zephyr-workspace/ (gitignored, in-tree).
 # Legacy setups: $repo/../nano-ros-workspace/ (auto-detected).
 ls -la zephyr-workspace
-just zephyr doctor
+nros doctor
 
 # Or set explicitly
 export NROS_ZEPHYR_WORKSPACE=/path/to/zephyr-workspace

@@ -42,8 +42,8 @@ nros/
 ### Migrating from the legacy sibling layout
 
 Legacy setups put the workspace at `../nano-ros-workspace/` with an
-in-tree symlink. Both layouts work — `just zephyr` recipes auto-detect — but
-to consolidate run:
+in-tree symlink. Both layouts work (**contributors:** the in-tree
+`just zephyr` recipes auto-detect either), but to consolidate run:
 
 ```bash
 ./scripts/zephyr/migrate-workspace.sh --dry-run     # preview
@@ -55,8 +55,8 @@ to consolidate run:
 Build the in-tree `nros` CLI (Phase 218), then let it provision the toolchain:
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 `nros setup` provides most components prebuilt per platform per RMW — the
@@ -269,20 +269,22 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 ## E2E Testing
 
-```bash
-# Zenoh examples
-just zephyr build           # Build Rust zenoh examples
-just zephyr build-c         # Build C zenoh examples
-just zephyr test            # Run zenoh E2E tests
-
-# XRCE examples
-just zephyr build-xrce      # Build all XRCE examples (Rust + C)
-just zephyr test-xrce       # Run XRCE E2E tests
-
-# All examples
-just zephyr build-all       # Build everything
-just zephyr ci              # Doctor + test (CI shortcut)
-```
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> # Zenoh examples
+> just zephyr build           # Build Rust zenoh examples
+> just zephyr build-c         # Build C zenoh examples
+> just zephyr test            # Run zenoh E2E tests
+>
+> # XRCE examples
+> just zephyr build-xrce      # Build all XRCE examples (Rust + C)
+> just zephyr test-xrce       # Run XRCE E2E tests
+>
+> # All examples
+> just zephyr build-all       # Build everything
+> just zephyr ci              # Doctor + test (CI shortcut)
+> ```
 
 ## Troubleshooting
 
@@ -330,6 +332,8 @@ west update
 
 To completely recreate the workspace:
 
-```bash
-just zephyr setup --force
-```
+> **Contributors (in-tree checkout):**
+>
+> ```bash
+> just zephyr setup --force
+> ```

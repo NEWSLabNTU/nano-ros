@@ -17,8 +17,8 @@ bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Then provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
@@ -98,10 +98,13 @@ features), not a config file — see the
 The `10.0.2.0/24` subnet is QEMU Slirp's default; `10.0.2.2` is the
 Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
-Ports: the shipped examples dial host port **7447**. The prebuilt
-*test fixtures* bake per-language ports instead (Rust → 7451, C → 7551,
-C++ → 7651) so suites run in parallel; `just freertos talker` boots the
-fixture, so pair it with `just freertos zenohd` (listens on 7451).
+Ports: the shipped examples dial host port **7447**.
+
+> **Contributors (in-tree fixture/test lanes):** the prebuilt *test
+> fixtures* bake per-language allocator ports instead of 7447 so suites
+> run in parallel; `just freertos talker` boots the fixture, so pair it
+> with `just freertos zenohd` (listens on 7800, the Rust pub/sub
+> fixture port).
 
 ## Build
 
@@ -114,17 +117,19 @@ cd examples/qemu-arm-freertos/rust/talker
 nros sync
 cargo build --release
 
-# C / C++ — use the cross-toolchain CMake invocation:
-just freertos build-fixtures        # builds every in-tree zenoh +
-                                    # DDS example across Rust / C / C++
-# Or single-example (the `nros` CLI on PATH auto-resolves the codegen
-# tool — no `-D_NANO_ROS_CODEGEN_TOOL=` needed):
+# C / C++ — use the cross-toolchain CMake invocation (the `nros` CLI
+# on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
+# needed):
 toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
 cd examples/qemu-arm-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
               -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
+
+> **Contributors (in-tree fixture/test lanes):** `just freertos
+> build-fixtures` builds every in-tree zenoh + DDS example across
+> Rust / C / C++ in one pass.
 
 First Rust build pulls + cross-compiles deps (~5 min). C / C++ build
 also compiles FreeRTOS kernel + lwIP — first run ~3 min.
@@ -140,18 +145,15 @@ for why the requirement is per language rather than per platform.
 ## Run
 
 ```bash
-# 1. Start zenohd on the host. The recipe resolves the provisioned
-#    router (ROS's `rmw_zenohd`) and listens on the fixture
-#    port 7451 (Slirp forwards guest 10.0.2.2:<p> → host:<p>):
-just freertos zenohd &
+# 1. Start the router (ROS's `rmw_zenohd`) on the host, on port 7447 —
+#    the deploy locator the example bakes in its Cargo.toml
+#    ([package.metadata.nros.deploy.freertos] locator, shown above).
+#    Slirp forwards guest 10.0.2.2:<p> → host:<p>.
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# 2. Boot the talker fixture in QEMU. The just recipe wraps
-#    qemu-system-arm with the LAN9118 + Slirp wiring the example expects:
-just freertos talker
-
-# Or run the copy-out example by hand — it dials host port 7447
-# (its deploy locator above), so start the router there instead:
-just native zenohd &   # listens on 7447
+# 2. Boot the talker in QEMU. The leaf's .cargo/config.toml runner
+#    wraps qemu-system-arm with the LAN9118 + Slirp wiring:
 cd examples/qemu-arm-freertos/rust/talker
 cargo run --release
 
@@ -166,9 +168,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 
 QEMU exits via Ctrl-A x.
 
-For batch testing without manual QEMU launches: `just freertos
-test` runs every E2E (pub/sub, service, action) against a temporary
-in-test zenohd.
+> **Contributors (in-tree fixture/test lanes):** `just freertos
+> zenohd &` starts the router on the fixture port (7800) and
+> `just freertos talker` boots the prebuilt talker *fixture* in QEMU
+> instead of the copy-out example. For batch testing without manual
+> QEMU launches, `just freertos test` runs every E2E (pub/sub,
+> service, action) against a temporary in-test zenohd.
 
 **Readiness signal.** Within ~20 seconds of QEMU boot, the talker
 should print `Publishing: 'Hello World: 1'` on its semihosting
@@ -177,8 +182,9 @@ talker. QEMU cold-boot through FreeRTOS init + lwIP DHCP + zenoh
 session open typically takes 10–15 s. If no `Publishing:` line in
 30 seconds:
 
-1. Confirm `zenohd` is running on the host (Slirp forwards
-   `10.0.2.2:7451` → host:7451). Without it the talker retries the
+1. Confirm the router is running on the host on the port the image
+   dials (7447 for the copy-out example — Slirp forwards
+   `10.0.2.2:7447` → host:7447). Without it the talker retries the
    zenoh handshake until QEMU is killed.
 2. Check the talker's early log for `lwIP DHCP timeout` or
    `Failed to open session`.

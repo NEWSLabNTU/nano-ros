@@ -23,8 +23,8 @@ required.
 
 ```bash
 # Build the in-tree nros CLI:
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 
 # Provision the native host (zenoh RMW is the default):
 nros setup native --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds

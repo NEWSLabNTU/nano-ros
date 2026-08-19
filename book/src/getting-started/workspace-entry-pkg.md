@@ -130,8 +130,8 @@ the model whenever a bringup's launch XML or `system.toml` is newer than
 it. Commit the result.
 
 `nros sync` is the only verb you need. Under the hood it runs the pinned
-`nros-launch-resolve` helper (RFC-0060 layer 2, built by
-`just setup-launch-resolve`) and invokes it by **absolute path** — never by a
+`nros-launch-resolve` helper (RFC-0060 layer 2; **contributors** build it
+in-tree via `just setup-launch-resolve`) and invokes it by **absolute path** — never by a
 bare name on `$PATH`, because an unrelated ROS 2 `play_launch` on `PATH` used to
 win that race and break every platform's fixture build (issue 0285). The macro reads `[package.metadata.nros.entry]` at compile
 time to select the right board and executor backend; the same model resolves
@@ -191,7 +191,7 @@ cargo run -p native_entry
 
 The canonical Rust workspace is at `examples/workspaces/rust/`.
 For Zephyr, QEMU, ESP-IDF, and other non-native targets, use the platform's
-native build/run tool or the focused `just <plat> run` recipe.
+native build/run tool.
 
 ## Running on Zephyr
 

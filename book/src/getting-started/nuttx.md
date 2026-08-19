@@ -53,8 +53,8 @@ Build the in-tree `nros` CLI (Phase 218), then provision the board
 (`--rmw` defaults to `zenoh`):
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 nros setup qemu-arm-nuttx --rmw zenoh
 ```
 
@@ -82,12 +82,16 @@ supply yourself:
 
 ## Building
 
-```bash
-just nuttx build
-```
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just nuttx build
+> ```
+>
+> This cross-compiles all NuttX examples for `armv7a-nuttx-eabi` using
+> `cargo +nightly build --release`.
 
-This cross-compiles all NuttX examples for `armv7a-nuttx-eabi` using
-`cargo +nightly build --release`. The examples link against NuttX's POSIX
+The examples link against NuttX's POSIX
 layer, which provides sockets, pthreads, and standard I/O.
 
 ### Available Examples
@@ -111,9 +115,14 @@ path is arch-agnostic. Provision and build with:
 
 ```bash
 nros setup qemu-riscv-nuttx --rmw zenoh
-just nuttx build-riscv-c        # C example fixtures
-just nuttx build-riscv-rust     # Rust example fixtures
 ```
+
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just nuttx build-riscv-c        # C example fixtures
+> just nuttx build-riscv-rust     # Rust example fixtures
+> ```
 
 Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — the same crate as
 the arm board above, selected by `deploy = "nuttx-riscv"`, which picks the
@@ -125,10 +134,12 @@ runtime lanes cover the multi-tier scheduling path on this board.
 
 ## Testing
 
-```bash
-just nuttx test        # arm QEMU integration tests
-just nuttx test-all    # including the networked E2E lanes
-```
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just nuttx test        # arm QEMU integration tests
+> just nuttx test-all    # including the networked E2E lanes
+> ```
 
 Tests run under `qemu-system-arm -M virt` with TAP networking. Each QEMU
 instance connects to the host bridge (`br-qemu`) via TAP devices for

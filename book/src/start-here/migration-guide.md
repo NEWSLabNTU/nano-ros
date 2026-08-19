@@ -13,8 +13,9 @@ tuple:
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup       # print choices
-just setup base  # native/ROS/zenoh quick start
+./scripts/bootstrap.sh              # build the nros CLI (no `just` needed)
+source ./activate.sh
+nros setup native --rmw zenoh       # native/ROS/zenoh quick start
 ```
 
 Read [Setup Compared to Standard ROS 2](setup-compared-to-ros2.md)

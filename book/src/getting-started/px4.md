@@ -31,15 +31,23 @@ my_drone_firmware/
                     └── nano_ros_app.cpp    # the user-editable app
 ```
 
-> **Prereq.** PX4 is a full-tier dependency. Run
-> `just setup px4` first to populate `third-party/px4/PX4-Autopilot`
-> and `third-party/px4/px4-rs`. `just px4 doctor` reports the gap
-> on a fresh clone.
+> **Prereq.** PX4 is a full-tier dependency. Provision the source
+> trees first to populate `third-party/px4/PX4-Autopilot` and
+> `third-party/px4/px4-rs`, then initialize PX4's own submodules.
 
 ```bash
-just setup px4              # equivalent to: just px4 setup
-just px4 doctor
+nros setup --source px4-autopilot --source px4-rs
+git -C third-party/px4/PX4-Autopilot submodule update --init \
+    --depth 1 --recommend-shallow --recursive
 ```
+
+PX4's own Python dependencies come from its `Tools/setup` scripts
+(e.g. `PX4-Autopilot/Tools/setup/ubuntu.sh`) — run those per PX4's
+documentation if the firmware build complains about missing Python
+modules.
+
+**Contributors (in-tree checkout):** `just px4 doctor` reports the
+provisioning gap on a fresh clone.
 
 Vendor the template into your firmware repo, then point PX4 at its
 parent directory + tell the template where nano-ros lives via

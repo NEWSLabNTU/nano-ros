@@ -207,7 +207,7 @@ or export in your shell.
 
 ### SDK paths
 
-Auto-resolved by `just setup <platform>`; override if SDKs live elsewhere.
+Auto-resolved by `nros setup <board>`; override if SDKs live elsewhere.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -377,7 +377,7 @@ targets bake their config at build time instead):
 
 | Scenario | Config source | Cargo features | Notes |
 |----------|---------------|----------------|-------|
-| Desktop (POSIX) | env (`ExecutorConfig::from_env()`) | `rmw-cffi, platform-posix, std` + zenoh dep | run zenohd locally (`just native zenohd`) |
+| Desktop (POSIX) | env (`ExecutorConfig::from_env()`) | `rmw-cffi, platform-posix, std` + zenoh dep | run the router locally (`ros2 run rmw_zenoh_cpp rmw_zenohd`, `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'`) |
 | QEMU bare-metal | `[package.metadata.nros.deploy.<t>]` ip/mac/gateway/locator | `rmw-cffi, platform-bare-metal, ros-humble` + zenoh | TAP/slirp bridge |
 | FreeRTOS hardware | `deploy` metadata / the package.xml tuple + board features (RT) | `…, platform-freertos, …` | `FREERTOS_DIR`/`LWIP_DIR` |
 | ESP32 WiFi | `deploy` metadata (`ssid`/`password` via build env) | `…, platform-bare-metal, …` | `SSID`/`PASSWORD` build env |

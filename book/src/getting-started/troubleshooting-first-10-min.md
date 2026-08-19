@@ -41,6 +41,7 @@ the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
 
 ### A2. nros codegen tool not found
 
+<!-- no-just-ok: the fence below quotes tool output verbatim -->
 ```
 nros (codegen tool) not found on PATH or in packages/cli/target/release/
 or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
@@ -48,13 +49,16 @@ or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
   just setup-cli                 # or: just setup
 ```
 
+(The message names the contributor recipe; `./scripts/bootstrap.sh`
+runs the same build without `just`.)
+
 Missing the `nros` binary on PATH **and** in the per-checkout location.
-Phase 218 builds it from the in-tree sub-workspace; first activate the
-workspace, then build:
+Phase 218 builds it from the in-tree sub-workspace; build it, then
+activate the workspace:
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 If `packages/cli/target/release/nros` exists but PATH doesn't see it —
@@ -157,11 +161,13 @@ NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)
 FREERTOS_PORT not set
 ```
 
-Phase 208.D.1 made the common build sites autoresolve these from
+(The quoted message is emitted by the build script; "build via just"
+in it refers to the contributor recipes.) Phase 208.D.1 made the
+common build sites autoresolve these from
 the in-tree checkout, so a fresh `cargo build` no longer panics on
 them in canonical examples. If your custom build site still does,
-run `direnv allow` once after clone, or set the env explicitly /
-build via the `just <plat>` recipe.
+run `direnv allow` once after clone, or set the env explicitly
+(**contributors** can build via the in-tree `just <plat>` recipe).
 
 ## B. Binary runs but no output
 
@@ -263,18 +269,16 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 
 ## D. Doctor + last-resort
 
-### D1. Use the per-platform doctor first
+### D1. Run the doctor first
 
 ```bash
-just freertos doctor       # FreeRTOS / QEMU / arm-none-eabi
-just nuttx doctor          # NuttX
-just zephyr doctor         # Zephyr
-just threadx_linux doctor  # ThreadX-Linux
-# etc.
+nros doctor
 ```
 
-Each scoped doctor is fast and prints the same fixit hints for
-the toolchain you actually need.
+It prints fixit hints for the toolchain you actually need. (A
+just-free *platform-scoped* doctor spelling does not exist today;
+contributors with an in-tree checkout can scope via the platform
+recipes.)
 
 ### D2. `[PATH] nros built but not on PATH`
 
@@ -291,17 +295,18 @@ source ./activate.fish      # fish
 direnv allow                # auto-activates on `cd nano-ros`
 ```
 
-Don't loop on `just workspace cargo-tools` — that re-runs the
+Don't loop on the contributor recipe `just workspace cargo-tools` — that re-runs the
 build which short-circuits on the same PATH miss.
 
 ### D3. Full sweep (slow)
 
 ```bash
-just doctor tier=default
+nros doctor
+nros setup --check
 ```
 
 Only run this when you're standing up every supported platform in
-one go. It walks every per-platform doctor and can take a few
+one go. It walks the provisioning checks and can take a few
 minutes.
 
 ### D4. File an issue

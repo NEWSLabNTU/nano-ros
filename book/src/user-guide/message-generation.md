@@ -35,8 +35,8 @@ The binding generator lives in the in-tree CLI sub-workspace at `packages/cli/` 
    `packages/cli/` (Phase 218) and put on PATH by the activate file:
    ```bash
    # From the nano-ros repository root
+   ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
    source ./activate.sh        # OR: direnv allow / source ./activate.fish
-   just setup-cli              # builds packages/cli/target/release/nros
    ```
    See [Installation](../getting-started/installation.md) for the full
    walkthrough.

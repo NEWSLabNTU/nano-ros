@@ -56,7 +56,8 @@ The patch table simply is not there, and the nano-ros crates your leaf
 names go looking for themselves on crates.io instead of in your
 checkout. That one does not announce itself.
 
-The `just` recipes — `just <module> build-fixtures` and friends — run
+**Contributors (in-tree checkout):** the `just` recipes —
+`just <module> build-fixtures` and friends — run
 `nros sync` for you, so they work from a fresh clone. It is the
 hand-run `cd <leaf> && cargo build` that needs you to run it yourself.
 
@@ -111,8 +112,8 @@ that live on the platform's own starter page.
 ### cargo — Rust, every platform
 
 ```bash
+./scripts/bootstrap.sh          # builds the in-tree nros CLI
 source ./activate.sh            # OR: direnv allow / source ./activate.fish
-just setup-cli                  # builds the in-tree nros CLI
 nros setup <board> --rmw zenoh  # toolchain + SDK for the target
 
 cd <leaf>
@@ -123,14 +124,15 @@ cargo build --release
 Some leaves also pin their cross target in that same
 `.cargo/config.toml` (`[build] target = "thumbv7m-none-eabi"` on the
 Cortex-M ones), so no `--target` on the command line. Others get it from
-the platform's recipe instead — `just --list <module>` shows which
+the platform's recipe instead — **contributors:** in an in-tree
+checkout, `just --list <module>` shows which
 recipe builds what, and using the recipe avoids having to know.
 
 ### cmake — C and C++
 
 ```bash
+./scripts/bootstrap.sh
 source ./activate.sh
-just setup-cli
 nros setup <board> --rmw zenoh
 
 cd <leaf>
@@ -162,7 +164,8 @@ The distinction matters for one reason: a bare `cargo build` writes
 `target/` next to the leaf. In *your* project that is exactly right. In
 the nano-ros checkout it is residue the repo's own gate rejects
 (`check-example-leaf-target-dirs`) — in-tree builds are expected to go
-through `just <module> …`, which writes into a shared build directory
+through the contributor recipes (`just <module> …`), which write into a
+shared build directory
 instead. One in-repo `cargo build --release` of a Cortex-M example
 leaves 269 MB behind.
 
@@ -171,7 +174,7 @@ thing, copy the example out and `cargo build` normally.
 
 ## Per platform
 
-| platform | grid row | `nros setup <board>` | examples under | recipes | starter page |
+| platform | grid row | `nros setup <board>` | examples under | recipes (contributors) | starter page |
 |---|---|---|---|---|---|
 | Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native POSIX](../platform-guides/native-posix.md) |
 | FreeRTOS (QEMU MPS2-AN385) | `freertos` | `qemu-arm-freertos` | `examples/qemu-arm-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
@@ -192,7 +195,8 @@ share of the workspace ones. Zephyr's two rows split differently:
 `zephyr` and `zephyr-cortex-m` build the SAME examples for different
 boards.
 
-Each module's recipes are discoverable rather than memorized:
+**Contributors (in-tree checkout):** each module's recipes are
+discoverable rather than memorized:
 
 ```bash
 just --list freertos          # every FreeRTOS recipe, grouped

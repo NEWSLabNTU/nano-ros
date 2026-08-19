@@ -16,8 +16,8 @@ ethernet). For the ESP-IDF component path (C / C++ apps), see
 Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Provision the board (and RMW):
@@ -76,31 +76,42 @@ rmw       = "zenoh"
 domain_id = 0
 ip        = "10.0.2.50"
 gateway   = "10.0.2.2"
-locator   = "tcp/10.0.2.2:7454"
+locator   = "tcp/10.0.2.2:9800"
 ```
 
 ## Build
 
-```bash
-# QEMU ESP32 (qemu-system-riscv32). `just esp32 build-qemu` (which
-# `just esp32 talker` depends on) builds the QEMU-board variant; the
-# example's build.rs invokes `nros generate-rust` automatically, so
-# the `generated/` dir populates on first build (gitignored).
-just esp32 build-qemu
-```
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> # QEMU ESP32 (qemu-system-riscv32). `just esp32 build-qemu` (which
+> # `just esp32 talker` depends on) builds the QEMU-board variant; the
+> # example's build.rs invokes `nros generate-rust` automatically, so
+> # the `generated/` dir populates on first build (gitignored).
+> just esp32 build-qemu
+> ```
 
 ## Run
 
 ```bash
-# QEMU ESP32. First bring up zenohd on the esp32 fixture port (7454):
-just esp32 zenohd &
-# Then boot the talker binary in qemu-system-riscv32 (esp32c3):
-just esp32 talker
-# Expected serial output (per src/lib.rs):
-#   Publishing: 'Hello World: 1'
-#   Publishing: 'Hello World: 2'
-#   ...
+# QEMU ESP32. First bring up the router (ROS's `rmw_zenohd`) on the
+# port the example dials (9800 — the deploy `locator` above):
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9800"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
+```
 
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> # Boot the talker binary in qemu-system-riscv32 (esp32c3):
+> just esp32 talker
+> # Expected serial output (per src/lib.rs):
+> #   Publishing: 'Hello World: 1'
+> #   Publishing: 'Hello World: 2'
+> #   ...
+> ```
+
+```bash
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
@@ -110,13 +121,16 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-**Readiness signal.** QEMU ESP32: ~15 seconds **after** a warm cache —
-the `just esp32 talker` recipe re-runs `build-qemu` every invocation,
-so a first / cold run adds ~25 s of build time on top. If no
-`Publishing:` line:
+**Readiness signal.** QEMU ESP32: ~15 seconds after boot.
+
+> **Contributors (in-tree fixture/test lanes):** the `just esp32
+> talker` recipe re-runs `build-qemu` every invocation, so a first /
+> cold run adds ~25 s of build time on top.
+
+If no `Publishing:` line:
 
 1. Wrong locator → talker logs `zenoh open failed` and retries.
-   Confirm `zenohd` is reachable on the host IP (`10.0.2.2:7454`).
+   Confirm the router is reachable on the host IP (`10.0.2.2:9800`).
 2. Confirm `.cargo/config.toml` target is
    `riscv32imc-unknown-none-elf` (ESP32-C3). The tutorial does not
    support ESP32-S3 (Xtensa) yet.

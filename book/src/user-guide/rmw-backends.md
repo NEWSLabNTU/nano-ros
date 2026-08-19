@@ -81,11 +81,14 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 - **No status events yet** — `register_subscription_event` / `register_publisher_event` / `assert_publisher_liveliness` slots are not wired to Cyclone listeners yet.
 
 **Build:**
-```bash
-just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
-just cyclonedds build-rmw   # build packages/rmw/cyclonedds/nros-rmw-cyclonedds
-just cyclonedds test        # run the CTest harness
-```
+
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
+> just cyclonedds build-rmw   # build packages/rmw/cyclonedds/nros-rmw-cyclonedds
+> just cyclonedds test        # run the CTest harness
+> ```
 
 Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
 configure time; the root `CMakeLists.txt` add_subdirectory's
@@ -100,7 +103,8 @@ a prebuilt install you point at (`-DCMAKE_PREFIX_PATH=<install>` /
 `-DCycloneDDS_DIR=`), else **self-provision from source** — by default the pinned
 `third-party/dds/cyclonedds` submodule, or your own checkout via
 `-DCYCLONEDDS_SOURCE_DIR=<path>`. So a bare `cmake`/`cargo` build needs **no
-`just cyclonedds` pre-step**; freertos / threadx-rv64 / native examples build
+`just cyclonedds` pre-step** (that is a contributor-only recipe);
+freertos / threadx-rv64 / native examples build
 Cyclone on demand (sccache-accelerated), gated on the relevant cross toolchain.
 On a tier without the toolchain, the embedded-Cyclone tests are filtered out of
 `test-all` (*skipped*, not *failed*). `idlc` is a host tool, found on `PATH`

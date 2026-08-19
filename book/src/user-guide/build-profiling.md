@@ -25,7 +25,8 @@ optional per-unit drill-down and diagnostic hints.
 
 ```console
 $ west build -b qemu_cortex_a53 examples/zephyr/rust/talker   # build/.ninja_log written
-$ just profile examples/zephyr/rust/talker
+$ cargo build -p nros-build-profile      # once; builds the profiler bin
+$ ./target/debug/nros-build-profile examples/zephyr/rust/talker
 
 Backend: ninja (west)        Total: 41.2s
 
@@ -44,7 +45,7 @@ The coarse table works with any build; the per-crate drill-down needs `--timings
 
 ```console
 $ cd examples/native/rust/talker && cargo build --timings   # target/cargo-timings/ written
-$ just profile examples/native/rust/talker --deep
+$ ./target/debug/nros-build-profile examples/native/rust/talker --deep
 
 Backend: cargo               Total: 30.3s
 
@@ -69,7 +70,6 @@ telling you how to enable the drill-down — never an error.
 ## Flow 3 — machine-readable (CI regression diffing)
 
 ```console
-$ just profile examples/zephyr/rust/talker --deep    # then add --json on the bin, or:
 $ ./target/debug/nros-build-profile examples/zephyr/rust/talker --json
 wrote examples/zephyr/rust/talker/nros-build-profile.json
 ```
@@ -79,7 +79,7 @@ regressions (a stage's seconds or a unit's share jumping).
 
 ## External (copy-out) projects
 
-Copy-out example projects have no `justfile`. Run the bin directly — same output:
+For copy-out example projects, run the installed bin the same way:
 
 ```console
 $ nros-build-profile <project-dir> --deep

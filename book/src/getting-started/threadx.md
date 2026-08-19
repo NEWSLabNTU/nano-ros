@@ -8,9 +8,13 @@ socket layer). Two flavours ship in-tree:
 - **threadx-riscv64** — QEMU `virt` machine with the RISC-V64 GCC
   toolchain. Full kernel + NetX Duo TCP/IP stack.
 
-Rust, C, and C++ are supported on both flavours — `just <flavour>
-build-fixtures` produces `threadx_cpp_*` and `riscv64_threadx_cpp_*`
-binaries alongside the Rust + C ones. See the
+Rust, C, and C++ are supported on both flavours.
+
+> **Contributors (in-tree fixture/test lanes):** `just <flavour>
+> build-fixtures` produces `threadx_cpp_*` and `riscv64_threadx_cpp_*`
+> binaries alongside the Rust + C ones.
+
+See the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
 for the per-RMW cell status.
 
@@ -36,8 +40,8 @@ source otherwise — `zenohd` is the notable source build, and zenoh is the defa
 Build the in-tree `nros` CLI (Phase 218):
 
 ```bash
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 ```
 
 Provision the ThreadX flavour you need (+ the RMW):
@@ -158,23 +162,25 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 ## Build
 
 ```bash
-# threadx-linux:
-just threadx_linux build-fixtures   # build all rust + c examples
-
-# Single example — `nros sync` first (the build-fixtures recipes above
-# do it for you; a hand-run cargo build does not):
+# Single example — `nros sync` first (a hand-run cargo build does
+# not do it for you):
 cd examples/threadx-linux/rust/talker
 nros sync
 cargo build --release
-
-# threadx-riscv64:
-just threadx_riscv64 build-fixtures
 ```
+
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just threadx_linux build-fixtures     # build all rust + c examples
+> just threadx_riscv64 build-fixtures
+> ```
 
 First setup builds ThreadX + NetX Duo (~3 min). Subsequent example
 builds finish in seconds.
 
-The `just … build-fixtures` recipes run `nros sync` for you. A
+**Contributors (in-tree checkout):** the `just … build-fixtures`
+recipes run `nros sync` for you. A
 hand-run `cargo build` in a leaf does not — without it cargo fails
 while *parsing the manifest*, with
 `failed to load config include '…/nros-patch.toml'` and no mention of
@@ -184,21 +190,21 @@ sync. See
 ## Run
 
 ```bash
-# threadx-linux (no QEMU). Step 1 brings up the in-tree zenohd on
-# the threadx-linux port (7455). Step 2 runs the talker via the
-# matching just recipe — same binary the example dir builds.
-just threadx_linux zenohd &
-just threadx_linux talker
+# threadx-linux (no QEMU). Step 1 brings up the router (ROS's
+# `rmw_zenohd`) on port 9000 — the deploy `locator` the talker bakes
+# in its Cargo.toml. Step 2 builds + runs the talker:
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:9000"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
+cd examples/threadx-linux/rust/talker && nros sync && cargo run --release
 # Expected (per src/lib.rs structured logs):
 #   Publishing: 'Hello World: 1'
 #   Publishing: 'Hello World: 2'
 #   ...
 
-# threadx-riscv64 (QEMU virt). Same shape — zenohd on 7453 first,
-# then the talker recipe boots `qemu-system-riscv64` with the
-# virtio-net + Slirp wiring baked in:
-just threadx_riscv64 zenohd &
-just threadx_riscv64 talker
+# threadx-riscv64 (QEMU virt). Same shape — the router on 9400 first
+# (the riscv64 talker dials tcp/10.0.2.2:9400 through QEMU Slirp):
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9400"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
@@ -209,11 +215,14 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-For batch testing: `just threadx_linux test` runs every pubsub /
-service / action against an in-test zenohd.
+> **Contributors (in-tree fixture/test lanes):**
+> `just threadx_riscv64 talker` boots the prebuilt riscv64 talker
+> fixture in `qemu-system-riscv64` with the virtio-net + Slirp wiring
+> baked in. For batch testing, `just threadx_linux test` runs every
+> pubsub / service / action against an in-test zenohd.
 
 **Readiness signal.** threadx-linux: `Publishing: 'Hello World: 1'`
-within a few seconds of `just threadx_linux talker` **on a warm
+within a few seconds of `cargo run --release` **on a warm
 cache**; a cold first run rebuilds the Rust example (~80 s on a
 fresh checkout) before the first publish lands. threadx-riscv64
 (QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:

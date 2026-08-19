@@ -42,8 +42,8 @@ and you do not need a ROS distro on the machine.
 
 ```bash
 # 1. Build the in-tree nros CLI (analogous to installing a ROS distro, Phase 218):
+./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-just setup-cli              # builds packages/cli/target/release/nros
 
 # 2. Provision a board + RMW (analogous to `rosdep install`):
 nros setup native --rmw zenoh

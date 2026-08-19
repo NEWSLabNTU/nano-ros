@@ -119,8 +119,8 @@ under `/opt/ros`.
 Do not expect `command -v rmw_zenohd` to print anything: `rmw_zenohd` installs
 into `<prefix>/lib/rmw_zenoh_cpp/`, and `setup.bash` puts only `bin/` on `PATH`.
 ROS's own way to reach it is `ros2 run rmw_zenoh_cpp rmw_zenohd`. So a silent
-`command -v` is normal and not a broken install — `just <plat> zenohd` finds it
-regardless.
+`command -v` is normal and not a broken install — the
+`ros2 run rmw_zenoh_cpp rmw_zenohd` spelling finds it regardless.
 
 **Only what you name is used.** nano-ros needs the router that ships *with your
 `rmw_zenoh_cpp`*: the two share a zenoh build, and a mismatch shows up as
@@ -139,7 +139,7 @@ nothing else. In particular:
 If you do want a specific binary, name it with `NROS_RMW_ZENOHD`; it is used as
 given, with a warning if it is not an `rmw_zenoh_cpp` router.
 
-If you once used an older nano-ros, run `just doctor`: it reports a retired SDK
+If you once used an older nano-ros, run `nros doctor`: it reports a retired SDK
 store entry that is still installed, `zenohd` included, with the command to
 remove it.
 
@@ -264,9 +264,10 @@ prereq; rustup is installed on demand):
 
 > Sourcing `activate.sh` on a host without `just` prints one line about
 > RTOS SDK path defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `IDF_PATH`, …)
-> not being loaded. Harmless here — nothing in the native flow reads
-> them. Embedded builds and every `just` recipe do need it:
-> `cargo install just`.
+> not being loaded. Harmless — nothing in the user flows reads them,
+> and embedded builds work with plain `cargo` / `cmake`. `just` is a
+> **contributor** tool: only the in-tree `just` recipes (test lanes,
+> fixture builds) need it (`cargo install just`).
 
 ```sh
 git clone https://github.com/NEWSLabNTU/nano-ros.git
@@ -358,20 +359,21 @@ board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 > For **zenoh**, the router is **not** provisioned by `nros setup`: it is
 > ROS 2's `rmw_zenoh_cpp/rmw_zenohd`, so that nano-ros is tested against
 > the router a ROS 2 deployment actually runs
-> ([RFC-0075](../design/rmw.md)). Start it with the repo helper, which
-> resolves it out of `/opt/ros` and configures it:
+> ([RFC-0075](../design/rmw.md)). Start it with your ROS environment
+> sourced (leave it running for the whole session):
 >
 > ```bash
-> just native zenohd     # leave running for the whole session
+> ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+>     ros2 run rmw_zenoh_cpp rmw_zenohd
 > ```
 >
 > It is not configured on the command line — `rmw_zenohd` ignores argv
-> and reads `ZENOH_CONFIG_OVERRIDE`, which is what the helper sets. To
-> pick a different endpoint, set `ZENOH_LOCATOR` before invoking it.
+> and reads `ZENOH_CONFIG_OVERRIDE`, as above. To pick a different
+> endpoint, change the port in the `listen/endpoints` entry.
 >
 > Without a router the talker blocks forever on `Executor::open` with no
 > output. Default ports: `tcp/127.0.0.1:7447` on POSIX,
-> `tcp/10.0.2.2:7451` on QEMU FreeRTOS (Slirp forwards to host).
+> `tcp/10.0.2.2:7447` on QEMU FreeRTOS (Slirp forwards to host).
 > Mismatch = silent hang; see
 > [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
@@ -464,9 +466,9 @@ just nuttx setup              # → nros setup qemu-arm-nuttx
 just threadx_linux setup      # → nros setup threadx-linux
 ```
 
-## Docker environment
+## Docker environment (contributors)
 
-For a containerized environment with QEMU 7.2+:
+For a containerized environment with QEMU 7.2+ (in-tree checkout):
 
 ```bash
 just docker build
@@ -476,7 +478,8 @@ just docker test-qemu  # Run QEMU tests in container
 
 ## Migrating from a pre-140 checkout
 
-If you were on a nano-ros version that still had `just install-local`,
+If you were on a nano-ros version that still had the (contributor)
+`just install-local` recipe,
 see
 [migration-install-local-removal.md](../release/migration-install-local-removal.md)
 for the one-page rewrite.

@@ -1,7 +1,7 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W9, W11, W13 landed; W4, W10,
-W12 in flight; W14 next. The maintainer-approved TARGET DESIGN below defines
+**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W9, W11, W13 landed; W4 in flight (container run
+pending); W10, W12, W14 landed. The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
 
@@ -370,12 +370,33 @@ zenoh-pico + the router story (moves here from the starters), XRCE, and one
 switching page per builder (the one-word C++ edit; the Rust flag once W8
 bakes it).
 
-**W12 — the de-just sweep.** Every `just` invocation on the user track
-(getting-started/, user-guide/, start-here/) replaced with `nros`/vendor-tool
-spelling or moved to internals/ if it is genuinely contributor content.
-`workflow-by-platform.md` splits its recipes column into a contributor note.
-Gate: `check-book-no-just` — user-track pages contain no `just ` command —
-wired beside `check-book-links` in `check-fast`.
+**W12 — the de-just sweep. LANDED.** 139 inventoried `just` sites across 27
+user-track pages: 36 REPLACED with verified user spellings (`./scripts/
+bootstrap.sh` for the CLI build; `ZENOH_CONFIG_OVERRIDE=… ros2 run
+rmw_zenoh_cpp rmw_zenohd` for every router; plain `nros doctor` /
+`nros setup --check`; per-leaf cargo/cmake for fixture-recipe stand-ins;
+`nros setup --source px4-*` for PX4), 24 contributor blocks wrapped in marked
+asides (relocation to internals/ deferred, list in the sweep commit), the
+rest marked in place.
+
+Two findings beyond the plan, both now fixed in the pages:
+* **Every router port the user track quoted was stale** — the book said
+  7450–7456 where the recipes' allocator uses 7400–10200. Replacements
+  re-derive from the recipe body or, better, use the port the example's
+  deploy locator actually DIALS (bare-metal's "verbatim" TOML quote said
+  7450; the real leaf says 10500).
+* `nros doctor --platform <p>` and arm-fvp's `nros doctor --board` shell out
+  to `just` (`run_just_doctor`), so the only just-free doctor surface is the
+  plain form — a de-just CLI gap worth its own issue.
+
+Gate: `check-book-no-just` in `check-fast`. v2 licenses contributor content
+three ways (marker within 8 lines, case-insensitive; a "contributor" heading
+licenses its section; a "contributors" table-header licenses its rows) plus
+an explicit `no-just-ok` escape hatch for verbatim tool output. Self-tested
+failing on an unmarked in-scope injection. Two tool-emitted strings still
+SAY `just setup-cli` (the CLI's stale/missing message, a build.rs hint) —
+quoted verbatim with the user remedy beside them; de-justing the emitters is
+follow-up.
 
 **W13 — Part III, BYO-RTOS.** New "how integration works" page from
 RFC-0072/0003 (guest principle, shell table, board pkg + `[deploy.*]`);

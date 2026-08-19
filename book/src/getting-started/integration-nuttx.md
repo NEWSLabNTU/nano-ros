@@ -19,8 +19,8 @@ own kernel build and you want to add ROS 2 communication.
 > a cross-toolchain and do **not** need a ROS 2 install:
 >
 > ```bash
+> ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
 > source ./activate.sh        # OR: direnv allow / source ./activate.fish
-> just setup-cli              # builds packages/cli/target/release/nros (Phase 218)
 > nros setup qemu-arm-nuttx --rmw zenoh
 > ```
 >
@@ -126,9 +126,15 @@ tuple (RFC-0048 §4):
 The guest network shape (eth0 `10.0.2.30`, Slirp gateway `10.0.2.2`)
 comes from the board crate; add a `locator = "tcp/10.0.2.2:<port>"`
 field to dial a non-default router port. The prebuilt *test fixtures*
-bake distinct per-language ports (Rust `7452`, C `7552`, C++ `7652`) so
-parallel suites don't collide on one router; `just nuttx zenohd` binds
-`7452` to match the Rust fixture.
+bake distinct per-language allocator ports so parallel suites don't
+collide on one router. Start the router (ROS's `rmw_zenohd`) on the
+port your app dials — it must listen on `0.0.0.0`, not loopback,
+because the guest reaches it through QEMU's Slirp gateway:
+
+```bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:8200"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+```
 
 ## Build
 
@@ -152,19 +158,15 @@ cmake --build build
 ## Run
 
 ```bash
-# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7452 → host).
-#    The in-tree just recipe runs the daemon on the nuttx fixture
-#    port (7452):
-just nuttx zenohd &
+# 1. Start the router on the host (Slirp forwards 10.0.2.2:<port> →
+#    host). It must listen on 0.0.0.0 for the Slirp gateway; 8200 is
+#    the port the in-tree lanes use — match whatever `locator` your
+#    app bakes:
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:8200"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# 2. QEMU NuttX (ARM). For nano-ros's own in-tree QEMU examples the
-#    just recipe wraps qemu-system-arm with the right wiring. `talker`
-#    here is the Rust variant; the C / C++ variants boot through the
-#    `make`-driven path described under "Auto-configure glue" below:
-just nuttx talker
-#    For a NuttX-managed workspace where you've staged the
-#    integration shell + your own app, mirror the recipe's actual
-#    flags (see `just/nuttx.just::_run-qemu`):
+# 2. QEMU NuttX (ARM). For a NuttX-managed workspace where you've
+#    staged the integration shell + your own app, boot QEMU directly:
 qemu-system-arm -M virt -cpu cortex-a7 -nographic \
                 -icount shift=auto \
                 -kernel $NUTTX_DIR/nuttx \
@@ -192,6 +194,13 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Force best-effort to receive:
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
+
+> **Contributors (in-tree fixture/test lanes):** for nano-ros's own
+> in-tree QEMU examples, `just nuttx zenohd &` starts the router on
+> the fixture port (8200) and `just nuttx talker` wraps
+> `qemu-system-arm` with the right wiring. `talker` there is the Rust
+> variant; the C / C++ variants boot through the `make`-driven path
+> described under "Auto-configure glue" below.
 
 **Readiness signal.** After typing the app's NSH command (e.g.
 `nuttx_c_talker`), expect `Publishing: 'Hello World: 1'` on the NSH

@@ -47,12 +47,16 @@ See [Native POSIX](../platform-guides/native-posix.md).
 
 ## RTOS and Bare-Metal
 
-RTOS targets usually produce firmware images or simulator binaries:
+RTOS targets usually produce firmware images or simulator binaries,
+built with the platform's own tool from the example / package dir:
 
 ```bash
-just freertos build
-just freertos test
+cargo build --release          # Rust leaves (after `nros sync`)
+cmake -B build && cmake --build build   # C / C++ leaves
 ```
+
+> **Contributors (in-tree fixture/test lanes):** `just freertos build`
+> / `just freertos test` build and exercise the in-tree fixtures.
 
 For real hardware, deployment step becomes flash/load/monitor. For QEMU,
 deployment is launching simulator with correct network setup.
@@ -67,8 +71,9 @@ contract is a documented three-step sequence (per
    `system.toml` + `[deploy.<board>]` + `launch/*.xml` and emits the
    baked tree under `build/<board>/`.
 2. **Build** — the vendor tool builds it: `cargo build` / `cmake --build`
-   / `west build` / `idf.py build` (the `just <plat> build*` recipes wrap
-   these with the right `-D` args derived from `[deploy.<board>]`).
+   / `west build` / `idf.py build` (**contributors:** the in-tree
+   `just <plat> build*` recipes wrap these with the right `-D` args
+   derived from `[deploy.<board>]`).
 3. **Flash + monitor** — the vendor tool again: `probe-rs run` /
    `west flash` / `idf.py flash monitor`, or the platform's QEMU runner.
 
@@ -86,20 +91,27 @@ Platform guides should show:
 Zephyr deployment uses `west`:
 
 ```bash
-just zephyr setup
-source zephyr-workspace/env.sh
+nros setup zephyr --rmw zenoh
+source zephyr-workspace/env.sh      # in-tree workspace layout
 west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 ./build/zephyr/zephyr.exe
 ```
 
+Bringing your own west workspace instead? Follow
+[Zephyr Integration](../getting-started/integration-zephyr.md) — the
+`zephyr-workspace/env.sh` line above is specific to the in-tree
+workspace layout.
+
 ## ESP32
 
-ESP32 deployment uses the Espressif toolchain and flash tool:
+ESP32 deployment uses the Espressif toolchain and flash tool.
 
-```bash
-just esp32 build
-just esp32 talker
-```
+> **Contributors (in-tree fixture/test lanes):**
+>
+> ```bash
+> just esp32 build
+> just esp32 talker
+> ```
 
 For physical boards, use the platform guide's `espflash` path.
 

@@ -113,12 +113,13 @@ cd examples/qemu-arm-freertos/cpp/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=$PWD/../../../../../cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build
 
-# Per-platform multi-example build (these run `nros sync` for you):
+# Contributors: per-platform multi-example fixture build, in-tree
+# checkout only (these run `nros sync` for you):
 just freertos build-fixtures
 just zephyr  build-fixtures
 just nuttx   build-fixtures
 
-# Discover full-matrix commands for a platform:
+# Contributors: discover full-matrix commands for a platform:
 just --group full-matrix --list zephyr
 
 # Multi-node system — sync, bake the bringup, build the entry:
