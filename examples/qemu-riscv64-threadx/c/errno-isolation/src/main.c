@@ -68,8 +68,8 @@ static unsigned char observer_task[512] __attribute__((aligned(16)));
  * was found by running this fixture, which is the argument for having it.
  * `strtol` needs no syscall stub at all, so it cannot be defeated the same
  * way. */
-static void *victim_entry(void *arg) {
-    (void) arg;
+static void* victim_entry(void* arg) {
+    (void)arg;
     printf("errno-isolation: victim entered\n");
 
     /* WAIT for the observer to have claimed and parked. Priority alone does
@@ -88,14 +88,14 @@ static void *victim_entry(void *arg) {
     }
 
     errno = 0;
-    (void) strtol("99999999999999999999999999", NULL, 10);
+    (void)strtol("99999999999999999999999999", NULL, 10);
     victim_errno = errno;
     victim_ran = 1;
     return NULL;
 }
 
-static void *observer_entry(void *arg) {
-    (void) arg;
+static void* observer_entry(void* arg) {
+    (void)arg;
     printf("errno-isolation: observer entered\n");
     /* Claim a distinct value first, so "unchanged" is a real observation
      * rather than the absence of any write at all. */
@@ -117,9 +117,9 @@ static void *observer_entry(void *arg) {
     return NULL;
 }
 
-int nros_app_main(int argc, char **argv) {
-    (void) argc;
-    (void) argv;
+int nros_app_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
     printf("errno-isolation: start\n");
 
     /* The port declares its own storage size; a hardcoded buffer that is too
@@ -127,11 +127,11 @@ int nros_app_main(int argc, char **argv) {
      * hang with no output — which is what the first run of this fixture did.
      * Check instead of assuming. */
     size_t need = nros_platform_task_storage_size();
-    printf("errno-isolation: task storage need=%u have=%u\n",
-           (unsigned) need, (unsigned) sizeof(victim_task));
+    printf("errno-isolation: task storage need=%u have=%u\n", (unsigned)need,
+           (unsigned)sizeof(victim_task));
     if (need > sizeof(victim_task)) {
-        printf("%s (task storage %u > %u)\n", MARK_SETUP,
-               (unsigned) need, (unsigned) sizeof(victim_task));
+        printf("%s (task storage %u > %u)\n", MARK_SETUP, (unsigned)need,
+               (unsigned)sizeof(victim_task));
         return 1;
     }
 
@@ -162,20 +162,20 @@ int nros_app_main(int argc, char **argv) {
         nros_platform_sleep_us(10000u);
     }
     if ((victim_ran == 0) || (observer_done == 0)) {
-        printf("%s (tasks did not finish: victim_ran=%d observer_done=%d)\n",
-               MARK_SETUP, victim_ran, observer_done);
+        printf("%s (tasks did not finish: victim_ran=%d observer_done=%d)\n", MARK_SETUP,
+               victim_ran, observer_done);
         return 1;
     }
 
-    printf("errno-isolation: victim errno=%d observer before=%d after=%d\n",
-           victim_errno, observer_first_errno, observer_second_errno);
+    printf("errno-isolation: victim errno=%d observer before=%d after=%d\n", victim_errno,
+           observer_first_errno, observer_second_errno);
 
     /* The victim must actually have failed. A board where `write(-1, …)`
      * succeeded, or never ran, proves nothing either way — say so instead of
      * reporting a pass. */
     if ((victim_ran == 0) || (victim_errno == 0)) {
-        printf("%s (victim errno=%d ran=%d — the probe did not fire)\n",
-               MARK_SETUP, victim_errno, victim_ran);
+        printf("%s (victim errno=%d ran=%d — the probe did not fire)\n", MARK_SETUP, victim_errno,
+               victim_ran);
         return 1;
     }
 

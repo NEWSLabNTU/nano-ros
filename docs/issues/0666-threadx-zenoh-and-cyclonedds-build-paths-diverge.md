@@ -97,3 +97,31 @@ Candidates, not a plan. Each has a real cost and the choice is a maintainer's.
 
 Whichever way it goes, the invariant worth keeping is the one the rename
 restored: **no build-system fact may be spelled with an RMW name.**
+
+## 2026-08-19 — the divergence cost a build, not just tidiness
+
+[#0688](0688-threadx-rv64-rust-cyclone-nros-c-panic-handler.md): the Rust
+Cyclone leaf failed to build because `nros_threadx_rv64_rust_cyclone_app()` is
+not `nano_ros_entry()`, so nothing applied the image's panic policy to the
+shared `nros-c` staticlib — which is imported `--no-default-features` and
+therefore has no `#[panic_handler]`. Every other leaf was fine because every
+other leaf goes through the entry.
+
+Fixed by mirroring the entry's policy application into the seam, and by dropping
+`NanoRos::NanoRos` from its link line (a Rust app never calls the C API, and
+linking it put a second Rust staticlib on a C link line — the thing
+`CMakeLists.txt` says must never happen; this seam was the only place in the
+tree where it could).
+
+That is the concrete argument for whichever unification direction wins: **a
+bespoke build path silently misses machinery the shared one applies, and the
+failure surfaces four crates away from its cause.** Two more facts for whoever
+takes it:
+
+* This leaf is the only one with TWO cargo workspace roots (its own bare
+  `[workspace]` plus the nano-ros root via `add_subdirectory`). That is what
+  makes it uniquely exposed to the Corrosion `< 0.6.0` shared-target-dir hazard
+  (issues 0493/0500/0616) — a second, independent way this shape bites.
+* The seam is still the only board function of its kind in the tree, so any
+  machinery added to `nano_ros_entry()` in future will miss it again unless the
+  paths converge.

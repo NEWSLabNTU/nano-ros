@@ -599,11 +599,53 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
             "void ${target}_link_anchor(void) {}\n")
     endif()
 
+    # issue 0688 — apply the image's panic policy to the shared nros-c/nros-cpp
+    # staticlibs, exactly as `nano_ros_entry()` does for every other leaf.
+    #
+    # This seam does NOT go through `nano_ros_entry()`, so nothing did. The root
+    # `add_subdirectory()` builds `nros_c-static` regardless of who links it, and
+    # it is imported with `--no-default-features`, which strips the crate's own
+    # `default = ["panic-platform"]`. A staticlib is a FINAL artifact, so rustc
+    # requires a `#[panic_handler]` and the build died four crates away with
+    # `#[panic_handler] function required, but not found` — naming neither this
+    # file nor the feature. Every other leaf got the feature because every other
+    # leaf goes through the entry.
+    #
+    # `platform` is the same default `nano_ros_entry()` applies when an image
+    # states no policy.
+    nros_panic_policy_feature(_rv64_panic_feature platform
+        "nros_threadx_rv64_rust_cyclone_app(${target})")
+    if(_rv64_panic_feature)
+        set(_rv64_panic_applied FALSE)
+        foreach(_rv64_rust_target nros_c nros_cpp nros_c-static nros_cpp-static)
+            if(TARGET ${_rv64_rust_target})
+                corrosion_set_features(${_rv64_rust_target}
+                    FEATURES ${_rv64_panic_feature})
+                set(_rv64_panic_applied TRUE)
+            endif()
+        endforeach()
+        # Same reasoning as the entry's: a silent skip here is the failure this
+        # fixes, so an unappliable policy is an error rather than a shrug.
+        if(NOT _rv64_panic_applied)
+            message(FATAL_ERROR
+                "nros_threadx_rv64_rust_cyclone_app(${target}): no nros-c/nros-cpp "
+                "target was importable, so PANIC platform could not be applied.")
+        endif()
+    endif()
+
     add_executable(${target} "${_anchor}")
+    # issue 0666 — NO `NanoRos::NanoRos` here. That umbrella pulls in
+    # `nros_c-static`, the C API, which a RUST app never calls: this leaf's
+    # cargo graph does not mention `nros-c` at all, and the zenoh half of the
+    # same leaf builds without it. Linking it anyway put a SECOND Rust staticlib
+    # on this C link line, which the umbrella's own definition says must never
+    # happen (`CMakeLists.txt`: "the C umbrella is the ONLY Rust staticlib on a
+    # C link line => std once"). This seam was the one place in the tree that
+    # broke that, because it is the only one where a leaf CRATE and the umbrella
+    # meet. See issue 0688 for the `#[panic_handler]` failure that followed.
     target_link_libraries(${target} PRIVATE
         ${_crate_target}
-        ${_A_LINK}
-        NanoRos::NanoRos)
+        ${_A_LINK})
     nros_platform_link_app(${target})
     nano_ros_link_rmw(${target} RMW cyclonedds)
 endfunction()
