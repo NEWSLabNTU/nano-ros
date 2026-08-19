@@ -107,16 +107,27 @@ nros off PATH           → rc=2,         "nros CLI not found — cannot codegen
 cmake absent            → rc=0 recorded, summary: cmake=SKIPPED(cmake absent)
 ```
 
-### The junit half — already fixed
+### The junit half — `b2713db27`, and it was NOT where this section first said
 
-`scripts/test/skip_marker.py` (commit `58d4b62eb`, "a skip in system-err is
-still a skip — one classifier, both readers") landed after this issue was
-filed and closes the second half exactly. Its docstring opens on this issue's
-own example: the `nros-rmw-zenoh::zenoh_integration` skip lands in
-`<system-err>` rather than in `<failure>`'s `message`, and both readers
-(`rewrite-skipped-junit.py`, `name-real-failures.py`) now go through the one
-classifier. `check-skip-marker-matching.py` gates the Rust side against
-hand-rolled marker matching.
+The classifier was never the gap. `scripts/test/skip_marker.py` (`58d4b62eb`)
+made both readers package-agnostic, and reading that commit's docstring — which
+opens on this issue's own zenoh example — is what made "already fixed" look
+right. It was not: the CALL GRAPH bypassed the rewrite. `test-zpico-multisession`
+is the one lane that runs `nros-rmw-zenoh`'s own `zenoh_integration`, and it
+invoked `cargo nextest run` bare under `set -euo pipefail`, so a
+`nros_tests::skip!` raised there was a raw exit 100 that no rewrite ever saw.
+Issue 0319's shape one layer down: a suite sitting outside the lane that
+interprets its results.
+
+Fixed by routing both of that lane's runs through `_nextest-tolerant` (issue
+0673's single interpreter of the marker), and by having `_nextest-tolerant`
+DERIVE the junit path once (`nros_nextest_junit_path`, `CARGO_TARGET_DIR`-aware)
+rather than assume the default target dir — the lane sets its own.
+
+Worth keeping as the record of how the wrong conclusion was reached: the
+evidence was a classifier whose docstring names the exact symptom, and the
+inference "the classifier handles it, therefore it is handled" skipped the
+question of whether the classifier is REACHED.
 
 ### Residue — a gate narrower than its rule
 
