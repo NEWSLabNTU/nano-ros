@@ -489,7 +489,14 @@ packages = ["zenoh-pico", "mbedtls"]
 packages = ["xrce-agent", "micro-xrce-dds-client", "micro-cdr"]
 
 [rmw.cyclonedds]
-packages = ["cyclonedds", "cyclonedds-src"]
+# phase-368 W4 — `rosidl` rides along: the cyclone type-support step
+# (msg -> IDL) needs rosidl_adapter, and without a ROS install the vendored
+# copy is the only source. The clean-container probe hit the "rosidl_adapter
+# is not importable" error on the FIRST cyclonedds workspace build; a
+# complete provisioner is the [rmw.*] contract (see rmw.zenoh's note). Its
+# python deps (catkin_pkg, empy==3.3.4, lark) ride [python.*] and surface
+# via `nros setup --check`.
+packages = ["cyclonedds", "cyclonedds-src", "rosidl"]
 
 # --- boards (Phase 191.1): board → required package set, the board→toolchain
 # SSOT. `nros setup <board>` looks the board up here (no name guessing); an
