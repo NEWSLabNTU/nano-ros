@@ -235,7 +235,15 @@ BASELINE = {
     # entries dropped the legacy locator name and coerced a bad domain to 0).
     # `$NROS_ENTRY_SPIN_MS` went from two parses at two widths to one. The 2 that
     # remain are that reader and `metadata_hooks`' `fs::write`.
-    "nros-cpp": {"cfg": 1, "path": 2},
+    #
+    # issue 0701 — cfg 1 -> 3, and it is the trade this file has recorded twice
+    # before (phase-361 W8.e for `metadata-mode`, W10 for `env`): a guard must
+    # NAME the feature it checks, so making an implicit requirement explicit
+    # costs a counted site and removes an unnamed one. Both capabilities here
+    # genuinely need `std` — `metadata-mode` WRITES the sidecar file, `env`
+    # reads `$NROS_ENTRY_SPIN_MS` — and both had been free-riding on `nros`'s
+    # guards until issue 0669's follow-up correctly relaxed one of them.
+    "nros-cpp": {"cfg": 3, "path": 2},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.

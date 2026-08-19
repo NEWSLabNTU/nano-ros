@@ -30,6 +30,13 @@
 //! → JSON sidecar consumed here). See Phase 212.L.5 notes.
 
 #[cfg(feature = "env")]
+// phase-359 W10 — kept, and it is not a spelling that can be unwound.
+// `init_with_launch` verifies a launch file EXISTS, which is a filesystem
+// question; `AsRef<Path>` is also what a Rust caller expects to pass a
+// `PathBuf`, a `&str` or a `Path` to. Narrowing the signature to `&str` would
+// trade a real ergonomic for one census point, which is moving the number
+// rather than the build. The whole module is behind `env`, which requires
+// `std`, so nothing here is reachable without one.
 use std::path::Path;
 
 use nros_node::ExecutorConfig;

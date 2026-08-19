@@ -3015,6 +3015,30 @@ mod qos_override_tests {
 #[cfg(all(feature = "bridge", not(feature = "alloc")))]
 compile_error!("`bridge` boxes every entity handle: add \"alloc\" to this crate's features");
 
+// phase-359 W10 follow-up — these two were FREE-RIDING on `nros`'s guards, and
+// one of them stopped being covered the moment `nros`'s was corrected.
+//
+// `nros/metadata-mode` used to require `std`, which covered this crate's file
+// write by accident. It requires `alloc` now (its own code needed only a heap
+// and a lock — the file write is HERE), so a `metadata-mode` build without
+// `std` reached `std::fs::write` and produced a raw "cannot find crate `std`"
+// four frames from anything a user could act on. Relaxing a guard in one crate
+// exposed a missing guard in another that had never named its own requirement.
+//
+// The sweep is bounded by `check-std-census`, not by the feature list: a
+// capability can only require a flavour if its gated code names it, and the
+// census enumerates every non-test `std::` site in the tree. Of the 25, these
+// two are the only ones gated by a CAPABILITY of this crate rather than by
+// `std` itself.
+#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
+compile_error!(
+    "`metadata-mode` writes the sidecar file (`nros_cpp_metadata_dump`): add \"std\" to this crate's features"
+);
+#[cfg(all(feature = "env", not(feature = "std")))]
+compile_error!(
+    "`env` reads the process environment (`$NROS_ENTRY_SPIN_MS`): add \"std\" to this crate's features"
+);
+
 /// Resolve boot config, with the environment rung when this build has the
 /// `env` capability.
 ///

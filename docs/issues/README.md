@@ -381,6 +381,27 @@ its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
+**#0703** (testing, rmw, open 2026-08-19) — `check-rmw-cyclonedds` went red twice inside `just check` on
+2026-08-19, on two DIFFERENT tests (`pubsub_smoke`, then `data_roundtrip`), and passed 17/17 solo each
+time: 2 red in ~5 in-sweep runs, 0 red in 4 solo runs, no code change between. Two different tests means
+it is not one test's bug; passing solo means it is not the code the sweep built. Filed so the next red
+here is not bisected as a regression — the same shape CLAUDE.md already records for the QEMU lanes, now
+written down for Cyclone. Unknown: whether the two share a discovery-window mechanism, and whether the
+ctest suite's domain ids collide with the lanes running beside it. Next step is capturing
+`ctest --output-on-failure` rather than the summary line. See `0703-*`. (2026-08-19)
+
+**#0701** (build, open 2026-08-19) — `check-feature-contract` clause (a) enforces "a capability does not
+GRANT the heap" (it scans manifests for `= ["std"]` / `dep/std`) but nothing enforces the other half of the
+same clause, "emit `compile_error!` naming the feature": a capability whose gated code calls `std::` while
+its crate carries no guard passes every gate and fails the user's build with a bare `cannot find crate
+std`, four frames deep, naming no feature. Found live: `nros-cpp`'s `metadata-mode` (the sidecar
+`fs::write`) and `env` (`$NROS_ENTRY_SPIN_MS`) had never needed guards BY ACCIDENT — `nros`'s stricter
+guard covered them — until issue 0669's follow-up correctly relaxed `nros`'s to `alloc`. Relaxing a guard
+in one crate can expose a capability in another that never named its own requirement. The sweep is cheap
+and bounded by `check-std-census` (a capability can only require a flavour if its gated code names it);
+run over 25 sites it found exactly those two, both now guarded, so the gap is at zero — the moment to gate
+it. See `0701-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0669** — `executor::handoff::Handoff` was public API with NO consumer
 anywhere in the tree (phase-104.E.1) and gated on `std` for one `std::sync::Mutex`. DELETED. The
 measurement that decided it: `spin` is in NO board's dependency graph today (`cargo tree -e normal` over
