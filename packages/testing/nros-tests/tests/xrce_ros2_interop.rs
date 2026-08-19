@@ -271,11 +271,25 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
         .expect("Failed to start service server");
 
-    // Wait for server to be ready
-    let _ = server.wait_for_output_pattern(
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        Duration::from_secs(5),
-    );
+    // Wait for the server to SAY it is ready, and KEEP what it said.
+    //
+    // This was `let _ = wait_for_output_pattern(…, 5s)`, and the discard is the
+    // defect: a failure downstream could not distinguish "the server never came
+    // up" from "the server came up and replied wrong", which are different bugs
+    // with different fixes. The sibling test below (`test_ros2_service_xrce_client`)
+    // was given exactly this treatment and the reason recorded there; the lesson
+    // did not travel the 350 lines to here, so this one kept reporting an
+    // interop regression for whatever had actually happened.
+    //
+    // 20 s, not 5 s, for the same reason the sibling uses 20: the bound exists to
+    // catch a server that never starts, not to race one that starts slowly, and a
+    // wait that returns as soon as the marker appears costs nothing when it is fast.
+    let server_startup = server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| format!("<server never reported ready: {e}>"));
 
     // Wait for DDS discovery to propagate the service
     std::thread::sleep(Duration::from_secs(1));
@@ -320,10 +334,16 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     // ROS 2 `rmw_fastrtps` client must get the correct `sum=8` reply. Before the
     // header strip/prepend in `service.c` the request deserialized misaligned
     // and the server never replied with a valid value.
+    // The server's own startup output is half the evidence: "no reply" from a
+    // client whose server never came up is a DIFFERENT failure from "no reply"
+    // out of a server that was listening, and only one of them is the interop
+    // regression this assert names.
     assert!(
         has_sum && has_correct_value,
         "ROS 2 service client did not get sum=8 from the nano-ros XRCE service \
-         server — XRCE-DDS service interop regression (233.6). Output:\n{ros2_output}"
+         server — XRCE-DDS service interop regression (233.6).\n\
+         --- server startup ---\n{server_startup}\n\
+         --- ros2 client output ---\n{ros2_output}"
     );
     eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");
 }
