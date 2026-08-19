@@ -238,7 +238,12 @@ fi
 # below names it.
 log_info "Checking Python tools (nano-ros does not install them)..."
 
-NROS_PY="${NROS_PYTHON:-$(command -v python3 || true)}"
+# Same resolver the lanes use, so this reports on the interpreter that will
+# actually run `west build` (scripts/build/zephyr-python.sh).
+# shellcheck source=scripts/build/zephyr-python.sh
+source "$NANO_ROS_ROOT/scripts/build/zephyr-python.sh"
+NROS_PY="$(nros_zephyr_python)"
+[ -n "$NROS_PY" ] || NROS_PY="$(command -v python3 || true)"
 if [ -z "$NROS_PY" ]; then
     log_error "no python3 on PATH — Zephyr's build scripts are Python"
     exit 1
@@ -260,6 +265,9 @@ if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
     exit 1
 fi
 
+# issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+source "$NANO_ROS_ROOT/scripts/build/zephyr-python.sh"
+nros_zephyr_activate
 if command -v west &> /dev/null; then
     log_success "west present: $(west --version)"
 else

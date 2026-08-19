@@ -102,6 +102,38 @@ print(json.dumps(out))
 """
 
 
+def default_python():
+    """The interpreter a Zephyr lane would actually use, when none is named.
+
+    Must match `nros_zephyr_python` in scripts/build/zephyr-python.sh — a
+    checker that answers for a DIFFERENT interpreter than the lane uses reports
+    problems the build does not have, which is how a check earns being ignored.
+    Two spellings of one candidate order, the way the riscv64 resolver carries
+    three (shell/cmake/rust); keep them in step.
+
+        NROS_PYTHON            the one knob
+        scripts/zephyr/.venv   the conventional in-repo venv, used only when it
+                               can actually import west — never on presence,
+                               because a venv copied between hosts passes `-x`
+                               and still cannot import its own packages
+        this interpreter       whatever is running us
+    """
+    named = os.environ.get("NROS_PYTHON")
+    if named:
+        return named
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    venv = os.path.join(repo, "scripts", "zephyr", ".venv", "bin", "python3")
+    if os.access(venv, os.X_OK):
+        try:
+            if subprocess.run(
+                [venv, "-c", "import west"], capture_output=True, timeout=60
+            ).returncode == 0:
+                return venv
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return sys.executable
+
+
 def probe(python, modules):
     """Ask the TARGET interpreter, not this one.
 
@@ -130,7 +162,7 @@ def probe(python, modules):
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("groups", nargs="*", default=None)
-    ap.add_argument("--python", default=os.environ.get("NROS_PYTHON", sys.executable))
+    ap.add_argument("--python", default=default_python())
     ap.add_argument("--list", action="store_true", help="print the known groups and exit")
     ap.add_argument("--quiet", action="store_true", help="print only when something is missing")
     args = ap.parse_args()

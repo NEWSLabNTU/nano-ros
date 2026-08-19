@@ -58,6 +58,9 @@ doctor:
     set +e
     fail=0
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if command -v west &>/dev/null; then
         echo "  [OK] west"
     else
@@ -118,6 +121,9 @@ build-fvp-ws-entry:
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     set -e
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if ! command -v west >/dev/null 2>&1; then
         nros_lane_skip "west not found"
     fi
@@ -176,6 +182,9 @@ run-fvp-ws-entry:
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
         nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
     fi
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if ! command -v west >/dev/null 2>&1; then
         nros_lane_skip "west not found"
     fi
@@ -220,6 +229,9 @@ build-fvp-board-import:
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     set -e
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if ! command -v west >/dev/null 2>&1; then
         nros_lane_skip "west not found"
     fi
@@ -281,6 +293,9 @@ run-fvp-board-import:
     if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
         nros_lane_skip "ARM FVP model not resolvable (set ARM_FVP_DIR / ARMFVP_BIN_PATH; license-gated, user-supplied)"
     fi
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if ! command -v west >/dev/null 2>&1; then
         nros_lane_skip "west not found"
     fi

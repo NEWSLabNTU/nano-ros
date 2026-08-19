@@ -44,6 +44,9 @@ if [ -z "${ZEPHYR_BASE:-}" ]; then
     done
 fi
 
+# issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+source "$repo_root/scripts/build/zephyr-python.sh"
+nros_zephyr_activate
 if ! command -v west >/dev/null 2>&1; then
     echo "west-fixtures: west unavailable — skipping" >&2
     exit 0

@@ -207,6 +207,9 @@ fi
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zephyr-toolchain.sh"
 toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board")")
 
+# issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+source "$nros_root/scripts/build/zephyr-python.sh"
+nros_zephyr_activate
 use_west=0
 if [ "$needs_west" = "0" ]; then
     if [ "$jobserver" = "1" ]; then

@@ -160,9 +160,11 @@ end
 
 set -e _nros_root
 
-# Zephyr's `west`, when `scripts/zephyr/setup.sh` had to install it into a venv
-# (PEP 668 hosts: Arch, Fedora, Debian 12+). Twin of the activate.sh block —
-# without it every `just zephyr …` recipe skips with exit 0.
-if test -x "$_nros_root/scripts/zephyr/.venv/bin/west"
-    set -gx PATH "$_nros_root/scripts/zephyr/.venv/bin" $PATH
-end
+# Zephyr's `west` is NOT put on PATH here — see the activate.sh twin. It is
+# resolved on demand by `nros_zephyr_activate` (scripts/build/zephyr-python.sh).
+#
+# Worth recording that this block could never have worked anyway: `_nros_root`
+# is erased by the `set -e _nros_root` a few lines above, so the test ran
+# against an empty path and was always false. Two shells claiming the same
+# behaviour, one of them dead — which is the argument for resolving in ONE
+# place that both shells reach rather than mirroring logic per shell.

@@ -315,17 +315,21 @@ if [ -x "$_nros_root/third-party/make/make" ]; then
     export PATH="$_nros_root/third-party/make:$PATH"
 fi
 
-# Zephyr's `west`, when `scripts/zephyr/setup.sh` had to install it into a venv.
+# Zephyr's `west` is NOT put on PATH here. It is resolved when a Zephyr lane
+# needs it, by `nros_zephyr_activate` in scripts/build/zephyr-python.sh.
 #
-# PEP 668 — Arch, Fedora and Debian 12+ mark their Python "externally managed"
-# and refuse `pip3 install`, INCLUDING `--user`. On those hosts setup.sh creates
-# `scripts/zephyr/.venv` (the same shape the 4.4 line already uses) and `west`
-# lands there instead of `~/.local/bin`. Without this, every `just zephyr …`
-# recipe prints "Zephyr skip: west not found" and exits 0 — a green that ran
-# nothing, which is the failure mode issue 0571 exists about.
-if [ -x "$_nros_root/scripts/zephyr/.venv/bin/west" ]; then
-    export PATH="$_nros_root/scripts/zephyr/.venv/bin:$PATH"
-fi
+# This used to prepend `scripts/zephyr/.venv/bin` whenever that directory held
+# an executable `west`, which was wrong twice over. The venv serves ONE lane but
+# PATH is the whole session, so it also replaced `python3` for the 37
+# `check-*.py` gates, colcon, rosidl_adapter and the cyclonedds descriptor
+# codegen — the 4.4 line already refused to do that (just/zephyr-dev.just
+# invokes west THROUGH the venv interpreter for exactly this reason) while the
+# 3.7 line did it globally. And the test was presence, not usability: a venv's
+# `bin/python3` is a symlink and its packages live in
+# `lib/python3.<minor>/site-packages`, so a tree copied to a host with a
+# different minor version passes `-x` and still cannot import west. Measured in
+# the ROS distrobox: venv built by Arch 3.14, symlink resolving to Ubuntu 3.10,
+# `west --version` dying on ImportError with the venv first on PATH.
 
 # Project `.env` overrides (runtime config, buffer tuning, SDK paths)
 # + the just/sdk-env.just SSoT defaults. direnv loads `.env` via

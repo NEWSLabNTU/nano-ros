@@ -29,6 +29,9 @@ build-fixtures:
     # twenty minutes downstream instead of being reported here.
     source scripts/build/lane-skip.sh
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     if ! command -v west >/dev/null 2>&1; then
         nros_lane_skip "west not found — install it, or provision with \`just zephyr setup\`"
     fi

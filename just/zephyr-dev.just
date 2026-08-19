@@ -34,6 +34,9 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # system ROS python 3.10, not the venv 3.12). west passes WEST_PYTHON to
     # cmake so find_package(Python3>=3.12) is still satisfied.
     venvbin="{{ZEPHYR_VENV_BIN}}"
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     west_cmd=(west)
     if [ -n "$venvbin" ]; then
         west_cmd=("$(realpath "$venvbin")/python" -m west)
@@ -282,6 +285,9 @@ build-c-port:
     fi
     export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     source "$WORKSPACE/env.sh"
+    # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
+    source scripts/build/zephyr-python.sh
+    nros_zephyr_activate
     west build -b native_sim/native/64 \
         -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
         -- -DMAKE="$make_bin"
