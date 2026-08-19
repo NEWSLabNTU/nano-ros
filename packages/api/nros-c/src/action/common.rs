@@ -201,10 +201,21 @@ pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) ->
         // AtomicU32, not AtomicU64: 32-bit targets without 64-bit atomics
         // (riscv32imac NuttX, thumbv7m) don't have the type at all (#134); the
         // nanosecond timestamp carries the uniqueness across processes.
-        static COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+        //
+        // issue 0700 — `portable_atomic`, not `core::sync::atomic`. On
+        // riscv32imc (esp32c3 under ESP-IDF) there are no hardware atomics, so
+        // core's `AtomicU32` exists as a TYPE while its read-modify-write
+        // methods are gated behind `target_has_atomic` — `fetch_add` is simply
+        // absent and the crate failed to compile with E0599. `portable_atomic`
+        // polyfills it through the `portable_atomic_unsafe_assume_single_core`
+        // cfg (set for that target in the root `.cargo/config.toml`) or a
+        // `critical-section` impl. It is an unconditional dependency of this
+        // crate, added for exactly this reason, and `log.rs` already uses it —
+        // this site was the one that kept naming `core` instead.
+        static COUNTER: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
         let nanos = crate::platform::get_system_time_ns() as u64;
-        let count = COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed) as u64;
+        let count = COUNTER.fetch_add(1, portable_atomic::Ordering::Relaxed) as u64;
 
         // Fill UUID with time-based values
         uuid.uuid[0..8].copy_from_slice(&nanos.to_le_bytes());
