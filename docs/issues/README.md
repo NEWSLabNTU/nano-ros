@@ -71,7 +71,7 @@ interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so when it is unset the lin
 boards — `zephyr-fixture-run-one.sh` sets the variant for `native_sim` only, which is also why issue 0087's
 carve-out hid this. `ZEPHYR_SDK_INSTALL_DIR` alone does NOT help (the whole argument list must parse first).
 Direction: set `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` for SDK boards in BOTH runners — verified to get the real
-`mps2_an385` configure past the toolchain stage. See `0698-*`. (2026-08-19)
+`mps2_an385` configure past the toolchain stage. See `0698-*`. (2026-08-19) FIX APPLIED 2026-08-19 (direction 1, both call sites); still OPEN because the host that applied it has CMake 3.22.1 and no Zephyr SDK — behaviour-neutrality on CMake 3 was verified on the issue's own snippet, clearing the CMake 4 error was not re-verified. Closing wants one real-board `just zephyr build-fixtures` on a CMake >= 4 host, which is also the run proving tier 2 is unblocked.
 
 Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
 The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not

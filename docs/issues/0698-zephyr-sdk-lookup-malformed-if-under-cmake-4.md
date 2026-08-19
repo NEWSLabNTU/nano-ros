@@ -97,6 +97,35 @@ the native_sim carve-out from issue 0087 is also what has been hiding this.
 
 Direction 1 is the one to take; 3 is where it should end up.
 
+## Fix applied (2026-08-19) — direction 1, both sites, NOT verified end-to-end here
+
+`ZEPHYR_TOOLCHAIN_VARIANT=zephyr` is now stated explicitly for non-`native_sim`
+boards in BOTH call sites, per the warning above that one alone is the half-fix
+class:
+
+* `scripts/build/zephyr-fixture-run-one.sh` — a `*)` arm beside the existing
+  `native_sim → host` arm, inside the same "caller override wins" guard.
+* `scripts/build/west-fixtures.sh` — the same branch. Its EMPTY-board case (the
+  FVP `board_import` entry, which resolves through `board.cmake`) is left
+  deliberately alone: it is not a board name this `case` can key on, and the
+  measurements in this issue cover named SDK boards only.
+
+**What was verified on the machine that applied it, and what was not.** That
+host has CMake **3.22.1** and no Zephyr checkout or SDK, so it can reproduce
+neither the failure nor a real Zephyr configure:
+
+* VERIFIED — behaviour-neutral on CMake 3. On this issue's own three-line
+  snippet, unset and `=zephyr` both print `TOOK-THE-BRANCH`, so the change
+  cannot alter which branch a working host takes. That is the regression half.
+* NOT VERIFIED — that it clears the CMake 4 error. The mechanism and the remedy
+  are established by the measurements ABOVE (`-DZEPHYR_TOOLCHAIN_VARIANT=zephyr`
+  → passes; the real `mps2_an385` configure gets past the toolchain stage), but
+  those were taken by the filer, not re-run here.
+
+Left OPEN for that reason. Closing it wants one `just zephyr build-fixtures` for
+a real board on a CMake ≥ 4 host — which is also the run that proves tier 2 is
+unblocked.
+
 ## Not the same as issue 0651
 
 0651 is about the 4.4 line being nightly-only, so a Kconfig or API change lands

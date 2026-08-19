@@ -225,10 +225,24 @@ while IFS= read -r record; do
     [ -n "$extra" ] && args+=(-- "$extra")
     # issue #87 — native_sim builds with host gcc (no Zephyr SDK); board-keyed,
     # so the FVP board_import entry (empty board → board.cmake) stays SDK-gated.
+    #
+    # issue 0698 — the SAME branch as `zephyr-fixture-run-one.sh`, and it has to
+    # be in both or it is the half-fix class: real boards state
+    # `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` rather than leaving it unset, because
+    # Zephyr 3.7 interpolates it unquoted and CMake 4 rejects the resulting
+    # `if("zephyr" STREQUAL )`.
+    #
+    # The empty-board case (FVP `board_import`, which resolves via board.cmake)
+    # is left ALONE deliberately: it is not a board name this case can key on,
+    # and the issue's measurements cover named SDK boards only.
     tc_env=()
-    case "$board" in
-        native_sim*) [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ] && tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
-    esac
+    if [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ]; then
+        case "$board" in
+            native_sim*) tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
+            "") : ;;
+            *) tc_env=(ZEPHYR_TOOLCHAIN_VARIANT=zephyr) ;;
+        esac
+    fi
     # The stamp gate is `output` EXISTS, for both builders — not west's exit
     # code. A `west-configure` row is expected to stop before linking, and a
     # `west-build` row that exits 0 without its image is not built either. One

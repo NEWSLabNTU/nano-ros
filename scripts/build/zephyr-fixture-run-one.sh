@@ -203,13 +203,26 @@ fi
 # issue #87 — native_sim builds with the host gcc toolchain (no Zephyr SDK).
 # Board-keyed, not version-keyed: native_sim on ANY line (3.7 + 4.4) uses
 # ZEPHYR_TOOLCHAIN_VARIANT=host, so an SDK-free host can build the native_sim
-# fixture subset. Real embedded boards (FVP cortex-a/r, cyclonedds targets)
-# leave the variant unset → Zephyr locates the downloaded SDK as before.
-# Respect an externally-set variant (caller override wins).
+# fixture subset.
+#
+# issue 0698 — real boards now say `zephyr` EXPLICITLY instead of leaving the
+# variant unset. Unset was the designed state and worked for as long as CMake
+# tolerated it: Zephyr 3.7's `FindZephyr-sdk.cmake:35` interpolates the variable
+# UNQUOTED, so unset makes the line read `if("zephyr" STREQUAL )` — a condition
+# missing its right operand. CMake 3.x accepted it; CMake 4 rejects the whole
+# argument list before evaluating any clause, so every SDK board dies at
+# configure and takes tier 2 with it (ci-matrix is 1-wise over platform, so
+# every platform is in it).
+#
+# `zephyr` is the value Zephyr itself defaults to when it finds the downloaded
+# SDK, so this changes no behaviour — it states the default that was previously
+# implicit, which is exactly the thing that broke. Respect an externally-set
+# variant (caller override wins).
 toolchain_env=()
 if [ -z "${ZEPHYR_TOOLCHAIN_VARIANT:-}" ]; then
     case "$board" in
         native_sim|native_sim/*) toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT=host) ;;
+        *) toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT=zephyr) ;;
     esac
 fi
 
