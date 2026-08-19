@@ -24,12 +24,35 @@ apt-get install -y -qq ros-humble-rmw-zenoh-cpp >/dev/null
 # ROS env; keep it scoped to this subshell so the nano-ros build env stays
 # clean (the page runs it in its own terminal for the same reason).
 (
+    # The probe script runs `set -u`; ROS's setup.bash is not nounset-clean
+    # (the same fact activate.sh now absorbs). These subshells are
+    # PROBE-owned, not book text, so they relax it themselves.
+    set +u
     source /opt/ros/humble/setup.bash
     ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
         exec ros2 run rmw_zenoh_cpp rmw_zenohd
 ) >/tmp/zenohd.log 2>&1 &
 router_pid=$!
 trap 'kill "$router_pid" 2>/dev/null || true' EXIT
+
+# The book's reader starts the talker in a second terminal, seconds later by
+# construction; the probe is faster than a human, so wait for the router to
+# LISTEN before dialing it (the client fails fast on a closed port).
+deadline=$((SECONDS + 60))
+until (exec 3<>/dev/tcp/127.0.0.1/7447) 2>/dev/null; do
+    if ! kill -0 "$router_pid" 2>/dev/null; then
+        echo "PROBE FAIL: router exited before listening"
+        tail -30 /tmp/zenohd.log
+        exit 1
+    fi
+    if ((SECONDS >= deadline)); then
+        echo "PROBE FAIL: router not listening on 7447 within 60 s"
+        tail -30 /tmp/zenohd.log
+        exit 1
+    fi
+    sleep 1
+done
+exec 3>&- 3<&- || true
 
 # Terminal 2 — the nano-ros talker (built by the extracted first-node step).
 cd examples/native/rust/talker
@@ -57,6 +80,7 @@ echo "PROBE PASS: nano-ros talker published through the documented router"
 # what nano-ros published. best_effort per the page (the talker publishes
 # best-effort; a RELIABLE echo silently delivers nothing).
 (
+    set +u
     source /opt/ros/humble/setup.bash
     export RMW_IMPLEMENTATION=rmw_zenoh_cpp
     export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
