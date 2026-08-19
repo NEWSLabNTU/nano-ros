@@ -61,17 +61,18 @@ artifact and is correct; only the CMake/Cyclone path has two. Wants a shape chan
 the leaf, or the leaf as a non-final artifact, or dropping the CMake path for Rust leaves), not a feature
 flag. Blocks the threadx-riscv64 lane. See `0692-*`. (2026-08-19)
 
-**#0690** (testing, open 2026-08-19) — `case_08_c_qos` fails in-sweep and passes solo, on the SAME freshly
-built tree: 1453-test sweep FAIL, 5-test solo PASS, 1453-test sweep PASS. The publisher advertises
-`RELIABLE + VOLATILE + KEEP_LAST(10)`, which is exactly `nros_c_qos_default()`. Not a product regression, and
-not the 0160 by-value drift class either — the `nros_cpp_qos_t` mirror is field-for-field identical to the
-ffi.h SSoT, `nros_cpp_node_t` is opaque, no entry sets QoS overrides, and `case_17_mixed_qos` runs the
-BYTE-IDENTICAL C component and never fails. Likely `topic_endpoint_block` returning the FIRST `PUBLISHER`
-block when the topic carries more than one, but unproven: the panic printed the selected block and not the
-report it came from, so "profile dropped" and "someone else's endpoint" were indistinguishable in every
-failure recorded (0445's class, one layer in). The assertion now carries the full report and the endpoint
-count, so the next occurrence says which. Only ever runs with ROS 2 present (`require_ros2()`), i.e. only in
-the distrobox — 0309 last exercised it on 2026-07-28. See `0690-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0690** — `case_08_c_qos` failed in-sweep and passed solo on the SAME
+binaries, with the publisher advertising exactly `nros_c_qos_default()`. `topic_endpoint_block` returns the
+FIRST block of a kind and a topic can carry more than one, so the assertion could be reading somebody else's
+endpoint. Fixed by selecting the block by the NODE under test: `topic_endpoints` parses the whole report on
+its `Node name:` delimiter and `topic_endpoints_for_node` filters it. It returns a Vec deliberately — all
+three qos cells name their nodes identically, so node selection rules out a foreign process but NOT a
+sibling, and returning an Option would have picked the first of two, rebuilding the defect inside its own
+fix; two matches now fail saying the discriminator must be the GID or namespace. Proof is three unit tests
+over a two-publisher report (positional reads the foreign endpoint, node selection does not), plus a
+mutation check that the assertion still fires — this issue warned against "fixing" it by accepting any
+block. The in-sweep green is reported but NOT claimed as proof: the issue's own table records a sweep that
+passed before any change. See `archived/0690-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0693** — `rosidl-codegen`'s `comparison_test` + `parity_test` read a
 hardcoded `/opt/ros/jazzy` while the project installs humble, so 13 tests took an `eprintln!`+`return

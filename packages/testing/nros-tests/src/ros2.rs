@@ -754,6 +754,70 @@ pub fn topic_endpoint_block(report: &str, kind: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
+/// One endpoint record from a [`ros2_topic_info_verbose`] report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopicEndpoint {
+    /// The `Node name:` value.
+    pub node: String,
+    /// The `Endpoint type:` value — `PUBLISHER` or `SUBSCRIPTION`.
+    pub kind: String,
+    /// The record's text, from its `Node name:` line to the next one.
+    pub block: String,
+}
+
+/// Every endpoint in a `ros2 topic info -v` report, in the order listed.
+///
+/// Issue 0690 — [`topic_endpoint_block`] returns the FIRST block of a kind, and
+/// a topic can carry more than one. `case_08_c_qos` failed in-sweep and passed
+/// solo with the publisher advertising exactly `nros_c_qos_default()`, which is
+/// what reading a FOREIGN endpoint's profile looks like; the same binaries
+/// passed and failed, so it was never a product regression.
+///
+/// The report is a flat list of records delimited by `Node name:` — the field
+/// order within one is `Node name:`, `Endpoint type:`, then the QoS block, and
+/// nothing else is guaranteed (a `GID:`/`Node namespace:` line appears on some
+/// distros and not others), so the parse keys only on those two.
+pub fn topic_endpoints(report: &str) -> Vec<TopicEndpoint> {
+    const NODE: &str = "Node name:";
+    let mut out = Vec::new();
+    let mut starts: Vec<usize> = report.match_indices(NODE).map(|(i, _)| i).collect();
+    starts.push(report.len());
+    for pair in starts.windows(2) {
+        let block = &report[pair[0]..pair[1]];
+        let field = |name: &str| -> Option<String> {
+            let at = block.find(name)? + name.len();
+            Some(block[at..].lines().next()?.trim().to_string())
+        };
+        let (Some(node), Some(kind)) = (field(NODE), field("Endpoint type:")) else {
+            continue;
+        };
+        out.push(TopicEndpoint {
+            node,
+            kind,
+            block: block.to_string(),
+        });
+    }
+    out
+}
+
+/// The endpoints of `kind` belonging to `node`.
+///
+/// Issue 0690's fix direction: select the block by the node UNDER TEST rather
+/// than by position, so a foreign publisher on the same topic cannot be
+/// asserted against.
+///
+/// Returns a Vec deliberately. Node name alone does not always identify one
+/// endpoint — the three `*_qos` workspace cells all name their node
+/// `qos_talker` — so a caller that gets more than one is looking at a sibling
+/// cell, not a foreign process, and those need different remedies. Collapsing
+/// that to "the first match" here would rebuild the bug one level up.
+pub fn topic_endpoints_for_node(report: &str, kind: &str, node: &str) -> Vec<TopicEndpoint> {
+    topic_endpoints(report)
+        .into_iter()
+        .filter(|e| e.kind == kind && e.node == node)
+        .collect()
+}
+
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
@@ -1605,5 +1669,101 @@ mod tests {
     fn test_rmw_fastrtps_detection() {
         let available = is_rmw_fastrtps_available();
         eprintln!("rmw_fastrtps_cpp available: {}", available);
+    }
+
+    /// Issue 0690 — the report shape, taken verbatim from issue 0312's capture
+    /// plus a second publisher, which is the situation the sweep produces.
+    const TWO_PUBLISHERS: &str = "\
+Type: std_msgs/msg/String
+
+Publisher count: 2
+
+Node name: qos_talker
+Endpoint type: PUBLISHER
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (10)
+  Durability: TRANSIENT_LOCAL
+
+Node name: foreign_talker
+Endpoint type: PUBLISHER
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (10)
+  Durability: VOLATILE
+
+Node name: qos_listener
+Endpoint type: SUBSCRIPTION
+QoS profile:
+  Reliability: RELIABLE
+  Durability: TRANSIENT_LOCAL
+";
+
+    #[test]
+    fn endpoints_are_split_by_node_and_kind() {
+        let eps = topic_endpoints(TWO_PUBLISHERS);
+        assert_eq!(eps.len(), 3, "{eps:#?}");
+        assert_eq!(eps[0].node, "qos_talker");
+        assert_eq!(eps[0].kind, "PUBLISHER");
+        assert_eq!(eps[2].kind, "SUBSCRIPTION");
+        // Each record carries its OWN QoS and not the next one's.
+        assert!(eps[0].block.contains("TRANSIENT_LOCAL"));
+        assert!(eps[1].block.contains("Durability: VOLATILE"));
+        assert!(!eps[1].block.contains("TRANSIENT_LOCAL"));
+    }
+
+    /// The regression this issue is about: positional selection reads whichever
+    /// publisher ROS 2 listed first. Built explicitly with the FOREIGN endpoint
+    /// first and carrying `nros_c_qos_default()` — which is the profile the
+    /// in-sweep failure actually printed.
+    #[test]
+    fn selecting_by_node_ignores_a_foreign_publisher() {
+        const FOREIGN_FIRST: &str = "\
+Type: std_msgs/msg/String
+
+Publisher count: 2
+
+Node name: foreign_talker
+Endpoint type: PUBLISHER
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (10)
+  Durability: VOLATILE
+
+Node name: qos_talker
+Endpoint type: PUBLISHER
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): KEEP_LAST (10)
+  Durability: TRANSIENT_LOCAL
+";
+
+        // Positional reads the foreign block — the default profile, which is
+        // what `case_08_c_qos` reported when it failed in-sweep.
+        let positional = topic_endpoint_block(FOREIGN_FIRST, "PUBLISHER").unwrap();
+        assert!(
+            positional.contains("Durability: VOLATILE"),
+            "positional selection should read the FIRST block:\n{positional}"
+        );
+
+        // Node-selected reads the endpoint under test, whatever the order.
+        let mine = topic_endpoints_for_node(FOREIGN_FIRST, "PUBLISHER", "qos_talker");
+        assert_eq!(mine.len(), 1, "{mine:#?}");
+        assert!(
+            mine[0].block.contains("Durability: TRANSIENT_LOCAL"),
+            "node selection must return the node under test:\n{}",
+            mine[0].block
+        );
+    }
+
+    /// Node name does not always identify ONE endpoint — the three `*_qos`
+    /// cells all name their node `qos_talker`. That case must stay visible to
+    /// the caller rather than collapsing to "the first match", which is the bug
+    /// one level up.
+    #[test]
+    fn two_endpoints_sharing_a_node_name_are_both_returned() {
+        let siblings = TWO_PUBLISHERS.replace("foreign_talker", "qos_talker");
+        let found = topic_endpoints_for_node(&siblings, "PUBLISHER", "qos_talker");
+        assert_eq!(found.len(), 2, "{found:#?}");
     }
 }

@@ -78,7 +78,6 @@ use nros_tests::{
     matrix::{Cell as MCell, Lang as ML, Tier as MT, W1Consumer, Workload as MW, w1_consumer_of},
     ros2::{
         DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator, ros2_topic_info_verbose,
-        topic_endpoint_block,
     },
 };
 use rstest::rstest;
@@ -724,22 +723,68 @@ fn run_cell(pcell: &MCell) {
                 // liveliness keyexpr as an empty segment, so `ros2 topic info`
                 // never counted the entity. Delivery was unaffected, so only a
                 // profile assertion like this one could see it.
-                let blocks: Vec<(&str, Option<String>)> = vec![
-                    ("PUBLISHER", topic_endpoint_block(&report, "PUBLISHER")),
+                // issue 0690 — select by the NODE under test, not by position.
+                //
+                // `topic_endpoint_block` returns the FIRST block of a kind, so
+                // any other publisher on `/chatter` could be the one asserted
+                // against. That is what `case_08_c_qos` did when it failed
+                // in-sweep and passed solo: the profile it printed was exactly
+                // `nros_c_qos_default()`, i.e. somebody else's endpoint.
+                //
+                // The launch files name these nodes (`demo_bringup/launch/
+                // *qos*.xml`), and all three qos cells use the SAME two names —
+                // so this rules out a foreign process but NOT a sibling cell.
+                // That is why more than one match is reported rather than
+                // silently taking the first: the two need different remedies,
+                // and collapsing them here would rebuild the bug one level up.
+                let blocks: Vec<(&str, &str, Vec<nros_tests::ros2::TopicEndpoint>)> = vec![
+                    (
+                        "PUBLISHER",
+                        "qos_talker",
+                        nros_tests::ros2::topic_endpoints_for_node(
+                            &report,
+                            "PUBLISHER",
+                            "qos_talker",
+                        ),
+                    ),
                     (
                         "SUBSCRIPTION",
-                        topic_endpoint_block(&report, "SUBSCRIPTION"),
+                        "qos_listener",
+                        nros_tests::ros2::topic_endpoints_for_node(
+                            &report,
+                            "SUBSCRIPTION",
+                            "qos_listener",
+                        ),
                     ),
                 ];
-                for (kind, block) in blocks {
-                    let block = block.unwrap_or_else(|| {
+                for (kind, node, found) in blocks {
+                    if found.len() > 1 {
                         lis.kill();
                         tlk.kill();
                         panic!(
-                            "[{} {}] ros2 discovered no {kind} on {topic} ({}):\n{report}",
-                            lang, workload, cell.note
-                        )
-                    });
+                            "[{} {}] {} {kind} endpoints on {topic} name themselves `{node}` \
+                             ({}). Node name cannot pick between them — this is a SIBLING \
+                             cell, not a foreign process, and needs the GID or the namespace \
+                             as the discriminator (issue 0690).\nfull report:\n{report}",
+                            lang,
+                            workload,
+                            found.len(),
+                            cell.note
+                        );
+                    }
+                    let block = found
+                        .into_iter()
+                        .next()
+                        .map(|e| e.block)
+                        .unwrap_or_else(|| {
+                            lis.kill();
+                            tlk.kill();
+                            panic!(
+                                "[{} {}] ros2 discovered no {kind} named `{node}` on {topic} \
+                                 ({}):\n{report}",
+                                lang, workload, cell.note
+                            )
+                        });
                     // The workspaces declare `reliable + transient_local +
                     // keep_last(10)` per entity, in code.
                     // Every one of these differs from `QosSettings::default()`
@@ -769,8 +814,8 @@ fn run_cell(pcell: &MCell) {
                                  (`{expect}` missing) — either the per-entity profile was \
                                  dropped between the node and the wire, or this block belongs \
                                  to a different endpoint ({}).\n\
-                                 asserted block (first `{kind}` of {n} endpoint(s) on \
-                                 {topic}):\n{block}\nfull report:\n{report}",
+                                 asserted block (`{kind}` of node `{node}`, {n} endpoint(s) \
+                                 on {topic}):\n{block}\nfull report:\n{report}",
                                 lang, workload, cell.note
                             );
                         }

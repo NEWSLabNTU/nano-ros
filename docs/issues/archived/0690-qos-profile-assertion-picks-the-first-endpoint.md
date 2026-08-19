@@ -1,7 +1,7 @@
 ---
 id: 690
 title: "`case_08_c_qos` fails in-sweep and passes solo: the QoS profile assertion reads the FIRST endpoint block, which need not be the one under test"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0309, issue-0312, issue-0445, issue-0670, phase-263]
@@ -105,3 +105,60 @@ namespace.
 
 Do not "fix" it by asserting that ANY publisher block matches: that weakens the
 assertion in the exact direction issue 0309 was filed to close.
+
+## Fixed 2026-08-19 — select by the node under test, and keep the sibling case visible
+
+Took the stated direction. `nros_tests::ros2` gains a parser over the whole
+report rather than a scan for one marker:
+
+* `topic_endpoints(report) -> Vec<TopicEndpoint>` — every record, split on the
+  `Node name:` delimiter, each carrying its own `node`, `kind` and block. Keys
+  only on `Node name:` and `Endpoint type:`, because the other fields
+  (`GID:`, `Node namespace:`) appear on some distros and not others.
+* `topic_endpoints_for_node(report, kind, node) -> Vec<TopicEndpoint>`.
+
+`workspace_features_e2e` asks for `qos_talker` / `qos_listener`, the names the
+launch files give these nodes (`demo_bringup/launch/*qos*.xml`).
+
+**It returns a Vec on purpose.** This issue already recorded that all three qos
+cells name their nodes identically, so node selection rules out a FOREIGN
+process and cannot separate the siblings. Returning `Option` would have picked
+the first of two — the same defect one level up, in the code written to fix it.
+More than one match now fails with its own message naming the count and saying
+the discriminator has to be the GID or the namespace.
+
+`topic_endpoint_block` is kept: `qos_override_e2e` has its own inline copy of the
+positional logic, and both are correct where exactly one endpoint of a kind
+exists. Converging those is a separate change; what mattered here was that the
+CELL WITH TWO stopped guessing.
+
+### Verified
+
+* **Deterministic, and the part that actually proves it** — three unit tests on
+  a two-publisher report built to the shape issue 0312 captured:
+  `endpoints_are_split_by_node_and_kind` (each record carries its own QoS, not
+  the next one's), `selecting_by_node_ignores_a_foreign_publisher` (with the
+  foreign endpoint listed FIRST and advertising `nros_c_qos_default()` — the
+  positional helper reads it, node selection does not), and
+  `two_endpoints_sharing_a_node_name_are_both_returned`.
+* **The assertion still bites** — mutation-checked by expecting a durability
+  value nothing advertises: `case_08_c_qos` fails. This issue warned against
+  "fixing" it by accepting any block, and that check is what rules it out.
+* **In-sweep** — `just ci`, 1471 tests: all three qos cells PASS. The only real
+  failure is `case_06_c_lifecycle`, the known ros2cli daemon flake, which passes
+  solo.
+
+**A green sweep is not proof and is not claimed as such.** This issue's own
+table records a sweep that passed before any change; that is what "intermittent"
+means. The deterministic evidence is the unit tests — they show the exact
+selection difference on a fixed input, which no sweep can.
+
+### Still not established: whether a foreign endpoint was ever really there
+
+The mechanism remains what this issue called it — likely. Each cell starts its
+own `ZenohRouter::start_unique()`, so a foreign publisher requires endpoints
+reaching each other across routers, which is unproven. What changed is that the
+question no longer has to be answered to make the assertion correct: it now
+reads the node under test whatever else is on the topic, and says so explicitly
+when two endpoints share a name. If the sibling message ever fires, that settles
+it the other way.
