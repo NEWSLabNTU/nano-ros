@@ -447,7 +447,7 @@ check-fast: _check-skip-reset \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-issue-index check-roadmap-status check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
     check-lane-skip-protocol check-skip-marker-matching \
@@ -1568,6 +1568,16 @@ check-fixtures-manifest:
 # collision is what breaks these.
 check-doc-refs:
     @bash scripts/check-doc-refs.sh
+
+# Every relative link in the book must resolve. `check-doc-refs` answers a
+# different question — "does issue 0123 exist?", by ID, and deliberately
+# resolves through `archived/` — so a book link naming the pre-archival PATH
+# keeps it green while the rendered page 404s. Nine links were dead this way;
+# seven were plain depth errors (`../../docs/…` from `book/src/<dir>/` is
+# `book/docs/…`). Buildless: reads tracked files, resolves paths, no mdbook.
+[private]
+check-book-links:
+    @python3 scripts/check-book-links.py
 
 # The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
 # docs/issues/. The rule is already written in that file's Conventions #3 —

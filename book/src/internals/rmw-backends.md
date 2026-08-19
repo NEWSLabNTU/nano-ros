@@ -117,7 +117,7 @@ plain `<pkg> = "*"` consumer manifest.
 Sizing knob: `NROS_CYCLONEDDS_MAX_TYPES` (default 32), wired through
 the existing `nros-sizes` build probe (same pattern as
 `EXECUTOR_OPAQUE_U64S`). See section 212.K.7 of
-[`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`](../../../docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)
+[`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`](../../../docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md)
 for the work-item ledger.
 
 ## When to revisit

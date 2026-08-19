@@ -103,16 +103,17 @@ Kconfig on Zephyr. See [Configuration](configuration.md).
 For each canonical entry point:
 
 ```bash
-# Single example (POSIX, Pattern A or B):
+# Single Rust example — `nros sync` first, once per checkout location:
 cd examples/native/rust/talker
+nros sync
 cargo run
 
-# Single C/C++ example (CMake + add_subdirectory):
+# Single C/C++ example (CMake + add_subdirectory) — no sync needed:
 cd examples/qemu-arm-freertos/cpp/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=$PWD/../../../../../cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build
 
-# Per-platform multi-example build:
+# Per-platform multi-example build (these run `nros sync` for you):
 just freertos build-fixtures
 just zephyr  build-fixtures
 just nuttx   build-fixtures
@@ -120,15 +121,30 @@ just nuttx   build-fixtures
 # Discover full-matrix commands for a platform:
 just --group full-matrix --list zephyr
 
-# Multi-component system (orchestration):
-nros metadata my_system
-nros plan my_system launch/my_system.launch.py
-nros check
-cargo build                 # or: cmake --build / west build / idf.py build
+# Multi-node system — sync, bake the bringup, build the entry:
+nros sync
+nros codegen-system --bringup <bringup-pkg> --out <out-dir>
+cargo build -p <entry>      # or: cmake --build <dir> --target <entry>
 
 # POSIX-only colcon consumer-workspace build:
 colcon build && source install/setup.bash
 ```
+
+Which of the three build shapes your target uses, and which need the
+sync step, is
+[Workflow by Platform and Language](workflow-by-platform.md).
+
+`nros codegen-system` resolves the bringup's `system.toml` (plus its
+launch files) into a SystemModel under the workspace build tree.
+SystemModels are **build artifacts** — never committed, and never named
+by an entry package; an entry names its *input*
+(`nros::main!(launch = "bringup")`, `nano_ros_entry(BRINGUP … LAUNCH …)`)
+and the build locates the artifact. `nros model-path` prints where a
+resolved one landed.
+
+`nros metadata` / `nros plan` / `nros check` are the *inspection* path,
+not the build path: they produce and validate an `nros-plan.json` you
+can read with `nros explain`. You do not need them to build.
 
 For target-specific deployment, go to the matching platform guide.
 Each guide covers toolchain setup, package layout, code example, build

@@ -101,11 +101,21 @@ start the router on that port (`just qemu zenohd` does) or edit the
 
 ```bash
 cd examples/qemu-arm-baremetal/rust/talker
+nros sync            # once per checkout location; writes the generated
+                     # bindings + the [patch.crates-io] table the leaf's
+                     # .cargo/config.toml includes
 cargo build --release
 ```
 
 First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 `thumbv7m-none-eabi`. Re-builds finish in seconds.
+
+The `just … build-fixtures` recipes run `nros sync` for you. A
+hand-run `cargo build` in a leaf does not — without it cargo fails
+while *parsing the manifest*, with
+`failed to load config include '…/nros-patch.toml'` and no mention of
+sync. See
+[Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
 ## Run
 

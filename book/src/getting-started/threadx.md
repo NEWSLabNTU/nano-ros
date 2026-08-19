@@ -161,8 +161,10 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 # threadx-linux:
 just threadx_linux build-fixtures   # build all rust + c examples
 
-# Single example:
+# Single example — `nros sync` first (the build-fixtures recipes above
+# do it for you; a hand-run cargo build does not):
 cd examples/threadx-linux/rust/talker
+nros sync
 cargo build --release
 
 # threadx-riscv64:
@@ -171,6 +173,13 @@ just threadx_riscv64 build-fixtures
 
 First setup builds ThreadX + NetX Duo (~3 min). Subsequent example
 builds finish in seconds.
+
+The `just … build-fixtures` recipes run `nros sync` for you. A
+hand-run `cargo build` in a leaf does not — without it cargo fails
+while *parsing the manifest*, with
+`failed to load config include '…/nros-patch.toml'` and no mention of
+sync. See
+[Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
 ## Run
 

@@ -106,8 +106,12 @@ fixture, so pair it with `just freertos zenohd` (listens on 7451).
 ## Build
 
 ```bash
-# Rust:
+# Rust — `nros sync` first, once per checkout location. It writes the
+# generated message bindings and the [patch.crates-io] table the leaf's
+# .cargo/config.toml includes; without it cargo fails while PARSING the
+# manifest, with an error that never names sync (see below).
 cd examples/qemu-arm-freertos/rust/talker
+nros sync
 cargo build --release
 
 # C / C++ — use the cross-toolchain CMake invocation:
@@ -124,6 +128,14 @@ cmake --build build --parallel
 
 First Rust build pulls + cross-compiles deps (~5 min). C / C++ build
 also compiles FreeRTOS kernel + lwIP — first run ~3 min.
+
+If you skipped `nros sync`, the Rust build stops before it starts, with
+`failed to load config include '../../../../../nros-patch.toml'` and
+`No such file or directory`. That file is generated, not committed —
+run `nros sync` in the leaf and build again. The C / C++ builds above do
+not need it; see
+[Workflow by Platform and Language](../user-guide/workflow-by-platform.md)
+for why the requirement is per language rather than per platform.
 
 ## Run
 

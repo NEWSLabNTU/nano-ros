@@ -68,5 +68,5 @@ downstreams writing their own modules.
 
 PX4 has no central module registry. Downstreams vendor the template
 via `git submodule` or `cp -r`. See
-[Registry Publishing](../../docs/release/registry-publishing.md) for
+[Registry Publishing](../../../docs/release/registry-publishing.md) for
 the cross-ecosystem comparison.

@@ -126,7 +126,7 @@ timer-backed timeouts to fire before TAP network I/O completes. This is solved
 with `-icount shift=auto`, which makes virtual time advance at wall-clock speed
 during CPU sleep states.
 
-See [QEMU icount reference](../../docs/reference/qemu-icount.md) for the full
+See [QEMU icount reference](../../../docs/reference/qemu-icount.md) for the full
 explanation, parameter reference, and tradeoffs.
 
 ## Networking
@@ -225,7 +225,7 @@ in the queue but are harmless — the firmware seeds smoltcp's ephemeral port
 from the host's wall clock via ARM semihosting `SYS_TIME`, so each QEMU run
 uses a different source port and stale packets are silently ignored.
 
-See [TAP qdisc analysis](../../docs/reference/tap-qdisc-analysis.md) for why
+See [TAP qdisc analysis](../../../docs/reference/tap-qdisc-analysis.md) for why
 `fq_codel` and `noqueue` don't work for QEMU TAP devices.
 
 ## zenoh-pico

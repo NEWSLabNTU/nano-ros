@@ -86,7 +86,7 @@ RMW registration, and the spin/yield loop.
 
 The metadata block is what the `nros` CLI reads to discover, name, and
 wire this node into a topology.
-From [`examples/workspaces/rust/src/talker_pkg/Cargo.toml`](../../../../examples/workspaces/rust/src/talker_pkg/Cargo.toml):
+From [`examples/workspaces/rust/src/talker_pkg/Cargo.toml`](../../../examples/workspaces/rust/src/talker_pkg/Cargo.toml):
 
 ```toml
 [lib]
@@ -125,7 +125,7 @@ A Node pkg implements two traits: `Node` (declarative registration) and
 trampolines the Entry macro expects.
 
 Here is the essential shape, drawn from
-[`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](../../../../examples/workspaces/rust/src/talker_pkg/src/lib.rs)
+[`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](../../../examples/workspaces/rust/src/talker_pkg/src/lib.rs)
 (see that file for the full worked version):
 
 ```rust

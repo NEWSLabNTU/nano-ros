@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0694** (docs/build, open 2026-08-19) — every platform starter's Rust build fails on a fresh clone. The
+Rust example leaves carry a `.cargo/config.toml` that `include`s the gitignored, `nros sync`-generated
+`nros-patch.toml`, and cargo treats a missing include as a HARD manifest-parse error (0463) whose four frames
+never name sync. `nros sync` appears ZERO times across 12 platform pages carrying 26 build commands — the step
+is documented only in the Linux/Getting-Started cluster, which is not where an embedded reader is routed. The
+requirement is per-LANGUAGE: a tracked leaf `.cargo/config.toml` exists under `rust/` leaves and nowhere else,
+so C/C++ (cmake) needs no sync. Invisible to contributors (the file is generated once per checkout) and to CI
+(`probe=` covers 3 blocks on the 2 pages that already document it). See `0694-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0698** — every SDK-toolchain Zephyr board failed to CONFIGURE under CMake 4,
 which took tier 2 with it (1-wise over platform ⇒ the zephyr lane failing at configure fails the tier). Zephyr
 3.7's `FindZephyr-sdk.cmake:35` interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so unset makes the line

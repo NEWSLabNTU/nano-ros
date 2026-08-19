@@ -42,6 +42,7 @@
 
 # User Guide
 
+- [Workflow by Platform and Language](./user-guide/workflow-by-platform.md)
 - [Application Workflow](./user-guide/workflow.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
