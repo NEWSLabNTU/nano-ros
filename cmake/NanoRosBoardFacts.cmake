@@ -61,7 +61,7 @@ function(nros_resolve_board_facts)
     if(NOT DEFINED _NANO_ROS_CODEGEN_TOOL OR NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         message(STATUS
             "nano-ros: board facts NOT delivered — no nros CLI (build it with "
-            "`just setup-cli`).")
+            "`./scripts/bootstrap.sh`; contributors: `just setup-cli`).")
         set(NROS_BOARD_FACTS_ENV "" CACHE INTERNAL "phase-351 W5: no CLI")
         return()
     endif()

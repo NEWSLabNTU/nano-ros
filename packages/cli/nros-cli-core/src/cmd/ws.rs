@@ -1185,7 +1185,7 @@ fn verify_params_projected(model_path: &Path, system_toml: &Path) -> Result<()> 
         "the resolver did not project these declared params (issue 0409):\n{}\n\n\
          A resolver predating `apply_params_to_nodes` (rlm v0.1.1) writes a well-formed\n\
          model with every `params` / `params_files` silently absent. Rebuild it:\n\
-         \n    just setup-launch-resolve\n\
+         \n    ./scripts/bootstrap.sh      (contributors: just setup-launch-resolve)\n\
          \n\
          If a component is deliberately absent from this variant, the resolver says so in\n\
          `meta.diagnostics` and this check accepts it — an empty diagnostics list next to a\n\
@@ -1710,7 +1710,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         eyre::bail!(
             "sync: {} SystemModel(s) need resolving but `nros-launch-resolve` \
              is not next to the `nros` binary:\n{}\n\n\
-             Build it:  just setup-launch-resolve\n\
+             Build it:  ./scripts/bootstrap.sh   (contributors: just setup-launch-resolve)\n\
              (If the submodule is missing:  git submodule update --init \
              packages/cli/third-party/play_launch)\n\n\
              Refusing to continue with stale models — a museum SystemModel builds \
@@ -1780,7 +1780,7 @@ fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
          A resolver from a different layer-2 checkout does not fail — it writes models that are\n\
          MISSING DATA (one predating rlm v0.1.1 drops every `params` / `params_files`\n\
          projection, silently). Rebuild it so both agree:\n\
-         \n    just setup-launch-resolve\n\
+         \n    ./scripts/bootstrap.sh      (contributors: just setup-launch-resolve)\n\
          \n(issue 0409)",
         resolver.display(),
         &theirs[..theirs.len().min(12)],
@@ -3953,7 +3953,7 @@ fn render_managed_entries(
                      does not exist under {}.\n\
                      \x20 The nros lookup table is stale for this crate (a package \
                      moved?). Refusing to emit a patch table that silently omits it; \
-                     rebuild the CLI (`just setup-cli`) or fix nros_crate_path_lookup.",
+                     rebuild the CLI (`./scripts/bootstrap.sh`, contributors `just setup-cli`) or fix nros_crate_path_lookup.",
                     nrp.display()
                 );
                 stale_paths.push((cname.clone(), sub.clone()));
@@ -3976,7 +3976,7 @@ fn render_managed_entries(
             "sync: {} managed crate(s) have a dead path in the nros lookup table:\n{list}\n\
              Refusing to write an incomplete [patch.crates-io] — a missing entry \
              resolves that dependency from crates.io instead of this checkout, which \
-             fails nowhere. Rebuild the CLI (`just setup-cli`); if that does not help, \
+             fails nowhere. Rebuild the CLI (`./scripts/bootstrap.sh`, contributors `just setup-cli`); if that does not help, \
              nros_crate_path_lookup is stale.",
             stale_paths.len()
         );

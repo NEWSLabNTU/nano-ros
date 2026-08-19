@@ -87,8 +87,8 @@ function(nano_ros_load_providers)
     if(NOT _NANO_ROS_CODEGEN_TOOL)
         message(FATAL_ERROR
             "nano_ros_load_providers: no `nros` binary — the provider index is "
-            "read THROUGH the CLI, never parsed here. Run `just setup-cli` and "
-            "`source ./activate.sh`.")
+            "read THROUGH the CLI, never parsed here. Run `./scripts/bootstrap.sh` "
+            "(contributors: `just setup-cli`) and `source ./activate.sh`.")
     endif()
 
     set(_root_args "")

@@ -97,7 +97,7 @@ pub fn refuse_if_stale(command_name: &str) -> Result<(), String> {
          [patch.crates-io] entry resolves from crates.io instead of this checkout\n\
          WITHOUT failing (issues 0363, 0197).\n\
          Rebuild it (not auto-done — compiling at build/test time is forbidden):\n\
-         \x20   just setup-cli\n\
+         \x20   ./scripts/bootstrap.sh      (contributors: just setup-cli)\n\
          Override for a deliberate experiment: NROS_SKIP_STALE_CHECK=1",
         exe.display()
     ))

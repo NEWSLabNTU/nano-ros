@@ -497,7 +497,7 @@ function(nros_resolve_cli _out)
     message(FATAL_ERROR
         "${_RC_CONTEXT}: `nros` CLI not found on PATH or in the provisioned "
         "store. nano-ros builds it in-tree from packages/cli/ (Phase 218):\n"
-        "  just setup-cli && source ./activate.sh\n"
+        "  ./scripts/bootstrap.sh && source ./activate.sh   (contributors: just setup-cli)\n"
         "or set $NROS_CLI to an explicit binary.")
 endfunction()
 
@@ -530,7 +530,7 @@ function(_nros_resolve_codegen_tool _cv)
             message(FATAL_ERROR
                 "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros "
                 "builds the `nros` CLI in-tree from packages/cli/ (Phase 218):\n"
-                "  just setup-cli && source ./activate.sh\n"
+                "  ./scripts/bootstrap.sh && source ./activate.sh   (contributors: just setup-cli)\n"
                 "or pre-set the cache var: -D${_cv}=<path-to-nros> (Zephyr also "
                 "accepts prj.conf CONFIG_NROS_CODEGEN_TOOL / west "
                 "-D_NANO_ROS_CODEGEN_TOOL=<path>).")

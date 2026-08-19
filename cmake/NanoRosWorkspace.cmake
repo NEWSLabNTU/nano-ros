@@ -157,7 +157,8 @@ function(_nano_ros_order_subdirs ws_root subdirs out_var)
         message(FATAL_ERROR
             "nano_ros_workspace(ORDER_FROM_DEPENDS): no `nros` binary — the "
             "order is derived by the CLI, not parsed here. Run "
-            "`just setup-cli` and `source ./activate.sh`.")
+            "`./scripts/bootstrap.sh` (contributors: `just setup-cli`) and "
+            "`source ./activate.sh`.")
     endif()
 
     set(_args "")
@@ -216,6 +217,26 @@ function(nano_ros_workspace)
     # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)
         set(_NRW_BACKEND zenoh)
+    endif()
+    # phase-368 — a `-DNROS_RMW=<x>` on the configure line used to be
+    # SILENTLY overridden by the BACKEND argument: this function stamps the
+    # workspace-wide RMW from BACKEND, and the cache variable simply lost.
+    # Measured cost: a configure that said cyclonedds linked zenoh with no
+    # hint. The BACKEND argument stays authoritative (the workspace root is
+    # the one place that declares the system), but losing has to be LOUD.
+    # Roots that WANT the flag respected forward it explicitly:
+    #     if(NOT DEFINED NROS_RMW)
+    #         set(NROS_RMW cyclonedds)
+    #     endif()
+    #     nano_ros_workspace(BACKEND ${NROS_RMW} …)
+    # (the shape the scaffolded template ships).
+    if(DEFINED CACHE{NROS_RMW} AND NOT "$CACHE{NROS_RMW}" STREQUAL "${_NRW_BACKEND}")
+        message(WARNING
+            "nano_ros_workspace: -DNROS_RMW=$CACHE{NROS_RMW} is OVERRIDDEN by this "
+            "workspace's `BACKEND ${_NRW_BACKEND}` — the build links ${_NRW_BACKEND}. "
+            "To switch the RMW, edit the BACKEND argument in the root CMakeLists.txt "
+            "(or make the root forward the flag: `nano_ros_workspace(BACKEND "
+            "\${NROS_RMW} …)` guarded by `if(NOT DEFINED NROS_RMW)`).")
     endif()
     if(NOT _NRW_PLATFORM)
         set(_NRW_PLATFORM posix)

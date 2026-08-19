@@ -420,7 +420,8 @@ pub fn ensure_model(
     }
     let resolver = launch_resolver_bin().ok_or_else(|| {
         "cannot resolve the SystemModel: `nros-launch-resolve` not found. Build it with \
-         `just setup-launch-resolve`, or point $NROS_LAUNCH_RESOLVE at one. (Never resolved \
+         `./scripts/bootstrap.sh` (contributors: `just setup-launch-resolve`), or point \
+         $NROS_LAUNCH_RESOLVE at one. (Never resolved \
          through $PATH — a stale copy there resolves with an older schema, issue 0285.)"
             .to_string()
     })?;

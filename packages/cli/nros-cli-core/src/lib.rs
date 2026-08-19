@@ -95,7 +95,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
             }
             Some((built, current)) => Err(eyre::eyre!(
                 "source-stamp: STALE — built from {built}, sources are now {current}.\n\
-                 Rebuild: just setup-cli"
+                 Rebuild: ./scripts/bootstrap.sh   (contributors: just setup-cli)"
             )),
         },
         cmd::Cmd::Sync(args) => cmd::ws::run_sync(args),

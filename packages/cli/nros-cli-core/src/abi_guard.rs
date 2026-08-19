@@ -266,7 +266,7 @@ fn mismatch_message(verb: Verb, lock: &Path, consumer: &str, cli: &str) -> Strin
          silent runtime UB. Resolve by rebuilding the CLI against this workspace's \
          pinned runtime:\n  \
          cargo build --release --manifest-path /path/to/nano-ros/packages/cli/Cargo.toml --bin nros\n\
-         (or `just setup-cli` if the target workspace IS nano-ros itself).\n\n\
+         (or `./scripts/bootstrap.sh` / contributors' `just setup-cli` if the target workspace IS nano-ros itself).\n\n\
          To bypass this guard for an intentional cross-version workflow, set \
          {SKIP_ENV}=1.",
         verb = verb.as_str(),

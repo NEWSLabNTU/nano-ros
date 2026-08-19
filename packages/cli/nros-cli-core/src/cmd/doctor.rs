@@ -490,10 +490,25 @@ fn match_deprecated_verb(cmd: &str) -> Option<(&'static str, &'static str)> {
 
 fn run_just_doctor(root: &Path, platform: Option<&str>) -> Result<()> {
     if which("just").is_err() {
-        return Err(eyre!(
-            "`just` is not on PATH. Install it (https://just.systems) \
-             or run individual checks manually."
-        ));
+        // phase-368 — absent `just` is the NORMAL user condition, not an
+        // error: the deploy-target and license-gate checks above already ran
+        // natively, and the recipes this would forward to are contributor
+        // lanes (fixture builds, in-tree sweeps). Erroring here made a
+        // user's `nros doctor` exit red AFTER its own checks passed, for a
+        // tool the user track deliberately does not require.
+        match platform {
+            Some(p) => eprintln!(
+                "nros doctor: skipped the contributor platform checks for `{p}` — \
+                 they run via `just {p} doctor`, and `just` is not on PATH \
+                 (contributor tooling; the native checks above already ran)."
+            ),
+            None => eprintln!(
+                "nros doctor: skipped the contributor workspace checks — they run \
+                 via `just doctor`, and `just` is not on PATH (contributor \
+                 tooling; the native checks above already ran)."
+            ),
+        }
+        return Ok(());
     }
 
     let mut cmd = Command::new("just");
