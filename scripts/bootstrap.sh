@@ -232,6 +232,23 @@ build_in_tree_cli() {
         # profile-literal-ok: host tool: builds the CLI before any profile machinery exists
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/Cargo.toml" --bin nros \
         || return 0
+    # phase-368 W4 — the launch resolver is part of the front door, not an
+    # extra step. Every workspace configure (`nano_ros_entry`, `nros sync`)
+    # resolves the bringup's launch file through `nros-launch-resolve`; a CLI
+    # without it fails the FIRST `nros new --workspace` build with an error
+    # naming a `just` recipe the user does not have. Built into the shared
+    # packages/cli target dir, it is a SIBLING of `nros` — resolution rule 2
+    # in `resolve_launch_resolver`, so nothing else needs configuring. The
+    # clean-container probe caught this: steps 10–40 passed and the quick
+    # start died at configure. The resolver is its OWN workspace (own lock,
+    # deliberately excluded from packages/cli — see its manifest header), so
+    # it builds by its own manifest path and lands at
+    # packages/cli/nros-launch-resolve/target/release/ — resolution rule 3
+    # in `resolve_launch_resolver` (the per-checkout build path).
+    # profile-literal-ok: host tool: the launch resolver's own binary
+    run_cmd "building nros-launch-resolve (the launch resolver)" \
+        cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \
+        || return 0
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
 }
 

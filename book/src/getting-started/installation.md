@@ -17,26 +17,31 @@ needs the basics: git, curl, a C toolchain, `pkg-config`, python3.
 ```sh probe=10 distro=debian
 sudo apt-get update
 sudo apt-get install -y git curl ca-certificates build-essential \
-    pkg-config python3
+    cmake pkg-config python3 zstd
 ```
 
 **Fedora / RHEL:**
 
 ```sh probe=10 distro=fedora
 sudo dnf install -y git curl ca-certificates gcc gcc-c++ make \
-    pkgconf-pkg-config python3
+    cmake pkgconf-pkg-config python3 zstd
 ```
 
 **Arch:**
 
 ```sh probe=10 distro=arch
-sudo pacman -S --needed git curl base-devel python
+sudo pacman -S --needed git curl base-devel cmake python zstd
 ```
 
 (`base-devel` is a package *group*, and it covers `pkg-config`;
 `ca-certificates` ships with the base system.)
 
-**macOS:** `xcode-select --install`, plus `brew install pkg-config`.
+**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd`.
+
+(`cmake` builds the C/C++ quick start and every workspace root; `zstd`
+unpacks the prebuilt SDK assets `nros setup` fetches — its own error names
+the install command if you skip it, but installing it up front saves the
+round-trip.)
 
 These few packages are the only ones you install by hand. Per-board OS
 dependencies later on are declared in the index and printed for *your*

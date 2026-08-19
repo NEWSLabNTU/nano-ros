@@ -53,9 +53,15 @@ fi
 
 # The chapters carrying probe=NN tagged blocks, in reading order (order of
 # execution comes from the NN numbers, not this list).
+# phase-368 W4 — the probe follows the QUICK START (cyclonedds, no router).
+# `first-node-rust.md` left this list when the probe's rmw moved to
+# cyclonedds: its zenoh-default `cargo build` needs `nros setup --source
+# zenoh-pico` (the cargo path does NOT self-provision submodules, unlike the
+# cmake path, which bootstraps them at configure) — that page's flow belongs
+# to a future zenoh-track probe run under `--rmw zenoh`. Rust coverage lives
+# in verify-first-node.sh's scaffolded-workspace run instead.
 CHAPTERS=(
     book/src/getting-started/installation.md
-    book/src/getting-started/first-node-rust.md
     book/src/getting-started/first-node-c.md
 )
 
@@ -66,7 +72,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --out "$workdir/probe.sh" \
     --distro "$PROBE_DISTRO" \
     --subst 'git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros' \
-    --subst 'nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw zenoh' \
+    --subst 'nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw cyclonedds' \
     --subst 'cd examples/native/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/native/c/talker"' \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 

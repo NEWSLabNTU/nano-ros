@@ -398,6 +398,13 @@ SAY `just setup-cli` (the CLI's stale/missing message, a build.rs hint) —
 quoted verbatim with the user remedy beside them; de-justing the emitters is
 follow-up.
 
+**W12 residue, recorded rather than smoothed:** `esp32.md`'s Build section
+now contains ONLY a contributor aside — the page never had a user-side build
+spelling, because the esp32 QEMU flow's build is genuinely the fixture lane
+(espflash image packing + shared target dirs). The honest fix is the W13
+rewrite of that page onto the ESP-IDF component shell (`idf.py build` is the
+user spelling), not a synthetic bare command here.
+
 **W13 — Part III, BYO-RTOS.** New "how integration works" page from
 RFC-0072/0003 (guest principle, shell table, board pkg + `[deploy.*]`);
 existing platform pages re-shelved under it and rewritten against the LANDED
