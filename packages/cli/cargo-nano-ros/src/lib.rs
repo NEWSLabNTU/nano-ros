@@ -51,6 +51,7 @@ pub mod provider_scan;
 pub mod rmw_resolver;
 pub mod scaffold;
 pub mod workflow;
+pub mod workspace_scaffold;
 
 use eyre::{Result, WrapErr, eyre};
 use rosidl_bindgen::ament::{AmentIndex, Package};

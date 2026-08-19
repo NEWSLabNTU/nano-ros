@@ -72,17 +72,20 @@ pub struct Args {
     #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "esp32", "posix", "baremetal"])]
     pub platform: Option<String>,
 
-    /// RMW backend
-    #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"], default_value = "zenoh")]
-    pub rmw: String,
+    /// RMW backend. Defaults per mode: `zenoh` for project/component
+    /// scaffolds (matches the tracked examples), `cyclonedds` for
+    /// `--workspace` (needs no router — the quick-start default).
+    #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"])]
+    pub rmw: Option<String>,
 
     /// ROS edition (drives the `ros-<edition>` cargo feature; RFC-0056)
     #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = "humble")]
     pub ros_edition: String,
 
-    /// Source language
-    #[arg(long, value_parser = ["rust", "c", "cpp"], default_value = "rust")]
-    pub lang: String,
+    /// Source language. Defaults per mode: `rust` for project/component
+    /// scaffolds, `cpp` for `--workspace` (the quick-start language).
+    #[arg(long, value_parser = ["rust", "c", "cpp"])]
+    pub lang: Option<String>,
 
     /// Use case template
     #[arg(long = "use-case", value_parser = ["talker", "listener", "service", "action"], default_value = "talker")]
@@ -99,6 +102,13 @@ pub struct Args {
     /// `system.toml` (RFC-0004 §4) instead of a project.
     #[arg(long)]
     pub deploy: Option<String>,
+
+    /// phase-368 W8 — scaffold a minimal multi-node WORKSPACE (node pkgs +
+    /// bringup + entry) instead of a standalone project: the canonical
+    /// copy-out template with the RMW choice baked into every file that
+    /// spells it. Defaults: `--lang cpp --rmw cyclonedds`.
+    #[arg(long)]
+    pub workspace: bool,
 
     /// Deploy kind (deploy mode) — free-form runner key (`self`, `qemu`,
     /// `flash`, …) written verbatim to `[deploy.<name>].kind`.
@@ -250,12 +260,34 @@ pub fn run(args: Args) -> Result<()> {
         .ok_or_else(|| eyre::eyre!("invalid project name"))?
         .to_string();
 
+    // phase-368 W8 — workspace mode: `nros new <name> --workspace`.
+    if args.workspace {
+        let lang = args.lang.clone().unwrap_or_else(|| "cpp".to_string());
+        let rmw = args.rmw.clone().unwrap_or_else(|| "cyclonedds".to_string());
+        if args.platform.as_deref().unwrap_or("native") != "native" {
+            bail!(
+                "`nros new --workspace` scaffolds the native workspace shape; \
+                 add embedded deploys afterwards with `nros new --deploy <name> \
+                 --board <board>` (see the book's Growing Your Project section)."
+            );
+        }
+        return cargo_nano_ros::workspace_scaffold::scaffold_workspace(
+            &cargo_nano_ros::workspace_scaffold::WorkspaceScaffold {
+                dir: PathBuf::from(&name),
+                lang,
+                rmw,
+                force: args.force,
+            },
+        );
+    }
+
     // Component mode (Phase 172 W.3): a reusable planned-mode library node.
     // Platform-agnostic. Phase 172 W.3 landed Rust; Phase 219.M landed C++;
     // Phase 223 adds the C Node pkg scaffold using the same declarative
     // §212.L.9 shape.
     if args.component {
-        match args.lang.as_str() {
+        let lang = args.lang.clone().unwrap_or_else(|| "rust".to_string());
+        match lang.as_str() {
             "rust" | "cpp" | "c" => {}
             other => bail!(
                 "`nros new --component --lang {other}` is not supported. Use \
@@ -265,7 +297,7 @@ pub fn run(args: Args) -> Result<()> {
         return scaffold_component(&ComponentScaffoldConfig {
             name,
             use_case: args.use_case,
-            lang: args.lang,
+            lang,
             force: args.force,
         });
     }
@@ -276,9 +308,9 @@ pub fn run(args: Args) -> Result<()> {
         .ok_or_else(|| eyre::eyre!("`nros new <name>` requires `--platform <p>`"))?;
     scaffold_package(&ScaffoldConfig {
         name,
-        lang: args.lang,
+        lang: args.lang.unwrap_or_else(|| "rust".to_string()),
         platform,
-        rmw: args.rmw,
+        rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
         ros_edition: args.ros_edition,
         use_case: args.use_case,
         force: args.force,

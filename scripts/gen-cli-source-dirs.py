@@ -73,6 +73,46 @@ HEADER = """\
 """
 
 
+def embedded_input_dirs():
+    """Directories of parent-relative `include_str!`/`include_bytes!` targets.
+
+    phase-368 W8 — `workspace_scaffold.rs` embeds the copy-out templates from
+    `examples/templates/…` via `include_str!`. Those files are rustc inputs
+    (cargo rebuilds on their edits via dep-info) that the CRATE GRAPH does not
+    name, so the cargo resolve below is blind to them — the exact "stamp
+    smaller than the build" failure this script exists to prevent, one layer
+    down. Scan the CLI workspace's sources for parent-relative
+    `include_str!`/`include_bytes!` string literals resolving OUTSIDE
+    packages/cli and fold in their `examples/templates/<name>`-depth
+    directory, so a template gains files without regenerating this list.
+
+    Only direct string literals are seen; a macro-built path would be missed —
+    keep embedded paths literal.
+    """
+    import re
+    cli = REPO / "packages" / "cli"
+    pat = re.compile(r'include_(?:str|bytes)!\(\s*"(\.\./[^"]+)"')
+    dirs = set()
+    for src in cli.rglob("*.rs"):
+        if "target" in src.parts:
+            continue
+        try:
+            text = src.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for m in pat.finditer(text):
+            resolved = (src.parent / m.group(1)).resolve()
+            try:
+                rel = resolved.relative_to(REPO)
+            except ValueError:
+                continue  # outside the repo: not ours to watch
+            if rel.parts[:2] == ("packages", "cli"):
+                continue  # already hashed wholesale
+            depth = min(3, max(1, len(rel.parts) - 1))
+            dirs.add("/".join(rel.parts[:depth]))
+    return dirs
+
+
 def cargo_metadata():
     env = dict(os.environ)
     # `--locked` is injected project-wide by the `scripts/bin/cargo` PATH shim;
@@ -130,6 +170,7 @@ def closure_dirs():
         if "/third-party/" in rel or "/testing_workspaces/" in rel:
             continue
         dirs.add(rel)
+    dirs |= embedded_input_dirs()
     return sorted(dirs)
 
 

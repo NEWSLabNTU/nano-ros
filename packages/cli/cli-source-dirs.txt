@@ -5,6 +5,8 @@
 # `check-cli-source-dirs` fails when this file disagrees with cargo's resolve.
 #
 # Regenerate: python3 scripts/gen-cli-source-dirs.py
+examples/templates/multi-node-workspace
+examples/templates/multi-node-workspace-cpp
 packages/boards/nros-board-common
 packages/core/nros-core
 packages/core/nros-orchestration-ir
