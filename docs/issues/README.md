@@ -146,19 +146,17 @@ it — and the flat candidate requires an install marker, else `<store>/<tool>` 
 and mirror the pre-0493 bug. cmake now names the prefix it tried before falling through. Corrects #0625's
 closure, which verified the versioned store and was blind to the flat one. See `archived/0628-*`. (2026-08-19)
 
-**#0686** (testing/orchestration, open 2026-08-19) — `multi_pkg_workspace_freertos`'s `talker_pkg` and
-`listener_pkg` declare no `[package.metadata.nros.node]`, which is the table the planner synthesises a
-component artifact from (`find_source_metadata`, `planner.rs:3129`; `nros-build` passes
-`metadata_files: Vec::new()`, so that table IS the source). The planner therefore fails
-`missing-source-metadata` for both nodes and the fixture emits a Placeholder `run_plan.rs`. Its test passes
-regardless, because it asserts the thumbv7m ELF builds and never reads the emitted body — so the fixture
-has been proving the image LINKS, not that its launch file PLANS, which is what its doc-comment claims.
-The sibling `o5_nav2_compat_smoke` declares the table and works; the two node pkgs use the same
-`declarative_component!` + `node!` pair in their sources, so the difference is entirely in the manifest and
-nothing reads the sources to notice. Newly visible because #0683 moved the Entry pkg under `src/` and gave
-it a `package.xml`, so the planner is reached for the first time. Fix: add the table, AND make the test
-assert the emitted body (or at least fail on the stub) — a codegen fixture whose test never reads the
-codegen output cannot fail for the reason it exists. See `0686-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0686** — `multi_pkg_workspace_freertos`'s node pkgs declared no
+`[package.metadata.nros.node]`, the table the planner synthesises component artifacts from, so it failed
+`missing-source-metadata` and the Entry pkg emitted a Placeholder `run_plan.rs`. FIXED by adding the tables
+— which then broke the build, because the REAL emit names `::nros::Executor` and the firmware crate never
+declared `nros`: the only body it had ever compiled was the stub, which references `::nros_platform` alone.
+A latent gap the stub was hiding. The load-bearing half of the fix is the third change: the test's stub arm
+was `eprintln!("build smoke verified")` + fall through to green, so the fixture reported success while
+exercising no codegen and proving only that the ELF LINKS. It now FAILS on a stub and quotes the
+`// reason:` line. Points 1-2 fix today's break; point 3 is why it took months to notice. Verified: real
+emit with both `register_dispatch` calls, all three codegen fixtures 3/3, leaf lockfiles green. See
+`archived/0686-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0683** — `nav2_compat` and `board_agnostic_run_plan` skipped on a
 Placeholder stub blaming `play_launch_parser` "absent at build time" — a tool that is installed, on PATH,

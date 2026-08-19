@@ -1,7 +1,7 @@
 ---
 id: 686
 title: "`multi_pkg_workspace_freertos`'s node pkgs declare no `[package.metadata.nros.node]`, so the planner emits a stub run_plan and the fixture proves only that the ELF links"
-status: open
+status: resolved
 type: bug
 area: testing/orchestration
 related: [issue-0683, phase-330]
@@ -54,23 +54,38 @@ table. Both use the same `nros::declarative_component!` + `nros::node!` pair in
 their sources, so the packages look equivalent — the difference is entirely in
 the manifest, and nothing reads the sources to notice.
 
-## Fix direction
+## Fix
 
-Add `[package.metadata.nros.node]` to `talker_pkg` and `listener_pkg` with the
-class/name/namespace matching what their launch file declares, then confirm the
-emitted `run_plan.rs` carries `::talker_pkg::register` and
-`::listener_pkg::register`. Cheap, and the shape is already established by the
-nav2 fixture.
+Three changes, in the order they were forced:
 
-Worth doing at the same time, because it is why this sat unnoticed:
-**`freertos_firmware_entry` should assert the emitted body**, not just the ELF.
-A codegen fixture whose test never reads the codegen output cannot fail for the
-reason it exists. If asserting the body is genuinely out of scope for the QEMU
-lane, the test should at least fail — not pass — on the Placeholder stub, the
-way `nav2_compat` and `board_agnostic_run_plan` skip on it.
+1. **`[package.metadata.nros.node]` on `talker_pkg` and `listener_pkg`**, with
+   `class`/`name` matching the `<node pkg exec name>` entries in the launch
+   file. The planner then synthesises both component artifacts and codegen
+   emits the real body:
 
-## Related
+   ```rust
+   pub fn run_plan_register_dispatch(executor: &mut ::nros::Executor<'static>) -> … {
+       ::talker_pkg::register_dispatch(executor)?;
+       ::listener_pkg::register_dispatch(executor)?;
+   ```
 
-The stub now carries a `// reason:` line (issue 0683), which is how this was
-identified at all — the previous stub recorded nothing, and the consuming test
-asserted a cause its author had guessed years earlier.
+2. **An `nros` dependency on the Entry pkg.** The real emit names
+   `::nros::Executor`; the firmware crate never declared `nros` because the only
+   body it had ever compiled was the stub, which references `::nros_platform`
+   alone. So the first successful codegen broke the build — a latent gap the
+   stub had been hiding, not a new one.
+
+3. **The test fails on a stub.** Its stub arm was
+   `eprintln!("build smoke verified")` followed by a fall-through to green,
+   which is what made all of this invisible: the fixture reported success while
+   exercising no codegen. It now asserts the emit is not a Placeholder and
+   quotes the `// reason:` line (issue 0683) when it is.
+
+Point 3 is the load-bearing one. Points 1 and 2 fix today's break; point 3 is
+why it took months to notice, and would have caught it in a day.
+
+## Verified
+
+`freertos_firmware_entry` PASS on a real emit; `nav2_compat` and
+`board_agnostic_run_plan` still PASS (3/3 together);
+`check-leaf-lockfiles` green.

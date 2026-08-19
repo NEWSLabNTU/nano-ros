@@ -13,6 +13,18 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+# Issue 0686 — the planner synthesises this node's component artifact from THIS
+# table (`find_source_metadata` / `metadata_matches`), and `nros-build` passes no
+# `metadata_files`, so the table IS the source. Without it the planner reports
+# `missing-source-metadata` for `listener`, the Entry pkg's build.rs falls back to
+# a Placeholder `run_plan.rs`, and the fixture proves only that the firmware ELF
+# LINKS — not that its launch file plans. `class`/`name` must match the
+# `<node pkg exec name>` entry in `src/firmware/launch/system.launch.xml`.
+[package.metadata.nros.node]
+class = "listener_pkg::Listener"
+name = "listener"
+default_namespace = "/"
+
 [dependencies]
 # Phase 212.M-F.13 path (b) — `nros::component!()` now emits references
 # through `::nros::__macro_support::nros_platform::*`, so a Component

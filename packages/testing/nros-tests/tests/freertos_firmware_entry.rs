@@ -39,15 +39,28 @@ fn freertos_qemu_mps2_an385_entry_pkg_firmware_builds() -> nros_tests::TestResul
         .expect("nros-build did not emit run_plan.rs under src/firmware/target");
     let run_plan = fs::read_to_string(&run_plan_path).expect("read run_plan.rs");
 
-    // Offline fallback: the firmware build.rs emits a `Placeholder` stub when the
-    // git-based `nros-build` codegen dep is unavailable — accept either shape
-    // (both keep the build smoke green; only the populated shape exercises
-    // codegen, with one `<pkg>::register` per launch `<node>`).
-    if run_plan.contains("Placeholder") {
-        eprintln!(
-            "freertos firmware: run_plan.rs is the offline placeholder stub — build smoke verified."
-        );
-    } else {
+    // Issue 0686 — a stub is a FAILURE, not a pass.
+    //
+    // This arm used to `eprintln!("build smoke verified")` and fall through
+    // green, so the fixture reported success while exercising no codegen at all.
+    // It stayed that way for months: the node pkgs carried no
+    // `[package.metadata.nros.node]`, the planner failed
+    // `missing-source-metadata`, the build script fell back to the stub, and
+    // this test said fine — proving the ELF LINKS, never that the launch file
+    // PLANS, which is the property the fixture exists for.
+    //
+    // The stub carries its cause on a `// reason:` line (issue 0683); quote it,
+    // because "no codegen" is the symptom and the planner error is the finding.
+    assert!(
+        !run_plan.contains("Placeholder"),
+        "run_plan.rs is the Placeholder stub — no codegen was exercised, so this \
+         fixture proves only that the ELF links. nros-build said: {}",
+        run_plan
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("// reason: "))
+            .unwrap_or("no reason recorded — build.rs predates issue 0683")
+    );
+    {
         for pkg in ["talker_pkg", "listener_pkg"] {
             let expected = format!("{pkg}::register");
             assert!(

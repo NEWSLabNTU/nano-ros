@@ -35,6 +35,15 @@ deploy = "freertos"
 nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-mps2-an385-freertos", default-features = false, features = ["rmw-zenoh"] }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
 nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["platform-freertos"] }
+# Issue 0686 — the REAL emit names `::nros::Executor`, so the Entry pkg needs
+# `nros` directly. It did not before, because the only body this crate ever
+# compiled was the Placeholder stub, which references `::nros_platform` alone.
+# Mirrors what `o5_nav2_compat_smoke`'s Entry pkg already declares.
+nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble",
+] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
 # Phase 212.N.7 step-5 — Component pkgs are linked here so the codegen
