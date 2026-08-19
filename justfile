@@ -4343,6 +4343,24 @@ check-path-env-fingerprints:
 check-tests-can-fail:
     @python3 scripts/check-tests-can-fail.py
 
+# issue 0651 — every Zephyr symbol `zephyr/Kconfig` names must EXIST on BOTH
+# supported lines (3.7 LTS + the 4.4 rolling line). Kconfig answers an undefined
+# symbol with a WARNING, so a `select` that is right on 3.7 and misspelled on
+# 4.4 silently drops what it would have enabled — and 4.4 builds only in the
+# nightly, so that surfaces a day later against whatever else moved.
+#
+# Needs SOURCE, not a build, and not a west workspace. Off the fast line because
+# it has a real precondition (a tree must be present); it FAILS rather than
+# passes when it can check nothing (issue 0702).
+#
+#   3.7:  just zephyr setup
+#   4.4:  git clone --depth 1 --branch v4.4.0 --single-branch \
+#           https://github.com/zephyrproject-rtos/zephyr build/zephyr-kconfig/zephyr-4.4
+#         git clone https://github.com/zephyrproject-rtos/zephyr-lang-rust \
+#           build/zephyr-kconfig/zephyr-lang-rust-4.4   # then check out west-4.4.yml's pin
+check-zephyr-kconfig-symbols:
+    @python3 scripts/check-zephyr-kconfig-symbols.py
+
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
 # workspace at a single feature set. `examples/workspaces/mixed` is the fixture

@@ -90,6 +90,49 @@ If a 4.4-requiring feature does exist and predates this note, correct this
 section — it changes the priority, because then the untested line is one the
 product depends on rather than one the policy maintains.
 
+## Partly addressed (2026-08-20) — the symbol-existence half is now gated
+
+`scripts/check-zephyr-kconfig-symbols.py` (`just check-zephyr-kconfig-symbols`)
+resolves every `select` / `imply` / `depends on` in `zephyr/Kconfig` against the
+symbols DEFINED by each supported line, and fails on one that is absent. This is
+the first direction listed below: it needs SOURCE, not a build, and runs in ~2 s.
+
+**The 4.4 tree does not need a west workspace.** Two bare clones are enough —
+the `zephyr` repo at `v4.4.0` and `zephyr-lang-rust` at the SHA `west-4.4.yml`
+pins — which sidesteps issue 0078's disk exhaustion entirely:
+
+```
+git clone --depth 1 --branch v4.4.0 --single-branch \
+    https://github.com/zephyrproject-rtos/zephyr build/zephyr-kconfig/zephyr-4.4
+git clone https://github.com/zephyrproject-rtos/zephyr-lang-rust \
+    build/zephyr-kconfig/zephyr-lang-rust-4.4   # then `git checkout <west-4.4.yml pin>`
+```
+
+The module clone is not optional and was this gate's first false positive:
+`RUST` is defined by `zephyr-lang-rust`, not by zephyr, so a zephyr-only walk
+reports it missing on every line. A line's symbol universe is zephyr PLUS the
+modules west pins.
+
+**The motivating unknown is now answered.** This issue was filed partly because
+`select POSIX_PRIORITY_SCHEDULING` (issue 0626) was verified on 3.7 and
+unverifiable on 4.4. It is present on BOTH, at the same path —
+`lib/posix/options/Kconfig.sched:7`. The 0626 fix is correct on the rolling line.
+
+Verified adversarially: renaming that symbol in `zephyr/Kconfig` makes the gate
+report it absent on both lines, with the file and line number; reverting
+restores OK. Checking NO line is a hard failure, not a pass — the gate refuses to
+report success having measured nothing (issue 0702).
+
+## What this does NOT cover
+
+Symbol EXISTENCE only. A symbol that exists on both lines but means something
+different, a patch set that applies cleanly to one shape and not the other, the
+py312 floor, `k_mutex` owner-only-unlock — none of that is answerable without
+building. The nightly is still the only thing that builds 4.4, so the day-long
+feedback loop stands for everything except spelling.
+
+The remaining directions below are unchanged.
+
 ## Directions
 
 Not diagnosed further; these are candidates, not a plan.
