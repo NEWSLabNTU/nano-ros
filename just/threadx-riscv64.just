@@ -137,7 +137,17 @@ build-examples:
     # (examples/fixtures.toml). Phase 181.4.g.
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     export THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config"
-    bash scripts/build/fixtures-build.sh threadx-riscv64 rust
+    # phase-369 W2 — the six rust example leaves are no longer cargo rows.
+    #
+    # They are cmake rows now (`builder = "cmake"`, `build-zenoh/`), built by
+    # `build_threadx_cmake_rmw` in `build-fixture-extras` alongside their
+    # cyclonedds twins — one mechanism for both RMWs, which is the point of
+    # issue 0666. Calling the cargo builder here as well would build them a
+    # second time, by the path this phase is removing.
+    #
+    # `logging-smoke-threadx-riscv64` is still a genuine cargo row and is built
+    # by id in `build-fixture-extras`.
+    echo "ThreadX QEMU RISC-V rust leaves build via cmake (phase-369); see build-fixture-extras."
     echo "ThreadX QEMU RISC-V examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

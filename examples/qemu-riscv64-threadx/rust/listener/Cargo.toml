@@ -6,11 +6,6 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "listener on QEMU RISC-V ThreadX (Phase 118 collapsed)"
 
-[[bin]]
-name = "qemu-riscv64-threadx-listener"
-test = false
-bench = false
-
 # Phase 175.B — the CycloneDDS ThreadX path is CMake-driven because
 # the backend is C++ plus cmake-time idlc descriptors. The `rlib`
 # keeps the existing pure-cargo binary path intact; the `staticlib`

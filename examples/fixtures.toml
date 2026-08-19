@@ -2013,52 +2013,76 @@ dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux"
 # ===========================================================================
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/talker"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/listener"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/service-server"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/service-client"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/action-server"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
+# phase-369 W2 — the zenoh build of this rust leaf is driven through
+# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
+# be a cargo row, which is what gave these six leaves two build paths and two
+# entry points (issues 0666/0668). Features are no longer named here: the
+# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
+builder = "cmake"
 dir = "examples/qemu-riscv64-threadx/rust/action-client"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 [[fixture]]
 id = "threadx-riscv64-logging-smoke"
