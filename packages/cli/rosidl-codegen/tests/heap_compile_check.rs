@@ -10,6 +10,22 @@ use rosidl_codegen::{
 use rosidl_parser::{parse_message, parse_service};
 use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
+/// Issue 0693 follow-up — `cc` is a PRECONDITION of a compile check, not an
+/// optional extra.
+///
+/// All three syntax checks in this file used to answer a spawn failure with
+/// `eprintln!("SKIP: cc not found"); return;`, which reports PASS. A file whose
+/// entire purpose is "the generated C compiles" cannot conclude that without a
+/// compiler, and saying so quietly is how a suite keeps a green tick while
+/// verifying nothing — the class issue 0693 was filed for.
+fn cc_output(args: &[&str]) -> std::process::Output {
+    std::process::Command::new("cc").args(args).output().expect(
+        "`cc` not found — this file compiles generated C to check it is well-formed, \
+         so without a compiler it cannot answer its own question. Install a C \
+         compiler (build-essential / clang) rather than letting the check pass.",
+    )
+}
+
 #[test]
 #[ignore = "spawns cargo check against a generated crate"]
 fn generated_heap_message_compiles() {
@@ -192,25 +208,16 @@ fn generated_c_with_dheader_wrap_syntax_checks() {
     );
     fs::write(&src, source).unwrap();
 
-    let out = Command::new("cc")
-        .args([
-            "-fsyntax-only",
-            "-I",
-            gen_dir.to_str().unwrap(),
-            "-I",
-            inc.to_str().unwrap(),
-            "-I",
-            plat.to_str().unwrap(),
-            src.to_str().unwrap(),
-        ])
-        .output();
-    let out = match out {
-        Ok(o) => o,
-        Err(_) => {
-            eprintln!("SKIP generated_c_with_dheader_wrap_syntax_checks: cc not found");
-            return;
-        }
-    };
+    let out = cc_output(&[
+        "-fsyntax-only",
+        "-I",
+        gen_dir.to_str().unwrap(),
+        "-I",
+        inc.to_str().unwrap(),
+        "-I",
+        plat.to_str().unwrap(),
+        src.to_str().unwrap(),
+    ]);
     assert!(
         out.status.success(),
         "generated C failed -fsyntax-only:\n{}\n--- source ---\n{}",
@@ -255,25 +262,16 @@ fn generated_c_service_with_dheader_wrap_syntax_checks() {
     );
     fs::write(&src, source).unwrap();
 
-    let out = match Command::new("cc")
-        .args([
-            "-fsyntax-only",
-            "-I",
-            gen_dir.to_str().unwrap(),
-            "-I",
-            inc.to_str().unwrap(),
-            "-I",
-            plat.to_str().unwrap(),
-            src.to_str().unwrap(),
-        ])
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => {
-            eprintln!("SKIP: cc not found");
-            return;
-        }
-    };
+    let out = cc_output(&[
+        "-fsyntax-only",
+        "-I",
+        gen_dir.to_str().unwrap(),
+        "-I",
+        inc.to_str().unwrap(),
+        "-I",
+        plat.to_str().unwrap(),
+        src.to_str().unwrap(),
+    ]);
     assert!(
         out.status.success(),
         "generated C service failed -fsyntax-only:\n{}\n--- source ---\n{}",
@@ -320,25 +318,16 @@ fn generated_c_action_with_dheader_wrap_syntax_checks() {
     );
     fs::write(&src, source).unwrap();
 
-    let out = match Command::new("cc")
-        .args([
-            "-fsyntax-only",
-            "-I",
-            gen_dir.to_str().unwrap(),
-            "-I",
-            inc.to_str().unwrap(),
-            "-I",
-            plat.to_str().unwrap(),
-            src.to_str().unwrap(),
-        ])
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => {
-            eprintln!("SKIP: cc not found");
-            return;
-        }
-    };
+    let out = cc_output(&[
+        "-fsyntax-only",
+        "-I",
+        gen_dir.to_str().unwrap(),
+        "-I",
+        inc.to_str().unwrap(),
+        "-I",
+        plat.to_str().unwrap(),
+        src.to_str().unwrap(),
+    ]);
     assert!(
         out.status.success(),
         "generated C action failed -fsyntax-only:\n{}\n--- source ---\n{}",

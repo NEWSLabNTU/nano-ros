@@ -2700,8 +2700,19 @@ _check-fixtures-stale:
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
+# issue 0348 / 0393 — `test-zpico-multisession` is a DEPENDENCY here, not a step
+# on the `ci` line (issue 0319's rule: a suite named only on `ci` is a suite
+# `just check` never runs). It cannot fold into the nextest run below because it
+# needs `ZPICO_MAX_SESSIONS=2` — a BUILD input — and its own target dir.
+#
+# It was wired into `just test` (the dev tier) and nowhere else, so `just ci`,
+# `ci-matrix` and `ci-full` all reached `test-all` WITHOUT it and the
+# multi-session paths ran in no CI tier at all. That is the state 0393 set out
+# to fix: `two_sessions_deliver_cross_session_through_router` and `loan_e2e`
+# skipped on every host in every tier, so phase-328's session pool was never
+# executed by CI. Three tests, ~14 s.
 [group("full-matrix")]
-test-all verbose="": _require-fixtures-ready
+test-all verbose="": _require-fixtures-ready test-zpico-multisession
     #!/usr/bin/env bash
     # issue 0659 — reap peer process groups a previous SIGKILLed run left behind,
     # BEFORE nextest starts. Not mid-run: a concurrent test's peers are recorded

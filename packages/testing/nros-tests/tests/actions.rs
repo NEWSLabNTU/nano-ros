@@ -97,31 +97,35 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
 
 // =============================================================================
 
+/// The fixture-artifact check: both native action binaries must RESOLVE.
+///
+/// Both arms used to be `Err(e) => eprintln!("[INFO] Could not build …")` with
+/// the only assertion inside `Ok`, so a test named "binaries exist" passed
+/// when they did not. Whatever the resolver refuses — absent artifact, STALE
+/// against its sources, a manifest row naming a different entry — arrived as an
+/// INFO line and a green tick.
+///
+/// `?` instead: the resolver's error already says which binary, which input was
+/// newer, and what to run. That message is the whole value of this test, and
+/// printing it while passing threw it away.
 #[test]
-fn test_action_binaries_exist() {
+fn test_action_binaries_exist() -> nros_tests::TestResult<()> {
     use nros_tests::fixtures::{build_native_action_client, build_native_action_server};
 
-    // Try to build action server
-    match build_native_action_server() {
-        Ok(path) => {
-            eprintln!("[PASS] Action server binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[INFO] Could not build action server: {}", e);
-        }
-    }
+    let server = build_native_action_server()?;
+    assert!(
+        server.exists(),
+        "action-server resolved to {} but the file is not there",
+        server.display()
+    );
 
-    // Try to build action client
-    match build_native_action_client() {
-        Ok(path) => {
-            eprintln!("[PASS] Action client binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[INFO] Could not build action client: {}", e);
-        }
-    }
+    let client = build_native_action_client()?;
+    assert!(
+        client.exists(),
+        "action-client resolved to {} but the file is not there",
+        client.display()
+    );
+    Ok(())
 }
 
 /// issue 0461 — the requested `order` must REACH the server.
