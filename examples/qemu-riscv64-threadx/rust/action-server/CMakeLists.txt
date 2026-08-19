@@ -26,11 +26,18 @@ if(NOT DEFINED NANO_ROS_ROOT)
             "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
     endif()
 endif()
-set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
-    "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
-    CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
+# phase-369 W2 — cyclone-only setup, guarded so the same CMakeLists serves both
+# RMWs. The typesupport module below hard-requires `CycloneDDS::ddsc`, so an
+# unguarded include fails the zenoh configure outright.
+if(NROS_RMW STREQUAL "cyclonedds")
+    set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
+        "${NANO_ROS_ROOT}/scripts/cyclonedds/msg_to_cyclone_idl.py"
+        CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
+endif()
 add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
-include("${NANO_ROS_ROOT}/packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+if(NROS_RMW STREQUAL "cyclonedds")
+    include("${NANO_ROS_ROOT}/packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+endif()
 
 # Action role — resolve example_interfaces (Fibonacci.action) + its action_msgs /
 # unique_identifier_msgs / builtin_interfaces closure from package.xml, matching
@@ -45,6 +52,6 @@ nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 # executable, and platform/RMW link calls collapse into the board-overlay
 # seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
 # `app_main!(register)` (board macro) provides `app_main`.
-nros_threadx_rv64_rust_cyclone_app(riscv64_threadx_rust_action_server_cyclonedds
+nros_threadx_rv64_rust_app(riscv64_threadx_rust_action_server_cyclonedds
     CRATE qemu-riscv64-threadx-action-server
     LINK  example_interfaces__nano_ros_c)

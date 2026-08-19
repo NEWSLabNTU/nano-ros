@@ -315,9 +315,17 @@ build-fixture-extras:
             bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
             export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=129"
             bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
+            # phase-369 W2 — BOTH RMWs go through this seam now.
+            #
+            # The zenoh image used to be built by cargo from `src/main.rs`
+            # (`fixtures-build.sh threadx-riscv64 rust`), which is what gave
+            # these six leaves two entry points and two build paths — issue 0666,
+            # and the reason 0688's panic policy was missed on the CMake side.
+            # The seam is RMW-neutral since W1, so one loop covers both.
             for _rc in talker listener service-server service-client action-server action-client; do
                 if [ -d "examples/qemu-riscv64-threadx/rust/$_rc" ]; then
                     build_threadx_cmake_rmw "examples/qemu-riscv64-threadx/rust/$_rc" cyclonedds build-cyclonedds
+                    build_threadx_cmake_rmw "examples/qemu-riscv64-threadx/rust/$_rc" zenoh build-zenoh
                 fi
             done
         fi
