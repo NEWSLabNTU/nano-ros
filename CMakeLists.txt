@@ -300,6 +300,20 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
             if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
                 target_link_libraries(NanoRos INTERFACE
                     "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
+                # phase-368 W4 — the flag above names the SDK's libddsc.so by
+                # ABSOLUTE PATH, but ld records only its SONAME (libddsc.so.0),
+                # so without an RPATH the runtime loader searches the default
+                # paths and finds nothing on a ROS-less host. It worked on dev
+                # machines by ACCIDENT: a sourced ROS env put ROS's own libddsc
+                # on LD_LIBRARY_PATH — a different build of the library than
+                # the one linked. The clean-container probe caught it as
+                # "error while loading shared libraries: libddsc.so.0" on the
+                # first scaffolded cyclone workspace run. Stamp the linked
+                # library's own directory as RPATH on every consumer.
+                get_filename_component(_nros_ddsc_dir
+                    "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}" DIRECTORY)
+                target_link_options(NanoRos INTERFACE
+                    "-Wl,-rpath,${_nros_ddsc_dir}")
             else()
                 target_link_libraries(NanoRos INTERFACE
                     "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
@@ -330,6 +344,12 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
                 if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
                     target_link_libraries(nros-cpp-headers INTERFACE
                         "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
+                    # Same RPATH stamp as the C umbrella above (one defect,
+                    # two consumers) — see the comment there.
+                    get_filename_component(_nros_ddsc_dir
+                        "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}" DIRECTORY)
+                    target_link_options(nros-cpp-headers INTERFACE
+                        "-Wl,-rpath,${_nros_ddsc_dir}")
                 else()
                     target_link_libraries(nros-cpp-headers INTERFACE
                         "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
