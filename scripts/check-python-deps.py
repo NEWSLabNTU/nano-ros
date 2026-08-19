@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""Report which Python packages a lane needs and does not have — never install them.
+
+nano-ros does not provision Python. It used to: `scripts/zephyr/setup.sh` ran
+`pip3 install --user`, fell back to building a venv when PEP 668 refused, and
+then installed Zephyr's `requirements-base.txt` into whichever interpreter it
+had ended up with. Three interpreters could be in play (system, `--user`, the
+fallback venv) and the script chose between them silently, so "setup succeeded"
+did not tell you which Python the build would later use — and on a host where
+that guess was wrong, the failure surfaced far away, four frames inside cmake as
+`Error finding board: mps2`.
+
+Provisioning a Python environment correctly is a distro-by-distro problem:
+PEP 668 externally-managed interpreters, `--user` vs venv vs pipx, a venv that
+must inherit system site-packages or shadow the tree's other tools, and
+`python3-venv` not being installed by default on Debian. That is the user's
+environment to own. What the project CAN own is saying precisely what is
+missing, for which interpreter, and what a lane will do about it.
+
+So: this checks and reports. It never writes, never installs, never creates a
+venv.
+
+Usage:
+
+    scripts/check-python-deps.py [--python PATH] [--quiet] GROUP [GROUP ...]
+    scripts/check-python-deps.py --list
+
+Exit codes:
+
+    0  every requested group satisfied
+    1  something missing (the report names it and how to get it)
+    2  usage error, or the interpreter itself is unusable
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+# group -> (what it is for, [(import name, pip name)])
+#
+# Keyed on the IMPORT name, because that is the question ("will the build's
+# `import pykwalify` work"), and carries the pip name separately because the two
+# differ often enough to matter (`yaml` / `PyYAML`, `elftools` / `pyelftools`).
+GROUPS = {
+    # DELIBERATELY SHORTER than zephyr/scripts/requirements-base.txt.
+    #
+    # The group answers "will `west build` work here", so a module upstream
+    # lists but our lanes never reach does not belong in it — a check that
+    # reports a problem the build does not have teaches people to ignore it.
+    # Measured: the tree's own `scripts/zephyr/.venv` has NO `intelhex` and
+    # builds every Zephyr fixture, which is issue 0078's point one level down
+    # (our flows are QEMU build-only, so the hex/flash half of base.txt is
+    # never imported).
+    #
+    # These four are the ones a missing copy has actually broken: `pykwalify`
+    # took down `list_boards.py` in the ROS distrobox and surfaced as
+    # `Error finding board: mps2`; the rest are imported by the dts/build
+    # scripts on every board.
+    "zephyr-build": (
+        "`west build` for any Zephyr board (the subset of requirements-base.txt our lanes import)",
+        [
+            ("elftools", "pyelftools"),
+            ("yaml", "PyYAML"),
+            ("pykwalify", "pykwalify"),
+            ("packaging", "packaging"),
+        ],
+    ),
+    "west": (
+        "the west meta-tool itself (workspace init/update, `west build`)",
+        [("west", "west")],
+    ),
+    "cyclone-idl": (
+        "scripts/cyclonedds/msg_to_cyclone_idl.py on a host with no ROS 2",
+        [
+            ("catkin_pkg", "catkin_pkg"),
+            ("em", "empy==3.3.4"),
+            ("lark", "lark"),
+        ],
+    ),
+    "sdk-tools": (
+        "scripts/sdk/verify-index.py on Python older than 3.11 (needs tomllib)",
+        [("tomllib", "tomli")],
+    ),
+}
+
+# Groups whose absence is normal on many hosts, so a bare run does not imply
+# they were requested.
+DEFAULT_GROUPS = ["west", "zephyr-build"]
+
+PROBE = r"""
+import importlib, json, sys
+out = {"version": list(sys.version_info[:3]), "exe": sys.executable, "have": {}}
+for name in json.loads(sys.argv[1]):
+    try:
+        importlib.import_module(name)
+        out["have"][name] = True
+    except Exception:
+        out["have"][name] = False
+print(json.dumps(out))
+"""
+
+
+def probe(python, modules):
+    """Ask the TARGET interpreter, not this one.
+
+    The interpreter that runs this script is not necessarily the one a lane will
+    use — the Zephyr 4.4 line has its own `.venv312`, a container has its own
+    system python, and `--python` is how a caller says which one the answer is
+    about. Importing here would answer the wrong question convincingly.
+    """
+    try:
+        res = subprocess.run(
+            [python, "-c", PROBE, json.dumps(sorted(modules))],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"cannot run {python}: {e}"
+    if res.returncode != 0:
+        return None, f"{python} exited {res.returncode}: {res.stderr.strip()[:200]}"
+    try:
+        return json.loads(res.stdout), None
+    except json.JSONDecodeError:
+        return None, f"{python} produced no usable output: {res.stdout.strip()[:200]}"
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("groups", nargs="*", default=None)
+    ap.add_argument("--python", default=os.environ.get("NROS_PYTHON", sys.executable))
+    ap.add_argument("--list", action="store_true", help="print the known groups and exit")
+    ap.add_argument("--quiet", action="store_true", help="print only when something is missing")
+    args = ap.parse_args()
+
+    if args.list:
+        for name, (why, mods) in GROUPS.items():
+            print(f"{name}\n    {why}\n    {' '.join(m for _, m in mods)}")
+        return 0
+
+    groups = args.groups or DEFAULT_GROUPS
+    unknown = [g for g in groups if g not in GROUPS]
+    if unknown:
+        sys.stderr.write(
+            f"check-python-deps: unknown group(s): {', '.join(unknown)}\n"
+            f"  known: {', '.join(GROUPS)}\n"
+        )
+        return 2
+
+    wanted = {imp: pipname for g in groups for imp, pipname in GROUPS[g][1]}
+    info, err = probe(args.python, wanted)
+    if info is None:
+        sys.stderr.write(f"check-python-deps: {err}\n")
+        return 2
+
+    ver = ".".join(str(p) for p in info["version"])
+    missing = sorted(imp for imp, ok in info["have"].items() if not ok)
+
+    # `tomllib` is stdlib from 3.11, so on a modern interpreter the sdk-tools
+    # group is satisfied by the version rather than by a package.
+    if "tomllib" in missing and tuple(info["version"][:2]) >= (3, 11):
+        missing.remove("tomllib")
+
+    if not missing:
+        if not args.quiet:
+            print(
+                f"python-deps: OK — {info['exe']} (Python {ver}) has "
+                f"{', '.join(groups)}"
+            )
+        return 0
+
+    sys.stderr.write(
+        f"python-deps: MISSING for {', '.join(groups)}\n"
+        f"  interpreter: {info['exe']} (Python {ver})\n"
+    )
+    for g in groups:
+        why, mods = GROUPS[g]
+        gone = [(i, p) for i, p in mods if i in missing]
+        if gone:
+            sys.stderr.write(f"  [{g}] {why}\n")
+            for imp, pipname in gone:
+                sys.stderr.write(f"      import {imp:<12} (pip: {pipname})\n")
+    sys.stderr.write(
+        "\n  nano-ros does not install these: choosing between a distro package,\n"
+        "  `pip --user`, and a venv is a decision about YOUR interpreter, and on a\n"
+        "  PEP 668 host (Arch, Fedora, Debian 12+) pip refuses `--user` outright.\n"
+        "  Any of these works; use whichever suits the host:\n\n"
+        f"      <distro pkg manager>   e.g. python-pykwalify, python-pyelftools\n"
+        f"      pip install --user     {' '.join(sorted(set(wanted[m] for m in missing)))}\n"
+        "      python3 -m venv --system-site-packages .venv && . .venv/bin/activate\n"
+        f"                             && pip install {' '.join(sorted(set(wanted[m] for m in missing)))}\n\n"
+        "  Then point the lane at that interpreter if it is not the default:\n"
+        "      NROS_PYTHON=/path/to/python3\n"
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -5019,6 +5019,32 @@ doctor tier="":
             echo "         rm -rf ${NROS_HOME:-$HOME/.nros}/sdk/$retired_tool"
         done
     fi
+    # Python, which nano-ros CHECKS and never installs.
+    #
+    # Zephyr's build scripts, west, colcon, rosidl_adapter and 37 of this
+    # repo's own gates are Python, but provisioning an interpreter is a
+    # host decision (PEP 668 refuses `pip --user` outright on Arch/Fedora/
+    # Debian 12+, and the venv/pipx/distro-package choice differs per host).
+    # So doctor reports; `scripts/zephyr/setup.sh` refuses to continue.
+    #
+    # The interpreter reported is the one a lane would USE — `NROS_PYTHON`
+    # when set, else the `scripts/zephyr/.venv` that activate.sh adopts when
+    # present, else PATH's python3. Reporting a different one from the one
+    # that gets used is how "setup succeeded" stopped meaning anything.
+    py_for_lane="${NROS_PYTHON:-}"
+    if [ -z "$py_for_lane" ] && [ -x "{{justfile_directory()}}/scripts/zephyr/.venv/bin/python3" ]; then
+        py_for_lane="{{justfile_directory()}}/scripts/zephyr/.venv/bin/python3"
+    fi
+    [ -n "$py_for_lane" ] || py_for_lane="$(command -v python3 || true)"
+    if [ -z "$py_for_lane" ]; then
+        echo "  [MISSING] python3 — Zephyr's build scripts and 37 repo gates are Python"
+    elif py_report="$(python3 "{{justfile_directory()}}/scripts/check-python-deps.py" \
+            --python "$py_for_lane" west zephyr-build 2>&1)"; then
+        echo "  [OK] python: $("$py_for_lane" -V 2>&1) ($py_for_lane) — west + zephyr-build deps"
+    else
+        echo "  [WARN] python deps missing for the Zephyr lanes ($py_for_lane):"
+        echo "$py_report" | sed 's/^/         /'
+    fi
     # clang-format pin (consistent C/C++ formatting across machines + CI).
     want_cf="$(cat "{{justfile_directory()}}/.clang-format-version" 2>/dev/null || echo 17.0.6)"
     pinned_cf="{{justfile_directory()}}/build/clang-format/bin/clang-format"

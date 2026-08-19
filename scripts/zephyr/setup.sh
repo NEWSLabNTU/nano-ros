@@ -212,63 +212,58 @@ if [ $MISSING -eq 1 ]; then
 fi
 
 # =============================================================================
-# Install Python Tools
+# Check Python Tools — nano-ros does NOT provision them
 # =============================================================================
 
-# ONE spelling of "install into whichever interpreter we ended up with", so the
-# venv fallback above cannot be honoured here and skipped three lines later.
-nros_pip_install() {
-    if [ -n "${VIRTUAL_ENV:-}" ]; then
-        "$VIRTUAL_ENV/bin/pip3" install "$@"
-    else
-        pip3 install --user "$@"
-    fi
-}
-
-log_info "Installing Python tools..."
-
-# PEP 668 — a distro whose Python is "externally managed" (Arch, Fedora, Debian
-# 12+) refuses `pip3 install`, INCLUDING `--user`. That is not a broken host: it
-# is the documented default now, and the fix is a venv, which is what the 4.4
-# line already does (`ZEPHYR_VENV_BIN` / `.venv312` in just/zephyr.just).
+# This section used to install: `pip3 install --user west pyelftools`, a venv
+# fallback when PEP 668 refused, `catkin_pkg`/`empy`/`lark`/`tomli` into that
+# venv, and finally Zephyr's `requirements-base.txt`. It is now a CHECK.
 #
-# So: try the plain install first (unchanged for Ubuntu/CI, where it works and
-# where `~/.local/bin` is already the contract), and fall back to a venv beside
-# the SDK when the interpreter refuses. `--break-system-packages` is NOT used —
-# it does what its name says to a system Python nano-ros does not own.
-NROS_ZEPHYR_VENV="${NROS_ZEPHYR_VENV:-$SCRIPT_DIR/.venv}"
+# Provisioning a Python environment is a distro-by-distro problem this project
+# is in no position to solve: PEP 668 externally-managed interpreters refuse
+# `pip --user` outright, the remedy differs across Arch/Fedora/Debian/Ubuntu,
+# `python3-venv` is a separate package on Debian, and a venv must either inherit
+# system site-packages or shadow the other tools the tree calls. Attempting it
+# anyway meant up to three interpreters were in play (system, `--user`, fallback
+# venv) with the script choosing between them silently — so "setup succeeded"
+# did not say which Python `west build` would later use.
+#
+# What the project can own is a precise report. `scripts/check-python-deps.py`
+# names the interpreter, the missing imports and their pip names, and leaves the
+# choice of distro package / `--user` / venv to whoever owns the host.
+#
+# `activate.sh` and `activate.fish` ALREADY have the right shape here: they put
+# `scripts/zephyr/.venv/bin` on PATH *if it exists* and create nothing. So a
+# venv at that path is adopted automatically — which is why the remediation
+# below names it.
+log_info "Checking Python tools (nano-ros does not install them)..."
 
-if pip3 install --user --upgrade pip >/dev/null 2>&1 \
-   && pip3 install --user west pyelftools; then
-    export PATH="$HOME/.local/bin:$PATH"
-else
-    log_info "pip3 --user refused (PEP 668 externally-managed); using a venv at $NROS_ZEPHYR_VENV"
-    if [ ! -x "$NROS_ZEPHYR_VENV/bin/pip3" ]; then
-        # `--system-site-packages`: this venv goes on PATH (activate.sh), so its
-        # python3 becomes the tree's python3. Without inheritance it would
-        # SHADOW every distro package the repo's own scripts import (colcon,
-        # clang-format, tomli) — a fix for one lane that breaks the rest.
-        python3 -m venv --system-site-packages "$NROS_ZEPHYR_VENV" || {
-            log_error "python3 -m venv failed — install the venv module (Debian: python3-venv)"
-            exit 1
-        }
-    fi
-    "$NROS_ZEPHYR_VENV/bin/pip3" install --upgrade pip
-    # west for the workspace, plus the `[python.*]` deps the index declares for
-    # ROS-less hosts: the cyclone msg->IDL step imports catkin_pkg/lark, and its
-    # templates need empy 3.3.4 (empy 4.x is incompatible — the index pins it).
-    "$NROS_ZEPHYR_VENV/bin/pip3" install west pyelftools catkin_pkg "empy==3.3.4" lark tomli
-    export PATH="$NROS_ZEPHYR_VENV/bin:$PATH"
-    # Everything downstream (west update, the requirements installs below) must
-    # use the same interpreter, or `west` resolves against a system python that
-    # does not have its deps.
-    export VIRTUAL_ENV="$NROS_ZEPHYR_VENV"
+NROS_PY="${NROS_PYTHON:-$(command -v python3 || true)}"
+if [ -z "$NROS_PY" ]; then
+    log_error "no python3 on PATH — Zephyr's build scripts are Python"
+    exit 1
+fi
+
+if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
+        west zephyr-build; then
+    log_error "Python prerequisites missing — see the report above."
+    echo "" >&2
+    echo "  This script deliberately does not install them. A venv at" >&2
+    echo "  scripts/zephyr/.venv is picked up automatically by activate.sh:" >&2
+    echo "" >&2
+    echo "      python3 -m venv --system-site-packages scripts/zephyr/.venv" >&2
+    echo "      scripts/zephyr/.venv/bin/pip install west pyelftools PyYAML pykwalify packaging" >&2
+    echo "      source ./activate.sh" >&2
+    echo "" >&2
+    echo "  Then re-run this script. Use NROS_PYTHON=<path> to point it at a" >&2
+    echo "  different interpreter." >&2
+    exit 1
 fi
 
 if command -v west &> /dev/null; then
-    log_success "west installed: $(west --version)"
+    log_success "west present: $(west --version)"
 else
-    log_error "west installation failed"
+    log_error "west imports but is not on PATH — add its bin dir (e.g. \`source ./activate.sh\`)"
     exit 1
 fi
 
@@ -458,22 +453,29 @@ fi
 log_info "Applying Rust cargo-features pass-through patch..."
 bash "$NANO_ROS_ROOT/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
 
-# Install Zephyr Python dependencies.
+# Re-check Zephyr's Python dependencies now that the workspace exists.
 #
-# Issue 0078 — install ONLY requirements-base.txt, not the full requirements.txt.
-# The nano-ros zephyr flows are QEMU build-only (`west build`); base.txt has
-# everything `west build` needs (pyelftools/packaging/pykwalify/anytree/intelhex/
-# devicetree). The full requirements.txt also `-r`s the extras/run-test/compliance
-# sets, which on the 4.4 line pull `spsdk-mcu-link` (NXP flash/sign tooling, heavy
-# crypto build deps) — never used here, and large enough to ENOSPC the ~14 GB CI
-# container. Fall back to the full file only if base.txt is absent (older trees).
-log_info "Installing Zephyr Python dependencies (build-only: requirements-base.txt)..."
+# This used to `pip install -r requirements-base.txt` (issue 0078: base.txt
+# only, because the full requirements.txt pulls `spsdk-mcu-link` on the 4.4 line
+# and that ENOSPC'd a 14 GB CI container). nano-ros no longer installs Python
+# packages at all — see "Check Python Tools" above for why.
+#
+# The check runs a SECOND time here on purpose: the first ran before `west
+# update`, so `requirements-base.txt` did not exist yet and the earlier verdict
+# was made against the module list this repo maintains. Now the real file is on
+# disk and can be named in the remediation.
+log_info "Re-checking Zephyr Python dependencies (build-only subset)..."
 REQ_BASE="$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt"
-if [ -f "$REQ_BASE" ]; then
-    nros_pip_install -r "$REQ_BASE"
-else
-    log_info "requirements-base.txt absent — falling back to full requirements.txt"
-    nros_pip_install -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
+if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
+        zephyr-build; then
+    log_error "Zephyr's Python build dependencies are missing — see above."
+    if [ -f "$REQ_BASE" ]; then
+        echo "" >&2
+        echo "  Upstream's full build-only set is:" >&2
+        echo "      $REQ_BASE" >&2
+        echo "  nano-ros imports a subset of it; install either." >&2
+    fi
+    exit 1
 fi
 
 # Create environment script
