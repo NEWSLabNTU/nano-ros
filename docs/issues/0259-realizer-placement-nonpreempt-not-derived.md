@@ -247,6 +247,31 @@ same reason.
 `SchedCaps`. Until then any placement derivation would be inventing its own
 hardware model.
 
+#### Added 2026-08-19 — `SchedCaps.n_cores`, declared per deployment
+
+`[deploy.<board>] cores = <n>` — the same bake-authoritative knob shape as
+`edf`, because the deployment is the only place that knows and it is
+authoritative for the image actually being built. A non-positive count is
+IGNORED rather than trusted: zero cores is a typo, not a claim, and honouring it
+would divide by nothing.
+
+`n_cores` is `Option`, and `None` means UNKNOWN rather than one. No board
+descriptor records a count and a bake cannot infer one — assuming 1 reports
+false over-subscription on an 8-core host, assuming many excuses a taskset that
+cannot fit. Both fabricate hardware, which is the same failure as a fabricated
+WCET.
+
+**This also fixed a bug in the utilisation check as first landed.** Its gate was
+`!caps.affinity`, and `affinity` is `true` for posix, zephyr, freertos, threadx
+AND nuttx — every real target — so the check never fired anywhere. A capability
+flag was standing in for a quantity it cannot express. The gate is now the
+declared count, and the verdict reads `demand N.NN processors, and this
+deployment declares M`.
+
+`placement` remains underived: a count makes utilisation judgeable, but
+assigning nodes to cores also needs the interference model finding 2 describes.
+What is no longer missing is the denominator.
+
 ### Still open
 
 `placement` needs a CORE COUNT before it needs an algorithm (above), and then

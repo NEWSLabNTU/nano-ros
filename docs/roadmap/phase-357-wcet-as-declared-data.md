@@ -42,8 +42,11 @@ Three orchestration issues that are one dependency chain, not three tasks.
   (`U = ΣC_i/T_i`, reported only when it exceeds one processor, naming the nodes
   that contributed nothing). `placement` and `non_preempt` remain underived, and
   BOTH are blocked on missing model INPUTS rather than on realizer logic:
-  placement needs a CORE COUNT (nothing in the tree records one, so the
-  utilisation check stays silent on SMP for the same reason), non_preempt needs
+  `SchedCaps.n_cores` now EXISTS
+  (`[deploy.<board>] cores = <n>`, `None` = unknown, non-positive ignored),
+  which also fixed the utilisation check's original gate — it tested
+  `!affinity`, true for every real target, so it never fired. placement still
+  needs finding 2's interference model on top of the count; non_preempt needs
   per-callback priorities within a tier.
 * **W3 (#519, sub-millisecond timer period)** — DONE. The render was already
   correct; what was missing was a test pinning it, now added and proven by

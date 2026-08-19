@@ -37,6 +37,18 @@ pub struct SchedCaps {
     pub preempt_threshold: bool,
     /// SMP core affinity.
     pub affinity: bool,
+    /// Issue 0259 — how many cores this image runs on, when the deployment says.
+    ///
+    /// `None` is the default and means UNKNOWN, not one. Nothing in the board
+    /// descriptors records a core count, and a bake cannot infer one: assuming
+    /// 1 would report false over-subscription on an 8-core host, and assuming
+    /// many would excuse a taskset that cannot fit. Both are fabricated
+    /// hardware, which is the same failure as a fabricated WCET.
+    ///
+    /// Set it per deployment with `[deploy.<board>] cores = <n>`, the same
+    /// bake-authoritative knob shape as `edf`. Until something declares it, the
+    /// utilisation check stays silent and `placement` remains underivable.
+    pub n_cores: Option<u16>,
     /// Number of distinct priority levels.
     pub n_priorities: u16,
     /// `true` when a numerically-lower priority is *higher* urgency
@@ -134,6 +146,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: false,
             affinity: true,
             n_priorities: 99,
+            n_cores: None,
+
             low_number_is_high: false,
         },
         // Zephyr: CONFIG_SCHED_DEADLINE (EDF), SMP cpu_mask; no reservation /
@@ -144,6 +158,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: false,
             affinity: true,
             n_priorities: 32,
+            n_cores: None,
+
             low_number_is_high: true,
         },
         // FreeRTOS: fixed-priority only; SMP core affinity; high = high.
@@ -153,6 +169,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: false,
             affinity: true,
             n_priorities: 16,
+            n_cores: None,
+
             low_number_is_high: false,
         },
         // ThreadX: native preemption-threshold; SMP core exclude
@@ -163,6 +181,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: true,
             affinity: true,
             n_priorities: 32,
+            n_cores: None,
+
             low_number_is_high: true,
         },
         // NuttX: POSIX SCHED_SPORADIC (reservation); SMP affinity; high = high.
@@ -172,6 +192,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: false,
             affinity: true,
             n_priorities: 255,
+            n_cores: None,
+
             low_number_is_high: false,
         },
         // Bare-metal (RTIC / Cortex-M NVIC): hardware priorities, single core,
@@ -182,6 +204,8 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             preempt_threshold: false,
             affinity: false,
             n_priorities: 8,
+            n_cores: None,
+
             low_number_is_high: false,
         },
     }
@@ -202,6 +226,17 @@ pub fn sched_caps_from_deploy(
         && let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf")
     {
         caps.edf = *b;
+    }
+    // Issue 0259 — `[deploy.<board>] cores = <n>`. Same knob shape as `edf`:
+    // the deployment is the only place that knows, and it is authoritative for
+    // the image actually being built. A non-positive count is ignored rather
+    // than trusted — zero cores is not a claim, it is a typo, and honouring it
+    // would divide by nothing.
+    if let Some(d) = deploy
+        && let Some(ros_launch_manifest_model::ExtraValue::Int(n)) = d.extra.get("cores")
+        && *n > 0
+    {
+        caps.n_cores = Some((*n).min(u16::MAX as i64) as u16);
     }
     caps
 }
@@ -472,16 +507,21 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
     // bound is `n(2^(1/n)-1)` for rate-monotonic, and this makes no claim about
     // schedulability BELOW 1.0.
     //
-    // Only on a uniprocessor. `SchedCaps` carries `affinity: bool` but NO CORE
-    // COUNT, and neither does anything else in the tree — so on an SMP board
-    // there is no denominator and the honest answer is silence rather than a
-    // guess. That missing input is also why `placement` cannot be derived at
-    // all (issue 0259): you cannot assign cores you cannot count.
+    // The denominator is `caps.n_cores`, declared by
+    // `[deploy.<board>] cores = <n>`. Unknown means SILENT: nothing in the
+    // board descriptors records a count, and a bake cannot infer one —
+    // assuming 1 would report false over-subscription on an 8-core host, and
+    // assuming many would excuse a taskset that cannot fit.
+    //
+    // This gate was `!caps.affinity` when the check landed, which was a bug:
+    // `affinity` is `true` for posix, zephyr, freertos, threadx and nuttx — every
+    // real target — so the check never fired anywhere. A capability flag was
+    // standing in for a quantity it cannot express.
     //
     // Nodes with an unknown C or T contribute nothing and are NAMED in the
-    // message, so a total under 1.0 cannot be mistaken for "the system fits"
-    // when half the taskset was unmeasured.
-    if !caps.affinity {
+    // message, so a total under capacity cannot be mistaken for "the system
+    // fits" when half the taskset was unmeasured.
+    if let Some(cores) = caps.n_cores {
         let mut total = 0.0_f64;
         let mut counted = 0usize;
         let mut unmeasured: Vec<&str> = Vec::new();
@@ -494,7 +534,8 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
                 _ => unmeasured.push(n.name.as_str()),
             }
         }
-        if counted > 0 && total > 1.0 {
+        let capacity = cores as f64;
+        if counted > 0 && total > capacity {
             let caveat = if unmeasured.is_empty() {
                 String::new()
             } else {
@@ -509,10 +550,10 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
                 node: "<system>".to_string(),
                 dim: "utilization",
                 reason: format!(
-                    "the {counted} measured periodic node(s) demand {:.1}% of one \
-                     processor{caveat}. A uniprocessor cannot run this taskset at any \
-                     priority assignment (issue 0259).",
-                    total * 100.0
+                    "the {counted} measured periodic node(s) demand {:.2} processors, \
+                     and this deployment declares {cores}{caveat}. No priority \
+                     assignment can run a taskset that does not fit (issue 0259).",
+                    total
                 ),
             });
         }
@@ -587,6 +628,7 @@ mod tests {
 
     fn caps(edf: bool, reservation: bool, low_high: bool) -> SchedCaps {
         SchedCaps {
+            n_cores: None,
             edf,
             reservation,
             preempt_threshold: false,
@@ -998,10 +1040,16 @@ mod tests {
 
     // ---- issue 0259: system utilisation ------------------------------------
 
+    fn caps_cores(n: Option<u16>) -> SchedCaps {
+        SchedCaps {
+            n_cores: n,
+            ..caps(false, false, false)
+        }
+    }
+
     /// Two nodes each needing 60% of a processor cannot share one.
     #[test]
-    fn oversubscribed_uniprocessor_is_reported_with_its_percentage() {
-        // 6ms every 10ms = 60% each.
+    fn oversubscribed_uniprocessor_is_reported_against_its_declared_cores() {
         let input = MapperInput {
             nodes: vec![
                 node_with_rate("/a", 100.0, 6.0),
@@ -1011,29 +1059,53 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(1)));
         let u = plan
             .degradations
             .iter()
             .find(|d| d.dim == "utilization")
-            .expect("120% of one processor must be reported");
+            .expect("1.20 processors demanded against 1 declared");
         assert_eq!(u.node, "<system>");
-        assert!(u.reason.contains("120.0%"), "{}", u.reason);
-        assert!(u.reason.contains("2 measured"), "{}", u.reason);
+        assert!(u.reason.contains("1.20 processors"), "{}", u.reason);
+        assert!(u.reason.contains("declares 1"), "{}", u.reason);
     }
 
-    /// A taskset that fits is NOT reported. Below 1.0 says nothing about
-    /// schedulability on its own, so silence is the only honest output.
+    /// The SAME taskset on two declared cores fits, and is not reported. This
+    /// is what the core count buys: the verdict depends on the hardware, not on
+    /// a capability flag that cannot express a quantity.
     #[test]
-    fn a_taskset_that_fits_is_not_reported() {
+    fn the_same_taskset_fits_when_two_cores_are_declared() {
         let input = MapperInput {
-            nodes: vec![node_with_rate("/a", 100.0, 3.0)],
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+            ],
             legacy: None,
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(2)));
         assert!(!plan.degradations.iter().any(|d| d.dim == "utilization"));
+    }
+
+    /// No declared core count means no verdict. A bake cannot infer the
+    /// hardware, and guessing either way fabricates it.
+    #[test]
+    fn an_undeclared_core_count_yields_no_utilization_verdict() {
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_cores(None));
+        assert!(
+            !plan.degradations.iter().any(|d| d.dim == "utilization"),
+            "unknown cores must be silent, not assumed to be 1"
+        );
     }
 
     /// Unmeasured nodes are NAMED, so a total cannot be read as "the system
@@ -1052,7 +1124,7 @@ mod tests {
             chains: vec![],
         };
         let ranked = chain_aware_rank(&input);
-        let plan = realize_rtos(&ranked, &input, &caps(false, false, false));
+        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(1)));
         let u = plan
             .degradations
             .iter()
@@ -1066,29 +1138,16 @@ mod tests {
         );
     }
 
-    /// On an SMP board there is no core COUNT anywhere in the model, so there
-    /// is no denominator and the check stays silent rather than guessing. This
-    /// is the same missing input that makes `placement` underivable.
+    /// A zero core count is a typo, not a claim: ignored rather than honoured.
     #[test]
-    fn smp_gets_no_utilization_verdict_because_cores_are_uncountable() {
-        let input = MapperInput {
-            nodes: vec![
-                node_with_rate("/a", 100.0, 6.0),
-                node_with_rate("/b", 100.0, 6.0),
-            ],
-            legacy: None,
-            chains: vec![],
-        };
-        let ranked = chain_aware_rank(&input);
-        let smp = SchedCaps {
-            affinity: true,
-            ..caps(false, false, false)
-        };
-        let plan = realize_rtos(&ranked, &input, &smp);
-        assert!(
-            !plan.degradations.iter().any(|d| d.dim == "utilization"),
-            "no core count means no denominator; silence beats a guess"
-        );
+    fn a_zero_core_count_is_ignored_rather_than_divided_by() {
+        use ros_launch_manifest_model::{Deploy, ExtraValue};
+        let mut d = Deploy::default();
+        d.extra.insert("cores".into(), ExtraValue::Int(0));
+        assert_eq!(sched_caps_from_deploy("zephyr", Some(&d)).n_cores, None);
+
+        d.extra.insert("cores".into(), ExtraValue::Int(4));
+        assert_eq!(sched_caps_from_deploy("zephyr", Some(&d)).n_cores, Some(4));
     }
 
     fn node_with_rate(name: &str, rate_hz: f64, exec_ms: f64) -> MapperNode {
