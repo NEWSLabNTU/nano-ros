@@ -169,6 +169,35 @@ Census: `nros-node` cfg 11 -> 10, path 20 -> 7; `nros` path 9 -> 22; total 38,
 unchanged — the sites moved from the core to the edge, which is the goal, not
 the number.
 
+### Follow-up, same day — the sibling readers
+
+The move above created one reader in the core's place and left three siblings at
+the edge, which is the defect this issue is about, one layer over. Swept:
+
+* **`nros-cpp`'s two native entries** read `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`
+  and passed them down as the BAKED rung — while `nros_cpp_init` re-resolved the
+  same two variables through `try_resolve_hosted`. Deleted rather than unified:
+  the resolver was already doing it, and doing it better. The entries did not
+  accept the legacy `$ZENOH_LOCATOR`, and coerced a malformed or out-of-range
+  `$ROS_DOMAIN_ID` to a SILENT domain 0 — the #206 failure mode, surviving on
+  the one path nobody had swept. `$ROS_DOMAIN_ID=300` on a C++ entry now exits
+  `NROS_CPP_RET_INVALID_ARGUMENT` (measured: exit 253) instead of quietly
+  running on domain 0.
+* **`nros::init::read_env_context`** was a third parse of the same four
+  variables, with no deprecation warning on the legacy spellings and no range
+  check. It calls `try_resolve_hosted` now.
+* **`from_env` itself** read `$ROS_DOMAIN_ID` a fourth way, through the cache,
+  which silently resolved a bad value to 0 while `resolve_hosted` errored on it
+  — two answers for one variable inside one module. `from_env` IS
+  `resolve_hosted(BootConfig::default())` now, structurally rather than by
+  assertion, so it fails loud like every other path. The cached domain field is
+  gone with it.
+* **`$NROS_ENTRY_SPIN_MS`** was parsed twice at two widths (`u32`, `u64`), so the
+  same name meant "unbounded" above 4.29e9 ms at one entry and the literal value
+  at the other. One reader, saturating.
+
+Census: 38 -> 27 `std::` paths (`nros` 22 -> 16, `nros-cpp` 7 -> 2).
+
 The three classes listed below are NOT closed by this and keep their questions.
 ## What this does NOT finish
 

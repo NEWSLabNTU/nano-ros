@@ -35,7 +35,6 @@ use nros_rmw::SessionMode;
 /// `&'static str` fields a resolved [`ExecutorConfig`] hands out.
 struct EnvCache {
     locator: String,
-    domain_id: u32,
     mode: SessionMode,
     /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
     node_name: String,
@@ -83,10 +82,6 @@ fn env_cache() -> &'static EnvCache {
             // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
             // active backend substitutes its own default.
             .unwrap_or_default();
-        let domain_id = std::env::var("ROS_DOMAIN_ID")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
         let mode_str = std::env::var("NROS_SESSION_MODE")
             .or_else(|_| {
                 std::env::var("ZENOH_MODE").inspect(|_| {
@@ -104,7 +99,6 @@ fn env_cache() -> &'static EnvCache {
         let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
         EnvCache {
             locator,
-            domain_id,
             mode,
             node_name,
             rmw: rmw_selector().map(|s| s.as_str().to_string()),
@@ -247,25 +241,38 @@ pub trait ExecutorConfigEnvExt {
     ///   `ExecutorConfig::rmw`, so a config built here still selects the
     ///   backend the user named.
     ///
-    /// Env-var values are cached in a process-global `OnceLock` on the first
-    /// call and reused for the process lifetime — repeated calls do NOT re-read
-    /// the environment and do NOT accrete memory. The returned `&'static str`
-    /// fields point into that cache.
+    /// String values are cached in a process-global `OnceLock` on the first
+    /// call and reused for the process lifetime — repeated calls do NOT
+    /// accrete memory, and the returned `&'static str` fields point into that
+    /// cache. Presence and the domain id are read live, so a caller that
+    /// changes the environment between calls sees the change.
+    ///
+    /// **Panics** on a malformed or out-of-range `$ROS_DOMAIN_ID`, like
+    /// [`resolve_hosted`] and the C / C++ entries. A boot identity that cannot
+    /// be resolved is a configuration error; the alternative is a node silently
+    /// running on domain 0, which is what issue #206 removed everywhere else.
     fn from_env() -> ExecutorConfig<'static>;
 }
 
 impl ExecutorConfigEnvExt for ExecutorConfig<'static> {
     fn from_env() -> ExecutorConfig<'static> {
-        let cache = env_cache();
+        // issue 0687 — `from_env` IS `resolve_hosted` with nothing baked, and
+        // saying so in code rather than in a test is the point. The two used to
+        // be parallel implementations pinned together by an assertion
+        // (`noop_resolve_matches_from_env`), and they had already drifted where
+        // the assertion did not look: this one read `$ROS_DOMAIN_ID` through a
+        // second, silent parse that turned a malformed or out-of-range value
+        // into domain 0. Now a bad domain fails loud here exactly as it does
+        // for `resolve`, `nros-c` and `nros-cpp` — the #206 rule, finally
+        // uniform across all four.
+        //
+        // The one field that does NOT come from the rung is `node_name`:
+        // `from_env` has never honoured `$NROS_NODE_NAME` (its doc lists what
+        // it reads), and callers chain `.node_name(..)` immediately. Changing
+        // that is a decision, not a cleanup.
         ExecutorConfig {
-            locator: cache.locator.as_str(),
-            mode: cache.mode,
-            domain_id: cache.domain_id,
             node_name: "node",
-            namespace: "",
-            clock_us: None,
-            epoch_us: nros_node::default_epoch_us_fn(),
-            rmw: cache.rmw.as_deref(),
+            ..resolve_hosted(BootConfig::default())
         }
     }
 }
@@ -282,9 +289,17 @@ mod tests {
     /// this lock for the duration to avoid races with each other. (`cargo
     /// nextest` runs each test in its own process so the lock is always
     /// uncontended, but taking it is still correct.)
-    fn env_lock() -> &'static Mutex<()> {
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        // Poison-TOLERANT, deliberately: three tests here assert that a bad
+        // `$ROS_DOMAIN_ID` panics, and a panic while this guard is alive
+        // poisons the mutex — which would then fail every LATER test in the
+        // module for a reason that has nothing to do with what it asserts
+        // (measured: 3 intended failures became 8). The data behind the lock is
+        // `()`; there is no invariant a panic could have broken.
         LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// RAII guard that saves and restores a single env var.
@@ -325,7 +340,7 @@ mod tests {
     /// identical to `from_env()`, regardless of what env vars are set.
     #[test]
     fn noop_resolve_matches_from_env() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock();
 
         let resolved = resolve_hosted(BootConfig::default());
         let env_cfg = ExecutorConfig::from_env();
@@ -340,7 +355,7 @@ mod tests {
 
     #[test]
     fn env_overrides_baked_on_hosted() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock();
         let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
 
         let baked = BootConfig {
@@ -361,7 +376,7 @@ mod tests {
 
     #[test]
     fn baked_used_when_env_unset_on_hosted() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock();
         let _e1 = EnvGuard::unset("NROS_LOCATOR");
         let _e2 = EnvGuard::unset("ZENOH_LOCATOR");
 
@@ -379,7 +394,7 @@ mod tests {
 
     #[test]
     fn per_field_independence_baked_name_env_locator() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock();
         let _e = EnvGuard::set("NROS_LOCATOR", "tcp/env:7447");
         let _n = EnvGuard::unset("NROS_NODE_NAME");
 
@@ -398,7 +413,7 @@ mod tests {
 
     #[test]
     fn try_resolve_malformed_domain_env_errors() {
-        let _l = env_lock().lock().unwrap();
+        let _l = env_lock();
         let _g = EnvGuard::set("ROS_DOMAIN_ID", "not-a-number");
         let err = match try_resolve_hosted(BootConfig::default()) {
             Err(e) => e,
@@ -409,7 +424,7 @@ mod tests {
 
     #[test]
     fn try_resolve_domain_env_over_max_errors() {
-        let _l = env_lock().lock().unwrap();
+        let _l = env_lock();
         let _g = EnvGuard::set("ROS_DOMAIN_ID", "233");
         let err = match try_resolve_hosted(BootConfig::default()) {
             Err(e) => e,
@@ -420,7 +435,7 @@ mod tests {
 
     #[test]
     fn try_resolve_node_name_env_rung() {
-        let _l = env_lock().lock().unwrap();
+        let _l = env_lock();
         let _g = EnvGuard::set("NROS_NODE_NAME", "env_node");
         let baked = BootConfig {
             node_name: Some("baked_node"),
@@ -443,7 +458,7 @@ mod tests {
     /// string" (which is what `nros-c` used to pass through).
     #[test]
     fn selector_reaches_the_config() {
-        let _l = env_lock().lock().unwrap();
+        let _l = env_lock();
 
         let _g = EnvGuard::set("NROS_RMW", "cyclonedds");
         assert_eq!(rmw_selector().as_deref(), Some("cyclonedds"));
@@ -462,12 +477,52 @@ mod tests {
         assert_eq!(ExecutorConfig::from_env().rmw, None);
     }
 
+    /// issue 0687 — `from_env` and `resolve_hosted(default)` are the same
+    /// resolution, and this asserts the fields the type does not force.
+    #[test]
+    fn from_env_is_resolve_hosted_with_nothing_baked() {
+        let _l = env_lock();
+        let _g = EnvGuard::set("NROS_LOCATOR", "tcp/agree:7447");
+        let _d = EnvGuard::set("ROS_DOMAIN_ID", "42");
+
+        let a = ExecutorConfig::from_env();
+        let b = resolve_hosted(BootConfig::default());
+        assert_eq!(a.locator, b.locator);
+        assert_eq!(a.domain_id, b.domain_id);
+        assert_eq!(a.mode, b.mode);
+        assert_eq!(a.rmw, b.rmw);
+        assert_eq!(a.namespace, b.namespace);
+        // The one deliberate divergence: `from_env` does not take the node name
+        // from the environment, and never has.
+        assert_eq!(a.node_name, "node");
+    }
+
+    /// A malformed `$ROS_DOMAIN_ID` must fail LOUD here, as it does for
+    /// `resolve_hosted` and the C / C++ entries. It used to resolve to domain 0
+    /// silently — the #206 defect, surviving on this one path.
+    #[test]
+    #[should_panic(expected = "boot-config resolution failed")]
+    fn from_env_rejects_a_malformed_domain() {
+        let _l = env_lock();
+        let _g = EnvGuard::set("ROS_DOMAIN_ID", "not-a-number");
+        let _ = ExecutorConfig::from_env();
+    }
+
+    /// …and an out-of-range one, which the same path used to coerce to 0.
+    #[test]
+    #[should_panic(expected = "boot-config resolution failed")]
+    fn from_env_rejects_an_out_of_range_domain() {
+        let _l = env_lock();
+        let _g = EnvGuard::set("ROS_DOMAIN_ID", "300");
+        let _ = ExecutorConfig::from_env();
+    }
+
     /// A selector longer than the executor's identity capacity cannot name a
     /// registry slot, so it is unset rather than truncated into some other
     /// backend's name.
     #[test]
     fn overlong_selector_is_unset_not_truncated() {
-        let _l = env_lock().lock().unwrap();
+        let _l = env_lock();
         let long = "x".repeat(RMW_SELECTOR_CAP + 1);
         let _g = EnvGuard::set("NROS_RMW", &long);
         assert_eq!(rmw_selector(), None);

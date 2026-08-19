@@ -126,24 +126,22 @@ impl Context {
 
 #[cfg(feature = "env")]
 fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
-    // Issue 0330 — no backend default here: `nros` is RMW-agnostic. Unset env
-    // leaves the locator EMPTY (= absent) and the linked backend substitutes
-    // its own default (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`; xrce: its
-    // agent default; cyclonedds ignores the locator entirely).
-    let locator = std::env::var("NROS_LOCATOR")
-        .or_else(|_| std::env::var("ZENOH_LOCATOR"))
-        .unwrap_or_default();
-    let domain_id = match std::env::var("ROS_DOMAIN_ID") {
-        Ok(s) if !s.is_empty() => s.parse::<u32>().map_err(|_| InitError::EnvParseFailed)?,
-        _ => 0,
-    };
-    let mode_str = std::env::var("NROS_SESSION_MODE")
-        .or_else(|_| std::env::var("ZENOH_MODE"))
-        .unwrap_or_default();
-    let mode = match mode_str.as_str() {
-        "peer" => SessionMode::Peer,
-        _ => SessionMode::Client,
-    };
+    // issue 0687 — through the ONE resolver, not a third parse of the same four
+    // variables. This function had its own copy, and the copies had drifted:
+    // it did not warn on the legacy `$ZENOH_LOCATOR`/`$ZENOH_MODE` spellings
+    // the other reader deprecates, and it range-checked nothing, so
+    // `ROS_DOMAIN_ID=300` reached a backend that could only fail later.
+    //
+    // Issue 0330 — no backend default for the locator: `nros` is RMW-agnostic,
+    // so unset env leaves it EMPTY (= absent) and the linked backend
+    // substitutes its own (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`; xrce: its
+    // agent default; cyclonedds ignores the locator entirely). That is what
+    // `resolve_hosted` does with an empty `BootConfig` too.
+    let resolved = crate::env::try_resolve_hosted(nros_node::BootConfig::default())
+        .map_err(|_| InitError::EnvParseFailed)?;
+    let locator = alloc::string::String::from(resolved.locator);
+    let domain_id = resolved.domain_id;
+    let mode = resolved.mode;
     // issue 0687 — the `$NROS_RMW` half comes from the shared selector; the
     // `RMW_IMPLEMENTATION` fallback stays HERE and only here. `Context.rmw` is
     // a ROS-vocabulary HINT (`rmw_cyclonedds_cpp`), not the cffi registry

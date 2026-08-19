@@ -1089,25 +1089,21 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
         if s.is_empty() { c"node" } else { s }
     };
 
-    // Env overlay (mirrors the C++ `nros::init()` hosted fallback).
-    let locator = std::env::var("NROS_LOCATOR")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| alloc::ffi::CString::new(s).ok());
-    let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|&d| d <= 232)
-        .unwrap_or(0) as u8;
-
-    // Executor storage lives for the whole run (init writes a CppContext here).
+    // issue 0687 — this entry USED to read `$NROS_LOCATOR` / `$ROS_DOMAIN_ID`
+    // here and pass them down as the BAKED rung. `nros_cpp_init` already
+    // applies the env rung through `try_resolve_hosted`, so the overlay was a
+    // second reader of the same two variables — and it disagreed with the
+    // first: it did not accept the legacy `$ZENOH_LOCATOR`, printed no
+    // deprecation warning, and turned a malformed or out-of-range
+    // `$ROS_DOMAIN_ID` into a SILENT domain 0, which is the failure mode #206
+    // fixed for every other language. Passing NULL/0 (the unset sentinels)
+    // hands the whole question to the one resolver.
     let mut storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = storage.as_mut_ptr() as *mut c_void;
-    let locator_ptr = locator.as_ref().map_or(core::ptr::null(), |c| c.as_ptr());
     let rc = unsafe {
         nros_cpp_init(
-            locator_ptr,
-            domain_id,
+            core::ptr::null(),
+            0,
             name_resolved.as_ptr(),
             core::ptr::null(),
             sptr,
@@ -1128,10 +1124,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
     // second hand-rolled budget loop. Unbounded, a native entry runs until the
     // process is signalled, so a plain `spin_once` loop suffices (no per-tick
     // yield — native is preemptively scheduled).
-    let bound_ms: u32 = std::env::var("NROS_ENTRY_SPIN_MS")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(0);
+    let bound_ms: u32 = entry_spin_ms().min(u32::MAX as u64) as u32;
     let ret = if bound_ms != 0 {
         unsafe { nros_cpp_spin_for(sptr, bound_ms, 10) as i32 }
     } else {
@@ -2538,25 +2531,16 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
         if s.is_empty() { c"node" } else { s }
     };
 
-    // Env overlays.
-    let locator = std::env::var("NROS_LOCATOR")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .and_then(|s| alloc::ffi::CString::new(s).ok());
-    let domain_id: u8 = std::env::var("ROS_DOMAIN_ID")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|&d| d <= 232)
-        .unwrap_or(0) as u8;
-
-    // Open primary (session-owning) executor on the boot thread.
+    // issue 0687 — the env overlay that stood here is gone; see the twin in
+    // `nros_board_native_run_components_named`. `nros_cpp_init` resolves the
+    // locator and domain through the one hosted resolver, so NULL/0 (the unset
+    // sentinels) is how this entry says "whatever the environment asked for".
     let mut boot_storage = core::mem::MaybeUninit::<CppContext>::uninit();
     let sptr = boot_storage.as_mut_ptr() as *mut c_void;
-    let locator_ptr = locator.as_ref().map_or(core::ptr::null(), |c| c.as_ptr());
     let rc = unsafe {
         nros_cpp_init(
-            locator_ptr,
-            domain_id,
+            core::ptr::null(),
+            0,
             name_resolved.as_ptr(),
             core::ptr::null(),
             sptr,
@@ -2565,6 +2549,15 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     if rc != NROS_CPP_RET_OK {
         return rc as i32;
     }
+
+    // The RESOLVED domain, for the tiers that open over the shared session.
+    // Reading it back beats re-reading `$ROS_DOMAIN_ID`: this is the value the
+    // resolver actually chose, so a baked overlay or a validation failure can
+    // never leave the tiers on a different domain from the boot executor —
+    // which is issue 0656's defect one entry over.
+    // SAFETY: `nros_cpp_init` returned OK, so `sptr` is an initialised
+    // `CppContext`.
+    let domain_id = unsafe { (*(sptr as *const CppContext)).domain_id };
 
     // Get the shared session handle for borrowed-executor tier threads.
     let session_handle: usize = unsafe { nros_cpp_executor_session_handle(sptr) } as usize;
@@ -2622,7 +2615,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
             groups: tier.groups as usize,
             session: session_handle,
             setup: tier.setup,
-            domain_id: domain_id as u32,
+            domain_id,
             name: tier_name.clone(),
         }));
         // The port copies what it keeps, but the pointer must be valid FOR the
@@ -2651,10 +2644,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
     }
 
     // Boot thread spin loop (tier[0] on the owning executor).
-    let bound_ms: u64 = std::env::var("NROS_ENTRY_SPIN_MS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
+    let bound_ms: u64 = entry_spin_ms();
     let start_ns = nros_cpp_time_ns();
     let boot_period_us = boot_tier.spin_period_us.max(1_000);
     let mut ret = 0i32;
@@ -3043,4 +3033,21 @@ fn resolve_boot(
     {
         nros_node::ExecutorConfig::try_resolve(baked)
     }
+}
+
+/// `$NROS_ENTRY_SPIN_MS` — the bounded-spin budget for a native entry, `0` for
+/// "run until the process is signalled".
+///
+/// issue 0687 — one reader. The two native entries each parsed this variable
+/// themselves, at different widths (`u32` and `u64`), which is how the same
+/// name comes to mean two things: the `u32` site silently fell back to
+/// "unbounded" for any value above 4.29e9 ms while the `u64` site accepted it.
+/// Both take the same answer now, and the entry that wants 32 bits saturates
+/// rather than wrapping to a value nobody asked for.
+#[cfg(feature = "env")]
+fn entry_spin_ms() -> u64 {
+    std::env::var("NROS_ENTRY_SPIN_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
 }

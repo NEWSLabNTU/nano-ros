@@ -134,7 +134,14 @@ BASELINE = {
     # even though the TOTAL does not move. Reducing this crate's count needs a
     # different decision (a host-side crate below the facade), not more
     # spelling.
-    "nros": {"cfg": 10, "path": 22},
+    #
+    # issue 0687 follow-up — 22 -> 16: `init`'s `read_env_context` was a THIRD
+    # parse of the same four variables (no deprecation warning on the legacy
+    # spellings, no domain range check), and `from_env` a fourth read of
+    # `$ROS_DOMAIN_ID` that silently resolved a malformed value to domain 0.
+    # Both go through `try_resolve_hosted` now. What is left is the reader
+    # itself plus `Mutex`/`OnceLock`, `Path` and the test module's `EnvGuard`.
+    "nros": {"cfg": 10, "path": 16},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -200,7 +207,15 @@ BASELINE = {
     # `atomic::{AtomicBool, Ordering}`. None was a `std` need; each made its
     # crate look like it wanted the flavour. What still names `std` is what only
     # `std` has: `env::var`, `Mutex`, `OnceLock`, `Path`, `fs`, `Instant`.
-    "nros-cpp": {"cfg": 1, "path": 7},
+    #
+    # issue 0687 follow-up — 7 -> 2: the two native entries each read
+    # `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` and passed them DOWN as the baked rung,
+    # which `nros_cpp_init` then re-resolved from the same environment. Deleted,
+    # not unified: the resolver was already doing it, and doing it better (the
+    # entries dropped the legacy locator name and coerced a bad domain to 0).
+    # `$NROS_ENTRY_SPIN_MS` went from two parses at two widths to one. The 2 that
+    # remain are that reader and `metadata_hooks`' `fs::write`.
+    "nros-cpp": {"cfg": 1, "path": 2},
     "nros-log": {"cfg": 1, "path": 0},
     # phase-361 W8.e: +1, the `signal-fd-wake` `compile_error!` guard — the
     # feature used to list `"std"` and now requires it by name.
