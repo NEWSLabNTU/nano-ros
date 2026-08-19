@@ -30,8 +30,16 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
 
+# The RMW backend. CycloneDDS is the default because it needs no router —
+# a fresh copy-out publishes with nothing else running. Override at configure
+# time (`-DNROS_RMW=zenoh|xrce|cyclonedds`); zenoh needs the router from a
+# ROS 2 install (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
+if(NOT DEFINED NROS_RMW)
+    set(NROS_RMW cyclonedds)
+endif()
+
 nano_ros_workspace(
-    BACKEND  zenoh
+    BACKEND  ${NROS_RMW}
     PLATFORM posix
     NANO_ROS_ROOT "${NANO_ROS_ROOT}"
     SUBDIRS  src/talker_pkg

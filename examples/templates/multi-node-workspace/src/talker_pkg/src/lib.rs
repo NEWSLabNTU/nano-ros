@@ -49,6 +49,9 @@ impl ExecutableNode for Talker {
         if callback.as_str() == "on_tick" {
             let msg = Int32 { data: *state };
             let _ = ctx.publish_to_topic::<Int32, 8>("/chatter", &msg);
+            // Lands on stdout via the board's log bridge — no logger setup
+            // needed on native, and `log` reaches `no_std` targets too.
+            log::info!("Publishing: {}", msg.data);
             *state = state.wrapping_add(1);
         }
     }

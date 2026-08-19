@@ -19,3 +19,4 @@ name = "listener"
 
 [deploy.native]
 kind = "self"
+board = "native"

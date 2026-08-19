@@ -1,6 +1,9 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-19).** IN PROGRESS — W1, W2, W3, W5, W6, W7 landed; W4 in flight.
+**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W7 landed; W4 in flight; the
+maintainer-approved TARGET DESIGN below adds W8–W14 (restructure the book for
+user personas: C++-first workspace quick start, cyclonedds default, no `just`
+on the user track).
 
 Implements the fix for [issue 0694](../issues/0694-platform-starters-omit-nros-sync.md).
 
@@ -209,6 +212,168 @@ reader to *type*, beyond the sync step, against what exists:
   read "There is no `find_package(NanoRos)` path deleted it along with…" — the
   "strip Phase N references" commit removed the em-dash clause and left the
   remains. Checked that commit for siblings; this was the only one.
+
+
+## Target design (maintainer-approved, 2026-08-20)
+
+W1–W7 made the existing pages true. The rest of the phase restructures the book
+around the people it serves, per three maintainer decisions and the evidence
+each rests on.
+
+### Decision 1 — the user track uses no `just`
+
+`just` is a contributor dependency; a user has `nros`, their vendor's build
+tool, and a shell. The tooling already agrees: `./scripts/bootstrap.sh` (no
+subcommand) is THE front door and its own help says "no just required", then
+prints the next step (`nros setup <board>`). Setup is therefore exactly two
+commands, and stays two for every persona:
+
+```sh
+git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros && ./scripts/bootstrap.sh
+nros setup native --rmw cyclonedds
+```
+
+### Decision 2 — cyclonedds is the quick-start default
+
+RFC-0075: we ship no zenoh router — it is ROS's `rmw_zenohd`, so a newcomer
+without a ROS 2 install cannot start one. CycloneDDS needs no daemon at all.
+Verified end to end 2026-08-20: the C++ template with `BACKEND cyclonedds`
+builds in two cmake commands and publishes at its 500 ms tick with NOTHING else
+running. zenoh-pico (ROS interop) and XRCE (smallest footprint, serial) become
+the alternatives one section over, where a reader who needs them has the
+context they assume.
+
+### Decision 3 — workspace-major, C++ first
+
+Standalone-first was rejected because the config axes scatter and every
+successful reader eventually pays a confusing restructure:
+
+| axis | workspace shape | standalone shape |
+|---|---|---|
+| ROS edition | `[system] ros_edition` in `system.toml` | flag / ad-hoc |
+| RMW | `system.toml` + one `BACKEND` word (C++) | cargo feature |
+| board / target | `[deploy.<name>]` | `[package.metadata.nros.deploy.*]` |
+| features | node pkgs + dims (RFC-0066) | cargo features |
+| site facts | `[deploy.*]` (RFC-0072, landed) | env vars |
+
+One authored home per axis in the workspace shape; the switch out of standalone
+relocates all of them at once. Porters come from colcon and already think in
+`src/` + packages; RFC-0072's landed design is workspace-shaped; RFC-0066
+consolidated CI onto workspaces. Growth is monotone: add a package, never
+restructure.
+
+**C++ first** because the audience porting from ROS 2 is C++-background, and
+because the C++ path measured simplest: copy
+`examples/templates/multi-node-workspace-cpp`, `cmake -S . -B build
+-DNANO_ROS_ROOT=…`, `cmake --build build`, run — no `nros sync`, no daemon,
+and the RMW switch is ONE word (`BACKEND` in the root `nano_ros_workspace()`
+call). Rust and C are walk-throughs added to the same, already-understood
+workspace; `nros sync` (the #0694 trap) leaves the critical path entirely and
+is introduced in the Rust chapter as "the Rust-side codegen step".
+
+### The target spine
+
+```
+Introduction · Which Reader Are You?
+# I   Quick Start — C++ & CMake, workspace-shaped
+      install(2 cmds) · first project(C++ template, cyclonedds) ·
+      anatomy(3 roles, one config file, "in rclcpp this was …" column) ·
+      take-it-with-you(copy-out) · your own messages · troubleshooting
+# II  Choosing an RMW
+      why cyclone default · zenoh-pico(ROS interop + router story) ·
+      XRCE(small/serial) · switching
+# III Bring Your Own RTOS                        (RFC-0072/0003 track)
+      how integration works(guest principle) · Zephyr/west ·
+      NuttX/apps-external · ESP-IDF component · FreeRTOS(STM32Cube,
+      MCUXpresso, Pico SDK named) · ThreadX · PX4 · IDE hosts(nros emit) ·
+      bare-metal · QEMU sandboxes(demoted from "starters")
+# IV  Growing Your Project
+      add a package · params/lifecycle/QoS · more deploys ·
+      Rust nodes(nros sync introduced HERE) · C nodes · mixed workspaces
+# V   Coming From ROS 2
+      setup-compared · differences · vs micro-ROS · migration ·
+      porting a rclcpp node · interop
+# VI  User Guide (task reference)   Concepts · Porting · Design ·
+      Internals · Reference (unchanged shape)
+```
+
+Routing: hobbyist stops at I; an SDK owner searches their vendor's name and
+lands in III; a porter reads I's anatomy then V — the same workspace shape
+everywhere, so there is no shape switch to unlearn.
+
+### Verified groundwork (2026-08-20), and the defects found doing it
+
+* C++ copy-out template: builds and runs with cyclone, no router. Template
+  fixes needed: ships `BACKEND zenoh`; `[deploy.native]` names no `board`
+  (configure-time warning); README teaches the retired
+  `MODEL config/system_model.yaml` spelling while the code is current.
+* `-DNROS_RMW=` on the configure line is SILENTLY ignored when the root
+  CMakeLists hard-codes `BACKEND` — the book must teach the CMakeLists edit.
+* Rust copy-out template: sync → build green, but the RMW switch is THREE
+  edits (`system.toml` `rmw`, the board dep's feature, the `nros` facade's
+  `rmw-cyclonedds` type-descriptor feature) — the scaffold must bake all
+  three from one flag. Also: the cyclone-switched entry exits `application
+  complete` without ever ticking, where the C++ entry spins and publishes —
+  unexplained, must be resolved before the Rust chapter teaches it.
+* `nros new` has NO one-shot workspace verb: project mode is standalone,
+  `system` mode scaffolds a bringup directory alone. Interim path is
+  copy-out; the verb is W8.
+* issue 0699 (filed): `nros sync` dies `Metadata(NameTooLong)` in a
+  ~100-char-deep path; identical tree at 34 chars is clean.
+
+## Work items — target design
+
+**W8 — `nros new <name> --workspace`.** One-shot minimal workspace scaffold:
+`--lang cpp|rust` (default cpp), `--rmw` (default cyclonedds), node pkg +
+bringup + entry from the canonical templates with the RMW baked into every
+place that spells it (one `BACKEND` word for C++; the three Rust spots).
+Acceptance: scaffold → build → run publishes, both langs, no hand edits;
+covered by a CLI test asserting the scaffold builds (as a build-stage fixture,
+not a compile-in-test).
+
+**W9 — template repairs.** `multi-node-workspace-cpp`: default
+`BACKEND cyclonedds`, add `board = "native"` to `[deploy.native]`, README off
+the retired `MODEL` spelling. `multi-node-workspace`: same defaults; README
+off `model =`; entry doc-comment off the `config/system_model.yaml` path
+(models are build artifacts, phase-330). Investigate and resolve the Rust
+immediate-exit asymmetry before Part IV's Rust chapter lands.
+
+**W10 — Part I, the C++ quick start.** New pages: first-project (verified
+command transcript), anatomy (three roles, `system.toml` as the one config
+file, rclcpp column), take-it-with-you rewritten around the C++ copy-out.
+`installation.md` reshaped to the two-command setup with cyclone default.
+Probe tags on the quick-start blocks so `just probe bootstrap` executes the
+C++ path (extends W4).
+
+**W11 — Part II, the RMW section.** `rmw-backends.md` splits: why-cyclone,
+zenoh-pico + the router story (moves here from the starters), XRCE, and one
+switching page per builder (the one-word C++ edit; the Rust flag once W8
+bakes it).
+
+**W12 — the de-just sweep.** Every `just` invocation on the user track
+(getting-started/, user-guide/, start-here/) replaced with `nros`/vendor-tool
+spelling or moved to internals/ if it is genuinely contributor content.
+`workflow-by-platform.md` splits its recipes column into a contributor note.
+Gate: `check-book-no-just` — user-track pages contain no `just ` command —
+wired beside `check-book-links` in `check-fast`.
+
+**W13 — Part III, BYO-RTOS.** New "how integration works" page from
+RFC-0072/0003 (guest principle, shell table, board pkg + `[deploy.*]`);
+existing platform pages re-shelved under it and rewritten against the LANDED
+shells (Zephyr/NuttX/ESP-IDF); FreeRTOS page documents today's
+`nros_freertos_build_kernel` path while naming the direction; QEMU pages
+demoted to a "try it without hardware" cluster. Vendor names (STM32Cube,
+MCUXpresso, Pico SDK) appear as searchable headings.
+
+**W14 — the new spine.** `SUMMARY.md` restructured to the target spine;
+`choose-your-entry.md` rewritten to route the five personas; every moved page
+keeps its path (mdbook has no redirects — re-shelving is a SUMMARY move, not
+a file move) so external links survive.
+
+Sequencing: W8+W9 first (the book depends on the scaffold), W10–W12 in
+parallel after, W13 next, W14 last (the spine move lands when its sections
+exist).
 
 ## Verification, and what it could not reach
 

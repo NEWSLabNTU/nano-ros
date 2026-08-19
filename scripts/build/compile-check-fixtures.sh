@@ -202,7 +202,15 @@ build_cmake_fixture() {
     #
     # Pass both nros cmake vars — different templates name it differently
     # (NROS_CLI_BIN vs NROS_BIN); the unused one is harmless.
-    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN"
+    # phase-368 W9 — pin the backend the FIXTURE coordinate means. The template
+    # roots now default to cyclonedds for a copied-out USER (no router needed),
+    # but a compile-check row's coordinate rmw defaults to zenoh like every
+    # manifest row (`row_coord()`), and the E2E tests that consume these
+    # artifacts (cpp_multi_node_entry.rs) run them against a zenoh router.
+    # Passing it explicitly keeps the fixture at the coordinate the tests
+    # expect while the committed template serves users the daemonless default.
+    cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN" \
+        "-DNROS_RMW=zenoh"
     # Issue 0466 — how a cmake fixture gets its parallelism.
     #
     # These templates configure with the DEFAULT generator ("Unix Makefiles"),

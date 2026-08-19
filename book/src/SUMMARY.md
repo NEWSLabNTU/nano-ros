@@ -26,6 +26,7 @@
 
 # Embedded Starters
 
+- [How Integration Works](./getting-started/how-integration-works.md)
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
 - [Zephyr (west module)](./getting-started/integration-zephyr.md)
   - [Zephyr (contributor)](./getting-started/zephyr.md)
@@ -52,7 +53,9 @@
 - [Profiling Your Build](./user-guide/build-profiling.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [ROS 2 Interoperability](./getting-started/ros2-interop.md)
-- [Choosing an RMW Backend](./user-guide/rmw-backends.md)
+- [Choosing an RMW Backend](./user-guide/rmw-choosing.md)
+  - [Backend Reference](./user-guide/rmw-backends.md)
+  - [Switching RMW in Config](./user-guide/rmw-switching.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [TX Throughput & Latency Tuning](./user-guide/tx-tuning.md)

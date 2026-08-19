@@ -39,7 +39,8 @@ impl ExecutableNode for Listener {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_message" {
-            if ctx.message::<Int32>().is_ok() {
+            if let Ok(msg) = ctx.message::<Int32>() {
+                log::info!("I heard: {}", msg.data);
                 *state = state.wrapping_add(1);
             }
         }
