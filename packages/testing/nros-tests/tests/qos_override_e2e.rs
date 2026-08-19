@@ -119,7 +119,12 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
         skip!("zenohd not found");
     }
     if !require_ros2() {
-        skip!("ROS 2 / rmw_zenoh_cpp not available — run: just rmw_zenoh setup");
+        skip!(
+            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml). \
+             The `just rmw_zenoh setup` source overlay is an OPT-IN for \
+             reproducing a specific pairing (RFC-0075), not the way to get one."
+        );
     }
     let locator = zenohd_unique.locator();
 

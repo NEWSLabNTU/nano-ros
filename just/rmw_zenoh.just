@@ -1,9 +1,25 @@
 set working-directory := '..'
 
-# rmw_zenoh module — build the rmw_zenoh_cpp ROS 2 overlay from the
-# pinned submodule so `ros2` CLI commands can reach nros nodes via
-# zenoh. The overlay lives at `build/rmw_zenoh_ws/install/` and the
-# test harness (nros-tests) sources its `setup.bash` when present.
+# rmw_zenoh module — an OPT-IN source build of `rmw_zenoh_cpp`.
+#
+# NOT how you get a working ROS-side zenoh RMW: install
+# `ros-<distro>-rmw-zenoh-cpp` from apt (declared in `nros-sdk-index.toml`,
+# available for humble/iron/jazzy). That is what every lane uses, and the
+# submodule stays uninitialised until this recipe asks for it.
+#
+# What this is FOR (RFC-0075): reproducing a SPECIFIC `rmw_zenoh_cpp` ↔
+# zenoh-pico pairing on demand — a debugging tool for a suspected wire
+# incompatibility. RFC-0075 rejected both making it the default (pinning our own
+# RMW makes the tested configuration less like production) and requiring it when
+# ROS is present (an hour-long build for no benefit).
+#
+# Note the historical rationale — "so the versions wire-match" — was refuted by
+# issue 0291: zenoh's wire is proto-`0x09`-stable across 1.x, so zpico 1.7.2
+# interops with a far newer distro RMW, and that investigation's real finding was
+# the keyexpr type-hash. So reach for this when you have a reason, not by default.
+#
+# The overlay lives at `build/rmw_zenoh_ws/install/`; the harness layers it on
+# top of the distro setup when present.
 
 default:
     @just --list --justfile {{source_file()}}

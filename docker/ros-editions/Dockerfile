@@ -27,8 +27,11 @@ ARG DISTRO
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Middlewares + bridge + interface packages + rclpy + codegen toolchain.
-# rmw_zenoh_cpp is best-effort: humble has no apt package (needs the source
-# overlay), iron/jazzy+ do — so a failed install there is not fatal.
+# rmw_zenoh_cpp is best-effort. The note here used to say humble has no apt
+# package; it does (`ros-humble-rmw-zenoh-cpp`, 0.1.9 as of 2026-07 — issue 0609
+# is the record of that package moving 0.1.1 -> 0.1.9 under us). Kept
+# non-fatal because a future edition may genuinely lack it, not because humble
+# does.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${DISTRO}-rmw-cyclonedds-cpp \
         ros-${DISTRO}-rmw-fastrtps-cpp \

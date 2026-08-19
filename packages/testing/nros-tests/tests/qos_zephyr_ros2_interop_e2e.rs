@@ -41,7 +41,12 @@ const QOS_ZEPHYR_ENTRY_PORT: u16 = port_of(PlatformId::ZephyrNativeSim, Lang::Ru
 #[test]
 fn nros_zephyr_publisher_reaches_ros2_topic_echo() {
     if !require_ros2() {
-        skip!("ROS 2 / rmw_zenoh_cpp not available — run: just rmw_zenoh setup");
+        skip!(
+            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
+             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml). \
+             The `just rmw_zenoh setup` source overlay is an OPT-IN for \
+             reproducing a specific pairing (RFC-0075), not the way to get one."
+        );
     }
     let entry = build_zephyr_workspace_rust_qos_entry()
         .unwrap_or_else(|e| skip!("zephyr qos workspace entry not built (west): {e}"));

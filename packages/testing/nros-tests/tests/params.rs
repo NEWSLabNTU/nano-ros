@@ -512,8 +512,12 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
                 entry.kill();
                 listener.kill();
                 nros_tests::skip!(
-                    "param_talker not discoverable via ros2 (wire-mismatched rmw_zenoh — \
-                     build the pinned overlay with `just rmw_zenoh setup`)"
+                    "param_talker not discoverable via ros2. NOT necessarily a wire \
+                     mismatch — issue 0291 showed zenoh's wire is proto-stable across \
+                     1.x, so zpico 1.7.2 talks to a much newer distro RMW and the real \
+                     cause there was the keyexpr type-hash. Check discovery before \
+                     reaching for `just rmw_zenoh setup`, which is an opt-in source \
+                     build (RFC-0075), not a fix for this."
                 );
             }
         }
