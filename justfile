@@ -5045,6 +5045,24 @@ doctor tier="":
         echo "  [WARN] python deps missing for the Zephyr lanes ($py_for_lane):"
         echo "$py_report" | sed 's/^/         /'
     fi
+    # NuttX's kconfig frontend. This one nano-ros DOES self-provision, into a
+    # repo-local venv (scripts/nuttx/build-nuttx.sh), and it stays that way:
+    # issue 0431 was every NuttX cell silently skipping on a host that had the
+    # toolchain, qemu and sources but no kconfig, and `pip install kconfiglib`
+    # is refused on PEP 668 distros while a venv's own pip is not. It differs
+    # from the Zephyr venv on the three counts that matter — repo-local so
+    # nothing outside NuttX sees it, last-resort (only when neither
+    # `kconfig-conf` nor `olddefconfig` is present), and self-cleaning on
+    # failure. Reported here so it is visible rather than invisible.
+    if command -v kconfig-conf >/dev/null 2>&1 || command -v olddefconfig >/dev/null 2>&1; then
+        echo "  [OK] kconfig frontend on PATH (NuttX needs no venv)"
+    elif [ -x "{{justfile_directory()}}/build/nuttx-kconfig-venv/bin/olddefconfig" ]; then
+        echo "  [OK] kconfig: repo-local venv (build/nuttx-kconfig-venv) — NuttX only"
+    else
+        echo "  [INFO] no kconfig frontend; the NuttX lane will provision one into"
+        echo "         build/nuttx-kconfig-venv on first use (issue 0431), or install"
+        echo "         a distro kconfig-frontends-nox package."
+    fi
     # clang-format pin (consistent C/C++ formatting across machines + CI).
     want_cf="$(cat "{{justfile_directory()}}/.clang-format-version" 2>/dev/null || echo 17.0.6)"
     pinned_cf="{{justfile_directory()}}/build/clang-format/bin/clang-format"

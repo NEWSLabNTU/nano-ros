@@ -22,11 +22,23 @@ setup:
     # that recursion is PX4's concern, not nano-ros source provisioning.
     git -C third-party/px4/PX4-Autopilot submodule update --init \
         --depth 1 --recommend-shallow --recursive
-    # Install PX4's Python build deps user-local so `just px4 build-sitl-cpp`
-    # doesn't fail mid-build on missing imports (kconfiglib for the
-    # menuconfig step, pyros-genmsg + jinja2 for uORB topic-header
-    # generation, …). Mirrors PX4's own `Tools/setup/ubuntu.sh` step.
-    pip3 install --user -r third-party/px4/PX4-Autopilot/Tools/setup/requirements.txt
+    # PX4's Python build deps are CHECKED, not installed (issue 0698 follow-up).
+    #
+    # This used to `pip3 install --user -r Tools/setup/requirements.txt`,
+    # mirroring PX4's own `Tools/setup/ubuntu.sh`. That step is written for
+    # Ubuntu, where `--user` works; on a PEP 668 host (Arch, Fedora, Debian 12+)
+    # pip refuses `--user` outright and setup dies here — and where it does
+    # succeed it installs into whichever interpreter `pip3` happens to be, which
+    # need not be the one the build later runs. Same reasoning as
+    # scripts/zephyr/setup.sh: nano-ros reports, the host owns its Python.
+    #
+    # One physical line: this recipe has no shebang, so just runs each line in
+    # its own shell and an indented block is a parse error.
+    python3 scripts/check-python-deps.py px4-build \
+        || { echo "  PX4's own full list: third-party/px4/PX4-Autopilot/Tools/setup/requirements.txt" >&2; \
+             echo "  Install it however suits this host (pip --user on Ubuntu, else a venv)," >&2; \
+             echo "  then re-run \`just px4 setup\` or set NROS_PYTHON to that interpreter." >&2; \
+             exit 1; }
 
 # Diagnose PX4 install status (read-only).
 [group("setup")]

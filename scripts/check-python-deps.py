@@ -71,6 +71,21 @@ GROUPS = {
         "the west meta-tool itself (workspace init/update, `west build`)",
         [("west", "west")],
     ),
+    # PX4 ships its own `Tools/setup/requirements.txt`, and that file — not this
+    # list — is the authority. These three are the ones `just px4 setup`
+    # documented as the reason it was installing anything: kconfiglib for the
+    # menuconfig step, pyros-genmsg + jinja2 for uORB topic-header generation.
+    # The remediation names the upstream file too, because a subset can pass and
+    # a later import still fail; what the group buys is catching the common case
+    # BEFORE a long build instead of mid-way through it.
+    "px4-build": (
+        "`just px4 build-sitl-cpp` (subset of PX4's Tools/setup/requirements.txt)",
+        [
+            ("kconfiglib", "kconfiglib"),
+            ("pyros_genmsg", "pyros-genmsg"),
+            ("jinja2", "jinja2"),
+        ],
+    ),
     "cyclone-idl": (
         "scripts/cyclonedds/msg_to_cyclone_idl.py on a host with no ROS 2",
         [
@@ -102,8 +117,15 @@ print(json.dumps(out))
 """
 
 
-def default_python():
-    """The interpreter a Zephyr lane would actually use, when none is named.
+# Groups whose lane resolves its interpreter through the in-repo Zephyr venv.
+# Everything else defaults to the ambient interpreter — a PX4 or PlatformIO
+# check answered against Zephyr's venv would report on a Python that lane never
+# runs, which is the same wrong-interpreter mistake one level over.
+ZEPHYR_GROUPS = {"west", "zephyr-build"}
+
+
+def default_python(groups):
+    """The interpreter the requested lane would actually use, when none is named.
 
     Must match `nros_zephyr_python` in scripts/build/zephyr-python.sh — a
     checker that answers for a DIFFERENT interpreter than the lane uses reports
@@ -121,6 +143,8 @@ def default_python():
     named = os.environ.get("NROS_PYTHON")
     if named:
         return named
+    if not (set(groups) & ZEPHYR_GROUPS):
+        return sys.executable
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     venv = os.path.join(repo, "scripts", "zephyr", ".venv", "bin", "python3")
     if os.access(venv, os.X_OK):
@@ -162,7 +186,7 @@ def probe(python, modules):
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument("groups", nargs="*", default=None)
-    ap.add_argument("--python", default=default_python())
+    ap.add_argument("--python", default=None)
     ap.add_argument("--list", action="store_true", help="print the known groups and exit")
     ap.add_argument("--quiet", action="store_true", help="print only when something is missing")
     args = ap.parse_args()
@@ -173,6 +197,7 @@ def main():
         return 0
 
     groups = args.groups or DEFAULT_GROUPS
+    python = args.python or default_python(groups)
     unknown = [g for g in groups if g not in GROUPS]
     if unknown:
         sys.stderr.write(
@@ -182,7 +207,7 @@ def main():
         return 2
 
     wanted = {imp: pipname for g in groups for imp, pipname in GROUPS[g][1]}
-    info, err = probe(args.python, wanted)
+    info, err = probe(python, wanted)
     if info is None:
         sys.stderr.write(f"check-python-deps: {err}\n")
         return 2
