@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0692** (build/boards, open 2026-08-19) — the threadx-rv64 Rust+CycloneDDS image links TWO Rust final
+artifacts (the leaf staticlib and `nros-c`'s), so each needs its own `#[panic_handler]` at COMPILE time while
+the image may have exactly ONE at LINK time. Not fixable by wiring: moving the handler moves the failure —
+leaf declares -> `nros-c` fails; `nros-c` declares -> the leaf fails, both measured from wiped trees. The
+C/C++ leaves are fine because they link ONE Rust staticlib (`nros-cpp`'s `panic-platform` forwards to
+`nros-c`'s). This is issue 0666's "one example built two ways" showing its cost: the cargo/zenoh path has one
+artifact and is correct; only the CMake/Cyclone path has two. Wants a shape change (nros-c as an rlib inside
+the leaf, or the leaf as a non-final artifact, or dropping the CMake path for Rust leaves), not a feature
+flag. Blocks the threadx-riscv64 lane. See `0692-*`. (2026-08-19)
+
 **#0690** (testing, open 2026-08-19) — `case_08_c_qos` fails in-sweep and passes solo, on the SAME freshly
 built tree: 1453-test sweep FAIL, 5-test solo PASS, 1453-test sweep PASS. The publisher advertises
 `RELIABLE + VOLATILE + KEEP_LAST(10)`, which is exactly `nros_c_qos_default()`. Not a product regression, and
