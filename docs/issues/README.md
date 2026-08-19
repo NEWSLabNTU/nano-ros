@@ -51,15 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0692** (build/boards, open 2026-08-19) — the threadx-rv64 Rust+CycloneDDS image links TWO Rust final
-artifacts (the leaf staticlib and `nros-c`'s), so each needs its own `#[panic_handler]` at COMPILE time while
-the image may have exactly ONE at LINK time. Not fixable by wiring: moving the handler moves the failure —
-leaf declares -> `nros-c` fails; `nros-c` declares -> the leaf fails, both measured from wiped trees. The
-C/C++ leaves are fine because they link ONE Rust staticlib (`nros-cpp`'s `panic-platform` forwards to
-`nros-c`'s). This is issue 0666's "one example built two ways" showing its cost: the cargo/zenoh path has one
-artifact and is correct; only the CMake/Cyclone path has two. Wants a shape change (nros-c as an rlib inside
-the leaf, or the leaf as a non-final artifact, or dropping the CMake path for Rust leaves), not a feature
-flag. Blocks the threadx-riscv64 lane. See `0692-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
+The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not
+hold. Give BOTH crates the handler and drop `NanoRos::NanoRos` from the seam's link line: `nros-cpp`'s
+provider is LOCAL (`t`) to its archive and the leaf's is GLOBAL (`T`), so they never collide and the image
+holds exactly one global `rust_begin_unwind`. A crate being a final artifact does not by itself put a
+competing lang item on the link line. Root cause of the whole thing: the bespoke seam is not
+`nano_ros_entry()`, so it never applied a panic policy — #0666's shape, recorded there.
+See `archived/0692-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0690** — `case_08_c_qos` failed in-sweep and passed solo on the SAME
 binaries, with the publisher advertising exactly `nros_c_qos_default()`. `topic_endpoint_block` returns the
@@ -281,13 +280,11 @@ freshness gate derive its scope from the lane. NOTE the new probe is NOT buildle
 it self-heals cmake cells. Collapsing the two gates (direction 2) left as a follow-up. See
 `archived/0681-*`. (2026-08-19)
 
-Recently resolved (2026-08-19): **#0688** — the threadx-rv64 RUST Cyclone leaf could not build
-`nros-c`: the bespoke `nros_threadx_rv64_rust_cyclone_app()` seam is not `nano_ros_entry()`, so nothing
-applied the image's panic policy to a staticlib imported `--no-default-features` (which strips nros-c's
-own `default = ["panic-platform"]`). Every other leaf was fine because every other leaf goes through the
-entry — #0666 with a price tag. Fixed by mirroring the entry's policy application into the seam, and by
-dropping `NanoRos::NanoRos` from its link line (a Rust app never calls the C API, and linking it put a
-SECOND Rust staticlib on a C link line). See `archived/0688-*`. (2026-08-19)
+Retired (2026-08-19): **#0688** — a DUPLICATE of #0692, filed independently for the same threadx-rv64
+Rust Cyclone `#[panic_handler]` failure. #0692 landed on main first and is canonical. #0688's file is kept
+archived for its diagnosis history — in particular that ninja interleaves parallel output, so attributing
+a failure to the last cargo invocation printed before it names innocent rows. See `archived/0688-*`.
+(2026-08-19)
 
 **#0687** (api, open 2026-08-19) — the `env` capability is what keeps `std` in the core crates: 31 of the
 ~41 remaining non-test `std::` paths are `env::var`, and phase-359 W10 moved every OTHER host facility

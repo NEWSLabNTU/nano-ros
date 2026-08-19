@@ -1,7 +1,7 @@
 ---
 id: 692
 title: "The threadx-rv64 Rust+CycloneDDS image links TWO Rust staticlibs, so `#[panic_handler]` has no correct owner — one of them must stop being a final artifact"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, boards
@@ -97,3 +97,58 @@ filed rather than patched.
 * Applying `panic-platform` to only the `nros_c` pair. `nros-cpp` is imported
   too, and listing only two of the four spellings leaves its staticlib without
   the lang item.
+
+
+---
+
+## RESOLVED 2026-08-19 — the wiring fix works, because the two handlers do not collide
+
+This issue concluded "unfixable by wiring", from a table showing that whichever
+crate is DENIED the handler fails to compile, and that giving BOTH the handler
+"is not a third option: two `#[panic_handler]`s in one link is the duplicate the
+whole of phase-366 exists to prevent."
+
+The compile-time half of that is exactly right and was reproduced. The link-time
+half does not hold on this target, and the third option is what shipped.
+
+Give BOTH crates the handler, and drop `NanoRos::NanoRos` from
+`nros_threadx_rv64_rust_cyclone_app`'s link line. The image builds and links:
+
+```
+$ riscv-none-elf-nm libnros_cpp.a | grep rust_begin_unwind
+0000000000000000 t _RNvCs...rust_begin_unwind      <- LOCAL
+
+$ riscv-none-elf-nm libqemu_riscv64_threadx_talker.a | grep rust_begin_unwind
+0000000000000000 T _RNvCs...rust_begin_unwind      <- GLOBAL
+                 U _RNvCs...rust_begin_unwind
+```
+
+`t` versus `T` is the whole answer. `nros-cpp`'s provider is internalised to its
+own archive, so it serves that crate's panics and is invisible to the link; the
+leaf's is the one global provider. The final image contains **exactly one**
+global `rust_begin_unwind`, which is the property phase-366 wants — and it is a
+property of symbol LOCALITY, not of there being only one final artifact.
+
+So a crate being a final artifact does not by itself put a competing lang item
+on the link line. "Each needs its own at COMPILE time, and the image must end up
+with exactly ONE at LINK time" is satisfiable, and both requirements hold here
+simultaneously.
+
+Two notes on the "Do not retry" list:
+
+* "Applying `panic-platform` to only the `nros_c` pair" — correct, and avoided:
+  the seam applies it to all four spellings (`nros_c`, `nros_cpp`,
+  `nros_c-static`, `nros_cpp-static`), the same set `nano_ros_entry()` walks.
+* The deeper point stands and is recorded on
+  [#0666](0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md): the reason
+  this leaf needed a bespoke fix at all is that
+  `nros_threadx_rv64_rust_cyclone_app()` is not `nano_ros_entry()`, so it never
+  applied a panic policy in the first place. Any machinery added to the entry in
+  future will miss this seam again until the two paths converge.
+
+`nros-c` itself is no longer linked into the image (verified: no `libnros_c.a`
+on the executable's link line) but is still BUILT, because the root
+`add_subdirectory()` puts it in `all`. Making an unlinked artifact stop being
+built is a further cleanup, not a correctness requirement.
+
+Fixed by the same commit that resolved the duplicate #0688.

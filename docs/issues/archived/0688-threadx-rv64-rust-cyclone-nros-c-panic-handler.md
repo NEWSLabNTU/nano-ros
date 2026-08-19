@@ -1,12 +1,21 @@
 ---
 id: 688
-title: "`nros-c` fails `#[panic_handler]` in the threadx-rv64 RUST Cyclone leaf — the last row standing after #0678's wipe, and the only one that is not staleness"
+title: "RETIRED, duplicate of #0692 — `nros-c` fails `#[panic_handler]` in the threadx-rv64 RUST Cyclone leaf — the last row standing after #0678's wipe, and the only one that is not staleness"
 status: resolved
 type: bug
 severity: high
 area: build, boards
 related: [issue-0678, issue-0668, issue-0666, issue-0664]
 ---
+
+## Retired as a duplicate of #0692
+
+Filed 2026-08-19 for the threadx-rv64 Rust Cyclone `#[panic_handler]` failure.
+[#0692](../0692-rust-cyclone-image-links-two-rust-staticlibs.md) was filed
+independently for the same failure and landed on `main` first, so it is
+canonical and carries the resolution. This file is kept for the diagnosis
+history below (in particular the measured attribution method) and for the
+`#0678` cross-reference that asked for it.
 
 ## Symptom
 
