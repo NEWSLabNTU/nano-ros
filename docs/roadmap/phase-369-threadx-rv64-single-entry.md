@@ -1,6 +1,6 @@
 # Phase 369 — ThreadX-RV64 gets ONE entry point and ONE build path
 
-**Status (2026-08-19). W1 IN PROGRESS.** Direction chosen: the **Zephyr shape** —
+**Status (2026-08-19). W1-W3 LANDED; W4 in flight; W5 CLOSED as not-applicable; W6 is a decision.** Direction chosen: the **Zephyr shape** —
 both RMWs build through CMake, the lib-side entry is the only entry, and
 `src/main.rs` goes away.
 
@@ -70,13 +70,65 @@ dir to the CMake build dir (`nros_tests::fixtures::binaries::threadx_riscv64`).
 *Acceptance:* the threadx-riscv64 runtime tests resolve and run, or skip for a
 stated reason that is not "binary not found".
 
-**W5 — drop the hand-written panic line.** With one entry, `app_main.rs`'s
-`nros::panic_to_platform!()` is what the entry macro emits everywhere else.
-0668 predicts it becomes redundant; VERIFY rather than assume — 0692 showed the
-two handlers coexist by symbol locality, so removing one is a link-level change,
-not a formality.
-*Acceptance:* exactly one global `rust_begin_unwind` in the final image, checked
-with `nm`, as 0692 did.
+**W5 — drop the hand-written panic line. NOT APPLICABLE; premise refuted.**
+
+The wave assumed 0668's prediction: "these six lose their last hand-written
+panic line — the entry macro emits it like everywhere else." That holds for
+`nros::main!`, which does emit one. It does NOT hold for the entry that
+survives, because W3 deleted `main.rs` and the remaining entry is the board's
+`app_main!`, which emits only the extern function:
+
+```rust
+macro_rules! app_main {
+    ($register:path) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> ! { $crate::run_app_thread($register) }
+    };
+}
+```
+
+So `nros::panic_to_platform!()` is not redundant — after W3 it is THE provider
+for these images. Removing it would leave the leaf staticlib, a FINAL artifact,
+with no handler and reproduce `#[panic_handler] function required` exactly as
+issues 0688/0692 did.
+
+Established by reading the macro, before running anything: the phase doc's own
+instruction to VERIFY rather than assume is what caught it.
+
+**No change. The line stays, and the reason is now written down** — that is this
+wave's whole output, and it is worth more than the deletion would have been.
+
+**W6 — should `app_main!` emit the ending at all? (design, then decide)**
+
+0668's underlying wish — no hand-written panic line — is reasonable and is NOT
+delivered by W5. Delivering it means making `app_main!` emit the handler, which
+is a different change with a wider question behind it.
+
+*The question is not mechanical.* RFC-0077 separates three concerns:
+implementation is the PLATFORM's, installation is the LINK ROOT's, and **policy
+is the IMAGE's**. A hand-written `nros::panic_to_platform!()` in the image's own
+entry file IS the image declaring its policy — which is what phase-366 spent a
+whole phase pulling OUT of libraries. Making a board macro emit it implicitly
+moves that choice back INTO a library.
+
+| option | for | against |
+| --- | --- | --- |
+| **A. leave it** (today) | the image states its ending explicitly, which is RFC-0077's shape; zero machinery | six hand-written lines that can drift; differs from every other family's look |
+| **B. `app_main!` emits unconditionally** | uniform with `nros::main!`; six lines gone | a library choosing a policy it cannot know — issue 0618's exact complaint; `panic = "own"` becomes unexpressible, and an image wanting its own handler must fight the macro |
+| **C. `app_main!` takes the policy** — `app_main!(crate::register)` defaults to platform, `app_main!(crate::register, panic = own)` emits none | removes the separate line AND keeps the choice at the image; mirrors `nros::main!(panic = …)` | one more macro arm to maintain; the policy is still spelled in Rust rather than reaching from `nano_ros_entry`, because this seam has no entry call |
+
+**Recommendation: C**, or A if nobody minds the six lines. B is the one to avoid;
+it is the pattern issues 0618 and 0692 both punished.
+
+*Blast radius, measured:* `app_main!` has exactly six consumers, all of them
+these leaves. Whatever is chosen is atomic with removing (or keeping) their
+`panic_to_platform!()` — the two cannot land separately without a window where
+the image has two providers or none.
+
+*Acceptance, whichever is chosen:* exactly one GLOBAL `rust_begin_unwind` in the
+final image, checked with `nm`, as 0692 did — that issue showed two handlers can
+coexist by symbol locality (`t` vs `T`), so the count is a link-level fact and
+not inferable from the source.
 
 ## Do not
 
