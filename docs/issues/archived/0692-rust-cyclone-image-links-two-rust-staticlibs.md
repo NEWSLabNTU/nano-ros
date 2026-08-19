@@ -66,7 +66,7 @@ above shows.
 
 ## This is issue 0666's shape, and that is the direction
 
-[Issue 0666](0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md) records that this one
+[Issue 0666](../0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md) records that this one
 example is built two ways — cargo for zenoh, CMake for CycloneDDS. The zenoh path
 links no `nros-c`, so the leaf is the only final artifact and declares its own
 ending correctly. Only the CMake path has two.
@@ -140,7 +140,7 @@ Two notes on the "Do not retry" list:
   the seam applies it to all four spellings (`nros_c`, `nros_cpp`,
   `nros_c-static`, `nros_cpp-static`), the same set `nano_ros_entry()` walks.
 * The deeper point stands and is recorded on
-  [#0666](0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md): the reason
+  [#0666](../0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md): the reason
   this leaf needed a bespoke fix at all is that
   `nros_threadx_rv64_rust_cyclone_app()` is not `nano_ros_entry()`, so it never
   applied a panic policy in the first place. Any machinery added to the entry in

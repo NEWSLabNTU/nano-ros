@@ -29,7 +29,7 @@ error: could not compile `nros-c` (lib) due to 1 previous error; 2 warnings emit
 error: recipe `build-fixture-extras` failed with exit code 101
 ```
 
-This is the failure [#0678](0678-threadx-rv64-cpp-cyclone-emutls-errno-undefined.md)
+This is the failure [#0678](../0678-threadx-rv64-cpp-cyclone-emutls-errno-undefined.md)
 predicted in its closing section ("Still failing, and NOT this issue") and asked
 to have filed separately. Filed here with the cause narrowed.
 
@@ -107,7 +107,7 @@ with `corrosion_set_features()` — erroring if it cannot. The threadx-rv64 Rust
 Cyclone leaf goes through `nros_threadx_rv64_rust_cyclone_app()` instead, a
 bespoke board seam that never had that step.
 
-**This is [#0666](0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md) with
+**This is [#0666](../0666-threadx-zenoh-and-cyclonedds-build-paths-diverge.md) with
 a price tag.** The one leaf in the tree with its own build path is the one leaf
 that silently missed machinery every other leaf gets. The divergence did not
 merely cost tidiness; it cost a build.
