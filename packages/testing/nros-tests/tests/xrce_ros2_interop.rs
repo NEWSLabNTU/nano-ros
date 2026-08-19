@@ -515,12 +515,32 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
             );
         }
     };
-    // The rclpy ActionServer needs a few seconds to import rclpy, create the
-    // 5 action entities, and announce them over DDS so the agent's requesters
-    // can match before the client's send_goal fires (the action client has no
-    // wait_for/retry — see the example's warmup loop). 3s was too tight under
-    // test load and intermittently missed the match; 6s lands reliably.
-    std::thread::sleep(Duration::from_secs(6));
+    // Issue 0687 — WAIT for the server to say it is ready; do not sleep a
+    // constant and hope.
+    //
+    // This was `sleep(6)`, with a comment recording that 3 s "was too tight
+    // under test load" — tuning a race window rather than removing it. The
+    // window is real: rclpy must import, create 5 action entities and announce
+    // them over DDS before the client's `send_goal` fires, and the nano-ros
+    // action client sends its goal ONCE with no wait_for/retry. Miss the match
+    // and the goal is simply dropped, so the client then waits out its full 20 s
+    // budget for a result that can never arrive — a ~30 s failure whose cause is
+    // six seconds earlier and invisible.
+    //
+    // The script has printed `SERVER READY` with `flush=True` all along, under
+    // `python3 -u … 2>&1`; nothing was reading it. Waiting on it costs the ~4 s
+    // the server actually needs instead of a fixed 6, and does not expire when a
+    // loaded host needs 9.
+    ros2_server
+        .wait_for_output_count(
+            nros_tests::output::ROS2_ACTION_SERVER_READY,
+            1,
+            Duration::from_secs(30),
+        )
+        .expect("ROS 2 fibonacci action server never announced readiness");
+    // The entities are announced; DDS still has to propagate them to the agent's
+    // requesters. This is a genuine settle, not a stand-in for a signal.
+    std::thread::sleep(Duration::from_secs(1));
 
     let mut client_cmd = Command::new(&xrce_action_client_binary);
     client_cmd

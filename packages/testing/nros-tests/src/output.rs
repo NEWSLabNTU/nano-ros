@@ -334,6 +334,16 @@ pub fn service_request_line(a: impl std::fmt::Display, b: impl std::fmt::Display
 /// waiter is still looking.
 pub const ROS2_SERVICE_SERVER_READY: &str = "Service server ready";
 
+/// Readiness marker printed on STDOUT by the ROS 2 `fibonacci` action server the
+/// interop suite spawns (`ros2.rs`), and its terminal marker.
+///
+/// Issue 0687 — the action test slept a fixed 6 s instead of waiting for this,
+/// even though the script has always printed it with `flush=True`. The nano-ros
+/// action client sends its goal ONCE with no retry, so when rclpy's import + 5
+/// entity creations + DDS discovery ran past the sleep, the goal was dropped and
+/// the test waited out its full 20 s budget for a result that could never come.
+pub const ROS2_ACTION_SERVER_READY: &str = "SERVER READY";
+
 /// Prefix of the service client's single result line
 /// (`"Result of add_two_ints:"`, as in the official demo
 /// `Result of add_two_ints: 5`).

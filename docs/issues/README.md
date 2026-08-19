@@ -74,6 +74,17 @@ one: `NROS_ENTRY_PANIC_APPLIED{,_BY,_HOW}` is lane-neutral, Zephyr migrated onto
 Found by tier 2, which is 1-wise over platform, so nuttx's absence blocked the whole tier. See
 `archived/0689-*`. (2026-08-19)
 
+Recently resolved (2026-08-19): **#0691** — `test_ros2_action_xrce_client` failed once in-sweep at 29.99 s
+and passed on retry, which reads as the documented load flake. It was not: the test slept a fixed 6 s for
+the rclpy action server to import, build 5 entities and announce them, and the nano-ros action client sends
+its goal ONCE with no retry — so when that ran long the goal was dropped and the client waited out its
+whole 20 s budget for a result that could never arrive, reporting a timeout 6 s away from the cause. The
+comment recorded a previous bump of the same constant (3 s → 6 s), i.e. tuning the race window rather than
+removing it. The server has always printed `SERVER READY` with `flush=True` under `python3 -u … 2>&1` and
+nothing read it. FIXED by waiting on that marker (constant `ROS2_ACTION_SERVER_READY`) plus a 1 s DDS
+settle — **faster AND correct: 6.1 s, down from 10.6 s**, 3/3 solo, suite 9/9. Same shape as #0672/#0480.
+Six sibling `sleep(1)` calls in that file are recorded, not swept blind. See `archived/0691-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#446** — "the same crate is compiled ~21x across leaf target dirs". Answered
 and closed after the build campaign. Direction 3 (normalise `--target`) done by phase-340 W3; direction 2
 (`incremental` in the shared profile) done, which also SUPERSEDED the unmeasured sccache question — the
