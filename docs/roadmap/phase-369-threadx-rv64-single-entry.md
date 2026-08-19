@@ -117,8 +117,56 @@ moves that choice back INTO a library.
 | **B. `app_main!` emits unconditionally** | uniform with `nros::main!`; six lines gone | a library choosing a policy it cannot know — issue 0618's exact complaint; `panic = "own"` becomes unexpressible, and an image wanting its own handler must fight the macro |
 | **C. `app_main!` takes the policy** — `app_main!(crate::register)` defaults to platform, `app_main!(crate::register, panic = own)` emits none | removes the separate line AND keeps the choice at the image; mirrors `nros::main!(panic = …)` | one more macro arm to maintain; the policy is still spelled in Rust rather than reaching from `nano_ros_entry`, because this seam has no entry call |
 
-**Recommendation: C**, or A if nobody minds the six lines. B is the one to avoid;
-it is the pattern issues 0618 and 0692 both punished.
+**DECIDED 2026-08-19: option C.** `app_main!` takes the policy, defaulting to
+`platform`, mirroring `nros::main!(panic = …)`. B is rejected for the reason
+above; A is the fallback if C proves unhygienic.
+
+### The shape
+
+```rust
+macro_rules! app_main {
+    // Saying nothing gets `platform`, matching ARCHITECTURE §2's rule for the
+    // Rust entry — the DEFAULT is the library's to pick, the POLICY is not.
+    ($register:path) => { $crate::app_main!($register, panic = platform); };
+
+    ($register:path, panic = platform) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> ! { $crate::run_app_thread($register) }
+        ::nros::panic_to_platform!();
+    };
+
+    // The image brings its own. The macro emits NO handler, which is the arm
+    // that makes this option C rather than option B.
+    ($register:path, panic = own) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> ! { $crate::run_app_thread($register) }
+    };
+}
+```
+
+and each leaf's `app_main.rs` loses its separate `nros::panic_to_platform!()`
+line, keeping the unchanged `app_main!(crate::register)` call.
+
+### Risks to check while implementing, not after
+
+* **Hygiene.** The macro expands in the LEAF, so `::nros::panic_to_platform!()`
+  resolves against the leaf's dependency graph, not the board's. Every one of
+  the six already depends on `nros`, but a future consumer might not — if that
+  bites, fall back to A rather than adding a `nros` dep to satisfy a macro.
+* **Atomicity.** Emitting the handler and deleting the six hand-written lines
+  MUST land in one commit. Either order alone gives an image with two providers
+  or none, and the two-provider case is a duplicate-lang-item link error rather
+  than a compile one, so it fails late and reads as unrelated.
+* **`panic = own` is untested by construction** — no leaf uses it today. Adding
+  the arm without a consumer means the first user finds its bugs; note it in the
+  macro doc rather than pretending it is exercised.
+
+### Acceptance
+
+`nm` on a final image shows exactly one GLOBAL `rust_begin_unwind`, and
+`git grep -c "panic_to_platform" examples/qemu-riscv64-threadx` is 0. Blocked on
+W4 landing and being VERIFIED — stacking an unverified macro change on an
+unverified resolver change would make the first failure unattributable.
 
 *Blast radius, measured:* `app_main!` has exactly six consumers, all of them
 these leaves. Whatever is chosen is atomic with removing (or keeping) their
