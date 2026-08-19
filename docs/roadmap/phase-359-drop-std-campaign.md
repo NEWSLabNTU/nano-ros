@@ -791,6 +791,39 @@ they were not obvious before the work:
   boot-config tests stopped touching the process environment as a side effect,
   which retires the shared-mutex/stale-cache race issue 0607 chased.
 
+**The `Instant`/`SystemTime` class, swept 2026-08-19 — and W10 had left two
+readers on the wrong side of its own rule.** W4 established "one spelling of
+what time is it" and W10 extended it: *when a platform port is linked it IS the
+clock, and `std` is what a build without one falls back to*. W10 applied that in
+`nros-node` and stopped there, so two other readers kept preferring `std`:
+
+* `nros-core`'s `platform_wall_clock` was gated `not(std)`, so a hosted image
+  with a port read `SystemTime` from `Clock::system()` while the executor's
+  epoch source read `nros_platform_time_now_ns`. Two wall clocks in one image.
+  They agree on POSIX by coincidence — both are CLOCK_REALTIME — and stop
+  agreeing the moment a port has an opinion (an RTC-backed or simulated one),
+  because only the port is authoritative and only one of the two readers asked.
+* `nros::time::now`'s arms were `std` first, `no_std + rmw-cffi` second, so
+  EVERY native build read `Instant` there while the executor read the port —
+  under a module doc whose first line claims the two mirror each other. The doc
+  was true when written; W10 moved the executor and not this module.
+
+Both now ask the port first. Gated by a test that DEFINES the port symbol and
+asserts `Clock::system()` returns its value
+(`platform_port_outranks_std_for_the_wall_clock`), which is the only way to tell
+the two sources apart on POSIX — and it needed the `std,platform-clock`
+combination added to `check-node-std-tests`, because that combination was in no
+lane, which is how the `not(std)` gate survived.
+
+**What this class does NOT do is shrink the count, and the reason is worth
+recording**: the `std` arms remain as the no-port fallback, and that
+configuration is SHIPPED, not vestigial. `nros-rmw-metadata` and every generated
+metadata-probe crate take `nros` with `std` and no `rmw-cffi` — they compile
+arbitrary node code with no port linked. A node package that uses
+`nros::time::now` for `dt` would fail to build its own metadata probe if the arm
+were deleted. Both sites now say so, against the earlier note that called it
+"the mock-session test configuration".
+
 **And env does not finish the campaign.** Three classes remain after it, each
 with its own question rather than a mechanical answer: the `Mutex`/`OnceLock`
 process-global caches (a dependency edge, the trade issue 0669 records), the

@@ -175,7 +175,16 @@ impl Default for Clock {
 ///
 /// ONE symbol since issue 0532 item 5 collapsed the wall clock; this function
 /// was named there as the one place that would change, and it was.
-#[cfg(all(not(feature = "std"), feature = "platform-clock"))]
+// phase-359 W10 follow-up — NOT `not(std)`. This used to be gated away on a
+// `std` build, so an image with a port linked read `SystemTime` from
+// `Clock::system()` and `nros_platform_time_now_ns` from the executor's epoch
+// source: two wall clocks, one image. They agree on POSIX by coincidence (both
+// are CLOCK_REALTIME) and stop agreeing the moment a port has an opinion — an
+// RTC-backed or simulated one — because only the port is authoritative and only
+// one of the two readers asked it. The rule W10 set in `nros-node` applies
+// here: when a port is linked it IS the clock, and `std` is what a build
+// without one falls back to.
+#[cfg(feature = "platform-clock")]
 fn platform_wall_clock() -> Option<Time> {
     unsafe extern "C" {
         fn nros_platform_time_now_ns() -> u64;
@@ -201,7 +210,7 @@ fn platform_wall_clock() -> Option<Time> {
     ))
 }
 
-#[cfg(all(not(feature = "std"), not(feature = "platform-clock")))]
+#[cfg(not(feature = "platform-clock"))]
 fn platform_wall_clock() -> Option<Time> {
     None
 }
@@ -250,12 +259,27 @@ impl Clock {
     ///
     /// # Platform behavior
     ///
-    /// - **With `std`**: Uses `std::time::SystemTime` or `std::time::Instant`
-    /// - **Without `std`**: Uses internal counters that must be updated manually
+    /// - **A platform port linked** (`platform-clock`): the port's wall clock,
+    ///   on either flavour — it is the authority, and an image must not hold
+    ///   two answers to "what time is it".
+    /// - **`std`, no port**: `std::time::SystemTime`.
+    /// - **Neither**: the internal counter, which the caller advances with
+    ///   `update_steady_time()`.
+    ///
+    /// `SteadyTime` is the counter on every flavour, deliberately: it is
+    /// advanced by its owner rather than read from a source, and the port's
+    /// monotonic export (`nros_platform_clock_ns`) is the executor's business,
+    /// not this type's.
     #[cfg(feature = "std")]
     pub fn now(&self) -> Time {
         match self.clock_type {
             ClockType::SystemTime => {
+                // The port first, exactly as the `no_std` arm below does — see
+                // `platform_wall_clock`. `SystemTime` is the answer for a build
+                // with no port to ask, not the answer for a hosted build.
+                if let Some(t) = platform_wall_clock() {
+                    return t;
+                }
                 let duration = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default();
@@ -466,12 +490,41 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "std", not(feature = "platform-clock")))]
     #[cfg_attr(miri, ignore)] // Miri doesn't support clock_gettime with isolation
     fn test_system_clock_returns_nonzero() {
         let clock = Clock::system();
         let now = clock.now();
         // System time should be after Unix epoch (positive)
         assert!(now.sec > 0);
+    }
+
+    /// phase-359 W10 follow-up — a linked port OUTRANKS `std` for the wall
+    /// clock, on a `std` build too.
+    ///
+    /// This is the one configuration where the two disagree observably, and it
+    /// is why the test defines the port symbol itself: the value returned is
+    /// nothing like a real `SystemTime`, so a `Clock::system()` that answered
+    /// with `SystemTime::now()` — which is what this file did before, because
+    /// `platform_wall_clock` was gated `not(std)` — fails loudly rather than
+    /// coincidentally passing. On POSIX both sources are CLOCK_REALTIME, so
+    /// nothing short of a port with an opinion can tell them apart.
+    #[test]
+    #[cfg(all(feature = "std", feature = "platform-clock"))]
+    fn platform_port_outranks_std_for_the_wall_clock() {
+        /// 2001-09-09T01:46:40Z — a fixed instant no real clock will return.
+        const FAKE_NS: u64 = 1_000_000_000 * 1_000_000_000;
+
+        #[unsafe(no_mangle)]
+        extern "C" fn nros_platform_time_now_ns() -> u64 {
+            FAKE_NS
+        }
+
+        let now = Clock::system().now();
+        assert_eq!(
+            now.sec, 1_000_000_000,
+            "Clock::system() must read the linked port, not SystemTime"
+        );
+        assert_eq!(now.nanosec, 0);
     }
 }

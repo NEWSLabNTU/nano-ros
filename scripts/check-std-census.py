@@ -149,7 +149,13 @@ BASELINE = {
     # a lock, so it requires `alloc`; the `spin` edge rides the feature, so no
     # firmware image gains it. The `OnceLock` in `env.rs` is NOT going the same
     # way, and the file says why: that module calls `std::env::var`.
-    "nros": {"cfg": 9, "path": 15},
+    #
+    # phase-359 W10 follow-up — cfg 9 -> 8: `time::now`'s `std` arm became
+    # `all(std, not(rmw-cffi))` and its port arm dropped `not(std)`, so the two
+    # arms stopped OVERLAPPING on a native build. The path count does not move
+    # and should not: the `Instant` arm is the answer for a build with no port,
+    # which is shipped (the metadata probe), not vestigial.
+    "nros": {"cfg": 8, "path": 15},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -170,7 +176,13 @@ BASELINE = {
     # forwarding `nros-core/std`: `Clock::system()` was the single thing that
     # forward carried. Two counted sites here, three backends' worth of
     # implicit `std` removed from every native graph.
-    "nros-core": {"cfg": 5, "path": 2},
+    #
+    # phase-359 W10 follow-up — cfg 5 -> 3: `platform_wall_clock` lost its
+    # `not(std)` gate. It had one, which meant a `std` build with a port linked
+    # read `SystemTime` while the executor read the port: two wall clocks in one
+    # image, agreeing on POSIX by coincidence and diverging the moment a port has
+    # an opinion. The port outranks `std` now, as it already did on `no_std`.
+    "nros-core": {"cfg": 3, "path": 2},
     #
     # phase-359 W10: 9 -> 7 cfg, 21 -> 18 path. `nros_cpp_time_ns` was the same
     # clock pair, and it is what `nros::Future::wait()` budgets its spin

@@ -7287,8 +7287,14 @@ pub(crate) fn platform_sleep(d: core::time::Duration) {
 /// `nros_platform_clock_ns` under the same contract the wake primitives use —
 /// so a hosted build reads the same counter an embedded one does, instead of
 /// `Instant` on one and the platform on the other. `Instant` survives only
-/// where there is no port to ask: `std` without `rmw-cffi`, which is the
-/// mock-session test configuration.
+/// where there is no port to ask: `std` without `rmw-cffi`.
+///
+/// phase-359 W10 follow-up — that configuration was recorded here as "the
+/// mock-session test configuration", and it is not only that. `nros-rmw-metadata`
+/// and every generated metadata PROBE crate take `nros` with `std` and no
+/// `rmw-cffi`, so they compile arbitrary node code with no port linked. The
+/// fallback is shipped, not vestigial, which is why it cannot simply be deleted
+/// to close the campaign's last `Instant` site.
 pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     #[cfg(feature = "rmw-cffi")]
     {

@@ -14,18 +14,26 @@
 //! interpret one absolutely.
 //!
 //! Clock source mirrors the executor's timer accounting
-//! (`nros-node/src/executor/spin.rs`):
+//! (`nros-node/src/executor/spin.rs`), and phase-359 W10 follow-up had to
+//! RESTORE that — the sentence had gone false:
 //!
-//! - `std` builds: [`std::time::Instant`], anchored at first use.
-//! - `no_std` + `rmw-cffi` builds: the platform's
-//!   `nros_platform_clock_ns` export — the same linkage contract the
-//!   executor and the wake primitives already rely on, so this adds no
-//!   new requirement. Resolution is whatever the platform delivers
-//!   (issue #502: sub-tick on FreeRTOS Cortex-M, tick-quantized on
-//!   ThreadX).
+//! - **`rmw-cffi` builds** (a platform port is linked): the platform's
+//!   `nros_platform_clock_ns` export, on either flavour. Same linkage contract
+//!   the executor and the wake primitives already rely on, so this adds no new
+//!   requirement. Resolution is whatever the platform delivers (issue #502:
+//!   sub-tick on FreeRTOS Cortex-M, tick-quantized on ThreadX).
+//! - **`std` without a port**: [`std::time::Instant`], anchored at first use.
+//!   That configuration is real and shipped — the metadata probe compiles node
+//!   code with `std` and no port — so the arm is load-bearing, not vestigial.
+//! - **Neither**: no clock source; this module is absent.
 //!
-//! A `no_std` build without `rmw-cffi` has no clock source; this
-//! module is absent there.
+//! The order used to be the other way round, `std` first, which meant every
+//! NATIVE build (std AND a port) read `Instant` here while the executor read
+//! the port — two monotonic sources with different epochs in one image, under a
+//! doc claiming they were one. W10 moved the executor onto the port whenever a
+//! port exists; this module was not moved with it. Two clocks are only harmless
+//! while nobody compares them, and the whole purpose of this module is `dt`
+//! across callbacks the executor scheduled.
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -38,7 +46,7 @@ use core::time::Duration;
 /// // ... work ...
 /// let dt = nros::time::now() - t0;
 /// ```
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
 #[must_use]
 pub fn now() -> Duration {
     use std::{sync::OnceLock, time::Instant};
@@ -48,10 +56,11 @@ pub fn now() -> Duration {
 
 /// Monotonic time since an unspecified epoch.
 ///
-/// Reads the platform port's `nros_platform_clock_ns` (RFC-0073). What
+/// Reads the platform port's `nros_platform_clock_ns` (RFC-0073) — on a hosted
+/// build too, which is the point: this and the executor must be ONE clock. What
 /// the low digits are worth is per-port; ask
 /// `nros_platform_clock_resolution_ns`.
-#[cfg(all(not(feature = "std"), feature = "rmw-cffi"))]
+#[cfg(feature = "rmw-cffi")]
 #[must_use]
 pub fn now() -> Duration {
     unsafe extern "C" {

@@ -632,7 +632,13 @@ check-node-std-tests:
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
-    echo "non-default-feature unit tests passed (nros-node std, nros env)!"
+    # phase-359 W10 follow-up — `std` AND `platform-clock`, the combination where
+    # "which wall clock wins" is observable. `platform_port_outranks_std_for_the
+    # _wall_clock` DEFINES the port symbol itself, so this lane needs no port
+    # linked; without the combination the test is in no lane at all, which is how
+    # the `not(std)` gate on `platform_wall_clock` survived unnoticed.
+    cargo test -p nros-core --lib --no-default-features --features std,platform-clock --quiet
+    echo "non-default-feature unit tests passed (nros-node std, nros env, nros-core clock)!"
 
 # Issue 0652 — the `required-features` targets that were in NO lane.
 #
