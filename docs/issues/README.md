@@ -51,6 +51,13 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0699** (cli/orchestration, open 2026-08-20) — `nros sync` on the canonical copy-out template fails
+`Metadata(NameTooLong)` when the workspace path is ~100 chars deep; the identical tree at 34 chars syncs
+clean. Four frames name a component and "exit -1", never a length or path — the real panic only shows by
+re-running the staged harness by hand. Smells like an AF_UNIX `sun_path` (108-byte) or bounded-string path
+buffer in the metadata-mode register. Lands exactly on the "copy the template anywhere" surface phase-368
+promotes. See `0699-*`. (2026-08-20)
+
 **#0696** (testing/build, open 2026-08-19) — 15 native C/C++ tests fail tier 1 with a STALE verdict naming
 `packages/testing/nros-tests/src/lib.rs` as newer than `examples/native/c/talker/build-zenoh/c_talker`. That
 file is in NONE of the fixture's dep graphs (`ninja -t deps`: 0; `libnros_c.d`: 0; nothing under the build dir
