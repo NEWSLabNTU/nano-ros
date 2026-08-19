@@ -147,6 +147,30 @@ probe "build output beside workspace source (long-lived-tree residue)" \
     "rm -rf the named dir(s) — build output belongs under \$NROS_BUILD_ROOT (RFC-0070 R1)" \
     bash scripts/check-workspace-build-output.sh
 
+# 6b. Corrosion's pin, because a stale one builds SUCCESSFULLY and wrong.
+#
+#     Every other probe here catches something that fails loudly later. This one
+#     catches something that does not: Corrosion < 0.6.0 shares ONE cargo
+#     target-dir across workspace roots, so two roots duplicate every nros crate
+#     and the consequence lands hours away as duplicate `#[no_mangle]` symbols
+#     at link (issues 0493/0500/0616). The store ACCUMULATES, so a stale prefix
+#     shadows a pin that was correctly installed.
+#
+#     The only existing signal is a cmake WARNING printed per configure, which
+#     is per-leaf noise in a build that prints thousands of lines — on
+#     2026-08-19 it scrolled past 32 configures and was read only after the
+#     failure it predicted had been misdiagnosed twice.
+#
+#     `nros setup --check --tool` already answers exactly this and NAMES what
+#     the store holds instead (issue 0466 finding (b)); it had no caller ahead
+#     of a build. Buildless, ~20 ms.
+#
+#     FAIL, not warn: the remedy is one command, and a warning is precisely what
+#     was already being missed.
+probe "corrosion in the SDK store is not at the pinned version" \
+    "nros setup --tool corrosion   (or: just workspace install-corrosion)" \
+    nros setup --check --tool corrosion
+
 # 7. The CLI and the launch resolver are built by SEPARATE recipes and must
 #    agree on an argument list (#0363 C), and `setup-cli` deliberately only
 #    WARNS when it leaves the resolver behind — its job is to produce the CLI,

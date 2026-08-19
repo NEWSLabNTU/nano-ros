@@ -130,8 +130,17 @@ links clean without it — 0 undefined symbols — which is what verifies the dr
   cargo target-dir across workspace roots — which this leaf uniquely has two of
   (its own bare `[workspace]` plus the nano-ros root). That is issue 0500's
   hazard and it was really present; provisioning `v0.6.1` changed nothing here.
-  Worth keeping, not the cause. **Note the stamp disagreed with the content it
-  stamped**, which is its own small defect in the installer.
+  Worth keeping, not the cause.
+
+  **CORRECTION (2026-08-19).** This originally added "the stamp disagreed with
+  the content it stamped, which is its own small defect in the installer." That
+  is wrong and there is no such defect. The stamp records the upstream TAG; the
+  `CorrosionConfigVersion.cmake` records the CMake PROJECT VERSION, and
+  upstream's `v0.5.1` tag declares `VERSION 0.5.0` (verified by cloning the tag)
+  — upstream simply did not bump it. Two different version vocabularies, both
+  accurate, which `nros setup`'s `tool_pin_status` already reads deliberately.
+  The real gap was that nothing ASKED before a build; a probe now does
+  (`scripts/check-tier-preconditions.sh`).
 
 ### Method
 
