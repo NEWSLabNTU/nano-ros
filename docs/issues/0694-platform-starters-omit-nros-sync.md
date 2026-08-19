@@ -177,3 +177,55 @@ Phase 368. Add the step to each starter's build path, add the
 platform × language workflow table the book currently has nowhere, and
 extend probe coverage so a starter's build block is executed rather than
 asserted.
+
+
+## Progress 2026-08-19 — the last starter page with a Rust build, and a second defect in the same block
+
+Re-measured this issue's table against the current book. phase-368 has fixed
+`freertos.md` (4 mentions), `threadx.md` (4) and `bare-metal.md` (2). Of the
+pages still at zero, most are correctly at zero once the per-LANGUAGE rule is
+applied:
+
+| page | build commands | needs sync? |
+| --- | --- | --- |
+| `integration-nuttx.md` | cmake | no — C, no `.cargo/config.toml` |
+| `integration-esp-idf.md` | `idf.py` | no — C |
+| `integration-zephyr.md` | `west build apps/my_app` | no — the reader's OWN app, not a repo leaf |
+| `esp32.md` | none | n/a |
+| **`zephyr.md`** | `west build … rust/talker` | **YES — a repo Rust leaf under west** |
+
+So one page remained, and it is fixed here: `nros sync --no-metadata` before the
+`west build`, worded as the already-fixed pages word it.
+
+`--no-metadata` because the source-metadata probe builds a host binary that
+path-deps the leaf and drags in the `zephyr` crate, whose build.rs wants a
+DOTCONFIG from a cmake configure that has not run and cannot — this sync is its
+prerequisite (issue 0318, which is why `zephyr-ci.just` already passes the same
+flag). Verified both ways: without it the sync still exits 0 but prints
+`no producer for zephyr_talker::talker … deploy-bound probe failed`, which a
+reader cannot act on; with it, `sync: wrote [patch.crates-io] → …`.
+
+### The second defect, found by running the page's own command
+
+The block said:
+
+```
+west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
+```
+
+That path does not exist for a plain `git clone`. `scripts/zephyr/setup.sh:42`
+names the workspace's link back to the checkout
+`$(basename "$NANO_ROS_ROOT")` — so it is `nano-ros/` for anyone who cloned the
+repo under its own name, and `nros/` only for someone whose directory happens to
+be called that. `west.yml` declaring `self: path: nros` is what makes the two
+disagree. Measured on this host: `.west/config` records `path = nano-ros`, and
+`zephyr-workspace/nros` does not exist.
+
+Both commands now use `../examples/...`. For the in-tree workspace this page
+sets up, `..` IS the checkout, so the path needs no name and cannot drift with
+someone's directory choice.
+
+This one is worth noting beyond its own fix: it is the same failure mode this
+issue is about — a starter page teaching a command that cannot run — and it
+survived because nothing executes these blocks. It was found by running them,
+not by reading them, which is what the `probe=` column is for.

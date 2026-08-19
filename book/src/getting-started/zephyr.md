@@ -112,9 +112,31 @@ without bridge configuration.
 # Source environment
 source zephyr-workspace/env.sh
 
-# Build Zephyr talker (Rust + zenoh, default backend)
 cd zephyr-workspace
-west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
+
+# Rust — `nros sync` first, once per checkout location. It writes the
+# generated message bindings and the [patch.crates-io] table the leaf's
+# .cargo/config.toml includes. This applies to cargo under WEST too: west
+# drives the same leaf, so without sync the build fails while PARSING the
+# manifest, with an error that never names sync (issue 0694).
+#
+# `--no-metadata` because the source-metadata probe builds a host binary that
+# path-deps this leaf, dragging in the `zephyr` crate — whose build.rs needs a
+# DOTCONFIG from a Zephyr cmake configure that has not run yet, and cannot,
+# since this sync is its prerequisite (issue 0318). Without the flag the sync
+# still succeeds but prints a "no producer" error the reader cannot act on.
+# Codegen and the patch table — the reason to run it — are unaffected.
+nros sync --no-metadata ../examples/zephyr/rust/talker
+
+# Build Zephyr talker (Rust + zenoh, default backend).
+#
+# `../examples/...` rather than `<name>/examples/...`: the workspace's link
+# back to the checkout is named after YOUR checkout directory
+# (`scripts/zephyr/setup.sh` uses `basename "$NANO_ROS_ROOT"`), so it reads
+# `nano-ros/` for a plain `git clone` and `nros/` only if you renamed the
+# directory. For the in-tree workspace this page sets up, `..` IS the
+# checkout and needs no name at all.
+west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe
