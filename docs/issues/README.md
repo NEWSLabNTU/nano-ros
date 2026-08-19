@@ -73,6 +73,16 @@ failure recorded (0445's class, one layer in). The assertion now carries the ful
 count, so the next occurrence says which. Only ever runs with ROS 2 present (`require_ros2()`), i.e. only in
 the distrobox — 0309 last exercised it on 2026-07-28. See `0690-*`. (2026-08-19)
 
+**#0693** (testing/codegen, open 2026-08-19) — `rosidl-codegen`'s `comparison_test` + `parity_test` read
+message definitions from a hardcoded `/opt/ros/jazzy`, which this project does not install
+(`DEFAULT_ROS_DISTRO` is **humble**, and the same files exist under it). All 13 affected tests bail early
+and `return Ok(())` — the documented `eprintln!`+`return` anti-pattern — so the suite answers **19 tests,
+0.027 s, all green** while running nothing. The parity suite is the one comparing nano-ros codegen against
+the reference `.msg` definitions, so that property has never been measured on this host. 11 hardcoded
+`jazzy` references across two test files and `check_parser_failures.sh`. `rosidl-codegen` sits in the
+`packages/cli` sub-workspace and cannot reach `nros_tests::skip!`, which is why the honest spelling was
+unavailable — a reason it happened, not a reason to keep it. See `0693-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#689** — `nano_ros_entry()` applies PANIC with
 `corrosion_set_features()`, which needs `nros_c`/`nros_cpp` to be CORROSION targets. phase-366 rightly made a
 silent skip fatal, W7.d then exempted the one lane where they are not (Zephyr, `nros_cargo_build`) — and three
