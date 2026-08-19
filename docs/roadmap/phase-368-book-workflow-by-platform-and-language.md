@@ -1,10 +1,37 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-21).** COMPLETE for the target design — W1–W14 all landed
-(W4's clean-container probe GREEN end to end). Deferred follow-ups are listed
-in their work items: contributor-block relocation to internals/ (W12), the
-esp32 user build spelling (W13's rewrite), de-justing two tool-emitted
-strings and the scoped `nros doctor --platform`, and a zenoh-track probe run. The maintainer-approved TARGET DESIGN below defines
+**Status (2026-08-20).** COMPLETE — W1–W14 landed, and the code-gap
+follow-ups the target design deferred are closed too. The clean-container
+probe re-ran GREEN on the merged tree (PROBE=0: bootstrap → setup →
+C leaf build → BOTH scaffolded workspaces publishing, no router, no ROS)
+after two sessions' concurrent fixes merged.
+
+Closed since the W1–W14 landing:
+
+* **Tool-emitted `just` strings** — 15 emitter strings + 5 cmake `message()`
+  sites now name `./scripts/bootstrap.sh` first with the contributor recipe
+  as the alias; one board error prescribed `just setup-threadx`, a recipe
+  that does not exist (→ `nros setup qemu-riscv64-threadx`). Gated:
+  `check-emitter-just-spelling` in `check-fast`, which caught the dead
+  recipe on its first run.
+* **The `-DNROS_RMW` silent override** — a hard-coded `BACKEND` now WARNS
+  naming both values, the file to edit, and the forwarding idiom the
+  scaffold ships; a forwarding root honors the flag silently.
+* **`nros doctor` without `just`** — degrades (native checks stand, skipped
+  contributor lanes named) instead of erroring after its own checks passed.
+* **Issues 0694–0696, 0699 resolved and archived.** 0696 (the unclearable
+  STALE) and 0699 (deep-path NameTooLong) were each root-caused
+  INDEPENDENTLY by this session's subagents and a parallel session, same
+  causes, hours apart — the landed fixes are the parallel session's, the
+  duplicates dropped in rebase. 0695's shell half landed upstream; this
+  session landed half 2 (the zpico lane ran nextest bare, bypassing the
+  skip rewrite; the junit path now follows `CARGO_TARGET_DIR`). First
+  bypass-free tier-1 green followed: `Real failures: 0 / 0`.
+
+Still deferred, still named: contributor-block relocation to internals/
+(W12), the esp32 user build spelling (W13's rewrite onto the ESP-IDF
+shell), the resolver's z3 hard-dep feature-gate (upstream play_launch/rlm),
+and a zenoh-track probe run for `first-node-rust.md`'s flow. The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
 
