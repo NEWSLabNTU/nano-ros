@@ -18,7 +18,7 @@ needs the basics: git, curl, a C toolchain, `pkg-config`, python3.
 sudo apt-get update
 sudo apt-get install -y git curl ca-certificates build-essential \
     cmake pkg-config python3 python3-dev zstd libclang-dev libz3-dev \
-    python3-catkin-pkg python3-empy python3-lark
+    python3-catkin-pkg python3-empy python3-lark python3-yaml
 ```
 
 **Fedora / RHEL:**
@@ -46,7 +46,7 @@ the launch resolver — it embeds CPython to parse ROS launch files. Each
 tool's absence produces an error naming it, but installing up front saves
 the round-trips. The three Python packages feed `rosidl_adapter`, the ROS
 message-to-IDL step the CycloneDDS backend uses — on Fedora/Arch/macOS
-install `catkin_pkg`, `empy==3.3.4` and `lark` via pip or your package
+install `catkin_pkg`, `empy==3.3.4`, `lark` and `PyYAML` via pip or your package
 manager; empy must stay 3.x.)
 
 These few packages are the only ones you install by hand. Per-board OS

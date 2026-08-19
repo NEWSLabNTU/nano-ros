@@ -884,6 +884,10 @@ check = { cmd = "cargo-asm" }
 pip = "catkin_pkg"
 why = "rosidl_adapter import (cyclone msg->IDL on ROS-less hosts)"
 
+[python.pyyaml]
+pip = "PyYAML"
+why = "rosidl_cli imports yaml (reached via rosidl_adapter.cli since the vendored humble tree)"
+
 [python.empy]
 pip = "empy"
 version = "3.3.4"
