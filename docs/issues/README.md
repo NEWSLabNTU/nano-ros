@@ -653,24 +653,13 @@ own, silently. Also records the measurement error that made an earlier attempt l
 reused stale caches; the `PARENT_SCOPE`/two-C-libraries explanation built on that is RETRACTED.
 See `archived/0679-*`. (2026-08-18)
 
-**#0680** (boards/platform, open 2026-08-18) — #0678 moved threadx-riscv64 onto the toolchain's own newlib,
-which is the right fix, and newlib resolves `errno` through `_impure_ptr` — ONE global pointer to ONE
-`struct _reent`. Nothing points it per-thread: all four `TX_THREAD_EXTENSION` slots are empty and there is no
-`_impure_ptr` / `__retarget_lock_*` wiring anywhere. So `errno` is shared across ThreadX threads (a failing
-socket call on the RX thread is readable by the app thread, no diagnostic) and `malloc`/`free` have no lock —
-exposure limited by #0664's bump `_sbrk` with no free. Pre-existing newlib property made REACHABLE by #0678,
-not a regression: before it the board did not link at all, and picolibc's per-thread `errno` only ever worked
-where the compiler had native TLS. ThreadX's own answer is a `TX_THREAD_EXTENSION` slot; all four are free.
-DESIGN EXPLORED: `__errno()` returns `_impure_ptr` and `_errno` is at offset 0, so per-thread errno IS
-per-thread `_impure_ptr` — and the two shortcuts are unsound for #0678's reason (overriding `__errno()`
-misses the `_r` objects that write `ptr->_errno` directly; `-D__DYNAMIC_REENT__` is a declaration change
-against a `libc.a` built without it). Recommended hook needs NO assembly: the port already carries
-`_tx_execution_{thread_enter,thread_exit,isr_enter,isr_exit}` call sites compiled out behind
-`TX_ENABLE_EXECUTION_CHANGE_NOTIFY`; define it, set `_impure_ptr` from `_tx_thread_current_ptr` in C, stub
-the other three. Slot `EXTENSION_3` (the header's "SHALL NOT" is about the PROFILE variables, and the two
-macros are mutually exclusive). Also surfaced: the port's asm addresses the TCB by hand-maintained byte
-offsets with no `_Static_assert` — safe today only because every offset used precedes `EXTENSION_0`.
-See `0680-*`. (2026-08-18)
+Recently resolved (2026-08-19): **#0680** — per-thread `errno` on threadx-riscv64. `9f4da0efa` shipped
+the recommended option B (`TX_ENABLE_EXECUTION_CHANGE_NOTIFY` + C hooks); measured with the new
+`errno-isolation` fixture, that macro HANGS the board on the first `tx_thread_sleep`, because it also
+enables the ISR call sites in `tx_thread_context_save.S`/`_restore.S`. Replaced by option A — three
+instructions in `tx_thread_schedule.S` through a port-owned `nros_tx_impure_slot` (a direct
+`_impure_ptr` reference breaks libc-less Rust images; a WEAK one is out of PC-relative range). B's slot,
+allocation and `__retarget_lock_*` half are kept. See `archived/0680-*`. (2026-08-19)
 
 **#0678** (build/boards, REOPENED 2026-08-19) — `066441663` fixed three sites and the platform still does
 not build: `just threadx_riscv64 build-fixtures` gives `BUILD_RC=2` with `undefined symbol: __emutls_v.errno`

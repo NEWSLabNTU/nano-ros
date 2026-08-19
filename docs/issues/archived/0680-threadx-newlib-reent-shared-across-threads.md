@@ -1,7 +1,7 @@
 ---
 id: 680
 title: "threadx-riscv64 now links newlib with no per-thread `_reent`: `errno` is shared across ThreadX threads and `malloc` has no lock"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: boards, platform
@@ -306,3 +306,37 @@ finding.
 * Other ThreadX ports (`threadx-linux` compiles the mechanism out; no other
   ThreadX port carries it) would each need their own three instructions. That is
   A's known cost, now paid once.
+
+
+## Supersedes `9f4da0efa`'s option B — same issue, measured differently
+
+`9f4da0efa` ("per-thread newlib reentrancy on threadx-riscv64, and lock the libc
+arena") implemented the option B this issue recommended: the extension slot, the
+`_tx_execution_*` hooks, the platform-side reent allocation, and
+`TX_ENABLE_EXECUTION_CHANGE_NOTIFY` defined at both cmake sites. The work here
+keeps its structure — slot, allocation, and the `__retarget_lock_*` half are
+substantially that commit's — and replaces the hook mechanism, because with the
+macro defined the board HANGS on the first `tx_thread_sleep`.
+
+That was not visible when B landed: the discriminating fixture did not exist,
+and no test in the suite could tell per-thread `errno` from shared. The platform
+also could not complete a fixture build at the time for unrelated reasons
+(#0678's libc split, then #0692's panic handler), so the hang had no way to
+surface. This is the same "the fix and the bug are both invisible" gap the
+Acceptance section named.
+
+What changed:
+
+* `TX_ENABLE_EXECUTION_CHANGE_NOTIFY` removed from both cmake sites, and the
+  five `_tx_execution_*` hooks removed from `reent.c`.
+* The swap moved into `tx_thread_schedule.S` (option A), three instructions
+  after `_tx_thread_current_ptr` is committed, through a port-owned
+  `nros_tx_impure_slot` so libc-less Rust images still link.
+* Kept from B: `TX_THREAD_EXTENSION_3`, the platform-side allocation, and the
+  retargetable locks — plus `833aa0481`'s newlib-only guard on compiling
+  `reent.c` at all, which is strictly better than the unconditional add and is
+  what survives here.
+
+Verified end to end: `test_threadx_riscv64_errno_is_per_thread` PASSES on this
+tree, and FAILS (`FAIL shared errno`, observer reading the victim's `errno=34`)
+on a build with the swap removed.
