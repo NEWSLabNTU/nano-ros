@@ -1,7 +1,10 @@
 # Phase 368 — What a reader actually runs, per platform and per language
 
-**Status (2026-08-20).** IN PROGRESS — W1–W3, W5–W9, W11, W13 landed; W4 in flight (container run
-pending); W10, W12, W14 landed. The maintainer-approved TARGET DESIGN below defines
+**Status (2026-08-21).** COMPLETE for the target design — W1–W14 all landed
+(W4's clean-container probe GREEN end to end). Deferred follow-ups are listed
+in their work items: contributor-block relocation to internals/ (W12), the
+esp32 user build spelling (W13's rewrite), de-justing two tool-emitted
+strings and the scoped `nros doctor --platform`, and a zenoh-track probe run. The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
 
@@ -118,7 +121,34 @@ ask. Pointing users at a hidden gate seam is not documenting a workflow; the
 page says `nros model-path` instead, which is public and prints the resolved
 path.
 
-**W4 — probe coverage. IN FLIGHT.** `probe=` covered 3 blocks on 2 pages, and
+**W4 — probe coverage. LANDED — and it PAID.** `just probe bootstrap` now
+executes the QUICK START in a pristine ubuntu:24.04: the two-command install,
+`nros setup native --rmw cyclonedds`, the C leaf's cmake build, then the
+probe-owned verifier scaffolds BOTH workspaces (`nros new --workspace`,
+`--lang rust`) and asserts each publishes with no router. Ten iterations to
+green, and every red was a real defect in the flow the book documents:
+
+| iteration | defect |
+|---|---|
+| 1 | `cmake` absent from the host-prereq block — the whole quick start is CMake |
+| 2 | `zstd` absent — the cyclone prebuilt is a `.tar.zst` |
+| 3 | the probe's own verifier asserted `zenohd` on PATH — false since RFC-0075; green only because nobody re-ran it |
+| 4 | the front door never built `nros-launch-resolve`; first workspace configure died naming a `just` recipe |
+| 5 | resolver build needs libclang (z3-sys bindgen); the front door's `\|\| return 0` swallowed the failure and smiled |
+| 6 | z3-sys also needs the z3 HEADERS (libz3-dev) |
+| 7 | the resolver links CPython — python3-dev |
+| 8 | `[rmw.cyclonedds]` provisioned the C library but not rosidl; first type-support step died "rosidl_adapter is not importable" — the row now carries `rosidl` (the complete-provisioner contract) |
+| 9 | rosidl_cli imports `yaml` — PyYAML joins `[python.*]` and the prereqs |
+| 10 | **the linked libddsc had NO RPATH** — every dev machine loaded ROS's OWN libddsc via the sourced env's LD_LIBRARY_PATH, a different build than the one linked, working by coincidence; a ROS-less host died at exec. Both cyclone link sites now stamp the linked library's directory; verified with `env -u LD_LIBRARY_PATH` |
+
+Also learned and recorded: the probe clones COMMITTED main from the mount, so
+worktree edits to bootstrap/cmake are invisible until committed — fixes land
+before their green run, not after. Out of scope stays as stated (hardware/
+vendor-SDK/QEMU starters); the zenoh-track probe (first-node-rust.md's flow
+under `--rmw zenoh`) is named follow-up, since that page left the chapter
+list when the probe's rmw moved to the quick-start default.
+
+*(superseded planning text below)* `probe=` covered 3 blocks on 2 pages, and
 both were pages that already had the step right; the pages that were wrong were
 exactly the unprobed ones.
 
