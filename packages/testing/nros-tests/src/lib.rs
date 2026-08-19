@@ -256,8 +256,28 @@ pub fn unique_domain_id() -> u32 {
     (pid << 8) | (seq & 0xFF)
 }
 
-/// Returns a ROS domain ID in the DDS-valid 1..=232 range, unique among
-/// concurrently-running tests.
+/// The modulus every test-domain assigner shares (Rust, shell, C++).
+///
+/// issue 0703 — 101, not 232, and it is not a style choice. Cyclone (RTPS)
+/// derives its ports from the domain arithmetically: `7400 + 250*D` for
+/// multicast discovery, `+10 + 2*participantIndex` for unicast. Linux hands out
+/// ephemeral ports from 32768, and `7400 + 250*102 = 32900` is inside that
+/// range — so from domain 102 up, the port a participant MUST have is one the
+/// OS may already have given to another process. The bind fails outright
+/// (`ddsi_udp_create_conn: failed to bind to ANY:44900: address in use`), which
+/// surfaces as a session that will not open: a test failing for a reason having
+/// nothing to do with what it tests. The rate tracks how many ephemeral ports
+/// are in use, which is why 0703 was ~2-in-5 inside `just check`, 0-in-4 solo,
+/// and on a different test each time. Measured with 32768-34000 held: D=101
+/// passes, D=102 and D=103 fail.
+///
+/// 101 leaves margin for the per-participant offsets
+/// (`7400 + 250*101 + 11 + 2*9 = 32679`) and is the range ROS 2 documents as
+/// safe on Linux, so a value from here is one a user could legally set by hand.
+const TEST_DOMAIN_MAX: u32 = 101;
+
+/// Returns a ROS domain ID in the port-safe 1..=101 range (see
+/// [`TEST_DOMAIN_MAX`]), unique among concurrently-running tests.
 ///
 /// Use this for tests that must pass the value to ROS 2 or a DDS backend
 /// (especially brokerless RTPS like CycloneDDS, where the UDP ports are derived
@@ -269,8 +289,8 @@ pub fn unique_domain_id() -> u32 {
 /// Allocation prefers nextest's `NEXTEST_TEST_GLOBAL_SLOT` — a slot index that
 /// is **guaranteed unique among the tests running concurrently** (0..test-threads,
 /// reused only after a test finishes). Deriving the domain from the slot is
-/// collision-free between live tests. The previous PID-hash (`(pid + seq) % 232`)
-/// was only collision-*rare*: two test PIDs congruent mod 232 land on the same
+/// collision-free between live tests. The previous PID-hash was only
+/// collision-*rare*: two test PIDs congruent modulo the range land on the same
 /// domain, and under load (intervening PID consumption) that happens often enough
 /// to flake (Phase 177.33: `ddsi_udp_create_conn: failed to bind … address in
 /// use`). Off nextest (no slot env), fall back to the PID hash.
@@ -284,10 +304,10 @@ pub fn unique_ros_domain_id() -> u8 {
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
-        return (((slot + seq * 64) % 232) + 1) as u8;
+        return (((slot + seq * 64) % TEST_DOMAIN_MAX) + 1) as u8;
     }
     let pid = std::process::id();
-    (((pid + seq) % 232) + 1) as u8
+    (((pid + seq) % TEST_DOMAIN_MAX) + 1) as u8
 }
 
 /// Poll a file descriptor for readability using poll(2).

@@ -70,6 +70,19 @@ EXECUTES the quick start in a pristine container (PROBE=0 both languages) so an 
 Three gates ride along: `check-book-links`, `check-book-no-just`, `check-emitter-just-spelling`. See
 `archived/0694-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0703** — `check-rmw-cyclonedds` red inside `just check`, green solo, a
+different test each time. Neither hypothesis in the issue was right and the answer was in neither test:
+Cyclone derives its RTPS ports from the domain (`7400 + 250*D`), Linux hands out ephemeral ports from 32768,
+and `7400 + 250*102 = 32900` is inside that range — so from domain 102 up, the port a participant MUST have
+is one the OS may already have given away. `create_session` dies on `ddsi_udp_create_conn: failed to bind …
+address in use` before the test does anything it was written to test. Issue 0580's assigner picked
+`getpid() % 232 + 1`, so ~49 % of processes drew a domain in that band and whether it collided tracked
+machine load. Fixed to `% 101` in all three assigners (Rust, shell, C++) — the last value with margin
+(`7400 + 250*101 + 11 + 2*9 = 32679`) and exactly the range ROS 2 documents as safe on Linux. Holding all 339
+band ports: pristine 40/40 failed, fixed 0/40. `check-test-domain-assignment.sh` gained the ceiling clause,
+because its old one (`grep -q 232`) asserted the bug. The API's `DOMAIN_ID_MAX = 232` is untouched — the
+ceiling belongs to what tests CHOOSE, not what the runtime accepts. See `archived/0703-*`. (2026-08-20)
+
 Recently resolved (2026-08-19): **#0699** — `nros sync` failed `Metadata(NameTooLong)` on the canonical
 copy-out template at a ~100-char workspace depth. Not a `sun_path` socket as filed:
 `SourceLocation::caller()` copied `Location::file()` into a 128-byte `MetadataString`, and rustc emits that
@@ -411,15 +424,6 @@ unrelated types). Two by-products: `hosted_env: bool` was a compile-time constan
 its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 unchanged — the sites moved
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
-
-**#0703** (testing, rmw, open 2026-08-19) — `check-rmw-cyclonedds` went red twice inside `just check` on
-2026-08-19, on two DIFFERENT tests (`pubsub_smoke`, then `data_roundtrip`), and passed 17/17 solo each
-time: 2 red in ~5 in-sweep runs, 0 red in 4 solo runs, no code change between. Two different tests means
-it is not one test's bug; passing solo means it is not the code the sweep built. Filed so the next red
-here is not bisected as a regression — the same shape CLAUDE.md already records for the QEMU lanes, now
-written down for Cyclone. Unknown: whether the two share a discovery-window mechanism, and whether the
-ctest suite's domain ids collide with the lanes running beside it. Next step is capturing
-`ctest --output-on-failure` rather than the summary line. See `0703-*`. (2026-08-19)
 
 Recently resolved (2026-08-20): **#0701** — `check-feature-contract` clause (a) enforced only "a capability
 does not GRANT the heap"; nothing enforced the rest of the same sentence, "emit `compile_error!` naming the

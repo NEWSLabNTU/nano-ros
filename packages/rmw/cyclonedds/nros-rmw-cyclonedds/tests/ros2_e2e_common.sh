@@ -20,10 +20,18 @@
 #
 # An explicit `ROS_DOMAIN_ID` in the environment still wins — pinning one is how
 # you reproduce a failure by hand.
+# issue 0703 — the modulus is 101, shared with the Rust and C++ assigners.
+# Cyclone derives its RTPS ports from the domain (`7400 + 250*D`), and Linux
+# hands out ephemeral ports from 32768, so from domain 102 up
+# (`7400 + 250*102 = 32900`) the port a participant must have is one the OS may
+# already have given away — the bind fails and the session never opens. See
+# `nros_test_domain.h` for the measurement.
+NROS_TEST_DOMAIN_MAX=101
+
 nros_unique_ros_domain_id() {
     if [ -n "${NEXTEST_TEST_GLOBAL_SLOT:-}" ]; then
-        echo $(( (NEXTEST_TEST_GLOBAL_SLOT % 232) + 1 ))
+        echo $(( (NEXTEST_TEST_GLOBAL_SLOT % NROS_TEST_DOMAIN_MAX) + 1 ))
     else
-        echo $(( ($$ % 232) + 1 ))
+        echo $(( ($$ % NROS_TEST_DOMAIN_MAX) + 1 ))
     fi
 }

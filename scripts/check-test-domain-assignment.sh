@@ -71,8 +71,25 @@ if [ -n "$literals" ]; then
     fail=1
 fi
 
-# The three assigners must keep agreeing. One scheme in three languages is only
-# worth having if it stays one scheme.
+# The three assigners must keep agreeing, on the SAME ceiling. One scheme in
+# three languages is only worth having if it stays one scheme — and issue 0703
+# is what the ceiling itself is for.
+#
+# Cyclone derives its RTPS ports from the domain (`7400 + 250*D` multicast,
+# `+10 + 2*participantIndex` unicast). Linux hands out ephemeral ports from
+# 32768, so `7400 + 250*102 = 32900` is a port the OS may already have given
+# away: from domain 102 up the bind fails outright and the session never opens.
+# That is a test failing for a reason having nothing to do with what it tests,
+# at a rate set by how busy the box is — 0703 was ~2-in-5 inside `just check`,
+# 0-in-4 solo, on a different test each time.
+#
+# 101 is the last safe value with margin (`7400 + 250*101 + 11 + 2*9 = 32679`)
+# and is the range ROS 2 documents as safe on Linux. Measured with 32768-34000
+# held: D=100 ok, D=101 ok, D=102 bind failure, D=103 bind failure.
+#
+# This checks the CEILING, not merely that the three files agree: agreeing on
+# 232 is exactly the bug.
+NROS_TEST_DOMAIN_MAX_EXPECTED=101
 for f in packages/testing/nros-tests/src/lib.rs \
          packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_e2e_common.sh \
          packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/nros_test_domain.h; do
@@ -81,14 +98,32 @@ for f in packages/testing/nros-tests/src/lib.rs \
         fail=1
         continue
     }
-    grep -q '232' "$f" || {
-        echo "ERROR: $f no longer folds into the shared 1..=232 range" >&2
+    # Comments in these files legitimately DISCUSS the old range — that record
+    # is why the ceiling exists, so it must survive. Strip comments before
+    # reading the code, or the gate flags its own documentation (it did).
+    # `#` is a comment in the shell file and a PREPROCESSOR directive in the
+    # header, so it is only stripped when what follows is not a directive.
+    code="$(sed -E \
+        -e 's@^[[:space:]]*//.*$@@' \
+        -e 's@^[[:space:]]*\*.*$@@' \
+        -e 's@^[[:space:]]*#([[:space:]].*|$)@@' \
+        -e 's@^[[:space:]]*#[^dei].*$@@' "$f")"
+    if ! printf '%s' "$code" \
+        | grep -qE "(TEST_DOMAIN_MAX.*[^0-9]|% *)${NROS_TEST_DOMAIN_MAX_EXPECTED}([^0-9]|\$)"; then
+        echo "ERROR: $f does not fold into the shared 1..=${NROS_TEST_DOMAIN_MAX_EXPECTED} range" >&2
+        echo "  A domain above ${NROS_TEST_DOMAIN_MAX_EXPECTED} puts Cyclone's RTPS ports inside Linux's" >&2
+        echo "  ephemeral range (32768+), so the bind can fail and the session never" >&2
+        echo "  opens — a red that tracks machine load, not code (issue 0703)." >&2
         fail=1
-    }
+    fi
+    if printf '%s' "$code" | grep -qE '% *232([^0-9]|$)'; then
+        echo "ERROR: $f folds modulo 232 — that is the issue-0703 range" >&2
+        fail=1
+    fi
 done
 
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "test domain assignment: OK (no literal domains; 3 assigners agree)"
+echo "test domain assignment: OK (no literal domains; 3 assigners agree on 1..=${NROS_TEST_DOMAIN_MAX_EXPECTED})"
