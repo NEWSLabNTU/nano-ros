@@ -1,7 +1,7 @@
 ---
 id: 678
 title: "The threadx-riscv64 Cyclone rows cannot link `__emutls_v.errno`: the provisioned toolchain emits EMULATED TLS and the linked picolibc was built with NATIVE TLS"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build, boards
@@ -541,3 +541,48 @@ That is the per-image singleton question of RFC-0077 / issues 0618 and 0668 for
 a Rust image that also links the C staticlib, not a libc problem. Filed as its
 own thing rather than absorbed here — the third distinct failure this sequence
 has uncovered (0674 → 0678 → this), each standing in front of the next.
+
+## VERIFIED and CLOSED 2026-08-19
+
+The option-1 fix holds. Verified on a CLEAN tree — the reopen note was right that
+a stale tree cannot see it, and that is what kept this open.
+
+```
+emutls errors (`__emutls_v.errno`) : 0
+`sys/reent.h` errors               : 0
+toolchain prefix                   : ~/.nros/sdk/riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf
+C   cyclone executables linked     : c_talker, c_listener, c_action_{client,server},
+                                     c_service_{client,server}
+C++ cyclone executables linked     : cpp_listener, cpp_action_{client,server},
+                                     cpp_service_client
+```
+
+Both languages link, which is the property this issue was opened on the absence
+of — and it is the C++ rows, the ones originally reported, that are now proven
+rather than assumed.
+
+### Why it looked unfixed for a day
+
+`CMAKE_C_COMPILER` is sticky. A tree first configured before the SDK toolchain
+existed keeps the Debian compiler and its `*_AR`/`*_RANLIB` siblings forever, so
+the fix is invisible until the build dir is deleted. This issue's own correction
+says so ("the selection logic is correct; only the cache is old"), and it
+reproduced here independently: 22 stale `build-*` dirs under
+`examples/qemu-riscv64-threadx/` were resolving `/usr/bin/riscv64-unknown-elf-gcc`
+until they were wiped, after which the xPack prefix appeared immediately.
+
+Worth stating as a rule rather than an anecdote: **on this board, a toolchain
+change is not testable incrementally.** Any future libc/toolchain work here must
+delete the build dirs before believing a result — a green or a red both mean
+nothing otherwise.
+
+### What remained behind it, and where it went
+
+The only failure left in that run was `nros-c` failing `#[panic_handler]` in the
+RUST Cyclone leaf — not a libc problem, and not this issue. It was filed as
+0688, retired into [0692](archived/0692-rust-cyclone-image-links-two-rust-staticlibs.md),
+and fixed by `eb54c1170` ("the rust-cyclone seam is not an entry, so nothing gave
+nros-c a panic policy").
+
+So the sequence this platform surfaced — 0674 → 0678 → 0692 — is now closed end
+to end, each having stood in front of the next.

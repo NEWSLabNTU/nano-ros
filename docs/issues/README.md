@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-19): **#0678** — the threadx-riscv64 Cyclone rows could not link
+`__emutls_v.errno`: the provisioned xPack toolchain emits EMULATED TLS while Debian's picolibc (whose headers
+were being injected) was built for NATIVE TLS, and picolibc's archive contains no emutls symbols at all, so
+nothing could ever define it. Fixed by option 1 — the board uses its own toolchain's newlib — keyed on the
+picolibc probe's EXIT STATUS rather than its output, at all three sites that resolved it. VERIFIED on a clean
+tree: 0 emutls errors, 0 `sys/reent.h` errors, xPack prefix selected, and both C and C++ Cyclone executables
+linking. It looked unfixed for a day because `CMAKE_C_COMPILER` is sticky — 22 stale `build-*` dirs kept
+resolving Debian's compiler until wiped, so on this board a toolchain change is NOT testable incrementally.
+The failure behind it (`nros-c` panic handler in the RUST leaf) was 0688 -> 0692, fixed by `eb54c1170`, so the
+0674 -> 0678 -> 0692 sequence is closed end to end. See `archived/0678-*`. (2026-08-19)
+
 **#0698** (build/zephyr, open 2026-08-19) — every SDK-toolchain Zephyr board fails to CONFIGURE under CMake 4,
 so `just ci-matrix` does not run at all on such a host (1-wise over platform ⇒ the zephyr lane failing at
 configure fails the tier; tier 1 is native-only and cannot see it). Zephyr 3.7's `FindZephyr-sdk.cmake:35`
@@ -684,25 +695,6 @@ enables the ISR call sites in `tx_thread_context_save.S`/`_restore.S`. Replaced 
 instructions in `tx_thread_schedule.S` through a port-owned `nros_tx_impure_slot` (a direct
 `_impure_ptr` reference breaks libc-less Rust images; a WEAK one is out of PC-relative range). B's slot,
 allocation and `__retarget_lock_*` half are kept. See `archived/0680-*`. (2026-08-19)
-
-**#0678** (build/boards, REOPENED 2026-08-19) — `066441663` fixed three sites and the platform still does
-not build: `just threadx_riscv64 build-fixtures` gives `BUILD_RC=2` with `undefined symbol: __emutls_v.errno`
-on `threadx-riscv64-c-cyclonedds`. The fourth site is the cargo path —
-`nros-board-common/src/threadx_qemu_riscv64_build.rs::get_picolibc_sysroot()` asks the same
-`--specs=picolibc.specs` question the cmake side does and answers a FAILED probe the opposite way: it falls
-through to a hardcoded `/usr/lib/picolibc/riscv64-unknown-elf`. So the board now links newlib through cmake
-and picolibc through cargo — two C libraries in one board, which is this issue's own shape one layer over,
-and which libc a leaf gets depends on the language it is written in. The earlier verification saw the
-failure MOVE (C++ rows -> C rows) and read "further" as "fixed". Also recorded, measured: the board's
-`int errno;` looks dead under newlib (where `errno` is the macro `(*__errno())`) but is load-bearing on the
-cargo path, where picolibc makes it a real symbol — deleting it yields twelve `R_RISCV_PCREL_HI20 out of
-range` relocations. It becomes removable only after both paths agree. ROOT CAUSE of the reopen: `CMAKE_C_FLAGS` is a CACHE
-variable seeded from `_INIT` on the FIRST configure only, so a toolchain-file fix never reaches an existing
-build tree — CMake rewrites `CMakeCache.txt` (mtime looks current) without recomputing the flags. Deleting
-the two C Cyclone build dirs gives 0 picolibc references and 0 emutls errors, i.e. `066441663` works and
-simply could not reach any tree that already existed (issue 0475's museum-binary class, configure-time
-form). A rebuild is NOT a test of a toolchain change; the build dir must be deleted. The cargo-path fallback
-is fixed here and needs no such dance, since `build.rs` re-runs. See `0678-*`. (2026-08-19)
 
 Recently resolved (2026-08-18): **#0674** — the `threadx-riscv64` Cyclone fixture could not LINK
 (`undefined symbol: stdout` / `stderr`), failing that whole platform in `lane=tier2`. `startup.c` DID
