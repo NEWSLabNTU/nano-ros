@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """phase-359 W0 — the `std` census, and a ratchet that only turns one way.
 
+Two modes. `--check-guards` (issue 0701) is a DIFFERENT question over the same
+walk: not "how many `std::` sites are there" but "is every capability-gated one
+declared", i.e. the half of ARCHITECTURE §2 clause (a) that
+`check-feature-contract` does not reach. It shares this file because it needs
+exactly what the counting walk needs — which cfg gates a given line — and a
+second spelling of that walk is the antipattern this repo keeps paying for.
+`--self-test` exercises the attribution on a synthetic crate. The counting path
+is unchanged by either.
+
 ## Why a census at all
 
 The campaign to drop `std` from the core crates is a migration, not a patch:
@@ -429,7 +438,335 @@ def census():
     return out
 
 
+
+# ---------------------------------------------------------------------------
+# issue 0701 — the OTHER half of ARCHITECTURE §2 clause (a).
+#
+# The clause is "a capability REQUIRES the heap / the standard library, it does
+# not grant it — emit `compile_error!` naming the feature".
+# `check-feature-contract` enforces "does not grant it" by scanning manifests.
+# Nothing enforced "emit `compile_error!` naming the feature", so a capability
+# whose gated code calls `std::` with no guard passed every gate and failed the
+# USER's build with a bare `cannot find crate std`, four frames deep, naming
+# nothing they could act on.
+#
+# It happened: `nros-cpp`'s `metadata-mode` (the sidecar `fs::write`) and `env`
+# (`$NROS_ENTRY_SPIN_MS`) had never needed guards BY ACCIDENT — `nros`'s
+# stricter guards fired first — until issue 0669's follow-up correctly relaxed
+# `nros/metadata-mode` to `alloc`. Relaxing a guard in one crate exposed a
+# capability in another that had never named its own requirement.
+#
+# This lives HERE rather than in its own script because it needs exactly what
+# the census walk needs — which cfg gates a given `std::` line — and a second
+# spelling of that walk is the antipattern the repo keeps paying for. The
+# counting path above is untouched; this is a separate mode.
+#
+# DELIBERATELY CONSERVATIVE. Only `feature = "x"` and `all(...)` conjunctions
+# are attributed; `any(...)` alternatives are ignored, because a site reachable
+# through either of two features does not let this gate say WHICH one needs the
+# guard. It therefore under-reports rather than crying wolf — a gate nobody
+# trusts is worse than a narrow one.
+# ---------------------------------------------------------------------------
+
+FEATURE_RE = re.compile(r'feature\s*=\s*"([A-Za-z0-9_-]+)"')
+CFG_ATTR_RE = re.compile(r"^#!?\[cfg\((.*)\)\]$")
+MOD_DECL_RE = re.compile(r"^(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;")
+FLAVOURS = frozenset({"std", "alloc"})
+
+
+def strip_not(expr: str) -> str:
+    """Drop `not(...)` groups — a feature required to be OFF is not a need."""
+    out, i = [], 0
+    while i < len(expr):
+        if expr.startswith("not(", i):
+            depth, j = 0, i + 3
+            while j < len(expr):
+                if expr[j] == "(":
+                    depth += 1
+                elif expr[j] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            i = j + 1
+            continue
+        out.append(expr[i])
+        i += 1
+    return "".join(out)
+
+
+def required_features(expr: str) -> set:
+    """Features that must be ON for a `cfg(expr)` site to compile.
+
+    `any(...)` contributes nothing (see the conservatism note above).
+    """
+    expr = strip_not(expr)
+    if "any(" in expr:
+        return set()
+    return set(FEATURE_RE.findall(expr))
+
+
+def module_cfgs(src: Path) -> dict:
+    """Map each file under `src` to the features its `mod` declaration requires.
+
+    `metadata_hooks.rs` is the case that makes this necessary: its `std::fs`
+    call is gated `metadata-mode` at the ITEM, while the file itself is only
+    compiled under `rmw-cffi` — declared in `lib.rs`, where no per-file scan can
+    see it. The effective gate is the conjunction of the two.
+    """
+    out = {}
+    pending = [(src / "lib.rs", set())]
+    while pending:
+        parent, inherited = pending.pop()
+        if not parent.is_file():
+            continue
+        out.setdefault(parent, set()).update(inherited)
+        attrs = set()
+        for line in parent.read_text(errors="replace").splitlines():
+            s = line.strip()
+            m = CFG_ATTR_RE.match(s)
+            if m:
+                attrs |= required_features(m.group(1))
+                continue
+            if s.startswith("#["):
+                continue  # a non-cfg attribute does not clear the pending cfgs
+            m = MOD_DECL_RE.match(s)
+            if m:
+                name = m.group(1)
+                child_cfgs = inherited | attrs
+                for cand in (
+                    parent.parent / f"{name}.rs",
+                    parent.parent / name / "mod.rs",
+                ):
+                    if cand.is_file():
+                        out.setdefault(cand, set()).update(child_cfgs)
+                        pending.append((cand, child_cfgs))
+            attrs = set()
+    return out
+
+
+def guarded_features(src: Path) -> set:
+    """Features named by a `compile_error!` guard anywhere in the crate."""
+    out = set()
+    for rs in sorted(src.rglob("*.rs")):
+        text = rs.read_text(errors="replace")
+        for m in re.finditer(r"compile_error!", text):
+            # The guard's own `#[cfg(all(feature = "F", not(feature = "std")))]`
+            # sits directly above it; 400 chars covers the wrapped spellings in
+            # this tree without reaching the previous item.
+            head = text[max(0, m.start() - 400) : m.start()]
+            cut = head.rfind("#[cfg(")
+            if cut >= 0:
+                out |= set(FEATURE_RE.findall(head[cut:]))
+    return out - FLAVOURS
+
+
+def site_features(rs: Path, file_cfgs: set):
+    """Yield `(line_no, required_features)` for each `std::` site in `rs`."""
+    lines = rs.read_text(errors="replace").splitlines()
+    stack = []  # (depth_at_open, features)
+    pending = set()
+    pending_live = False
+    depth = 0
+    for n, line in enumerate(lines, 1):
+        s = line.strip()
+        m = CFG_ATTR_RE.match(s)
+        if m:
+            if s.startswith("#!["):
+                file_cfgs = file_cfgs | required_features(m.group(1))
+            else:
+                pending |= required_features(m.group(1))
+                pending_live = True
+            continue
+        code = strip_comments(line)
+        opens = code.count("{")
+        closes = code.count("}")
+        if code and PATH_RE.search(code):
+            here = set(file_cfgs)
+            for _, feats in stack:
+                here |= feats
+            here |= pending  # a cfg'd `use std::…;` on the next line
+            yield n, here
+        if pending_live:
+            if opens:
+                stack.append((depth, pending))
+                pending, pending_live = set(), False
+            elif s.endswith(";"):
+                # An item with no body (`mod x;`, `use …;`) — the cfg applied to
+                # it and is spent. Anything else is a CONTINUATION: a multi-line
+                # `fn` signature holds the cfg until its `{`. Clearing on the
+                # first non-attribute line instead lost exactly that case, and
+                # the case is `nros_cpp_metadata_dump` — the site this gate was
+                # written for.
+                pending, pending_live = set(), False
+        depth += opens - closes
+        while stack and depth <= stack[-1][0]:
+            stack.pop()
+
+
+
+def default_guard_crates():
+    """The nine census crates, plus every other `no_std` crate in `packages/`.
+
+    The census is scoped to the nine because that is what phase-359 ratchets.
+    This gate is not: an unnamed `std` requirement is just as opaque to a user
+    in a board or a backend, and widening it is FREE — measured at 132 further
+    `no_std` crates and zero violations, so the wider scope costs a walk and
+    buys the whole tree.
+    """
+    out = []
+    for scope in SCOPE:
+        root = REPO / scope
+        if root.is_dir():
+            out += sorted(root.iterdir())
+    skip = {"target", "build", "third-party", "generated", ".git", "node_modules"}
+    stack = [REPO / "packages"]
+    while stack:
+        d = stack.pop()
+        for child in sorted(d.iterdir()):
+            if not child.is_dir() or child.name in skip:
+                continue
+            lib = child / "src" / "lib.rs"
+            if (child / "Cargo.toml").is_file() and lib.is_file():
+                if "#![no_std]" in lib.read_text(errors="replace"):
+                    out.append(child)
+            stack.append(child)
+    seen, uniq = set(), []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+
+def guard_check(crate_dirs=None):
+    """Report capabilities whose gated `std::` use names no `compile_error!`."""
+    bad = []
+    if crate_dirs is None:
+        crate_dirs = default_guard_crates()
+    for _scope in (None,):
+        for crate_dir in crate_dirs:
+            src = crate_dir / "src"
+            if not src.is_dir() or crate_dir.name in EXCLUDE:
+                continue
+            mod_cfgs = module_cfgs(src)
+            guards = guarded_features(src)
+            for rs in sorted(src.rglob("*.rs")):
+                if rs.name in ("generated.rs", "tests.rs"):
+                    continue
+                for n, feats in site_features(rs, mod_cfgs.get(rs, set())):
+                    if feats & FLAVOURS or "test" in feats:
+                        continue  # gated on the flavour itself, or test-only
+                    caps = feats - FLAVOURS
+                    if caps and not (caps & guards):
+                        try:
+                            shown = rs.relative_to(REPO)
+                        except ValueError:
+                            shown = rs  # the self-test's synthetic tree
+                        bad.append((crate_dir.name, shown, n, sorted(caps)))
+    return bad
+
+
+
+def self_test():
+    """Fire the gate on a deliberate reintroduction, then on its fix.
+
+    The attribution is the subtle part — a site's gate is the CONJUNCTION of its
+    module declaration and its enclosing item, and the item's `#[cfg]` can sit
+    several attribute lines above a multi-line signature. Both shapes are here
+    because both were wrong in the first version of this code.
+    """
+    import shutil
+    import tempfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="nros-0701-selftest-"))
+    try:
+        src = tmp / "fake-crate" / "src"
+        src.mkdir(parents=True)
+        (src / "lib.rs").write_text(
+            '#![no_std]\n#[cfg(feature = "cap")]\nmod inner;\n'
+        )
+        # A multi-line signature under a second attribute, which is the shape
+        # `nros_cpp_metadata_dump` has.
+        (src / "inner.rs").write_text(
+            '#[cfg(feature = "writes-a-file")]\n'
+            "#[unsafe(no_mangle)]\n"
+            "pub extern \"C\" fn dump(\n"
+            "    path: *const u8,\n"
+            ") -> i32 {\n"
+            "    let _ = std::fs::write(\"x\", \"y\");\n"
+            "    0\n"
+            "}\n"
+        )
+        crate = tmp / "fake-crate"
+
+        bad = guard_check([crate])
+        if len(bad) != 1 or sorted(bad[0][3]) != ["cap", "writes-a-file"]:
+            print(f"[self-test FAIL] expected one hit naming both gates, got {bad}", file=sys.stderr)
+            return 1
+
+        # Same tree, with the guard the clause asks for.
+        (src / "lib.rs").write_text(
+            '#![no_std]\n'
+            '#[cfg(all(feature = "writes-a-file", not(feature = "std")))]\n'
+            'compile_error!("`writes-a-file` writes a file: add \\"std\\"");\n'
+            '#[cfg(feature = "cap")]\n'
+            "mod inner;\n"
+        )
+        bad = guard_check([crate])
+        if bad:
+            print(f"[self-test FAIL] guard present but still reported: {bad}", file=sys.stderr)
+            return 1
+
+        # A site gated on the FLAVOUR itself is not a capability violation.
+        (src / "inner.rs").write_text(
+            '#[cfg(feature = "std")]\n'
+            "pub fn t() -> u64 {\n"
+            "    std::time::Instant::now().elapsed().as_micros() as u64\n"
+            "}\n"
+        )
+        (src / "lib.rs").write_text('#![no_std]\n#[cfg(feature = "cap")]\nmod inner;\n')
+        bad = guard_check([crate])
+        if bad:
+            print(f"[self-test FAIL] a `std`-gated site is not a violation: {bad}", file=sys.stderr)
+            return 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("check-std-census --check-guards: self-test OK (3 cases)")
+    return 0
+
+
+def main_guards():
+    bad = guard_check()
+    if not bad:
+        print(
+            "capability flavour guards: OK "
+            "(every capability-gated `std::` site names a `compile_error!`)"
+        )
+        return 0
+    print(
+        "[FAIL] capability-gated `std::` use with no `compile_error!` naming it:",
+        file=sys.stderr,
+    )
+    for crate, rel, n, caps in bad:
+        print(f"    {rel}:{n}  reachable only with {caps} (crate `{crate}`)", file=sys.stderr)
+    print(
+        "\n  ARCHITECTURE §2 clause (a): a capability REQUIRES the standard library,\n"
+        "  it does not grant it — emit a `compile_error!` NAMING the feature, e.g.\n"
+        '    #[cfg(all(feature = "<cap>", not(feature = "std")))]\n'
+        '    compile_error!("`<cap>` <what it does>: add \\"std\\" to this crate\'s features");\n'
+        "  Without it the user gets a bare `cannot find crate std`, four frames deep,\n"
+        "  naming no feature they can act on (issue 0701).",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
+    if "--check-guards" in sys.argv:
+        return main_guards()
     now = census()
     show = "--show" in sys.argv
 

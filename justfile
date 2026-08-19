@@ -443,7 +443,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3229,6 +3229,26 @@ check-flavour-lanes:
 [group("ci")]
 check-std-census:
     @python3 scripts/check-std-census.py
+
+# Issue 0701 — the OTHER half of ARCHITECTURE §2 clause (a).
+#
+# `check-feature-contract` enforces "a capability does not GRANT the heap" by
+# scanning manifests. Nothing enforced the rest of the same sentence — "emit
+# `compile_error!` naming the feature" — so a capability whose gated code calls
+# `std::` with no guard passed every gate and failed the USER's build with a
+# bare `cannot find crate std`, four frames deep, naming nothing they could act
+# on. Two of them shipped that way (`nros-cpp`'s `metadata-mode` and `env`),
+# each free-riding on a stricter guard in `nros` until issue 0669's follow-up
+# correctly relaxed it.
+#
+# Lives in the census script because it needs exactly what the census walk
+# needs — which cfg gates a given `std::` line — and a second spelling of that
+# walk is the antipattern this repo keeps paying for. The counting path is
+# untouched; this is a separate mode, with its own `--self-test`.
+[group("ci")]
+check-capability-flavour-guards:
+    @python3 scripts/check-std-census.py --self-test
+    @python3 scripts/check-std-census.py --check-guards
 
 # phase-361 W4 — the `std`/`alloc` feature contract (ARCHITECTURE.md §2).
 # Six clauses over every crate in `packages/`: `std` implies `alloc` in the

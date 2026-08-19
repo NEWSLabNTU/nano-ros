@@ -397,17 +397,16 @@ written down for Cyclone. Unknown: whether the two share a discovery-window mech
 ctest suite's domain ids collide with the lanes running beside it. Next step is capturing
 `ctest --output-on-failure` rather than the summary line. See `0703-*`. (2026-08-19)
 
-**#0701** (build, open 2026-08-19) — `check-feature-contract` clause (a) enforces "a capability does not
-GRANT the heap" (it scans manifests for `= ["std"]` / `dep/std`) but nothing enforces the other half of the
-same clause, "emit `compile_error!` naming the feature": a capability whose gated code calls `std::` while
-its crate carries no guard passes every gate and fails the user's build with a bare `cannot find crate
-std`, four frames deep, naming no feature. Found live: `nros-cpp`'s `metadata-mode` (the sidecar
-`fs::write`) and `env` (`$NROS_ENTRY_SPIN_MS`) had never needed guards BY ACCIDENT — `nros`'s stricter
-guard covered them — until issue 0669's follow-up correctly relaxed `nros`'s to `alloc`. Relaxing a guard
-in one crate can expose a capability in another that never named its own requirement. The sweep is cheap
-and bounded by `check-std-census` (a capability can only require a flavour if its gated code names it);
-run over 25 sites it found exactly those two, both now guarded, so the gap is at zero — the moment to gate
-it. See `0701-*`. (2026-08-19)
+Recently resolved (2026-08-20): **#0701** — `check-feature-contract` clause (a) enforced only "a capability
+does not GRANT the heap"; nothing enforced the rest of the same sentence, "emit `compile_error!` naming the
+feature", so a capability whose gated code called `std::` with no guard failed the USER's build with a bare
+`cannot find crate std`, four frames deep. Gated by `just check-capability-flavour-guards`
+(`check-std-census.py --check-guards`, fast tier, 0.4 s), which attributes each `std::` site to the
+CONJUNCTION of its module declaration and its enclosing item — both shapes learned by getting them wrong
+first, and both in `--self-test`. Scope is the whole tree, not the census's nine: measured at 132 further
+`no_std` crates and zero violations. The `alloc` half is deliberately NOT covered and the issue says why —
+20 candidates, the first one checked a false positive, because a file can carry its own `extern crate
+alloc` while `std::` has no such escape in a `#![no_std]` crate. See `archived/0701-*`. (2026-08-20)
 
 Recently resolved (2026-08-19): **#0669** — `executor::handoff::Handoff` was public API with NO consumer
 anywhere in the tree (phase-104.E.1) and gated on `std` for one `std::sync::Mutex`. DELETED. The

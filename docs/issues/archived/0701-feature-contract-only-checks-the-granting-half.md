@@ -2,7 +2,7 @@
 id: 701
 title: "`check-feature-contract` clause (a) enforces only the GRANTING half —
   a capability may require `std`/`alloc` without naming it, and one did"
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-359, issue-0594, issue-0196, issue-0687]
@@ -90,6 +90,59 @@ rather than riding a fix for the site it found.
 3. **Leave it to review**, with the sweep recipe above recorded. Cheapest;
    relies on whoever relaxes a guard remembering to re-run it, which is exactly
    what did not happen here.
+
+## Resolved 2026-08-20 — option 1, and option 2 measured out
+
+`just check-capability-flavour-guards`
+(`scripts/check-std-census.py --check-guards`), in the fast tier.
+
+**Option 2 was tried first and abandoned on measurement.** Building every
+capability is sound but the candidate set has to be narrowed or it is hours:
+the coarse selection ("this file mentions `feature = "F"` and also `std::`")
+yields **1514** candidates across the tree, because one `std::` anywhere in a
+file flags every feature named in it. Narrowing it correctly needs per-site cfg
+attribution — which is option 1. So option 2 collapses into option 1 plus a
+build.
+
+**What the attribution has to get right**, both learned by being wrong first:
+
+* the gate is the CONJUNCTION of the module declaration and the enclosing item.
+  `metadata_hooks.rs` is declared `#[cfg(feature = "rmw-cffi")] mod
+  metadata_hooks;` in `lib.rs`, while the `std::fs::write` sits in a function
+  gated `metadata-mode`. Neither alone is the answer, and the file cannot see
+  the first.
+* an item's `#[cfg]` can sit several attribute lines above a MULTI-LINE
+  signature. The first version cleared the pending cfg at the first
+  non-attribute line, which is `pub extern "C" fn dump(` — so it attributed the
+  site to `rmw-cffi` alone and reported a false violation on the very case it
+  was written for.
+
+Both shapes are in `--self-test`, which builds a synthetic crate and checks
+three cases: unguarded capability fires, guard present passes, and a site gated
+on the FLAVOUR itself is not a violation.
+
+**Scope is the whole tree, not the census's nine.** An unnamed `std`
+requirement is just as opaque in a board or a backend. Measured before
+committing to it: 132 further `no_std` crates under `packages/`, **zero**
+violations, 0.4 s total. The census stays scoped to the nine, because that is
+what phase-359 ratchets.
+
+**Deliberately conservative in one direction.** Only `feature = "x"` and
+`all(...)` conjunctions are attributed; `any(...)` alternatives contribute
+nothing, because a site reachable through either of two features does not let
+the gate say which one needs the guard. It under-reports rather than crying
+wolf.
+
+### Not covered: the `alloc` half, and why that is a measurement not an omission
+
+Clause (a) says "REQUIRES the heap", so the same gate over `alloc::` looks
+free. It is not: **20** candidates appear, and the first one checked is a false
+positive — `nros/src/node_runtime.rs` carries its own `extern crate alloc;` at
+file scope, so `alloc::` resolves there whatever the feature says. `std::` has
+no such escape in a `#![no_std]` crate, which is why the `std` half is sound
+with this much machinery and the `alloc` half is not. Covering it means
+tracking file-local `extern crate alloc` declarations; filed here rather than
+guessed at.
 
 ## Reproduce (the state before the fix)
 
