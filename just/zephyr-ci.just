@@ -146,7 +146,12 @@ build-fixtures:
         stamp="$dir/build/.nros-ws-sync.stamp"
         # Wipe `generated/` if the trait-surface hash has drifted.
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$dir"
-        if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ] || [ ! -d "$dir/generated" ]; then
+        # phase-363 — CONTENT, not mtime. `[ "$pkg" -nt "$stamp" ]` re-armed a
+        # sync for every leaf after any rebase, stash or branch switch, because
+        # those rewrite tracked files with identical bytes. Same input set
+        # (the package.xml), same fail-safe direction; only "changed" now means
+        # changed.
+        if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || ! nros_pkg_sync_stamp_fresh "$pkg" "$stamp" || [ ! -d "$dir/generated" ]; then
             echo "    sync: $dir"
             mkdir -p "$dir/build"
             # issue 0318 — `--no-metadata`, same reason as the `build-one`
@@ -160,7 +165,9 @@ build-fixtures:
             # reason this preflight exists — is unaffected.
             NROS_REPO_DIR="$(pwd)" "$nros_cli" sync --no-metadata "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
-            touch "$stamp"
+            # Record the CONTENT the sync was run against, so an identical
+            # package.xml reads as fresh however its mtime moved.
+            nros_pkg_sync_stamp_current "$pkg" > "$stamp"
         fi
     # `git ls-files`, not `find` — a package.xml is tracked, so this is an index
     # lookup. See scripts/regenerate-bindings.sh for the measurement that motivated

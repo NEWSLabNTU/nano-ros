@@ -509,12 +509,28 @@ standing-sweep framing at the head of this doc is correct and should stay.
 
 ### The remaining mtime predicate, and why it stays
 
-`just/zephyr-ci.just:149` re-runs `nros sync` for a package when its
-`package.xml` is newer than a stamp. Same construct, opposite direction of harm:
-it OVER-regenerates, so a rebase costs an unnecessary sync rather than hiding a
-stale one. A content-based sibling (`nros_codegen_stamp_check_or_wipe`, the
-trait-surface hash) already sits directly above it, so the conversion is
-available if the cost is ever measured to matter.
+`just/zephyr-ci.just` re-ran `nros sync` for a package when its `package.xml`
+was newer than a stamp — the last mtime predicate of this class. Converted
+2026-08-19, and the cost turned out to be easy to measure:
+
+| | syncs |
+| --- | --- |
+| first run (records the stamps) | 6 |
+| `touch` every `package.xml`, then re-run — the rebase/stash shape | **0** |
+| one package.xml genuinely edited | **1**, and the right leaf |
+
+Before, the middle row was 6: every rebase, stash pop or branch switch re-armed a
+sync for every Zephyr Rust leaf, because those rewrite tracked files with
+identical bytes.
+
+The input set is UNCHANGED — still the `package.xml`, nothing added — because the
+direction of harm is what made this a deliberate exception rather than a bug:
+over-regenerating is safe, and watching more would risk the opposite failure.
+Only the comparison moved, from mtime to content. Two helpers in
+`scripts/build/codegen-stamp.sh` beside the trait-surface stamp it already hosts,
+so this is one more use of an existing mechanism rather than a second spelling.
+An empty or missing stamp is a miss, so a pre-existing tree syncs once and
+records the hash — no flag day.
 
 `scripts/check-artifact-identity-budget.sh:267` also compares mtimes and is NOT
 this class: it asks "was this rlib written during this run" (issue 0499), which
@@ -522,7 +538,8 @@ is genuinely a question about time.
 
 ## What remains, stated plainly
 
-One guess survives on purpose: `zpico_c_source_newer`'s walk over
+One guess survives on purpose (and after 2026-08-19 it is the ONLY one, the
+zephyr-ci mtime predicate above having been converted): `zpico_c_source_newer`'s walk over
 `zpico-sys/c`, reached only when no `zpico-sys-*/output` exists under the build
 dir — a tree whose fixture has never been built by cargo. It is over-broad and
 fails SAFE, and removing it would trade a rare false-STALE for a rare museum

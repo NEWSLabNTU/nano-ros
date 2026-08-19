@@ -112,3 +112,40 @@ nros_codegen_stamp_write() {
     current="$(nros_codegen_stamp_compute)" || return 1
     printf '%s\n' "$current" > "$dir/generated/.codegen-stamp"
 }
+
+# phase-363 — the leaf's own sync input, compared by CONTENT.
+#
+# `just/zephyr-ci.just`'s preflight decided whether to re-run `nros sync` with
+# `[ "$pkg" -nt "$stamp" ]`. That is the mtime class this phase converts: `git
+# pull --rebase`, `git stash push/pop` and a branch switch all rewrite tracked
+# files with IDENTICAL bytes, so every one of them re-armed a sync for every
+# Zephyr Rust leaf. It fails SAFE — an unnecessary sync, never a stale one —
+# which is why it survived the waves as a deliberate exception; what it costs is
+# a rebuild nobody needed, per leaf, per rebase.
+#
+# The direction of harm is the whole reason this is a content hash and not a
+# richer input set: watching MORE would risk the opposite failure. The input set
+# stays exactly what it was (the package.xml), so the only behaviour that
+# changes is that identical bytes now read as unchanged.
+#
+# Usage: nros_pkg_sync_stamp_current <package_xml>
+nros_pkg_sync_stamp_current() {
+    local pkg="${1:?usage: nros_pkg_sync_stamp_current <package_xml>}"
+    [ -f "$pkg" ] || return 1
+    sha256sum "$pkg" | awk '{print $1}'
+}
+
+# True when the recorded stamp matches the package.xml's current CONTENT.
+# A missing or empty stamp is a miss, so a tree that predates this helper syncs
+# once and records the hash — no flag day.
+#
+# Usage: nros_pkg_sync_stamp_fresh <package_xml> <stamp_file>
+nros_pkg_sync_stamp_fresh() {
+    local pkg="${1:?usage: nros_pkg_sync_stamp_fresh <package_xml> <stamp_file>}"
+    local stamp="${2:?usage: nros_pkg_sync_stamp_fresh <package_xml> <stamp_file>}"
+    [ -s "$stamp" ] || return 1
+    local current previous
+    current="$(nros_pkg_sync_stamp_current "$pkg")" || return 1
+    previous="$(cat "$stamp" 2>/dev/null)"
+    [ "$current" = "$previous" ]
+}

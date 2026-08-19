@@ -10,7 +10,7 @@ related: [issue-0678, issue-0674, issue-0664, issue-0657]
 
 ## What changed
 
-[Issue 0678](archived/0678-threadx-rv64-cpp-cyclone-emutls-errno-undefined.md)
+[Issue 0678](../0678-threadx-rv64-cpp-cyclone-emutls-errno-undefined.md)
 moved this board off the injected Debian picolibc and onto the C library its own
 toolchain ships. That is the right fix — it is the rule Zephyr states for
 picolibc ("toolchain-bundled … guaranteed to be in sync"), and it removes a TLS
