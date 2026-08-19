@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0698** (build/zephyr, open 2026-08-19) — every SDK-toolchain Zephyr board fails to CONFIGURE under CMake 4,
+so `just ci-matrix` does not run at all on such a host (1-wise over platform ⇒ the zephyr lane failing at
+configure fails the tier; tier 1 is native-only and cannot see it). Zephyr 3.7's `FindZephyr-sdk.cmake:35`
+interpolates `${ZEPHYR_TOOLCHAIN_VARIANT}` UNQUOTED, so when it is unset the line becomes
+`if("zephyr" STREQUAL )` — tolerated by CMake 3.x, rejected by 4.x. Measured on one snippet, one machine:
+3.22.1 (in the ROS distrobox) takes the branch, 4.4.2 (host) errors. Unset is the DESIGNED state for real
+boards — `zephyr-fixture-run-one.sh` sets the variant for `native_sim` only, which is also why issue 0087's
+carve-out hid this. `ZEPHYR_SDK_INSTALL_DIR` alone does NOT help (the whole argument list must parse first).
+Direction: set `ZEPHYR_TOOLCHAIN_VARIANT=zephyr` for SDK boards in BOTH runners — verified to get the real
+`mps2_an385` configure past the toolchain stage. See `0698-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
 The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not
 hold. Give BOTH crates the handler and drop `NanoRos::NanoRos` from the seam's link line: `nros-cpp`'s
