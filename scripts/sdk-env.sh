@@ -13,10 +13,19 @@
 # bash. activate.sh already does this three-way dance for itself; this file is
 # sourced FROM it, so under zsh `BASH_SOURCE` is unset and `$0` is the
 # interactive shell, which resolved the repo root to something arbitrary.
-if [ -n "${BASH_SOURCE[0]:-}" ]; then
+# The CONDITION tests $BASH_VERSION, not ${BASH_SOURCE[0]} — a plain POSIX
+# sh rejects the array subscript as "Bad substitution" ON THE EXECUTED LINE
+# even inside `[ -n … ]` (activate.sh's identical guard was the first thing
+# dash died on). The untaken branch bodies are safe: a substitution only
+# errors on the line that RUNS. Under plain sh, activate.sh has already
+# verified $NROS_REPO_DIR before sourcing us, so prefer it over $0 (which is
+# the SHELL when sourced, not this file).
+if [ -n "${BASH_VERSION:-}" ]; then
     _nros_sdk_env_script="${BASH_SOURCE[0]}"
 elif [ -n "${ZSH_VERSION:-}" ]; then
     _nros_sdk_env_script="${(%):-%N}"
+elif [ -n "${NROS_REPO_DIR:-}" ]; then
+    _nros_sdk_env_script="$NROS_REPO_DIR/scripts/sdk-env.sh"
 else
     _nros_sdk_env_script="$0"
 fi
@@ -174,13 +183,20 @@ _nros_sdk_env_print_fish() {
 # Sourced or executed? The bash-only form below read TRUE under zsh (no
 # BASH_SOURCE, so `$0` = `$0`), which sent a sourced zsh down the "print to
 # stdout" branch — it emitted the exports as text and set nothing.
+# (Same dash rule as the resolver above: guard on $BASH_VERSION so the
+# array subscript never sits on an executed line in plain sh. A plain sh
+# reaches the fallthrough: sourced-from-activate.sh is the only supported
+# plain-sh path, so default to SOURCED there when activate.sh's root export
+# is present.)
 _nros_sdk_env_executed=1
-if [ -n "${BASH_SOURCE[0]:-}" ]; then
+if [ -n "${BASH_VERSION:-}" ]; then
     [ "${BASH_SOURCE[0]}" = "$0" ] || _nros_sdk_env_executed=0
 elif [ -n "${ZSH_VERSION:-}" ]; then
     case "${ZSH_EVAL_CONTEXT:-}" in
         *:file*) _nros_sdk_env_executed=0 ;;
     esac
+elif [ -n "${NROS_REPO_DIR:-}" ]; then
+    _nros_sdk_env_executed=0
 fi
 
 if [ "$_nros_sdk_env_executed" = "1" ]; then

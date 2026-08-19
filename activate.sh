@@ -1,4 +1,5 @@
-# nano-ros workspace activation — POSIX shell (bash / zsh).
+# nano-ros workspace activation — bash / zsh / plain POSIX sh (dash: source
+# it FROM the checkout root; a wrong cwd is refused loudly).
 #
 # Phase 218.C — single source of truth for env exports + PATH wiring.
 # Source this once after `git clone`:
@@ -14,8 +15,9 @@
 # corresponding binaries / SDKs are absent, the export is harmlessly
 # skipped — the script never errors.
 
-# Resolve the workspace root the way both bash and zsh agree on:
-# ${BASH_SOURCE[0]} for bash, ${(%):-%N} for zsh, $0 as the fallback
+# Resolve the workspace root per shell: ${BASH_SOURCE[0]} for bash,
+# ${(%):-%N} for zsh, and for a plain POSIX sh the current directory —
+# verified, because sh cannot know a sourced file's own path.
 # when the script is `source`d.
 #
 # `cd -P` resolves symlinks, so a checkout reached through a symlinked parent
@@ -24,12 +26,33 @@
 # nano_ros_ROOT, the rc line bootstrap.sh proposes, RFC-0048's absolute-path
 # `nros sync` output, and every path-keyed build cache — two names for one
 # tree (issue 0375). scripts/bootstrap.sh resolves the same way.
-if [ -n "${BASH_SOURCE[0]:-}" ]; then
+# The CONDITION tests shell-version variables, not ${BASH_SOURCE[0]} — a
+# plain POSIX sh (dash) rejects that as "Bad substitution" when the line
+# EXECUTES, and the old `[ -n "${BASH_SOURCE[0]:-}" ]` guard executed in
+# every shell. The branch BODIES are safe unquoted: a substitution a shell
+# cannot parse only errors on the line that runs, and each body runs only
+# in its own shell (measured: dash runs a file carrying both spellings in
+# untaken branches without complaint).
+if [ -n "${BASH_VERSION:-}" ]; then
     _nros_root="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 elif [ -n "${ZSH_VERSION:-}" ]; then
     _nros_root="$(cd -P "$(dirname "${(%):-%N}")" && pwd -P)"
 else
-    _nros_root="$(cd -P "$(dirname "$0")" && pwd -P)"
+    # Plain POSIX sh cannot know a sourced file's own path ($0 is the SHELL
+    # here, not this file). Fall back to the current directory.
+    _nros_root="$(pwd -P)"
+fi
+# Verify in EVERY shell — a wrong silent root would poison NROS_REPO_DIR,
+# the patch tables, and every path-keyed cache (issue 0375's
+# two-names-for-one-tree, worse). This is what catches a shell whose
+# self-path idiom quietly broke (an eval'd `${(%):-%N}` returned the CALLER
+# under zsh during this fix's own review — root=/tmp, no complaint).
+if [ ! -f "$_nros_root/activate.sh" ] || [ ! -f "$_nros_root/nros-sdk-index.toml" ]; then
+    echo "activate.sh: resolved workspace root '$_nros_root' does not look like the" >&2
+    echo "  nano-ros checkout. Under bash/zsh, source the file by its real path;" >&2
+    echo "  under a plain POSIX sh, run it FROM the checkout root" >&2
+    echo "  (cd <checkout> && . ./activate.sh)." >&2
+    return 1 2>/dev/null || exit 1
 fi
 export NROS_REPO_DIR="$_nros_root"
 
