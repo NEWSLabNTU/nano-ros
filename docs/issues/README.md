@@ -108,6 +108,15 @@ resolving Debian's compiler until wiped, so on this board a toolchain change is 
 The failure behind it (`nros-c` panic handler in the RUST leaf) was 0688 -> 0692, fixed by `eb54c1170`, so the
 0674 -> 0678 -> 0692 sequence is closed end to end. See `archived/0678-*`. (2026-08-19)
 
+**#0700** (testing/build, open 2026-08-19) — `ci-matrix` selects the esp-idf and platformio bringup
+tests whenever their TOOLCHAINS are present, but no fixture lane builds those fixtures: `idf-fixtures.sh`
+is invoked only from `just/esp32.just`, and `build-test-fixtures` has zero references to esp32/platformio
+at ANY lane including `all`. They also have no `[[fixture]]` row, so they have no coordinate, and
+`skip_reason_for_path`'s `attribute_path(p)?` turns "cannot attribute" into "not out of lane" — the
+resolver is structurally unable to skip them. A tier-2 run on a fully provisioned host therefore cannot
+be green, and the failure is worded identically to a museum-binary regression (#0588 burned a cycle on a
+neighbouring cause). See `0700-*`. (2026-08-19)
+
 Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
 The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not
 hold. Give BOTH crates the handler and drop `NanoRos::NanoRos` from the seam's link line: `nros-cpp`'s
