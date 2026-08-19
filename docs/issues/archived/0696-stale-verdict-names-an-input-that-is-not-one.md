@@ -1,7 +1,7 @@
 ---
 id: 696
 title: "Every native C/C++ fixture reads STALE against `nros-tests/src/lib.rs` — a file in none of their dep graphs, so no build can clear it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: testing, build
@@ -99,3 +99,67 @@ mis-resolved base would drag in an unrelated subtree.
 `NROS_SKIP_FIXTURE_CHECK=1` for the run, having confirmed by other means that
 the fixtures are current. That is the bypass the message names, and it disables
 the gate for every fixture, not just the misjudged ones.
+
+
+## RESOLVED 2026-08-19 — a relative `rerun-if-changed` resolved against the test process's CWD
+
+"Not yet identified: WHERE the probe gets the path" — it is
+`zpico_recorded_inputs`, and the hypothesis this issue offered was right: a
+RELATIVE entry resolved against the wrong base. The base was not a
+mis-constructed directory in the code; it was the ABSENT one.
+
+```rust
+let path = PathBuf::from(rest.trim());
+let Ok(path) = path.canonicalize() else { continue };   // <- relative => CWD
+if path.starts_with(&root) { out.push(path) }
+```
+
+`Path::canonicalize` resolves a relative path against the process's current
+directory, and a nextest binary runs with CWD = `packages/testing/nros-tests`.
+`zpico-sys`'s build script records `cargo:rerun-if-changed=src/lib.rs` — meaning
+its OWN `src/lib.rs` — so the entry resolved to the HARNESS's `src/lib.rs`,
+passed the in-repo filter (it genuinely is in-repo), and entered the input set of
+every native C/C++ fixture.
+
+### Why exactly one wrong file, always the same one
+
+The output records 18 distinct relative entries. From that CWD, `src/lib.rs` is
+the **only** one that resolves to something real — `cbindgen.toml`,
+`c/zpico/zpico.c`, `c/platform/errno_override.h` and the rest fail to
+canonicalize and are silently skipped. So the probe simultaneously watched one
+file it must not and missed ten it should: the zpico C shim sources this arm
+exists to cover were never in the set.
+
+### Fix
+
+Resolve a relative entry against the crate that RECORDED it. `zpico_manifest_dir()`
+is spelled once and shared with the bootstrap walk below it, so the two arms
+cannot disagree about where that crate is.
+
+Verified, with `nros-tests/src/lib.rs` freshly touched — the exact pull shape
+that produced the report:
+
+| | |
+| --- | --- |
+| `case_2_c_zenoh`, `case_3_cpp_zenoh` | **pass** (3.3 s — they run) |
+| same, with the fix reverted | FAIL in 0.101 s, `newer: …/nros-tests/src/lib.rs` |
+
+The mutation reproduces the reported verdict verbatim, so the fix is what
+changed the outcome rather than some rebuild in between. A unit test
+(`relative_recorded_input_resolves_against_the_recording_crate`) pins the base
+and asserts both files exist first, so it cannot pass vacuously.
+
+### A note on how this was ruled out before
+
+This issue lists `zpico_recorded_inputs` under "not it", on the evidence that its
+recorded entries are `build.rs`, `version.rs`, `tests/c_stubs/*` and so on. That
+inspected WHAT was recorded, not HOW it was resolved — the two differ precisely
+when a path is relative. Reading structure instead of measuring the artifact is
+the same class of error as the museum-binary reading in #0678.
+
+### Not this issue
+
+A Rust fixture still reads STALE against
+`examples/native/rust/talker/generated/builtin_interfaces/src/msg/duration.rs`.
+That file IS in that binary's dependency graph and a rebuild clears it — an
+ordinary treadmill entry, not the unclearable verdict this issue is about.

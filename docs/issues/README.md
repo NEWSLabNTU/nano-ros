@@ -58,13 +58,15 @@ re-running the staged harness by hand. Smells like an AF_UNIX `sun_path` (108-by
 buffer in the metadata-mode register. Lands exactly on the "copy the template anywhere" surface phase-368
 promotes. See `0699-*`. (2026-08-20)
 
-**#0696** (testing/build, open 2026-08-19) — 15 native C/C++ tests fail tier 1 with a STALE verdict naming
-`packages/testing/nros-tests/src/lib.rs` as newer than `examples/native/c/talker/build-zenoh/c_talker`. That
-file is in NONE of the fixture's dep graphs (`ninja -t deps`: 0; `libnros_c.d`: 0; nothing under the build dir
-names it), and `just native build-c` exits 0 leaving the binary's mtime unchanged — so the verdict is
-unclearable by any documented action. Triggered by a plain `git pull` rewriting the harness file's mtime. The
-0445 consecutive-verdict counter surfaced it ("4th consecutive … suspect the probe"). Which probe arm supplies
-the path is not yet identified. See `0696-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0696** — every native C/C++ fixture read STALE against
+`nros-tests/src/lib.rs`, a file in none of their dep graphs, so no build could clear it. Cause is
+`zpico_recorded_inputs`, which this issue had ruled out by inspecting WHAT was recorded rather than HOW it
+resolved: `Path::canonicalize` resolves a RELATIVE entry against the process CWD, and a nextest binary runs
+with CWD = `packages/testing/nros-tests`, so zpico-sys's `rerun-if-changed=src/lib.rs` (its own) became the
+HARNESS's. Of 18 relative entries it was the ONLY one that resolved there — so the probe watched one file it
+must not and missed ten it should, the zpico C shim sources this arm exists to cover. Fixed by resolving
+against the recording crate (`zpico_manifest_dir()`, shared with the bootstrap walk). Mutation-checked: the
+reverted fix reproduces the reported verdict verbatim in 0.101 s. See `archived/0696-*`. (2026-08-19)
 
 **#0695** (build/testing, open 2026-08-19) — one missing `nros` on PATH, two policies inside
 `compile-check-fixtures.sh`: `cmake_fixture_prereqs_ok` prints "skipping" and returns 1 (run continues,

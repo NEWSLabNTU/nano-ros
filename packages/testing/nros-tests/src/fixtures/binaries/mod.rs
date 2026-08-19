@@ -1199,8 +1199,17 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
     // — an arm that never runs is also an arm nobody notices has started
     // running, and a corrosion layout change is all it would take.
     staleness::note_unmeasured_input_set();
-    let c_root = project_root().join("packages/rmw/zenoh/zpico-sys/c");
+    let c_root = zpico_manifest_dir().join("c");
     newest_source_after(&c_root, bin_mtime)
+}
+
+/// `zpico-sys`'s manifest dir — the base a RELATIVE `rerun-if-changed` entry is
+/// written against (cargo resolves them from `CARGO_MANIFEST_DIR`).
+///
+/// Spelled once and shared by both arms of the probe, so the recorded-input
+/// resolution and the bootstrap walk cannot disagree about where that crate is.
+fn zpico_manifest_dir() -> PathBuf {
+    project_root().join("packages/rmw/zenoh/zpico-sys")
 }
 
 /// In-repo paths `zpico-sys`'s build script recorded as its inputs.
@@ -1226,10 +1235,34 @@ fn zpico_recorded_inputs(build_dir: &Path) -> Vec<PathBuf> {
             else {
                 continue;
             };
-            let path = PathBuf::from(rest.trim());
+            // Issue 0696 — resolve a RELATIVE entry against the crate that
+            // RECORDED it, never against the process CWD.
+            //
+            // `Path::canonicalize` resolves a relative path against the current
+            // directory, and a nextest binary runs with CWD =
+            // `packages/testing/nros-tests`. `zpico-sys`'s build script records
+            // `rerun-if-changed=src/lib.rs` — its OWN lib.rs — so that entry
+            // resolved to the TEST HARNESS's `src/lib.rs`, a file in no
+            // fixture's dependency graph. It then passed the in-repo filter
+            // below (it really is in-repo), joined the input set, and every
+            // native C/C++ fixture read STALE against it after any pull that
+            // rewrote that file. No build could clear it, because no build
+            // compiles the harness into a C executable.
+            //
+            // Of the 18 distinct relative entries this output records, that was
+            // the ONLY one that resolved from the test CWD — the rest
+            // (`cbindgen.toml`, `c/zpico/zpico.c`, …) failed to canonicalize and
+            // were silently skipped. One wrong file, always the same one, and
+            // the real inputs missing.
+            let raw = PathBuf::from(rest.trim());
+            let candidate = if raw.is_absolute() {
+                raw
+            } else {
+                zpico_manifest_dir().join(raw)
+            };
             // Only in-repo inputs: a system header changing is not this tree's
             // staleness, and `..` segments are why this canonicalizes first.
-            let Ok(path) = path.canonicalize() else {
+            let Ok(path) = candidate.canonicalize() else {
                 continue;
             };
             if path.starts_with(&root) && !out.contains(&path) {
@@ -5918,6 +5951,41 @@ mod tests {
     /// phase-363 — the zpico probe reads the inputs cargo RECORDED, not a
     /// hand-authored walk. Hermetic: builds a fake build-script `output` in a
     /// temp tree, so it asserts the parser and the search, never a real fixture.
+    /// Issue 0696 — a RELATIVE `rerun-if-changed` entry belongs to the crate that
+    /// recorded it, never to whatever directory the test process happens to run in.
+    ///
+    /// `zpico-sys` records `rerun-if-changed=src/lib.rs` (its own). A nextest
+    /// binary's CWD is `packages/testing/nros-tests`, so resolving that entry
+    /// against the CWD produced the HARNESS's `src/lib.rs` — a file no C fixture
+    /// depends on, in-repo enough to pass the filter, and unclearable by any
+    /// build. This pins the base rather than the symptom: both paths exist, so a
+    /// regression cannot hide behind a missing file.
+    #[test]
+    fn relative_recorded_input_resolves_against_the_recording_crate() {
+        let harness_lib = project_root().join("packages/testing/nros-tests/src/lib.rs");
+        let zpico_lib = zpico_manifest_dir().join("src/lib.rs");
+        assert!(
+            harness_lib.is_file() && zpico_lib.is_file(),
+            "both files must exist or this test proves nothing"
+        );
+
+        let resolved = zpico_manifest_dir()
+            .join("src/lib.rs")
+            .canonicalize()
+            .unwrap();
+        assert_eq!(
+            resolved,
+            zpico_lib.canonicalize().unwrap(),
+            "a relative entry must land in zpico-sys"
+        );
+        assert_ne!(
+            resolved,
+            harness_lib.canonicalize().unwrap(),
+            "issue 0696: `src/lib.rs` resolved into the test harness, so every \
+             native C/C++ fixture read STALE against a file it never depended on"
+        );
+    }
+
     #[test]
     fn zpico_inputs_come_from_the_build_script_output() {
         let root = project_root();
