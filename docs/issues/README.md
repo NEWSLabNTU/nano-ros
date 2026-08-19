@@ -108,14 +108,16 @@ resolving Debian's compiler until wiped, so on this board a toolchain change is 
 The failure behind it (`nros-c` panic handler in the RUST leaf) was 0688 -> 0692, fixed by `eb54c1170`, so the
 0674 -> 0678 -> 0692 sequence is closed end to end. See `archived/0678-*`. (2026-08-19)
 
-**#0700** (testing/build, open 2026-08-19) — `ci-matrix` selects the esp-idf and platformio bringup
-tests whenever their TOOLCHAINS are present, but no fixture lane builds those fixtures: `idf-fixtures.sh`
-is invoked only from `just/esp32.just`, and `build-test-fixtures` has zero references to esp32/platformio
-at ANY lane including `all`. They also have no `[[fixture]]` row, so they have no coordinate, and
-`skip_reason_for_path`'s `attribute_path(p)?` turns "cannot attribute" into "not out of lane" — the
-resolver is structurally unable to skip them. A tier-2 run on a fully provisioned host therefore cannot
-be green, and the failure is worded identically to a museum-binary regression (#0588 burned a cycle on a
-neighbouring cause). See `0700-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0700** — tier-2 runs selected the esp-idf/platformio bringup tests on any
+host with those toolchains, then failed on artifacts the lane never guaranteed. Fixed by stating their
+COORDINATES (`esp32,c,xrce` / `esp32,c,zenoh`) through `require_coord_in_lane`, the mechanism the px4
+companion already uses for a resolver with no `[[fixture]]` row: tier 2 now reports `[SKIPPED:lane]` naming
+the coordinate. Corrects the issue's own analysis in two places — `build-test-fixtures` DOES fan out over
+`esp32`, and `just esp32 build-fixtures` DOES run `idf-fixtures.sh`, but that builder self-gates on the IDF
+env behind `|| true`, so it no-ops silently while the lane still returns RC=0. The real mismatch is a builder
+gating on ITS env, a selector gating on the TEST shell's, and neither consulting the lane; `esp32` being a
+tier-2 module while `esp32,c,xrce` is not a tier-2 coordinate is what let both be true at once. See
+`archived/0700-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0692** — the threadx-rv64 Rust+Cyclone image's `#[panic_handler]`.
 The issue concluded "unfixable by wiring"; the compile-time half was right, the link-time half does not

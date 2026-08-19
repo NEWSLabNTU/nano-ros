@@ -1,7 +1,7 @@
 ---
 id: 700
 title: "`ci-matrix` selects the esp-idf and platformio bringup tests whenever their toolchains are present, but NO fixture lane builds those fixtures — so a green build lane hands the run a promise it never made"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: testing, build
@@ -100,3 +100,64 @@ The reproduction is one clean lane build plus one run on a host with `IDF_PATH`
 set and `pio` installed. The check that matters afterwards is that a tier-2 run
 on a FULLY provisioned host is green — not one where the toolchains happen to be
 missing, since absence hides the bug.
+
+
+## RESOLVED 2026-08-19 — the coordinate, stated where the resolver can reach it
+
+Took the first direction (make them lane-attributable), by the mechanism the
+tree already has for a resolver that knows its coordinate without a
+`[[fixture]]` row: `require_coord_in_lane`, as the px4 companion uses it.
+
+```
+esp-idf bringup     coordinate esp32,c,xrce
+platformio bringup  coordinate esp32,c,zenoh
+```
+
+Neither is in tier 2 (`lane-coords tier2` = 13 coordinates; the esp32 ones are
+`esp32,rust,zenoh` and `qemu-esp32-baremetal,rust,zenoh`), so a tier-2 run now
+says so instead of failing:
+
+```
+[SKIPPED:lane] out of lane: esp_idf_bringup is at coordinate esp32,c,xrce,
+which this run's lane does not select, so `just build-test-fixtures
+lane=<this lane>` deliberately did not build it.
+```
+
+Verified against the real `lane-coords tier2` coordinate file, both tests.
+Under bare nextest a `[SKIPPED:lane]` panic still prints as FAIL; `test-all`'s
+junit rewrite is what turns it into a skip, which is issue 0673's mechanism.
+
+### Two corrections to this issue's own analysis
+
+Both matter for whoever revisits the build half.
+
+**"No fixture lane builds these" is not quite right.** `build-test-fixtures`
+fans out over `esp32`:
+
+```sh
+for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4
+```
+
+and `just esp32 build-fixtures` ends with `bash scripts/build/idf-fixtures.sh
+|| true`. So the lane DOES reach the builder. What it does not do is guarantee
+an artifact: that builder self-gates on `idf.py`/`IDF_PATH` and is `|| true`, so
+on a shell without the env it no-ops silently and the lane still returns RC=0.
+
+**So the mismatch is narrower and nastier than "nothing builds it".** The
+BUILDER gates on its env and may no-op; the SELECTOR gates on the test shell's
+env and selects; neither consults the lane. The coordinate now settles it before
+either gets a say — which is why this fix works regardless of which of the two
+environments happens to be provisioned.
+
+`esp32` being a tier-2 MODULE while `esp32,c,xrce` is not a tier-2 COORDINATE is
+the distinction that makes both statements true at once, and it is exactly the
+module-vs-coordinate split issue 0405 introduced `nros_lane_wants` for.
+
+### Not done here
+
+Giving these `[[fixture]]` rows outright. `compile_check_fixture` rows carry no
+`platform`/`lang`/`rmw`, so they get no coordinate from `row_coord` — the west
+bringup rows are attributed by other means — and a `[[fixture]]` row would need
+a builder kind that can drive `idf-fixtures.sh`, which does not exist. The
+coordinate-in-code route reaches the same outcome through a mechanism already
+used and tested.

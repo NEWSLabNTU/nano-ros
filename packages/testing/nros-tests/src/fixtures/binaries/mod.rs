@@ -3360,9 +3360,35 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// the test resolves instead of running `idf.py` at run time. Tier-aware: the
 /// idf build is skipped (no stamp / no ELF) when idf.py/IDF_PATH is absent →
 /// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard fail in the full tier.
+/// The coordinate the esp-idf bringup fixtures occupy — issue 0700.
+///
+/// They have no `[[fixture]]` row, so `attribute_path` cannot place them and
+/// `skip_reason_for_path`'s `?` reads "cannot attribute" as "not out of lane",
+/// i.e. RUN IT. That rule is right (CLAUDE.md: an unattributable path is never
+/// skipped) and it assumes something in the lane built the artifact. Nothing
+/// does: `build-test-fixtures` has zero references to esp32/idf/platformio at
+/// any lane, `lane=all` included, so a gated tier-2 run selected these on any
+/// host with the toolchain and then failed on a promise no build ever made.
+///
+/// Same shape, same remedy as the px4 companion above: state the coordinate
+/// here, which is what `require_coord_in_lane` exists for.
+fn idf_bringup_coord() -> crate::fixtures::lane::Coord {
+    (
+        "esp32".to_string(),
+        "c".to_string(),
+        Rmw::Xrce.coord_token().to_string(),
+    )
+}
+
 pub fn require_idf_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // Toolchain-gated via the test-all env_exclude (deselect when idf.py absent);
     // resolves the prebuilt ELF here. Built by `just esp32 build-fixtures`.
+    //
+    // Issue 0700 — the LANE decides first. Selection keys on "can this host
+    // build it" and the build lane keys on "is this coordinate in the lane";
+    // without this, the two never met and every provisioned host saw a
+    // "broken promise" indistinguishable from a real regression.
+    crate::fixtures::lane::require_coord_in_lane(&idf_bringup_coord(), id)?;
     let p = build_dir(crate::kind::IDF_FIXTURES, &[id]).join(rel);
     require_prebuilt_binary_fresh(&p)
 }

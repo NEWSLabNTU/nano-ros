@@ -77,6 +77,24 @@ fn pio_bin() -> Option<PathBuf> {
 
 #[test]
 fn platformio_zephyr_framework_2_component_bringup_builds() {
+    // Issue 0700 — the LANE decides before the toolchain does.
+    //
+    // This test selects on "is `pio` on PATH", while the fixture it needs is
+    // built by no lane at all (`build-test-fixtures` names neither platformio
+    // nor esp-idf, `lane=all` included). On a provisioned host a gated tier-2
+    // run therefore selected it and failed on a promise no build ever made —
+    // a red indistinguishable from a real regression, which is what makes
+    // tier-2 green unreachable there.
+    //
+    // Stating the coordinate is the same remedy the px4 companion uses: these
+    // fixtures have no `[[fixture]]` row, so `attribute_path` cannot place them
+    // and "cannot attribute" reads as "not out of lane", i.e. run it.
+    nros_tests::fixtures::lane::require_coord_in_lane(
+        &("esp32".to_string(), "c".to_string(), "zenoh".to_string()),
+        "platformio_bringup",
+    )
+    .expect("lane check");
+
     let Some(bin) = pio_bin() else {
         nros_tests::skip!("pio CLI not available — run `just platformio setup`");
     };
