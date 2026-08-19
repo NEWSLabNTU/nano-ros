@@ -139,6 +139,8 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
     list-compile-checks --builder west-configure)"
 
 n=0
+# issue 0700 — see the exit check at the end of the loop.
+failed=0
 total=0
 reused=0
 while IFS= read -r record; do
@@ -244,7 +246,23 @@ while IFS= read -r record; do
         echo "   ok $bld ($output)"
         n=$((n + 1))
     else
-        echo "   MISSING $output for $id (no stamp; the test will report)" >&2
+        echo "   MISSING $output for $id" >&2
+        failed=$((failed + 1))
     fi
 done <<< "$records"
 echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."
+
+# issue 0700 — same class as `idf-fixtures.sh`, same fix. This printed
+# "(no stamp; the test will report)" and exited 0, and `just/zephyr-ci.just`
+# wrapped it in `|| true`, so a west fixture that failed to build left a green
+# lane and a test failure far away that blamed staleness.
+#
+# The `west unavailable` / `ZEPHYR_BASE unset` paths still exit 0 above: an
+# unprovisioned host legitimately builds nothing. Producing nothing while
+# provisioned is a failure.
+if [ "$failed" -ne 0 ]; then
+    echo "west-fixtures: $failed of $total fixture(s) FAILED to build." >&2
+    echo "               A fixture build that produces nothing is a build FAILURE," >&2
+    echo "               not a skip — the lane cannot promise what it did not build." >&2
+    exit 1
+fi

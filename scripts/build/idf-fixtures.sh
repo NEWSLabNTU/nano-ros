@@ -54,10 +54,18 @@ IDF_FIXTURES=(
 )
 
 n=0
+# issue 0700 — a builder that produced NOTHING must not exit 0. Counted, not
+# inferred from `n`, because a row skipped for a missing source is also a
+# failure to produce and must not read as "nothing to do".
+failed=0
 for entry in "${IDF_FIXTURES[@]}"; do
     IFS=':' read -r id src subdir elf target <<< "$entry"
     staged="$out_root/$id"
-    [ -d "$repo_root/$src" ] || { echo "idf-fixtures: src missing: $src" >&2; continue; }
+    [ -d "$repo_root/$src" ] || {
+        echo "idf-fixtures: src missing: $src" >&2
+        failed=$((failed + 1))
+        continue
+    }
     echo "== idf-fixture: $id ($elf @ $target) =="
     rm -rf "$staged"
     mkdir -p "$staged"
@@ -87,7 +95,26 @@ for entry in "${IDF_FIXTURES[@]}"; do
         echo "   built $staged/$subdir/build/$elf.elf"
         n=$((n + 1))
     else
-        echo "   idf build produced no $elf.elf (no stamp; test will report)" >&2
+        echo "   idf build produced no $elf.elf" >&2
+        failed=$((failed + 1))
     fi
 done
 echo "idf fixtures built ($n/${#IDF_FIXTURES[@]})."
+
+# issue 0700 — this used to say "(no stamp; test will report)" and exit 0, and
+# `just/esp32.just` then ran it with `|| true`. The lane build returned RC=0
+# having produced nothing; the test reported it TWENTY MINUTES LATER as
+# `binary MISSING for an in-lane coordinate ... a gated run already asserted
+# this lane's fixtures are built and fresh, so this is a broken promise`. That
+# message is accurate and points at the wrong place: the promise was broken
+# here. The build knew, and said so only in a per-module log that a green exit
+# tells nobody to read.
+#
+# An absent TOOLCHAIN still exits 0 above — that is a legitimate skip on an
+# unprovisioned host. This is the other case: provisioned, attempted, failed.
+if [ "$failed" -ne 0 ]; then
+    echo "idf-fixtures: $failed of ${#IDF_FIXTURES[@]} fixture(s) FAILED to build." >&2
+    echo "              A fixture build that produces nothing is a build FAILURE," >&2
+    echo "              not a skip — the lane cannot promise what it did not build." >&2
+    exit 1
+fi

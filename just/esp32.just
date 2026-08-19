@@ -223,7 +223,12 @@ build-fixtures: build-qemu build-logging-smoke
     # Self-gates on idf.py/IDF env; non-fatal (a failed build leaves no stamp,
     # and the test skips per tier). Slow (~7 min/ELF), so scoped to this esp
     # lane, not build-test-fixtures.
-    bash scripts/build/idf-fixtures.sh || true
+    # issue 0700 — NO `|| true`. It discarded the builder's exit code, so a
+    # fixture that failed to build reported `ESP32 fixtures built.` and the lane
+    # returned RC=0 having produced nothing. The builder now exits 0 for an
+    # absent toolchain (a real skip) and non-zero only when a build was
+    # attempted and produced nothing, so this can be load-bearing again.
+    bash scripts/build/idf-fixtures.sh
     echo "ESP32 fixtures built."
 
 # Build every ESP32 tier: core artifacts, examples, and test fixtures.

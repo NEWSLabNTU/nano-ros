@@ -379,5 +379,9 @@ build-fixtures:
     # Pass the recipe's resolved workspace through as ZEPHYR_BASE so the script
     # uses the SAME tree these CI builds did (it also self-discovers, but this
     # keeps them in lockstep when NROS_ZEPHYR_WORKSPACE picked a non-default tree).
-    ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh || true
+    # issue 0700 — NO `|| true`, same reasoning as `just/esp32.just`: the
+    # builder distinguishes "unprovisioned host, nothing to build" (exit 0) from
+    # "attempted and produced nothing" (non-zero), so discarding it here would
+    # re-hide exactly the failures that distinction exists to surface.
+    ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh
     echo "Zephyr test fixtures built successfully."
