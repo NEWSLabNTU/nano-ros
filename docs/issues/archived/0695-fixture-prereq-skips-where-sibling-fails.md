@@ -1,7 +1,7 @@
 ---
 id: 695
 title: "One missing CLI, two policies in one script — `cmake_fixture_prereqs_ok` skips green where `stage_and_check` fails hard"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: build, testing
@@ -69,7 +69,67 @@ which package a red came from before knowing whether it means anything. Related
 to issue 0319, where a backend's own suite sitting outside the normal lane held
 a red on main for two days.
 
-## Fix sketch
+## Resolution
+
+Both halves, and they were fixed a fortnight apart.
+
+### The prereq split (`scripts/build/compile-check-fixtures.sh`)
+
+The four prereqs answered to ONE verdict and do not deserve the same one, so
+they now split by whose fault the absence is:
+
+| prereq | verdict | why |
+| --- | --- | --- |
+| `cmake` | recorded skip | a host that cannot build C at all. Genuinely optional. |
+| `nros` on PATH | **fatal, exit 2** | the sweep contract. `stage_and_check` already took the whole build down for this exact binary. |
+| `nros` has `codegen entry` | **fatal, exit 2** | a stale CLI — `just setup-cli`. |
+| `play_launch_parser` | **fatal, exit 2** | same PATH, same `source ./activate.sh`. |
+
+The fatal arms name the remedy (`source ./activate.sh`, `just setup-cli`)
+instead of printing "skipping", so the operator error this issue was filed from
+now fails at the prereq rather than twenty minutes later at a missing artifact.
+
+The skipping half was also wrong on its own terms, independently of which arm
+raised it: `cmake=0` in the summary read identically for "skipped every one of
+them" and "there were none to build". Skips now go through `_note_lane_skip`
+and the summary reports `cmake=SKIPPED(cmake absent)`, with every skipped lane
+re-listed at the end. The same treatment went to the other two lanes with the
+identical shape — `cxx-syntax: no C++ compiler` and `px4: PX4-Autopilot
+submodule absent` — because the class is "a count that means two things", not
+the one site where it was noticed.
+
+Verified by running the prereq function against three environments:
+
+```
+full env                → PREREQS OK,   summary: cmake=7
+nros off PATH           → rc=2,         "nros CLI not found — cannot codegen
+                                         entries (source ./activate.sh, or just setup-cli)"
+cmake absent            → rc=0 recorded, summary: cmake=SKIPPED(cmake absent)
+```
+
+### The junit half — already fixed
+
+`scripts/test/skip_marker.py` (commit `58d4b62eb`, "a skip in system-err is
+still a skip — one classifier, both readers") landed after this issue was
+filed and closes the second half exactly. Its docstring opens on this issue's
+own example: the `nros-rmw-zenoh::zenoh_integration` skip lands in
+`<system-err>` rather than in `<failure>`'s `message`, and both readers
+(`rewrite-skipped-junit.py`, `name-real-failures.py`) now go through the one
+classifier. `check-skip-marker-matching.py` gates the Rust side against
+hand-rolled marker matching.
+
+### Residue — a gate narrower than its rule
+
+`scripts/check-lane-skip-protocol.py` enforces the skip protocol, but its scan
+set is `justfile` + `just/*.just`. This defect was in `scripts/build/*.sh`, so
+the gate could never have seen it — the issue-0196 shape again. Widening it was
+considered and not done: the banned pattern there is a RECIPE-level "announce a
+skip, `exit 0`", and inside a build script the same regex would flag every
+legitimate per-item skip (an uninstalled cross target for one fixture id), which
+is a case *inside* an already-running step and not a lane precondition at all.
+A gate that noisy gets deleted. Recorded here instead.
+
+## Fix sketch (as filed)
 
 Either make the CLI-absent arm fatal like its sibling, or route all three
 `cmake_fixture_prereqs_ok` arms through `nros_lane_skip_note` so the skip is

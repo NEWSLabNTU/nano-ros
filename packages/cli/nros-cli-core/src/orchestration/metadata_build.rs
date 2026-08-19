@@ -520,9 +520,43 @@ fn first_diagnostic(stderr: &str) -> String {
         .lines()
         .map(str::trim)
         .find(|l| l.starts_with("error"))
-        .or_else(|| stderr.lines().map(str::trim).rfind(|l| !l.is_empty()))
-        .unwrap_or("no diagnostic captured")
-        .to_string()
+        .map(str::to_string)
+        .or_else(|| panic_message(stderr))
+        .or_else(|| {
+            stderr
+                .lines()
+                .map(str::trim)
+                .rfind(|l| !l.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "no diagnostic captured".to_string())
+}
+
+/// The message of a Rust panic in the harness — the line AFTER `panicked at …`.
+///
+/// issue 0699: the harness can fail at RUN time rather than build time, and then
+/// there is no line starting with `error`. `first_diagnostic` fell through to
+/// "last non-empty line", which is `note: run with RUST_BACKTRACE=1 …` — so a
+/// `Metadata(NameTooLong)` panic reached the operator as four frames naming a
+/// component and an exit code and nothing about the cause. Re-running the staged
+/// harness by hand was the only way to see it, and nothing tells the user that
+/// directory exists.
+///
+/// Same shape as `nros_tests::skip_marker` one lane over, and it is keyed the
+/// same way for the same reason: the informative text is defined by its position
+/// (immediately after the panic header), not by a substring search over the whole
+/// stream — a build that merely PRINTS the word would otherwise be misreported.
+fn panic_message(stderr: &str) -> Option<String> {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with("thread '") && l.contains("panicked at"))?;
+    let msg = lines
+        .get(at + 1)
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .unwrap_or(lines[at]);
+    Some(format!("{} ({})", msg, lines[at]))
 }
 
 /// Rewrite absolute source paths in the harness output to be relative to the
@@ -733,6 +767,49 @@ fn missing_source_remedy(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 0699 — a RUNTIME failure in the harness must reach the operator.
+    ///
+    /// There is no `error`-prefixed line in this stream, so the old fallback
+    /// ("last non-empty line") reported the backtrace note and the real cause —
+    /// `Metadata(NameTooLong)`, which only happens at some workspace depths —
+    /// never appeared in `nros sync`'s output at all.
+    #[test]
+    fn a_harness_panic_is_the_diagnostic_not_the_backtrace_note() {
+        let stderr = "\
+   Compiling listener_pkg v0.0.0
+    Finished `dev` profile [unoptimized] target(s) in 1.2s
+     Running `target/debug/metadata-probe`
+thread 'main' panicked at src/main.rs:7:10:
+component register (metadata mode): Metadata(NameTooLong)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+";
+        let got = first_diagnostic(stderr);
+        assert!(
+            got.contains("Metadata(NameTooLong)"),
+            "the panic message must survive, got {got:?}"
+        );
+        assert!(
+            got.contains("src/main.rs:7:10"),
+            "and so must where it happened, got {got:?}"
+        );
+        assert!(
+            !got.starts_with("note:"),
+            "the backtrace note is what this replaces, got {got:?}"
+        );
+    }
+
+    /// A build failure still wins: a rustc diagnostic is the more specific
+    /// answer, and it is the common case (#0426).
+    #[test]
+    fn a_rustc_error_still_outranks_a_panic() {
+        let stderr = "\
+error[E0432]: unresolved import `std_msgs`
+thread 'main' panicked at src/main.rs:7:10:
+some later noise
+";
+        assert!(first_diagnostic(stderr).starts_with("error[E0432]"));
+    }
 
     #[test]
     fn missing_source_remedy_names_the_setup_command() {

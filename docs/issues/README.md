@@ -51,12 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0699** (cli/orchestration, open 2026-08-20) — `nros sync` on the canonical copy-out template fails
-`Metadata(NameTooLong)` when the workspace path is ~100 chars deep; the identical tree at 34 chars syncs
-clean. Four frames name a component and "exit -1", never a length or path — the real panic only shows by
-re-running the staged harness by hand. Smells like an AF_UNIX `sun_path` (108-byte) or bounded-string path
-buffer in the metadata-mode register. Lands exactly on the "copy the template anywhere" surface phase-368
-promotes. See `0699-*`. (2026-08-20)
+Recently resolved (2026-08-19): **#0699** — `nros sync` failed `Metadata(NameTooLong)` on the canonical
+copy-out template at a ~100-char workspace depth. Not a `sun_path` socket as filed:
+`SourceLocation::caller()` copied `Location::file()` into a 128-byte `MetadataString`, and rustc emits that
+path ABSOLUTE for a path dependency — so the field's length was set by where the user keeps their files.
+Front-truncation is lossless here because the CLI rewrites that path package-relative straight afterwards, so
+`copy_str_keep_tail` keeps the tail on a `/` boundary. The reason it was undiagnosable is a second defect:
+`first_diagnostic` looked for a line starting with `error`, which a harness that compiles and then PANICS
+does not have, so it reported the `RUST_BACKTRACE` note. It now takes the line after `panicked at …` — keyed
+on POSITION like `skip_marker`, not a substring search. A/B on one host: pristine `EXIT=1` "harness failed
+(exit -1)", fixed `EXIT=0` "2 rebuilt". See `archived/0699-*`. (2026-08-19)
 
 Recently resolved (2026-08-19): **#0696** — every native C/C++ fixture read STALE against
 `nros-tests/src/lib.rs`, a file in none of their dep graphs, so no build could clear it. Cause is
@@ -68,12 +72,17 @@ must not and missed ten it should, the zpico C shim sources this arm exists to c
 against the recording crate (`zpico_manifest_dir()`, shared with the bootstrap walk). Mutation-checked: the
 reverted fix reproduces the reported verdict verbatim in 0.101 s. See `archived/0696-*`. (2026-08-19)
 
-**#0695** (build/testing, open 2026-08-19) — one missing `nros` on PATH, two policies inside
-`compile-check-fixtures.sh`: `cmake_fixture_prereqs_ok` prints "skipping" and returns 1 (run continues,
-summary says `cmake=0`, indistinguishable from "none to build"), while the staging path returns 2 for the
-same condition and fails the build. The skipping half does not use `nros_lane_skip_note`, which exists
-(0650) so a skip is recorded rather than silent. Only reachable without `source ./activate.sh`, but its
-effect is a partial fixture set that later reads as complete. See `0695-*`. (2026-08-19)
+Recently resolved (2026-08-19): **#0695** — one missing `nros` on PATH, two policies in
+`compile-check-fixtures.sh`. The four prereqs now split by whose fault the absence is: `cmake` absent is a
+host that cannot build C (a recorded skip), while `nros`, its `codegen entry` subcommand, and
+`play_launch_parser` are the sweep contract — fatal, exit 2, naming `source ./activate.sh` / `just
+setup-cli`, which is what the staging path already did for the same binary. The skip half was wrong
+independently: `cmake=0` read identically for "skipped them all" and "none to build", so skips go through
+`_note_lane_skip` and the summary says `cmake=SKIPPED(cmake absent)` — applied to the `cxx-syntax` and `px4`
+lanes too, since the class is "a count that means two things". The junit half was already closed by
+`skip_marker.py` (`58d4b62eb`), whose docstring opens on this issue's own zenoh example. Residue recorded:
+`check-lane-skip-protocol.py` scans only `justfile`/`just/`, so it could never have seen a defect in
+`scripts/build/`. See `archived/0695-*`. (2026-08-19)
 
 **#0694** (docs/build, open 2026-08-19) — every platform starter's Rust build fails on a fresh clone. The
 Rust example leaves carry a `.cargo/config.toml` that `include`s the gitignored, `nros sync`-generated

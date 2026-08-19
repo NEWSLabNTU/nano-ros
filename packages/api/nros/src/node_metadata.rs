@@ -97,7 +97,23 @@ impl SourceLocationMetadata {
     pub fn caller() -> Result<Self, NodeMetadataError> {
         let location = core::panic::Location::caller();
         Ok(Self {
-            artifact: copy_str(location.file())?,
+            // issue 0699 — keep the TAIL, never fail on depth.
+            //
+            // rustc emits `Location::file()` ABSOLUTE whenever the recording
+            // crate is compiled as a path dependency from another directory,
+            // which is exactly how the metadata harness builds it. So this
+            // field carries the user's home directory, and a workspace nested
+            // ~100 chars deep overflowed the 128-byte buffer — `nros sync`
+            // failed with `Metadata(NameTooLong)` for no reason but where the
+            // user keeps their files.
+            //
+            // Truncating the FRONT is safe precisely here: the CLI's
+            // `metadata_build.rs` already rewrites this to be relative to the
+            // component package afterwards, so the prefix is discarded either
+            // way and the tail is the part that survives. A path is also
+            // diagnostic metadata — losing its head degrades a message,
+            // whereas erroring loses the whole register.
+            artifact: copy_str_keep_tail(location.file())?,
             line: Some(location.line()),
             column: Some(location.column()),
         })
@@ -401,6 +417,39 @@ impl<'a> SourceMetadataExport<'a> {
 /// [`MetadataRecorder::push_node`]); the capacity error is theirs to surface.
 pub fn metadata_string(value: &str) -> Result<MetadataString, NodeMetadataError> {
     copy_str(value)
+}
+
+/// `copy_str`, but for a value whose TAIL is the informative end — a source
+/// path. Keeps the last whole path components that fit, marked with a leading
+/// `…/` so a reader can tell it was cut.
+///
+/// Issue 0699: the only caller is `SourceLocation::caller()`, whose input is
+/// `core::panic::Location::file()`. That is an absolute path in the metadata
+/// harness, so its length is set by where the USER put the workspace — not by
+/// anything this tree controls, and not something a fixed buffer can bound.
+pub(crate) fn copy_str_keep_tail(value: &str) -> Result<MetadataString, NodeMetadataError> {
+    if value.len() <= METADATA_STRING_CAPACITY {
+        return copy_str(value);
+    }
+    // Room for the marker, then the longest component-aligned tail that fits.
+    const MARK: &str = "…/";
+    let budget = METADATA_STRING_CAPACITY - MARK.len();
+    let tail = value
+        .char_indices()
+        .find(|(i, _)| value.len() - i <= budget)
+        .map(|(i, _)| &value[i..])
+        .unwrap_or("");
+    // Prefer a component boundary so the result reads as a path.
+    let tail = match tail.find('/') {
+        Some(cut) => &tail[cut + 1..],
+        None => tail,
+    };
+    let mut out = MetadataString::new();
+    out.push_str(MARK)
+        .map_err(|_| NodeMetadataError::NameTooLong)?;
+    out.push_str(tail)
+        .map_err(|_| NodeMetadataError::NameTooLong)?;
+    Ok(out)
 }
 
 pub(crate) fn copy_str(value: &str) -> Result<MetadataString, NodeMetadataError> {
@@ -1398,6 +1447,36 @@ fn parse_interface(type_name: &str, fallback_kind: &'static str) -> ParsedInterf
 
 #[cfg(test)]
 mod tests {
+    /// Issue 0699 — a source path longer than the buffer must RECORD, not fail.
+    ///
+    /// `nros sync` died with `Metadata(NameTooLong)` purely because the user's
+    /// workspace sat ~100 chars deep: rustc emits `Location::file()` absolute
+    /// for a path dependency, so this field's length is set by where the user
+    /// keeps their files. The tail is what the CLI keeps anyway.
+    #[test]
+    fn a_path_longer_than_the_buffer_keeps_its_tail() {
+        // A literal, not `format!`: this crate is `no_std` and the test cfg has
+        // no allocator — the same constraint the buffer itself exists under.
+        let deep = concat!(
+            "/deep/nested/nested/nested/nested/nested/nested/nested/nested/",
+            "nested/nested/nested/nested/nested/nested/nested/nested/nested/",
+            "ws/build/nros-metadata/metadata-probe/listener/src/lib.rs"
+        );
+        assert!(deep.len() > super::METADATA_STRING_CAPACITY);
+
+        let got = super::copy_str_keep_tail(deep).expect("must not error on depth");
+        assert!(got.len() <= super::METADATA_STRING_CAPACITY);
+        assert!(
+            got.ends_with("src/lib.rs"),
+            "the informative tail must survive, got {got:?}"
+        );
+        assert!(got.starts_with('…'), "a cut must be visible, got {got:?}");
+
+        // A path that fits is untouched — no marker, no loss.
+        let short = "src/lib.rs";
+        assert_eq!(super::copy_str_keep_tail(short).unwrap().as_str(), short);
+    }
+
     use super::*;
     use crate::qos;
 

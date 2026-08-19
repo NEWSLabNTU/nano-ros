@@ -176,15 +176,58 @@ stage_and_build() {
 # per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
 cmake_out="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
 
+# Issue 0695 — these four prereqs used to answer to ONE verdict (print, return 1,
+# skip every cmake fixture, run on green), and they do not deserve the same one.
+#
+#   cmake absent            a host that cannot build C at all. A real skip — but
+#                           a RECORDED one, because `cmake=0` in the summary read
+#                           identically for "skipped them all" and "there were
+#                           none", which is how a partial fixture set came out
+#                           looking complete.
+#   nros / codegen entry /  the SWEEP CONTRACT. CLAUDE.md requires
+#   play_launch_parser      `source ./activate.sh` before any build; that is what
+#                           puts all three on PATH. Missing one is operator
+#                           error, and `stage_and_check` below ALREADY takes the
+#                           whole build down for the very same missing binary
+#                           ("compile-check: nros CLI not found"). One condition
+#                           answered two ways in one script is the defect; the
+#                           fatal half is the correct half.
+#
+# Skips are reported through `_note_lane_skip` so the final summary names them
+# instead of printing a zero that means two different things.
+lane_skips=()
+
+_note_lane_skip() {
+    lane_skips+=("$1")
+    echo "$1 — skipping (recorded in the summary)" >&2
+}
+
+# The count a lane reports: its number, or SKIPPED(<why>) when the lane never ran.
+_lane_count() {
+    if [ -n "$2" ]; then printf 'SKIPPED(%s)' "$2"; else printf '%s' "$1"; fi
+}
+
+cmake_skipped=""
 cmake_fixture_prereqs_ok() {
-    command -v cmake >/dev/null 2>&1 || { echo "cmake-fixtures: cmake absent — skipping" >&2; return 1; }
+    command -v cmake >/dev/null 2>&1 || {
+        cmake_skipped="cmake absent"
+        _note_lane_skip "cmake-fixtures: cmake absent"
+        return 1
+    }
     local nb="${NROS_CLI:-$(command -v nros || true)}"
-    [ -n "$nb" ] || { echo "cmake-fixtures: nros CLI absent — skipping" >&2; return 1; }
+    [ -n "$nb" ] || {
+        echo "cmake-fixtures: nros CLI not found — cannot codegen entries (source ./activate.sh, or just setup-cli)" >&2
+        exit 2
+    }
     "$nb" codegen entry --help >/dev/null 2>&1 || {
-        echo "cmake-fixtures: nros lacks 'codegen entry' — skipping" >&2; return 1; }
+        echo "cmake-fixtures: '$nb' lacks 'codegen entry' — stale CLI (just setup-cli)" >&2
+        exit 2
+    }
     # The C/mixed Entry templates parse launch XML via play_launch_parser.
     command -v play_launch_parser >/dev/null 2>&1 || {
-        echo "cmake-fixtures: play_launch_parser absent — skipping (source ./activate.sh)" >&2; return 1; }
+        echo "cmake-fixtures: play_launch_parser not found (source ./activate.sh)" >&2
+        exit 2
+    }
     NROS_CLI_BIN="$nb"
     return 0
 }
@@ -529,6 +572,7 @@ if cmake_fixture_prereqs_ok; then
 fi
 
 cxx_n=0
+cxx_skipped=""
 if command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # Issue #34 — generate the per-build config headers the snippets need
     # (`nros_cpp_config_generated.h` / `nros_config_generated.h`). nros-cpp's /
@@ -553,7 +597,8 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
         cxx_n=$((cxx_n + 1))
     done < <(compile_check_records cxx-syntax)
 else
-    echo "cxx-syntax: no C++ compiler — skipping" >&2
+    cxx_skipped="no C++ compiler (${CXX:-c++})"
+    _note_lane_skip "cxx-syntax: $cxx_skipped"
 fi
 
 # cargo-check of an existing example dir for a cross target (id : dir : target).
@@ -601,6 +646,7 @@ source "$repo_root/scripts/build/fixtures-target-dir.sh"
 
 px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
+px4_skipped=""
 px4_fail_n=0
 if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
     # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
@@ -700,10 +746,19 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
         fi
     done
 else
-    echo "px4: PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot) — skipping px4 compile-check" >&2
+    px4_skipped="PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot)"
+    _note_lane_skip "px4: $px4_skipped"
 fi
 
 # phase-319 W2 — counts come from the manifest now, not from array lengths.
 check_n="$(compile_check_records cargo-check | wc -l)"
 build_n="$(compile_check_records cargo-build | wc -l)"
-echo "fixtures built (check=$check_n build=$build_n cmake=$cmake_n cxx=$cxx_n cargo-check=$cargo_check_n px4=$px4_n/$((px4_n + px4_fail_n)))."
+# Issue 0695 — a lane that was SKIPPED says so here. `cmake=0` used to be the
+# summary for "skipped every one of them" AND for "there were none to build",
+# and a reader downstream cannot tell those apart from an artifact that isn't
+# there either way.
+echo "fixtures built (check=$check_n build=$build_n cmake=$(_lane_count "$cmake_n" "$cmake_skipped") cxx=$(_lane_count "$cxx_n" "$cxx_skipped") cargo-check=$cargo_check_n px4=$(_lane_count "$px4_n/$((px4_n + px4_fail_n))" "$px4_skipped"))."
+if [ "${#lane_skips[@]}" -gt 0 ]; then
+    echo "compile-check: ${#lane_skips[@]} lane(s) SKIPPED — their fixtures are NOT built:" >&2
+    printf '  - %s\n' "${lane_skips[@]}" >&2
+fi
