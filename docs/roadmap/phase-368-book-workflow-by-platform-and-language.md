@@ -28,10 +28,31 @@ Closed since the W1–W14 landing:
   skip rewrite; the junit path now follows `CARGO_TARGET_DIR`). First
   bypass-free tier-1 green followed: `Real failures: 0 / 0`.
 
+**The zenoh-track probe LANDED (2026-08-20): `just probe zenoh`.** Same
+clean-container discipline on `ros:humble` (the interop page's own
+prerequisite) under `--rmw zenoh`: installation prereqs → bootstrap →
+first-node-rust's zenoh-default build → then the verifier replays
+`ros2-interop.md`'s three terminals — the page's apt prerequisite, its exact
+router invocation, the nano-ros talker, and `ros2 topic echo
+--qos-reliability best_effort` asserting `data: 'Hello World:` arrives.
+PROBE=0: **the book's cross-stack delivery claim is machine-verified**, the
+one assertion the cyclonedds quickstart track cannot make. Three runs to
+green, two real finds:
+
+* **`activate.sh` died under `set -u`** — ROS's `setup.bash` is not
+  nounset-clean (`AMENT_TRACE_SETUP_FILES`, line 8), so any strict-mode
+  shell or `set -euo pipefail` CI runner failed INSIDE the sourced file,
+  reading as an activate.sh bug. Fixed at the real level: nounset is
+  suspended around the ROS source and restored to whatever the caller had
+  (POSIX `case $-`, bash+zsh). Not probe plumbing — a user-facing fix.
+* The verifier is faster than the book's human: terminal 2 opens seconds
+  after terminal 1 by construction, so the probe polls the router's port
+  before dialing (a client fails fast on a closed port).
+
 Still deferred, still named: contributor-block relocation to internals/
 (W12), the esp32 user build spelling (W13's rewrite onto the ESP-IDF
-shell), the resolver's z3 hard-dep feature-gate (upstream play_launch/rlm),
-and a zenoh-track probe run for `first-node-rust.md`'s flow. The maintainer-approved TARGET DESIGN below defines
+shell), and the resolver's z3 hard-dep feature-gate (upstream
+play_launch/rlm). The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
 
