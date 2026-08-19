@@ -21,10 +21,13 @@ source "$root/scripts/build/zephyr-toolchain.sh"
 export ZEPHYR_BASE="$root/zephyr-workspace/zephyr"
 [ -d "$ZEPHYR_BASE" ] || { echo "no zephyr workspace at $ZEPHYR_BASE — run: just zephyr setup" >&2; exit 2; }
 # The in-tree venv is built for the HOST interpreter, so in a container it may
-# be present, executable, and still wrong. `NROS_ZEPHYR_PROBE_PYTHON` names the
-# one to use; the probe then checks it can actually import Zephyr's build deps
-# rather than discovering that four frames into cmake as "Error finding board".
-py="${NROS_ZEPHYR_PROBE_PYTHON:-$root/scripts/zephyr/.venv/bin/python3}"
+# be present, executable, and still wrong. `NROS_PYTHON` names the one to use —
+# the SAME knob `check-python-deps.py`, `just doctor` and `scripts/zephyr/
+# setup.sh` read, because a probe that answers for a different interpreter than
+# the lane uses answers the wrong question convincingly. The probe then verifies
+# it can actually import Zephyr's build deps rather than discovering that four
+# frames into cmake as "Error finding board".
+py="${NROS_PYTHON:-$root/scripts/zephyr/.venv/bin/python3}"
 if ! "$py" -c 'import pykwalify, yaml, elftools' >/dev/null 2>&1; then
     alt="$(command -v python3)"
     if "$alt" -c 'import pykwalify, yaml, elftools' >/dev/null 2>&1; then
@@ -32,7 +35,7 @@ if ! "$py" -c 'import pykwalify, yaml, elftools' >/dev/null 2>&1; then
     else
         echo "no python3 with Zephyr's build deps (pykwalify, PyYAML, pyelftools)." >&2
         echo "  tried: $py and $alt" >&2
-        echo "  set NROS_ZEPHYR_PROBE_PYTHON to one that has them." >&2
+        echo "  set NROS_PYTHON to one that has them." >&2
         exit 2
     fi
 fi
