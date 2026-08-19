@@ -4375,24 +4375,52 @@ fn render_board_include(existing: &str, present: bool) -> Result<String> {
 
     let mut doc: DocumentMut = existing.parse().wrap_err("parse .cargo/config.toml")?;
     {
-        let inc_item = doc
-            .as_table_mut()
-            .entry("include")
-            .or_insert_with(|| value(toml_edit::Array::new()));
-        let arr = inc_item
-            .as_value_mut()
-            .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
-        arr.retain(|v| {
-            v.as_str()
-                .map(|s| !s.ends_with(BOARD_CONFIG_FILE))
-                .unwrap_or(true)
-        });
+        // Same rule as `render_patch_config_with`: decide first, and touch the
+        // document only when the membership actually changes. An unconditional
+        // evict-then-re-add is not formatting-neutral (toml_edit carries
+        // per-element decor), so it rewrote every tracked leaf config with a
+        // one-space difference and left the tree permanently dirty after a
+        // sync. It also bumped the mtime, re-staling fixtures keyed on the leaf.
+        let current: Vec<String> = doc
+            .as_table()
+            .get("include")
+            .and_then(|i| i.as_value())
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut desired: Vec<String> = current
+            .iter()
+            .filter(|s| !s.ends_with(BOARD_CONFIG_FILE))
+            .cloned()
+            .collect();
         if present {
-            arr.push(BOARD_CONFIG_FILE);
+            desired.push(BOARD_CONFIG_FILE.to_string());
         }
-        if arr.is_empty() {
-            doc.as_table_mut().remove("include");
+
+        if current != desired {
+            let inc_item = doc
+                .as_table_mut()
+                .entry("include")
+                .or_insert_with(|| value(toml_edit::Array::new()));
+            let arr = inc_item
+                .as_value_mut()
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
+            arr.retain(|v| {
+                v.as_str()
+                    .map(|s| !s.ends_with(BOARD_CONFIG_FILE))
+                    .unwrap_or(true)
+            });
+            if present {
+                arr.push(BOARD_CONFIG_FILE);
+            }
+            if arr.is_empty() {
+                doc.as_table_mut().remove("include");
+            }
         }
     }
     Ok(doc.to_string())
@@ -4737,48 +4765,95 @@ fn render_patch_config_with(
     // scalar keys ahead of tables when rendering, so the key lands in a valid
     // position even in a config that already carries [patch]/[env] tables.
     {
-        let inc_item = doc
-            .as_table_mut()
-            .entry("include")
-            .or_insert_with(|| value(toml_edit::Array::new()));
-        let arr = inc_item
-            .as_value_mut()
-            .and_then(|v| v.as_array_mut())
-            .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
-        arr.retain(|v| {
-            v.as_str()
-                .map(|s| !s.ends_with(CENTRAL_PATCH_FILE) && !s.ends_with(MANAGED_PATCH_FILE))
-                .unwrap_or(true)
-        });
+        // Decide BEFORE touching the document, and touch nothing when the
+        // membership is already what it should be.
+        //
+        // `retain` + `insert(0, …)` is not formatting-neutral: toml_edit keeps
+        // per-element decor, and evicting the first element hands its position
+        // to a survivor that carries its own leading space. So a leaf committed
+        // as `["../nros-patch.toml", "nros-board.toml"]` came back as
+        // `[ "../nros-patch.toml", "nros-board.toml"]` — same membership, one
+        // space, every tracked leaf config permanently dirty after any sync.
+        // Measured on 20 leaves; it also blocks a rebase and invites `git add
+        // -u` to commit sync output, which CLAUDE.md calls out by name.
+        //
+        // The sibling test `config_writer_quoted_user_header_no_duplicate`
+        // already worked the decor rule out, but pinned idempotence FROM the
+        // spaced form — feeding tight input with a survivor, which is what the
+        // committed files actually are, was the uncovered case.
+        //
+        // Skipping the write also spares the mtime: an identical rewrite still
+        // re-stales every fixture keyed on this leaf.
+        let current: Vec<String> = doc
+            .as_table()
+            .get("include")
+            .and_then(|i| i.as_value())
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let survivors: Vec<String> = current
+            .iter()
+            .filter(|s| !s.ends_with(CENTRAL_PATCH_FILE) && !s.ends_with(MANAGED_PATCH_FILE))
+            .cloned()
+            .collect();
+        let mut desired: Vec<String> = Vec::new();
         if let Some(rel) = include_rel {
-            arr.insert(0, rel);
+            desired.push(rel.to_string());
         }
-        // Issue 0457 — point at the sibling managed-patch file when there is
-        // one. Relative to the INCLUDING file's directory, which is `.cargo/`
-        // itself, so the bare basename is the whole path. Re-added each sync,
-        // and dropped when the managed set empties, so a leaf that loses its
-        // last generated dep does not keep an include to a deleted file.
-        //
-        // Issue 0463 — that last clause is load-bearing in a way 0457 did not
-        // realise. It justified itself with "cargo ignores a missing include
-        // SILENTLY"; on cargo 1.97.1 a missing include is a HARD error during
-        // manifest parse, so an orphaned entry does not degrade the leaf, it
-        // makes the leaf unreadable.
-        //
-        // The entry is therefore written ONLY when this leaf actually has a
-        // host-specific row to put in the sidecar. Rows that are in-repo
-        // (relative paths, identical in every checkout) stay inline in the
-        // tracked config above, so a leaf with no `generated/` dep gets no
-        // sidecar and no include at all, and resolves in a fresh clone with no
-        // sync. What remains behind sync is exactly what sync alone can
-        // produce — the ament-derived crates, which must not be in git.
-        // `_require-leaf-includes` covers the leaves that do need it, saying
-        // "run `nros sync`" before cargo says anything at all.
-        if sidecar && managed.iter().any(|(_, rel)| is_generated_path(rel)) {
-            arr.push(MANAGED_PATCH_FILE);
+        desired.extend(survivors.iter().cloned());
+        let want_sidecar = sidecar && managed.iter().any(|(_, rel)| is_generated_path(rel));
+        if want_sidecar {
+            desired.push(MANAGED_PATCH_FILE.to_string());
         }
-        if arr.is_empty() {
-            doc.as_table_mut().remove("include");
+
+        if current != desired {
+            let inc_item = doc
+                .as_table_mut()
+                .entry("include")
+                .or_insert_with(|| value(toml_edit::Array::new()));
+            let arr = inc_item
+                .as_value_mut()
+                .and_then(|v| v.as_array_mut())
+                .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
+            arr.retain(|v| {
+                v.as_str()
+                    .map(|s| !s.ends_with(CENTRAL_PATCH_FILE) && !s.ends_with(MANAGED_PATCH_FILE))
+                    .unwrap_or(true)
+            });
+            if let Some(rel) = include_rel {
+                arr.insert(0, rel);
+            }
+            // Issue 0457 — point at the sibling managed-patch file when there is
+            // one. Relative to the INCLUDING file's directory, which is `.cargo/`
+            // itself, so the bare basename is the whole path. Re-added each sync,
+            // and dropped when the managed set empties, so a leaf that loses its
+            // last generated dep does not keep an include to a deleted file.
+            //
+            // Issue 0463 — that last clause is load-bearing in a way 0457 did not
+            // realise. It justified itself with "cargo ignores a missing include
+            // SILENTLY"; on cargo 1.97.1 a missing include is a HARD error during
+            // manifest parse, so an orphaned entry does not degrade the leaf, it
+            // makes the leaf unreadable.
+            //
+            // The entry is therefore written ONLY when this leaf actually has a
+            // host-specific row to put in the sidecar. Rows that are in-repo
+            // (relative paths, identical in every checkout) stay inline in the
+            // tracked config above, so a leaf with no `generated/` dep gets no
+            // sidecar and no include at all, and resolves in a fresh clone with no
+            // sync. What remains behind sync is exactly what sync alone can
+            // produce — the ament-derived crates, which must not be in git.
+            // `_require-leaf-includes` covers the leaves that do need it, saying
+            // "run `nros sync`" before cargo says anything at all.
+            if want_sidecar {
+                arr.push(MANAGED_PATCH_FILE);
+            }
+            if arr.is_empty() {
+                doc.as_table_mut().remove("include");
+            }
         }
     }
 
@@ -6182,41 +6257,74 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             "in-repo managed entry must stay in config.toml:\n{out}"
         );
 
-        // Why a leaf's `include` spelling changes on sync — and why only SOME
-        // leaves churn. `retain` evicts the sync-managed entries and
-        // `insert(0, …)` puts the central one back. When retain EMPTIES the
-        // array, the leading decor dies with the last element and the
-        // re-inserted value carries toml_edit's default (tight) form; when a
-        // survivor remains — `nros-board.toml`, which retain does not evict —
-        // the decor rides on it and the spaced form is preserved.
+        // A leaf's `include` spelling no longer changes on sync AT ALL.
         //
-        // That is the whole rule, and it is not "one entry versus two": it is
-        // whether anything survives retain. Pinned here because a toml_edit
-        // upgrade could change it silently, and because a tree-wide "canonical
-        // spelling" gate was written and reverted on the strength of guessing
-        // it.
-        let only_managed = render_patch_config_with(
-            "include = [ \"../nros-patch.toml\"]\n",
-            &mng(&[]),
-            Some("../nros-patch.toml"),
-            false,
-        )
-        .unwrap();
+        // It used to, and the mechanism was understood: `retain` evicts the
+        // sync-managed entries and `insert(0, …)` puts the central one back;
+        // toml_edit carries per-element decor, so whether the spacing survived
+        // depended on whether anything survived retain. What that analysis
+        // pinned was idempotence from each resulting state — not the states the
+        // COMMITTED files are in. Tight input with a survivor was the uncovered
+        // case, and it is what every tracked leaf actually holds, so a sync
+        // rewrote 20 configs with a one-space difference: a permanently dirty
+        // tree, a blocked rebase, and an invitation for `git add -u` to commit
+        // sync output.
+        //
+        // The rule now is membership, not decor: if the array already says what
+        // it should say, the document is not touched and the bytes are
+        // identical. Both spellings are therefore stable, and the old
+        // tight/spaced distinction is moot.
+        let spaced_single = "include = [ \"../nros-patch.toml\"]\n";
+        let only_managed =
+            render_patch_config_with(spaced_single, &mng(&[]), Some("../nros-patch.toml"), false)
+                .unwrap();
         assert!(
-            only_managed.starts_with("include = [\"../nros-patch.toml\"]"),
-            "retain emptied the array, so the re-inserted entry is tight:\n{only_managed}"
+            only_managed.starts_with(spaced_single.trim_end()),
+            "membership unchanged: sync must not renormalise the spelling:\n{only_managed}"
         );
 
-        let with_survivor = render_patch_config_with(
-            "include = [ \"../nros-patch.toml\", \"nros-board.toml\"]\n",
-            &mng(&[]),
-            Some("../nros-patch.toml"),
-            false,
-        )
-        .unwrap();
+        let spaced_pair = "include = [ \"../nros-patch.toml\", \"nros-board.toml\"]\n";
+        let with_survivor =
+            render_patch_config_with(spaced_pair, &mng(&[]), Some("../nros-patch.toml"), false)
+                .unwrap();
         assert!(
-            with_survivor.starts_with("include = [ \"../nros-patch.toml\", \"nros-board.toml\"]"),
+            with_survivor.starts_with(spaced_pair.trim_end()),
             "a survivor keeps the array's decor, so this leaf never churns:\n{with_survivor}"
+        );
+
+        // The case the spacing analysis above did NOT cover, and the one every
+        // committed leaf actually is: TIGHT input with a survivor. Feeding the
+        // spaced form back proves idempotence from the spaced state only —
+        // tight -> spaced is a one-way trip that happens exactly once per
+        // clone, and it left 20 tracked configs permanently dirty after any
+        // sync (blocking a rebase, and inviting `git add -u` to commit sync
+        // output). Membership is unchanged here, so the bytes must be too.
+        let tight = "include = [\"../nros-patch.toml\", \"nros-board.toml\"]\n";
+        let unchanged =
+            render_patch_config_with(tight, &mng(&[]), Some("../nros-patch.toml"), false).unwrap();
+        assert!(
+            unchanged.starts_with(tight.trim_end()),
+            "membership unchanged, so the array must be byte-identical:\n  was: {tight}  now: {unchanged}"
+        );
+
+        // And the board renderer, same rule, same shape.
+        let board_same = render_board_include(tight, true).unwrap();
+        assert_eq!(
+            board_same, tight,
+            "board include already present: nothing may be rewritten"
+        );
+
+        // A REAL change still renders (guard must not freeze the array).
+        let board_added =
+            render_board_include("include = [\"../nros-patch.toml\"]\n", true).unwrap();
+        assert!(
+            board_added.contains("nros-board.toml"),
+            "a genuinely missing entry must still be added:\n{board_added}"
+        );
+        let board_dropped = render_board_include(tight, false).unwrap();
+        assert!(
+            !board_dropped.contains("nros-board.toml"),
+            "eviction must still work:\n{board_dropped}"
         );
 
         // Same input, out-of-tree: merged in place, into the SAME quoted table.
