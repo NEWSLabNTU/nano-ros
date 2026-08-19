@@ -1983,8 +1983,15 @@ _nextest-tolerant +nextest_args:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=({{nextest_args}})
+    # issue 0695 — the junit path is DERIVED, not the hardcoded default:
+    # nextest writes it under the target dir, so a lane with a scoped
+    # CARGO_TARGET_DIR (test-zpico-multisession) has its junit there, and
+    # reading `target/nextest/default/junit.xml` here would tally whatever
+    # unrelated run last wrote it.
+    junit="$(nros_nextest_junit_path)"
     # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
     # (missing fixture/binary/emulator) — nextest has no native skip, so those
     # count as failures and exit non-zero. Treat a run as passing iff there are
@@ -1995,27 +2002,27 @@ _nextest-tolerant +nextest_args:
     rc=$?
     set -e
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
-    just _rewrite-skipped-junit || true
+    just _rewrite-skipped-junit "$junit" || true
     [ $rc -eq 0 ] && exit 0
     # Issue #29 — a build/setup failure (nextest exit != 100, or no junit) must
     # NOT be masked by the [SKIPPED] tolerance: a binary that fails to compile
     # emits zero junit cases, which would otherwise tally as "0 real failures".
-    if [ "$rc" -ne 100 ] || [ ! -f target/nextest/default/junit.xml ]; then
-        echo "ERROR: nros-tests build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
+    if [ "$rc" -ne 100 ] || [ ! -f "$junit" ]; then
+        echo "ERROR: nextest build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
         exit 1
     fi
-    real="$(just _count-real-failures)"
-    just _test-summary || true
+    real="$(just _count-real-failures "$junit")"
+    just _test-summary "$junit" || true
     if [ "$real" -ne 0 ]; then
         echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
-        just _name-real-failures || true
-        just _check-skip-budget || true
+        just _name-real-failures "$junit" || true
+        just _check-skip-budget "$junit" || true
         exit 1
     fi
     # Issue 0584 — the success path is exactly where an unnoticed skip lives:
     # "all failures were skips" is the sentence a lane that ran nothing also
     # prints. Assert the skips before believing it.
-    just _check-skip-budget
+    just _check-skip-budget "$junit"
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 _nextest-platform test_name verbose="" feature_args="":
@@ -2163,15 +2170,23 @@ test-zpico-multisession verbose="":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir zpico-multisession)"  # issue 0400: box-aware
     export ZPICO_MAX_SESSIONS=2
+    # issue 0695 — through `_nextest-tolerant`, not a bare `cargo nextest run`
+    # (issue 0673's rule): `nros_tests::skip!` raised in ANOTHER package's own
+    # test binary — this lane's `zenoh_integration` — is still a skip, and a
+    # bare run turned its `[SKIPPED]` panic into a hard red no fix can clear.
+    # The tolerant helper rewrites the junit (which lands under this lane's
+    # scoped CARGO_TARGET_DIR, exported above) and fails only on real failures.
+    # The `two_sessions` filter is POSITIONAL (name substring), equivalent to
+    # the old `-E 'test(~two_sessions)'`: `_nextest-tolerant` splices its args
+    # into a bash array literal, where the `(`…`)` would not survive.
     args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
-          -E 'test(~two_sessions)' --no-fail-fast)
+          two_sessions --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    just _nextest-tolerant "${args[@]}"
     # issue 0652 — `loan_e2e` for the same reason, and it is why the feature is
     # off `check-required-features-tests`: it runs a publisher and a subscriber
     # in ONE process (same-process pub/sub on a single session hits zenoh-pico's
@@ -2182,7 +2197,7 @@ test-zpico-multisession verbose="":
     if [ -z "{{verbose}}" ]; then
         loan_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${loan_args[@]}"
+    just _nextest-tolerant "${loan_args[@]}"
 
 #
 # Heavy groups are skipped via a CLI `-E` predicate keyed off nextest

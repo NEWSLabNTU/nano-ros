@@ -25,7 +25,12 @@ nros_nextest_fail_fast_args() {
 }
 
 nros_nextest_junit_path() {
-    printf 'target/nextest/%s/junit.xml\n' "$(nros_nextest_run_profile_name)"
+    # issue 0695 — nextest stores junit under the TARGET DIR
+    # (`<target-dir>/nextest/<profile>/junit.xml`), so a lane that exports a
+    # scoped CARGO_TARGET_DIR (`test-zpico-multisession`, issue 0400) writes
+    # its junit there. A hardcoded `target/` here made the skip-tolerant
+    # readers inspect whatever unrelated run last wrote the default path.
+    printf '%s/nextest/%s/junit.xml\n' "${CARGO_TARGET_DIR:-target}" "$(nros_nextest_run_profile_name)"
 }
 
 nros_nextest_record_enabled() {
