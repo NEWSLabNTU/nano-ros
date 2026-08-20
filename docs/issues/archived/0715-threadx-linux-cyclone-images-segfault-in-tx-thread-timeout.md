@@ -146,3 +146,39 @@ Which timer/thread the expiry walk trips over, and whether it is a lifetime bug
 (the byte-pool arena overlapping a `TX_THREAD`). The trio failing identically
 suggests something in the shared board/RMW startup path rather than in any one
 example.
+
+## Addendum (2026-08-20) — the repro line does not stop the image, on any arch
+
+Measured on x86_64 while re-checking this issue from a second session, before
+the LP64 cause above was known. It is independent of the fix and of the
+architecture, and it makes the `timeout 12` in the Symptom section misleading
+for whoever reads this next.
+
+**The Linux port blocks SIGTERM.** `_tx_linux_thread_init` builds its wait mask
+as `sigfillset()` minus `RESUME_SIG`, and every suspended ThreadX thread sits in
+`sigsuspend(&_tx_linux_thread_wait_mask)`
+(`third-party/threadx/kernel/ports/linux/gnu/src/tx_initialize_low_level.c:402,438`),
+so SIGTERM has no thread it can be delivered to. Measured: a manual `kill -TERM`
+after 6 s of healthy publishing does not terminate the image within 90 s.
+
+Plain `timeout 12` sends SIGTERM and never escalates, so it does not stop these
+images at 12 s. **Use `timeout -s KILL`** — which is what the verification table
+above already reports (`rc=137`). It is also why
+`graceful_kill_process_group` spends its full 2 s SIGTERM grace on every
+threadx-linux teardown before the SIGKILL fallback.
+
+Two things ruled out in that same pass, recorded so they are not re-run:
+
+* **A `TX_THREAD` ABI split across TUs.** The right neighbourhood — this board's
+  `tx_user.h` adds `TX_THREAD_USER_EXTENSION` and defines `TX_64_BIT` — but not
+  the defect. Crossing `ninja -t deps` with each object's `DEFINES` on the
+  linked image: 199 TUs include `tx_api.h` and 199 carry
+  `TX_INCLUDE_USER_DEFINE_FILE`. The disagreement was never between TUs; it was
+  between two `#if` keys inside the port, 340 lines apart.
+* **x86_64 as a reproduction host.** The narrowing fires on
+  `__LP64__ || __x86_64__` and the compensation on `__x86_64__` alone, so on
+  x86_64 both fire and the truncation cannot happen. Three binaries, many runs,
+  under load average 45+ and under gdb: no fault, and all four
+  `threadx_linux_cyclonedds` tests pass. **This bug is aarch64-only** — an
+  x86_64 host cannot confirm or deny it, which is worth knowing before spending
+  a session on it as I did.
