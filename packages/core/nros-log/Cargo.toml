@@ -120,5 +120,7 @@ workspace = true
 
 [build-dependencies]
 # issue 0727 — compiles the weak host log stubs (c/host_log_stub.c);
-# host-target-only, see build.rs.
+# host-target-only, see build.rs. nros-cc-flags carries the repo cc policy
+# (issues 0383/0478).
 cc = "1"
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }

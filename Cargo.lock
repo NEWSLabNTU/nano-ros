@@ -1802,6 +1802,7 @@ dependencies = [
  "cc",
  "heapless 0.8.0",
  "log",
+ "nros-cc-flags",
  "nros-platform-cffi",
  "portable-atomic",
 ]
