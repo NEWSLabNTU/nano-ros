@@ -47,6 +47,12 @@
  * SUSPENDED and pin it before starting, the only window in which Zephyr
  * accepts a cpu mask. `pin_rc` returns the kernel's own code so the marker
  * text stays here, in lockstep with nros_tests::output::ZEPHYR_CORE_PIN_*. */
+/* issue 0260 — the CPU the CALLING thread is observed on, or
+ * NROS_ZEPHYR_CPU_UNKNOWN (0xFFFFFFFF) when the image cannot say. SMP-only by
+ * construction: `arch_proc_id()` is declared inside `#ifdef CONFIG_SMP`, and
+ * the posix arch (native_sim) does not provide it at all. */
+extern uint32_t nros_zephyr_current_cpu(void);
+
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes,
                                         uint32_t core_plus1, int* pin_rc);
@@ -268,6 +274,25 @@ static void* zephyr_tier_task(void* arg) {
      * thread, and Zephyr refuses a cpu mask on a started thread, so the
      * self-apply this line used to do could only ever log -EINVAL. The pin is
      * applied inside nros_zephyr_tier_task_create, before the start. */
+
+    /* issue 0260 — but this IS the place to report where the tier actually
+     * runs. The pin markers say the kernel ACCEPTED the mask; on a
+     * uniprocessor image that is true and uninformative, since cpu 0 is the
+     * only CPU the thread could be on. Mirrors the Rust arm's
+     * `nros: core pin observed` in `entry_tiers.rs` — the two must not drift,
+     * which is why both were added together rather than one now and one when
+     * an SMP fixture needs it.
+     *
+     * Silent when the image cannot answer, rather than printing a fabricated
+     * cpu 0. */
+    {
+        uint32_t observed = nros_zephyr_current_cpu();
+        if (observed != 0xFFFFFFFFu) {
+            printk("nros: core pin observed tier=`%s` running_on=%u\n",
+                   (ctx->name != NULL) ? ctx->name : "?", observed);
+        }
+    }
+
     zephyr_apply_tier_deadline(ctx->name, ctx->tier_class, ctx->deadline_us);
 
     /* Open a borrowed executor that shares the primary session. The primary
