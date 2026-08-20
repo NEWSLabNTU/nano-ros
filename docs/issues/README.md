@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0740** (build, open 2026-08-21) — nros-c's mirrored `nros_config_generated.h` (the 0088/0268
+producer edge) is a cross-directory custom-command OUTPUT, and the 0090 file-level OBJECT_DEPENDS on it
+only resolves under Ninja: under Unix Makefiles a CLEAN downstream consumer build dies with "No rule to
+make target …include/nros/nros_config_generated.h" on the generated entry TU, and a second pass
+"fixes" it (the mirror now exists on disk). In-tree lanes never see it because their stage order leaves
+the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, not only the file —
+sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
+pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
+
 **#0738** (testing/px4/codegen, open 2026-08-20) — `just px4 build-bridge-example` is invoked by NO lane:
 one grep hit, its own definition. So the uORB->RMW bridge and the only consumer of
 `generate-px4-msgs --lang cpp` are built by nothing — the emitter's headers, its FFI `*_types.rs` bodies
