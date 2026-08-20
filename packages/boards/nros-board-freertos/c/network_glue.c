@@ -103,17 +103,30 @@ int nros_freertos_init_network(
         srand(seed);
     }
 
-    /* Initialize per-thread lwIP semaphore for the app task.
-     * Required when LWIP_NETCONN_SEM_PER_THREAD=1 — each task that calls
-     * lwIP socket/netifapi functions must have its own semaphore.
-     * Must be called before any lwIP API (including netifapi_netif_add). */
-    lwip_socket_thread_init();
-
     /* Start lwIP's tcpip_thread (scheduler must be running) */
     tcpip_init(tcpip_init_done_cb, NULL);
     while (!lwip_init_done) {
         vTaskDelay(1);
     }
+
+    /* Initialize the per-thread lwIP semaphore for the app task.
+     * Required when LWIP_NETCONN_SEM_PER_THREAD=1 — each task that calls
+     * lwIP socket/netifapi functions must have its own semaphore. Still
+     * before any lwIP API call (`netifapi_netif_add` is below).
+     *
+     * phase-370 W4 — this used to run BEFORE `tcpip_init`, on the reading that
+     * "before any lwIP API" includes the initializer. It does not:
+     * `sys_arch_netconn_sem_alloc` takes a semaphore from lwIP's memp pools,
+     * and `tcpip_init` is what creates them. Allocating first left the task's
+     * TLS slot holding nothing, and the FIRST socket call from this task hit
+     * `LWIP_ASSERT("sem != NULL")` inside `sys_arch_netconn_sem_get()`.
+     *
+     * It stayed latent because zenoh-pico opens its sockets from its own read
+     * and lease tasks, which take this path through `net.c`'s
+     * `ensure_lwip_thread()` — after init by construction. CycloneDDS creates
+     * its endpoints from the APP task, which is the one initialized here, so
+     * the embedded Cyclone lane is the first to reach it. */
+    lwip_socket_thread_init();
 
     /* Delegate netif registration to the board overlay.
      * Default weak impl returns -1 (no Ethernet); LAN9118 / STM ETH

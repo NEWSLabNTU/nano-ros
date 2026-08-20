@@ -29,15 +29,20 @@
 // uses unprefixed custom IDLs).
 
 #include <cstddef>
-#include <cstdlib>
 #include <cstring>
+
+// phase-370 W4 — `env_lookup`, which answers `nullptr` on a freestanding
+// target instead of calling a `getenv` that is not declared there. Its own
+// header, NOT `internal.hpp`: this file is included by test TUs with no
+// CycloneDDS headers on their include path.
+#include "env_compat.hpp"
 
 namespace nros_rmw_cyclonedds {
 
 namespace topic_prefix {
 
 inline bool skip_via_env() {
-    const char *env = std::getenv("NROS_RMW_CYCLONEDDS_SKIP_PREFIX");
+    const char *env = env_lookup("NROS_RMW_CYCLONEDDS_SKIP_PREFIX");
     return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 

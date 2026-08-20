@@ -1,7 +1,8 @@
 # Phase 370 — freertos-posix board variant + first live Cyclone-on-FreeRTOS cell
 
-**Status (2026-08-20).** W1–W3 LANDED; W4 (the embedded QEMU Cyclone cell)
-and W5 (the ASI consumer switch) are open. Implements the "go, small"
+**Status (2026-08-20).** W1–W3 LANDED. W4 PARTIAL — the embedded Cyclone
+lane now builds and boots and gets a participant, and stops at writer
+creation (issue 0733). W5 (the ASI consumer switch) is open. Implements the "go, small"
 scoping decision recorded in phase-292 W4.a: the FreeRTOS POSIX simulator
 is a BOARD-level variant, not a new platform layer, and its RMW/network
 half is the existing posix Cyclone path verbatim.
@@ -65,6 +66,41 @@ EMBEDDED FreeRTOS (ddsrt freertos+lwip port, `WITH_FREERTOS+WITH_LWIP`
 cmake block, compat shims in `nros-platform-freertos`) is ~70% plumbed but
 has ZERO live cells — the Phase 220.C retirement left it configure-proven,
 never pub/sub-proven. This phase closes both.
+
+## W4 — what "~70% plumbed, ZERO live cells" turned out to mean
+
+The build half is landed. `cyclonedds` × `mps2-an385-freertos` went from **does
+not compile** to **boots, brings up lwIP, creates a participant**:
+
+```
+Network ready
+[nros] …/talker/src/main.c:105 nros_publisher_init(…, "/chatter") -> -1
+```
+
+Five defects between those two states, none of them about a new board:
+
+1. Three `std::`-qualified C names a cross libc does not alias (`getenv`,
+   `strtoull`, `calloc`/`free`). Phase 203 recorded this for ONE symbol on ONE
+   libc; newlib on arm-none-eabi aliases a different subset, which is what makes
+   it a class.
+2. Those `calloc`/`free` were on TRANSIENT SAMPLES — the hazard
+   `cyclonedds-known-limitations.md` states outright ("never libc — RTOS heap is
+   separate"). `subscriber.cpp` already followed the rule; `service.cpp` did not.
+3. Under `-ffreestanding`, `getenv` is not declared at all — correctly, since
+   the image has no environment. One `env_lookup` now says so for all three
+   sites, in its own dependency-free header (putting it in `internal.hpp`
+   dragged `dds/dds.h` into test TUs and broke `check-rmw-cyclonedds`).
+4. The lwIP per-thread semaphore was allocated BEFORE `tcpip_init` created the
+   pool it comes from, so the app task's TLS slot held nothing and the first
+   socket call asserted `sem != NULL`. Latent because zenoh-pico opens sockets
+   from its own tasks; Cyclone creates endpoints from the APP task.
+5. (Ruled out, recorded so it is not retried.) `ddsrt`'s FreeRTOS thread entry
+   does not call `lwip_socket_thread_init` for Cyclone's own threads. It was
+   implemented in the vendored fork and measured: the failure is byte-identical
+   with and without it. No fork commit was made.
+
+The remaining step needs Cyclone-level tracing on a target where
+`CYCLONEDDS_URI` cannot be read — its own piece of work, filed as issue 0733.
 
 ## Work items
 

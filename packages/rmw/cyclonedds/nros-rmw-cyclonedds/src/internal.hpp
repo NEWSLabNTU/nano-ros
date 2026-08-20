@@ -50,6 +50,10 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include "nros/platform.h"
+
+// phase-370 W4 — `env_lookup`, kept in its own dependency-free header so the
+// light TUs that need it do not acquire this file's CycloneDDS includes.
+#include "env_compat.hpp"
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
 #include "nros/platform.h"
 #elif defined(NROS_PLATFORM_THREADX)

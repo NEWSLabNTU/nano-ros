@@ -17,7 +17,7 @@
 
 #include "graph.hpp"  // Phase 177.36 — ros_discovery_info node graph
 
-#include <cstdlib>
+#include <stdlib.h>
 #include <cstring>
 #include <new>
 
@@ -155,7 +155,10 @@ nros_rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_
 #else
     constexpr const char* kKconfigCycloneConfig = "";
 #endif
-    const char* user_uri = std::getenv("CYCLONEDDS_URI");
+    // `::getenv` — a cross libc's `<cstdlib>` aliases only a subset of the C
+    // names into `std::`, and which subset differs per libc (see
+    // `service.cpp`'s `env_u64`).
+    const char* user_uri = env_lookup("CYCLONEDDS_URI");
     const char* cyc_config = (user_uri != nullptr && user_uri[0] != '\0') ? user_uri
                              : (kKconfigCycloneConfig[0] != '\0')         ? kKconfigCycloneConfig
                                                                           : kEmbeddedCycloneConfig;

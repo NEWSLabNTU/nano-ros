@@ -53,10 +53,27 @@
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
+// phase-370 W4 — the ddsrt heap, for the transient samples below.
+//
+// They were `std::calloc`/`std::free`, which is the hazard
+// docs/reference/cyclonedds-known-limitations.md names in as many words:
+// "transient samples use `ddsrt_{malloc,calloc,free}`, never libc — RTOS heap
+// is separate". `subscriber.cpp` beside this file already allocates its take
+// buffer with `ddsrt_calloc`; the rule had been applied there and not here.
+//
+// On an RTOS the two heaps are genuinely different arenas, so a sample taken
+// from libc and freed through Cyclone (or vice versa) is a cross-allocator
+// free. On the host both reach `malloc`, which is why nothing surfaced until a
+// cross build compiled this file — and there it surfaced as
+// `'calloc' is not a member of 'std'`, a spelling complaint that says nothing
+// about the heap.
+#include <dds/ddsrt/heap.h>
 
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
+// The C header, not `<cstdlib>`: see `env_u64` for why the `std::` aliases
+// cannot be relied on across the cross libcs this builds for.
+#include <stdlib.h>
 #include <new>
 #if !defined(NROS_PLATFORM_FREERTOS) && !defined(NROS_PLATFORM_THREADX)
 #include <atomic>
@@ -82,16 +99,32 @@ namespace {
 // defaults apply there. No function-local statics (would need __cxa_guard on
 // embedded); callers read once into a local where it matters.
 uint64_t env_u64(const char* name, uint64_t fallback) {
-    const char* v = std::getenv(name);
+    // `::getenv`, not `std::getenv` — same reason as the `::strtoull` below,
+    // and phase-370 W4 is where that reason turned out to be general. Phase 203
+    // recorded it for ONE symbol on ONE cross libc; the arm-none-eabi/newlib
+    // cross aliases a different subset, and `getenv` is outside this one.
+    // The unqualified C declaration is present on every target this builds for.
+    const char* v = env_lookup(name);
     if (v == nullptr || v[0] == '\0') return fallback;
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0
+    // Unreachable on a freestanding target — `env_lookup` returns `nullptr`
+    // there, so the check above already returned. Written out rather than left
+    // to the optimiser because `strtoull` is not DECLARED under
+    // `-ffreestanding`, and an undeclared call is a compile error whether or
+    // not it can run.
+    return fallback;
+#else
     char* end = nullptr;
-    // Phase 203 — use the global-namespace C name. picolibc's `<cstdlib>` on
-    // the riscv64/threadx cross does **not** alias every C function into
-    // `std::` (only a subset — `getenv` is in, `strtoull` is not), so a
-    // `std::strtoull` reference fails to compile on the embedded build. The
-    // unqualified name resolves to the C declaration via `<stdlib.h>`.
+    // Phase 203 — use the global-namespace C name. A cross libc's `<cstdlib>`
+    // does **not** alias every C function into `std::`, and WHICH subset it
+    // aliases differs per libc: picolibc on the riscv64/threadx cross has
+    // `getenv` and not `strtoull`; newlib on arm-none-eabi has neither. So the
+    // rule is not "avoid `std::strtoull`" but "do not depend on the aliasing at
+    // all here" — phase-370 W4 generalised it after the second libc disagreed.
+    // `<stdlib.h>` is included below for the C declarations.
     unsigned long long parsed = ::strtoull(v, &end, 10);
     return (end != v && parsed > 0) ? static_cast<uint64_t>(parsed) : fallback;
+#endif
 }
 
 // Default Cyclone service request/reply match timing (ms). Tunable at runtime
@@ -345,7 +378,7 @@ nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    auto* sample = static_cast<uint8_t*>(std::calloc(1, desc->m_size));
+    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
     std::memcpy(sample + guid_off, wire_cdr + kEncapLen, kGuidBytes);
     std::memcpy(sample + seq_off, wire_cdr + kEncapLen + kGuidBytes, kSeqBytes);
@@ -357,14 +390,14 @@ nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
     sequence->_release = true;
     sequence->_buffer = static_cast<int32_t*>(dds_alloc(count * sizeof(int32_t)));
     if (count > 0 && sequence->_buffer == nullptr) {
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_BAD_ALLOC;
     }
     std::memcpy(sequence->_buffer, wire_cdr + pos, count * sizeof(int32_t));
 
     dds_return_t r = dds_write(writer, sample);
     dds_stream_free_sample(sample, desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
@@ -503,13 +536,13 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
 
     if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_SendGoal_Response_") ||
         type_ends_with(desc, "_GetResult_Request_")) {
-        void* sample = std::calloc(1, desc->m_size);
+        void* sample = ddsrt_calloc(1, desc->m_size);
         if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
         size_t payload_len = read_len - kEncapLen;
         if (payload_len > desc->m_size) payload_len = desc->m_size;
         std::memcpy(sample, read_cdr + kEncapLen, payload_len);
         dds_return_t r = dds_write(writer, sample);
-        std::free(sample);
+        ddsrt_free(sample);
         return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
     }
     if (type_contains(desc, "Fibonacci_GetResult_Response_")) {
@@ -517,7 +550,7 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
     }
 
     uint32_t xcdrv = cdr_xcdr_version(read_cdr);
-    void* sample = std::calloc(1, desc->m_size);
+    void* sample = ddsrt_calloc(1, desc->m_size);
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
 
     dds_istream_t is;
@@ -527,7 +560,7 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
 
     dds_return_t r = dds_write(writer, sample);
     dds_stream_free_sample(sample, desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 

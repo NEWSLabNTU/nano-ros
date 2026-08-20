@@ -63,6 +63,16 @@ carried the same lesson as a local comment. And #0726's gate could not have caug
 `packages/` + `tools/`, making 39 pre-existing sites across 11 files visible and ratcheted (133/74 → 172/85).
 See `archived/0732-*`. (2026-08-20)
 
+**#0733** (freertos, open 2026-08-20) — the embedded Cyclone × FreeRTOS lane now BUILDS and BOOTS
+(phase-370 W4 cleared nine seams: three `std::`-aliased C names a cross libc does not provide, transient
+samples on the libc heap instead of ddsrt's — the rule `cyclonedds-known-limitations.md` states outright
+and `subscriber.cpp` already followed — `getenv` under `-ffreestanding`, and an lwIP per-thread semaphore
+allocated BEFORE `tcpip_init` created the pool it comes from). It gets a participant and then
+`nros_publisher_init` returns a bare -1 with no assert and no diagnostic. Ruled out by measurement: adding
+`lwip_socket_thread_init` to ddsrt's FreeRTOS thread entry changes nothing, so no fork commit was made.
+The immediate blocker is DIAGNOSTICS — `CYCLONEDDS_URI` cannot reach a target with no environment.
+See `0733-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0731** — DUPLICATE of #0723/#0727, filed while two other sessions were
 fixing it (0727's title is its subject verbatim). `PlatformSink`'s extern pair broke
 `cargo test --no-run --workspace --exclude nros-c --no-default-features`, reddening tier 1. The fix went
