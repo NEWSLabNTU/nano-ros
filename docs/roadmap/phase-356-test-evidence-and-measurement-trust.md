@@ -314,6 +314,45 @@ is: copy that directory for `qemu_cortex_a53/qemu_cortex_a53/smp`, add
 Question 2 is the one that decides whether this work is worth doing at all, and
 it is a code change to the board, not a fixture question.
 
+### a53 + C entry, probed 2026-08-20 — builds and boots SMP, crashes in the NET stack
+
+Taking the a53/C route (Rust cannot build on that board — its `RUST_SUPPORTED`
+wants `CPU_AARCH64_CORTEX_A`, the board sets `CPU_CORTEX_A53`/`CPU_CORTEX_A`).
+
+**What works.** `examples/workspaces/realtime-c/src/zephyr_entry` builds for
+`qemu_cortex_a53/qemu_cortex_a53/smp` with a board overlay
+(`boards/qemu_cortex_a53_qemu_cortex_a53_smp.conf`, committed):
+`CONFIG_SMP=y`, `CONFIG_SCHED_CPU_MASK=y` (the pin's gate),
+`CONFIG_TEST_RANDOM_GENERATOR=y` (without it, `undefined reference to
+z_impl_sys_rand_get` at link), `CONFIG_ETH_E1000=y`. It boots, brings up the
+second core ("Secondary CPU core 1 (MPID:0x1) is up"), and enumerates the e1000
+over PCIe.
+
+**What does not.** The image then takes a Data Abort before any nros output:
+
+| QEMU networking | faulting symbol |
+| --- | --- |
+| `-nic user,model=e1000` | `get_ifaddr` — `net_if.c:4780`, FAR 0x50 |
+| no NIC at all | `sys_write32` — arm64 `sys_io.h:82`, FAR 0x0 (MMIO write to 0) |
+
+Both are in the NETWORK stack, not in nros. The no-NIC fault is a driver writing
+to an absent device's BAR; the user-mode fault is the IP stack dereferencing
+something null during interface setup. The entry's `prj.conf` net settings were
+written for native_sim, and this is where they stop transferring.
+
+**Two corrections to my own earlier note in this section.** "Smaller than
+costed" was too optimistic — it is a conf tweak up to the point the image runs,
+and a real bring-up after that. And the board's own runner is not usable here
+either way: it passes `-nic tap,...,ifname=zeth`, which needs `/dev/net/tun`
+(`Operation not permitted` without privileges, and this repo does not sudo). The
+fixture will need user-mode networking or a `net-setup.sh` TAP the operator
+provisions.
+
+**Next step, concretely:** debug the two faults above with the entry's net
+config, starting from whether `CONFIG_NET_L2_ETHERNET` + the static-IP path in
+`prj-zenoh.conf` assume a native_sim-only interface. Nothing further is blocked
+on a decision.
+
 ---
 
 ## Deliberately not doing
