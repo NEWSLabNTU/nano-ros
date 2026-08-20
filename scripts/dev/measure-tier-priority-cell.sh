@@ -17,7 +17,7 @@
 # The rates this issue accumulated before it existed went 1/5 -> 3/5 -> 4/6 ->
 # "16/20" and were each read as progress; the corrected reading was that the
 # batch spread exceeded the effect. Use enough runs (30+) to say anything.
-cd /home/aeon/repos/nano-ros
+cd "$(dirname "$0")/../.."   # one author's home is not a path other checkouts have
 source ./activate.sh >/dev/null 2>&1
 N="${1:-20}"
 HOGS="${2:-0}"
