@@ -7,6 +7,8 @@ fn main() {
     let target = std::env::var("TARGET").unwrap_or_default();
     let host = std::env::var("HOST").unwrap_or_default();
     if target == host {
-        cc::Build::new().file("c/host_log_stub.c").compile("nros_log_host_stub");
+        cc::Build::new()
+            .file("c/host_log_stub.c")
+            .compile("nros_log_host_stub");
     }
 }
