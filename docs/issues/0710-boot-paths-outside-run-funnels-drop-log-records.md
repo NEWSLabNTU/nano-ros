@@ -108,6 +108,25 @@ Closing that needs a DIFFERENT image — one that boots through the board entry 
 emits a record — not a change to this fixture. Left open deliberately rather than
 papered over by converting the one image that cannot test it.
 
+**The image exists.** `examples/qemu-arm-baremetal/rust/listener` declares
+`nros-board-mps2-an385 = { features = ["board-entry"] }` and enters through
+`nros::main!()`, so it boots via `entry.rs` — the funnel that publishes. The gap
+is therefore not "no image reaches the board" but "no ASSERTION rides the image
+that does".
+
+What remains for whoever takes it:
+
+* the record must come from `nros_log`, not `printf` — a board that publishes no
+  sink list still prints its C-side banner, so grepping boot output proves
+  nothing unless the line asserted is one `nros_log` dispatched. `nros_info!`
+  from the node body qualifies; the platform banner does not;
+* the assertion belongs on an existing qemu-arm-baremetal runtime cell rather
+  than a new fixture, since the image is already built and booted there;
+* it closes `entry.rs` only. `rtic.rs` and `node.rs::run_bare` are separate
+  funnels with separate images, and the runtime coverage claim should say which
+  funnel it covers — the mistake this whole issue is about is a check whose
+  coverage is narrower than the rule it appears to enforce.
+
 The third option is the most honest: a booted image that emits nothing is the only
 check that cannot be fooled by a spelling. It costs a fixture per board family
 and it found this defect on its first run.
