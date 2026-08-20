@@ -296,6 +296,23 @@ fi
 # "delete the tree and rebuild" is wrong advice: it destroys the evidence of a
 # real regression and re-measures to green. Only say it when the reading really
 # could be history.
+# When the reading REALLY could be history, name the cheap way to clear it.
+#
+# Rebuilding re-measures but does not remove the earlier eras — cargo never
+# collects an artifact whose `-C metadata` identity it has moved past, so the
+# same count comes back. Deleting the whole tree does work and costs a full
+# rebuild. Pruning removes only the identities nothing references any more, so
+# it costs nothing: the copy kept per slot is the one cargo links.
+#
+# Measured 2026-08-20 in the ROS distrobox: 509 superseded files / 1.52 GB, and
+# `nros_core` went 12 identities -> 4 (its budget), with no rebuild afterwards.
+_accumulation_hint() {
+    echo "" >&2
+    echo "  If it IS history, prune the superseded identities (no rebuild needed):" >&2
+    echo "      python3 scripts/build/prune-superseded-artifacts.py $TREE          # dry run" >&2
+    echo "      python3 scripts/build/prune-superseded-artifacts.py $TREE --apply" >&2
+}
+
 era_verdict() {
     # issue 0513 — `_era_filtered`, not `_started`: the filter can be ACTIVE and
     # still have been stepped around for this crate, and then "do not delete the
@@ -312,9 +329,11 @@ era_verdict() {
         echo "  This build did not rebuild $BUDGET_CRATE, so the count above is" >&2
         echo "  UNFILTERED and MAY include earlier builds. Rebuild ($BUILD_HINT)" >&2
         echo "  and re-read before treating it as a regression." >&2
+        _accumulation_hint
     else
         echo "  This stamp has no started_at, so the count MAY be accumulation from" >&2
         echo "  earlier builds. Rebuild ($BUILD_HINT) and re-read before believing it." >&2
+        _accumulation_hint
     fi
 }
 

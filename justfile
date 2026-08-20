@@ -4427,6 +4427,19 @@ check-sched-dim-arms:
 check-artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh
 
+# Remove cargo artifacts a later build superseded, in a workspace build tree.
+#
+# The identity budget counts `-C metadata` identities, and cargo never collects
+# the artifact of an identity it has moved past — so a long-lived incremental
+# tree stacks one copy per build era in the same slot and can bust the budget on
+# history alone, while the current build sits exactly on it.
+#
+# Keeping the newest per (dir, crate, ext) is free: that copy is the one cargo
+# links and the older ones are unreferenced, so nothing rebuilds. `just prune-artifacts`
+# is a DRY RUN; add `apply=1` to delete.
+prune-artifacts dir="examples/workspaces/mixed/build-workspace-fixtures" apply="":
+    @python3 scripts/build/prune-superseded-artifacts.py {{dir}} {{ if apply == "" { "" } else { "--apply" } }}
+
 # phase-340 W3 — ONE `--target` spelling for every cargo command cmake emits.
 #
 # `--target <host-triple>` and no `--target` are different cargo identities on
