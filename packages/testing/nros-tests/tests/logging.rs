@@ -23,6 +23,10 @@
 //! suite stays host-only so it can run as part of the default
 //! `just test` matrix without spinning up QEMU.
 
+// issue 0724 — this test links `nros-log` DIRECTLY and not `nros_tests`, so the
+// lib's link anchor does not reach it and it needs its own. See `src/lib.rs`.
+extern crate nros_platform_cffi as _;
+
 use std::sync::Mutex;
 
 use nros_log::{

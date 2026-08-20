@@ -30,6 +30,30 @@ nros-log = { workspace = true }
 nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
+[dev-dependencies]
+# issue 0724 — this crate's TEST BINARIES are host images, and an image needs a
+# platform port. `nros-log`'s `PlatformSink` calls `nros_platform_log_write`,
+# and issue 0710 made `dispatch_to_sinks` install that sink on first use rather
+# than drop the record, so the extern became a LINK requirement of anything that
+# logs. Seven test binaries stopped compiling.
+#
+# Two details this crate needs that `nros-c` / `nros-cpp` (issue 0619) did not:
+#
+#  * `default-features = false`. `nros-platform-cffi` dev-deps
+#    `nros-node[rmw-cffi]`, which deps THIS crate, so the edge closes a cycle.
+#    Legal, and `nros-log` already has it — but inheriting the full default
+#    feature set through the cycle shifts unification.
+#  * the self-dep below. Even narrowed, the cycle resolves `nros-rmw-cffi`
+#    without `lending`, and `tests/loan_{native,fallback}.rs` +
+#    `tests/rust_adapter.rs` then fail on `nros_rmw::SlotLending` — targets that
+#    had been compiling only because another workspace member happened to turn
+#    the feature on. Naming it here makes this crate's own tests say what they
+#    need instead of borrowing it, which is what `nros-c`'s self-dep does.
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false, features = [
+    "posix-c-port",
+] }
+nros-rmw-cffi = { path = ".", features = ["lending"] }
+
 [build-dependencies]
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in
 # `tests/c_stubs/*.c` into a small static lib that the integration

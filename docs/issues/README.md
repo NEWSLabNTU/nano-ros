@@ -146,6 +146,18 @@ env around the whole fixture build would pollute the shared tree every other tes
 REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
 See `0711-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0724** — issue 0710 made `dispatch_to_sinks` install the default
+sink instead of dropping the record, which promoted `nros_platform_log_write` from "referenced by code
+that names `PlatformSink`" to a LINK requirement of anything that logs. 69 test targets — 62 in
+`nros-tests`, 7 in `nros-rmw-cffi` — stopped compiling, so `just ci` could not build its suite at all.
+`nros-log`'s own manifest had written the hazard down for `platform-clock` ("host tools composing custom
+sinks without a platform port would not, hence not a default"). Fixed by bringing the POSIX port to the
+tests: non-optional dep + one anchor in `nros-tests/src/lib.rs` (all 62 link that lib), own anchors for
+`tests/logging.rs` and `nros-rmw-cffi`'s 12. `nros-rmw-cffi` also needed `default-features = false` and a
+self-dep — `nros-platform-cffi` dev-deps back into it, and the cycle dropped `nros-rmw/lending`. NOTE
+`--keep-going` is required to see the real count; without it cargo reports 7. See `archived/0724-*`.
+(2026-08-20)
+
 Recently resolved (2026-08-20): **#0715** — every threadx-linux CycloneDDS image SEGV'd in the ThreadX
 timer thread. The port narrows `ULONG` to 32-bit on LP64, so `tx_timer_internal_timeout_param` cannot hold
 a thread pointer; the port compensates via `tx_timer_internal_extension_ptr` — but the NARROWING was keyed

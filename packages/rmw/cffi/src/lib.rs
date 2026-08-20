@@ -17,6 +17,16 @@
 
 #![no_std]
 
+// issue 0724 — the link anchor for the LIB TEST binary, and only for it.
+//
+// `#[cfg(test)]` on purpose: the lib test is a host image and needs the POSIX
+// port for `nros-log`'s `PlatformSink` (issue 0710 made that need
+// unconditional), while a `no_std` consumer of this crate must NOT be made to
+// link it. The integration tests carry the same line each — they are separate
+// crates and this one does not reach them. `nros-node` does exactly this.
+#[cfg(test)]
+extern crate nros_platform_cffi as _;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
