@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0727** (core/testing, open 2026-08-20) — tier 2's first run on this host caught it: `PlatformSink`'s
+extern pair (`nros_platform_log_write`/`_flush`) is a link-time platform requirement riding #708/#710's new
+`nros-rmw-cffi -> nros-log` LIBRARY edge, and the workspace `--no-default-features` test-compile cannot link
+it. A `platform-sink` default feature now exists but transitive default-features re-enable it; `-p` builds
+link only because the unreferenced vtable gets GC'd. Principled fix = the sink is the IMAGE's choice
+(phase-366's doctrine): library edges go `default-features = false`, boards/entries enable `platform-sink`.
+Landed: WEAK host stubs (issue 0050's discipline) — build.rs compiles no-op weak defs only when TARGET==HOST,
+so ports override, cross builds still fail loud, and the lane links with no new exclusions. The issue stays
+open for the eventual edge flip. See `0727-*`. (2026-08-20)
+
 **#0723** (build, open 2026-08-20) — `just check` is STILL red after #0714: seven `nros-rmw-cffi` targets
 fail `undefined symbol: nros_platform_log_write` in the Phase 214.G.2 workspace `--no-default-features`
 test compile. 0714 put 0710's auto-install behind `nros-log/platform-sink` on the reasoning that consumers

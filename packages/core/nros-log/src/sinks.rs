@@ -9,8 +9,11 @@
 //! test harness) compose their own `&'static [&dyn LogSink]` and
 //! pass it to [`crate::init`].
 
-use crate::{LogSink, Record};
+use crate::LogSink;
+#[cfg(feature = "platform-sink")]
+use crate::Record;
 
+#[cfg(feature = "platform-sink")]
 unsafe extern "C" {
     /// Per-platform log delivery (Phase 88). Declared in
     /// `<nros/platform.h>`; implementor lives in each
@@ -33,8 +36,10 @@ unsafe extern "C" {
 /// Zero-sized. Threading + ISR safety inherit from the linked
 /// `nros-platform-<rtos>` impl — see the table in
 /// `docs/roadmap/archived/phase-88-nros-log.md`.
+#[cfg(feature = "platform-sink")]
 pub struct PlatformSink;
 
+#[cfg(feature = "platform-sink")]
 impl LogSink for PlatformSink {
     fn log(&self, record: &Record<'_>) {
         // Issue #503 — with `platform-clock`, prefix the rendered line
@@ -63,6 +68,7 @@ impl LogSink for PlatformSink {
     }
 }
 
+#[cfg(feature = "platform-sink")]
 fn emit(severity: u8, name: &str, msg: &str) {
     let name = name.as_bytes();
     let msg = msg.as_bytes();
@@ -73,6 +79,7 @@ fn emit(severity: u8, name: &str, msg: &str) {
     }
 }
 
+#[cfg(feature = "platform-sink")]
 static PLATFORM_SINK: PlatformSink = PlatformSink;
 
 /// The default sink list: just `&PLATFORM_SINK`.
@@ -84,6 +91,16 @@ static PLATFORM_SINK: PlatformSink = PlatformSink;
 /// ```
 #[must_use]
 pub fn default() -> &'static [&'static dyn LogSink] {
-    static SINKS: &[&dyn LogSink] = &[&PLATFORM_SINK];
-    SINKS
+    #[cfg(feature = "platform-sink")]
+    {
+        static SINKS: &[&dyn LogSink] = &[&PLATFORM_SINK];
+        SINKS
+    }
+    // Without the platform sink there is nothing to deliver to — an empty
+    // list, records drop. Only host test lanes build this shape; every real
+    // image carries the default feature set.
+    #[cfg(not(feature = "platform-sink"))]
+    {
+        &[]
+    }
 }
