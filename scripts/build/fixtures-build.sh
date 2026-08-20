@@ -270,8 +270,15 @@ if [ "$lang" = "c" ] || [ "$lang" = "cpp" ]; then
     # 0400's cache guard is CALLED BY nros_cmake_configure_if_needed; the
     # exported-function fan-out must carry it (and its helpers) too, or the
     # make workers die "nros_cmake_guard_build_dir: command not found".
+    # 0706 added two helpers that `nros_cmake_guard_build_dir` calls — the
+    # toolchain-RESOLUTION probe and the build dir's recorded compiler — and a
+    # make leaf is a fresh bash with only what `export -f` gave it, so they have
+    # to ship too. Without them the leaf dies
+    # "nros_cmake_toolchain_resolved_cc: command not found", which is where the
+    # NuttX C rows failed the whole tier-2 fixture build.
     export -f nros_fixture_build_cmake nros_cmake_configure_if_needed \
-        nros_cmake_guard_build_dir
+        nros_cmake_guard_build_dir \
+        nros_cmake_toolchain_resolved_cc nros_cmake_dir_cc
     run nros_fixture_build_cmake
 else
     # rust cells — cargo build with the manifest's exact features/target-dir/env.
