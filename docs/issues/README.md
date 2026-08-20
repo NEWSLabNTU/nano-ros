@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0707** (testing, open 2026-08-20) — every solo or filtered run takes ROS domain 1 (`slot 0, seq 0`), so an
+orphan left on domain 1 joins the next run. Filed on issue 0672's own instruction, which recorded the hazard
+as "reachable, not yet observed" and asked for an issue if a collision was ever seen directly. The
+2026-08-20 sweep's one real failure carried `[RTPS_READER_HISTORY Error] Change payload size of '28' bytes
+is larger than the history payload size of '15' bytes` — cross-talk from a participant the test did not put
+there. NOT established that the bus was domain 1: the message carries no domain and the run had a real
+slot. The defect is the DETERMINISM rather than the collision — hand-run repros and solo retests of a red,
+the workflow CLAUDE.md prescribes, all land on the same bus as whatever left the orphan. Three directions
+recorded, none free. See `0707-*`. (2026-08-20)
+
 **#0705** (testing, open 2026-08-20) — `case_08_c_qos` in-sweep: `ros2 topic info` reports `Publisher count: 1`
 on /chatter, and that one publisher is a node named `talker` — belonging to ANOTHER test — while this cell's own
 `qos_talker` is ABSENT. Not a reporting defect: 0690's `topic_endpoints_for_node` fix is what surfaced it, and
