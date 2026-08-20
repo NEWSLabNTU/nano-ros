@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0704** — PlatformIO is not a supported integration, so its TEST SURFACE is
+deleted rather than left opt-in. The `pio run` bringup suite blew the 60 s budget on a COLD package cache and
+passed in 3.4 s warm — worse than a permanent red, since it passed for whoever had already run it. The opt-in
+gate (`NROS_ENABLE_PLATFORMIO=1`) was right while the question was open and wrong once answered: a suite nobody
+will set the flag for is a test that cannot fail wearing a flag. Deleted: the suite, its
+`multi_pkg_workspace_platformio` fixture, `just/platformio.just` and every orchestrator entry. KEPT as the
+future-work surface: `integrations/platformio/` + the repo-root `library.json` (data, not a build path —
+nothing in `just ci` reaches them), and the CLI/board paths, which are live code shared with supported targets.
+Resuming it means making `pio run` a BUILD-stage fixture, not run-time compilation. See `archived/0704-*`.
+(2026-08-20)
+
 Recently resolved (2026-08-20): **#0707** — every filtered or solo nextest run is global slot 0, so
 
 Recently resolved (2026-08-20): **#0727** — `PlatformSink`'s extern pair rode #708/#710's new
@@ -305,15 +316,6 @@ Front-truncation is lossless here because the CLI rewrites that path package-rel
 does not have, so it reported the `RUST_BACKTRACE` note. It now takes the line after `panicked at …` — keyed
 on POSITION like `skip_marker`, not a substring search. A/B on one host: pristine `EXIT=1` "harness failed
 (exit -1)", fixed `EXIT=0` "2 rebuilt". See `archived/0699-*`. (2026-08-19)
-
-**#0704** (testing/integrations, open 2026-08-20) — the PlatformIO bringup test runs `pio run`, which
-DOWNLOADS its platform package, so it hits the 60s per-test budget to the millisecond on a cold cache and
-passes in 3.4s on a warm one — a gate that depends on whether the machine has run it before. It was the
-last real failure in tier 2. PlatformIO is not a supported integration at present, so the suite is now
-OPT-IN (`NROS_ENABLE_PLATFORMIO=1`), skipping VISIBLY with a reason rather than being deselected silently
-in `env_exclude`. Closing it means either supporting the integration again — with the `pio run` moved to
-the BUILD stage, since "no compilation inside tests" is the real complaint — or deleting it.
-See `0704-*`. (2026-08-20)
 
 Recently resolved (2026-08-19): **#0696** — every native C/C++ fixture read STALE against
 `nros-tests/src/lib.rs`, a file in none of their dep graphs, so no build could clear it. Cause is

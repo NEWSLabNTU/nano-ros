@@ -1968,9 +1968,10 @@ domain_id = 0
 
     /// `[deploy.<target>]` accepts a block with neither `kind` nor `target`
     /// — both fields are optional per F.4 §12 known-gap #2 path (a). The
-    /// in-tree `multi_pkg_workspace_threadx` / `multi_pkg_workspace_platformio`
-    /// fixtures carry such blocks; the runner derives sensible defaults
-    /// from the `<target>` map key.
+    /// in-tree `multi_pkg_workspace_threadx` fixture carries such a block;
+    /// the runner derives sensible defaults from the `<target>` map key.
+    /// (The PlatformIO fixture that also carried one went with the
+    /// integration's test surface — issue 0704.)
     #[test]
     fn accepts_deploy_target_without_kind() {
         // Mirrors the `multi_pkg_workspace_threadx` fixture shape.
@@ -2003,7 +2004,9 @@ launch = "launch/system.launch.xml"
     /// `[deploy.<target>].framework` is accepted (F.4 §12 known gap #3).
     /// PlatformIO carries `framework = "espidf"` / `"arduino"` / … on its
     /// deploy block; the field passes through verbatim for the runner.
-    /// Mirrors the `multi_pkg_workspace_platformio` fixture.
+    /// The schema case outlives the fixture: PlatformIO's test surface was
+    /// removed with the integration (issue 0704), but `framework` is a
+    /// pass-through field and this test needs no fixture to pin it.
     #[test]
     fn accepts_platformio_framework_field() {
         let raw = r#"

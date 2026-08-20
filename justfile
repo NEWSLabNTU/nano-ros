@@ -76,7 +76,6 @@ mod verification 'just/verification.just'
 mod px4 'just/px4.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod ros_editions 'just/ros-editions.just'
-mod platformio 'just/platformio.just'
 mod probe 'just/probe.just'
 
 # =============================================================================
@@ -2908,9 +2907,6 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
         env_exclude+=("not binary(esp32_idf_talker_builds)")
         env_exclude+=("not binary(esp32_idf_listener_builds)")
     fi
-    if ! command -v pio >/dev/null 2>&1 && ! command -v platformio >/dev/null 2>&1; then
-        env_exclude+=("not binary(cli_bringup_platformio)")
-    fi
     # ros_editions (phase-309): the multi-edition harness lanes are OPT-IN — they
     # need docker, a slow-to-build `nano-ros-ros:<edition>` image, AND a
     # per-edition-regenerated publisher fixture (not part of build-test-fixtures).
@@ -5080,7 +5076,6 @@ setup target="" tier="":
           "  just setup threadx_riscv64" \
           "  just setup esp32" \
           "  just setup esp_idf" \
-          "  just setup platformio" \
           "  just setup px4" \
           "" \
           "Readiness checks:" \
@@ -5108,7 +5103,7 @@ setup target="" tier="":
             base|quickstart|minimal|default|all|everything|contributor|extended)
                 chosen_tier="$target"
                 ;;
-            workspace|verification|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|platformio|esp_idf|px4)
+            workspace|verification|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|esp_idf|px4)
                 # Focused platform setup may still shell `nros setup …`;
                 # build the CLI first so the binary is on disk.
                 just setup-cli
@@ -5364,7 +5359,6 @@ _orchestrate verb tier="everything":
             run xrce
             run rmw_zenoh
             run cyclonedds
-            run platformio
             run esp_idf
             run px4
             ;;
@@ -5624,7 +5618,6 @@ clean-examples:
     just esp32 clean
     just esp_idf clean
     just px4 clean
-    just platformio clean
     @echo "All example artifacts cleaned"
 
 # Clean fixture-only orchestration outputs.

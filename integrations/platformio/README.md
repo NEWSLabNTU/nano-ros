@@ -1,5 +1,27 @@
 # nano-ros PlatformIO adapter (Phase 212.H.6)
 
+> **STATUS: NOT A SUPPORTED INTEGRATION (2026-08-20).**
+>
+> Nobody is maintaining this, and as of issue 0704 nothing tests it: the e2e
+> bringup suite, its workspace fixture and the `just platformio` recipes were
+> removed rather than left as an opt-in nobody runs. "Present but untested"
+> is a holding position, and this tree keeps deleting the shape where a test
+> could not fail.
+>
+> **What is kept, and why.** The two files here — this README and
+> `nros_codegen.py` — plus the repo-root `library.json` are the whole adapter,
+> and they are DATA rather than a build path: nothing in `just ci` reaches
+> them, so they cost nothing to keep and they are what someone picking this up
+> again would otherwise have to re-derive. The CLI and board side stays too
+> (`[deploy.<target>].framework` passes through, and
+> `nros-board-esp32-qemu` names PlatformIO in its descriptor) because those
+> are live code paths shared with supported targets.
+>
+> **Resuming it means** re-testing it properly: the `pio run` that made the
+> old test slow has to become a BUILD-stage fixture, not a run-time
+> compilation — CLAUDE.md's "No compilation inside tests" — which is the real
+> reason the suite blew a 60 s budget on a cold package cache.
+
 PlatformIO has no configure-time hook rich enough to read `system.toml`
 from inside its tool, so this adapter follows the **ahead-of-vendor**
 path documented in `docs/design/0003-rtos-integration-pattern.md` §1: a PIO

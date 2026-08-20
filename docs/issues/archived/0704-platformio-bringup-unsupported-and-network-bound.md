@@ -1,7 +1,7 @@
 ---
 id: 704
 title: "The PlatformIO bringup test runs `pio run`, which fetches its platform package from the network and blows the 60 s per-test budget — and PlatformIO is not a supported integration right now"
-status: open
+status: resolved
 type: tech-debt
 area: testing, integrations
 related: [issue-0700, issue-0584]
@@ -107,3 +107,57 @@ exclusion is absent and the suite runs.
 **What remains is only the decision in "What would close this" above** — support
 the integration (with `pio run` moved to the BUILD stage) or delete it. The
 budget failure, the cold-cache dependence, and the selection bug are all fixed.
+
+> The section above was written while the integration was still opt-in. The
+> owner then decided not to support PlatformIO at all, so the selector it
+> repaired is gone with the suite it selected — kept here because it records
+> what the predicate was actually asking, which is the thing to get right
+> again if the integration ever returns.
+
+## Closed 2026-08-20 — the integration's TEST SURFACE is deleted, the adapter is kept
+
+The owner's call: PlatformIO is not being supported at present, so take the
+second of the two closing conditions this issue named rather than the holding
+position it settled on a few hours earlier.
+
+The opt-in gate was the right call while the question was open. It is the wrong
+one now: `NROS_ENABLE_PLATFORMIO=1` guards a suite nobody is going to set it
+for, which is a test that cannot fail wearing a flag — the shape this tree keeps
+removing, one indirection out.
+
+**Deleted**, because each of these asserts that somebody is maintaining the
+integration:
+
+* `packages/testing/nros-tests/tests/cli_bringup_platformio.rs` — the suite,
+  adapter-surface assertions included. Those are cheap and offline, but as this
+  issue already recorded, what they check is only meaningful if the integration
+  is maintained.
+* `packages/testing/nros-tests/fixtures/multi_pkg_workspace_platformio/` — its
+  workspace fixture, referenced by nothing else.
+* `just/platformio.just` and every orchestrator entry (`just setup platformio`,
+  the `run platformio` tier row, `just platformio clean`, the module import).
+  The `pio`-presence `env_exclude` went with the suite it deselected.
+
+**Kept**, and this is the "parts for future work" half:
+
+* `integrations/platformio/{README.md,nros_codegen.py}` and the repo-root
+  `library.json` — the whole adapter, and DATA rather than a build path.
+  Nothing in `just ci` reaches them, so they cost nothing and are exactly what
+  someone resuming this would otherwise re-derive. The README now leads with an
+  unsupported banner saying so.
+* The CLI and board paths — `[deploy.<target>].framework` pass-through,
+  `nros-board-esp32-qemu`'s descriptor. Live code shared with supported
+  targets; removing it would break a board over an unrelated decision.
+
+The schema test `accepts_platformio_framework_field` stays and still passes: it
+pins a pass-through field and never needed the fixture. Its doc comment no
+longer points at a deleted path.
+
+## What would reopen this
+
+PlatformIO becoming supported — at which point the `pio run` must be a
+BUILD-stage fixture rather than run-time compilation (CLAUDE.md: "No compilation
+inside tests"), which is the actual reason the old suite blew a 60 s budget on a
+cold package cache. That constraint is recorded above and is the first thing to
+read when picking it up.
+
