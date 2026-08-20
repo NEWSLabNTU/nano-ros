@@ -31,17 +31,7 @@ categories = ["embedded", "no-std", "development-tools::debugging"]
 # smaller N = more truncation. Pick at most one.
 
 [features]
-default = ["max-level-trace", "buffer-size-256", "platform-sink"]
-# The extern pair `nros_platform_log_write`/`_flush` is a LINK-TIME
-# requirement on the final binary — the same rule `platform-clock` below
-# documents for `nros_platform_clock_us`. Every real image satisfies it via
-# its `nros-platform-<rtos>` port; a HOST test binary linking this crate
-# through a dependency does not, which is how the tier-2
-# `--no-default-features` workspace test-compile found the hole (the
-# `PlatformSink` externs never got the treatment the clock's did). Without
-# this feature the platform sink does not exist and `sinks::default()` is
-# empty — records drop, which is only ever the state of a host test lane.
-platform-sink = []
+default = ["max-level-trace", "buffer-size-256"]
 std = ["alloc"]
 alloc = []
 
