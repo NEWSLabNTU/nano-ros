@@ -120,6 +120,76 @@ pub fn parse_board_metadata(cargo_toml: &Path) -> Result<BoardMetadata, eyre::Re
     Ok(board)
 }
 
+impl BoardMetadata {
+    /// Build the provisioning view from a `board.cmake` variable map — the
+    /// only face a CONF BUNDLE has (phase-337 W9.a folded per-board Zephyr
+    /// crates into `nros-board-<family>/boards/<name>/`, which carry no
+    /// `Cargo.toml`). Key mapping is [`FIELD_MAP`] plus the list/bool fields
+    /// it cannot express (`gated`, `requires_rust`, `rust_targets`).
+    ///
+    /// issue 0729: `nros setup board` read only the Cargo face, so every
+    /// bundle board was unprovisionable through the sanctioned path.
+    pub fn from_board_cmake(map: &BTreeMap<String, String>) -> Result<Self, eyre::Report> {
+        let req = |key: &str| -> Result<String, eyre::Report> {
+            map.get(key)
+                .cloned()
+                .ok_or_else(|| eyre::eyre!("board.cmake defines no `set({key} …)`"))
+        };
+        let list = |key: &str| -> Vec<String> {
+            map.get(key)
+                .map(|v| {
+                    v.split(';')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        Ok(Self {
+            zephyr_board: req("NROS_BOARD_ZEPHYR_ID")?,
+            toolchain: req("NROS_BOARD_TOOLCHAIN")?,
+            gated: list("NROS_BOARD_GATED_PKGS"),
+            default_rmw: req("NROS_BOARD_DEFAULT_RMW")?,
+            default_transport: req("NROS_BOARD_DEFAULT_TRANSPORT")?,
+            runner: req("NROS_BOARD_RUNNER")?,
+            prj_conf: req("NROS_BOARD_PRJ_CONF")?,
+            board_conf: req("NROS_BOARD_BOARD_CONF")?,
+            board_overlay: req("NROS_BOARD_BOARD_OVERLAY")?,
+            zephyr_line: map.get("NROS_BOARD_ZEPHYR_LINE").cloned(),
+            requires_rust: map
+                .get("NROS_BOARD_REQUIRES_RUST")
+                .map(|v| matches!(v.trim(), "y" | "Y" | "true" | "TRUE" | "1" | "on" | "ON")),
+            rust_targets: list("NROS_BOARD_RUST_TARGETS"),
+            rmw_source: map.get("NROS_BOARD_RMW_SOURCE").cloned(),
+        })
+    }
+}
+
+/// Read a board directory's provisioning contract from whichever face it has:
+/// `Cargo.toml` `[package.metadata.nros.board]` (a board CRATE) first, else
+/// `board.cmake` (a CONF BUNDLE). One loader so `nros setup board`,
+/// `nros board info` and future verbs cannot disagree about where a contract
+/// lives (issue 0729 — two verbs hardcoded the crate face and every bundle
+/// board became unprovisionable).
+pub fn load_provisioning_contract(board_dir: &Path) -> Result<BoardMetadata, eyre::Report> {
+    let cargo_toml = board_dir.join("Cargo.toml");
+    if cargo_toml.is_file() {
+        return parse_board_metadata(&cargo_toml);
+    }
+    let board_cmake = board_dir.join("board.cmake");
+    if board_cmake.is_file() {
+        let raw = std::fs::read_to_string(&board_cmake)
+            .map_err(|e| eyre::eyre!("failed to read {}: {e}", board_cmake.display()))?;
+        return BoardMetadata::from_board_cmake(&parse_board_cmake(&raw));
+    }
+    Err(eyre::eyre!(
+        "no provisioning contract in {}: neither `Cargo.toml` \
+         ([package.metadata.nros.board]) nor `board.cmake`",
+        board_dir.display()
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // `board.cmake` sidecar parser + drift compare
 // ---------------------------------------------------------------------------
@@ -404,6 +474,36 @@ fn basename(p: &str) -> &str {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// issue 0729 — the REAL fvp bundle's board.cmake face must yield a full
+    /// provisioning contract (it has no Cargo.toml face at all).
+    #[test]
+    fn bundle_board_cmake_face_yields_the_provisioning_contract() {
+        let bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .join("packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp");
+        let meta = load_provisioning_contract(&bundle).expect("bundle contract");
+        assert_eq!(meta.zephyr_line.as_deref(), Some("3.7"));
+        assert_eq!(meta.requires_rust, Some(true));
+        assert_eq!(meta.rmw_source.as_deref(), Some("cyclonedds-src"));
+        assert_eq!(meta.rust_targets, vec!["aarch64-unknown-none".to_string()]);
+        assert_eq!(meta.zephyr_board, "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp");
+    }
+
+    /// A board.cmake missing a required mirrored key is an error naming the
+    /// key, not a default.
+    #[test]
+    fn board_cmake_face_missing_required_key_errors() {
+        let map: BTreeMap<String, String> =
+            [("NROS_BOARD_TOOLCHAIN".to_string(), "x".to_string())].into();
+        let err = BoardMetadata::from_board_cmake(&map).unwrap_err();
+        assert!(
+            err.to_string().contains("NROS_BOARD_ZEPHYR_ID"),
+            "error must name the missing key: {err}"
+        );
+    }
 
     const FVP_GOLDEN: &str = r#"
 [package]

@@ -1,7 +1,7 @@
 ---
 id: 729
 title: "Bundle boards are invisible to `nros setup board` and `nros ws board-facts` — both still resolve the retired `packages/boards/nros-board-<name>` crate layout"
-status: open
+status: resolved
 type: bug
 area: cli
 related: []
@@ -78,3 +78,36 @@ one consumer bring-up.
 autoware-safety-island `scripts/bootstrap-asi.sh` inlines the four
 `run_board` steps; its build exports `NROS_REPO_DIR` for the board-facts lane
 (which then still degrades per (2), non-fatally).
+
+## Resolution (2026-08-20)
+
+Fixed the class, in three pieces:
+
+1. **One contract loader** — `board_metadata::load_provisioning_contract(dir)`
+   reads `Cargo.toml` `[package.metadata.nros.board]` when present, else the
+   `board.cmake` face via the new `BoardMetadata::from_board_cmake` (required
+   mirrored keys are errors naming the key; `REQUIRES_RUST`/`RUST_TARGETS`/
+   `GATED_PKGS` get the bool/semicolon-list treatment cmake cannot spell in
+   TOML).
+2. **`nros setup board`** resolves through `locate_board_crate` (the same
+   bundle-aware resolver `nros board info` uses) + that loader. The issue's
+   repro now provisions: `nros setup board fvp-aemv8r-smp --zephyr-workspace …
+   --dry-run` prints the full 4-step contract.
+3. **`BoardCatalog::load` attaches bundle ALIASES** — each
+   `nros-board-<family>/boards/<name>/board.cmake` adds `<name>` and its
+   `NROS_BOARD_ZEPHYR_ID` to the `names` of the single descriptor whose
+   platform matches the family, only when nothing already claims the name. So
+   `resolve_deploy("fvp-aemv8r-smp")` — and with it `board-facts` and the
+   site-config gate, which share that one rule per issue 0606 — lands on the
+   zephyr descriptor instead of Unknown. Verified:
+   `nros ws board-facts <ws> --deploy fvp` emits `NROS_BOARD=fvp-aemv8r-smp` +
+   `NROS_BOARD_TOML=packages/boards/zephyr/nros-board.toml`.
+
+Sweep (`format!("nros-board-…")` path builds in `packages/cli`): the two other
+sites are the resolver itself and `new-platform`'s crate scaffold — both
+correct. Tests: `bundle_board_cmake_face_yields_the_provisioning_contract`,
+`board_cmake_face_missing_required_key_errors`,
+`a_conf_bundle_board_resolves_to_its_family_descriptor`,
+`bundle_aliases_never_shadow_an_authored_name`.
+
+The autoware-safety-island `bootstrap-asi.sh` inline workaround can be dropped.

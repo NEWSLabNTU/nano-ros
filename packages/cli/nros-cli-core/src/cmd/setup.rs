@@ -16,7 +16,7 @@ use eyre::{Result, WrapErr, bail};
 use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
-        board_metadata::parse_board_metadata,
+        board_metadata::load_provisioning_contract,
         sdk_index::{SdkIndex, ToolPackage, host_key},
         sdk_store::{
             InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
@@ -452,21 +452,14 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         );
     }
 
-    // 3. Read the board's provisioning contract.
-    let crate_dir = root
-        .join("packages")
-        .join("boards")
-        .join(format!("nros-board-{}", args.name));
-    let cargo_toml = crate_dir.join("Cargo.toml");
-    if !cargo_toml.is_file() {
-        bail!(
-            "nros setup board: no board crate at `{}` (check the board name; \
-             `nros board list` enumerates them)",
-            crate_dir.display()
-        );
-    }
-    let meta = parse_board_metadata(&cargo_toml)
-        .wrap_err_with(|| format!("read provisioning contract from {}", cargo_toml.display()))?;
+    // 3. Read the board's provisioning contract — through the same
+    //    bundle-aware resolver `nros board info` uses (issue 0729: this verb
+    //    hand-built `packages/boards/nros-board-<name>` and so could not see
+    //    any conf-bundle board, i.e. any in-tree Zephyr board post-337 W9.a).
+    let crate_dir = crate::cmd::board::locate_board_crate(&root, &args.name)
+        .wrap_err("nros setup board (`nros board list` enumerates the known boards)")?;
+    let meta = load_provisioning_contract(&crate_dir)
+        .wrap_err_with(|| format!("read provisioning contract from {}", crate_dir.display()))?;
 
     let Some(zephyr_line) = meta.zephyr_line.as_deref() else {
         bail!(

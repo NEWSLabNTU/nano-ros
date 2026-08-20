@@ -122,13 +122,13 @@ in-tree (a (zephyr-embedded × C++ × cyclonedds) pairwise-class coordinate). Fo
 autoware-safety-island bring-up, which carries a sed patch until the lane adds `alloc`. See
 `0730-*`. (2026-08-20)
 
-**#0729** (cli, open 2026-08-20) — `nros setup board` (the RFC-0014 downstream-provisioning entry
-point) and `nros ws board-facts` both still resolve boards by the retired
-`packages/boards/nros-board-<name>` directory, so every phase-337 bundle board (all in-tree Zephyr
-boards) is unprovisionable through the sanctioned path — while `nros board info` resolves the same
-name fine (the bundle-aware resolver exists; two verbs never got it). setup board fails hard;
-board-facts silently drops the phase-351 facts rung. Found by the autoware-safety-island bring-up,
-which inlines the four run_board steps as a workaround. See `0729-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0729** — `nros setup board` and `board-facts` resolved boards by
+the retired `packages/boards/nros-board-<name>` directory, so every phase-337 bundle board (all
+in-tree Zephyr boards) was unprovisionable through the sanctioned RFC-0014 path. Both verbs now go
+through the bundle-aware resolver; the provisioning contract loads from either face
+(`Cargo.toml` else `board.cmake`), and `BoardCatalog::load` attaches bundle names as aliases of the
+family descriptor so `resolve_deploy` — shared by board-facts and the site-config gate — sees them.
+See `archived/0729-*`. (2026-08-20)
 
 **#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
 `NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today

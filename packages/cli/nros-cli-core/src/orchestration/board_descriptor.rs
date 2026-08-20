@@ -418,7 +418,82 @@ impl BoardCatalog {
                 b
             }));
         }
-        Ok(Self { descriptors })
+        let mut catalog = Self { descriptors };
+        catalog.attach_bundle_aliases(&boards_dir);
+        Ok(catalog)
+    }
+
+    /// issue 0729 — conf-bundle boards join the catalog as ALIASES of their
+    /// family's descriptor.
+    ///
+    /// Phase-337 W9.a folded per-board Zephyr crates into
+    /// `packages/boards/nros-board-<family>/boards/<name>/` (board.cmake +
+    /// confs, no `Cargo.toml`, no `nros-board.toml`), so no descriptor claimed
+    /// their names and every consumer of `resolve_deploy` — the site-config
+    /// gate, `board-facts` — answered Unknown for them. A bundle is a conf
+    /// overlay on its family's PLATFORM lane, so the facts a descriptor
+    /// carries (platform, toolchain, entry_kind, capabilities) are the
+    /// family's; the per-board knobs live in the bundle's `board.cmake` and in
+    /// site config, which the consumers read separately.
+    ///
+    /// The bundle's dir name and, when parseable, its `NROS_BOARD_ZEPHYR_ID`
+    /// are appended to the `names` of the descriptor whose `platform` matches
+    /// the family suffix (`nros-board-zephyr` → `zephyr`) — and only when no
+    /// existing descriptor already claims that name and exactly ONE descriptor
+    /// matches the family, so a hand-authored claim always wins and an
+    /// ambiguous family attaches nothing rather than guessing.
+    fn attach_bundle_aliases(&mut self, boards_dir: &Path) {
+        let Ok(entries) = std::fs::read_dir(boards_dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let family_dir = entry.path();
+            let Some(family) = family_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.strip_prefix("nros-board-"))
+                .map(String::from)
+            else {
+                continue;
+            };
+            let Ok(bundles) = std::fs::read_dir(family_dir.join("boards")) else {
+                continue;
+            };
+            for bundle in bundles.flatten() {
+                let board_cmake = bundle.path().join("board.cmake");
+                if !board_cmake.is_file() {
+                    continue;
+                }
+                let mut aliases: Vec<String> = Vec::new();
+                if let Some(name) = bundle.path().file_name().and_then(|n| n.to_str()) {
+                    aliases.push(name.to_string());
+                }
+                if let Ok(raw) = std::fs::read_to_string(&board_cmake)
+                    && let Some(id) = crate::orchestration::board_metadata::parse_board_cmake(&raw)
+                        .get("NROS_BOARD_ZEPHYR_ID")
+                {
+                    aliases.push(id.clone());
+                }
+                for alias in aliases {
+                    if self
+                        .descriptors
+                        .iter()
+                        .any(|d| d.names.iter().any(|n| n == &alias))
+                    {
+                        continue;
+                    }
+                    let mut family_matches = self
+                        .descriptors
+                        .iter_mut()
+                        .filter(|d| d.platform.kebab() == family);
+                    let (Some(target), None) = (family_matches.next(), family_matches.next())
+                    else {
+                        continue;
+                    };
+                    target.names.push(alias);
+                }
+            }
+        }
     }
 
     /// Build a catalog from already-parsed descriptors (tests / in-memory).
@@ -726,6 +801,51 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     /// point is that the forwarding chain has at least one in-tree witness, and
     /// keying it to a single board is what made a board deletion look like a
     /// capability regression.
+    /// issue 0729 — a conf-bundle board (no crate, no descriptor file) must
+    /// resolve as a deploy token, both by its bundle dir name and by its
+    /// Zephyr board id, to its family's descriptor.
+    #[test]
+    fn a_conf_bundle_board_resolves_to_its_family_descriptor() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        for token in ["fvp-aemv8r-smp", "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"] {
+            match cat.resolve_deploy(token) {
+                DeployResolution::Board(d) => assert_eq!(
+                    d.platform,
+                    PlatformKind::Zephyr,
+                    "bundle `{token}` must land on the zephyr family descriptor"
+                ),
+                other => panic!("bundle `{token}` did not resolve: {other:?}"),
+            }
+        }
+    }
+
+    /// A hand-authored `names` claim always beats a bundle alias — the alias
+    /// attaches only to names nothing else claims.
+    #[test]
+    fn bundle_aliases_never_shadow_an_authored_name() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let cat = BoardCatalog::load(&root).expect("load real board catalog");
+        let claims: Vec<&BoardDescriptor> = cat
+            .descriptors()
+            .iter()
+            .filter(|d| d.names.iter().any(|n| n == "zephyr"))
+            .collect();
+        assert_eq!(
+            claims.len(),
+            1,
+            "`zephyr` must stay uniquely claimed by the authored descriptor"
+        );
+    }
+
     #[test]
     fn a_board_advertises_the_safety_capability_feature() {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

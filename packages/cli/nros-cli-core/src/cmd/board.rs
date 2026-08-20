@@ -239,7 +239,7 @@ fn info(args: InfoArgs) -> Result<()> {
 /// (`zephyr/cmake/nano_ros_use_board.cmake`). Two languages, so no shared
 /// implementation is possible — the pair is kept honest by the fact that
 /// `nros board info <name>` and a Zephyr build of the same board must agree.
-fn locate_board_crate(workspace_root: &Path, name: &str) -> Result<PathBuf> {
+pub(crate) fn locate_board_crate(workspace_root: &Path, name: &str) -> Result<PathBuf> {
     let boards = workspace_root.join("packages").join("boards");
 
     let dir_name = format!("nros-board-{name}");
