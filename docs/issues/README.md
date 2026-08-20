@@ -60,6 +60,19 @@ the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, 
 sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
 pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
 
+Recently resolved (2026-08-21): **#0404** — the WCET declaration schema is implemented and the issue
+outlived it. Its own last note said "RFC only, by scope — the Rust type and its validator are deliberately
+a separate work item"; that work item landed as `7ccfd38c9`. All four questions answered in code: keyed on
+a named profile (`[wcet.profiles.<name>]` + `[wcet.select]`), unit is CYCLES plus the profile's `clock_hz`
+converted in-repo, granularity is per boundary at rlm's `node/path` identity, provenance carries
+`cpu`/`profile`/`measured_at_commit`/`counter_valid`/`source`. The invariant — absent stays representable
+and stays the DEFAULT — is structural and each arm is a named test
+(`no_clock_rate_yields_no_time_and_never_a_zero`, `an_observation_alone_reaches_nothing`,
+`a_dead_counter_cannot_be_declared_as_measured`); 92 pass. "What remains hard" (which OTHER contexts a
+number may be applied to) is `[wcet.select]`, an explicit reviewable claim whose typo is a HARD error
+because "a typo must not read as 'this board has no measurements'". Unblocks #0259.
+See `archived/0404-*`. (2026-08-21)
+
 Recently resolved (2026-08-20): **#0738** — `just px4 build-bridge-example` was invoked by NO lane (one
 grep hit: its own definition), so #0362's C++ emitter, its headers, the `_types.rs`/`_exports.rs` FFI
 bodies and the crate including them were all built by nothing. Laned the CHEAP half, no PX4 build system:
@@ -3176,16 +3189,6 @@ CAVEAT, stated rather than implied: the emitter has never been observed emitting
 the first marker line and this tree has no hardware lane — so it is compile- and drift-checked (the
 parser reads the bench's real format string), not executed. See `archived/0403-*`. (2026-08-16)
 
-**#404** — no schema for DECLARING a measured WCET. `MapperPath.exec_ms` is `Option<f64>` and nothing
-outside rlm's own tests ever sets it, so rlm v0.1.4's `ChainFeasibleWithoutWcet` (issue 0259) now
-reports missing evidence with nowhere to put it. Open questions: keying (board id / platform family /
-named measurement profile — a WCET belongs to a context, not to code), unit (mapper wants ms, the bench
-measures cycles, converting needs a clock rate), granularity (mapper wants a whole callback, the bench
-measures primitives), and provenance/staleness. UNBLOCKED 2026-08-16: 0403 now emits
-`nros.wcet.measurements/1`, so the schema can be designed against a real artifact instead of guessing
-the keying. That artifact carries no `clock_hz` and says so, which makes the unit question concrete
-rather than theoretical — a declaration in `ms` cannot be derived from it as it stands. Invariant: absent stays representable
-and stays the DEFAULT, else zeros get written in by hand. See `0404-*`. (2026-08-03)
 
 Recently resolved (2026-08-10): **#415** — `nros::main!`'s framework table was deploy-keyed, so an
 out-of-tree board declaring `framework = "embassy"`/`"rtic"` silently got a plain `fn main()` — an image

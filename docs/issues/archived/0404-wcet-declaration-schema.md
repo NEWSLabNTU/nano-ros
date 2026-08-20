@@ -2,7 +2,7 @@
 id: 404
 title: No schema for declaring a measured WCET — where it lives, what it is
   keyed on, and what makes it trustworthy
-status: open
+status: resolved
 type: enhancement
 area: orchestration
 related: [0259, 0403, rfc-0047, rfc-0060]
@@ -134,3 +134,68 @@ representable and must remain the default.** A schema that requires every
 boundary to carry a WCET will get zeros written into it, and the tree will be
 back where 0259 found it — with the added problem that the zeros are now
 signed by a developer.
+
+## Resolved (2026-08-21) — implemented in `7ccfd38c9`, never closed
+
+The 2026-08-18 note above ends "RFC only, by scope. The Rust type and its
+validator are deliberately a separate work item so the design is reviewable
+before an implementation makes it expensive to revert." That work item landed
+(`feat(phase-357 W1, #404)`) and the issue outlived it. Verified by RUNNING the
+suite, not by reading the type.
+
+### The four questions, answered in code
+
+| question | answer |
+| --- | --- |
+| keyed on | `[wcet.profiles.<name>]` — a named measurement context; `[wcet.select]` maps deploy target -> profile |
+| unit | `max_observed_cycles` + the profile's `clock_hz`, converted in-repo. `clock_hz` is `Option`: a profile without one is still valid and yields NO `exec_ms` |
+| granularity | `BoundaryWcet` per boundary at rlm's `node/path` identity, so `boundaries_without_wcet` and the declarations join by set difference |
+| provenance | `cpu`, `profile`, `measured_at_commit`, `counter_valid`, `source`, plus free-text `conditions` |
+
+### The invariant holds, and the tests say so by name
+
+"Absent must remain representable and must remain the default" is enforced
+structurally, and each arm has a test that fails if it stops being true:
+
+```
+wcet::tests::no_clock_rate_yields_no_time_and_never_a_zero
+wcet::tests::a_dead_counter_cannot_be_declared_as_measured
+wcet::tests::a_bound_below_what_was_observed_is_rejected
+wcet::tests::a_max_below_its_min_is_not_a_measurement
+wcet::tests::a_declared_margin_turns_an_observation_into_a_bound
+mapper_input::tests::an_observation_alone_reaches_nothing
+mapper_input::tests::no_profile_means_no_exec_ms_anywhere
+mapper_input::tests::a_declared_wcet_reaches_exec_ms_and_an_undeclared_one_stays_absent
+```
+
+`cargo test -p nros-orchestration-ir` — 92 passed, 0 failed. The end-to-end one
+is the issue's original complaint inverted: `MapperPath.exec_ms` now has exactly
+one way to become `Some(..)`, and it is a declaration a human wrote.
+
+### "What remains hard" is answered too
+
+This issue closed by saying the artifact "records `cpu`/`profile`/`commit` for
+the run that produced it, but says nothing about which OTHER contexts that
+number may be applied to. That judgement is this schema's to make."
+
+`[wcet.select]` is that judgement, made explicitly: a project states which
+profile a deploy target uses, so re-using a number across contexts is a written,
+reviewable claim rather than an inference. And it cannot fail quietly —
+`WcetSelectionError::UnknownProfile` is a HARD error, on the reasoning that "a
+typo must not read as 'this board has no measurements'". That is the same
+failure this issue and 0259 exist to prevent, caught one layer earlier.
+
+### The correction in the 2026-08-18 note is also stale
+
+It records that "the pinned rlm is v0.1.6 (rev `b9f45f1`), and CLAUDE.md still
+describes the dep as tag `v0.1.0`". CLAUDE.md now says `v0.1.8` across every
+nano-ros crate, and adds the standing instruction to read the pin from the
+manifests rather than from that file.
+
+### Downstream
+
+Issue 0259 ("derived scheduling is quantitatively inert") loses its blocker:
+`ChainFeasibleWithoutWcet` now has a remedy, and the success condition it names
+— the warning listing FEWER boundaries rather than going quiet — is exactly what
+the declaration path produces. Whether 0259 closes is its own question; this one
+supplied what it was waiting for.
