@@ -36,6 +36,18 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 
 jobs="${NROS_GATE_JOBS:-$(nproc)}"
+
+# The gates share one `.git/index`, and most reach it. Read-only git commands
+# still refresh the index opportunistically, which takes `.git/index.lock`.
+# GIT_OPTIONAL_LOCKS=0 tells git to skip anything that would take a lock, which
+# is what a read-only gate wants regardless.
+#
+# This is hygiene, NOT the fix for the known flake below — I proposed the
+# partial-`git ls-files` mechanism, then disproved it: 200 probes of the exact
+# pathspec under fan-out load never came back short, and the flake survived
+# this setting. Kept because it is correct on its own terms; do not read it as
+# the resolution.
+export GIT_OPTIONAL_LOCKS=0
 # The gate list is DERIVED from check-fast's own dependency line, never kept
 # beside it: a second copy silently drifts the moment someone adds a gate, and
 # this runner would then report OK over a set that is missing it.

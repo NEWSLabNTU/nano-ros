@@ -251,3 +251,31 @@ write/read pair between two gates that nothing else would have shown.
 
 The shared skip log is not the culprit: `nros_check_skip` does a single short
 `printf >>`, and one write under O_APPEND below PIPE_BUF is atomic.
+
+### Hunting the racing gate pair: what is ruled OUT
+
+The flake is real and reproducible in aggregate — roughly 1 full fan-out run in
+5 — but it resisted every direct reproduction. Recorded so the next attempt does
+not re-walk this:
+
+| hypothesis | test | result |
+| --- | --- | --- |
+| another gate rewrites example sources | both fmt gates use `rustfmt --check`; non-comment scan of all 111 gate bodies for writers | **no gate writes** under `examples/` |
+| `git ls-files` returns a partial list under index contention | 200 probes of the exact pathspec during a live fan-out | **never short** (steady 2/2) |
+| `GIT_OPTIONAL_LOCKS=0` fixes it | 5 fan-out runs with it exported | **still failed on run 5** |
+| latent bug in the gate, not a race | 40 standalone runs | **0 failures** |
+| generic machine load | 40 runs of the script during a live fan-out | **0 failures** |
+| something about `just` invocation | 25 runs via `just` during a live fan-out | **0 failures** |
+
+It is also not one file: the failure named `action-server` once and
+`service-client` another time, so whatever it is moves between the zephyr
+examples.
+
+What that leaves: a specific *other gate*, whose overlap window my external
+loops never hit because they were not scheduled against it. The next step is to
+bisect the gate set — run the fan-out with halves of the list plus the anchor
+gate until the partner shows up — rather than more load testing, which has now
+failed six different ways.
+
+Until then `check-fast` stays serial and the fan-out is opt-in. The 11x is not
+worth a gate nobody trusts.
