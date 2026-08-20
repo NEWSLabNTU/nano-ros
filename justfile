@@ -4393,6 +4393,19 @@ check-zephyr-kconfig-symbols:
 check-archive-lang-items:
     @bash scripts/check-archive-lang-items.sh
 
+# Issue 0260 / phase-356 W3 — the sched-dim ACCEPT arms no build otherwise
+# reaches. Syntax-only: it type-checks our `vTaskCoreAffinitySet` /
+# `sched_setaffinity` / `tx_thread_smp_core_exclude` call sites against the
+# vendored headers' REAL declarations, using a synthetic SMP config, because
+# those arms sit behind macros no image defines — so an API misuse in them is
+# invisible today.
+#
+# A green here is NOT an arm being observed ACCEPTING at runtime: that needs a
+# real SMP board and is phase-356's separate, larger item. FreeRTOS is covered;
+# nuttx and threadx are not yet, and the script says so in its own output.
+check-sched-dim-arms:
+    @bash scripts/check-sched-dim-arms-compile.sh
+
 # `--self-test` (issue 0661) drives both era verdicts over a synthetic tree,
 # because the failure mode here is a wrong VERDICT rather than a wrong count:
 # the early widening branch used to print "counts ALL … an accumulated tree can
