@@ -1,7 +1,7 @@
 ---
 id: 734
 title: "`nros-rmw-zenoh` is compiled TWICE into a C++ image — two `.bss` copies of the subscriber state, ~195 KiB, on different addresses"
-status: open
+status: resolved
 type: bug
 severity: high
 area: rmw-zenoh
@@ -80,7 +80,41 @@ grep -E '0x20[0-9a-f]+ +0x20000 .*nros_rmw_zenoh' build/zephyr/zephyr_pre0.map
 ```
 Two lines, two addresses = the bug.
 
-## Fix directions (not decided)
+## RESOLVED (2026-08-20)
+
+Not a design decision after all — a **missed sweep site**. The tree already
+states the rule (`cmake/NanoRosRuntimeCrate.cmake:6`, "a binary links exactly
+ONE Rust staticlib"), `nros-cpp` already deps `nros-c` as an RLIB *precisely* so
+one archive carries both (`nros-cpp/Cargo.toml:223`, "Replaces the separate
+`libnros_c.a` + backend-staticlib links"), and issue 0425 already swept the
+generic cmake path. `zephyr/CMakeLists.txt` was simply never swept.
+
+Fixed by linking `nros_cpp_cargo` only. The Phase 168.X comment that justified
+the second link claimed `nros_log_emit` "ships only with libnros_c.a"; `nm`
+disproves it — both archives define it, and of the 427 symbols in libnros_c.a
+but not libnros_cpp.a, ZERO are non-mangled C ABI. nros-c is still BUILT (the
+C++ side compiles against its generated headers), just not LINKED.
+
+Measured, mr_canhubk3/s32k344, `NROS_EXECUTOR_MAX_CBS=4`:
+
+| | before | after |
+| --- | --- | --- |
+| `nros_rmw_zenoh` `.bss` copies | 2 | **1** |
+| RAM overflow | 851432 | **651448** |
+| | | **−199984 B (~195 KiB)** |
+| new undefined symbols | | **0** |
+
+Gated by `scripts/check-single-rust-staticlib.py` (`just
+check-single-rust-staticlib`, on the `check` line): no cmake branch may link
+two umbrellas. Sibling if/else arms are the correct shape and are not flagged.
+
+**The gate's first draft passed against this very defect** — it recorded only
+the first link site per umbrella, so the legitimate C-API-arm link at line 272
+was remembered and the buggy second one never compared. Fixed to compare every
+site pairwise, then re-verified BOTH ways: it fails on the reintroduced double
+link and passes on the fix. A gate is not done when it goes green.
+
+## Fix directions (considered before the above)
 
 1. **Make the C++ umbrella depend on the C archive's `nros-rmw-zenoh`** rather
    than building its own, so cargo unifies one crate into one unit — the shape
