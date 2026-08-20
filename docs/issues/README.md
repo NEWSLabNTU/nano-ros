@@ -146,6 +146,15 @@ env around the whole fixture build would pollute the shared tree every other tes
 REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
 See `0711-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0713** — tier 2 failed seven zephyr fixtures as MISSING that its own
+lane had deliberately not built. West leaves have manifest rows but are unattributable BY PATH (west
+writes into the Zephyr build root, not `row_artifact_root`), so `fixtures::lane`'s fail-closed arm called
+every one in-lane — on the premise "their build is not narrowed either", true when written and false since
+phase-350 W1.b narrowed the zephyr build by coordinate. Fixed in `require_prebuilt_binary_fresh_zephyr`,
+the ONE helper all ~14 zephyr resolvers funnel through, keyed on the build-dir name `west-leaves` already
+coordinates; `logging_smoke` names the call itself. The stale `lane.rs` premise was corrected in the same
+commit. See `archived/0713-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0724** — issue 0710 made `dispatch_to_sinks` install the default
 sink instead of dropping the record, which promoted `nros_platform_log_write` from "referenced by code
 that names `PlatformSink`" to a LINK requirement of anything that logs. 69 test targets — 62 in

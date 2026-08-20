@@ -1,10 +1,11 @@
 ---
 id: 713
 title: "Tier 2's zephyr BUILD set is narrower than its RUN set — 7 coordinates built, more demanded as in-lane"
-status: open
+status: resolved
 type: bug
 area: build/zephyr
 related: [issue-0702, issue-0482, issue-0677]
+resolved: 2026-08-20
 ---
 
 ## Symptom
@@ -189,3 +190,57 @@ what tier 2 does.
 3. A post-condition worth having regardless: the lane knows which coordinates it
    was asked to build, and could assert their outputs exist before reporting OK
    — the same "assert the artifact" rule the fixture manifest applies elsewhere.
+
+
+## Resolved (2026-08-20) — the lane decides once, in the shared helper
+
+West leaves DO have manifest rows; they are only unattributable **by path**,
+because west writes into the Zephyr build root rather than under
+`row_artifact_root`. `fixtures::lane`'s fail-closed arm therefore called every
+one in-lane, on a premise its own docs stated:
+
+> their build is not narrowed either, so nothing is missing.
+
+That was true when written and stopped being true when phase-350 W1.b narrowed
+the zephyr BUILD by coordinate. Since then a tier-2 run resolved leaves the
+build had deliberately skipped, and reported a broken promise indistinguishable
+from a regression — seven of tier 2's twelve failures.
+
+The call went into `require_prebuilt_binary_fresh_zephyr`, the ONE helper every
+zephyr west leaf funnels through, keyed on the build-directory name that
+`fixtures-manifest.py west-leaves` already carries a coordinate for
+(`get_prebuilt_zephyr_example` had taken that route since issue 0517). Putting
+it there rather than at the ~14 resolvers is the difference between fixing the
+class and fixing the two sites whose failures happened to be read — the shape
+CLAUDE.md names for #282's second idiom and #328's unswept resolvers. A new
+zephyr resolver now gets the narrowing without knowing it exists, the same
+argument issue 0466 settled one block down for the source-candidate check.
+
+`build_logging_smoke_zephyr_native_sim` resolves through the generic freshness
+helper instead, so the lane call could not ride along and is named there.
+
+Swept: all 16 zephyr image resolvers across `binaries/mod.rs` and `zephyr.rs`
+route through the helper or the named call.
+
+    grep -n 'zephyr_build_root()\.join\|build_root\.join' \
+        packages/testing/nros-tests/src/fixtures/binaries/mod.rs \
+        packages/testing/nros-tests/src/zephyr.rs
+
+The stale premise in `lane.rs`'s module docs was corrected in the same commit —
+leaving it would have re-taught the next reader the thing that caused this.
+
+### Verified
+
+Tier 2's coordinate file (`zephyr,cpp,xrce` + `zephyr-cortex-m,c,zenoh`) against
+`entry_e2e` + `multihost_e2e`: every zephyr cell now reports
+
+    zephyr/rust/qos: [SKIPPED:lane] out of lane: .../zephyr_rust_qos_entry is at
+    coordinate zephyr,rust,zenoh, which this run's lane does not select, so
+    `just build-test-fixtures lane=<this lane>` deliberately did not build it.
+
+instead of failing MISSING. `entry_matrix` then reports `[SKIPPED]` for all 15
+cells; under bare `cargo nextest` that prints FAIL because `skip!` is a panic,
+and `just test-all`'s junit rewrite is what records it as a skip (CLAUDE.md).
+
+An in-lane coordinate still fails exactly as hard when its image is missing or
+stale — the skip is keyed on the coordinate, never on absence (issue 0445).

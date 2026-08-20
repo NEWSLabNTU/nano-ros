@@ -64,10 +64,19 @@
 //!   fixture fails exactly as hard as it did before — [`require_in_lane`] runs
 //!   before the existence check and returns `Ok` for it.
 //! * A path that attributes to NO row never skips (fail closed). Families built
-//!   module-level rather than by coordinate — the Zephyr west leaves, the
-//!   compile-check lane — have no manifest row and keep today's hard failure,
-//!   which is correct: their build is not narrowed either, so nothing is
-//!   missing.
+//!   module-level rather than by coordinate — the compile-check lane — keep
+//!   today's hard failure, which is correct: their build is not narrowed
+//!   either, so nothing is missing.
+//!
+//!   The Zephyr west leaves were in that list and no longer belong there
+//!   (issue 0713). They are not unattributable in principle — they have
+//!   manifest rows — only unattributable BY PATH, because west writes into the
+//!   Zephyr build root rather than under `row_artifact_root`. And the premise
+//!   stopped holding when phase-350 W1.b narrowed the zephyr build by
+//!   coordinate: their build IS narrowed, so a fail-closed resolve fails on an
+//!   image the lane deliberately never built. They take the coordinate route
+//!   instead, via [`require_west_leaf_in_lane`] keyed on the build-dir name
+//!   both halves already agree on.
 //! * With `NROS_TEST_COORDS` unset there is no narrowing at all and this module
 //!   does no work (it does not even read the manifest).
 //! * A `NROS_TEST_COORDS` that names a missing or empty file is a HARD ERROR,

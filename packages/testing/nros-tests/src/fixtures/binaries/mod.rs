@@ -1446,10 +1446,53 @@ impl<'a> ZephyrLeafSource<'a> {
 /// against the LINKED `zephyr.exe` mtime: a Rust source newer than the image
 /// means west never relinked. Reads the staticlib `.d` + `stat()`; never
 /// builds. Missing `.d` → existence-only fallback.
+/// The west build-directory name an image was linked in, i.e. the `<name>` of
+/// `<zephyr-build-root>/<name>/zephyr/zephyr.{exe,elf}`.
+///
+/// That shape is not a convention this function imposes — it is where west
+/// writes, so every resolver in this file already spells it, and it is the same
+/// `build_name` `fixtures-manifest.py west-leaves` keys its coordinate on.
+/// `None` for a path of any other shape, which [`require_west_leaf_in_lane`]
+/// already treats as fail-closed: run it.
+fn west_build_name(zephyr_exe: &Path) -> Option<&str> {
+    let dir = zephyr_exe.parent()?;
+    if dir.file_name()? != "zephyr" {
+        return None;
+    }
+    dir.parent()?.file_name()?.to_str()
+}
+
 pub(crate) fn require_prebuilt_binary_fresh_zephyr(
     zephyr_exe: &Path,
     src: ZephyrLeafSource<'_>,
 ) -> TestResult<PathBuf> {
+    // Issue 0713 — the LANE decides first, and it decides ONCE, here.
+    //
+    // West leaves have manifest rows but their images land in the Zephyr build
+    // root rather than under `row_artifact_root`, so `fixtures::lane` cannot
+    // attribute them by PATH and its fail-closed arm calls every one in-lane.
+    // That arm's justification — "their build is not narrowed either, so
+    // nothing is missing" — was true when it was written and stopped being true
+    // when phase-350 W1.b narrowed the zephyr BUILD by coordinate. Since then a
+    // tier-2 run resolved leaves the build had deliberately skipped and
+    // reported a broken promise indistinguishable from a regression: seven of
+    // its twelve failures.
+    //
+    // `get_prebuilt_zephyr_example` already took the coordinate route for its
+    // own leaves (issue 0517). Putting the call HERE rather than at the ~14
+    // resolvers is the difference between fixing the class and fixing the two
+    // sites whose failures happened to be read — the shape CLAUDE.md names
+    // (#282's second idiom, #328's ~30 unswept resolvers). It also means a new
+    // zephyr resolver gets the narrowing without knowing it exists, the same
+    // argument issue 0466 settled one block down for the source-candidate check.
+    //
+    // An IN-lane coordinate still fails exactly as hard when its image is
+    // missing or stale: the skip is keyed on the coordinate, never on absence
+    // (issue 0445).
+    if let Some(build_name) = west_build_name(zephyr_exe) {
+        crate::fixtures::lane::require_west_leaf_in_lane(build_name, src.dir)?;
+    }
+
     let resolved = require_prebuilt_binary(zephyr_exe)?;
     if std::env::var_os("NROS_SKIP_FIXTURE_CHECK").is_some() {
         return Ok(resolved);
@@ -3679,29 +3722,6 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
 /// `lang` is `"c"` or `"cpp"`. There is no rust arm: issue 0432 blocks the
 /// `zephyr` crate on any board with gpio nodes.
 pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
-    // Issue 0713 — the LANE decides first, same remedy as `require_idf_fixture`
-    // above (issue 0700) and for the same reason.
-    //
-    // These are west leaves: built module-level, with no manifest row, so
-    // `fixtures::lane` cannot attribute them by PATH and its fail-closed arm
-    // treats every one as in-lane. That arm's justification — "their build is
-    // not narrowed either, so nothing is missing" — holds for `lane=native` and
-    // is false for tier 2, whose zephyr cover is exactly
-    // `zephyr,cpp,xrce` + `zephyr-cortex-m,c,zenoh`. So a tier-2 run selected
-    // cortex-m cpp/rust, nothing built them, and the resolver reported a broken
-    // promise indistinguishable from a regression.
-    //
-    // Stating the coordinate lets the resolver skip by COORDINATE instead,
-    // which is what `require_coord_in_lane` exists for. An in-lane coordinate
-    // still fails exactly as hard when its artifact is missing.
-    crate::fixtures::lane::require_coord_in_lane(
-        &(
-            "zephyr-cortex-m".to_string(),
-            lang.to_string(),
-            rmw.coord_token().to_string(),
-        ),
-        &format!("examples/zephyr/{lang}/{case}"),
-    )?;
     let root = project_root();
     let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
     if !example_dir.exists() {
@@ -4340,6 +4360,15 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
     LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
             let binary = zephyr_build_root().join("build-logging-smoke/zephyr/zephyr.exe");
+            // Issue 0713 — a west leaf like any other, but resolved through the
+            // generic freshness helper rather than the zephyr one, so the lane
+            // call cannot ride along and is named here. Its manifest rmw label
+            // is `default`, which `west_leaves` resolves to the `zenoh`
+            // coordinate exactly as `row_coord` does.
+            crate::fixtures::lane::require_west_leaf_in_lane(
+                "build-logging-smoke",
+                "packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim",
+            )?;
             require_prebuilt_binary_fresh(&binary)
         })
         .map(|p| p.as_path())
