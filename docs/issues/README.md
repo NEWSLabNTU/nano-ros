@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0723** (build, open 2026-08-20) — `just check` is STILL red after #0714: seven `nros-rmw-cffi` targets
+fail `undefined symbol: nros_platform_log_write` in the Phase 214.G.2 workspace `--no-default-features`
+test compile. 0714 put 0710's auto-install behind `nros-log/platform-sink` on the reasoning that consumers
+with no port never get the link requirement — but cargo unifies features across every member ONE build
+selects, and `--workspace` selects them all, while LINKING stays per-binary. `nros-board-linux` (a root
+member) requests the feature unconditionally, so it is on for the whole graph. Signature:
+`-p nros-rmw-cffi` solo is OK, `--workspace` is red, same features. A cargo feature is a property of a
+COMPILATION and an undefined symbol is a property of a LINK, so no feature can express "only the binaries
+that also link a port". 0714's gate is not wrong, it asks a different question. See `0723-*`. (2026-08-20)
+
 **#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
 `NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today
 the panic policy) get applied. `nano_ros_add_executable` delegates to the entry, so ~160 call sites are
