@@ -75,6 +75,7 @@ nros_launch_resolve_stamp() {
     local crate="$root/packages/cli/nros-launch-resolve"
     local pl="$root/packages/cli/third-party/play_launch"
     {
+    {
         git -C "$root" ls-files "$crate" 2>/dev/null \
             | grep -E '\.rs$|Cargo\.(toml|lock)$' | sed "s|^|$root/|"
         git -C "$pl" ls-files "src/ros-launch-resolve" 2>/dev/null \
@@ -88,5 +89,33 @@ nros_launch_resolve_stamp() {
         # then reported stale immediately after its own remedy, which is the
         # exact symptom issue 0596 is about.
         [ -f "$f" ] && printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "${f#"$root"/}"
-    done | sha256sum | awk '{print $1}'
+    done
+    # The play_launch PIN, not just layer-2's content — issue 0561's fix,
+    # applied to the second of the two binaries that stamp it.
+    #
+    # `build.rs` bakes the submodule commit into BOTH `nros` and
+    # `nros-launch-resolve` as `NROS_PLAY_LAUNCH_SHA`, and `verify_resolver_pin`
+    # compares those two COMMITS. This probe compared layer-2 CONTENT. The two
+    # identities agree only while every pin move touches `src/ros-launch-resolve`
+    # — and 420904826055..65a7591e5165 touched `tests/**` and nothing else. So
+    # the content stamp matched, `setup-launch-resolve` exited 0 without
+    # rebuilding, the binary kept the old commit, and `nros sync` refused with a
+    # remedy that provably could not clear it. `build-test-fixtures` was
+    # unrunnable at that pin, and re-running the printed command forever was the
+    # only thing it suggested.
+    #
+    # 0561 records this same failure for `nros` itself ("moving the pin left the
+    # stamp unchanged, `setup-cli` skipped the rebuild while reporting success,
+    # and no sanctioned command could clear the resulting mismatch") and fixed it
+    # in `source_stamp.rs`. It fixed ONE of the two stampers.
+    #
+    # Gate on the `.git` FILE, per issue 0419: an uninitialised submodule is an
+    # empty directory that EXISTS, and `git -C <empty dir> rev-parse HEAD` walks
+    # UP to the superproject — which would move this component with every
+    # nano-ros commit and re-stale the resolver constantly.
+    if [ -e "$pl/.git" ]; then
+        printf '%s  play_launch@pin\n' \
+            "$(git -C "$pl" rev-parse HEAD 2>/dev/null || echo unknown)"
+    fi
+    } | sha256sum | awk '{print $1}'
 }
