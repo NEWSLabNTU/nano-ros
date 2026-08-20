@@ -83,8 +83,8 @@ hazard this tree already moved RMW BACKEND registration off (phase-249 P3). Two 
 aggregate strong registrar like the backends do, or have the board walk `.init_array`), so it is filed
 rather than patched. NOTE this issue RETRACTS its own earlier claim that the ddsrt lwIP thread fix
 "changes nothing" — that was measured on an INCREMENTAL build which never recompiled the cyclonedds
-subproject; from clean it IS the fix for the lwIP assert, and is now fork commit `99cfac88` awaiting a
-maintainer push. See `0733-*`. (2026-08-20)
+subproject; from clean it IS the fix for the lwIP assert, and is now fork commit `99cfac88`, pushed and
+pinned. See `0733-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0731** — DUPLICATE of #0723/#0727, filed while two other sessions were
 fixing it (0727's title is its subject verbatim). `PlatformSink`'s extern pair broke

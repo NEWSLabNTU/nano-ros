@@ -92,8 +92,8 @@ Five defects between those two states, none of them about a new board:
    dragged `dds/dds.h` into test TUs and broke `check-rmw-cyclonedds`).
 4. `ddsrt`'s FreeRTOS `thread_start_routine` never gave Cyclone's OWN threads an
    lwIP per-thread netconn semaphore, so the first socket call from one asserted
-   `sem != NULL`. Fork commit `99cfac88` (delta §5), local pending a maintainer
-   push — the superproject pin is deliberately not bumped to an unpushed commit.
+   `sem != NULL`. Fork commit `99cfac88` (delta §5), pushed to `origin/nano-ros`
+   and pinned.
 
    **A correction belongs here.** This was first reported as "ruled out by
    measurement": the fork file was reverted, the tree rebuilt INCREMENTALLY, and

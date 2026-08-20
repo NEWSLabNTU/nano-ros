@@ -113,11 +113,9 @@ its own netconn semaphore. ddsrt creates its own threads and never called
 `sem != NULL`. `thread_start_routine` is the point they have in common. Found by
 phase-370 W4, the first work to boot an embedded Cyclone image at all.
 
-**Not yet pushed to the fork remote.** The commit is local
-(`third-party/dds/cyclonedds`, branch `nano-ros`); the superproject pin is
-deliberately NOT bumped to it, because a pin naming an unpushed commit clones as
-an unfetchable ref. Push the fork branch first, then bump — the order CLAUDE.md's
-vendored-fork workflow requires.
+Pushed to `origin/nano-ros` as a fast-forward over `8601ca66`, and the
+superproject pin bumped to it afterwards — that order, not the reverse: a pin
+naming an unpushed commit clones as an unfetchable ref.
 
 ## Why upstreaming does not retire it
 

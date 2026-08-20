@@ -62,9 +62,9 @@ Re-measured from CLEAN build directories in both directions:
 | either | **no** | `lwIP ASSERT: sem != NULL`, then `-1` |
 | either | **yes** | no assert, then `-1` |
 
-So the ddsrt change IS the fix for the assert, and it is now committed in the
-fork (`99cfac88`, see `docs/reference/cyclonedds-fork-delta.md` §5) — local
-only, pending a maintainer push.
+So the ddsrt change IS the fix for the assert. It is fork commit `99cfac88`
+(`docs/reference/cyclonedds-fork-delta.md` §5), pushed to `origin/nano-ros` and
+now the superproject pin.
 
 The same table retires the other half of the original story: the
 `network_glue.c` reordering of `lwip_socket_thread_init()` after `tcpip_init()`
