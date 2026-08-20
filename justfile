@@ -573,6 +573,7 @@ check-build: \
     check-required-features-tests \
     check-feature-set-ssot \
     check-no-tracked-file-find \
+    check-pool-inventory \
     check-grep-q-error-conflation \
     check-sched-dim-arms \
     check-image-paths-apply-policy \
@@ -3426,6 +3427,16 @@ check-single-rust-staticlib:
 [group("ci")]
 check-cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
+
+# Issue 0739 — every build-time sizing knob is enumerable, and the pools that
+# declared their arithmetic carry a byte figure. Issue 0271 audited a 256 KB
+# image that already tuned NINE of these and still inherited ~145 KB of defaults
+# it did not know existed; four separate features had each added a static pool
+# with a knob, silently. Generated, not transcribed — a hand-written list is the
+# thing that goes stale the first time a feature lands.
+[private]
+check-pool-inventory:
+    @python3 scripts/gen-pool-inventory.py --check
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.

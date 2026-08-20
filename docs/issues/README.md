@@ -81,6 +81,18 @@ the STRUCT — Rust and C++ are covered; `--lang c` is rejected but is not a gap
 `<uORB/topics/*.h>` gives the C struct verbatim. Coverage split out as #0738.
 See `archived/0362-*`. (2026-08-20)
 
+Recently resolved (2026-08-21): **#0739 / #0271** — a 256 KB image that already tuned NINE sizing knobs
+still inherited ~145 KB of defaults, because each feature adding a static pool added its knob silently and
+nothing could enumerate them (0 of the 5 knobs that audit needed were in the book). `gen-pool-inventory.py`
+now generates `book/src/reference/static-pool-inventory.md` — 34 knobs mechanically, byte figures OPT-IN via
+a `// nros-pool:` formula the generator evaluates at defaults — gated on the fast lane. It reproduces 0271's
+link-map numbers from source (`LARGE_PAYLOADS` 131,072, `SLOTS` 8,192). Bytes are deliberately NOT claimed
+where a slot's width is cfg-dependent (`MESSAGE_INFO_TABLE`). 0271 itself closes at 91 % recovered, all
+remaining work consumer-side; it also carried two stale claims, both corrected there: phase-346 (the seam its
+port waits on) COMPLETED 2026-08-12, and phase-358's Executor-carve suspicion is contradicted by 0271's own
+"false lead" measurement. See `archived/0739-*`, `archived/0271-*`. (2026-08-21)
+
+
 Recently resolved (2026-08-20): **#0651** — Zephyr **4.4** was reachable only from the nightly, so a
 Kconfig or API change landed unverified for a day. Now: symbol existence is gated on BOTH lines from
 source in ~2 s with the trees one command away (`just zephyr kconfig-trees`, 613 MB of shallow clones,

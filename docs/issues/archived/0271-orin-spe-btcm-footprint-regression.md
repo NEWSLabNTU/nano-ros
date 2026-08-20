@@ -1,11 +1,12 @@
 ---
 id: 271
 title: "Orin SPE BTCM footprint regressed ~+195 KB between d9af52be and 21a3a4248 — minimal Executor::open+spin image no longer fits 256 KB"
-status: open
+status: resolved
 type: regression
-severity: high
+severity: medium
 area: embedded
-related: [issue-0257]
+related: [issue-0257, issue-0739]
+resolved: 2026-08-21
 ---
 
 ## Finding (autoware_sentinel phase-14 pin bump, 2026-07-25)
@@ -306,3 +307,54 @@ resolving the arena term — another reason not to lean on it.)
 The honest state of phase 358's suspicion: `58d271471` plausibly recovered a
 large part of this, and **that remains untested**. Testing it needs an armv7r
 build of the minimal image, which needs the port above.
+
+
+## Closed 2026-08-21 — 91 % recovered, the durable half split to #0739
+
+Re-checked against current main rather than trusting this doc, which was last
+touched 2026-08-15.
+
+**The regression is substantially resolved.** 168,760 bytes of overflow -> 14,404,
+and ~11,268 once `NROS_RMW_MESSAGE_INFO_SLOTS=8` is applied at the consumer's
+next pin bump. Four of the five wins were consumer-side configuration; the one
+nano-ros-side item landed and is still live (`packages/rmw/cffi/build.rs`,
+default 64). Nothing here is a nano-ros defect any more.
+
+**The durable finding is now #0739 and is DONE.** This issue argued its most
+valuable outcome was making the existing knobs enumerable. Verified 2026-08-21
+that none of the five knobs this audit needed appeared in the book's
+environment-variables reference. `scripts/gen-pool-inventory.py` now generates
+`book/src/reference/static-pool-inventory.md` (34 knobs, gated on the fast
+lane), and it independently reproduces this issue's link-map figures from
+source: `LARGE_PAYLOADS` 131,072 and `SLOTS` 8,192.
+
+### Two corrections to what was written here
+
+**The consumer port is probably no longer blocked.** The 2026-08-15 entry says
+the port needs "the out-of-tree board seam, phase-346". That phase is COMPLETE
+as of 2026-08-12 — "The RFC-0064 seam, actually reachable from out of tree",
+closing issues 0415 and 0432 — which predates the entry that names it as
+pending. `nros-board-orin-spe` and `platform-orin-spe` are still gone, so the
+port is still WORK, but the seam it was waiting for exists.
+
+**Phase 358's suspicion is most likely a false lead, and the disproof is in
+this file.** 358 hoped `58d271471` (Executor 11632 -> 4992) recovered much of
+the overflow, and treats an armv7r image as the only way to test it. But the
+"false lead worth recording" section above already ran that experiment:
+shrinking `__NROS_SIZE_EXECUTOR_SIZE` from 154,432 to 59,200 moved the overflow
+**not at all**, because it is a size-EXPORT blob `--gc-sections` drops. By the
+same reasoning the Executor carve should not move BTCM either. Whoever picks
+this up should re-read that section before spending a cycle on the arena.
+
+(Separately, the claim that no comparable figure is obtainable has also expired:
+32-bit in-tree builds report `EXECUTOR_OPAQUE_U64S` today — `armv7a-nuttx-eabihf`
+11034, riscv32 11036. By the paragraph above that number is the wrong instrument
+for THIS budget, but it is no longer unobtainable.)
+
+### Residual, if someone wants the last ~11 KB
+
+Consumer-side, and it needs the port: bump the sentinel pin, apply
+`NROS_RMW_MESSAGE_INFO_SLOTS=8`, and take one more link-map round. The original
+good pin had 31 KB headroom, so this is a measurement exercise, not an
+architectural one. Reopen or file fresh against the consumer rather than
+carrying a mostly-fixed regression open indefinitely.

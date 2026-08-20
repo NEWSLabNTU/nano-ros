@@ -588,6 +588,13 @@ impl MessageInfoSlot {
 // `valid` with AcqRel before copying the `MessageInfo`.
 unsafe impl Sync for MessageInfoSlot {}
 
+// issue 0739 — deliberately NOT annotated with a `// nros-pool:` formula.
+// `MessageInfoSlot`'s width depends on cfg (`alloc` + `safety-e2e` add three
+// more fields), so any constant here would be right for one build and wrong for
+// the rest. Issue 0271 measured 3,584 bytes at 64 slots in ITS configuration;
+// stating that as the cost would be the fabrication the inventory exists to
+// avoid. The knob still appears in the table with its default — the table says
+// "no byte figure", which is true, rather than implying it is free.
 static MESSAGE_INFO_TABLE: [MessageInfoSlot; MESSAGE_INFO_SLOTS] = {
     #[allow(clippy::declare_interior_mutable_const)]
     const E: MessageInfoSlot = MessageInfoSlot::empty();

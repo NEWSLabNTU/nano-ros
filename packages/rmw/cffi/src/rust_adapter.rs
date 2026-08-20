@@ -93,6 +93,10 @@ mod static_subscriber_storage {
         }
     }
 
+    // issue 0739 — declare the arithmetic so the pool inventory can price it.
+    // 0271 measured this pool at 8,192 bytes on an image that had never heard of
+    // the knob; `SLOT_SIZE` is the literal above, so the figure is derivable.
+    // nros-pool: SLOTS = NROS_RMW_SUBSCRIBER_SLOTS * 1024
     static USED: [AtomicBool; SLOT_COUNT] = [const { AtomicBool::new(false) }; SLOT_COUNT];
     static SLOTS: [Slot; SLOT_COUNT] = [const { Slot::new() }; SLOT_COUNT];
 

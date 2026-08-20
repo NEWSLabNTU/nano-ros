@@ -147,6 +147,7 @@
 - [Supported Boards](./reference/supported-boards.md)
 - [Board Support Tiers](./reference/board-support-tiers.md)
 - [Environment Variables](./reference/environment-variables.md)
+- [Static Pool Inventory](./reference/static-pool-inventory.md)
 - [Build Commands](./reference/build-commands.md)
 - [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)
 
