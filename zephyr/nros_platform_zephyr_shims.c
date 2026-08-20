@@ -105,7 +105,7 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
  * OBSERVED on; otherwise it asserts exactly what the uniprocessor image already
  * asserts.
  *
- * `arch_proc_id()` is the API for it — and it is declared INSIDE
+ * `arch_curr_cpu()->id` is the API for it — and it is declared INSIDE
  * `#ifdef CONFIG_SMP` in `arch_interface.h`. The posix arch (native_sim) does
  * not provide it at all: its `arch_inlines.h` defines only `arch_num_cpus`. So
  * this is SMP-only by construction, not by choice, and a uniprocessor image
@@ -113,10 +113,17 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
  * that cannot answer the question is precisely the false evidence this exists
  * to remove.
  *
+ * NOT `arch_proc_id()`, which this used first and which is wrong here: on
+ * arm64 it returns the raw MPIDR_EL1, whose bit 31 is RES1, so a tier pinned to
+ * core 1 reported `running_on=2147483649` (0x80000001) on the first SMP image
+ * that ran. The number a `core` dim is written in is the LOGICAL cpu index, and
+ * `arch_curr_cpu()->id` is that. Measured on qemu_cortex_a53 SMP, not reasoned
+ * about — the raw-MPIDR value is plausible enough to survive review.
+ *
  * Returns the CPU id, or NROS_ZEPHYR_CPU_UNKNOWN when the image cannot say. */
 uint32_t nros_zephyr_current_cpu(void) {
 #ifdef CONFIG_SMP
-    return arch_proc_id();
+    return (uint32_t)arch_curr_cpu()->id;
 #else
     return NROS_ZEPHYR_CPU_UNKNOWN;
 #endif
