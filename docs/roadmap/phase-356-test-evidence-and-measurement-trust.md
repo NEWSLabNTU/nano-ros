@@ -353,48 +353,51 @@ config, starting from whether `CONFIG_NET_L2_ETHERNET` + the static-IP path in
 `prj-zenoh.conf` assume a native_sim-only interface. Nothing further is blocked
 on a decision.
 
-### PLACEMENT PROVEN 2026-08-20 — and the fixture-axis route is blocked by phase-315
+### PLACEMENT PROVEN AND CAPTURED 2026-08-20 — W3's full acceptance is MET
 
-The a53 board runs, and a pinned tier lands where it was told to:
+A pinned tier lands where it was told to, built by the fixture pipeline:
 
 ```
-nros: core pin tier=`high` cpu=1                  <- kernel accepted the pin
+Secondary CPU core 1 (MPID:0x1) is up
+nros: core pin tier=`high` cpu=1                  <- the kernel accepted the pin
 [nros] tier task entered
-nros: core pin observed tier=`high` running_on=1  <- and it RAN there
+nros: core pin observed tier=`high` running_on=1  <- and the tier RAN there
 ```
 
-Falsifiable, which is the whole point: the same image with no `core` declared
-reports `running_on=0`, so `1` cannot be "where an unpinned tier lands anyway".
-That is W3's full acceptance DEMONSTRATED — but not yet CAPTURED as a fixture.
+Falsifiable, which is the point: the same entry with no `core` declared reports
+`running_on=0`, so 1 is not "where an unpinned tier lands anyway".
 
-**What blocks capture.** The `core` value must differ per board: native_sim is
-uniprocessor, so `core = 1` there takes the loud fallback and would flip an
-already-green cell. `bringup` is a per-row field, so a second bringup
-(`smp_bringup`) declaring `core = 1` looked like the sanctioned fixture axis —
-no new workspace directory, RFC-0066 satisfied. `nros sync` refuses it:
+**Shape.** `[[workspace_fixture]] workspace-zephyr-c-realtime-smp`, same
+workspace and entry as the native_sim row; the axis is `board`. An SMP image
+selects `smp_bringup` (`core = 1`); everything else keeps `demo_bringup`. That
+value cannot live in the shared bringup — native_sim is uniprocessor and would
+take the loud fallback, flipping a green cell.
 
-```
-sync: 2 bringups declare a system (demo_bringup, smp_bringup); selection
-facades are not generated for multi-system workspaces (phase-315 W1)
-```
+**A CORRECTION to this section's previous text, which said the route was blocked
+by phase-315.** It is not. `generate_facade_crates` RETURNS OK on a multi-system
+workspace: it skips facade generation and says so. Facades derive cargo features
+for Rust entries; this is a C entry selecting via CMake, so the skip costs
+nothing. The `rc=2` that produced that claim was mine — I drove the row through
+`workspace-fixtures-build.sh` (cargo/CMake rows) instead of the zephyr west path,
+and missed `--include-workspace-entry` on the leaves script.
 
-One workspace, one system. The attempt is reverted rather than left half-wired.
+**Two real defects found while capturing it**, both invisible until a board that
+was neither native_sim nor mps2 existed:
 
-**The fork, both arms costed rather than argued:**
+1. `zephyr-fixture-leaves.sh` appended the native_sim NSOS overlay to ANY board
+   that was not `mps2_an385` — a default that assumed rather than refused. The
+   a53 image got `CONFIG_NET_SOCKETS_OFFLOAD` with no provider and died in
+   `socket_offload_getaddrinfo` on a NULL vtable. The case is now explicit per
+   board, and a new board gets no host-simulator overlay.
+2. Keying the bringup on `BOARD MATCHES "smp"` silently never matched: Zephyr
+   normalises `BOARD` to the board NAME (`qemu_cortex_a53`) and puts the variant
+   in `BOARD_QUALIFIERS`. The CMakeCache shows the qualified string because that
+   is what was PASSED, which is exactly what made the wrong predicate look
+   right. Now keyed on `CONFIG_SMP`, which is the semantic condition anyway.
 
-1. **A separate workspace** (`realtime-c-smp`). Works with the tooling as it
-   stands. Costs a near-duplicate workspace, which is what RFC-0066's "a
-   configuration is a fixture axis, never a new directory" exists to prevent —
-   though note that rule is about FEATURE variants, and a second SYSTEM is
-   arguably a different workspace by phase-315's own definition.
-2. **Make `core` overridable at bake time** — a cmake/Kconfig knob the codegen
-   honours, so one system.toml serves both boards. Keeps one workspace and makes
-   the axis real for every dim, not just this one. Costs a codegen feature, and
-   RFC-0063 says dims are AUTHORED in system.toml, so an override needs to be a
-   deliberate seam rather than a side door.
-
-Everything else W3 needs is already in place: the board overlay, both marker
-arms, and a measured run showing the assertion would pass.
+**Still open, and NOT what this criterion asked for:** the matrix cell that
+consumes this fixture. The fixture exists, builds through the pipeline, and
+prints the assertion; wiring `sched_dims_applied_e2e` to run it is the next step.
 
 ---
 

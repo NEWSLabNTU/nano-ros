@@ -374,11 +374,27 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # absolute board/NSOS tail (a host path, not a fact about the fixture).
     conf_files=""
     if [ -n "$row_conf_files" ]; then
+        # issue 0260 — the default used to be the native_sim NSOS overlay, i.e.
+        # "any board that is not mps2 is native_sim". That held while those were
+        # the only two zephyr boards, and it silently applied
+        # CONFIG_NET_SOCKETS_OFFLOAD to the first board that was neither: the
+        # a53 SMP fixture then took a Data Abort in
+        # `socket_offload_getaddrinfo` with a NULL vtable, 12 ms in, because
+        # nothing registers an offload provider on a real board.
+        #
+        # A real board gets NO host-simulator overlay. Listing native_sim
+        # explicitly means the next new board gets nothing rather than something
+        # wrong — a default that assumes is how this cost an afternoon.
         case "$board" in
             mps2_an385) conf_tail="$nros_root/cmake/zephyr/mps2-an385.conf" ;;
-            *) conf_tail="$native_sim_nsos_conf" ;;
+            native_sim*) conf_tail="$native_sim_nsos_conf" ;;
+            *) conf_tail="" ;;
         esac
-        conf_files="$row_conf_files;$conf_tail"
+        if [ -n "$conf_tail" ]; then
+            conf_files="$row_conf_files;$conf_tail"
+        else
+            conf_files="$row_conf_files"
+        fi
     fi
 
     if [ -n "$row_zenoh_locator$row_xrce_port$row_cyclone_domain" ]; then

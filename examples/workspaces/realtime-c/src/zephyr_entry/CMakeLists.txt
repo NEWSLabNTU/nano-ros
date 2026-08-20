@@ -30,9 +30,35 @@ find_package(nano_ros REQUIRED)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../ctrl_pkg" ctrl_pkg)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../telem_pkg" telem_pkg)
 
+# issue 0260 / phase-356 W3 — the bringup is a per-row FIXTURE AXIS, keyed on
+# the BOARD. `board` is already a `[[workspace_fixture]]` field, so this needs no
+# new row field and no widening of the west leaf record (which carries no slot
+# for arbitrary cmake defs).
+#
+# An SMP board takes `smp_bringup`, whose only difference is `core = 1` on the
+# zephyr high tier — a value native_sim cannot honour, being uniprocessor, which
+# is exactly why it cannot live in the shared bringup. Everything else defaults
+# to `demo_bringup`, so every existing row builds byte-identically.
+if(NOT NROS_ENTRY_BRINGUP)
+    # `CONFIG_SMP`, not the board name. Two reasons, the second learned the hard
+    # way: it is the SEMANTIC condition (an image with more than one CPU gets the
+    # bringup that pins to a second one), and `BOARD` is NOT the qualified board
+    # string here. Zephyr normalises it to the board NAME — `qemu_cortex_a53` —
+    # and puts `/qemu_cortex_a53/smp` in `BOARD_QUALIFIERS`, so
+    # `BOARD MATCHES "smp"` silently never matched and the fixture built
+    # `demo_bringup`, ran unpinned, and reported `running_on=0`. The CMakeCache
+    # shows the qualified string because that is what was PASSED, which is what
+    # made the wrong predicate look right.
+    if(CONFIG_SMP)
+        set(NROS_ENTRY_BRINGUP "smp_bringup")
+    else()
+        set(NROS_ENTRY_BRINGUP "demo_bringup")
+    endif()
+endif()
+
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
-    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
+    BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../${NROS_ENTRY_BRINGUP}"
     LAUNCH  default
     LANG    c
     TYPED

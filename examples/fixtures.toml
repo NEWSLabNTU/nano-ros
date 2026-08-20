@@ -4525,6 +4525,43 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-c"
 west_zenoh_locator = "tcp/127.0.0.1:7591"
 skip_probe = true
 
+# issue 0260 / phase-356 W3 — the SMP row: the only place in the tree where a
+# core-pin dim is PROVEN rather than merely accepted.
+#
+# Same workspace and entry as the row above; the axis is `board`. On
+# `qemu_cortex_a53/.../smp` the entry selects `smp_bringup` (`core = 1`). That
+# value cannot live in the shared `demo_bringup`: native_sim is uniprocessor and
+# would take the loud fallback, flipping an already-green cell.
+#
+# core 1, not 0, because an UNPINNED tier lands on cpu 0 anyway — measured on
+# this board, both ways:
+#
+#     unpinned          -> nros: core pin observed tier=`high` running_on=0
+#     core = 1 declared -> nros: core pin tier=`high` cpu=1
+#                          nros: core pin observed tier=`high` running_on=1
+#
+# The locator is QEMU's user-mode gateway (10.0.2.2). The native_sim rows use
+# 127.0.0.1 because that image shares the host's network; here 127.0.0.1 would
+# be the GUEST's own loopback.
+[[workspace_fixture]]
+id = "workspace-zephyr-c-realtime-smp"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-c"
+bringup = "src/smp_bringup"
+entry = "zephyr_entry"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+conf_files = [
+    "prj.conf",
+    "prj-zenoh.conf",
+    "boards/qemu_cortex_a53_qemu_cortex_a53_smp.conf",
+]
+west_build_name = "build-ws-c-realtime-entry-smp"
+west_id = "zephyr/qemu_cortex_a53/smp/workspace-realtime-entry-c"
+west_zenoh_locator = "tcp/10.0.2.2:7592"
+skip_probe = true
+
 # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS
 # west path as the Rust workspace entry above, but the Zephyr application
 # dir is examples/workspaces/c/src/zephyr_entry (find_package(Zephyr) +

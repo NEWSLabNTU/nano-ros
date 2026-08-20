@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>smp_bringup</name>
+  <version>0.1.0</version>
+  <description>issue 0260 — the SMP variant of demo_bringup: identical but for `core = 1` on the zephyr high tier, so a two-core image proves PLACEMENT and not merely that the pin call was accepted.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
