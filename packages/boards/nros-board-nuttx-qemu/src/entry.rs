@@ -35,8 +35,19 @@ unsafe extern "C" {
 /// initialization would be skipped.
 #[unsafe(no_mangle)]
 pub extern "C" fn nsh_main(argc: i32, argv: *const *const c_char) -> i32 {
+    // issue 0710 — publish the nros_log sink list HERE.
+    //
+    // This is a boot funnel that issue 0708's rule cannot see: it is
+    // `pub extern "C" fn nsh_main`, not `pub fn run*`, so neither that fix nor
+    // `check-board-log-sink` reached it. An image entering this way — the
+    // logging smoke fixture does — ran with no sink list and dropped every
+    // record, which is how it emitted nothing while the gate stayed green.
+    //
+    // After `nsh_initialize()`, because that is board bringup (console among
+    // it) and a record published before the console exists has nowhere to go.
     unsafe {
         nsh_initialize();
+        ::nros_log::init_default();
         main(argc, argv)
     }
 }

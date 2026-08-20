@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0710** (platform/testing, open 2026-08-20) — issue 0708's rule ("every `pub fn run*` in a board crate
+reaches `init_default`") names a SPELLING, not the thing it cares about, so a boot path spelled otherwise is
+invisible to both the fix and the gate. Two exist: NuttX enters through `pub extern "C" fn nsh_main` (a board
+funnel the rule could not see — fixed), and `logging-smoke-mps2-baremetal` enters through `#[entry] fn main()`
+in the FIXTURE, so no board code runs at all (not a board defect; that image owns its own logging, and its
+`init` is correct). Found by a booted image, not by reading — 0708's gate was green throughout. Residue: a
+wider regex would flag every `extern "C"` FFI shim and get deleted, so the honest fix is finishing 0708's
+runtime assertion across board families rather than widening the grep. See `0710-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0705** — `case_08_c_qos` in-sweep saw `Publisher count: 1` naming ANOTHER
 test's `talker` on /chatter while its own `qos_talker` was absent. Neither filed candidate was right: the port
 lease is already `O_EXCL` and held for the router's lifetime (0470), and scouting explains a foreign node

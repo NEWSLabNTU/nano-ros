@@ -60,10 +60,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
 use nros_board_nuttx_qemu as _;
-use nros_log::{
-    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
-    register_logger, sinks,
-};
+use nros_log::{Logger, Severity, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger};
 
 static LOGGER: Logger = Logger::new("smoke");
 
@@ -72,7 +69,9 @@ static LOGGER: Logger = Logger::new("smoke");
 #[unsafe(no_mangle)]
 pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i32 {
     register_logger(&LOGGER);
-    init(sinks::default());
+    // issue 0710 — deliberately NO `init(sinks::default())`: the board's
+    // `nsh_main` funnel publishes the sink list. Relying on it is what makes
+    // this an assertion about the BOARD rather than about the platform ABI.
     LOGGER.set_level(Severity::Trace);
 
     nros_trace!(&LOGGER, "trace payload");
