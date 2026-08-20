@@ -28,7 +28,16 @@ rmw-xrce = []
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
 nros-rmw-xrce-cffi = { version = "*", default-features = false, features = ["std"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
-px4_msgs = { version = "*", default-features = false, features = ["std"] }
+# phase-361 W3.b — NO `features = ["std"]` here, and this line is a trap that
+# only springs on regeneration. `nros generate-px4-msgs` emits a msg crate whose
+# manifest is `[features] default = []` and nothing else
+# (`rosidl_bindgen::generator::generate_cargo_toml`), so asking for `std`
+# resolves to
+#   error: failed to select a version for `px4_msgs` ... `px4_msgs` does not
+#          have that feature   help: available features: default
+# The generated tree is gitignored, so a checkout that never regenerated kept
+# building against an OLDER crate that still had the feature. Issue 0716.
+px4_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 

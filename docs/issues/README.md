@@ -527,6 +527,16 @@ its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
+Recently resolved (2026-08-20): **#0716** — three px4 leaves asked `px4_msgs` for a `std` feature the
+generator stopped emitting (phase-361 W3.b settled the generated manifest on `[features] default = []`;
+the leaves have named `features = ["std"]` since phase-316), so every cargo command in those leaves failed
+at MANIFEST RESOLUTION. Dormant because `generated/` is gitignored: a checkout that never regenerated kept
+resolving against an older crate that still had the feature, and the error appears only when someone runs
+the generator. The general shape: a consumer pinned to a feature of a GENERATED crate is an assertion
+about a generator's output, checked nowhere. Verified both ways against a reconstruction of what the
+emitter writes. Nothing gates the class yet — the emitter's feature list is a constant in `generator.rs`,
+so the comparison would be cheap. See `archived/0716-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0709** — `spin_blocking(timeout)` HUNG forever when the executor had no
 clock, in the one API whose contract is "returns after N ms"; found by phase-359 W10 deleting the
 `std`-without-a-port fallbacks on compile-only evidence (nothing REFERENCES a default, so removing it
