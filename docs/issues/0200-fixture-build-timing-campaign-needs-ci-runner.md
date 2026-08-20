@@ -159,3 +159,73 @@ measure; do not budget from a dev host's `du`.
 from it. It is not this issue's to do — a stale-residue sweep is its own change,
 and `check-example-leaf-target-dirs` currently passes with those dirs present,
 which is worth checking separately.
+
+## Re-derived 2026-08-21 — the residue is gone, and the 994 GB figure with it
+
+This issue says "the first action here is a re-derivation, not a procurement".
+Re-run on the maintainer host, five days after the 2026-08-16 pass.
+
+### The recommendation is satisfied — by someone, not by this issue
+
+> delete the 120 GB of pre-340 residue … (`examples/**/target/`, the 65 dirs)
+
+```
+$ find examples -maxdepth 5 -type d -name target   | wc -l   ->  0
+$ find examples -maxdepth 5 -type d -name 'target-*' | wc -l ->  15
+```
+
+**Zero** plain per-leaf `target/` dirs remain; only the coordinate-keyed group
+dirs phase-340 P2 introduced. The 120 GB is recovered.
+
+### And the gate note is stale too
+
+> `check-example-leaf-target-dirs` currently passes with those dirs present,
+> which is worth checking separately
+
+Checked, by creating one rather than by reading the script:
+`mkdir examples/native/rust/talker/target` makes
+`just check-example-leaf-target-dirs` FAIL, naming the class and prescribing
+`rm -rf … then re-run a build. If one comes back, it is the second case and the
+writer needs finding.` The gate covers the class now. Whether it was fixed since
+2026-08-16 or those 65 dirs sat in leaves it exempts is not established here —
+what is established is that the hole described above is closed.
+
+### Current composition — 880 GB, and most of it is not matrix cost
+
+| root | 2026-08-16 | 2026-08-21 |
+| --- | --- | --- |
+| `examples/` | 563 G | **344 G** |
+| `zephyr-workspace/` | 148 G | **228 G** |
+| `target/` | 95 G | **159 G** |
+| `build/` | 72 G | **75 G** |
+| `packages/cli/target/` | 48 G | **35 G** |
+| total | 994 G | **880 G** |
+
+The composition matters more than the total, and it argues the same way this
+issue already does — do not size a runner from this tree:
+
+* **`zephyr-workspace` is 228 GB and is not fixture-matrix cost at all.** It is
+  one provisioned west workspace for the 3.7 line. Issue 0651 ran into the same
+  number from the other side: a second workspace for the 4.4 line could not be
+  provisioned here, and that is a PROVISIONING budget, separate from what a
+  clean matrix build needs.
+* `examples/` fell 563 → 344 G, consistent with the residue removal.
+* `target/` ROSE 95 → 159 G. Not investigated here; flagged because it moves in
+  the opposite direction to everything else and nobody has attributed it.
+
+### Still blocked, and the reason is unchanged
+
+The three measurements are wall-clock and CPU-utilisation questions needing a
+CLEAN full-matrix build. Nothing above supplies one, and issue 0509's finding
+stands: wall-clock is not a usable instrument on this host (seven no-op runs of
+one lane, provably identical work, 50 s…695 s). The runner requirement is about
+a machine where timings MEAN something, not merely one with disk.
+
+### Operational note
+
+The host sits at **98 % full, 27 GB free**. That is not comfort margin: on
+2026-08-20 it reached zero mid-build and truncated four `Cargo.lock` files
+(untracked leaf locks; every tracked lock verified intact afterwards). Whoever
+runs the next big build here should reclaim first — `build/sizes-probe`,
+`build/example-lint` and `build/metadata-probe` are derived caches that came
+back to 87 GB once already.

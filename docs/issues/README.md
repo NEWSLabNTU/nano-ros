@@ -3122,7 +3122,14 @@ freshness signature is larger and belongs with the NuttX board owner. See `archi
 
 
 **#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
-residue). See `0200-*`.
+residue). **Re-derived 2026-08-21:** its recommendation is satisfied — the 120 GB of pre-340
+`examples/**/target/` residue is GONE (0 plain leaf dirs remain, 15 coordinate-keyed group dirs), and the
+note that `check-example-leaf-target-dirs` passed over the class is stale (verified by creating one: the
+gate FAILS). Tree is 880 GB, not 994, and the composition argues against sizing a runner from it —
+`zephyr-workspace/` alone is 228 GB of PROVISIONING for one Zephyr line (the same number #0651 hit from the
+other side), not matrix cost; `target/` rose 95→159 GB unattributed. Still blocked for the original reason:
+the three measurements need a CLEAN full-matrix build on a host where wall-clock means something, and
+#0509 showed it does not here (7 no-op runs of identical work: 50 s…695 s). See `0200-*`.
 
 Recently resolved (2026-08-06): **#435** — filed as "CMake fixtures do not depend on generated RMW
 headers"; SUPERSEDED by **#442**, whose diagnosis is the correct one. Not a missing dependency:
