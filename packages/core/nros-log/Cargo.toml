@@ -69,6 +69,16 @@ max-level-warn  = []
 max-level-error = []
 max-level-off   = []
 
+# Issue 0710 follow-up — how many records `nros_log::early` holds before
+# `init` installs the sinks. Same shape as `buffer-size-<N>` below and for the
+# same reason: a 64 KB MCU and a Linux host do not want the same number. The
+# else-branch default is 4; `early-records-0` declines the ring and restores
+# the pre-0708 behaviour of dropping, with the overflow COUNT still kept so the
+# loss stays reportable.
+early-records-0  = []
+early-records-8  = []
+early-records-16 = []
+
 buffer-size-128  = []
 buffer-size-256  = []
 buffer-size-512  = []

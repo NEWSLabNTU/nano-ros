@@ -46,6 +46,7 @@ extern crate alloc;
 // passthrough.
 use portable_atomic::{AtomicPtr, AtomicU8, Ordering};
 
+pub mod early;
 #[cfg(feature = "log-compat")]
 pub mod log_compat;
 pub mod macros;
@@ -403,6 +404,21 @@ pub fn init(sinks: &'static [&'static dyn LogSink]) {
         CELL.store(sinks);
         SINKS_PTR.store(CELL.as_ptr(), Ordering::Release);
     }
+    // AFTER publishing, so a record raised during the drain reaches `sinks`
+    // directly rather than joining a ring nobody will drain again.
+    early::drain(sinks);
+    let lost = early::overflowed();
+    if lost > 0 {
+        // Reported through the sinks just installed, because the alternative is
+        // a silent hole exactly where the boot story is (`nros-log` cannot know
+        // what those records said, but it does know how many there were).
+        let logger = Logger::new("nros_log");
+        crate::nros_warn!(
+            &logger,
+            "{lost} record(s) raised before `init` did not fit the early ring \
+             (see `nros_log::early`; raise `early-records-<N>`)"
+        );
+    }
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -467,41 +483,23 @@ fn dispatch_to_sinks(record: &Record<'_>) {
     if recursion_guard_check_and_set() {
         return;
     }
-    // `mut` only when the auto-install below is compiled in.
-    #[cfg_attr(not(feature = "platform-sink"), allow(unused_mut))]
-    let mut ptr = SINKS_PTR.load(Ordering::Acquire);
-    // `platform-sink` — see the feature's comment in `Cargo.toml`. The install
-    // below references `nros_platform_log_write`/`_flush` from a path every
-    // record reaches, so ungated it makes a platform port a LINK requirement for
-    // every consumer of this crate. It is a board that has a console, and a
-    // board that enables the feature; cargo unifies it into any image holding
-    // one. Host tools and the test harness link no port, get no auto-install,
-    // and behave exactly as they did before issue 0710.
-    #[cfg(feature = "platform-sink")]
+    let ptr = SINKS_PTR.load(Ordering::Acquire);
     if ptr.is_null() {
-        // issue 0710 — install the platform sink rather than drop the record.
+        // Nothing installed yet — HOLD the record; `init` replays it into
+        // whatever sinks the board chooses. See `early` for why this crate
+        // does not reach for the platform sink itself: doing that (issue 0710)
+        // put `nros_platform_log_write` on a path every binary executes, which
+        // turned a pluggable delivery into a link-time requirement that no
+        // Cargo feature can undo under workspace feature unification.
         //
-        // The C entry point (`nros_log_emit`) has always done this. The Rust
-        // macro path did not, so a record raised before any board called `init`
-        // was constructed, dispatched and DROPPED — silently, and invisibly to
-        // its author, who cannot know what the board did.
-        //
-        // Issue 0708 answered that by requiring every board boot funnel to call
-        // `init_default()`, and gated it on funnels spelled `pub fn run*`. That
-        // is a search for boot paths, and it kept missing them: NuttX's is
-        // `pub extern "C" fn nsh_main`; three board crates did not even link
-        // `nros-log` in the configuration holding the funnel. Every one surfaced
-        // from a booted image, never from the gate.
-        //
-        // So stop searching. A path that cannot be enumerated cannot be checked,
-        // but it also does not need to be if the default is correct: dispatch
-        // installs the platform sink on first use, and a board that WANTS
-        // different sinks still calls `init` before any record fires, exactly as
-        // before. Nothing an image can forget changes whether its records land.
-        init(sinks::default());
-        ptr = SINKS_PTR.load(Ordering::Acquire);
+        // It is also a better answer to issue 0708 than installing a default
+        // was: the early records land in the sink the board picked, not in the
+        // one dispatch guessed before the board had spoken.
+        early::hold(record);
+        recursion_guard_clear();
+        return;
     }
-    if !ptr.is_null() {
+    {
         // SAFETY: `init` published a valid `'static` slice reference.
         let sinks: &'static [&'static dyn LogSink] = unsafe { *ptr };
         for sink in sinks {
