@@ -61,6 +61,15 @@ someone added it there — #0688 (threadx-rv64 seam) and #0700 (ESP-IDF componen
 the ESP-IDF shim because a COMMENT in it named the verb — any gate here must key on something structural.
 See `0719-*`. (2026-08-20)
 
+**#0721** (build, open 2026-08-20) — the check-* gates walk built trees to find TRACKED files, and
+`check-no-tracked-file-find` — the gate that forbids exactly this — reads only `.sh`/`.just`/`justfile`,
+never a `.py`. So the shell side is clean and the Python side has 21 walk sites. Measured: `examples/`
+is 828 GB and `rglob("Cargo.toml")` over it did not finish in 300 s, vs 347 manifests in 0.002 s from
+`git ls-files`. SKIP_DIRS does not save it — the filter runs on what the walk ALREADY YIELDED, the same
+`-prune`/`glob("**")` trap 0684 and check-no-tracked-file-find each documented and each fixed only for
+themselves. Two fixed (`check-no-std-stdio` 300s+->3s, `check-example-leaf-target-dirs` 90s+->2s); the
+rest listed. Warm cache hides it, so measure cold or under a build. See `0721-*`. (2026-08-20)
+
 **#0712** (build, open 2026-08-20) — `export -f` closure is ungated: a function shipped to a make
 leaf calls a sibling that was never exported, and the leaf is a fresh bash with only what `export -f`
 gave it. Third occurrence (0400, phase-340 B2, now 0706's two cache-guard helpers); the last one took
