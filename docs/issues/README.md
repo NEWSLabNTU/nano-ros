@@ -70,6 +70,23 @@ of a COMPILATION and an undefined symbol is a property of a LINK. The feature is
 gate that enforced it; the sink moved to `nros_platform_cffi::log`, where a dependency answers the
 question. See `archived/0723-*` and `archived/0727-*`. (2026-08-20)
 
+**#0730** (zephyr, open 2026-08-20) — the Zephyr EMBEDDED C++ cyclonedds lane composes nros-cpp
+features as bare `rmw-cffi,platform-zephyr,ros-humble` (no `alloc`), while the error mapper's
+`TransportError::BackendDynamic` arm is deliberately un-gated (0591) — E0599 on aarch64-none. The
+lib.rs "no buildable configuration lacks the variant" claim assumed no-alloc ⇒ no allocator, but
+`platform-zephyr` supplies the allocator without the feature; native_sim's `,std` hides the gap
+in-tree (a (zephyr-embedded × C++ × cyclonedds) pairwise-class coordinate). Found by the
+autoware-safety-island bring-up, which carries a sed patch until the lane adds `alloc`. See
+`0730-*`. (2026-08-20)
+
+**#0729** (cli, open 2026-08-20) — `nros setup board` (the RFC-0014 downstream-provisioning entry
+point) and `nros ws board-facts` both still resolve boards by the retired
+`packages/boards/nros-board-<name>` directory, so every phase-337 bundle board (all in-tree Zephyr
+boards) is unprovisionable through the sanctioned path — while `nros board info` resolves the same
+name fine (the bundle-aware resolver exists; two verbs never got it). setup board fails hard;
+board-facts silently drops the phase-351 facts rung. Found by the autoware-safety-island bring-up,
+which inlines the four run_board steps as a workaround. See `0729-*`. (2026-08-20)
+
 **#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
 `NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today
 the panic policy) get applied. `nano_ros_add_executable` delegates to the entry, so ~160 call sites are
