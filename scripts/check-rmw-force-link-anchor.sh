@@ -77,7 +77,22 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
         *) continue ;;
         esac
 
-        if ! printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"; then
+        # Issue 0726 — `grep -q` exits 1 for "not found" and >=2 for an ERROR,
+        # and `if !` cannot tell them apart. Under a 32-way gate fan-out a
+        # forked grep can fail to start (EAGAIN) or be killed, and this gate
+        # then reported a missing anchor for an example that has one: a
+        # confident, specific, wrong finding, green->red under load and never
+        # the other way. Capture the status and treat >=2 as a hard error.
+        printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"
+        grep_rc=$?
+        if [ "$grep_rc" -ge 2 ]; then
+            echo "FATAL: grep failed (rc=$grep_rc) scanning $src for" >&2
+            echo "       force_link_backend!(${krate}). This is a TOOL failure," >&2
+            echo "       not a finding — refusing to report a missing anchor" >&2
+            echo "       on the strength of a grep that did not run (0726)." >&2
+            exit 2
+        fi
+        if [ "$grep_rc" -eq 1 ]; then
             # Issue 0726 — say what was READ, not just what was concluded. If
             # the anchor is present on disk but absent from `src_text`, this is
             # the fan-out flake and not a real finding; per-file greps below

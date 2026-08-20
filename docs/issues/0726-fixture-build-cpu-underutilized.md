@@ -367,3 +367,43 @@ case $rc in 0) ;; 1) <real finding> ;; *) echo "grep failed (rc=$rc)"; exit 2 ;;
 Worth a sweep of the gate scripts for the same shape before the fan-out becomes
 the default — this is exactly the "fix the class" rule, and the fan-out is what
 made a latent 1-in-N bug visible at all.
+
+### Sweep: 87 sites conflate grep ERROR with grep NOT-FOUND
+
+`git grep` over `scripts/`, `just/`, `justfile`:
+
+| shape | sites | what an ERROR becomes |
+| --- | --- | --- |
+| `if ! … grep -q` / `grep -q … \|\| fail` | **50** | a FINDING is reported that is not real |
+| `if … grep -q` / `grep -q … && …` | **37** | a check silently does NOT fire |
+
+Both are wrong and they fail in opposite directions. The negated form is the one
+that bit here: it turns a failed fork into a specific, confident, false claim
+about the source tree, and it does so *only under load* — green to red when the
+machine is busy, never the reverse, which is exactly the pattern that teaches
+people to re-run a gate rather than believe it. The positive form is quieter and
+arguably worse: a check that skips itself reports OK.
+
+Fixed here: `check-rmw-force-link-anchor`, the one with a demonstrated failure.
+It now captures the status and treats >=2 as a hard `exit 2` with a message
+saying the tool failed rather than the tree being wrong. The positive control
+(110 gates + 40 concurrent anchors) ran 6/6 clean afterwards against roughly
+1-in-3 before — suggestive, though the guarantee is structural rather than
+statistical: an error can no longer be reported as a finding.
+
+The other 86 are NOT fixed and should not be swept blind. Each needs its own
+reading, because for many of them `grep -q` is scanning a string that is
+certainly present-or-absent and an error genuinely cannot occur, while for others
+(anything scanning a file list, or piped from a subshell) it can. A mechanical
+rewrite would churn 87 sites to fix an unknown fraction.
+
+What would make this tractable is a shared helper plus a gate, the same shape as
+the other recurring classes here:
+
+```sh
+nros_grep_q <pattern> [file...]   # 0 = match, 1 = no match, exits 2 on tool error
+```
+
+Then a gate rejects bare `grep -q` in a conditional in `scripts/`. That is the
+structural fix; until it exists this class will keep being reintroduced, because
+the wrong spelling is the natural one and is correct almost all of the time.
