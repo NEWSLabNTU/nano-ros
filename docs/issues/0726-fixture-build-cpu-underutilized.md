@@ -475,3 +475,33 @@ Candidates, in the order they are worth checking:
 `wchan` sampling separates these directly: a futex wait is a lock, `do_wait` is
 a parent blocked on children, `pipe_read` is a shell pipeline, D-state is I/O.
 That is the measurement, and it should be taken before any more scheduler work.
+
+### WITHDRAWN: the blocking-reason numbers measured another build
+
+The "cmake dominates / 22.6% I/O waits / 1.8% futex" breakdown, and by extension
+the `alive 51 / runnable 8` reading above, are **not trustworthy**. Both
+samplers matched processes by `comm` GLOBALLY, and a `colcon2deb` Autoware build
+was running in a container on the same host — 22 processes, including the cmake
+whose command lines turned out to be `autoware_universe` and
+`/output/workspace/src/…`, not nano-ros at all.
+
+So those figures describe someone else's build sharing this disk. Withdrawn
+rather than caveated: the direction of the error is unknown.
+
+The conclusion they supported — "blocked, not scheduler-capped" — may still be
+right, since a 51-to-8 gap is large, but it has not been re-measured and should
+be treated as provisional until a lineage-scoped sampler runs on a quiet box.
+
+Two measurement bugs, one root cause: **sampling by name instead of by
+lineage.** The earlier `pgrep -f` self-match was the same mistake in a different
+costume. Standing rule now recorded in
+[phase-371](../roadmap/phase-371-build-cpu-utilization.md): scope samplers by
+process tree, and check what else is running before trusting an absolute number.
+
+What survives, because it does not depend on live process sampling:
+
+* the joblog concurrency profile (recorded stage spans)
+* `check-fast` 90 s -> 8 s (wall-clock of a single command)
+* the CMake configure trace — a single-process profile, immune to what else is
+  on the box, which is why it is the finding this campaign now rests on:
+  `nros_resolve_corrosion` is 20 s of a 33 s leaf configure.
