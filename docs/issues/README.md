@@ -81,6 +81,17 @@ did — the asymmetry between the two paths was the bug. Proof is the image that
 `init` anywhere: six severities, previously silent. Additive, so boards that publish are untouched. See
 `archived/0710-*`. (2026-08-20)
 
+**#0713** (build/zephyr, open 2026-08-20) — `just zephyr build-fixtures` creates and CONFIGURES ~70 build
+dirs, dies in its parallel layer with `make: *** wait: No child processes`, and **exits 0**. No `zephyr.elf`
+is produced (70 dirs, 9 ELFs, and those 9 are leftovers from manual runs), so the lane prints
+`== zephyr == OK` and seven of tier 2's thirteen failures are then `Test fixture binary MISSING for an
+in-lane coordinate` — cortex-m cpp+rust pubsub, qos ROS 2 interop, logging_smoke, entry_matrix, multihost,
+realtime_tiers, sched_dims. A build that cannot fail is issue 0702's class one level up, and it means NO
+Zephyr coordinate has been built by tier 2 on this host — the only tier that builds Zephyr at all. First
+hypothesis (a stale-stamp skip) was WRONG and is recorded: building the dirs by hand cleared exactly one of
+the seven, because they were configured, not built. Direction: make the failure reach the exit status
+FIRST, then diagnose the fifo-jobserver interaction. See `0713-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0705** — `case_08_c_qos` in-sweep saw `Publisher count: 1` naming ANOTHER
 test's `talker` on /chatter while its own `qos_talker` was absent. Neither filed candidate was right: the port
 lease is already `O_EXCL` and held for the router's lifetime (0470), and scouting explains a foreign node
