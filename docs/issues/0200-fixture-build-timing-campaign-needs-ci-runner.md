@@ -229,3 +229,74 @@ The host sits at **98 % full, 27 GB free**. That is not comfort margin: on
 runs the next big build here should reclaim first — `build/sizes-probe`,
 `build/example-lint` and `build/metadata-probe` are derived caches that came
 back to 87 GB once already.
+
+## What is actually left (2026-08-21) — and the requirement is MIS-STATED
+
+Asked directly: after the build-optimisation campaigns, what of this issue can
+still be done here? Measured rather than argued.
+
+### 1. The "read the joblog" shortcut does not exist
+
+This issue says the campaign is "mostly run it twice on big iron and read the
+joblog". The corpus on this host cannot support that:
+
+```
+257 joblog files, 650 data rows total
+platforms present: linux (556), native (94)
+```
+
+Every recorded run is the native lane. There is **no zephyr, freertos, nuttx,
+qemu, esp32 or threadx row anywhere**, and the widest single joblog is 4 rows.
+No full-matrix run was ever captured, so nothing can be mined retrospectively —
+not the clean-vs-warm comparison, not the critical path, not the idle tail.
+
+### 2. Measurement 3 is subsumed, and is finding an instrument problem
+
+CPU utilisation / oversubscription is now issue 0726 + phase-371, actively
+owned. What that campaign found matters more than its numbers: **two samplers
+were wrong before either produced a usable figure** — one matched its own
+command line and reported a build running for three hours after it finished; the
+other counted build tools globally and swept in an unrelated Autoware container
+build, producing "cmake dominates, 22.6 % I/O wait" figures that are now
+WITHDRAWN. 0726's "blocked, not scheduler-capped" verdict is marked provisional
+for the same reason.
+
+Its standing rule is this issue's blocker restated from an independent
+direction: *"a build-performance campaign that does not establish a quiet
+baseline is measuring the wrong machine."*
+
+### 3. So the runner requirement in this issue is WRONG, and expensively so
+
+The heading above says "needs a runner with ≥200 GiB scratch". Someone
+procuring from that sentence buys a big-disk SHARED runner and still gets
+unusable numbers, because disk was never the binding constraint for
+measurements 1 and 2:
+
+* issue 0509 — seven no-op runs of provably identical work on this host: 50 s …
+  695 s, a 14x spread set by page-cache state;
+* phase-371 — figures withdrawn because another tenant's build was running.
+
+**The requirement is a QUIET, DEDICATED machine that also has the disk.** Disk
+alone buys the ability to complete a clean build; it does not buy a number worth
+recording. That correction is the most actionable thing in this issue right now,
+because it changes what gets bought.
+
+### 4. What CAN be measured here, and phase-371 showed how
+
+Not everything needs host wall-clock. Phase-371 obtained a real structural
+result on this same noisy box — one leaf's configure is dominated by
+`nros_resolve_corrosion` at 20 s of 33 s, serial and fork-bound across 29
+`execute_process` calls — using **CMake's own profiler**
+(`--profiling-format=google-trace`), an instrument with its own internal clock
+that does not care what else the machine is doing.
+
+That is the template for anything this campaign still wants from a dev host:
+prefer a per-operation profiler with an internal clock over host wall-clock.
+Ratios within a single run (share of configure vs compile, per-call counts) also
+survive load; absolute durations and cross-run comparisons do not.
+
+### Net
+
+Left in this issue, on ANY host: measurements 1 and 2 only, and they need a
+quiet dedicated runner rather than merely a large one. Measurement 3 belongs to
+0726/phase-371. Nothing further is extractable from this host's existing data.

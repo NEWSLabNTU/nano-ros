@@ -3166,7 +3166,15 @@ gate FAILS). Tree is 880 GB, not 994, and the composition argues against sizing 
 `zephyr-workspace/` alone is 228 GB of PROVISIONING for one Zephyr line (the same number #0651 hit from the
 other side), not matrix cost; `target/` rose 95→159 GB unattributed. Still blocked for the original reason:
 the three measurements need a CLEAN full-matrix build on a host where wall-clock means something, and
-#0509 showed it does not here (7 no-op runs of identical work: 50 s…695 s). See `0200-*`.
+#0509 showed it does not here (7 no-op runs of identical work: 50 s…695 s). **2026-08-21, what is left:**
+the "read the joblog" shortcut does not exist — 257 joblogs, 650 rows, ALL native/linux, no full-matrix run
+ever captured, so nothing is minable retrospectively. Measurement 3 is subsumed by #0726/phase-371, which
+withdrew figures after finding two broken samplers (one matched its own command line; one swept in another
+tenant's container build). **The stated requirement is wrong and expensively so:** ≥200 GiB of scratch buys
+the ability to COMPLETE a clean build, not a number worth recording — the binding constraint is a QUIET,
+DEDICATED machine. What CAN be measured here is what phase-371 did: a per-operation profiler with its own
+clock (CMake's tracer found `nros_resolve_corrosion` at 20 s of a 33 s configure), plus within-run ratios;
+absolute durations and cross-run comparisons do not survive this host. See `0200-*`.
 
 Recently resolved (2026-08-06): **#435** — filed as "CMake fixtures do not depend on generated RMW
 headers"; SUPERSEDED by **#442**, whose diagnosis is the correct one. Not a missing dependency:
