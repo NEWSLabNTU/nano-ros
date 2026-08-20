@@ -407,3 +407,71 @@ nros_grep_q <pattern> [file...]   # 0 = match, 1 = no match, exits 2 on tool err
 Then a gate rejects bare `grep -q` in a conditional in `scripts/`. That is the
 structural fix; until it exists this class will keep being reintroduced, because
 the wrong spelling is the natural one and is correct almost all of the time.
+
+### Measured properly: the build is BLOCKED, not scheduler-capped
+
+Earlier utilization figures in this issue came through a sampler that matched
+itself (`pgrep -f "just build-test-fixtures"` appears in the sampler's own
+command line, so the loop never exits and reports a build running long after it
+ended — one figure was taken with no build alive at all). Replaced by
+`scripts/build/sample-build-cpu.sh`, which tracks the build by the PID captured
+at launch and counts build tools by exact `comm` name rather than reading
+`/proc/loadavg`'s global runnable count.
+
+Pooled launcher, lane=tier2, 762 samples over 1543 s on 32 cores:
+
+| | |
+| --- | --- |
+| runnable build tools | **mean 8.0/32, median 4, peak 51** |
+| alive build tools | **mean 51, peak 156** |
+
+| runnable compilers | share of run |
+| --- | --- |
+| **0 (fully idle)** | **24.8%** |
+| 1-4 | 29.7% |
+| 5-15 | 28.9% |
+| 16-31 | 13.5% |
+| 32+ | 3.1% |
+
+**`alive 51` against `runnable 8` is the finding.** The build has ~51 tool
+processes in existence and ~8 on CPU. Capacity is not being withheld from
+runnable work; the work is not runnable. A quarter of the build has NO compiler
+on CPU at all.
+
+That reframes the whole campaign. Stage overlap was necessary — the static 4x8
+split genuinely capped the tail at 8/32 — but it is nowhere near sufficient, and
+no launcher can be, because the launcher's job is handing out permission to run
+and permission is not the scarce resource.
+
+It also bounds what the earlier work was worth: the gate fan-out (90 s -> 8 s)
+is real and lands on the serial head, but the 1543 s body is 25% utilized for
+reasons no scheduler change addresses.
+
+Oversubscription is reduced but not gone: 3.1% of samples exceed 32 runnable,
+peak 51, after NROS_INHERIT_JOBSERVER stopped stages handing ninja an explicit
+`-j`.
+
+Two stages failed this run — esp32 (rc=101) and native (rc=2) — and they passed
+under the pooled launcher on the previous run. Unresolved whether that is
+pooled-mode fallout or independent flake; not yet investigated.
+
+### Next: why are 51 processes alive and 8 running
+
+The question is now "what are they waiting ON", which is a different instrument.
+Candidates, in the order they are worth checking:
+
+* **cargo's package-cache lock (issue 0648)** — the original anchor of this
+  campaign, and the obvious suspect once several stages run cargo at once. A
+  contended `~/.cargo` lock serialises resolution across every concurrent leaf.
+* **configure serialisation** — cmake configure, `west`, and codegen are
+  single-threaded by nature. If a stage spends most of its span configuring,
+  its own graph cannot fill any number of cores handed to it.
+* **process-spawn overhead** — 156 alive at peak against 51 mean suggests
+  churn; a build that spends its time forking short-lived tools shows exactly
+  this shape.
+* **I/O waits** — plausible on a tree this size, and distinguishable from the
+  above by D-state vs S-state.
+
+`wchan` sampling separates these directly: a futex wait is a lock, `do_wait` is
+a parent blocked on children, `pipe_read` is a shell pipeline, D-state is I/O.
+That is the measurement, and it should be taken before any more scheduler work.
