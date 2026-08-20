@@ -1,109 +1,90 @@
 ---
 id: 706
-title: "The threadx_kernel target compiles with Debian's picolibc gcc while the toolchain file resolves xPack/newlib — `reent.c` cannot find `sys/reent.h` on a CLEAN tree"
+title: "A build tree survives a toolchain RESOLUTION change: the wipe guard compares the toolchain-file ARG, not the compiler it resolves to"
 status: open
 type: bug
-area: boards/threadx-riscv64
-related: [issue-0674, issue-0678, issue-0680, issue-0666]
+area: build/cmake
+related: [issue-0391, issue-0674, issue-0678, issue-0680]
 ---
 
-## Symptom
+## What actually happens
 
-`just threadx_riscv64 build-fixture-extras`, from EMPTY build dirs:
+`just threadx_riscv64 build-fixture-extras` on a tree with pre-existing
+riscv64 build dirs:
 
 ```
-FAILED: nano_ros/CMakeFiles/threadx_kernel.dir/.../c/reent.c.obj
 /usr/bin/riscv64-unknown-elf-gcc ... -isystem /usr/lib/picolibc/riscv64-unknown-elf/include ...
 .../nros-board-threadx-qemu-riscv64/c/reent.c:29:10:
     fatal error: sys/reent.h: No such file or directory
 ```
 
-Found by tier 2 (`build-test-fixtures lane=tier2`), which is the first lane to
-build this coordinate — six other platforms in the same run pass
-(`threadx_linux`, `freertos`, `qemu`, `nuttx`, `native`, zephyr).
+Delete EVERY `examples/qemu-riscv64-threadx/*/*/build-*` and rerun: **zero**
+`sys/reent.h` errors, 34 configures all resolving
+`.../\.nros/sdk/riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf`. The code is
+fine. The build trees were not.
 
-## The two halves disagree, and both say so out loud
+## Why the existing guard did not catch it
 
-Every configure in the run printed:
+`nros_cmake_guard_build_dir` (issue 0391) exists for exactly this and its
+comment describes the failure precisely — a cached `CMakeCache` pins
+`CMAKE_C_COMPILER` at FIRST configure, and re-passing a different
+`-DCMAKE_TOOLCHAIN_FILE` cannot move it, so it WIPES on a toolchain-file
+mismatch.
 
-```
--- nano-ros: riscv64 toolchain prefix /home/aeon/.nros/sdk/riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf
--- nano-ros: riscv64-threadx libc = newlib
-```
+The mismatch it detects is of the **argument**. These dirs were configured with
+the same `-DCMAKE_TOOLCHAIN_FILE=.../riscv64-threadx.cmake` all along; what
+changed underneath was what that file RESOLVES to. `_nros_riscv64_find_prefix`
+searches the SDK store first and falls back to `find_program`, so installing
+`riscv-none-elf-gcc` into the store silently changes the answer from Debian's
+`riscv64-unknown-elf` (picolibc) to xPack (newlib) — with the argument
+byte-identical. The guard sees no change and keeps the tree.
 
-The resolver found the xPack store toolchain, and `newlib` is the RIGHT answer
-for it — verified directly:
+That is the same shape as the issues around it, one level up: 0674/0678 are
+"the libc verdict must come from the compiler actually used", 0680 is "probe
+`CMAKE_C_COMPILER`, not the prefix", and this is "a tree must be wiped when the
+RESOLUTION moves, not only when the argument does".
 
-```
-$ riscv-none-elf-gcc -E -include sys/reent.h -x c /dev/null   # store toolchain
-(ok)
-$ ls ~/.nros/sdk/riscv-none-elf-gcc/14.2-nros1/riscv-none-elf/include/sys/reent.h
-(present)
-```
+`reent.c` (issue 0680, newlib-only) is simply the first file that could not
+compile under the wrong answer, which is why this surfaced now rather than at
+whichever earlier point the store toolchain was installed.
 
-So `nano-ros-board-riscv64-qemu.cmake`'s guard did exactly what it should:
+NOT verified: whether the surviving dirs' `.nros-cmake-configure.args` stamps
+were in fact identical. It is the mechanism the code implies, and the observed
+behaviour matches, but the stamps were deleted before this was understood.
 
-```cmake
-if(NROS_RISCV64_LIBC STREQUAL "newlib")
-    list(APPEND _glue_srcs "${THREADX_BOARD_DIR}/reent.c")
-endif()
-```
+## Direction
 
-But the compile ran Debian's `/usr/bin/riscv64-unknown-elf-gcc`, `-isystem`'d at
-`/usr/lib/picolibc/...`. The verdict and the compiler are about two different
-toolchains.
+Record the resolved compiler in the configure stamp, not just the arguments —
+then a store install that changes the resolution invalidates the tree the same
+way a changed argument does. `NROS_RISCV64_LIBC` is already CACHE'd for exactly
+this kind of "publish the choice" reason (0674); the stamp wants the same
+treatment.
 
-## Why the existing fix does not cover it
-
-`cmake/toolchain/riscv64-threadx.cmake` already anticipates this exact pairing —
-its comment quotes this error and explains the remedy:
-
-> `CMAKE_C_COMPILER` is a CACHE variable and sticky ... So on such a tree the
-> resolved prefix says xPack (newlib) while every compile still runs Debian's
-> `riscv64-unknown-elf-gcc` (picolibc) ... That is not hypothetical: it is what
-> made `NROS_RISCV64_LIBC=newlib` coexist with `fatal error: sys/reent.h` on ten
-> leaves.
-
-and probes `CMAKE_C_COMPILER` when it exists, falling back to the prefix
-otherwise (issue 0680). That closes the case where a build tree was configured
-BEFORE the SDK toolchain existed.
-
-**This tree is fresh.** Both build dirs were removed before the run, so
-stickiness is not the explanation. The `threadx_kernel` target reaches Debian's
-compiler by a route the probe does not observe, and the probe's fallback — the
-resolved prefix — then answers for a compiler the target will not use.
-
-## Not yet established
-
-WHERE the kernel target gets `/usr/bin/riscv64-unknown-elf-gcc`. The include
-flags on the failing line come from `cmake/board/` (`-I.../cmake/board/../../packages/...`),
-so the ThreadX kernel is assembled by the board cmake rather than by the leaf's
-own toolchain-file'd configure — but which step selects that compiler, and
-whether the toolchain file is in scope there at all, is not diagnosed here.
-
-## Reproduction, and a warning about reproducing it
+## How to reproduce, and how NOT to
 
 ```
-rm -rf examples/qemu-riscv64-threadx/c/{talker,listener}/build-cyclonedds
-just threadx_riscv64 build-fixture-extras
+rm -rf examples/qemu-riscv64-threadx/*/*/build-*      # ALL of them
+just threadx_riscv64 build-fixture-extras            # green
+# then restore a pre-store-install tree to see it fail
 ```
 
-Use THAT entry point. While investigating this I reproduced it three other ways
-and every one of them was misleading:
+Every shortcut misleads, and this issue cost five wrong conclusions before the
+right one:
 
-* `cmake -S . -B build-cyclonedds` by hand omits the toolchain file entirely and
-  caches `/usr/bin/cc`; the build then dies on `unknown mnemonic 'csrrci'`,
-  which looks like a toolchain bug and is self-inflicted.
-* the driver REUSES an existing build dir, so that bad cache survives a rerun —
-  the same stale-tree trap this issue is adjacent to.
+* deleting only `build-cyclonedds` leaves the ZENOH trees, and the zenoh pass
+  runs FIRST and builds the same `threadx_kernel` — so the failure looks like a
+  cyclonedds bug while coming from a stale zenoh tree;
+* `cmake -S . -B build-cyclonedds` by hand omits the toolchain file, caches
+  `/usr/bin/cc`, and dies on `unknown mnemonic 'csrrci'` — self-inflicted, and
+  the driver then REUSES that bad cache;
 * `bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds` skips the
-  recipe's `THREADX_CONFIG_DIR` / `NETX_CONFIG_DIR` and the toolchain wiring, and
+  recipe's `NROS_CMAKE_EXTRA_DEFS` (which carries `-DCMAKE_TOOLCHAIN_FILE`) and
   also lands on `/usr/bin/cc`.
 
-Only the recipe reproduces the real failure.
+Only the recipe, against trees that are ALL absent, answers the question.
 
-## Why it matters beyond one leaf
+## Blast radius
 
-Tier 2 is 1-wise over platform, so this single coordinate fails the whole tier —
-the same blast radius issue 0698 had. There is no tier 2 on a host that hits
-this, and tier 1 is native-only and cannot see it.
+Tier 2 is 1-wise over platform, so this one coordinate fails the whole tier on
+any host whose riscv64 trees predate its store toolchain — the same shape as
+issue 0698. Tier 1 is native-only and cannot see it.

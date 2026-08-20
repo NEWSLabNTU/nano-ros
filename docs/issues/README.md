@@ -96,6 +96,19 @@ to build this coordinate; six other platforms pass. Blast radius is the whole ti
 exactly like #0698. Reproduce ONLY via `just threadx_riscv64 build-fixture-extras` — three adjacent
 invocations mislead, and the issue records how. See `0706-*`. (2026-08-20)
 
+**#0706** (build/cmake, open 2026-08-20) — a build tree survives a toolchain RESOLUTION change. Pre-existing
+riscv64 dirs compile `reent.c` with Debian's picolibc gcc (`fatal error: sys/reent.h`); delete EVERY
+`examples/qemu-riscv64-threadx/*/*/build-*` and the same recipe is green, 34 configures all resolving the
+xPack store toolchain. `nros_cmake_guard_build_dir` (#0391) wipes on a toolchain-file ARGUMENT mismatch,
+but the argument never changed — installing `riscv-none-elf-gcc` into the SDK store changes what
+`_nros_riscv64_find_prefix` RESOLVES to, silently, with the arg byte-identical. Same shape as #0674/#0678
+("the libc verdict must come from the compiler actually used") and #0680 ("probe `CMAKE_C_COMPILER`, not
+the prefix"), one level up: wipe when the RESOLUTION moves, not only the argument. Direction: record the
+resolved compiler in the configure stamp. Blast radius is the whole tier (1-wise over platform), like
+#0698. The issue records the four shortcuts that mislead — notably that deleting only `build-cyclonedds`
+leaves the ZENOH trees, and the zenoh pass builds the same `threadx_kernel` first. See `0706-*`.
+(2026-08-20)
+
 Recently resolved (2026-08-19): **#666** + **#668** — the six ThreadX-RV64 rust leaves were the only
 standalone examples with TWO build paths (cargo for zenoh, CMake for cyclone) and TWO entry points, with the
 RMW picking which ran. phase-369 took the Zephyr shape: the seam is RMW-neutral, all six zenoh rows are cmake
