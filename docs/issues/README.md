@@ -51,15 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0731** (build/logging, open 2026-08-20, HIGH) — `main` is RED at tier 1. `check-workspace-features` runs
-`cargo test --no-run --workspace --exclude nros-c --no-default-features`, and `PlatformSink` references
-`nros_platform_log_write`/`_flush` — which no platform port defines when the consumer selects no features. Every
-test binary linking `nros-log` fails; the target named varies (whichever the linker reaches first), which is why
-it reads like an unrelated test breaking. Issue 0619's class one crate over. Reproduced on a HOST checkout and
-in the box, so not environmental, and NOT the #707/#704 work it was found under. Lead, not an attribution:
-#0708 and #0710 both landed 2026-08-20 and are both about which sink gets installed. Direction 1 (gate
-`PlatformSink` on having a port) answers the question the lane asks; direction 2 (give the test targets a port)
-makes the lane pass without making the CONFIGURATION valid. See `0731-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0731** — DUPLICATE of #0723/#0727, filed while two other sessions were
+fixing it (0727's title is its subject verbatim). `PlatformSink`'s extern pair broke
+`cargo test --no-run --workspace --exclude nros-c --no-default-features`, reddening tier 1. The fix went
+further than this issue proposed: the sink MOVED to `nros_platform_cffi::log`, so "does this binary need
+`nros_platform_log_write`?" is a DEPENDENCY question — a feature could not answer it, because unification makes
+any forwarded gate ON for every member (#0723). Worth keeping from the duplicate: which test target gets named
+varies with LINK ORDER (so it reads as an unrelated test breaking), and it reproduces on a host checkout, not
+only in the container. Verified: `check-workspace-features` ends "All feature checks passed!". See
+`archived/0731-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0704** — PlatformIO is not a supported integration, so its TEST SURFACE is
 deleted rather than left opt-in. The `pio run` bringup suite blew the 60 s budget on a COLD package cache and
