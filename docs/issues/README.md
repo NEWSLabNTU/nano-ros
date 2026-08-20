@@ -155,6 +155,16 @@ carried the same lesson as a local comment. And #0726's gate could not have caug
 `packages/` + `tools/`, making 39 pre-existing sites across 11 files visible and ratcheted (133/74 → 172/85).
 See `archived/0732-*`. (2026-08-20)
 
+**#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
+reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
+size of '15' bytes`. The server starts and listens (its startup output is in the assert precisely to rule
+that out), so this is the peer's reader history sized from a wrong max-serialized-size learned at discovery —
+15 is not a plausible `AddTwoInts_Response` — i.e. a service-reply type-registration defect, not a
+serialization one. Sibling `test_xrce_action_ros2_client` and `test_xrce_to_ros2_pubsub` pass in the same
+run, so it is specific to the service reply type. Deterministic 3/3 in-sweep and 1/1 solo. NOT caused by
+phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstream, rebuilding fixtures and
+reproducing. See `0741-*`. (2026-08-21)
+
 **#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing,
 and the reason nobody saw it is that no recipe built their fixtures: `just/freertos.just` only ever called
 `workspace-fixtures-build.sh freertos`, so the two `platform = "freertos-posix"` manifest rows matched
@@ -164,14 +174,13 @@ built, both cells fail `no 'Received:' line — nothing was delivered` while the
 caused by phase-359 W10, verified by stashing it and reproducing on upstream main. Contradicts phase-370 W3's
 "deliver /chatter end to end" — likely a hand-build whose env the lane does not supply. See `0737-*`. (2026-08-20)
 
-**#0736** (testing/core, open 2026-08-20) — `realtime_tiers` fails on main: the runtime timer contract
-reports `timer-overrun-runtime timer measured=2 declared=0`, i.e. "you told me this timer takes no time and
-it took 2". Reproduced 3/3 SOLO on an idle lane (~47 s per run against ~22 s when it passed earlier the same
-day), so not the QEMU load flake. NOT caused by phase-359 W10's clock ruling, which found it — verified by
-stashing that change, rebuilding native fixtures from upstream main and reproducing. Two readings to
-separate before anyone edits the number: the declaration is genuinely missing (a bake/codegen regression) or
-the monitor reads the wrong field. While it is red the RFC-0052 scheduling-dims surface has no runtime gate
-on the fast path — the same surface #0623 and #0636 are arguing about. See `0736-*`. (2026-08-20)
+**#0736** (testing/core, open 2026-08-20) — `realtime_tiers` fails SOLO 3/3 (~47 s) and PASSES in the full
+`just ci` sweep (21.6 s), which is the reverse of this repo's QEMU story, so neither "retest solo" nor "it's
+load" applies. Two different assertions in two days: `timer-overrun-runtime timer measured=2 declared=0`
+before rebasing onto ~19 upstream commits, and afterwards `nuttx-arm/rust: high-tier /ctrl counter 2 is not
+>= 3x the low-tier /telem counter 20`. Live confounder to clear FIRST: the `nuttx-arm` row's fixture is not
+rebuilt by `lane=native`, so every run executed a museum binary. NOT caused by phase-359 W10 — verified for
+the first form by stashing it and reproducing on upstream main. See `0736-*`. (2026-08-21)
 
 **#0734** (rmw-zenoh, open 2026-08-20) — `nros-rmw-zenoh` is compiled TWICE into a C++ image: `libnros_c.a`
 and `libnros_cpp.a` each carry their own build, under different `-C metadata`, so the statics do not even
