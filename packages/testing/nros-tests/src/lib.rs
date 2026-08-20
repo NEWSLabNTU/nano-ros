@@ -298,16 +298,56 @@ const TEST_DOMAIN_MAX: u32 = 101;
 /// `seq` (intra-process) spaces out the rare case of one test needing multiple
 /// distinct domains; the `* 64` stride keeps those distinct from each other and,
 /// for any realistic `test-threads` (≤ 64), from other slots' first domains.
+/// Domains reserved per slot, so a test's Nth allocation cannot land on another
+/// LIVE test's first one.
+///
+/// The most any single test allocates today is 3 (`interop_e2e::interop`); 4
+/// leaves headroom without shrinking the collision-free slot count further than
+/// it has to.
+const DOMAINS_PER_SLOT: u32 = 4;
+
+/// Map (slot, seq) into `1..=TEST_DOMAIN_MAX`, giving each slot its own
+/// contiguous block.
+///
+/// The previous scheme was additive — `(slot + seq * 64) % MAX` — and it was
+/// correct only because MAX was 232. Issue 0703 lowered MAX to 101 for port
+/// safety and left the stride at 64, which silently broke it: `3 * 64 = 192 ≡ 91
+/// (mod 101)`, so slot `s` on its FOURTH allocation lands on slot `s - 10`'s
+/// first one. Measured over 24 slots × 4 seq: 14 cross-slot collisions, the
+/// first being slot 0 and slot 10 both taking domain 1 — which is precisely the
+/// domain-1 hazard issue 0672 recorded as "reachable, not yet observed".
+///
+/// No additive stride can fix this, and that is arithmetic rather than tuning:
+/// keeping 4 seq values clear of a 24-slot band needs 4 × 24 = 96 ≤ 101 of
+/// separation, and the best stride mod 101 achieves a minimum gap of 16. So the
+/// space is PARTITIONED instead — slot `s` owns `[s*4, s*4+3]`, disjoint by
+/// construction, zero collisions up to 25 concurrent slots.
+///
+/// Beyond 25 slots the blocks wrap and collisions resume. That is not a defect
+/// of this function but of the ceiling: 101 usable domains cannot be divided
+/// among more than 25 slots four ways. A host running nextest with more than 25
+/// test threads gets the same collision-*rare* behaviour the pre-slot PID hash
+/// had, and the fix there would be to cap `test-threads`, not to widen a range
+/// whose upper bound is set by Linux's ephemeral port floor.
+///
+/// `seq % DOMAINS_PER_SLOT` rather than `seq`: a process that allocates a fifth
+/// domain reuses its own first one, which is safe (it owns both), where letting
+/// it run past the block would put it on a neighbour's.
+fn domain_in_slot(slot: u32, seq: u32) -> u8 {
+    let block = slot.wrapping_mul(DOMAINS_PER_SLOT);
+    ((block.wrapping_add(seq % DOMAINS_PER_SLOT) % TEST_DOMAIN_MAX) + 1) as u8
+}
+
 pub fn unique_ros_domain_id() -> u8 {
     let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
     if let Some(slot) = std::env::var("NEXTEST_TEST_GLOBAL_SLOT")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
-        return (((slot + seq * 64) % TEST_DOMAIN_MAX) + 1) as u8;
+        return domain_in_slot(slot, seq);
     }
     let pid = std::process::id();
-    (((pid + seq) % TEST_DOMAIN_MAX) + 1) as u8
+    domain_in_slot(pid, seq)
 }
 
 /// Poll a file descriptor for readability using poll(2).
@@ -910,5 +950,59 @@ mod tests {
         // Sequential calls differ in the low 8 bits (intra-process counter)
         assert_ne!(id1, id2);
         assert_eq!(id2 - id1, 1);
+    }
+
+    /// issue 0703 follow-up — the regression the ceiling change shipped.
+    ///
+    /// Lowering `TEST_DOMAIN_MAX` to 101 left the old additive stride of 64 in
+    /// place, and `3 * 64 ≡ 91 (mod 101)` put a slot's fourth allocation on a
+    /// live neighbour's first. Nothing caught it because no test asserted the
+    /// property the scheme exists to provide — only that a domain was in range.
+    ///
+    /// 25 slots is the designed bound (`101 / DOMAINS_PER_SLOT`); this asserts
+    /// the whole grid inside it is collision-free, which the shipped scheme
+    /// fails on 14 pairs.
+    #[test]
+    fn a_slots_domains_never_land_on_a_live_neighbours() {
+        let slots = (TEST_DOMAIN_MAX / DOMAINS_PER_SLOT) as u32;
+        let mut owner = std::collections::HashMap::new();
+        for slot in 0..slots {
+            for seq in 0..DOMAINS_PER_SLOT {
+                let d = domain_in_slot(slot, seq);
+                if let Some(&prev) = owner.get(&d) {
+                    assert_eq!(
+                        prev, slot,
+                        "domain {d} is claimed by slot {prev} and slot {slot} — \
+                         a live test would share a DDS bus with another"
+                    );
+                }
+                owner.insert(d, slot);
+            }
+        }
+        assert_eq!(
+            owner.len() as u32,
+            slots * DOMAINS_PER_SLOT,
+            "every (slot, seq) inside the bound must own a distinct domain"
+        );
+    }
+
+    /// Every domain the assigner can produce must stay port-safe (issue 0703):
+    /// `7400 + 250*D` must land below Linux's ephemeral floor of 32768.
+    #[test]
+    fn a_every_reachable_domain_keeps_its_rtps_ports_out_of_the_ephemeral_range() {
+        for slot in 0..1000u32 {
+            for seq in 0..8u32 {
+                let d = u32::from(domain_in_slot(slot, seq));
+                assert!(
+                    (1..=TEST_DOMAIN_MAX).contains(&d),
+                    "domain {d} out of range"
+                );
+                let port = 7400 + 250 * d + 11 + 2 * 9;
+                assert!(
+                    port < 32768,
+                    "domain {d} needs RTPS port {port}, inside the ephemeral range"
+                );
+            }
+        }
     }
 }
