@@ -60,15 +60,18 @@ the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, 
 sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
 pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
 
-**#0738** (testing/px4/codegen, open 2026-08-20) — `just px4 build-bridge-example` is invoked by NO lane:
-one grep hit, its own definition. So the uORB->RMW bridge and the only consumer of
-`generate-px4-msgs --lang cpp` are built by nothing — the emitter's headers, its FFI `*_types.rs` bodies
-and the CMake glue are all unexercised, and #0360 already flags that output as a per-variant artifact that
-must stay paired with its archive. The px4 compile-check set is XRCE-companion Rust only; `fixtures.toml`
-has no px4 rows. The cheap half needs no PX4 build system (generate -> compile the `.hpp` in one TU ->
-`cargo check` the FFI crate). Do NOT simply lane the existing recipe: it hard-errors without a PX4 tree,
-which would make a tier unrunnable rather than covered — gate it or FAIL with a remedy (#0651's shape),
-never skip. See `0738-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0738** — `just px4 build-bridge-example` was invoked by NO lane (one
+grep hit: its own definition), so #0362's C++ emitter, its headers, the `_types.rs`/`_exports.rs` FFI
+bodies and the crate including them were all built by nothing. Laned the CHEAP half, no PX4 build system:
+compile-check unit `px4_bridge_ffi` generates for the bridge's topics (same codegen lock as the Rust path,
+issue 0520), compiles each generated `.hpp` STANDALONE in one `-fsyntax-only` TU, and `cargo check`s the FFI
+crate into a DERIVED target-dir; `px4_bridge_compile.rs` asserts the `.compile-ok` stamp, since the build
+script exits 0 on a unit failure and the stamp is the contract. Falsified four ways (clean 4/4; broken FFI
+crate 3/4 no stamp; unparseable header 3/4 naming the file; absent stamp fails the test naming
+`build-test-fixtures`). The header arm's first red was MY harness, not the header — it lacked
+`nros/fixed_string.hpp` and `nros/platform.h`; fixed by reading the include set off `_NROS_PX4_INCLUDES`
+rather than restating it. Stage [4/4] (PX4 SITL make) stays on demand.
+See `archived/0738-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0362** — the C++ `px4_msgs` gap is closed, and was closed in
 `2974adb33`; the issue outlived its own fix. Verified by RUNNING it: `--lang cpp` emits the struct plus FFI

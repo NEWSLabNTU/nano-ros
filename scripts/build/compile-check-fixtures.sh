@@ -745,6 +745,98 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
             px4_fail_n=$((px4_fail_n + 1))
         fi
     done
+
+    # issue 0738 — the C++ emitter and the bridge that consumes it were built by
+    # NO lane: `just px4 build-bridge-example` had exactly one grep hit, its own
+    # definition. So `generate-px4-msgs --lang cpp`, the headers it writes, the
+    # `_types.rs`/`_exports.rs` FFI bodies and the crate that includes them could
+    # all break with nothing to say so — and issue 0360 already flags that output
+    # as a per-variant artifact that must stay paired with its archive.
+    #
+    # Stages [1/4] and [2/4] of that recipe ONLY. Stage [4/4] is a PX4 SITL
+    # `make`, which is far too heavy for a per-change tier and stays on demand;
+    # the codegen risk is not there, it is in the emitter and the header shape.
+    # What this adds:
+    #   1. generate for the bridge's topic set          — the emitter runs
+    #   2. compile the generated .hpp standalone (1 TU) — the header parses
+    #   3. cargo check the FFI crate                    — the Rust bodies match
+    #
+    # `debug_key_value` mirrors the recipe's default topic. It does not have to
+    # match it — the FFI `build.rs` globs whatever the generator wrote, which is
+    # the whole reason the topic list is not restated in the crate.
+    px4_bridge_dir="$repo_root/examples/px4/cpp/bridge"
+    if [ -d "$px4_bridge_dir/ffi" ]; then
+        id="px4_bridge_ffi"
+        echo "== px4-compile-check: $id =="
+        bridge_gen="$(nros_build_dir "$NROS_KIND_PX4_MSGS_CODEGEN")/bridge-cpp"
+        rm -rf "$bridge_gen"; mkdir -p "$bridge_gen"
+        bridge_ok=1
+        # Same advisory lock as the Rust path above: one generator, one staging
+        # discipline, and this runs concurrently with those 87 units.
+        if command -v flock >/dev/null 2>&1; then
+            flock "$px4_lockfile" nros generate-px4-msgs --px4 "$px4_autopilot_dir" \
+                --lang cpp --ros-edition jazzy --topics debug_key_value \
+                -o "$bridge_gen" || bridge_ok=0
+        else
+            nros generate-px4-msgs --px4 "$px4_autopilot_dir" --lang cpp \
+                --ros-edition jazzy --topics debug_key_value -o "$bridge_gen" || bridge_ok=0
+        fi
+        [ "$bridge_ok" = 1 ] || echo "   px4_msgs C++ codegen FAILED for $id (no stamp)" >&2
+
+        # The header must PARSE on its own. A generated header that only compiles
+        # inside the bridge's own TU is the shape that breaks a consumer nobody
+        # is building — `-fsyntax-only`, no link, no PX4 headers needed.
+        if [ "$bridge_ok" = 1 ]; then
+            cxx="${CXX:-c++}"
+            if command -v "$cxx" >/dev/null 2>&1; then
+                # The include set a PX4 module actually gets, read off the one
+                # file that defines it (`_NROS_PX4_INCLUDES` in
+                # integrations/px4/NanoRosPx4Module.cmake) rather than restated
+                # here — that file's own comment records being born with the
+                # wrong paths, which is the argument against a second copy. Only
+                # the two the generated headers reach are needed; parsing the
+                # cmake list for a syntax check would be more machinery than the
+                # check, so the pair is named with a pointer to its source.
+                bridge_incs=(
+                    -I "$bridge_gen"
+                    -I "$repo_root/packages/api/nros-cpp/include"
+                    -I "$repo_root/packages/platform/nros-platform-api/include"
+                )
+                for hpp in "$bridge_gen"/px4_msgs/msg/*.hpp; do
+                    [ -f "$hpp" ] || continue
+                    case "$(basename "$hpp")" in px4_msgs_msg_*) continue ;; esac
+                    if ! "$cxx" -std=c++17 -fsyntax-only "${bridge_incs[@]}" "$hpp"; then
+                        echo "   generated header does not compile: $hpp" >&2
+                        bridge_ok=0
+                    fi
+                done
+            else
+                echo "   px4: no C++ compiler ($cxx) — header syntax check skipped" >&2
+            fi
+        fi
+
+        if [ "$bridge_ok" = 1 ]; then
+            mkdir -p "$out_root/$id"
+            rm -f "$out_root/$id/.compile-ok"
+            # phase-340 P2 — a derived group dir, never the leaf's `target/`.
+            # The RECIPE deliberately uses the leaf default because PX4's make is
+            # handed that archive path; a compile-check produces no artifact
+            # anyone reads, so it has no reason to write there.
+            bridge_tdir_flag="$(nros_fixture_target_dir_flag linux)"
+            # shellcheck disable=SC2086
+            if ( cd "$px4_bridge_dir/ffi" \
+                 && NROS_PX4_BRIDGE_GEN="$bridge_gen" cargo check $bridge_tdir_flag ); then
+                date -u +%Y-%m-%dT%H:%M:%SZ > "$out_root/$id/.compile-ok"
+                echo "   stamped $out_root/$id/.compile-ok"
+                px4_n=$((px4_n + 1))
+            else
+                echo "   cargo-check FAILED for $id (no stamp)" >&2
+                px4_fail_n=$((px4_fail_n + 1))
+            fi
+        else
+            px4_fail_n=$((px4_fail_n + 1))
+        fi
+    fi
 else
     px4_skipped="PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot)"
     _note_lane_skip "px4: $px4_skipped"

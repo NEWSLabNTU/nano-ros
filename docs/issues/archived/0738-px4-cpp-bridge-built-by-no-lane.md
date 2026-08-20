@@ -1,7 +1,7 @@
 ---
 id: 738
 title: "`just px4 build-bridge-example` is invoked by no lane, so the uORB->RMW bridge and the C++ px4_msgs emitter are built by nothing"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: testing, px4, codegen
@@ -73,3 +73,50 @@ tier unrunnable rather than covered. Whatever lands should either be gated on a
 coordinate the lane already knows (the px4 compile-check set is), or FAIL with a
 remedy the way `check-zephyr-kconfig-symbols` and `zephyr tier3-cell` do
 (issue 0651) — never skip silently, which reports the same colour as coverage.
+
+## Resolved (2026-08-20)
+
+The cheap half is laned, exactly as scoped above — no PX4 build system involved.
+
+**Build stage:** `compile-check-fixtures.sh` gains the unit `px4_bridge_ffi`,
+inside the existing PX4-submodule guard so an absent submodule is a recorded
+lane skip rather than a silent one. It runs stages [1/4] and [2/4] of
+`build-bridge-example`, plus one thing the recipe never does:
+
+1. `generate-px4-msgs --lang cpp --ros-edition jazzy --topics debug_key_value`
+   — the emitter runs, under the SAME advisory lock as the Rust px4 codegen
+   (issue 0520's staging clobber applies equally here);
+2. each generated `.hpp` compiled STANDALONE, one TU, `-fsyntax-only` — the
+   header parses without the bridge's own translation unit around it;
+3. `cargo check` on the FFI crate with `NROS_PX4_BRIDGE_GEN` pointed at that
+   output, into a DERIVED `--target-dir` (phase-340 P2) rather than the leaf's
+   `target/`. The recipe uses the leaf default deliberately — PX4's make is
+   handed that archive path — but a compile-check produces nothing anyone reads.
+
+**Test side:** `px4_bridge_compile.rs` asserts the `.compile-ok` stamp via
+`require_compile_check`, because the build script exits 0 on a unit failure —
+the stamp, not the exit code, is the contract. It states its coordinate
+(issue 0700) since these fixtures have no `[[fixture]]` row.
+
+### Verified in both directions
+
+| condition | result |
+| --- | --- |
+| clean tree | `px4=4/4`, stamp written, test PASSES |
+| FFI crate broken (type error added to `lib.rs`) | `cargo-check FAILED for px4_bridge_ffi`, no stamp, `px4=3/4` |
+| generated header does not parse | `generated header does not compile: <path>`, no stamp, `px4=3/4` |
+| stamp absent | test FAILS naming `just build-test-fixtures` — not a skip |
+
+The third row was not a contrived test. The first real run reported it, because
+the header needs `nros/fixed_string.hpp` and `nros/platform.h` and my TU had
+neither on its include path. **The header was fine; the check was wrong** — a
+useful reminder that a lane's first red is as likely to be the lane. Fixed by
+using the include set a PX4 module actually gets, read off `_NROS_PX4_INCLUDES`
+in `integrations/px4/NanoRosPx4Module.cmake` — the file whose own comment records
+being born with the wrong paths, which is the argument against a second copy.
+
+### Still on demand
+
+Stage [4/4], the PX4 SITL `make` with `EXTERNAL_MODULES_LOCATION`, remains
+`just px4 build-bridge-example`. It is the only part that needs PX4's build
+system, and the codegen risk this issue is about is not in the link.
