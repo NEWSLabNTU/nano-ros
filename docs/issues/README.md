@@ -81,16 +81,23 @@ the STRUCT — Rust and C++ are covered; `--lang c` is rejected but is not a gap
 `<uORB/topics/*.h>` gives the C struct verbatim. Coverage split out as #0738.
 See `archived/0362-*`. (2026-08-20)
 
-Recently resolved (2026-08-21): **#0739 / #0271** — a 256 KB image that already tuned NINE sizing knobs
-still inherited ~145 KB of defaults, because each feature adding a static pool added its knob silently and
-nothing could enumerate them (0 of the 5 knobs that audit needed were in the book). `gen-pool-inventory.py`
-now generates `book/src/reference/static-pool-inventory.md` — 34 knobs mechanically, byte figures OPT-IN via
-a `// nros-pool:` formula the generator evaluates at defaults — gated on the fast lane. It reproduces 0271's
-link-map numbers from source (`LARGE_PAYLOADS` 131,072, `SLOTS` 8,192). Bytes are deliberately NOT claimed
-where a slot's width is cfg-dependent (`MESSAGE_INFO_TABLE`). 0271 itself closes at 91 % recovered, all
-remaining work consumer-side; it also carried two stale claims, both corrected there: phase-346 (the seam its
-port waits on) COMPLETED 2026-08-12, and phase-358's Executor-carve suspicion is contradicted by 0271's own
-"false lead" measurement. See `archived/0739-*`, `archived/0271-*`. (2026-08-21)
+Recently resolved (2026-08-21): **#0739** — a 256 KB image that already tuned NINE sizing knobs still
+inherited ~145 KB of defaults, because each feature adding a static pool added its knob silently and nothing
+could enumerate them (0 of the 5 knobs that audit needed were in the book). `gen-pool-inventory.py` now
+generates `book/src/reference/static-pool-inventory.md` — 34 knobs mechanically, byte figures OPT-IN via a
+`// nros-pool:` formula evaluated at defaults — gated on the fast lane. It reproduces issue 0271's link-map
+numbers from source (`LARGE_PAYLOADS` 131,072, `SLOTS` 8,192). Bytes are deliberately NOT claimed where a
+slot's width is cfg-dependent (`MESSAGE_INFO_TABLE`). See `archived/0739-*`. (2026-08-21)
+
+Recently resolved (2026-08-21): **#0271** — the Orin SPE BTCM regression closes at 91 % recovered
+(168,760 bytes of overflow -> ~11,268), with everything remaining consumer-side; the one nano-ros-side item
+(`NROS_RMW_MESSAGE_INFO_SLOTS`) landed and is live. Its durable half — making the existing knobs enumerable,
+which it called the thing it "most argues for" — is #0739. Two stale claims are corrected in the archived
+issue rather than left to mislead: phase-346, the out-of-tree board seam its consumer port waits on,
+COMPLETED 2026-08-12 (before the entry naming it pending), and phase-358's hope that the Executor carve
+recovered much of the overflow is contradicted by 0271's OWN "false lead" measurement, where shrinking that
+same symbol by 95 KB moved the overflow by zero because `--gc-sections` drops it. See `archived/0271-*`.
+(2026-08-21)
 
 
 Recently resolved (2026-08-20): **#0651** — Zephyr **4.4** was reachable only from the nightly, so a
@@ -3136,8 +3143,6 @@ fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /
 Needs ONE SMP fixture (a separate zephyr native_sim SMP variant, not the shared image) to flip a
 two-mode core-pin e2e to accept. See `0260-*`. (phase-296 W5.11 2026-07-24)
 
-**#271** — Orin SPE BTCM footprint regressed ~+195 KB between `d9af52be` and `21a3a4248`; a
-minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
 
 
 Recently resolved (2026-08-10): **#0371** — RESOLVED 2026-08-10, archived. See `archived/0371-*`.

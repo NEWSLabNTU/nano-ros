@@ -41,6 +41,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # noqa: E402  (path set above)
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # The umbrellas. Each is a cargo `staticlib` (or an alias for one); linking two
@@ -127,10 +130,13 @@ def check(path: Path):
 
 
 def main() -> int:
-    files = []
-    for d in SEARCH:
-        files += sorted((ROOT / d).rglob("*.cmake"))
-        files += sorted((ROOT / d).rglob("CMakeLists.txt"))
+    # issue 0721 — these are TRACKED files, so they come from the git index.
+    # `rglob` under `cmake`/`zephyr`/`integrations` also descends every build
+    # tree that happens to sit there, which is the walk that rule forbids and
+    # what `check-no-tracked-file-find` flagged here.
+    files = sorted(
+        set(tracked(*SEARCH, suffix=".cmake")) | set(tracked(*SEARCH, name="CMakeLists.txt"))
+    )
     problems = []
     for f in files:
         problems += check(f)
