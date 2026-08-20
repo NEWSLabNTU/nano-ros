@@ -133,3 +133,63 @@ better than a skip" trade being dodged: these cells were never green in a lane �
 their fixtures had no producer, so they SKIPPED, and turning that into a hard
 tier-1 red for everyone would be charging the whole repo for a defect the fix
 above merely made visible. Un-ignore with the delivery fix, in the same commit.
+
+## Third data point, 2026-08-21 — it DOES reproduce, and DDS is not the layer
+
+Same host as the original report, after the other host could not reproduce it.
+Ran that host's exact sequence — `just setup-cli`, `rm -rf` both
+`build-workspace-fixtures-freertos-posix` dirs, `just freertos
+build-fixtures-posix` (RC=0), `cargo nextest run --run-ignored all` — and both
+cells still fail, 2/2. So it is not build state, and it is not the `#740` cmake
+mirror either (that hypothesis was already killed on the other host).
+
+**Ruled out here, each measured:**
+
+* `ROS_LOCALHOST_ONLY=0` is the one relevant variable this host sets and the
+  other does not. Running the binary bare with it unset changes nothing.
+* Network interface selection. Cyclone auto-picks `enp7s0` here ("selected
+  arbitrarily from: enp7s0, br-babe48341e69, docker0, tap0"), which is a
+  plausible-sounding culprit and is not one: forcing
+  `<NetworkInterface name="lo" multicast="true"/>` also delivers nothing.
+* Cyclone itself reporting a problem — `Verbosity=warning` prints nothing at
+  all beyond the app's own output.
+* The library. `ldd` resolves `libddsc.so.0` to
+  `/opt/ros/humble/lib/x86_64-linux-gnu/libddsc.so.0`, same as the other host.
+
+**And DDS is doing its job.** With `<Category>discovery,trace</Category>` the
+writer and reader are created in one participant and MATCH LOCALLY, and the
+samples are written:
+
+```
+new_writer(guid 1100c32:ff222e09:fb3499db:203, (default).rt/chatter/std_msgs::msg::dds_::Int32_)
+new_reader(guid 1100c32:ff222e09:fb3499db:304, (default).rt/chatter/std_msgs::msg::dds_::Int32_)
+match_reader_with_writers(rd …:304) scanning all wrs of topic rt/chatter
+  reader_add_local_connection(wr …:203 rd …:304)
+  writer_add_local_connection(wr …:203 rd …:304)
+…
+write_sample …:203 #1: ST0 rt/chatter/std_msgs::msg::dds_::Int32_:{0}
+write_sample …:203 #2: ST0 rt/chatter/std_msgs::msg::dds_::Int32_:{1}
+```
+
+Same participant GUID prefix on both endpoints, matching QoS (reliable,
+volatile, `data_representation=2(0,2)`), a local connection established before
+the first write, and every sample delivered into the reader's history.
+
+**So the sample reaches the reader and the application never takes it.** That
+moves the question off the transport entirely — off domains, interfaces,
+multicast, `CYCLONEDDS_URI` and the participant — and onto the listener node's
+own scheduling inside the FreeRTOS POSIX simulator. The talker task keeps
+running (`sent: 0..N` throughout); the listener prints `Waiting for messages`
+once and never again. One task runs, its sibling does not.
+
+That also explains why the other host cannot reproduce it: a task that never
+gets scheduled and a task that does are the same binary and the same
+configuration, and the difference is timing. It is the #0623/#0636 family —
+what the boot path leaves runnable — not a delivery bug.
+
+**Next step**, and it is cheap: print the listener task's spin count the way
+`realtime_tiers` made the tiers report on themselves (`alive — N spin(s), M
+timer(s) fired`). "Never scheduled" and "scheduled but taking nothing" are
+different defects and nothing currently distinguishes them.
+
+Keeping `#[ignore]`: it still fails here.

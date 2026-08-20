@@ -175,14 +175,17 @@ run, so it is specific to the service reply type. Deterministic 3/3 in-sweep and
 phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstream, rebuilding fixtures and
 reproducing. See `0741-*`. (2026-08-21)
 
-**#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing,
-and the reason nobody saw it is that no recipe built their fixtures: `just/freertos.just` only ever called
-`workspace-fixtures-build.sh freertos`, so the two `platform = "freertos-posix"` manifest rows matched
-nothing and the lane finished green having built neither (issue #405's shape; the producibility gate was RED
-on main saying so). The recipe half is fixed here (`just freertos build-fixtures-posix`); with the fixtures
-built, both cells fail `no 'Received:' line — nothing was delivered` while the talker publishes 0..7. NOT
-caused by phase-359 W10, verified by stashing it and reproducing on upstream main. Contradicts phase-370 W3's
-"deliver /chatter end to end" — likely a hand-build whose env the lane does not supply. See `0737-*`. (2026-08-20)
+**#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing.
+Defect 1 (no recipe built their fixtures — the rows matched nothing and the lane finished green having built
+neither, issue #405's shape) is FIXED: `just freertos build-fixtures-posix`. Defect 2 does not reproduce on a
+second host but DOES on the first, through that host's exact wiped-and-rebuilt sequence — and the layer is
+now known: with Cyclone `discovery,trace`, the writer and reader match LOCALLY in one participant
+(`reader_add_local_connection` / `writer_add_local_connection`) and every `write_sample` lands in the
+reader's history. The sample arrives and the APPLICATION never takes it. Transport, domain, interface,
+`CYCLONEDDS_URI` and `ROS_LOCALHOST_ONLY` are all ruled out by measurement. The talker task runs throughout
+while the listener prints `Waiting for messages` once — one task scheduled, its sibling not, which is the
+#0623/#0636 family rather than a delivery bug, and explains a host-dependent repro. Parked `#[ignore]`.
+See `0737-*`. (2026-08-21)
 
 **#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
 fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7
