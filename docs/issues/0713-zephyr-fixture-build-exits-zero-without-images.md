@@ -1,6 +1,6 @@
 ---
 id: 713
-title: "`just zephyr build-fixtures` configures ~70 build dirs, dies in its parallel layer, and exits 0 — so every Zephyr tier-2 coordinate fails MISSING"
+title: "Tier 2's zephyr stage reports OK while the images its own in-lane tests need do not exist"
 status: open
 type: bug
 area: build/zephyr
@@ -30,30 +30,49 @@ Seven of tier 2's thirteen failures are this, across
 ## What is actually happening
 
 The build dirs ARE created and configured — `CMakeCache.txt`, `build.ninja`,
-`zephyr/arch`, `zephyr/drivers` are all present. What is missing is the LINK:
-no `zephyr.elf`. Counted on this host after a full run:
+`zephyr/arch`, `zephyr/drivers` all present. What is missing is the LINK:
 
 ```
-$ ls zephyr-workspace/ | grep -c '^build-'      # 70
+$ ls zephyr-workspace/ | grep -c '^build-'          # 70
 $ ls zephyr-workspace/*/zephyr/zephyr.elf | wc -l   # 9
 ```
 
-and those 9 are leftovers from earlier one-off manual builds, not from the lane.
+and those 9 are leftovers from earlier one-off manual builds, not from any lane.
 
-The run's own tail says why, and then exits 0 anyway:
+## CORRECTION — the first version of this issue was wrong
+
+It claimed `just zephyr build-fixtures` "exits 0" after failing, and built the
+whole argument on that. It does not. Measured unpiped:
 
 ```
-make: *** wait: No child processes.  Stop.
-make: *** Waiting for unfinished jobs....
-make: *** wait: No child processes.  Stop.
-[exited with code 0]
+$ just zephyr build-fixtures > log 2>&1; echo $?
+1
 ```
 
-`wait: No child processes` is a make/jobserver fault, and this repo drives these
-builds through a fifo jobserver (`NROS_JOBSERVER`, `just/zephyr-ci.just` around
-the "fifo-jobserver token pool" and "fifo jobserver leaves omit `ninja -j`"
-comments). NOT diagnosed further here — what is established is that the failure
-is real, it is in the parallel layer, and it does not reach the exit status.
+The original reading came from `just zephyr build-fixtures 2>&1 | tail -8`,
+whose exit status is `tail`'s, not `just`'s. A measurement error, not a defect —
+and the code agrees with the correction: the recipe runs under `set -e`, the
+driver call sits in an `if` BODY (where `set -e` applies), the driver itself has
+`set -euo pipefail`, and issue 0700 deliberately REMOVED a `|| true` from the
+neighbouring `west-fixtures.sh` call for exactly this reason.
+
+A second thing that re-measurement surfaced: a direct run currently aborts on the
+STALE in-tree CLI precondition (`nros-cli-core/src/lib.rs:77`) AFTER the
+configure pass — which is why a hand-run leaves 70 configured dirs and no ELFs.
+That is the documented CLI-then-fixtures ordering, not a bug.
+
+## What remains established
+
+* Tier 2's fixture lane printed `== zephyr == OK`, with no build output between
+  `== zephyr ==` and the OK.
+* Seven of tier 2's failures are then `Test fixture binary MISSING for an
+  in-lane coordinate`, naming ELFs that do not exist.
+
+So the lane's stage said OK while the images its own in-lane tests require were
+absent. Whether the stage ran and did nothing, was skipped, or ran against a
+different coordinate set is NOT diagnosed — and the earlier guess (a stale-stamp
+skip) is already refuted: building the dirs by hand cleared exactly ONE of the
+seven, because they were configured, not built.
 
 ## Why it matters more than seven test failures
 
@@ -81,9 +100,12 @@ it is failing silently, and the extra dirs changed nothing.
 
 ## Direction
 
-1. Make the failure reach the exit status. Whatever `wait: No child processes`
-   is, the lane must not print OK after it.
-2. Then diagnose the jobserver interaction. The `NROS_JOBSERVER=1` path omits
+1. Find out what the tier-2 stage actually does. The recipe fails correctly in
+   isolation, so the gap is between `build-test-fixtures`'s zephyr stage and the
+   recipe — `run_stage zephyr just zephyr build-fixtures` under `in_lane zephyr`.
+   Instrument that stage before theorising again.
+2. Separately, the `make: *** wait: No child processes` seen in a hand-run is
+   real and worth understanding. The `NROS_JOBSERVER=1` path omits
    `ninja -j` / `CMAKE_BUILD_PARALLEL_LEVEL` deliberately, so a token-pool fault
    here starves the leaves rather than slowing them.
 3. A post-condition worth having regardless: the lane knows which coordinates it
