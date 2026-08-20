@@ -100,11 +100,24 @@ Stock Cyclone ignores the return of `pthread_mutex_init`. That is defensible on 
 desktop and useless here: it converts pool exhaustion into an anonymous `abort()`
 seconds later, which is exactly how 0371 cost as much time as it did.
 
-### 5. FreeRTOS (1 commit)
+### 5. FreeRTOS (2 commits)
 
 | commit | subject |
 | --- | --- |
 | `22150fbf` | fix(freertos): avoid TLS-only DDS state |
+| `99cfac88` | ddsrt: give every FreeRTOS thread its lwIP per-thread netconn semaphore |
+
+With `LWIP_NETCONN_SEM_PER_THREAD=1` every thread touching the socket API needs
+its own netconn semaphore. ddsrt creates its own threads and never called
+`lwip_socket_thread_init()`, so the first socket call from one asserted
+`sem != NULL`. `thread_start_routine` is the point they have in common. Found by
+phase-370 W4, the first work to boot an embedded Cyclone image at all.
+
+**Not yet pushed to the fork remote.** The commit is local
+(`third-party/dds/cyclonedds`, branch `nano-ros`); the superproject pin is
+deliberately NOT bumped to it, because a pin naming an unpushed commit clones as
+an unfetchable ref. Push the fork branch first, then bump — the order CLAUDE.md's
+vendored-fork workflow requires.
 
 ## Why upstreaming does not retire it
 

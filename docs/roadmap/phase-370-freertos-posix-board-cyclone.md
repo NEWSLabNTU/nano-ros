@@ -90,17 +90,26 @@ Five defects between those two states, none of them about a new board:
    the image has no environment. One `env_lookup` now says so for all three
    sites, in its own dependency-free header (putting it in `internal.hpp`
    dragged `dds/dds.h` into test TUs and broke `check-rmw-cyclonedds`).
-4. The lwIP per-thread semaphore was allocated BEFORE `tcpip_init` created the
-   pool it comes from, so the app task's TLS slot held nothing and the first
-   socket call asserted `sem != NULL`. Latent because zenoh-pico opens sockets
-   from its own tasks; Cyclone creates endpoints from the APP task.
-5. (Ruled out, recorded so it is not retried.) `ddsrt`'s FreeRTOS thread entry
-   does not call `lwip_socket_thread_init` for Cyclone's own threads. It was
-   implemented in the vendored fork and measured: the failure is byte-identical
-   with and without it. No fork commit was made.
+4. `ddsrt`'s FreeRTOS `thread_start_routine` never gave Cyclone's OWN threads an
+   lwIP per-thread netconn semaphore, so the first socket call from one asserted
+   `sem != NULL`. Fork commit `99cfac88` (delta §5), local pending a maintainer
+   push — the superproject pin is deliberately not bumped to an unpushed commit.
 
-The remaining step needs Cyclone-level tracing on a target where
-`CYCLONEDDS_URI` cannot be read — its own piece of work, filed as issue 0733.
+   **A correction belongs here.** This was first reported as "ruled out by
+   measurement": the fork file was reverted, the tree rebuilt INCREMENTALLY, and
+   the failure looked identical. It was identical because the cyclonedds
+   subproject had not recompiled. From CLEAN directories in both directions the
+   change is decisive. The same clean re-measurement retired the fix that was
+   credited instead — reordering `lwip_socket_thread_init()` after `tcpip_init()`
+   in `network_glue.c`, which is neither necessary nor sufficient and whose
+   rationale was false (`sys_sem_new` takes FreeRTOS heap, not lwIP memp). It has
+   been reverted.
+
+The remaining `-1` is now diagnosed rather than mysterious: the type-descriptor
+registry is empty, because descriptors register through
+`__attribute__((constructor))` and `.init_array` is not walked on bare metal —
+the #48 hazard this tree already moved RMW backend registration off in
+phase-249 P3. Two credible fixes, so it stays issue 0733 rather than a guess.
 
 ## Work items
 

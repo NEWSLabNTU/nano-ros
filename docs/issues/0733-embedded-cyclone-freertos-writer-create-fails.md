@@ -1,11 +1,11 @@
 ---
 id: 733
-title: "Embedded Cyclone on FreeRTOS now builds and boots, and `nros_publisher_init` still returns -1"
+title: "Embedded Cyclone on FreeRTOS: type descriptors register through `__attribute__((constructor))`, and bare-metal never runs it"
 status: open
 type: bug
 severity: medium
 area: freertos
-related: [phase-370, issue-0233]
+related: [phase-370, issue-0233, issue-0048]
 ---
 
 # 0733 — the embedded Cyclone lane's remaining wall, after the ones phase-370 W4 cleared
@@ -47,34 +47,87 @@ board — each was a seam nothing had walked:
   sockets from its own tasks, which take a different path; Cyclone creates its
   endpoints from the APP task.
 
-## What was tried and is NOT the cause
+## RETRACTED: "the ddsrt thread fix is not the cause"
 
-`ddsrt`'s FreeRTOS `thread_start_routine` does not call
-`lwip_socket_thread_init()` for the threads Cyclone creates itself, which looks
-like the same defect one layer down. It was implemented in the vendored fork and
-measured: **the failure is byte-identical with and without it**, so it is not
-what this is, and no fork commit was made. (It may still be needed once writers
-exist and those threads do socket I/O — but landing an untested fork change on
-that guess is how a fork delta grows entries nobody can justify.)
+This issue originally said that adding `lwip_socket_thread_init()` to ddsrt's
+FreeRTOS `thread_start_routine` "changes nothing, measured". **That measurement
+was wrong**, and it was wrong in the way this repo already warns about: it was
+taken on an INCREMENTAL build. Reverting the file in the vendored submodule did
+not recompile the cyclonedds subproject, so both runs executed the same image.
 
-## Where to look next
+Re-measured from CLEAN build directories in both directions:
 
-* `dds_create_topic` / the `sertype_min` registration, which is the step between
-  a working participant and a failing writer.
-* The fixed-pool heap budget (`kEmbeddedCycloneConfig`, Phase 177.22) — the
-  default is 3 MB (`NROS_FREERTOS_HEAP_KB`), which does not LOOK tight, but
-  nothing has measured Cyclone's actual embedded working set.
-* Diagnostics are the immediate problem: `CYCLONEDDS_URI` cannot be used to turn
-  on tracing, because `env_lookup` correctly answers `nullptr` on a freestanding
-  target. A compile-time trace knob is probably the prerequisite for any further
-  progress here.
+| `network_glue.c` order | ddsrt thread fix | result |
+| --- | --- | --- |
+| either | **no** | `lwIP ASSERT: sem != NULL`, then `-1` |
+| either | **yes** | no assert, then `-1` |
 
-## Why this is filed rather than finished
+So the ddsrt change IS the fix for the assert, and it is now committed in the
+fork (`99cfac88`, see `docs/reference/cyclonedds-fork-delta.md` §5) — local
+only, pending a maintainer push.
 
-phase-370 W4 is a stretch item its own doc says "may split out". The build half
-is landed and independently valuable — it is what makes the lane debuggable at
-all. The remaining step needs Cyclone-level tracing on a target with no
-environment, which is its own piece of work.
+The same table retires the other half of the original story: the
+`network_glue.c` reordering of `lwip_socket_thread_init()` after `tcpip_init()`
+is neither necessary nor sufficient, and its stated rationale was false —
+`sys_sem_new()` on this port is `xSemaphoreCreateBinary()`, which takes FreeRTOS
+heap, not lwIP's memp pools. It has been reverted.
+
+## The actual cause of the `-1`
+
+Instrumenting `publisher_create`'s early returns:
+
+```
+Network ready
+W733:no-desc
+[nros] … nros_publisher_init(…) -> -1
+```
+
+`find_descriptor(eff_type)` returns `nullptr` — the type-descriptor registry is
+EMPTY. And the registration TU that `nros_rmw_cyclonedds_idlc_compile()`
+generates (`NrosRmwCycloneddsTypeSupport.cmake`) registers like this:
+
+```c
+void register_<stem>_<n>(void) {
+    nros_rmw_cyclonedds_register_descriptor("<type>", &<desc>);
+}
+
+__attribute__((constructor))
+static void register_<stem>_<n>_constructor(void) { register_<stem>_<n>(); }
+```
+
+`.init_array` is **not walked on bare-metal/RTOS** — this tree says so outright,
+in `packages/api/nros-c/src/rmw_backend.rs`: "`.init_array` is not walked on
+bare-metal/RTOS — the #48 hazard". RMW BACKEND registration was moved off ctors
+onto a generated strong definition for exactly this reason (phase-249 P3).
+Descriptor registration never was, because no embedded Cyclone image had ever
+run far enough to need a descriptor.
+
+Note the generator already emits the registrar as a NAMED, non-static function
+beside the constructor — the explicit-call path exists and has no caller.
+
+## The two ways to fix it
+
+1. **Follow phase-249 P3.** `nros_rmw_cyclonedds_add_idl_library` knows every
+   `register_<stem>_<n>` it generated, so it can emit one aggregate strong
+   definition, called once from session setup. Matches how backend registration
+   already works here, and keeps `.init_array` irrelevant.
+2. **Make the board walk `.init_array`.** The mps2 FreeRTOS board links
+   `-nostartfiles`, so nothing runs the array a normal C runtime would. A walk in
+   the board's startup fixes every ctor-based registration at once rather than
+   this one — but it re-adopts the mechanism #48 moved away from, so it should
+   only be chosen deliberately.
+
+Both are real; picking between them is a design call, not a detail, which is why
+this is filed rather than patched.
+
+## Not the cause
+
+* The heap. `NROS_FREERTOS_HEAP_KB` defaults to 3 MB and the failure is a
+  registry miss, not an allocation failure.
+* Tracing. The earlier note that diagnostics were the blocker is superseded —
+  four temporary `console_write` probes in `publisher_create` located this in one
+  boot. A compile-time Cyclone trace knob would still be useful, and is no longer
+  a prerequisite.
 
 Issue 0233 tracks the older restore-vs-carve question for these cells; this is
 the concrete blocker if the answer is restore.
