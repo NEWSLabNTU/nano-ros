@@ -141,14 +141,47 @@ It was not. Re-running tier 2 afterwards cleared exactly ONE of the seven
 failures. The dirs had been configured, not built — so the lane is not skipping,
 it is failing silently, and the extra dirs changed nothing.
 
+## Root cause (2026-08-20) — an assumption in `lane.rs` that tier 2 breaks
+
+`nros_tests::fixtures::lane`'s module doc states the skip rule and its
+justification:
+
+> A path that attributes to NO row never skips (fail closed). Families built
+> module-level rather than by coordinate — the Zephyr west leaves, the
+> compile-check lane — have no manifest row and keep today's hard failure,
+> **which is correct: their build is not narrowed either, so nothing is
+> missing.**
+
+The last clause is the bug. For tier 2 the zephyr build IS narrowed. Measured:
+
+```
+$ cargo run -q -p nros-tests --bin lane-coords -- tier2 | grep zephyr
+zephyr,cpp,xrce
+zephyr-cortex-m,c,zenoh
+```
+
+and the stage's driver was handed exactly the 7 targets those two coordinates
+cover. Every other zephyr west leaf — `zephyr,rust,zenoh` among them — is
+therefore NOT built by the lane, has no manifest row to attribute to, and so can
+never be lane-skipped either. Guaranteed hard failure, for as many tests as are
+bound to those leaves: seven, here.
+
+The rule is right for the `native` lane, where the west families genuinely are
+not narrowed. It is wrong for any lane that narrows the zephyr build, which is
+what tier 2 does.
+
 ## Direction
 
-1. Decide which side is wrong: does tier 2's zephyr cover need those
-   coordinates, or should the tests bound to them be out-of-lane for tier 2?
-   `matrix::CELLS` / `interop::CELLS` declare the run set; `fixtures-manifest.py
-   coords` computes the build set. They must agree per issue 0482, and the
-   `matrix_fixture_coverage.rs` gates exist to enforce exactly that — so the
-   first question is why those gates pass while this diverges.
+1. The two coherent fixes, and it is a maintainer's call which:
+   * **Attribute the west leaves.** Give them manifest rows (or a
+     coordinate-bearing artifact root) so the resolver can skip them by
+     coordinate like everything else. Then a narrowed lane narrows both sides
+     and the 0482 invariant holds for zephyr too.
+   * **Widen tier 2's zephyr cover** to every west leaf a bound test needs.
+     Honest, but it makes the zephyr half of tier 2 close to `ci-full`, which
+     is the cost the 1-wise cover exists to avoid.
+   Note the `matrix_fixture_coverage.rs` G1-G4 gates do NOT cover this: they
+   check interop cells, not the west-leaf/lane-cover relationship.
 2. Separately, the `make: *** wait: No child processes` seen in a hand-run is
    real and worth understanding, but it is NOT this issue's mechanism. The `NROS_JOBSERVER=1` path omits
    `ninja -j` / `CMAKE_BUILD_PARALLEL_LEVEL` deliberately, so a token-pool fault
