@@ -1,7 +1,7 @@
 ---
 id: 715
 title: "Every threadx-linux CycloneDDS image SEGVs in `_tx_thread_timeout` from the ThreadX timer thread, seconds after reaching its ready banner"
-status: open
+status: resolved
 type: bug
 area: boards/threadx-linux
 related: [issue-0713, rfc-0072]
@@ -82,6 +82,62 @@ no lane a developer runs before pushing builds or executes these images. Tier 2
 had not completed on this host until today — it was blocked in sequence by
 issue 0698 (CMake 4), a stale issue-index row, a NuttX header gate, and two
 boards that did not compile (issue 0708).
+
+## Root cause + fix (2026-08-20)
+
+The vendored Linux port narrows `LONG`/`ULONG` to 32-bit `int` on LP64, so
+`TX_TIMER_INTERNAL.tx_timer_internal_timeout_param` — a `ULONG` — can no longer
+hold a thread pointer. The port compensates by routing the pointer through
+`tx_timer_internal_extension_ptr` (`TX_TIMER_INTERNAL_EXTENSION`,
+`TX_THREAD_CREATE_TIMEOUT_SETUP`, `TX_THREAD_TIMEOUT_POINTER_SETUP`).
+
+**The narrowing and its compensation were keyed on different conditions.** The
+narrowing had already been re-keyed to the data model —
+
+```c
+/* Test the DATA MODEL rather than the architecture: LP64 needs the narrowing… */
+#if (defined(__LP64__) && __LP64__) || (defined(__x86_64__) && __x86_64__)
+```
+
+— while the compensation block 340 lines below still read
+`#if defined(__x86_64__) && __x86_64__`. On aarch64 the first fires and the
+second does not, so the common fallback
+`TX_ULONG_TO_THREAD_POINTER_CONVERT(timeout_input)` runs and truncates:
+
+```
+#0  _tx_thread_timeout ()      x19 = 0xaac85c70   <- upper 32 bits gone
+=>  ldr w1, [x19, #124]                            (tx_thread_state)
+```
+
+That also explains the selectivity: the param only carries a pointer once a
+thread takes a TIMED suspend, so CycloneDDS images (ddsrt's timed waits) died
+and zenoh ones did not.
+
+A half-fix, and the file says so — its own comment records "This port narrowed
+them under `__x86_64__` only" for LONG/ULONG. Two sites were re-keyed; this
+third was missed.
+
+Fixed in the submodule (`9a29f1b`): same data-model test on the compensation
+block.
+
+## Verified
+
+aarch64, all three binaries rebuilt:
+
+| binary | before | after |
+| --- | --- | --- |
+| `c_talker` | rc=139 (SEGV) | rc=137 — alive at kill, `Publishing: 'Hello World: 11'` |
+| `c_service_server` | rc=139 | rc=137 — alive at kill |
+| `c_action_server` | rc=139 | rc=137 — alive at kill |
+
+(137 is SIGKILL from the test's own `timeout`, i.e. still running.)
+
+## Not pushed
+
+The fix lives in the vendored `third-party/threadx` FORK. Per CLAUDE.md the
+agent does not push fork remotes: the commit is made and the branch left ready,
+and the maintainer pushes it, then bumps the superproject pointer to the pushed
+commit.
 
 ## Not diagnosed
 

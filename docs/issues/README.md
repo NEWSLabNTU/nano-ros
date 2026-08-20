@@ -146,17 +146,16 @@ env around the whole fixture build would pollute the shared tree every other tes
 REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
 See `0711-*`. (2026-08-20)
 
-**#0715** (boards/threadx-linux, open 2026-08-20) — every threadx-linux **CycloneDDS** image SEGVs
-(`rc=139`, 3/3 reproducible: c_talker, c_service_server, c_action_server). Each completes init, prints its
-READY banner, then faults in the ThreadX TIMER thread — `_tx_thread_timeout` ← `_tx_timer_thread_entry` ←
-`_tx_thread_shell_entry` — i.e. the kernel's expiry walk, not application code and not Cyclone's threads,
-which points at a corrupted/freed entry still linked into the timeout list. Explains three tier-2 failures
-at once (service "produced no calls/requests" with EMPTY server output, action "produced no result",
-talker→native-listener "never received 2 messages"). Under gdb you must
-`handle SIGUSR1 SIGUSR2 SIGALRM nostop noprint pass` — those are the Linux port's timer-interrupt and
-thread-suspend signals — or you stop on them instead of the fault. Uncaught until now because this is a
-tier-2 coordinate and tier 2 had never completed here: blocked in sequence by #0698, a stale index row, a
-NuttX header gate, and #0708's two non-compiling boards. See `0715-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0715** — every threadx-linux CycloneDDS image SEGV'd in the ThreadX
+timer thread. The port narrows `ULONG` to 32-bit on LP64, so `tx_timer_internal_timeout_param` cannot hold
+a thread pointer; the port compensates via `tx_timer_internal_extension_ptr` — but the NARROWING was keyed
+`__LP64__ || __x86_64__` while its COMPENSATION 340 lines below was still `__x86_64__` alone. aarch64 took
+the narrowing without the compensation, fell back to `TX_ULONG_TO_THREAD_POINTER_CONVERT`, and
+`_tx_thread_timeout` dereferenced a truncated `0xaac85c70`. Latent until a thread takes a TIMED suspend —
+hence CycloneDDS (ddsrt timed waits) died and zenoh did not. A half-fix the file itself documents ("This
+port narrowed them under `__x86_64__` only"): two sites re-keyed, the third missed. Fixed in the vendored
+fork (`9a29f1b`); all three binaries went rc=139 -> running out their full budget. NOT pushed — fork
+remote is the maintainer's. See `archived/0715-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0717** — the cmake `export -f` list in `fixtures-build.sh` is
 hand-maintained and had broken twice, each time as a helper added to an already-exported function: 0400's

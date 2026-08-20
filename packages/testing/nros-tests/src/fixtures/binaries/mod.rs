@@ -3679,6 +3679,29 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
 /// `lang` is `"c"` or `"cpp"`. There is no rust arm: issue 0432 blocks the
 /// `zephyr` crate on any board with gpio nodes.
 pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    // Issue 0713 — the LANE decides first, same remedy as `require_idf_fixture`
+    // above (issue 0700) and for the same reason.
+    //
+    // These are west leaves: built module-level, with no manifest row, so
+    // `fixtures::lane` cannot attribute them by PATH and its fail-closed arm
+    // treats every one as in-lane. That arm's justification — "their build is
+    // not narrowed either, so nothing is missing" — holds for `lane=native` and
+    // is false for tier 2, whose zephyr cover is exactly
+    // `zephyr,cpp,xrce` + `zephyr-cortex-m,c,zenoh`. So a tier-2 run selected
+    // cortex-m cpp/rust, nothing built them, and the resolver reported a broken
+    // promise indistinguishable from a regression.
+    //
+    // Stating the coordinate lets the resolver skip by COORDINATE instead,
+    // which is what `require_coord_in_lane` exists for. An in-lane coordinate
+    // still fails exactly as hard when its artifact is missing.
+    crate::fixtures::lane::require_coord_in_lane(
+        &(
+            "zephyr-cortex-m".to_string(),
+            lang.to_string(),
+            rmw.coord_token().to_string(),
+        ),
+        &format!("examples/zephyr/{lang}/{case}"),
+    )?;
     let root = project_root();
     let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
     if !example_dir.exists() {
