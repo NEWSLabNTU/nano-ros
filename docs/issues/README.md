@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
+`NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today
+the panic policy) get applied. `nano_ros_add_executable` delegates to the entry, so ~160 call sites are
+covered by construction; these are not. Two of the seven carry the policy only because a build broke and
+someone added it there — #0688 (threadx-rv64 seam) and #0700 (ESP-IDF component shim), each found as a
+`#[panic_handler]` error four crates from its cause. Generalises the sentence phase-369 closed #0666 with:
+"a bespoke path silently misses machinery the shared one applies". NOTE the mechanical sweep first EXCLUDED
+the ESP-IDF shim because a COMMENT in it named the verb — any gate here must key on something structural.
+See `0719-*`. (2026-08-20)
+
 **#0712** (build, open 2026-08-20) — `export -f` closure is ungated: a function shipped to a make
 leaf calls a sibling that was never exported, and the leaf is a fresh bash with only what `export -f`
 gave it. Third occurrence (0400, phase-340 B2, now 0706's two cache-guard helpers); the last one took
