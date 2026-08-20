@@ -514,15 +514,17 @@ its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
-**#0709** (core, open 2026-08-20) — `spin_blocking(timeout_ms(50))` HANGS forever when the executor has no
-clock (`std` without `rmw-cffi`, the mock-session configuration), instead of returning after the timeout it
-was given. Found by phase-359 W10 attempting to delete the `std`-without-a-port clock fallbacks: the
-evidence for "dead code" was that deleting them compiles the whole workspace `--all-targets` with zero
-errors — insufficient, because nothing REFERENCES a default, so removing it cannot produce a compile
-error, only a hang. Deletion reverted. Two independent defects: a no-clock executor should FAIL rather
-than spin (fail-loud rule; the fallback has masked it), and `Executor::from_session` takes NO config, so
-the no-port population issue 0687 named has no seam to install a clock through — which is what W10 needs
-before it can delete anything here. See `0709-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0709** — `spin_blocking(timeout)` HUNG forever when the executor had no
+clock, in the one API whose contract is "returns after N ms"; found by phase-359 W10 deleting the
+`std`-without-a-port fallbacks on compile-only evidence (nothing REFERENCES a default, so removing it
+cannot produce a compile error — only a hang). Fixed by failing loud (`NodeError::NotInitialized`, plus
+the same guard on `spin_period`) and by adding `Executor::from_session_with(session, &config)` — the seam
+`from_session` never had, which is why the no-port population issue 0687 named could not install a clock.
+Three test versions hung before one did not: a stub clock returning a constant never reaches a deadline,
+and one advancing on every READ never lets a loop that re-reads it converge — a clock is not a free
+variable in a test. NOT fixed: `spin_one_period_timed` still reports `elapsed: 0, overrun: false` with no
+clock (no error channel in `SpinPeriodResult`), and the W10 deletion still needs a ruling on whether the
+no-port population is supported. See `archived/0709-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0701** — `check-feature-contract` clause (a) enforced only "a capability
 does not GRANT the heap"; nothing enforced the rest of the same sentence, "emit `compile_error!` naming the

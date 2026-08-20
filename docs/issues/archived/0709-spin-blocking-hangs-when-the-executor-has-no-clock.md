@@ -2,7 +2,7 @@
 id: 709
 title: "`spin_blocking(timeout)` hangs FOREVER when the executor has no clock —
   and `from_session` has no seam to give it one"
-status: open
+status: resolved
 type: bug
 area: core
 related: [phase-359, issue-0687, issue-0669]
@@ -74,6 +74,52 @@ executor gained one.
 
 Until one of them lands, the `std`-without-a-port fallbacks stay, and the
 census keeps `nros-node` at 6 `std::` paths rather than 0.
+
+## Resolved 2026-08-20
+
+**The hang is an error now.** `spin_blocking` with a timeout and no clock
+returns `NodeError::NotInitialized` and logs which knob to set, instead of
+looping until halted. `spin_period` gained the same guard for the same reason —
+a period it cannot pace is a busy-loop pretending to run at `period`. An
+UNTIMED `spin_blocking` still runs until halt, because that is a promise a
+clockless build can keep.
+
+**`Executor::from_session_with(session, &config)`** is the seam `from_session`
+never had: a caller that brings its own session can now bring its own clock.
+Only the timing sources are read from the config — identity belongs to the
+session the caller already opened — and a `None` field does not clobber the
+platform default, which is the rule issue 0671 records for `open_in`.
+
+### Three test versions hung before one didn't, and that is the finding
+
+The first observed the clock through `spin_blocking`, with a stub returning a
+CONSTANT: no deadline is ever reached, so the test hung on the same defect it
+was written for. The second advanced the stub on every READ — which breaks any
+loop that re-reads the clock, because the deadline moves with the reader. The
+third used `spin_one_period_timed`, which also spins.
+
+The version that works observes a BOUNDED call (`spin_once`) and the installed
+field. **A clock is not a free variable in a test**: code that reads it twice
+per iteration constrains what a stub may do, and a stub that ignores the
+constraint produces a hang rather than a failure.
+
+(Two of those "hangs" were also a ghost: a pre-revert test binary from the
+original ten-hour run was still alive and holding the target-dir lock, so later
+`cargo test` invocations appeared to hang when they were queued behind it.
+`pgrep -f nros_node-` before believing a hang.)
+
+### What is NOT fixed
+
+`spin_one_period_timed` still reports `elapsed: 0, overrun: false` when there is
+no clock — a measurement stated as fact that was never taken. It returns
+`SpinPeriodResult`, which has no error channel, so making it honest is an API
+shape decision rather than a guard. Left deliberately, recorded here.
+
+And the W10 question this issue was found by is still open: the
+`std`-without-a-port clock fallbacks stay until someone rules on whether the
+no-port population is supported. `from_session_with` removes the mechanical
+objection — that population now HAS a seam — but "they can install a clock" is
+not the same as "they must".
 
 ## Reproduce
 

@@ -1666,6 +1666,93 @@ fn test_spin_blocking_halt() {
     assert!(result.is_ok());
 }
 
+/// issue 0709 — a timeout this build cannot measure is an ERROR, not "forever".
+///
+/// The clock is cleared directly rather than through a config, because
+/// `ExecutorConfig`'s timing fields deliberately cannot clobber the platform
+/// default with `None` (issue 0671): "not specified" and "there is none" are
+/// different, and only a build with no clock source reaches the second. This
+/// test synthesises that build.
+///
+/// It is the regression test for a ten-hour hang: `spin_blocking` used to read
+/// "no clock" as "no deadline" and loop until halted, in the one API whose
+/// contract is "returns after N ms".
+#[test]
+fn spin_blocking_with_a_timeout_and_no_clock_errors() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    executor.clock_us_fn = None;
+
+    let err = executor
+        .spin_blocking(SpinOptions::new().timeout_ms(50))
+        .expect_err("a timeout with no clock must fail, not spin forever");
+    assert_eq!(err, NodeError::NotInitialized);
+}
+
+/// …and an UNTIMED `spin_blocking` still runs, because "until halt" is a
+/// promise a clockless build can keep. Halted from a peer thread so the test
+/// cannot hang if the guard is ever widened by mistake.
+#[test]
+fn spin_blocking_without_a_timeout_still_runs_with_no_clock() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    executor.clock_us_fn = None;
+
+    let halt = executor.halt_flag();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        halt.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    assert!(executor.spin_blocking(SpinOptions::new()).is_ok());
+}
+
+/// issue 0709 — the sibling guard: a period that cannot be paced is an error
+/// rather than a busy-loop pretending to run at `period`.
+#[test]
+fn spin_period_with_no_clock_errors() {
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+    executor.clock_us_fn = None;
+
+    let err = executor
+        .spin_period(core::time::Duration::from_millis(10))
+        .expect_err("a period with no clock must fail, not busy-loop");
+    assert_eq!(err, NodeError::NotInitialized);
+}
+
+/// issue 0709 — `from_session_with` is the seam `from_session` never had: a
+/// caller that brings its own session can bring its own clock.
+///
+/// Asserted with `spin_once`, which is BOUNDED — it does one round and
+/// returns. Three earlier versions of this test observed the clock through
+/// `spin_blocking`/`spin_one_period_timed` instead and hung under the parallel
+/// harness; a stub clock and a loop that re-reads a clock are a bad pair, and
+/// the guard those versions were reaching for is already covered by the two
+/// tests above. What is left to prove here is only that the constructor
+/// INSTALLS what it is given, and a bounded call proves it without a loop.
+#[test]
+fn from_session_with_installs_the_callers_clock() {
+    fn fake_clock() -> u64 {
+        static TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+        TICKS.fetch_add(1_000, core::sync::atomic::Ordering::SeqCst)
+    }
+
+    let cfg = ExecutorConfig::default().clock_us(fake_clock);
+    let mut executor: Executor = Executor::from_session_with(MockSession::new(), &cfg);
+    // The clock is installed, so a timed spin is no longer refused by the
+    // issue-0709 guard — and one bounded round is enough to reach it.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.clock_us_fn.is_some(),
+        "from_session_with must install the config's clock"
+    );
+    assert_eq!(
+        executor.clock_us_fn.map(|c| c()).is_some(),
+        true,
+        "and it must be callable"
+    );
+}
+
 #[test]
 fn test_spin_blocking_timeout() {
     let session = MockSession::new();

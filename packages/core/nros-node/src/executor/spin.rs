@@ -1526,6 +1526,38 @@ impl Executor<'static> {
         unsafe { Self::from_session_in(session, leak_default_backing(sizing), sizing) }
     }
 
+    /// [`from_session`](Self::from_session) with an [`ExecutorConfig`], so a
+    /// caller that brings its own session can also bring its own clock.
+    ///
+    /// issue 0709 / issue 0687 — `from_session` takes no config, and that is
+    /// the path the no-port population uses: it accepts any `Session`, so a
+    /// consumer with a non-cffi backend reaches the executor through it and had
+    /// NO way to install `clock_us`. phase-359 W10 argued the `std`-without-a-
+    /// port clock fallbacks could go because "a caller with a clock installs it
+    /// through `ExecutorConfig::clock_us`" — true for `open`, false here, which
+    /// is half of why that deletion was reverted.
+    ///
+    /// Only the timing sources are read from `config`; identity (locator,
+    /// domain, names) belongs to the session the caller already opened. As in
+    /// [`open_in`](Self::open_in), a `None` field does NOT clobber the
+    /// platform default — it means "not specified" (the bug issue 0671
+    /// records).
+    #[cfg(feature = "alloc")]
+    pub fn from_session_with(
+        session: session::ConcreteSession,
+        config: &super::types::ExecutorConfig<'_>,
+    ) -> Self {
+        let mut executor = Self::from_session(session);
+        if let Some(clock) = config.clock_us {
+            executor.clock_us_fn = Some(clock);
+            executor.last_spin_end_us = Some(clock());
+        }
+        if let Some(epoch) = config.epoch_us {
+            executor.epoch_us_fn = Some(epoch);
+        }
+        executor
+    }
+
     /// Create an executor from a borrowed session pointer, default-sized. The
     /// `alloc` convenience wrapper over
     /// [`from_session_ptr_in`](Self::from_session_ptr_in) — leaks a default
@@ -6431,11 +6463,28 @@ impl<'s> Executor<'s> {
         // `Instant` only where one is not, so this loop no longer needs `std`
         // to know how long it has been running.
         //
-        // `None` means this build has NO clock at all. A timeout cannot be
-        // honoured then, and pretending otherwise would exit immediately or
-        // never; the honest reading is "no deadline", which is what an
-        // untimed `spin_blocking` already is.
+        // `None` means this build has NO clock at all — and issue 0709 is what
+        // the previous answer here cost. It read: "a timeout cannot be honoured
+        // then, and pretending otherwise would exit immediately or never; the
+        // honest reading is no deadline". It then picked NEVER. A caller that
+        // asked for 50 ms got an infinite loop, silently, in the one API whose
+        // whole contract is "returns after N ms" — ten hours of a CI lane
+        // before anyone read it as stuck rather than slow.
+        //
+        // Neither of the two silent readings is honest. An unmet precondition
+        // is an ERROR (repo rule, fail-loud): the caller supplied a time
+        // quantity this build cannot measure, and only they can decide what to
+        // do about it. An UNTIMED `spin_blocking` still runs until halt, which
+        // is a promise this build can keep.
         let start_us = self.now_us();
+        if opts.timeout_ms.is_some() && start_us.is_none() {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros"),
+                "spin_blocking: a timeout was requested but this build has no clock \
+                 — install one with `ExecutorConfig::clock_us` (issue 0709)"
+            );
+            return Err(NodeError::NotInitialized);
+        }
         let timeout_us = opts.timeout_ms.map(|ms| ms * 1_000);
         let mut total_callbacks = 0usize;
 
@@ -6524,11 +6573,21 @@ impl<'s> Executor<'s> {
         self.halt_flag
             .store(false, core::sync::atomic::Ordering::SeqCst);
         let period_us = period.as_micros().min(u64::MAX as u128) as u64;
-        // Absolute next-deadline in the executor's own clock. `None` = this
-        // build has no clock, so there is no pacing to do and the loop runs as
-        // fast as `spin_once` returns — the same thing the old code would have
-        // done with a clock that never advanced.
-        let mut next_us = self.now_us().map(|n| n + period_us);
+        // Absolute next-deadline in the executor's own clock. issue 0709 — the
+        // sibling of `spin_blocking`'s guard above: with no clock there is no
+        // pacing, and the loop would run as fast as `spin_once` returns while
+        // the caller believes it is running at `period`. A requested period
+        // this build cannot honour is a configuration error, not a silent
+        // busy-loop.
+        let Some(start_us) = self.now_us() else {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros"),
+                "spin_period: a period was requested but this build has no clock \
+                 — install one with `ExecutorConfig::clock_us` (issue 0709)"
+            );
+            return Err(NodeError::NotInitialized);
+        };
+        let mut next_us = Some(start_us + period_us);
 
         loop {
             if self.halt_flag.load(core::sync::atomic::Ordering::SeqCst) {
