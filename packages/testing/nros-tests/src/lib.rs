@@ -964,7 +964,7 @@ mod tests {
     /// fails on 14 pairs.
     #[test]
     fn a_slots_domains_never_land_on_a_live_neighbours() {
-        let slots = (TEST_DOMAIN_MAX / DOMAINS_PER_SLOT) as u32;
+        let slots = TEST_DOMAIN_MAX / DOMAINS_PER_SLOT;
         let mut owner = std::collections::HashMap::new();
         for slot in 0..slots {
             for seq in 0..DOMAINS_PER_SLOT {
