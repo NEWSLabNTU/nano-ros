@@ -60,6 +60,17 @@ sweep load the latter lags. `Publisher count: 1` was "the graph so far", not "th
 20 s for THIS cell's endpoints, then asserts unchanged (still by node name, still the full profile, still fails
 with the report on timeout). Verified: full tier-1 sweep in the distrobox, 1480 cases, 0 real failures — one
 green sweep against a prior ~1-in-2 rate, which is meaningful, not conclusive. See `archived/0705-*`.
+
+Recently resolved (2026-08-20): **#0706** — a build tree survived a toolchain RESOLUTION change.
+`nros_cmake_guard_build_dir` wiped on a toolchain-file ARGUMENT mismatch and skipped every compiler check
+when a toolchain file was present ("the toolchain file pins the compiler") — but it pins the FILE, not the
+answer: installing `riscv-none-elf-gcc` into the SDK store moves what `_nros_riscv64_find_prefix` resolves
+from Debian/picolibc to xPack/newlib with the argument byte-identical. Cost: #0680's newlib-only `reent.c`
+compiled against picolibc headers on a tree whose own configure had just printed `libc = newlib`, failing
+all of tier 2 and reading as a code bug for hours. FIXED with rule 1b — ask the toolchain file what it
+resolves to today (one memoized `cmake` probe per file per shell; empty answer never wipes) and compare
+against `CMakeFiles/<ver>/CMakeCCompiler.cmake`, NOT `CMAKE_C_COMPILER` in the cache, which a cross dir
+often lacks entirely. Verified both ways on a real tree; native lane unaffected. See `archived/0706-*`.
 (2026-08-20)
 
 Recently resolved (2026-08-20): **#0708** — board boot funnels never published the `nros_log` sink list, so
@@ -82,17 +93,17 @@ slot. The defect is the DETERMINISM rather than the collision — hand-run repro
 the workflow CLAUDE.md prescribes, all land on the same bus as whatever left the orphan. Three directions
 recorded, none free. See `0707-*`. (2026-08-20)
 
-Recently resolved (2026-08-20): **#0706** — a build tree survived a toolchain RESOLUTION change.
-`nros_cmake_guard_build_dir` wiped on a toolchain-file ARGUMENT mismatch and skipped every compiler check
-when a toolchain file was present ("the toolchain file pins the compiler") — but it pins the FILE, not the
-answer: installing `riscv-none-elf-gcc` into the SDK store moves what `_nros_riscv64_find_prefix` resolves
-from Debian/picolibc to xPack/newlib with the argument byte-identical. Cost: #0680's newlib-only `reent.c`
-compiled against picolibc headers on a tree whose own configure had just printed `libc = newlib`, failing
-all of tier 2 and reading as a code bug for hours. FIXED with rule 1b — ask the toolchain file what it
-resolves to today (one memoized `cmake` probe per file per shell; empty answer never wipes) and compare
-against `CMakeFiles/<ver>/CMakeCCompiler.cmake`, NOT `CMAKE_C_COMPILER` in the cache, which a cross dir
-often lacks entirely. Verified both ways on a real tree; native lane unaffected. See `archived/0706-*`.
-(2026-08-20)
+**#0705** (testing, open 2026-08-20) — `case_08_c_qos` in-sweep: `ros2 topic info` reports `Publisher count: 1`
+on /chatter, and that one publisher is a node named `talker` — belonging to ANOTHER test — while this cell's own
+`qos_talker` is ABSENT. Not a reporting defect: 0690's `topic_endpoints_for_node` fix is what surfaced it, and
+it CONFIRMS 0690's foreign-endpoint hypothesis while falsifying the assumption that the foreign endpoint was an
+extra one sharing the view. It is the only one, so the cell is talking to the wrong graph — despite
+`ZenohRouter::start_unique()` per cell and a per-invocation `ZENOH_SESSION_CONFIG_URI`. Mechanism NOT
+established; the candidate that fits every fact is a port-lease TOCTOU in `start_unique()` (lease released
+before zenohd binds, a concurrent test takes the port). Scouting alone does not fit — it would explain a
+foreign node appearing, not the local one missing. Discriminator: log the leased port and the port `ros2`
+dialled, compare on failure. In-sweep only, ~1 in 2; runs solely where ROS 2 exists (the distrobox). See
+`0705-*`. (2026-08-20)
 
 Recently resolved (2026-08-19): **#666** + **#668** — the six ThreadX-RV64 rust leaves were the only
 standalone examples with TWO build paths (cargo for zenoh, CMake for cyclone) and TWO entry points, with the
