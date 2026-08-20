@@ -355,28 +355,10 @@ pub fn get_logger(name: &str) -> &'static Logger {
 static SINKS_PTR: AtomicPtr<&'static [&'static dyn LogSink]> =
     AtomicPtr::new(core::ptr::null_mut());
 
-/// Install the default sink list (the platform console) — what a BOARD's boot
-/// funnel calls.
-///
-/// issue 0708. Leaving [`init`] out fails SILENTLY: [`dispatch_to_sinks`]
-/// returns when no sink list has been published, so every record is
-/// constructed, dispatched and dropped with nothing to show for it. An
-/// application can notice its own missing output; a LIBRARY record cannot,
-/// because its author has no way to know whether the board initialised the
-/// facade. Issue 0589 moved the zenoh session-pool diagnostic into exactly that
-/// position, and on ThreadX and NuttX it reached nothing at all.
-///
-/// This exists as a NAMED function rather than as `init(sinks::default())`
-/// written out at each funnel because five boards made that decision
-/// independently — three wrote the line plus a comment explaining the same
-/// hazard, and two families did not. One spelling is what
-/// `check-board-log-sink.py` can check.
-///
-/// Idempotent: publishing a new list swaps the pointer atomically, so a board
-/// whose funnels nest may call it more than once.
-pub fn init_default() {
-    init(sinks::default());
-}
+// issue 0710 — `init_default()` was here. It named a default this crate can no
+// longer name: the platform sink moved to `nros_platform_cffi::log`, where the
+// ABI it speaks is a dependency rather than a feature. Call
+// `nros_platform_cffi::log::init_default()`, or `init()` with your own sinks.
 
 /// Install the global sink list.
 ///

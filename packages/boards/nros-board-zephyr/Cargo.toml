@@ -22,7 +22,7 @@ name = "nros_board_zephyr"
 # Off by default: NetworkWait-only consumers keep the tiny dep graph; the
 # `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
 # enables this on its `nros-board-zephyr` dep.
-tiers = ["dep:nros", "dep:log", "dep:nros-log"]
+tiers = ["dep:nros", "dep:log", "dep:nros-log", "dep:nros-platform-cffi"]
 # phase-296 W5.5 — gate the k_thread_deadline_set call path. On ⇒ real-time
 # tiers with a deadline get kernel EDF ordering; off ⇒ executor-only
 # (cooperative) deadline monitor. Must match the image's CONFIG_SCHED_DEADLINE.
@@ -34,9 +34,12 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # run_tiers wires the nros_log dispatcher to the platform console at boot
 # (mirrors nros-board-linux); without it a Node pkg's `nros_info!` on a
 # Zephyr multi-tier entry produced no output at all.
-# issue 0710 follow-up — a board IS the platform console, so it turns on the
-# dispatch auto-install. Cargo unifies the feature into any image holding this
-# crate; consumers with no port (host tools, the test harness) never get the
-# link requirement. Gated by `check-board-log-sink.py`.
-nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"], optional = true }
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
+# issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`,
+# so the boot funnel that installs it names the crate that owns the ABI. A
+# board IS the platform edge, so this edge is where it belongs; what it
+# replaces is `nros-log` declaring the extern itself and every binary that
+# logged inheriting the link requirement.
+# Optional to match `nros-log` above: both ride the `tiers` feature.
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }
 log = { version = "0.4", optional = true }

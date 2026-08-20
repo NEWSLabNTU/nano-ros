@@ -81,7 +81,7 @@ fn main() {
     nros_board_linux::register_linked_rmw();
 
     nros_log::register_logger(&LOGGER);
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init(nros_platform_cffi::log::default_sinks());
     nros_info!(&LOGGER, "Lifecycle demo starting…");
 
     // `node` is declared before `executor` so it outlives the lifecycle

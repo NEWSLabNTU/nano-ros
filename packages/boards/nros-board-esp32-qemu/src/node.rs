@@ -312,7 +312,7 @@ where
     // A record raised inside a LIBRARY (the zenoh session-pool diagnostic of
     // issue 0589, for one) is dropped until a sink list exists, and its author
     // cannot know whether the board published one. Idempotent.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     init_hardware(&config);
     register_log_writer();
     match setup() {

@@ -45,7 +45,7 @@ fn main() {
     nros_log::register_logger(&LOGGER);
 
     // Install the default sink list (PlatformSink → POSIX stderr).
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init(nros_platform_cffi::log::default_sinks());
 
     // Drop the threshold so every severity fires in round 1.
     LOGGER.set_level(Severity::Trace);

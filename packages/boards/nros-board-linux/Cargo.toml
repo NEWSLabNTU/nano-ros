@@ -41,6 +41,11 @@ host-only-reason = "the Linux host board"
 # This is the board-driven platform-selection point, mirroring C5a's RMW gate:
 # the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
 nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
+# issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`, so
+# the boot funnel that installs it names the crate that owns the ABI. The
+# umbrella above already PULLS this crate (see the note); naming it directly is
+# what lets this board's `run`/`run_tiers` call `log::init_default()`.
+nros-platform-cffi = { version = "0.5.0", path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`

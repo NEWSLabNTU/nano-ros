@@ -23,6 +23,12 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 # Phase 97.3.mps2-an385 — `smoltcp_clock_now_ms` extern shim needs the
 # trait import. Only used inside the cfg-gated forwarder in lib.rs.
 nros-platform-api = { path = "../../platform/nros-platform-api" }
+# issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`,
+# so the boot funnel that installs it names the crate that owns the ABI. A
+# board IS the platform edge, so this edge is where it belongs; what it
+# replaces is `nros-log` declaring the extern itself and every binary that
+# logged inheriting the link requirement.
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi" }
 # Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
 # symbols come from `zpico-sys`'s default-on `platform-aliases`
 # alias TU when `rmw-zenoh` (or `serial`) is active.

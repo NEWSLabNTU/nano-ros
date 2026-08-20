@@ -91,7 +91,7 @@ fn ensure_default_sinks() {
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_ok()
     {
-        nros_log::init(nros_log::sinks::default());
+        nros_log::init(nros_platform_cffi::log::default_sinks());
     }
 }
 
@@ -109,7 +109,7 @@ fn ensure_default_sinks() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_log_init() {
     DEFAULT_SINKS_INSTALLED.store(true, Ordering::Release);
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init(nros_platform_cffi::log::default_sinks());
 }
 
 /// Phase 88.16.H — opaque handle to `nros_log::DEFAULT_LOGGER`.

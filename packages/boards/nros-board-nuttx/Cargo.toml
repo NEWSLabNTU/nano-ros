@@ -69,6 +69,11 @@ log = { version = "0.4", default-features = false }
 # `image-runtime` feature below forwards. The two changes did not conflict
 # textually — different files — so the break surfaced only at resolution.
 nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-nuttx"] }
+# issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`, so
+# the boot funnel that installs it names the crate that owns the ABI. The
+# umbrella `nros-platform` dep above already pulls this crate; naming it
+# directly is what makes the path reachable from this board's own code.
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `run_entry` installs a live component runtime sink on `RuntimeCtx`
 # before invoking the user `setup` closure + spins forever

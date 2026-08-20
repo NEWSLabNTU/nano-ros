@@ -324,6 +324,7 @@ dependencies = [
  "nros-board-common",
  "nros-log",
  "nros-platform",
+ "nros-platform-cffi",
 ]
 
 [[package]]
@@ -334,6 +335,7 @@ dependencies = [
  "nros-board-nuttx",
  "nros-log",
  "nros-platform",
+ "nros-platform-cffi",
 ]
 
 [[package]]
@@ -361,6 +363,7 @@ dependencies = [
  "nros-log",
  "nros-node",
  "nros-platform",
+ "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-zenoh",
  "paste",
@@ -512,6 +515,7 @@ version = "0.5.0"
 name = "nros-platform-cffi"
 version = "0.5.0"
 dependencies = [
+ "nros-log",
  "nros-platform-api",
 ]
 

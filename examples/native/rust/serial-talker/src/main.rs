@@ -29,7 +29,7 @@ fn main() {
     nros_board_linux::register_linked_rmw();
 
     nros_log::register_logger(&LOGGER);
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init(nros_platform_cffi::log::default_sinks());
     let pty_path = std::env::var("XRCE_SERIAL_PTY")
         .expect("XRCE_SERIAL_PTY must be set to the PTY device path");
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")

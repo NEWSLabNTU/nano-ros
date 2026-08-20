@@ -8,11 +8,12 @@
 //! every host). Stderr capture lands with the broader
 //! `nros-tests/tests/logging.rs` work (88.14).
 
-// Touch the cffi crate so its `posix-c-port` C build runs and the
-// `nros_platform_*` symbols land in the test binary.
-extern crate nros_platform_cffi as _;
+// issue 0710 — the platform sink lives HERE now, with the ABI it speaks, so
+// this is a normal import rather than a `extern crate … as _` touch to make a
+// C build run. The dependency edge and the link requirement are the same edge.
+use nros_platform_cffi::log::default_sinks;
 
-use nros_log::{Logger, Severity, init, sinks};
+use nros_log::{Logger, Severity, init};
 
 static TEST_LOGGER: Logger = Logger::new("posix_dispatch_test");
 
@@ -23,7 +24,7 @@ fn platform_sink_round_trips_through_posix_c_impl() {
     assert_eq!(l.name(), TEST_LOGGER.name());
 
     // Install the default sink list (PlatformSink only).
-    init(sinks::default());
+    init(default_sinks());
 
     // Drop the threshold so all severities fire.
     TEST_LOGGER.set_level(Severity::Trace);
@@ -41,7 +42,7 @@ fn platform_sink_round_trips_through_posix_c_impl() {
 
 #[test]
 fn runtime_threshold_silences_below() {
-    init(sinks::default());
+    init(default_sinks());
     let l = nros_log::register_logger({
         static QUIET: Logger = Logger::with_level("quiet_test", Severity::Warn);
         &QUIET

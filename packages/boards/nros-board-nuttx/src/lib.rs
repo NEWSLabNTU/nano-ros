@@ -549,7 +549,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     <B as nros_platform::BoardInit>::init_hardware();
 
     // NuttX virtio-net needs a brief warm-up after kernel
@@ -839,7 +839,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
 
 
     <B as nros_platform::BoardInit>::init_hardware();

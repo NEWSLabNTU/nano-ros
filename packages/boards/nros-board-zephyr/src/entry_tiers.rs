@@ -352,7 +352,7 @@ impl ZephyrBoard {
         // funnel, as nros-board-linux does in its `run`/`run_tiers` —
         // idempotent, and without it Node-pkg `nros_info!` output is
         // silently dropped on Zephyr multi-tier entries.
-        ::nros_log::init_default();
+        ::nros_platform_cffi::log::init_default();
 
         if tiers.is_empty() {
             ::log::error!("nros: run_tiers called with no tiers");

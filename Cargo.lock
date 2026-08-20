@@ -1623,6 +1623,7 @@ dependencies = [
  "nros",
  "nros-log",
  "nros-platform",
+ "nros-platform-cffi",
  "nros-rmw-cyclonedds-sys",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",

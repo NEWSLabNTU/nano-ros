@@ -47,7 +47,7 @@ pub extern "C" fn nsh_main(argc: i32, argv: *const *const c_char) -> i32 {
     // it) and a record published before the console exists has nowhere to go.
     unsafe {
         nsh_initialize();
-        ::nros_log::init_default();
+        ::nros_platform_cffi::log::init_default();
         main(argc, argv)
     }
 }

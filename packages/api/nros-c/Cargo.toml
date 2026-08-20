@@ -256,6 +256,13 @@ nros-platform = { workspace = true, default-features = false }
 # Phase 88.12 — `nros_node_get_logger` returns a `&'static nros_log::Logger`
 # resolved via the facade's intern table.
 nros-log = { workspace = true }
+# issue 0710 — `nros_log_init_default` installs the platform-ABI sink, which
+# moved to `nros_platform_cffi::log` so that "this binary needs
+# `nros_platform_log_write`" is a dependency rather than a Cargo feature. NO
+# port feature here: without one this crate is bindgen declarations only, so the
+# edge costs an embedded build nothing. The C API's consumers are images, and an
+# image links a port by construction.
+nros-platform-cffi = { workspace = true, default-features = false }
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # phase-361 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it

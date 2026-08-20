@@ -331,6 +331,7 @@ dependencies = [
  "nros-cc-flags",
  "nros-log",
  "nros-platform",
+ "nros-platform-cffi",
  "nros-rmw-zenoh",
 ]
 
@@ -470,6 +471,7 @@ version = "0.5.0"
 name = "nros-platform-cffi"
 version = "0.5.0"
 dependencies = [
+ "nros-log",
  "nros-platform-api",
 ]
 

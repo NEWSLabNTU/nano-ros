@@ -574,7 +574,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform (multi-tier)"));
@@ -759,7 +759,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     // Issue #214 — echo the effective identity/domain so a two-node QEMU
     // pair failure is diagnosable from the console (the `run_entry` path
     // prints an equivalent banner; this path had none).
@@ -961,7 +961,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform"));
@@ -1090,7 +1090,7 @@ where
     // those live in inner helpers, and a first attempt that patched them left
     // `run_bare` — the funnel the fixture actually boots through — still
     // silent. Idempotent, so nesting funnels may each call it.
-    ::nros_log::init_default();
+    ::nros_platform_cffi::log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform (bare)"));

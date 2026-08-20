@@ -61,6 +61,11 @@ pub extern "C" fn _nros_force_link_cffi() {}
 pub mod generated;
 pub use generated::*;
 
+// issue 0710 — the `LogSink` that speaks this ABI belongs with the ABI, so
+// "does this binary need `nros_platform_log_write`?" is a DEPENDENCY question
+// rather than a Cargo feature. See the module docs.
+pub mod log;
+
 /// Board-supplied writer fn type. ONLY meaningful on platforms whose
 /// `nros_platform_log_write` impl is itself a thin dispatcher to a
 /// board-registered fn (FreeRTOS, ThreadX, bare-metal). On platforms

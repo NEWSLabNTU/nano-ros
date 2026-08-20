@@ -501,7 +501,7 @@ where
     // LIBRARY record is dropped until one exists. This crate's other two
     // funnels (entry.rs, rtic.rs) had it and this one did not, which is why
     // the gate is per-FUNNEL: any per-crate check passes a crate like this.
-    nros_log::init_default();
+    nros_platform_cffi::log::init_default();
     init_hardware(&config);
     match f(&config) {
         Ok(()) => {
