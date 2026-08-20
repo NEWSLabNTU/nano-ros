@@ -486,13 +486,31 @@ function(nano_ros_entry)
     if(_nra_platform_norm MATCHES "^(threadx|freertos|nuttx)_")
         string(REGEX REPLACE "_.*$" "" _nra_platform_norm "${_nra_platform_norm}")
     endif()
+    # issue 0735 — the board-name test is ONE of the three arms, not a gate over
+    # all of them. It used to open `if(DEFINED NANO_ROS_BOARD)`, which makes a
+    # board NAME the precondition for being a board. That is a proxy for "this
+    # is an embedded build", and it is exactly inverted for RFC-0064: a board
+    # arriving through an integration shell contributes NO files to this tree
+    # and therefore has no `NANO_ROS_BOARD` to define — that is the design (the
+    # FreeRTOS platform module's board-less mode exists for it; ESP-IDF's shell
+    # is 146 lines with no board name at all).
+    #
+    # So every shell-integrated entry answered FALSE and silently lost all
+    # three dependent blocks below: the `NROS_ENTRY_LOCATOR` + domain bake (the
+    # entry connects nowhere), `nros_platform_link_app_deferred()` (NO platform
+    # link — no family C glue, no `freertos_platform` on the target), and the
+    # FreeRTOS `NROS_APP_CONFIG` TU (network + task sizing fall back to
+    # defaults). Configure succeeded, the build succeeded, the image was wrong.
+    #
+    # Dropping the outer guard cannot change any in-tree board's answer: every
+    # one of them defines `NANO_ROS_BOARD`, and with it unset the first clause
+    # is simply false. All three dependent blocks independently require a
+    # non-posix platform, so the host lane is untouched either way.
     set(_nra_board_active FALSE)
-    if(DEFINED NANO_ROS_BOARD)
-        if(("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)
-           OR ("${NANO_ROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
-           OR ("${_nra_platform_norm}" IN_LIST _NRA_DEPLOY))
-            set(_nra_board_active TRUE)
-        endif()
+    if(("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)
+       OR ("${NANO_ROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
+       OR ("${_nra_platform_norm}" IN_LIST _NRA_DEPLOY))
+        set(_nra_board_active TRUE)
     endif()
 
     set(_nra_locator "")

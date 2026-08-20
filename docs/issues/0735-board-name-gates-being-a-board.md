@@ -1,7 +1,7 @@
 ---
 id: 735
 title: "A board NAME is the precondition for being a board: `_nra_board_active` silently denies every integration-shell entry its glue, locator and app config"
-status: open
+status: resolved
 type: bug
 severity: high
 area: cmake
@@ -79,6 +79,25 @@ target by calling `nros_platform_link_app` **by hand** in a probe. That passed
 while the front door — `nano_ros_entry` — stayed shut, because this predicate
 sits between them. A validation that reaches past the entry point is not a
 validation of the entry point.
+
+## RESOLVED (2026-08-20)
+
+Outer guard dropped; the board-name test is now one of the three OR arms.
+
+Verified through the FRONT DOOR — a real `nano_ros_entry` call, not a probe
+that reaches past it (see the note above about how this was nearly missed):
+
+| lane | before | after |
+| --- | --- | --- |
+| mps2 (`NANO_ROS_BOARD` set) | 7 TUs, `EXECUTABLE` | **identical** — `board_mps2`, `freertos_c_entry`, `freertos_hooks`, `freertos_run_tiers`, `net`, `network_glue`, `nros_app_config_def` |
+| board-less (shell composed `freertos_platform`) | **nothing** | `nros_app_config_def.c` emitted and compiled into the entry |
+
+**Necessary but not sufficient for a working board-less image.** This restores
+the three blocks' *invocation*; the FreeRTOS family C glue is still not
+compiled board-less, because `FREERTOS_STARTUP_SOURCE` is only ever populated
+by a per-board overlay and `nros_platform_link_app` has nothing else to give.
+That is a separate defect — the family owns the family C, and re-listing it per
+board is what let board-less lose it. Tracked as the phase-351 work, not here.
 
 ## Suggested gate
 
