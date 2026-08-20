@@ -24,6 +24,10 @@
 #include <sched.h>
 #include <semaphore.h>
 #include <stdint.h>
+/* issue 0636 — `printf` for the priority read-back below. STDOUT, not stderr:
+ * the NuttX guest's stderr does not reach the serial console, which is where
+ * every other boot diagnostic this repo relies on lands. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
@@ -349,6 +353,15 @@ int8_t nros_platform_task_init(void *task, void *attr,
             memset(&sp, 0, sizeof(sp));
             sp.sched_priority = native;
             (void) pthread_setschedparam(*t, SCHED_FIFO, &sp);
+            /* issue 0636 — a read-back diagnostic stood here and was REMOVED as
+             * unverified. It reported `high` at prio=1 policy=1 on a run where
+             * that task demonstrably ran at 110 (it self-applied, printed its
+             * marker and set its sporadic budget), so either
+             * `pthread_getschedparam` does not reflect the attribute on this
+             * NuttX config or SCHED_FIFO's numeric value there is not what the
+             * comparison assumed. A diagnostic that cries wolf costs more than
+             * the silence it replaces; the evidence that mattered came from the
+             * cell's own assertion naming which tier lost its marker. */
         }
     }
 

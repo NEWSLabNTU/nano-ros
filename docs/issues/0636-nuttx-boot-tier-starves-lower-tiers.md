@@ -142,15 +142,50 @@ thread run at all.
 | + owner applies its priority BEFORE spawning | 4/8 (worse) |
 | + priority on the pthread attr, owner applies AFTER spawning | 16/20 |
 
-**The last row's first ten runs were 10/10 and the next ten were 6/10.** A
-ten-run batch is not enough to call this converged, and reporting the good batch
-alone would have been the mistake this issue's own history warns about — two
-earlier partial fixes were recorded as 1/5 -> 3/5 -> 4/6 for the same reason.
+**Those rates are not trustworthy at these sample sizes, and the corrected
+reading is that the fixes are NOT MEASURABLY BETTER YET.** The final
+arrangement was run in three batches on the same binaries: 10/10, then 6/10,
+then 7/12 — cumulative 23/32 (72%) against a 6-run baseline of 3/6 (50%). The
+batch-to-batch spread is wider than the effect being measured, and an unrelated
+Zephyr build shared the host throughout. Anyone quoting "16/20" from an earlier
+draft of this section is quoting the two good batches.
 
-### What remains
+That is the trap this issue's own history records: two earlier partial fixes
+went 1/5 -> 3/5 -> 4/6 and were read as progress toward a fix that never
+arrived. A defensible before/after needs ~30 runs per arm on an idle host, and
+has not been done.
 
-The residual failure is still `high` (the spawned, more urgent tier) missing its
-marker, on a console that otherwise looks healthy. Candidates, none tested:
+**Both landed changes stand on their own merits, not on the rate.** `tiers[0]`
+meaning "most urgent" on some kernels and "least urgent" on others, with the
+session owner picked by index, is indefensible however the cell behaves;
+`PTHREAD_EXPLICIT_SCHED` is what POSIX requires for a scheduling attribute to
+apply at all. Three unit tests pin the first.
+
+### What remains — and the diagnosis is now precise
+
+The two orderings fail SYMMETRICALLY, which is the finding:
+
+* **owner applies its priority BEFORE spawning** — it prints its own marker,
+  then the console stops dead before the spawn line. `high` never exists.
+* **owner applies AFTER spawning** — `high` runs, self-applies 110, sets its
+  sporadic budget and registers; the console then stops before the owner's
+  `apply_tier_priority`. `low` never prints.
+
+Either way the OWNER is starved, once at its inherited priority and once at its
+declared one. That points at what it is starved BY: with `high` at 110 spinning
+(and a 5000/10000 µs sporadic budget that keeps it runnable), plus the zenoh
+read task already spawned during session open, the owner's 100 is not above the
+traffic. This is issue 0623 — a tier priority and a transport priority quoted in
+different units landing in one scheduler — reached from the tier side. Fixing
+0636 probably requires ruling on that relationship rather than reordering two
+calls.
+
+A read-back diagnostic in the POSIX port (compare `pthread_getschedparam`
+against what was asked) was tried and REMOVED: it reported `high` at prio=1
+policy=1 on a run where that task demonstrably ran at 110, so it is measuring
+something other than the thread's effective priority on this NuttX config.
+
+Other candidates, none tested:
 
 * the C arm (`nuttx_run_tiers.c`) still takes its own boot tier and has not been
   moved onto `boot_tier_index`, so the two language arms now disagree about
