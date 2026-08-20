@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0711** (testing/rmw-zenoh, open 2026-08-20) — zenoh PEER mode is now BUILDABLE but still not EXERCISED.
+`MULTICAST_TRANSPORT` was a hard-coded `const bool = false` (issue 0682's size decision), so
+`nano2nano::test_peer_mode_communication` could only ever SKIP — a capability nothing could run. It is now a
+build input, `ZPICO_MULTICAST_TRANSPORT`, default UNCHANGED, read through one function feeding BOTH emitters
+(the three C `#define`s and `ZPICO_PEER_MODE_SUPPORTED`) so C and Rust cannot disagree, with a
+`rerun-if-env-changed` edge because it bypasses `env_usize` (issue 0475's class). Verified both ways: default
+`false`, env-set `true`, and the test then RUNS instead of skipping. Still missing: `nano2nano` SPAWNS prebuilt
+fixtures, which `build-test-fixtures` produces without the flag, so it needs a fixture VARIANT — exporting the
+env around the whole fixture build would pollute the shared tree every other test reads. A lane was written and
+REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
+See `0711-*`. (2026-08-20)
+
 **#0710** (platform/testing, open 2026-08-20) — issue 0708's rule ("every `pub fn run*` in a board crate
 reaches `init_default`") names a SPELLING, not the thing it cares about, so a boot path spelled otherwise is
 invisible to both the fix and the gate. Two exist: NuttX enters through `pub extern "C" fn nsh_main` (a board

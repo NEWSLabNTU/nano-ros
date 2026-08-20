@@ -72,9 +72,39 @@ pub struct ShimConfig {
 /// footprint; nothing else here special-cases it.
 pub const MULTICAST_TRANSPORT: bool = false;
 
-/// The `0`/`1` spelling of [`MULTICAST_TRANSPORT`] for a C `#define`.
-pub const fn multicast_transport_flag() -> u8 {
-    if MULTICAST_TRANSPORT { 1 } else { 0 }
+/// The env var that overrides [`MULTICAST_TRANSPORT`] for one build.
+///
+/// The default stays `false`, so no shipped target moves. What this adds is a
+/// way to build the OTHER configuration without editing source.
+/// `nano2nano::test_peer_mode_communication` could only ever SKIP, because the
+/// one build in the tree refuses peer mode by construction, and a capability
+/// nothing can exercise is a capability nobody is testing — the argument issue
+/// 0393 made for `ZPICO_MAX_SESSIONS`.
+///
+/// This is the build-input half. It is NOT yet enough to run that e2e test:
+/// `nano2nano` spawns PREBUILT fixture binaries, which `build-test-fixtures`
+/// produces without this flag, so exercising peer mode end to end needs a
+/// fixture VARIANT rather than an env on the test crate. Issue 0711.
+pub const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_MULTICAST_TRANSPORT";
+
+/// Whether THIS build compiles in multicast transport + scouting.
+///
+/// Reads [`MULTICAST_TRANSPORT_ENV`], falling back to [`MULTICAST_TRANSPORT`].
+/// Every emitter goes through here — the three C `#define`s and the Rust
+/// `ZPICO_PEER_MODE_SUPPORTED` const — so the C library and the Rust session
+/// layer cannot disagree about what was compiled. That property is the whole
+/// point of issue 0682 and it survives becoming configurable only because
+/// there is still exactly ONE reader of the value.
+pub fn multicast_transport_enabled() -> bool {
+    match std::env::var(MULTICAST_TRANSPORT_ENV) {
+        Ok(v) => !matches!(v.trim(), "" | "0" | "false" | "FALSE" | "off" | "OFF"),
+        Err(_) => MULTICAST_TRANSPORT,
+    }
+}
+
+/// The `0`/`1` spelling of [`multicast_transport_enabled`] for a C `#define`.
+pub fn multicast_transport_flag() -> u8 {
+    if multicast_transport_enabled() { 1 } else { 0 }
 }
 
 impl ShimConfig {
@@ -103,7 +133,7 @@ impl ShimConfig {
             self.max_liveliness,
             self.max_pending_gets,
             self.max_sessions,
-            MULTICAST_TRANSPORT,
+            multicast_transport_enabled(),
         )
     }
 

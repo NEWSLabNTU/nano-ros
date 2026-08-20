@@ -206,7 +206,7 @@ impl ZenohSession {
                 nros_log::get_logger("nros_rmw_zenoh"),
                 "peer mode unsupported: shim built without multicast transport/scouting \
                  (issue 0682). Use client mode with a router, or rebuild with \
-                 nros_zpico_build::MULTICAST_TRANSPORT = true."
+                 ZPICO_MULTICAST_TRANSPORT=1 at build time (issue 0711)."
             );
             return Err(TransportError::Unsupported);
         }

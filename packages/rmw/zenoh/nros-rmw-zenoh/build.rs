@@ -1,4 +1,6 @@
 fn main() {
+    // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
+    println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SERVICE_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");

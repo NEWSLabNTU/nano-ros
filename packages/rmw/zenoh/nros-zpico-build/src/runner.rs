@@ -444,6 +444,15 @@ pub fn run() {
     // layer — env-only, byte-identical to pre-290.
     // `NROS_BOARD_TOML` is a PATH (issue 0491): the file it names is watched
     // with `rerun-if-changed` where it is loaded, a few lines below.
+    // issue 0682 — the peer-mode build input. `multicast_transport_enabled()`
+    // reads the env DIRECTLY rather than through `env_usize`, so it does not
+    // emit its own rebuild edge; without this line the three C `#define`s and
+    // `ZPICO_PEER_MODE_SUPPORTED` would keep whatever the last build baked, and
+    // `just test-zpico-peer` would silently test the client-mode shim.
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        crate::MULTICAST_TRANSPORT_ENV
+    );
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
     println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH_FLUSH_MS");
