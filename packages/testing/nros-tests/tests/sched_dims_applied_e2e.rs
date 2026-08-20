@@ -201,10 +201,12 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
         (SD::CorePinPlacement, MP::ZephyrNativeSim, ML::C) => Exec {
             resolver: || build_zephyr_workspace_c_realtime_entry_smp(),
             boot: ZephyrQemuA53Smp,
-            // The guest reaches the host at QEMU's user-mode gateway; 127.0.0.1
-            // would be the GUEST's own loopback here, which is what the
-            // native_sim rows mean by it.
-            router: Router::Baked("10.0.2.2"),
+            // "0.0.0.0" is the BIND address for the router on the HOST, which
+            // is why every slirp-guest cell uses it — 10.0.2.2 is the guest's
+            // view of the host and cannot be bound here (`zenohd exited before
+            // listening on tcp/10.0.2.2:7591`). The guest still DIALS 10.0.2.2;
+            // that half lives in the fixture's baked locator.
+            router: Router::Baked("0.0.0.0"),
             timeout_secs: 90,
             // The OBSERVED marker, not the acceptance one. That is the whole
             // difference between this cell and the CorePin cells: they assert

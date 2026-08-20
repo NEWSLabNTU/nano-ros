@@ -4559,7 +4559,12 @@ conf_files = [
 ]
 west_build_name = "build-ws-c-realtime-entry-smp"
 west_id = "zephyr/qemu_cortex_a53/smp/workspace-realtime-entry-c"
-west_zenoh_locator = "tcp/10.0.2.2:7592"
+# 7591 is `port_of(ZephyrNativeSim, C, RealtimeTiers)` — the SAME number the
+# native_sim C row bakes, deliberately: the harness computes the router port
+# from the cell's (platform, lang, workload) and starts one router per cell, so
+# the value must be the allocator's, not a free-hand pick. 10.0.2.2 is the
+# guest's route to the host (slirp), where 127.0.0.1 would be the guest itself.
+west_zenoh_locator = "tcp/10.0.2.2:7591"
 skip_probe = true
 
 # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS
