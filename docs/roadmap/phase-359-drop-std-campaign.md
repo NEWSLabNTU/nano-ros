@@ -836,14 +836,39 @@ So the probe takes the PORT arm and always did. Two builds DO select the
 with a port crate in its graph — so the configuration exists; the reason given
 for it did not.
 
-**And the arms are dead even there.** Simulating the deletion (both fallbacks,
-`nros::time::now`'s `std` arm, and the `time` module narrowed to `rmw-cffi`)
-builds `nros-rmw-metadata`, `nros-tests` and the whole workspace
-`--all-targets` with zero errors, and there is no in-tree caller of
-`nros::time::now` at all. What the arms serve is an OUT-OF-TREE contract: a
-consumer with `std`, no `rmw-cffi`, and its own `Session`. That is a decision
-about a supported population, not a dependency of this tree — which is what
-W10 needs to rule on rather than infer.
+**And the arms are NOT dead — the deletion was attempted and reverted the same
+day.** Simulating it (both fallbacks, `nros::time::now`'s `std` arm, and the
+`time` module narrowed to `rmw-cffi`) builds `nros-rmw-metadata`, `nros-tests`
+and the whole workspace `--all-targets` with **zero errors**, and there is no
+in-tree caller of `nros::time::now` at all. That evidence looked decisive and
+was not: **compiling is not running.** Nothing REFERENCES the fallback — it is
+a default, chosen by `default_clock_us_fn()` — so deleting it cannot produce a
+compile error anywhere. It produces a HANG:
+
+```
+test executor::tests::test_spin_blocking_timeout ... <hangs>
+```
+
+`spin_blocking(timeout_ms(50))` with no clock cannot observe time passing, so
+it loops forever. Ten hours on the first encounter, before anyone noticed the
+lane was not slow but stuck.
+
+**And the seam the deletion leaned on does not exist on that path.** The
+argument was "a caller with a clock but no port installs it through
+`ExecutorConfig::clock_us`". The no-port population reaches the executor
+through `Executor::from_session(session)`, which takes **no config at all** —
+and issue 0687 named exactly that population. So the fallback stays until
+`from_session` gains a config-taking sibling, or that population is declared
+unsupported.
+
+Filed as issue 0709, which separates the two: a no-clock executor should FAIL
+rather than spin (the repo's fail-loud rule, and a real defect the fallback has
+been masking), and `from_session` needs a config seam before W10 can delete
+anything here.
+
+**The lesson, recorded because it cost ten hours:** for a DEFAULT — anything
+selected rather than called — a green compile proves nothing about deletion. The
+test that decides is one that runs the thing.
 
 **And env does not finish the campaign.** Three classes remain after it, each
 with its own question rather than a mechanical answer: the `Mutex`/`OnceLock`

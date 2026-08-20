@@ -514,6 +514,16 @@ its selection. Census `nros-node` 11/20 -> 10/7, `nros` 9 -> 22 paths, total 38 
 to the edge, which was the goal. Does NOT close the `Mutex`/`OnceLock`, `Instant`/`SystemTime` and
 `fs`/`Path` classes. See `archived/0687-*`. (2026-08-19)
 
+**#0709** (core, open 2026-08-20) — `spin_blocking(timeout_ms(50))` HANGS forever when the executor has no
+clock (`std` without `rmw-cffi`, the mock-session configuration), instead of returning after the timeout it
+was given. Found by phase-359 W10 attempting to delete the `std`-without-a-port clock fallbacks: the
+evidence for "dead code" was that deleting them compiles the whole workspace `--all-targets` with zero
+errors — insufficient, because nothing REFERENCES a default, so removing it cannot produce a compile
+error, only a hang. Deletion reverted. Two independent defects: a no-clock executor should FAIL rather
+than spin (fail-loud rule; the fallback has masked it), and `Executor::from_session` takes NO config, so
+the no-port population issue 0687 named has no seam to install a clock through — which is what W10 needs
+before it can delete anything here. See `0709-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0701** — `check-feature-contract` clause (a) enforced only "a capability
 does not GRANT the heap"; nothing enforced the rest of the same sentence, "emit `compile_error!` naming the
 feature", so a capability whose gated code called `std::` with no guard failed the USER's build with a bare
