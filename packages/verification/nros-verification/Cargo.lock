@@ -87,6 +87,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "nros-cc-flags"
+version = "0.5.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.5.0"
 dependencies = [
@@ -105,6 +112,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "heapless",
+ "nros-cc-flags",
  "portable-atomic",
 ]
 

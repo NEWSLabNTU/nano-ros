@@ -492,6 +492,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "heapless",
+ "nros-cc-flags",
  "portable-atomic",
 ]
 
