@@ -155,6 +155,24 @@ carried the same lesson as a local comment. And #0726's gate could not have caug
 `packages/` + `tools/`, making 39 pre-existing sites across 11 files visible and ratcheted (133/74 → 172/85).
 See `archived/0732-*`. (2026-08-20)
 
+**#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing,
+and the reason nobody saw it is that no recipe built their fixtures: `just/freertos.just` only ever called
+`workspace-fixtures-build.sh freertos`, so the two `platform = "freertos-posix"` manifest rows matched
+nothing and the lane finished green having built neither (issue #405's shape; the producibility gate was RED
+on main saying so). The recipe half is fixed here (`just freertos build-fixtures-posix`); with the fixtures
+built, both cells fail `no 'Received:' line — nothing was delivered` while the talker publishes 0..7. NOT
+caused by phase-359 W10, verified by stashing it and reproducing on upstream main. Contradicts phase-370 W3's
+"deliver /chatter end to end" — likely a hand-build whose env the lane does not supply. See `0737-*`. (2026-08-20)
+
+**#0736** (testing/core, open 2026-08-20) — `realtime_tiers` fails on main: the runtime timer contract
+reports `timer-overrun-runtime timer measured=2 declared=0`, i.e. "you told me this timer takes no time and
+it took 2". Reproduced 3/3 SOLO on an idle lane (~47 s per run against ~22 s when it passed earlier the same
+day), so not the QEMU load flake. NOT caused by phase-359 W10's clock ruling, which found it — verified by
+stashing that change, rebuilding native fixtures from upstream main and reproducing. Two readings to
+separate before anyone edits the number: the declaration is genuinely missing (a bake/codegen regression) or
+the monitor reads the wrong field. While it is red the RFC-0052 scheduling-dims surface has no runtime gate
+on the fast path — the same surface #0623 and #0636 are arguing about. See `0736-*`. (2026-08-20)
+
 **#0734** (rmw-zenoh, open 2026-08-20) — `nros-rmw-zenoh` is compiled TWICE into a C++ image: `libnros_c.a`
 and `libnros_cpp.a` each carry their own build, under different `-C metadata`, so the statics do not even
 collide (`Cs·ewqHElJteY4·…SUBSCRIBER_BUFFERS` at 0x20474cf1 vs `Cs·hvwoP2UscId·…` at 0x2049ccfb) and the

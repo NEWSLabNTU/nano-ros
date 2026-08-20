@@ -82,7 +82,7 @@ nros_fixture_require_known_platform "$platform"
 # invocations, not repo breakage): the platform just recipes wrap this
 # script with required env — direct calls must fail LOUD, not deep-panic.
 case "$platform" in
-    freertos)
+    freertos|freertos-posix)
         if [ -z "${NROS_PLATFORM_FREERTOS_SRC:-}" ] || [ -z "${NROS_PLATFORM_CFFI_INCLUDE:-}" ]; then
             echo "[ERROR] the freertos lane needs the just/sdk-env.just exports" >&2
             echo "        (NROS_PLATFORM_FREERTOS_SRC, NROS_PLATFORM_CFFI_INCLUDE, …)." >&2

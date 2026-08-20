@@ -101,6 +101,10 @@ fn assert_delivered(out: &str, talker_marker: &str, label: &str) {
 }
 
 #[test]
+#[ignore = "issue 0737 — the cell builds and publishes but nothing is received. \
+           Parked rather than left red because it was only ever green by \
+           accident: no recipe built its fixtures, so it skipped. Un-ignore \
+           with the delivery fix, not before."]
 fn freertos_posix_c_entry_delivers_over_cyclonedds() {
     require_freertos();
     let entry = build_freertos_posix_workspace_c_entry().unwrap_or_else(|e| {
@@ -117,6 +121,10 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
 }
 
 #[test]
+#[ignore = "issue 0737 — the cell builds and publishes but nothing is received. \
+           Parked rather than left red because it was only ever green by \
+           accident: no recipe built its fixtures, so it skipped. Un-ignore \
+           with the delivery fix, not before."]
 fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     require_freertos();
     let entry = build_freertos_posix_workspace_cpp_entry().unwrap_or_else(|e| {

@@ -135,9 +135,38 @@ build-examples:
     bash scripts/build/workspace-fixtures-build.sh freertos-posix cpp
     echo "FreeRTOS QEMU examples built!"
 
+# phase-370 W3 — the POSIX-simulator board's C and C++ cyclonedds workspace
+# rows (`platform = "freertos-posix"` in examples/fixtures.toml).
+#
+# Its own recipe rather than a line in `build-examples`, because that recipe IS
+# the ARM QEMU lane: it hard-fails without lwIP and cross-compiles every leaf,
+# and this board does neither — host sockets, host cc, no emulator. Before this
+# the two rows had no producer anywhere in the module, so `just freertos
+# build-fixtures` finished green on fixtures nothing in it could build and the
+# staleness gate then failed on them (issue #405 exactly; caught by
+# `matrix_fixture_coverage::every_fixture_token_is_producible_by_the_module_that_owns_it`).
+[group("examples")]
+build-fixtures-posix:
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    source scripts/build/cargo.sh
+    source scripts/build/codegen-stamp.sh
+    nros_cli="$(nros_cli_bin)"
+    nros_require_sync "$nros_cli"
+    # The kernel source is the one thing this board still needs; lwIP is not.
+    if [ ! -d "$FREERTOS_DIR/include" ]; then
+        nros_lane_skip_note freertos \
+            "FreeRTOS kernel not found at $FREERTOS_DIR (run: just setup-freertos)"
+        exit 0
+    fi
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix c
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix cpp
+
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
-build-fixtures: build-examples build-fixture-extras
+build-fixtures: build-examples build-fixture-extras build-fixtures-posix
     #!/usr/bin/env bash
     set -e
     # issue 0650 — the ONE place this lane says it built its fixtures, and it
