@@ -31,9 +31,13 @@ visible through instruments that themselves had to be fixed twice.
 
 ### W1 — gate fan-out (`check-fast`), opt-in
 
-`check-fast` runs 111 gates serially as just dependencies at 1-2 of 32 cores.
-`scripts/build/run-gates-parallel.sh` runs the same set concurrently: **90 s ->
-8 s** at `-P32`, and 8 s is the slowest single gate, so that is the floor. The
+`check-fast` runs its gates serially as just dependencies at 1-2 of 32 cores.
+`scripts/build/run-gates-parallel.sh` runs the same set concurrently. Measured on
+a consistent tree (submodules synced, CLI rebuilt, box otherwise quiet):
+**45-46 s serial -> 7-8 s at `-P32`**, and 7 s is the slowest single gate, so
+that is the floor. The 90 s serial figure quoted earlier was a colder tree; the
+honest range is 45-90 s depending on cache state, against a fan-out that is
+consistently 7-21 s. The
 list is derived from check-fast's own dependency line so it cannot drift; an
 empty derivation is a hard error rather than a vacuous pass.
 
@@ -227,3 +231,45 @@ Opt-in, working, 21 s warm against ~90 s serial. NOT on the fixture-build path:
 the swap was reverted and has not been re-attempted. Re-attempting it should wait
 until the three reds above are fixed, so that a real failure is not mistaken for
 fan-out fallout a second time.
+
+
+## Corrections (2026-08-20, end of session)
+
+Two claims in this doc were wrong and are retracted here rather than edited away.
+
+**"90 s -> 8 s"** overstated the win by comparing a cold serial run against a
+warm fan-out. On a consistent tree it is **45-46 s -> 7-8 s**. Still worth
+having — ~5x, and it is the difference between a gate phase you notice and one
+you do not — but not 11x.
+
+**"Three real reds on main"** (`check-board-cargo-config-applied`,
+`check-provider-index`, `check-workspace-order`) were not reds. All three were
+the **stale in-tree CLI**, re-armed by a `git pull`. `just setup-cli` cleared
+them. A fourth, `check-submodule-pinned-locks`, was the `play_launch` pointer
+having moved.
+
+The reasoning error is worth keeping: I checked that they failed SOLO and
+concluded they were genuine. Failing solo distinguishes a concurrency artifact
+from a real failure — it does NOT distinguish a real failure from an unmet
+PRECONDITION. `just check-tier-preconditions` reports every one of those at once
+and exists for exactly this; running it first would have cost seconds.
+
+Note also the ordering trap that followed: rebuilding the CLI and THEN syncing a
+submodule leaves the CLI stale again, because a submodule checkout rewrites
+source mtimes. The documented order — submodules, then CLI, then fixtures — is
+load-bearing, and I violated it while fixing the very problem it prevents.
+
+That is four false conclusions in one session (481 s gate phase, 33 s cmake
+configure, the fan-out "regression", and these preconditions), all of the same
+family: **one measurement in a disturbed tree, read as a property of the code.**
+
+## Fan-out is now the default gate phase
+
+`build-test-fixtures` depends on `check-fast-parallel` rather than `check-fast`.
+Landed after three consecutive clean runs (8 s, 7 s, 7 s — 113/113 each) plus a
+serial baseline of 45 s on the same tree, and one run as an actual dependency
+(8 s).
+
+`check-fast` itself is unchanged and still serial: it remains the source of
+truth for WHICH gates exist, since the runner derives its list from that
+dependency line. Removing it would break the derivation.
