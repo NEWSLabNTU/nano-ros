@@ -327,7 +327,16 @@ def existing_leaf_target_dirs():
     found = []
     root_examples = os.path.join(ROOT, "examples")
     for dirpath, dirnames, _ in os.walk(root_examples):
-        dirnames[:] = [x for x in dirnames if x not in (".git", "third-party")]
+        # Prune `build*` at DESCENT, not at report time. The scoping rule below
+        # already discards any `target` found under one — Corrosion scratch, not
+        # a leaf's own dir — but discovering that after the walk means descending
+        # every cmake build tree under examples/, which is most of 828 GB. The
+        # walk did not finish inside 90 s; pruning here it is seconds.
+        dirnames[:] = [
+            x for x in dirnames
+            if x not in (".git", "third-party")
+            and not (x == "build" or x.startswith("build-"))
+        ]
         if os.path.basename(dirpath) != "target":
             continue
         # Do not descend into it; one report per directory.
