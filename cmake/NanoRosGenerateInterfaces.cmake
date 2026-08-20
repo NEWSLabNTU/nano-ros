@@ -663,8 +663,16 @@ function(nros_generate_interfaces target)
       get_property(_nrgi_c_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
       if(_nrgi_c_hdr AND TARGET nros_c_config_header)
         add_dependencies(${_lib_target} nros_c_config_header)
+        # issue 0740 — a LOCAL stamp, not the cross-directory mirror path (see
+        # `_nros_config_header_stamp`). Guarded: this module is reachable in
+        # configurations where NanoRosNodeRegister.cmake was not included.
+        if(COMMAND _nros_config_header_stamp)
+          _nros_config_header_stamp(_nrgi_cfg_stamp "${_nrgi_c_hdr}")
+        else()
+          set(_nrgi_cfg_stamp "${_nrgi_c_hdr}")
+        endif()
         set_source_files_properties(${_generated_sources} PROPERTIES
-          OBJECT_DEPENDS "${_nrgi_c_hdr}")
+          OBJECT_DEPENDS "${_nrgi_cfg_stamp}")
       endif()
     else()
       add_library(${_lib_target} INTERFACE)

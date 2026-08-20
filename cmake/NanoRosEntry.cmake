@@ -630,8 +630,13 @@ function(nano_ros_entry)
                 list(APPEND _nra_cfg_hdrs "${_nra_cpp_hdr}")
             endif()
             if(_nra_cfg_hdrs)
+                if(COMMAND _nros_config_header_stamp)
+                    _nros_config_header_stamp(_nra_cfg_stamp ${_nra_cfg_hdrs})
+                else()
+                    set(_nra_cfg_stamp ${_nra_cfg_hdrs})
+                endif()
                 set_source_files_properties("${_gen_tu}" PROPERTIES
-                    OBJECT_DEPENDS "${_nra_cfg_hdrs}")
+                    OBJECT_DEPENDS "${_nra_cfg_stamp}")
             endif()
         endif()
     endif()
@@ -666,8 +671,18 @@ function(nano_ros_entry)
             endforeach()
             get_target_property(_nra_srcs ${_NRA_NAME} SOURCES)
             if(_nra_srcs)
+                # issue 0740 — a LOCAL stamp, not the cross-directory mirror
+                # path. `add_dependencies` above orders the TARGET; it does not
+                # give this directory's .o rule a prerequisite it can BUILD, so
+                # under Makefiles a clean consumer build dies with "No rule to
+                # make target". The stamp carries the same content edge.
+                if(COMMAND _nros_config_header_stamp)
+                    _nros_config_header_stamp(_nra_cfg_stamp ${_nra_cfg_hdrs})
+                else()
+                    set(_nra_cfg_stamp ${_nra_cfg_hdrs})
+                endif()
                 set_source_files_properties(${_nra_srcs} PROPERTIES
-                    OBJECT_DEPENDS "${_nra_cfg_hdrs}")
+                    OBJECT_DEPENDS "${_nra_cfg_stamp}")
             endif()
         endif()
     endif()

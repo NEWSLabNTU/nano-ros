@@ -687,8 +687,10 @@ function(nano_ros_node_register)
                 list(APPEND _nros_cfg_hdrs "${_nros_cpp_cfg_hdr}")
             endif()
             if(_nros_cfg_hdrs)
+                # issue 0740 — local stamp, not the cross-directory mirror path.
+                _nros_config_header_stamp(_nros_cfg_stamp ${_nros_cfg_hdrs})
                 set_source_files_properties(${_NRC_SOURCES} PROPERTIES
-                    OBJECT_DEPENDS "${_nros_cfg_hdrs}")
+                    OBJECT_DEPENDS "${_nros_cfg_stamp}")
             endif()
         endif()
         nros_platform_link_app(${PROJECT_NAME})
@@ -807,8 +809,10 @@ function(nano_ros_node_register)
             list(APPEND _nros_cfg_hdrs "${_nros_cpp_cfg_hdr}")
         endif()
         if(_nros_cfg_hdrs)
+            # issue 0740 — local stamp, not the cross-directory mirror path.
+            _nros_config_header_stamp(_nros_cfg_stamp ${_nros_cfg_hdrs})
             set_source_files_properties("${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES}
-                PROPERTIES OBJECT_DEPENDS "${_nros_cfg_hdrs}")
+                PROPERTIES OBJECT_DEPENDS "${_nros_cfg_stamp}")
         endif()
         nros_platform_link_app(${PROJECT_NAME})
     endif()
@@ -995,3 +999,88 @@ endfunction()
 # already defined by the time NanoRosEntry's body runs, and that the
 # deprecation shim above can resolve `nano_ros_entry` at call time.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntry.cmake")
+
+# ---------------------------------------------------------------------------
+# _nros_config_header_stamp(<out-var> <header>...)  — issue 0740
+#
+# A LOCAL proxy for cross-directory generated headers, so a file-level
+# `OBJECT_DEPENDS` works under the Unix Makefiles generator.
+#
+# The mirrored config headers are `add_custom_command(OUTPUT ...)` products of
+# `packages/api/nros-{c,cpp}/`. Ninja keeps one global graph, so a consumer in
+# another directory can name the file and get the edge. Make does not: a custom
+# command's OUTPUT rule exists only in the makefile of the directory that
+# declared it, so a consumer elsewhere names a prerequisite nothing can build —
+#
+#     No rule to make target '.../nros-c/include/nros/nros_config_generated.h',
+#     needed by '.../<entry>_nros_main_generated.cpp.o'.
+#
+# `add_dependencies` does NOT fix this, and that is the trap: it was already
+# there (`_nros_node_register_apply_config_header_deps`) when issue 0740 was
+# filed. Target-level ordering says "build that target first"; it does not give
+# the .o's prerequisite a RULE. Only the second build passes, because by then
+# the file exists — which is why in-tree lanes never saw it and a clean
+# downstream consumer build always does.
+#
+# So give the CONSUMER's own directory a rule. The stamp is a `copy_if_different`
+# of the headers, which means:
+#
+#   * Make has a local rule, so the prerequisite resolves on a clean tree;
+#   * `DEPENDS` names the producing TARGETS (legal, and the ordering edge);
+#   * the stamp's mtime moves only when the header CONTENT does, so the
+#     rebuild-on-change edge issues 0088/0268 exist for is preserved. A bare
+#     `touch` stamp would order correctly and rebuild every consumer TU on every
+#     build, which is how a correctness fix becomes a build-time regression.
+#
+# Idempotent per directory: several entries in one CMakeLists share one stamp.
+function(_nros_config_header_stamp _out_var)
+    set(_stamps "")
+    # The stamp must go stale EXACTLY when the mirror does, in BOTH generators.
+    #
+    # Naming only the mirror TARGETS is not enough: `DEPENDS <target>` is
+    # ORDER-ONLY in Ninja, so a rebuilt crate would refresh the mirror and leave
+    # the stamp — and therefore every consumer TU — reading the old sizes. That
+    # is issue 0268's museum mirror, reintroduced one level out, on the
+    # generator CI actually uses. So take the mirrors' OWN triggers: the cargo
+    # targets for ordering, plus the staticlib FILE, which is a real Ninja edge
+    # and is legal cross-directory because CMake knows which target produces it.
+    set(_deps "")
+    foreach(_t cargo-build_nros_c cargo-build_nros_cpp
+               nros_c_config_header nros_cpp_config_header
+               nros_c_cargo_build nros_cpp_cargo_build)
+        if(TARGET ${_t})
+            list(APPEND _deps ${_t})
+        endif()
+    endforeach()
+    foreach(_lib nros_c-static nros_cpp-static)
+        if(TARGET ${_lib})
+            list(APPEND _deps "$<TARGET_FILE:${_lib}>")
+        endif()
+    endforeach()
+    foreach(_hdr ${ARGN})
+        # One stamp per header, rather than one stamp for all of them:
+        # `cmake -E copy_if_different` takes many sources only with a DIRECTORY
+        # destination, and concatenating would need a shell redirect that
+        # `add_custom_command` cannot express portably. Per-header also keeps
+        # `copy_if_different`'s exact semantics — a header that did not change
+        # does not touch its stamp.
+        get_filename_component(_stem "${_hdr}" NAME_WE)
+        set(_stamp "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp/${_stem}.stamp")
+        list(APPEND _stamps "${_stamp}")
+        # Idempotent per (directory, header): several entries in one
+        # CMakeLists.txt share one rule, and declaring it twice is an error.
+        get_property(_declared DIRECTORY PROPERTY _NROS_CFG_STAMPS)
+        if(NOT "${_stamp}" IN_LIST _declared)
+            add_custom_command(
+                OUTPUT "${_stamp}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_hdr}" "${_stamp}"
+                DEPENDS ${_deps}
+                COMMENT "nano-ros: config-header stamp ${_stem} (issue 0740)"
+                VERBATIM)
+            set_property(DIRECTORY APPEND PROPERTY _NROS_CFG_STAMPS "${_stamp}")
+        endif()
+    endforeach()
+    set(${_out_var} "${_stamps}" PARENT_SCOPE)
+endfunction()
