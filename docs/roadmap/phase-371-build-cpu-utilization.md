@@ -145,8 +145,18 @@ accumulates Corrosion versions and prefixes are enumerated newest-first).
 2. Re-measure occupancy with a **lineage-scoped** sampler on a quiet box, to
    confirm or retire the `alive 51 / runnable 8` reading.
 3. Decide whether `check-fast` switches to the fan-out now that W2 is fixed.
-4. Attribute the esp32 (rc=101) and native (rc=2) failures from the last pooled
-   run — they passed under the same launcher previously.
+4. ~~Attribute the esp32 (rc=101) and native (rc=2) failures from the last pooled
+   run~~ — DONE (2026-08-21): two pooled `lane=tier2` reruns; esp32 and native
+   passed BOTH, so those failures were transient (the cold-cache class this
+   phase keeps documenting), not pooled-mode fallout. The reruns instead caught
+   a REAL red the pool did not cause: phase-370 W4 parked `env_compat.hpp`
+   inside internal.hpp's FreeRTOS branch, so every other platform branch lost
+   `env_lookup` and both threadx stages failed rc=2 (`session.cpp:161`). Fixed
+   by hoisting the include unguarded (it is dependency-free by design; the
+   branch guards exist for `nros/platform.h`); hosted `check-rmw-cyclonedds`
+   re-verified green, then a full pooled lane ran 8/8 stages green. NOTE: no
+   timing from these runs is evidence — a CarlaUE4 + Autoware sim owned the box
+   throughout (standing rule).
 5. Cold A/B of static vs pooled. Every wall-clock comparison so far has been
    warm-tree and is therefore not evidence.
 
