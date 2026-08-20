@@ -7,7 +7,7 @@ on:
       - "book/**"
       - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
-      - "packages/rmw/cffi/**"
+      - "packages/core/nros-rmw-abi/**"
       - "packages/platform/nros-platform-api/**"
       - "packages/platform/nros-platform-cffi/**"
       - "packages/platform/nros-platform-posix/**"
@@ -112,9 +112,12 @@ jobs:
           doxygen Doxyfile
 
       - name: Build Doxygen — RMW vtable (porter-facing)
+        # phase-321 W2.e moved the shim crates to packages/rmw/, but the
+        # vtable headers + Doxyfile are the ABI SSoT and live in
+        # packages/core/nros-rmw-abi (RFC-0054).
         run: |
           mkdir -p target/doxygen/rmw-cffi
-          cd packages/rmw/cffi
+          cd packages/core/nros-rmw-abi
           doxygen Doxyfile
 
       - name: Build Doxygen — Platform vtable (porter-facing)
