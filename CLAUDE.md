@@ -139,10 +139,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   launch tree → SystemModel, needs CPython NOT ROS/colcon) is REGULAR FILES at
   `src/ros-launch-resolve`. Init NON-recursively (`git submodule update --init
   packages/cli/third-party/play_launch`) — layer-3 runtime submodules (`src/vendor/*`, container,
-  msgs) are never built by nano-ros. `ros-launch-manifest` (spec) is a git-TAG cargo dep — **`v0.1.6`
+  msgs) are never built by nano-ros. `ros-launch-manifest` (spec) is a git-TAG cargo dep — **`v0.1.8`
   across every nano-ros crate**, no longer nested (the 0285 double-vendoring is gone), and the old
-  `--recursive` landmine is retired. The one other tag in the tree is `v0.1.5` in VENDORED
-  `play_launch/tests/`, which is play_launch's pin, not ours. Read the pin from the manifests, not
+  `--recursive` landmine is retired. The one other tag in the tree is play_launch's own
+  in `play_launch/tests/`, which is its pin, not ours. Read the pin from the manifests, not
   from here: this line said `v0.1.0` for long enough to mislead (2026-08-18).
   The `nros-launch-resolve` helper is built by `just setup-launch-resolve` and
   invoked by ABSOLUTE PATH, never `$PATH` (issue 0285).

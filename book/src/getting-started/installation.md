@@ -17,7 +17,7 @@ needs the basics: git, curl, a C toolchain, `pkg-config`, python3.
 ```sh probe=10 distro=debian
 sudo apt-get update
 sudo apt-get install -y git curl ca-certificates build-essential \
-    cmake pkg-config python3 python3-dev zstd libclang-dev libz3-dev \
+    cmake pkg-config python3 python3-dev zstd \
     python3-catkin-pkg python3-empy python3-lark python3-yaml
 ```
 
@@ -25,29 +25,28 @@ sudo apt-get install -y git curl ca-certificates build-essential \
 
 ```sh probe=10 distro=fedora
 sudo dnf install -y git curl ca-certificates gcc gcc-c++ make \
-    cmake pkgconf-pkg-config python3 python3-devel zstd clang-devel z3-devel
+    cmake pkgconf-pkg-config python3 python3-devel zstd
 ```
 
 **Arch:**
 
 ```sh probe=10 distro=arch
-sudo pacman -S --needed git curl base-devel cmake python zstd clang z3
+sudo pacman -S --needed git curl base-devel cmake python zstd
 ```
 
 (`base-devel` is a package *group*, and it covers `pkg-config`;
 `ca-certificates` ships with the base system.)
 
-**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd llvm z3`.
+**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd`.
 
 (`cmake` builds the C/C++ quick start and every workspace root; `zstd`
-unpacks the prebuilt SDK assets `nros setup` fetches; `python3-dev`,
-`libclang` and the z3 headers are needed once, while `bootstrap.sh` builds
-the launch resolver — it embeds CPython to parse ROS launch files. Each
-tool's absence produces an error naming it, but installing up front saves
-the round-trips. The three Python packages feed `rosidl_adapter`, the ROS
+unpacks the prebuilt SDK assets `nros setup` fetches; `python3-dev` is
+needed once, while `bootstrap.sh` builds the launch resolver — it embeds
+CPython to parse ROS launch files. Each tool's absence produces an error
+naming it. The Python packages feed `rosidl_adapter`, the ROS
 message-to-IDL step the CycloneDDS backend uses — on Fedora/Arch/macOS
-install `catkin_pkg`, `empy==3.3.4`, `lark` and `PyYAML` via pip or your package
-manager; empy must stay 3.x.)
+install `catkin_pkg`, `empy==3.3.4`, `lark` and `PyYAML` via pip or your
+package manager; empy must stay 3.x.)
 
 These few packages are the only ones you install by hand. Per-board OS
 dependencies later on are declared in the index and printed for *your*

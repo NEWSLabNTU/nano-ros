@@ -32,7 +32,16 @@ path = "src/main.rs"
 # `default = ["runtime"]` could undo. CPython is still required — the launch
 # parser embeds it via pyo3 — which is why this stays a separately built helper
 # instead of being linked into the portable `nros` binary.
-ros-launch-resolve = { path = "../third-party/play_launch/src/ros-launch-resolve/resolve" }
+# default-features = false drops `smt` — the checker's z3-backed
+# satisfiability rule, the ONE consumer of z3 -> z3-sys -> bindgen, whose
+# build put libclang AND libz3-dev on every reader's host-prerequisite list
+# (phase-368's clean-container probe measured both, iterations 5-6). The
+# no-smt checker is not silently smaller: it registers a stub under the same
+# rule id that emits one Info diagnostic whenever the rule battery runs (the
+# battery runs on CONTRACT-manifest resolves; a plain launch-XML resolve
+# never reaches it, so most syncs are byte-identical either way). In-tree
+# consumers that want the full battery enable `ros-launch-resolve/smt`.
+ros-launch-resolve = { path = "../third-party/play_launch/src/ros-launch-resolve/resolve", default-features = false }
 clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
 play_launch_parser = { path = "../third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser" }
