@@ -220,13 +220,11 @@ fn logging_smoke_threadx_linux_captures_stderr() {
 /// expected severity lines.
 #[test]
 fn logging_smoke_esp32_qemu_emits_every_severity() {
-    use std::process::Command;
-    if Command::new("qemu-system-riscv32")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        panic!("[SKIPPED] qemu-system-riscv32 not available");
+    // issue 0488's resolver + machine probe — a bare `--version` existence
+    // check passes on the STOCK qemu-system-riscv32, which has no `esp32c3`
+    // machine and dies at launch with "unsupported machine type".
+    if !nros_tests::esp32::is_qemu_riscv32_available() {
+        panic!("[SKIPPED] qemu-system-riscv32 (Espressif fork, esp32c3 machine) not available");
     }
 
     let flash = build_logging_smoke_esp32_qemu_flash().expect(
