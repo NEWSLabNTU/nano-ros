@@ -108,7 +108,32 @@ Closing that needs a DIFFERENT image — one that boots through the board entry 
 emits a record — not a change to this fixture. Left open deliberately rather than
 papered over by converting the one image that cannot test it.
 
-**The image exists.** `examples/qemu-arm-baremetal/rust/listener` declares
+**Correction (same day): the image boots through the funnel but emits through the
+OTHER facade, so it cannot carry the assertion either.**
+
+`examples/qemu-arm-baremetal/rust/listener` does declare
+`nros-board-mps2-an385 = { features = ["board-entry"] }` and enters via
+`nros::main!()`, so it reaches `entry.rs` — the funnel that publishes. But every
+line it emits is `log::info!` (`src/lib.rs:30-37`), which is the **log crate**,
+not `nros_log`. Those records reach the console through the board's separate
+log-crate logger and never touch the sink list, so a grep of this image's output
+is green whether or not `init_default()` ever ran.
+
+That is precisely the trap listed three lines below this paragraph — "the record
+must come from `nros_log`, not `printf`" — with a third facade in the role of
+`printf`, and I walked into it while writing the route down. It is also the
+original issue-0708 confusion recurring: ThreadX and NuttX wired `log` and not
+`nros_log`, and the two facades coexisting is exactly what makes a board look
+instrumented while `nros_log` is dead.
+
+So the mps2 gap is NOT a missing assertion on an existing image. It needs an
+image that both (a) boots through a board funnel and (b) emits through
+`nros_log`. Today no mps2 image does both: the smoke fixture does (b) and not
+(a); every example does (a) and not (b). That is a real piece of work — either
+give an existing example an `nros_info!`, or give the smoke fixture a board
+entry — and neither is a one-liner.
+
+**The image exists (superseded — see the correction above).** `examples/qemu-arm-baremetal/rust/listener` declares
 `nros-board-mps2-an385 = { features = ["board-entry"] }` and enters through
 `nros::main!()`, so it boots via `entry.rs` — the funnel that publishes. The gap
 is therefore not "no image reaches the board" but "no ASSERTION rides the image
