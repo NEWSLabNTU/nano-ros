@@ -193,3 +193,43 @@ timer(s) fired`). "Never scheduled" and "scheduled but taking nothing" are
 different defects and nothing currently distinguishes them.
 
 Keeping `#[ignore]`: it still fails here.
+
+## Board-side correction, 2026-08-21 — this cell is SINGLE-tier, so it is not the 0623/0636 family
+
+The trace above is decisive about the layer, and the conclusion it draws from it
+is the one place to redirect: "It is the #0623/#0636 family — what the boot path
+leaves runnable." That family is about the BOOT TIER outranking the tiers it
+spawned. This entry has no tiers.
+
+Measured on the artefact, not inferred:
+
+```
+$ grep -n 'run_tiers\|run_components' …/freertos_posix_entry_nros_main_generated.cpp
+66:    return ::nros::board::FreertosBoard::run_components(
+           NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG),
+           &__nros_entry_setup);
+
+$ NROS_ENTRY_SPIN_MS=4000 ./freertos_posix_entry | grep -iE 'tier|spawn'
+(nothing)
+```
+
+`run_components`, not `run_tiers`: ONE executor on ONE FreeRTOS task. The board's
+`main` creates a single app task and starts the scheduler; nothing else is
+spawned. So the talker and the listener are two CALLBACKS in one executor, not
+two tasks — there is no second task to be starved, no boot tier, and no
+priority relationship between them for the boot path to get wrong.
+
+(The 0636 gap on FreeRTOS is real and still open — `freertos_run_tiers.c:397`
+does take `&tiers[0]`, which on a bigger-is-more-urgent kernel is the most
+urgent tier. It simply is not on this cell's path.)
+
+That moves the question one layer further in than the trace already moved it:
+the sample is in the reader's history, and the single executor servicing both
+callbacks runs the timer (`sent: 0..N` keeps printing) and never drains the
+subscription. So the next probe is inside `nros_cpp_spin_once` on this port —
+whether the subscription's readiness path works when the FreeRTOS POSIX port's
+signal-driven tick is what wakes the task — rather than anything about task
+priorities.
+
+Stated from the board side because that is what this host can contribute: it
+cannot reproduce the failure, but it can say exactly what shape the image is.

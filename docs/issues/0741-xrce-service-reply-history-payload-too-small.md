@@ -54,6 +54,36 @@ Checked the way #0736 and #0737 were: `git checkout origin/main --
 packages/core packages/api scripts/check-std-census.py`, `just setup-cli`,
 rebuild native fixtures, run — fails identically. Upstream `main` is red here.
 
+## Second host, 2026-08-21 — does not reproduce
+
+Ran the issue's own sequence on the other host, after `just build-test-fixtures
+lane=native` (RC=0) and `just setup-cli`:
+
+| arm | result |
+| --- | --- |
+| `-E 'test(test_xrce_service_ros2_client)' --retries 0`, five separate runs | 5 pass / 0 fail |
+| the whole `xrce_ros2_interop` binary, in-sweep, `--retries 0` | **9 tests run: 9 passed, 0 skipped** |
+
+The in-sweep arm matters because this issue reports the failure as deterministic
+in-sweep (3/3) as well as solo; the siblings that pass for you
+(`test_xrce_action_ros2_client`, `test_xrce_to_ros2_pubsub`) pass here too, in
+the same run as the one that fails for you.
+
+Host: `ROS_DOMAIN_ID` / `CYCLONEDDS_URI` / `RMW_IMPLEMENTATION` unset, ROS 2
+Humble at `/opt/ros/humble`.
+
+**A hypothesis worth killing before anyone spends time on it.** Issue 0740 (the
+config-header mirror invisible to Makefiles) lands consumer TUs against the
+in-tree STUB header, and issue 0268 records that exact stale-sizes path
+producing wrong `*_OPAQUE_U64S` and "memory corruption that surfaces as
+unrelated runtime failures". A 15-byte history for a type that cannot be 15
+bytes looks exactly like that. It is NOT that here: this fixture
+(`build/cargo-fixtures/linux-*/service-server`) is a CARGO binary, and 0740 is a
+cmake-generator defect that never touches it.
+
+So the difference is the host, not the tree — which is the same split #0737 hit,
+and worth stating so the two are not investigated as one thing.
+
 ## Reproduce
 
 ```
