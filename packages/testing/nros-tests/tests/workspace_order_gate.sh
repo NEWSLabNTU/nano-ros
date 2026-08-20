@@ -112,9 +112,30 @@ mkpkg "$WS2" app my_backend
 A2="$("$NROS" ws order --workspace "$WS2" --lines | cut -f1)"
 [ "$A2" = "$(printf 'my_backend\napp')" ] ||
     bad T2 "provider not ordered before its consumer, got: $A2"
-# and the provider is still discoverable AS one — ordering did not consume it
-"$NROS" ws providers --workspace "$WS2" --nano-ros-root "$WS2" --kind rmw |
-    grep -q "acme" || bad T2 "the provider stopped being discoverable"
+# and the provider is still discoverable AS one — ordering did not consume it.
+#
+# CAPTURE, then test — NOT `"$NROS" … | grep -q`. Issue 0732: `grep -q` exits at
+# the first match, which closes the pipe under a producer that is still writing;
+# `nros` gets EPIPE, and because Rust ignores SIGPIPE its `println!` PANICS
+# ("failed printing to stdout: Broken pipe"). With `set -o pipefail` the pipeline
+# is then non-zero EVEN THOUGH GREP MATCHED, so `|| bad T2` fired and this gate
+# announced "the provider stopped being discoverable" — a specific, false claim
+# about the tree, produced by a child that died rather than answered. It is a
+# race, so it failed green->red only under the parallel gate fan-out, which is
+# the direction that teaches people to re-run a gate instead of believing it.
+#
+# `check-archive-lang-items.sh` carries the same lesson from an earlier round
+# ("grep's early exit gives `nm` SIGPIPE and the pipeline reports FAILURE on a
+# match — which inverted an earlier revision of this gate silently"). That fix
+# stayed local as a comment; this is the second occurrence.
+#
+# Splitting it also separates the two verdicts the pipeline conflated: the CLI
+# failing to run at all is now distinct from the provider genuinely being absent.
+if ! PROVIDERS="$("$NROS" ws providers --workspace "$WS2" --nano-ros-root "$WS2" --kind rmw 2>&1)"; then
+    bad T2 "ws providers errored: $PROVIDERS"
+elif ! grep -q "acme" <<<"$PROVIDERS"; then
+    bad T2 "the provider stopped being discoverable"
+fi
 
 # --- T4: a cycle -------------------------------------------------------------
 WS3="$WORK/ws_cycle"

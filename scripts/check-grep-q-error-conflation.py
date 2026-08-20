@@ -47,12 +47,30 @@ COND = re.compile(
 SUFFIXES = (".sh", ".just", ".py")
 
 
+# Issue 0732 — the gate scripts under `packages/*/tests/` are checkers too, and
+# they were outside this sweep. `workspace_order_gate.sh` announced "the provider
+# stopped being discoverable" from a SIGPIPE in its own harness while sitting in
+# no baseline at all, because nothing here looked at that directory. A gate whose
+# scope is narrower than the rule it enforces is issue 0196's shape, and the
+# whole point of this one is that a checker must not report a tool failure as a
+# finding — which is no less true of a checker that happens to live beside the
+# tests it guards.
+SEARCH_ROOTS = ["scripts", "just", "justfile", "packages", "tools"]
+
+
 def tracked():
     out = subprocess.run(
-        ["git", "-C", ROOT, "ls-files", "--", "scripts", "just", "justfile"],
+        ["git", "-C", ROOT, "ls-files", "--", *SEARCH_ROOTS],
         capture_output=True, text=True, check=True,
     ).stdout.split()
-    return [f for f in out if f.endswith(SUFFIXES) or f == "justfile"]
+    return [
+        f for f in out
+        # `packages/` and `tools/` carry vendored and generated shell too; only
+        # the trees this repo authors as checks/build glue are in scope.
+        if (f.endswith(SUFFIXES) or f == "justfile")
+        and "/third-party/" not in f
+        and "/generated/" not in f
+    ]
 
 
 def count(rel):

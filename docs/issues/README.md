@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0732** — `check-workspace-order`'s T2 piped `nros` into `grep -q`.
+`grep -q` exits at the first match, closing the pipe while `nros` is still writing; Rust ignores SIGPIPE so
+`println!` PANICS on EPIPE, and under `set -o pipefail` the pipeline is non-zero **even though grep
+matched** — so the gate announced "the provider stopped being discoverable", a specific false claim about
+the tree produced by a child that died rather than answered. Proven standalone (`seq … | grep -q` → rc=141),
+not inferred. Fixed by capturing then testing, which also splits "the CLI failed" from "the provider is
+absent"; both branches falsified against the live gate. **Second occurrence** — `check-archive-lang-items.sh`
+carried the same lesson as a local comment. And #0726's gate could not have caught it: it scanned
+`scripts`/`just`/`justfile` only, so this file sat in NO baseline (issue 0196's shape). Scope now includes
+`packages/` + `tools/`, making 39 pre-existing sites across 11 files visible and ratcheted (133/74 → 172/85).
+See `archived/0732-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0731** — DUPLICATE of #0723/#0727, filed while two other sessions were
 fixing it (0727's title is its subject verbatim). `PlatformSink`'s extern pair broke
 `cargo test --no-run --workspace --exclude nros-c --no-default-features`, reddening tier 1. The fix went
@@ -74,14 +86,6 @@ Resuming it means making `pio run` a BUILD-stage fixture, not run-time compilati
 
 Recently resolved (2026-08-20): **#0707** — every filtered or solo nextest run is global slot 0, so
 
-**#0732** (build/testing, open 2026-08-20) — `check-workspace-order`'s T2 scenario reported a SIGPIPE in
-its own harness ("failed printing to stdout: Broken pipe") as `FAIL[T2]: the provider stopped being
-discoverable` — a false, specific claim about the tree produced by a child that died rather than answered.
-**#0726 one gate over**, different tool: that issue is `grep -q` conflating a tool ERROR with a NON-MATCH,
-found the same way (a forked grep failing to start under a 32-way fan-out, reported as a missing
-force-link anchor). Fails green→red only under load, the direction that teaches people to re-run a gate
-instead of believing it. Not deterministic: 3/3 solo and 2/2 `check-fast` runs pass. See `0732-*`.
-(2026-08-20)
 
 Recently resolved (2026-08-20): **#0712** — nothing checked that an exported shell function's callees
 are also exported, so a helper added to an exported function died "<name>: command not found" in the make
