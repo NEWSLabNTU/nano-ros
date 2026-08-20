@@ -26,7 +26,20 @@ use nros_tests::matrix::{Lang, PlatformId, SCHED_CELLS, SchedDim};
 use std::{collections::BTreeMap, path::PathBuf};
 
 /// The authored bringup `system.toml` for a language's `ws-realtime` workspace.
-fn workspace_system_toml(lang: Lang) -> PathBuf {
+///
+/// issue 0260 — keyed on the DIM as well as the language, because a workspace
+/// can carry more than one bringup and a cell declares its dims in exactly one
+/// of them. `CorePinPlacement` is declared in `smp_bringup` (`core = 1`), which
+/// only an SMP image can honour; `demo_bringup` deliberately declares no `core`
+/// so the uniprocessor rows keep their arm. Resolving every cell to
+/// `demo_bringup` would check the wrong file and report a dim ABSENT that is
+/// authored two directories over — a gate examining something other than what
+/// the cell uses, which is the failure this gate exists to catch.
+fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
+    let bringup = match dim {
+        SchedDim::CorePinPlacement => "src/smp_bringup/system.toml",
+        _ => "src/demo_bringup/system.toml",
+    };
     let ws = match lang {
         Lang::Rust => "realtime-rust",
         Lang::Cpp => "realtime-cpp",
@@ -39,7 +52,7 @@ fn workspace_system_toml(lang: Lang) -> PathBuf {
     nros_tests::project_root()
         .join("examples/workspaces")
         .join(ws)
-        .join("src/demo_bringup/system.toml")
+        .join(bringup)
 }
 
 /// The `[tiers.<tier>.<rtos>]` sub-table key a platform's kernel dims live under.
@@ -65,6 +78,9 @@ fn rtos_key(p: PlatformId) -> &'static str {
 fn dim_keys(d: SchedDim) -> &'static [&'static str] {
     match d {
         SchedDim::CorePin => &["core"],
+        // issue 0260 — same `core` key; the difference is the IMAGE (multi-core)
+        // and therefore what the runtime assert can claim, not the declaration.
+        SchedDim::CorePinPlacement => &["core"],
         SchedDim::EdfDeadline => &["deadline_us"],
         SchedDim::PreemptThreshold => &["preempt_threshold"],
         SchedDim::TimeSlice => &["time_slice_us"],
@@ -104,14 +120,14 @@ fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
 #[test]
 fn sched_dims_are_declared_in_authored_system_toml() {
     // Parse each referenced workspace system.toml once.
-    let mut docs: BTreeMap<&'static str, toml::Value> = BTreeMap::new();
-    let load = |lang: Lang| -> (PathBuf, toml::Value) {
-        let path = workspace_system_toml(lang);
-        let text = std::fs::read_to_string(&path)
+    // Keyed on the PATH, not the workspace: since issue 0260 a workspace can
+    // carry more than one bringup, so (lang, dim) — not lang alone — decides
+    // which file a cell is checked against.
+    let mut docs: BTreeMap<PathBuf, toml::Value> = BTreeMap::new();
+    let load = |path: &PathBuf| -> toml::Value {
+        let text = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("read {} : {e}", path.display()));
-        let doc: toml::Value =
-            toml::from_str(&text).unwrap_or_else(|e| panic!("parse {} : {e}", path.display()));
-        (path, doc)
+        toml::from_str(&text).unwrap_or_else(|e| panic!("parse {} : {e}", path.display()))
     };
 
     let mut missing: Vec<String> = Vec::new();
@@ -122,7 +138,11 @@ fn sched_dims_are_declared_in_authored_system_toml() {
             Lang::C => "realtime-c",
             _ => "",
         };
-        let doc = docs.entry(ws).or_insert_with(|| load(cell.lang).1).clone();
+        let path = workspace_system_toml(cell.lang, cell.dim);
+        let doc = docs
+            .entry(path.clone())
+            .or_insert_with(|| load(&path))
+            .clone();
         let rtos = rtos_key(cell.platform);
         for key in dim_keys(cell.dim) {
             if !key_declared(&doc, rtos, key) {

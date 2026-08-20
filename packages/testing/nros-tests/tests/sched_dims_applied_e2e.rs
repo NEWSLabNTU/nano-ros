@@ -43,7 +43,8 @@ use nros_tests::{
         build_freertos_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
         build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
         build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
+        build_zephyr_workspace_rust_realtime_entry,
     },
     matrix::{
         Lang as ML, PlatformId as MP, SchedCell, SchedDim as SD, Workload as MW,
@@ -55,7 +56,8 @@ use nros_tests::{
         NUTTX_SPORADIC_MARKER, NUTTX_TIER_PRIORITY_FAILED_MARKER, NUTTX_TIER_PRIORITY_MARKER,
         POSIX_CORE_PIN_FALLBACK_MARKER, POSIX_CORE_PIN_MARKER, THREADX_CORE_PIN_FALLBACK_MARKER,
         THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER,
-        ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER, ZEPHYR_EDF_DEADLINE_MARKER,
+        ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER, ZEPHYR_CORE_PIN_OBSERVED_CPU1,
+        ZEPHYR_EDF_DEADLINE_MARKER,
     },
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -74,6 +76,10 @@ enum NativeEnv {
 enum Boot {
     Native(NativeEnv),
     Zephyr,
+    /// issue 0260 — the multi-core Zephyr target. A separate variant from
+    /// `Zephyr` because that one direct-execs a host `zephyr.exe`; this is an
+    /// aarch64 ELF under qemu-system-aarch64 with two cpus.
+    ZephyrQemuA53Smp,
     NuttxQemu,
     FreertosQemu,
 }
@@ -191,6 +197,29 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             },
             note: "spawned tier pinned before start (#655); uniprocessor, so this proves the \
                    call is correct, not SMP placement",
+        },
+        (SD::CorePinPlacement, MP::ZephyrNativeSim, ML::C) => Exec {
+            resolver: || build_zephyr_workspace_c_realtime_entry_smp(),
+            boot: ZephyrQemuA53Smp,
+            // The guest reaches the host at QEMU's user-mode gateway; 127.0.0.1
+            // would be the GUEST's own loopback here, which is what the
+            // native_sim rows mean by it.
+            router: Router::Baked("10.0.2.2"),
+            timeout_secs: 90,
+            // The OBSERVED marker, not the acceptance one. That is the whole
+            // difference between this cell and the CorePin cells: they assert
+            // the kernel took the pin, this asserts the tier RAN where it asked.
+            stem: "nros: core pin observed",
+            // The EXACT line, not the marker prefix: the prefix matches
+            // `running_on=0` too, and 0 is where an unpinned tier lands anyway,
+            // so asserting the prefix would assert nothing.
+            accept: ZEPHYR_CORE_PIN_OBSERVED_CPU1,
+            fallback: None,
+            // No fallback arm: on an image that cannot answer, the board prints
+            // NOTHING rather than a fabricated cpu 0, so "absent" is a failure
+            // here rather than a second arm to tolerate.
+            shape: AcceptOnly,
+            note: "core = 1 on a 2-cpu image; asserts PLACEMENT (running_on=1), not acceptance",
         },
         (SD::CorePin, MP::NuttxArm, ML::Rust) => Exec {
             resolver: || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -514,6 +543,13 @@ fn run_cell(cell: &SchedCell) {
 
     // Boot the guest and collect the log up to the wait target (`ex.stem`).
     let log: String = match ex.boot {
+        Boot::ZephyrQemuA53Smp => {
+            let mut z = ZephyrProcess::start(&entry, ZephyrPlatform::QemuCortexA53Smp)
+                .unwrap_or_else(|e| panic!("[{platform} {lang}] boot zephyr a53 smp: {e}"));
+            let l = z.wait_for_pattern(ex.stem, timeout);
+            z.kill();
+            l
+        }
         Boot::Zephyr => {
             let mut z = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot zephyr native_sim: {e}"));

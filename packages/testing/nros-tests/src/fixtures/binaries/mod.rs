@@ -3958,6 +3958,21 @@ pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// issue 0260 / phase-356 W3 — the SMP realtime entry.
+///
+/// `zephyr.elf`, not `zephyr.exe`: this is a real aarch64 image for
+/// `qemu_cortex_a53/.../smp`, the tree's only multi-core Zephyr target, where a
+/// `core` dim can be verified as PLACEMENT rather than only as acceptance.
+/// Same workspace and entry as the native_sim C row — the fixture axis is the
+/// board, which selects `smp_bringup` (`core = 1`) via `CONFIG_SMP`.
+pub fn build_zephyr_workspace_c_realtime_entry_smp() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-c-realtime-entry-smp/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c/src/zephyr_entry", "c"),
+    )
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

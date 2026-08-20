@@ -29,6 +29,12 @@ pub enum ZephyrPlatform {
     /// run on (Zynq, STM32-Eth, NXP-MAC all use the same Cortex-A9
     /// + Zephyr stack code path).
     QemuCortexA9,
+    /// issue 0260 / phase-356 W3 — `qemu_cortex_a53/qemu_cortex_a53/smp`, the
+    /// tree's only MULTI-CORE Zephyr target. It exists so a `core` dim can be
+    /// verified as PLACEMENT (the tier ran on the cpu it asked for) rather than
+    /// only as ACCEPTANCE (the kernel took the pin), which is all a
+    /// uniprocessor image can show.
+    QemuCortexA53Smp,
 }
 
 impl ZephyrPlatform {
@@ -38,6 +44,7 @@ impl ZephyrPlatform {
             ZephyrPlatform::NativeSim => "native_sim/native/64",
             ZephyrPlatform::QemuArm => "qemu_cortex_m3",
             ZephyrPlatform::QemuCortexA9 => "qemu_cortex_a9",
+            ZephyrPlatform::QemuCortexA53Smp => "qemu_cortex_a53/qemu_cortex_a53/smp",
         }
     }
 }
@@ -354,6 +361,47 @@ impl ZephyrProcess {
                     "-machine",
                     "lm3s6965evb",
                     "-nographic",
+                    "-kernel",
+                ])
+                .arg(&launch_bin)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+                #[cfg(unix)]
+                set_new_process_group(&mut cmd);
+                cmd.spawn()?
+            }
+            ZephyrPlatform::QemuCortexA53Smp => {
+                // Same shape as QemuArm above, and the same SANCTIONED BYPASS:
+                // `runners.yaml` carries the runner kind and the ELF, never the
+                // machine flags, so those are mirrored from
+                // `boards/qemu/cortex_a53/board.cmake` here.
+                //
+                // ONE DELIBERATE DEVIATION from that board.cmake: it passes
+                // `-nic tap,model=e1000,ifname=zeth`, which needs `/dev/net/tun`
+                // and fails with "Operation not permitted" for an unprivileged
+                // runner. User-mode networking gives the guest the same e1000
+                // with no privileges; the guest is 10.0.2.15 and the host
+                // 10.0.2.2, which is what the fixture's baked locator names.
+                // `-smp cpus=2` is the whole point of this platform.
+                let launch_bin = binary
+                    .parent()
+                    .and_then(RunnersYaml::from_zephyr_dir)
+                    .filter(|r| r.runners.iter().any(|x| x == "qemu"))
+                    .and_then(|r| r.elf_path())
+                    .filter(|p| p.exists())
+                    .unwrap_or_else(|| binary.to_path_buf());
+
+                let mut cmd = Command::new("qemu-system-aarch64");
+                cmd.args([
+                    "-cpu",
+                    "cortex-a53",
+                    "-machine",
+                    "virt,gic-version=3",
+                    "-nographic",
+                    "-smp",
+                    "cpus=2",
+                    "-nic",
+                    "user,model=e1000",
                     "-kernel",
                 ])
                 .arg(&launch_bin)
@@ -967,7 +1015,9 @@ pub fn get_prebuilt_zephyr_example(
     // Determine binary path based on platform
     let binary_path = match platform {
         ZephyrPlatform::NativeSim => build_root.join(format!("{}/zephyr/zephyr.exe", build_dir)),
-        ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
+        ZephyrPlatform::QemuArm
+        | ZephyrPlatform::QemuCortexA9
+        | ZephyrPlatform::QemuCortexA53Smp => {
             build_root.join(format!("{}/zephyr/zephyr.elf", build_dir))
         }
     };

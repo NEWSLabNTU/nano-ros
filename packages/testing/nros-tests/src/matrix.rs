@@ -970,6 +970,14 @@ pub enum SchedDim {
     SporadicBudget,
     /// tier priority → NuttX per-tier `SCHED_FIFO` priority.
     TierPriority,
+    /// issue 0260 — `core` verified as PLACEMENT on a MULTI-CORE image: the
+    /// tier is observed running on the cpu it declared.
+    ///
+    /// Distinct from [`SchedDim::CorePin`], which verifies that the kernel
+    /// ACCEPTED the pin. On a uniprocessor image acceptance is true and says
+    /// nothing — cpu 0 is the only cpu the tier could be on — so the two dims
+    /// assert genuinely different claims and both are worth keeping.
+    CorePinPlacement,
 }
 
 /// One realtime-dim matrix cell: a `(dim × platform × lang)` coordinate. Like
@@ -1009,6 +1017,9 @@ pub const SCHED_CELLS: &[SchedCell] = {
         sched(CorePin, ThreadxLinux, Rust, Runtime),
         sched(CorePin, FreertosMps2, Cpp, Runtime),
         sched(CorePin, Linux, Rust, Runtime),
+        // issue 0260 — the ONLY multi-core cell: `core = 1` observed, not just
+        // accepted. Zephyr/C on `qemu_cortex_a53/.../smp`.
+        sched(CorePinPlacement, ZephyrNativeSim, C, Runtime),
         // Zephyr EDF deadline — all three language arms (W5.5 + W5.8).
         sched(EdfDeadline, ZephyrNativeSim, Rust, Runtime),
         sched(EdfDeadline, ZephyrNativeSim, Cpp, Runtime),

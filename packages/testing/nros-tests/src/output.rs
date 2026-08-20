@@ -748,6 +748,16 @@ pub const ZEPHYR_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 /// not provide `arch_proc_id`), rather than reporting a fabricated `cpu 0`.
 pub const ZEPHYR_CORE_PIN_OBSERVED_MARKER: &str = "nros: core pin observed tier=";
 
+/// issue 0260 — the SMP fixture's exact expected line.
+///
+/// The PREFIX above is not a sufficient assertion for the placement cell: it
+/// matches `running_on=0` just as happily, and 0 is where an unpinned tier
+/// lands anyway. The cell must pin the VALUE, so the value is part of the
+/// constant — including the tier name, because `smp_bringup` declares the
+/// `core` on `high` and a different tier reporting it would not be the same
+/// claim.
+pub const ZEPHYR_CORE_PIN_OBSERVED_CPU1: &str = "nros: core pin observed tier=`high` running_on=1";
+
 /// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
 /// `nros_nuttx_apply_current_affinity` — shared by the C/C++ AND Rust tier
 /// arms) when the kernel accepted a tier's SMP core pin (phase-296 W5.11, the
