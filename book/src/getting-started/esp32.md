@@ -5,11 +5,12 @@ path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
 ethernet). For the ESP-IDF component path (C / C++ apps), see
 [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 
-> **Prereqs.** `nros setup qemu-esp32-baremetal` is the single command that
-> prepares your machine. It fetches a prebuilt esp-hal toolchain and
-> the chosen RMW host daemon from a pinned index into the shared
-> store at `~/.nros/sdk` — you do not hand-install cross-compilers,
-> and you do not need ROS 2 installed.
+> **Prereqs.** `nros setup qemu-esp32-baremetal` prepares the build: the
+> riscv cross-gcc and `espflash` from a pinned index into the shared
+> store at `~/.nros/sdk` — you do not hand-install cross-compilers.
+> Running under QEMU additionally needs Espressif's QEMU fork
+> (`nros setup --tool esp32-qemu`, source-built) and — for zenoh — a
+> ROS 2 install to provide the router.
 
 ## Setup
 
@@ -27,11 +28,11 @@ nros setup qemu-esp32-baremetal --rmw zenoh     # --rmw defaults to zenoh; xrce 
 ```
 
 This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls
-submodules for zenoh; analogous for xrce / cyclonedds) and lands the
-RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for
-xrce) under `${NROS_HOME:-~/.nros}/sdk` (the activate file puts the
-in-tree CLI on PATH; legacy `${NROS_HOME:-~/.nros}/bin/` install
-remains supported transitionally). `esp-hal` itself is a Cargo dependency the
+submodules for zenoh; analogous for xrce / cyclonedds) plus the riscv
+cross-gcc and `espflash` into `${NROS_HOME:-~/.nros}/sdk`. It does NOT
+provide a zenoh router — that is ROS 2's `rmw_zenohd`, so the zenoh Run
+step below needs a ROS install (`--rmw cyclonedds` needs no daemon at
+all). `esp-hal` itself is a Cargo dependency the
 example pulls in at build time, not a separately-installed toolchain;
 the only cross-toolchain you may need to add by hand is the rustup
 target — once per host:
@@ -84,17 +85,55 @@ locator   = "tcp/10.0.2.2:9800"
 > **Contributors:** the in-tree fixture/test lanes for this platform are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
 
-The user-facing build story for this page is the ESP-IDF component path
-— see [ESP32 (ESP-IDF component)](./integration-esp-idf.md) — pending
-this page's rewrite.
+Copy the example out, generate bindings, build with the pinned nightly,
+and pack the flash image:
+
+```bash
+# once per checkout location — bindings + the [patch.crates-io] table:
+NROS_REPO_DIR=<path-to-nano-ros> nros sync
+
+# nightly because the board config builds core/alloc from source
+# ([unstable] build-std in .cargo/nros-board.toml). The pinned channel
+# is tools/rust-toolchain.toml's; any recent nightly with the rust-src
+# component works:
+#   rustup toolchain install nightly && rustup component add rust-src --toolchain nightly
+#   rustup target add riscv32imc-unknown-none-elf --toolchain nightly
+cargo +nightly build --release
+
+# pack the ELF into the flash image QEMU boots (espflash comes from
+# `nros setup qemu-esp32-baremetal`, on PATH via activate):
+espflash save-image --chip esp32c3 --flash-size 4mb --merge \
+    target/riscv32imc-unknown-none-elf/release/esp32_qemu_talker talker.bin
+```
+
+First build cross-compiles core/alloc + every dep (~5 min); rebuilds are
+seconds. If you build a C-flavored variant, the riscv cross-gcc the zpico
+shim needs is also provisioned by the same `nros setup`.
 
 ## Run
 
+The `esp32c3` machine exists only in **Espressif's QEMU fork** — stock
+`qemu-system-riscv32` knows only `virt`. The fork is source-built by:
+
 ```bash
-# QEMU ESP32. First bring up the router (ROS's `rmw_zenohd`) on the
-# port the example dials (9800 — the deploy `locator` above):
+nros setup --tool esp32-qemu    # clones + builds espressif/qemu (needs
+                                # libglib2-dev libpixman-dev libgcrypt-dev;
+                                # the command names them if absent)
+```
+
+```bash
+# 1. Bring up the router (ROS's `rmw_zenohd`) on the port the example
+#    dials (9800 — the deploy `locator` above):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9800"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
+
+# 2. Boot the flash image (the file packed in Build above):
+qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    -drive file=talker.bin,if=mtd,format=raw \
+    -nic user,model=open_eth
+# Serial output:
+#   Publishing: 'Hello World: 1'
+#   Publishing: 'Hello World: 2'
 ```
 
 > **Contributors:** the in-tree run lane that boots the talker in QEMU is in

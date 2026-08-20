@@ -49,9 +49,25 @@ green, two real finds:
   after terminal 1 by construction, so the probe polls the router's port
   before dialing (a client fails fast on a closed port).
 
-Still deferred, still named: contributor-block relocation to internals/
-(W12), the esp32 user build spelling (W13's rewrite onto the ESP-IDF
-shell), and the resolver's z3 hard-dep feature-gate (upstream
+**The last two book deferrals LANDED (2026-08-20).** The 22 wrapped
+contributor lanes moved to `internals/platform-lanes.md` (one page, eight
+platform sections, fences byte-identical; each source page keeps a one-line
+pointer). And `esp32.md` got its user build spelling — not the ESP-IDF
+rewrite first guessed, but the esp-hal path the page is actually about,
+verified end to end in a copy-out: `nros sync` → `cargo +nightly build
+--release` (nightly because the board config builds core/alloc from source)
+→ `espflash save-image --chip esp32c3 --flash-size 4mb --merge` (334 KB app
+in a 4 MB image). The Run section now names the one thing `nros setup
+qemu-esp32-baremetal` does NOT provision — Espressif's QEMU fork
+(`nros setup --tool esp32-qemu`, source-built; stock qemu-system-riscv32
+has no esp32c3 machine) — and retires the page's pre-RFC-0075 claim that
+setup lands a zenoh router. The boot line itself is documented from the
+recipe verbatim; not run-verified here (the fork is not built on this
+host — its e2e lane is deliberately optional), which is also why the
+board's package list does NOT gain the fork: the tree treats the emulator
+as an explicit opt-in, and the page now says so instead of implying it.
+
+Still deferred: the resolver's z3 hard-dep feature-gate (upstream
 play_launch/rlm). The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
