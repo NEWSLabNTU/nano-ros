@@ -1986,9 +1986,7 @@ dependencies = [
  "cc",
  "nros-cc-flags",
  "nros-log",
- "nros-platform-cffi",
  "nros-rmw",
- "nros-rmw-cffi",
  "portable-atomic",
 ]
 

@@ -17,19 +17,6 @@
 //! }
 //! ```
 
-// issue 0724 — the link anchor for the host platform port.
-//
-// `nros-platform-cffi[posix-c-port]` compiles `nros-platform-posix/src/*.c`,
-// which defines `nros_platform_log_write` / `_flush`. `nros-log`'s
-// `PlatformSink` needs them, and issue 0710 made that need unconditional for
-// anything that logs. But rustc DROPS an `--extern` nothing references, and
-// with it the build script's `link-lib`, so the dependency alone is not enough.
-//
-// Here rather than in each test file on purpose: all 62 integration test
-// binaries link this lib, so one reference in the rlib carries the native lib
-// to every one of them. `nros-node` carries the same line for the same reason.
-extern crate nros_platform_cffi as _;
-
 pub mod alloc;
 pub mod checker;
 pub mod esp32;

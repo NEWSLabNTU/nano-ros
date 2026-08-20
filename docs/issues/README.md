@@ -155,17 +155,16 @@ the ONE helper all ~14 zephyr resolvers funnel through, keyed on the build-dir n
 coordinates; `logging_smoke` names the call itself. The stale `lane.rs` premise was corrected in the same
 commit. See `archived/0713-*`. (2026-08-20)
 
-Recently resolved (2026-08-20): **#0724** — issue 0710 made `dispatch_to_sinks` install the default
-sink instead of dropping the record, which promoted `nros_platform_log_write` from "referenced by code
-that names `PlatformSink`" to a LINK requirement of anything that logs. 69 test targets — 62 in
-`nros-tests`, 7 in `nros-rmw-cffi` — stopped compiling, so `just ci` could not build its suite at all.
-`nros-log`'s own manifest had written the hazard down for `platform-clock` ("host tools composing custom
-sinks without a platform port would not, hence not a default"). Fixed by bringing the POSIX port to the
-tests: non-optional dep + one anchor in `nros-tests/src/lib.rs` (all 62 link that lib), own anchors for
-`tests/logging.rs` and `nros-rmw-cffi`'s 12. `nros-rmw-cffi` also needed `default-features = false` and a
-self-dep — `nros-platform-cffi` dev-deps back into it, and the cycle dropped `nros-rmw/lending`. NOTE
-`--keep-going` is required to see the real count; without it cargo reports 7. See `archived/0724-*`.
-(2026-08-20)
+Recently resolved (2026-08-20): **#0724** — DUPLICATE of **#0727**, reached from the other side and
+fixed the wrong way. Same defect: 0710's sink auto-install promoted `nros_platform_log_write` from
+"referenced by code that names `PlatformSink`" to a LINK requirement of anything that logs, and 69 test
+targets stopped compiling. 0724 brought the POSIX port to each test crate (dev-deps plus an
+`extern crate … as _` anchor per test binary, because rustc drops an unreferenced `--extern` and with it
+the build script's `link-lib`); 0727 put WEAK host stubs in `nros-log` itself, which fixes every consumer
+at once and is what landed. 0724's code was reverted as redundant. Two findings outlive it: cargo needs
+`--keep-going` to show the real failure count here (without it it reports 7 of 69, which twice made a
+partial fix look complete), and a `nros-platform-cffi` dev-dep on `nros-rmw-cffi` closes a cycle through
+`nros-node[rmw-cffi]` that silently drops `nros-rmw/lending`. See `archived/0727-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0715** — every threadx-linux CycloneDDS image SEGV'd in the ThreadX
 timer thread. The port narrows `ULONG` to 32-bit on LP64, so `tx_timer_internal_timeout_param` cannot hold

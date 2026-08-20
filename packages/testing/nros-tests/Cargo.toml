@@ -101,15 +101,7 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["lending
 # Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E
 # binary. Without `posix-c-port`, nros-platform-cffi declares the
 # canonical symbols extern without providing them, and link fails.
-# issue 0724 — NOT optional any more, and the reason is one layer up from the
-# comment above: `nros-log`'s `PlatformSink` calls `nros_platform_log_write`,
-# and issue 0710 made `dispatch_to_sinks` install that sink on first use rather
-# than drop the record. That promoted the extern from "referenced by the loan
-# E2E binary" to a LINK requirement of every test binary in this crate — 62 of
-# them stopped compiling. An optional dep cannot answer that: the features
-# carrying it (`trigger-test`, `loan-e2e`) are off in a default `--workspace`
-# test build, which is exactly what `just ci` runs.
-nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"], optional = true }
 
 # Phase 88.14 — `nros-log` facade for the host-side logging tests.
 nros-log = { path = "../../core/nros-log" }
@@ -144,6 +136,7 @@ trigger-test = [
     # `Transport(ConnectionFailed)` and the cv-wait path is never
     # reached). zenoh-pico auto-registers via `.init_array` on POSIX.
     "dep:nros-rmw-zenoh",
+    "dep:nros-platform-cffi",
     # Phase 128.C.3 — per-backend rmw-*-cffi features removed; the
     # umbrella `rmw-cffi` enables the walker that discovers whichever
     # backend the manifest pulled in via `dep:nros-rmw-<name>`.
@@ -211,6 +204,7 @@ loan-e2e = [
     "nros-serdes",
     "nros-node/rmw-lending",
     "dep:nros-rmw-zenoh",
+    "dep:nros-platform-cffi",
 ]
 [lib]
 name = "nros_tests"

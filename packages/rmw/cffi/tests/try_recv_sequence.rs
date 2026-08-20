@@ -14,23 +14,7 @@
 //!
 //! Both paths share the user-facing call shape; the test asserts
 //! they deliver identical content.
-
 #![cfg(feature = "alloc")]
-
-// issue 0724 — link the host platform port into THIS test binary.
-//
-// The `nros-platform-cffi[posix-c-port]` dev-dependency defines
-// `nros_platform_log_write` / `_flush`, which `nros-log`'s `PlatformSink` calls
-// and issue 0710 made mandatory for anything that logs. rustc DROPS an
-// `--extern` nothing references, and with it the build script's `link-lib`, so
-// the dependency alone leaves the symbols undefined. `nros-node` and
-// `nros-tests` carry the same line for the same reason.
-//
-// Per test binary because each integration test is its own crate. It cannot
-// move into the lib: an unconditional anchor there would force the POSIX port
-// on every `no_std` consumer. In ALL of them rather than only the nine that log
-// today — one spelling, no list of which tests are allowed to log.
-extern crate nros_platform_cffi as _;
 
 use core::{
     ffi::c_void,
