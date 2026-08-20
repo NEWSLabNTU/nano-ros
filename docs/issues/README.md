@@ -51,6 +51,27 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0738** (testing/px4/codegen, open 2026-08-20) — `just px4 build-bridge-example` is invoked by NO lane:
+one grep hit, its own definition. So the uORB->RMW bridge and the only consumer of
+`generate-px4-msgs --lang cpp` are built by nothing — the emitter's headers, its FFI `*_types.rs` bodies
+and the CMake glue are all unexercised, and #0360 already flags that output as a per-variant artifact that
+must stay paired with its archive. The px4 compile-check set is XRCE-companion Rust only; `fixtures.toml`
+has no px4 rows. The cheap half needs no PX4 build system (generate -> compile the `.hpp` in one TU ->
+`cargo check` the FFI crate). Do NOT simply lane the existing recipe: it hard-errors without a PX4 tree,
+which would make a tier unrunnable rather than covered — gate it or FAIL with a remedy (#0651's shape),
+never skip. See `0738-*`. (2026-08-20)
+
+Recently resolved (2026-08-20): **#0362** — the C++ `px4_msgs` gap is closed, and was closed in
+`2974adb33`; the issue outlived its own fix. Verified by RUNNING it: `--lang cpp` emits the struct plus FFI
+glue, `--topics` implements approach B (a bridge's handful, not PX4's ~200), and the TYPE HASH — which the
+issue named as the real blocker — comes from the same generator as the struct
+(`RIHS01_828bddbb7d…` on jazzy), while humble emits `TypeHashNotSupported` WITH a warning rather than
+guessing, declining exactly the "wrong hash that happens to match" outcome the issue called worse than
+failure. Maintainer's scope correction: practical use skips serialization (raw uORB), so what is wanted is
+the STRUCT — Rust and C++ are covered; `--lang c` is rejected but is not a gap, since PX4's own
+`<uORB/topics/*.h>` gives the C struct verbatim. Coverage split out as #0738.
+See `archived/0362-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0651** — Zephyr **4.4** was reachable only from the nightly, so a
 Kconfig or API change landed unverified for a day. Now: symbol existence is gated on BOTH lines from
 source in ~2 s with the trees one command away (`just zephyr kconfig-trees`, 613 MB of shallow clones,
@@ -3097,18 +3118,6 @@ two-mode core-pin e2e to accept. See `0260-*`. (phase-296 W5.11 2026-07-24)
 **#271** — Orin SPE BTCM footprint regressed ~+195 KB between `d9af52be` and `21a3a4248`; a
 minimal `Executor::open`+spin image no longer fits 256 KB. See `0271-*`.
 
-**#362** — phase-325 W3's uORB→RMW bridge is blocked on TYPES, not plumbing. The plumbing is proven
-(one PX4 module links uORB + zenoh, `NodeBuilder().rmw()` gives two sessions, backend selection is
-the cargo-feature knob one layer down). But the bridge must TRANSLATE: inward a payload is the PX4
-struct keyed by `ORB_ID`, outward a real ROS 2 subscriber needs CDR with a type name AND type hash.
-`nros generate-px4-msgs` already emits exactly the right message set — CDR `px4_msgs::msg::*` from
-the PX4 `.msg` tree — but as a **Rust crate**, for the XRCE companion path; an in-firmware module is
-C++. Hand-rolling the CDR is not the shortcut it looks like: `rmw_zenoh` keys discovery on the type
-hash, so a guessed one is either invisible to ROS 2 or, worse, decoded as a different type. Worth
-doing beyond the bridge: using `px4_msgs` makes the bridge's ROS-2-facing contract identical to what
-`uxrce_dds_client` already publishes, so a subscriber cannot tell which produced a sample — that
-indistinguishability is the interop claim. Blocks W3 only; the W2 direct demo needs no CDR at all,
-which is the point of it. See `0362-*`. (2026-07-31)
 
 Recently resolved (2026-08-10): **#0371** — RESOLVED 2026-08-10, archived. See `archived/0371-*`.
 

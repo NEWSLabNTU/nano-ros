@@ -1,7 +1,7 @@
 ---
 id: 362
 title: "`generate-px4-msgs` emits a Rust crate only, so an in-firmware C++ PX4 module has no CDR types — the uORB→RMW bridge cannot be written"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: codegen, px4
@@ -118,3 +118,71 @@ Note the interaction with **issue 0360**: a C++ emitter's output is another
 per-feature-variant artifact that must stay paired with the archive it was built
 against. Whatever fixes 0360's flat-path problem should cover this too rather
 than adding a third thing that silently races for one filename.
+
+## Resolved (2026-08-20) — implemented in `2974adb33`, never closed
+
+Both recommended approaches shipped; this issue simply outlived them. Verified by
+RUNNING the tool against the vendored PX4 tree, not by reading the help text.
+
+**Approach A — the C++ emitter.** `nros generate-px4-msgs --lang cpp` emits the
+struct plus FFI glue:
+
+```
+$ nros generate-px4-msgs --px4 third-party/px4/PX4-Autopilot \
+      --lang cpp --ros-edition jazzy --topics vehicle_status -o <dir>
+generated px4_msgs C++ (1 messages) at <dir>/px4_msgs
+  px4_msgs/msg/vehicle_status.hpp                        # the struct
+  px4_msgs/msg/px4_msgs_msg_vehicle_status.hpp           # + TYPE_HASH
+  px4_msgs/msg/px4_msgs_msg_vehicle_status_types.rs      # FFI bodies
+  px4_msgs/msg/px4_msgs_msg_vehicle_status_exports.rs
+```
+
+**Approach B — topic filtering.** `--topics` takes either spelling
+(`VehicleStatus` or `vehicle_status`) and pulls nested types in automatically,
+so a bridge carrying a handful of topics does not generate PX4's ~200.
+
+**The type hash — the part this issue said was the actual blocker.** Solved the
+way it argued it had to be, from the same generator that emits the struct:
+
+```
+static constexpr const char* TYPE_HASH =
+    "RIHS01_828bddbb7d4c2aa6ad93757955f6893be1ec5d8f11885ec7715bcdd76b5226c9";
+```
+
+And on an edition without type hashes it refuses to invent one:
+
+```
+warning: --ros-edition humble predates REP-2011, so the emitted TYPE_HASH is a
+placeholder. A peer that keys discovery on the type hash (rmw_zenoh) needs
+--ros-edition iron|jazzy.
+```
+
+That is exactly the failure this issue called worse than failure — "wrong hash
+that happens to match something" — declined rather than guessed at.
+
+**The bridge exists.** `examples/px4/cpp/bridge/` (module CMakeLists + an FFI
+crate whose `build.rs` globs whatever the generator wrote), driven by
+`just px4 build-bridge-example topics=… edition=…`, where TOPICS is the single
+source of truth for the message set.
+
+## Scope correction from the maintainer (2026-08-20)
+
+This issue frames the need as CDR-for-the-bridge. In practical use a node
+talking to PX4 peers **skips serialization entirely** — raw encoding through
+uORB — and what is actually wanted is the message STRUCT in Rust / C / C++.
+
+Against that framing: Rust (`--lang rust`) and C++ (`--lang cpp`) are covered;
+`--lang` rejects `c`. That is NOT recorded here as a gap, because for the
+raw-uORB path PX4's own `<uORB/topics/*.h>` already provides the C struct
+verbatim — this issue's own table says so. A C emitter would matter only to a
+nano-ros C node wanting `px4_msgs` types without PX4 headers, and this issue's
+own rule applies: demand-driven, land it with the consumer that needs it.
+
+## Not closed by this, and filed separately
+
+`just px4 build-bridge-example` is invoked by **no lane** — not a tier, not a CI
+workflow, not a `[[fixture]]` row. The three px4 compile-check fixtures are all
+`examples/px4/rust/companion/*`, the XRCE path. So the bridge this issue exists
+to unblock is built by nothing, which is how it would rot without anyone
+noticing. That is a coverage question rather than a codegen one, so it is its
+own issue rather than a reason to keep this one open.
