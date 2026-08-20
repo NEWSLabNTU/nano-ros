@@ -210,18 +210,6 @@ did — the asymmetry between the two paths was the bug. Proof is the image that
 `init` anywhere: six severities, previously silent. Additive, so boards that publish are untouched. See
 `archived/0710-*`. (2026-08-20)
 
-**#0713** (build/zephyr, open 2026-08-20) — tier 2's zephyr BUILD set is narrower than its RUN set. The
-stage's own log shows it was asked for SEVEN targets (the six cpp/xrce leaves + `cortex-m-c-talker-zenoh`),
-found them present, reused them, and exited 0 in 18 s — correct. But seven tier-2 tests then fail
-`Test fixture binary MISSING for an in-lane coordinate` naming `cortex-m-cpp-talker`,
-`cortex-m-rust-talker`, `ws-rs-qos-entry` and others the lane was never asked to build, which the resolver
-treats as IN-LANE so it fails hard instead of skipping. That is issue 0482's subject — which fixtures must
-be FRESH (the build's cover) vs which must EXIST (a property of the run) — and `matrix_fixture_coverage.rs`
-gates exist to keep them in step, so the open question is why they pass while this diverges. TWO earlier
-readings were wrong and are recorded: "the recipe exits 0 after failing" (it exits 1; my status came
-through a pipe) and "the stage silently did nothing" (the make path logs each stage to a file, so silence
-on success is normal). See `0713-*`. (2026-08-20)
-
 Recently resolved (2026-08-20): **#0705** — `case_08_c_qos` in-sweep saw `Publisher count: 1` naming ANOTHER
 test's `talker` on /chatter while its own `qos_talker` was absent. Neither filed candidate was right: the port
 lease is already `O_EXCL` and held for the router's lifetime (0470), and scouting explains a foreign node
