@@ -93,18 +93,6 @@ slot. The defect is the DETERMINISM rather than the collision — hand-run repro
 the workflow CLAUDE.md prescribes, all land on the same bus as whatever left the orphan. Three directions
 recorded, none free. See `0707-*`. (2026-08-20)
 
-**#0705** (testing, open 2026-08-20) — `case_08_c_qos` in-sweep: `ros2 topic info` reports `Publisher count: 1`
-on /chatter, and that one publisher is a node named `talker` — belonging to ANOTHER test — while this cell's own
-`qos_talker` is ABSENT. Not a reporting defect: 0690's `topic_endpoints_for_node` fix is what surfaced it, and
-it CONFIRMS 0690's foreign-endpoint hypothesis while falsifying the assumption that the foreign endpoint was an
-extra one sharing the view. It is the only one, so the cell is talking to the wrong graph — despite
-`ZenohRouter::start_unique()` per cell and a per-invocation `ZENOH_SESSION_CONFIG_URI`. Mechanism NOT
-established; the candidate that fits every fact is a port-lease TOCTOU in `start_unique()` (lease released
-before zenohd binds, a concurrent test takes the port). Scouting alone does not fit — it would explain a
-foreign node appearing, not the local one missing. Discriminator: log the leased port and the port `ros2`
-dialled, compare on failure. In-sweep only, ~1 in 2; runs solely where ROS 2 exists (the distrobox). See
-`0705-*`. (2026-08-20)
-
 Recently resolved (2026-08-19): **#666** + **#668** — the six ThreadX-RV64 rust leaves were the only
 standalone examples with TWO build paths (cargo for zenoh, CMake for cyclone) and TWO entry points, with the
 RMW picking which ran. phase-369 took the Zephyr shape: the seam is RMW-neutral, all six zenoh rows are cmake
