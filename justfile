@@ -862,9 +862,15 @@ check-borrowed-e2e:
 check-embedded-feature-unification:
     #!/usr/bin/env bash
     set -e
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
     tree=$(cargo tree -p nros-serdes --edges=normal,build \
         --target thumbv7em-none-eabihf --no-default-features --workspace 2>&1)
-    if echo "$tree" | grep -q 'feature "std"'; then
+    # issue 0726/0732 — a `grep -q` that cannot start reports "no `std` here",
+    # which is this gate's PASS. A pipe makes it likelier still: the writer sees
+    # SIGPIPE when grep dies early. `nros_grep_q` exits 2 rather than verdicting.
+    nros_grep_q 'feature "std"' <<<"$tree" && found=0 || found=$?
+    if [ "$found" -eq 0 ]; then
         echo "feature std activation paths under embedded target:" >&2
         echo "$tree" | grep -B2 'feature "std"' | head -50 >&2
         echo "Move the offending dep under [target.'cfg(not(target_os = \"none\"))'.dependencies]." >&2
