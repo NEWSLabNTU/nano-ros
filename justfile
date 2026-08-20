@@ -3153,7 +3153,7 @@ ci:
 # Why 1-wise and not pairwise, which is what this lane originally specified: cost
 # is COORDINATES, not cells, because cells share fixtures and fixtures are what
 # take hours. The pairwise cover is 37 of 194 cells (19 %) but 37 of 50
-# coordinates (74 %) — a middle tier costing 75 % of the sweep is one nobody runs,
+# coordinates (74 %) — a middle tier costing 74 % of the sweep is one nobody runs,
 # which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
 # `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
 # the 0268 / 0245 / 0332 class lives.
@@ -3200,7 +3200,7 @@ ci-matrix:
         just check rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
-# Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (36 of 48
+# Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (37 of 50
 # coordinates). The interaction coverage `ci-matrix` gives up to stay affordable:
 # same class of defect, caught a day later instead of pre-merge.
 #

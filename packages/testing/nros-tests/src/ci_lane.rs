@@ -642,7 +642,7 @@ mod tests {
         }
         assert_eq!(
             total_coords, 50,
-            "the table's tier-3 denominator (48 coordinates) is stale; recomputed \
+            "the table's tier-3 denominator (50 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }
