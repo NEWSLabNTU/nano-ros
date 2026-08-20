@@ -80,9 +80,24 @@ Each line's patch sequence lives in `scripts/zephyr/patches/<line>.sh`
    the native_sim / NSOS / CycloneDDS patches still un-upstreamed for that line
    (each idempotent; `cd`s to repo root; takes the workspace arg). **No edit to
    the `setup` recipe** — the dispatcher picks it up by name.
-5. **Add a CI line.** Extend the Zephyr jobs in `.github/workflows/nightly.yml`
+5. **Pin the SDK for the line.** Read `zephyr/SDK_VERSION` in the new tree, add
+   a `[tool.zephyr-sdk-<ver>]` table to `nros-sdk-index.toml` (host-keyed URLs
+   + upstream's own sha256s), and add the matching `case "$MANIFEST"` arm in
+   `scripts/zephyr/setup.sh` naming that entry. **Check the distribution
+   shape** — 0.16.x ships one fat tarball with every toolchain, 1.0.x ships
+   `_minimal` plus per-toolchain downloads the SDK's own `setup.sh -t` fetches
+   on demand, and 1.0.x has no macos-x86_64 at all.
+
+   This step exists because it was missed. Zephyr 4.4 requires SDK **1.0.1**
+   while the version was a hardcoded `0.16.8`, so
+   `NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 and produced a
+   workspace that could not build any Cortex-M target — the failure surfacing
+   only at the first `west build` as a bare `FindZephyr-sdk.cmake:160` error.
+   `just zephyr doctor` now compares the registered SDKs against
+   `zephyr/SDK_VERSION` and fails loudly instead.
+6. **Add a CI line.** Extend the Zephyr jobs in `.github/workflows/nightly.yml`
    with the new line.
-6. **Provision sources via `nros`.** `just zephyr setup` provisions
+7. **Provision sources via `nros`.** `just zephyr setup` provisions
    `zenoh-pico` / `cyclonedds-src` / `px4-rs` via `nros setup --source`
    (index-driven; the canonical path — no hand `git submodule update`).
 

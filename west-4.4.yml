@@ -24,7 +24,18 @@ manifest:
       import:
         name-allowlist:
           # Core
+          # `cmsis` is the pre-4.x module. Zephyr 4.x moved the Cortex-M core
+          # headers (`cmsis_core.h`) to a SEPARATE `cmsis_6` module (CMSIS_6
+          # upstream, modules/hal/cmsis_6); Zephyr 4.4's own west.yml carries
+          # both. Allowlisting only `cmsis` imports a module that no longer
+          # provides the header, and EVERY Cortex-M board then dies at
+          # arch/arm/core/offsets/offsets.c with
+          #   fatal error: cmsis_core.h: No such file or directory
+          # Invisible until now because the 4.4 line had only ever been built
+          # for native_sim, which is x86 and needs no CMSIS. Found bringing up
+          # mr_canhubk3 (S32K344, Cortex-M7).
           - cmsis
+          - cmsis_6
           - picolibc
           # Crypto
           - mbedtls

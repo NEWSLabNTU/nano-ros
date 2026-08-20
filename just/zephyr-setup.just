@@ -84,6 +84,29 @@ doctor:
         echo "  [MISSING] Zephyr workspace at $WORKSPACE (run: just zephyr setup)"
         fail=1
     fi
+    # The SDK is a per-LINE requirement and a mismatch is otherwise invisible
+    # until the first build fails inside FindZephyr-sdk.cmake with an error
+    # naming neither the version nor the setup step that chose it.
+    # `zephyr/SDK_VERSION` is Zephyr's own statement of what this tree needs.
+    if [ -f "$WORKSPACE/zephyr/SDK_VERSION" ]; then
+        want="$(cat "$WORKSPACE/zephyr/SDK_VERSION")"
+        have=""
+        for reg in "$HOME"/.cmake/packages/Zephyr-sdk/*; do
+            [ -f "$reg" ] || continue
+            case "$(cat "$reg")" in *"zephyr-sdk-$want"*) have="$(cat "$reg")";; esac
+        done
+        if [ -n "$have" ]; then
+            echo "  [OK] Zephyr SDK $want registered ($have)"
+        else
+            echo "  [MISSING] Zephyr SDK $want — this line's zephyr/SDK_VERSION demands it."
+            echo "            Registered instead:"
+            for reg in "$HOME"/.cmake/packages/Zephyr-sdk/*; do
+                [ -f "$reg" ] && echo "              $(cat "$reg")"
+            done
+            echo "            Run: just zephyr setup (the SDK is line-dispatched)"
+            fail=1
+        fi
+    fi
     if rustup target list --installed 2>/dev/null | grep -q '^armv7a-none-eabi$'; then
         echo "  [OK] armv7a-none-eabi rust target (qemu_cortex_a9 DDS)"
     else

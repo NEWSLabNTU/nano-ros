@@ -82,9 +82,28 @@ SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 # later inside the SDK's own installer with `Installing host tools ... ERROR:
 # Host tools installation failed`, naming neither the arch nor the tarball.
 #
-# Keep this in step with `[tool.zephyr-sdk].version`; the index is the SSOT for
-# everything else about the artifact.
-ZEPHYR_SDK_VERSION="0.16.8"
+# THE SDK IS A PER-LINE FACT, NOT A CONSTANT. Each Zephyr tree states the SDK it
+# needs in `zephyr/SDK_VERSION`, and `FindZephyr-sdk.cmake` refuses anything
+# older: 3.7 LTS wants 0.16.8, 4.4 wants 1.0.1. The manifest and the patch set
+# were already dispatched per line; this was not, so
+# `NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 and produced a workspace
+# that could not build any Cortex-M target. The failure surfaced only at the
+# first `west build`, as a bare `FindZephyr-sdk.cmake:160 find_package` error
+# naming neither the SDK version nor the step that chose it.
+#
+# Each arm names an INDEX ENTRY; the index stays the SSOT for URLs, checksums
+# and host keying. Adding a Zephyr line = a new `[tool.zephyr-sdk-*]` table
+# plus an arm here.
+case "$MANIFEST" in
+    west-4.4.yml)
+        ZEPHYR_SDK_VERSION="1.0.1"
+        ZEPHYR_SDK_TOOL="zephyr-sdk-1-0-1"
+        ;;
+    *)
+        ZEPHYR_SDK_VERSION="0.16.8"
+        ZEPHYR_SDK_TOOL="zephyr-sdk"
+        ;;
+esac
 
 # Parse arguments
 FORCE=false
@@ -316,8 +335,8 @@ provision_sdk_via_nros() {
     # shellcheck source=../build/cargo.sh
     source "$NANO_ROS_ROOT/scripts/build/cargo.sh"
     nros_bin="$(nros_cli_bin)"
-    log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (host-keyed dist)..."
-    "$nros_bin" setup --tool zephyr-sdk \
+    log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (index entry: $ZEPHYR_SDK_TOOL, host-keyed dist)..."
+    "$nros_bin" setup --tool "$ZEPHYR_SDK_TOOL" \
         --prefix "$SDK_INSTALL_DIR" \
         --index "$NANO_ROS_ROOT/nros-sdk-index.toml"
 }
