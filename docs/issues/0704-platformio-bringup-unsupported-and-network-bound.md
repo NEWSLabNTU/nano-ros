@@ -80,3 +80,30 @@ Either PlatformIO becomes a supported integration again — in which case the
 (CLAUDE.md: "No compilation inside tests"), which is the real reason it is slow
 — or the integration and its test are deleted. "Present but untested and
 opt-in" is a holding position, not a destination.
+
+## Follow-up (2026-08-20) — the SELECTOR still matched the old decision
+
+The opt-in landed in the test; the deselection predicate in `test-all` did not
+move with it. It read "is `pio` on PATH", which is the question that mattered
+before PlatformIO became unsupported, and it was wrong in both directions:
+
+* **On a host WITH `pio`** — exactly the host this issue was filed from — the
+  suite was SELECTED, so the new `skip!` surfaced as a red console FAIL. The
+  paragraph directly above that predicate in the `justfile` exists to prevent
+  that specific "non-bug failure", and this suite was the one case it no longer
+  covered.
+* **With `NROS_ENABLE_PLATFORMIO=1` on a host WITHOUT `pio`** the suite was
+  deselected regardless, so the documented escape hatch did nothing. Anyone
+  working on the adapter got silence instead of the actionable
+  "pio CLI not available — run `just platformio setup`".
+
+The predicate is now the opt-in itself. The runtime `skip!` stays — it is what
+says WHY, and names this issue, to anyone who runs the binary directly.
+
+Verified: with the var unset the exclusion is emitted and `cargo nextest list
+-E 'not binary(cli_bringup_platformio)'` selects nothing; with it set the
+exclusion is absent and the suite runs.
+
+**What remains is only the decision in "What would close this" above** — support
+the integration (with `pio run` moved to the BUILD stage) or delete it. The
+budget failure, the cold-cache dependence, and the selection bug are all fixed.
