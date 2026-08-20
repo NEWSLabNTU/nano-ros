@@ -1,10 +1,10 @@
 # Phase 371 — fixture-build CPU utilization
 
 **Status (2026-08-20). In progress.** Two fixes landed (gate fan-out, pooled
-launcher — both opt-in), and the campaign's central assumption has been
-overturned twice by measurement. The current best explanation for low CPU is
-CMake **configure** cost, not scheduling, with `nros_resolve_corrosion` at 20 s
-of a 33 s leaf configure. Implements the audit in
+launcher — both opt-in). The campaign has now had FOUR explanations overturned
+by measurement, including its own most recent one: the 33 s leaf configure was a
+COLD-CACHE one-off, and a repeat configure into a fresh build dir is 2.0 s then
+1.0 s. No dominant cause is currently established. Implements the audit in
 [issue 0726](../issues/0726-fixture-build-cpu-underutilized.md); see also
 [0721](../issues/0721-gate-traversal-io-unbounded.md) (gate I/O) and
 [0648](../issues/archived/0648-cargo-package-cache-lock-serialises-the-fanout.md).
@@ -145,3 +145,37 @@ accumulates Corrosion versions and prefixes are enumerated newest-first).
    run — they passed under the same launcher previously.
 5. Cold A/B of static vs pooled. Every wall-clock comparison so far has been
    warm-tree and is therefore not evidence.
+
+
+## CORRECTION: the 33 s configure was cold-cache, not per-leaf
+
+The profile above is real but describes a path taken ONCE. Timed immediately
+afterwards, into brand-new build directories:
+
+```
+fresh build dir #3:  2045 ms
+fresh build dir #4:   977 ms
+```
+
+Same leaf, same generator, cmake cache empty each time. So the 20 s
+`nros_resolve_corrosion` and the 31.9 s of `execute_process` were the cost of
+populating the SDK-store / cargo caches on first use, not something every leaf
+pays. A `--trace-format=json-v1` run taken after that warm-up shows its most
+expensive single command at 0.18 s (`git submodule status`).
+
+That retires "CMake configure dominates" as the campaign's explanation. What
+remains true and useful:
+
+* `execute_process` really is where configure time goes when there IS time to
+  go — 97% of exclusive self time, 29 calls. Configure is fork-bound, so it is
+  latency-bound and single-threaded by nature.
+* At 1-2 s warm and hundreds of leaves, configure is a real but second-order
+  cost, not the reason 24 cores sit idle.
+* The cold path is worth knowing about for CI, where caches start empty and
+  that 33 s IS paid — once per runner, not once per leaf.
+
+**Four explanations have now died on measurement** (static split, serial
+jobserver, gate phase, cmake configure), and two instruments had to be repaired
+before they could kill anything. The honest state is that the cause of low
+occupancy is UNKNOWN, and the next step is the lineage-scoped sampler on a quiet
+box rather than another guess.
