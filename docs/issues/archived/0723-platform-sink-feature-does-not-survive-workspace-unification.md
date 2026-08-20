@@ -5,7 +5,8 @@ status: resolved
 type: bug
 severity: high
 area: build
-related: [issue-0714, issue-0710, issue-0708]
+related: [issue-0714, issue-0710, issue-0708, issue-0727]
+resolved_in: "3aff18c8c + 9f2529934 — `PlatformSink` moves to `nros-platform-cffi`, superseding the weak-stub fix `ede77608e`"
 ---
 
 # 0723 — `just check` is still red on main after 0714
