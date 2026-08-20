@@ -258,6 +258,62 @@ Unblocked but re-costed: a new SMP board, per above. Do not close #260 on the
 partial, and note #0655 must be fixed first — otherwise the SMP fixture would
 be built to exercise a call that cannot succeed.
 
+## SMP bring-up — feasibility MEASURED 2026-08-20, and it is closer than costed
+
+The compile half is done (all three arms; `just check-sched-dim-arms`). This is
+the state of the run half, established by probing rather than by reading.
+
+**The host can build AND run a Zephyr SMP image today.** Zephyr's own
+`hello_world` on `qemu_cortex_a53/qemu_cortex_a53/smp`:
+
+```
+*** Booting Zephyr OS build v3.7.0 ***
+Secondary CPU core 1 (MPID:0x1) is up
+Hello World! qemu_cortex_a53/qemu_cortex_a53/smp
+```
+
+with `CONFIG_SMP=y`, `CONFIG_MP_MAX_NUM_CPUS=2`. Everything needed is already
+provisioned: SDK 0.16.8 carries `aarch64-zephyr-elf` and `riscv64-zephyr-elf`,
+`qemu-system-aarch64` is on PATH, and the west workspace is at
+`../nano-ros-workspace`.
+
+**Use the board's own runner.** A hand-rolled `qemu-system-aarch64 -machine virt
+-smp 2 -kernel zephyr.elf` produces SILENCE — it boots nothing and times out.
+`west build -t run` works, because the board supplies its own QEMU flags (GIC
+version, serial wiring). Whatever drives this fixture must take the flags from
+the board, not invent them. That cost 5 minutes here and would cost an hour to
+someone reading a silent QEMU as a broken image.
+
+**The nros side already has an aarch64 SMP board integration to mirror:**
+`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/` (phase-214) — a
+`board.cmake` naming the board and `aarch64-zephyr-elf`, a shared `prj.conf`,
+and a per-board conf carrying `CONFIG_SMP=y` / `CONFIG_MP_MAX_NUM_CPUS=4`. It
+cannot run here because ARM's FVP binary is gated, which is precisely why
+`qemu_cortex_a53` is the right target: same architecture, same integration
+shape, an emulator that is already installed.
+
+So this is NOT "a board bring-up" in the sense of new architecture support. It
+is: copy that directory for `qemu_cortex_a53/qemu_cortex_a53/smp`, add
+`CONFIG_SCHED_CPU_MASK=y`, add a `[[fixture]]` row and a cell.
+
+**Two open questions, both unanswered on purpose rather than guessed:**
+
+1. **Networking.** The realtime workspace entry the sched-dims cells boot talks
+   zenoh. `fvp-aemv8r-smp` gets there with `CONFIG_ETH_SMSC91X`; whether
+   Zephyr's `qemu_cortex_a53` has a usable NIC on `-machine virt` is unverified.
+   If it does not, either the cell needs a variant that asserts placement
+   without traffic, or the target moves to `qemu_riscv64_smp`.
+2. **Observability.** Today the board prints the core-pin marker when
+   `k_thread_cpu_mask_pin` RETURNS 0 — which is why the zephyr cell can already
+   expect ACCEPT on a UNIPROCESSOR image. That proves the call is correct, not
+   that the thread landed on the requested CPU. An SMP fixture only earns its
+   keep if the marker also reports the CPU actually observed at tier entry
+   (`arch_curr_cpu()->id`); without that the SMP image asserts exactly what the
+   uniprocessor one already does, at much greater cost.
+
+Question 2 is the one that decides whether this work is worth doing at all, and
+it is a code change to the board, not a fixture question.
+
 ---
 
 ## Deliberately not doing
