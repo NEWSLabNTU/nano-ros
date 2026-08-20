@@ -1,6 +1,6 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-16). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates.** The campaign
+**Status (2026-08-20). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates. The clock ruling landed 2026-08-20: the platform API IS the clock, so the `std` clock fallbacks in `nros-core`, `nros-node` and `nros::time` are deleted rather than kept for the no-port build — that build supplies its own via `ExecutorConfig::clock_us`, or fails loud. Census 18 cfg sites / 16 `std::` paths; `nros-node` and `nros-core` are at zero `std::` paths.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
@@ -878,6 +878,53 @@ them removes a capability from a supported configuration — `from_session` take
 any `Session`), and `fs`/`Path` in host-only FEATURES (`metadata-mode`,
 `init`'s launch path). A reader treating "33 sites" as nearly-done should read
 that list first.
+
+#### The clock ruling — **the platform API IS the clock (2026-08-20, LANDED)**
+
+The section above left the `std` clock fallbacks standing and named the open
+question: a build with no platform port is a supported configuration, so
+deleting them removes a capability from it. Two answers were possible and the
+maintainer picked the one that is a DEFINITION rather than a deletion:
+
+> "I prefer to support but have a clear definition about the clock requirement
+> on RTOS. The clock functions should come from platform API. In this way,
+> there is no need to depend on `std` things."
+
+So the no-port configuration stays supported — and the core stops carrying a
+second implementation of the clock for it. **A build with no port has no clock
+unless its caller supplies one**, and supplying one is `ExecutorConfig::clock_us`
+/ `epoch_us`, which issue 0709 made reachable from every construction path via
+`Executor::from_session_with`. The fallback was never the capability; it was a
+guess made on the caller's behalf, and a guess that made a real defect
+unobservable — `spin_blocking` with no clock spun forever instead of saying so.
+
+What changed:
+
+* `nros-core`'s `Clock::now()` had two cfg'd bodies (`std` -> `Instant`,
+  `no_std` -> the caller-advanced counter). They are now ONE un-cfg'd function:
+  the port when `platform-clock`, else the counter. The `std` arm is gone, not
+  moved.
+* `nros-node`'s `default_clock_us_fn()` / `default_epoch_us_fn()` return
+  `Some(port)` under `rmw-cffi` and **`None` otherwise** — where `None` reaches
+  the fail-loud guards 0709 added, so a timeout or period requested with no
+  clock returns `NodeError::NotInitialized` instead of hanging.
+* `nros::time`'s `std` arm is gone and the module is `rmw-cffi`-gated, which is
+  what its own doc claimed of it all along.
+
+The test population is the honest cost. 96 `Executor::from_session(` sites in
+`nros-node`'s test module were relying on the deleted default; they now route
+through one `executor_with_clock()` helper that supplies an `Instant`-backed
+`clock_us` explicitly. That is the shape the ruling asks of every no-port
+caller, so the tests demonstrate it rather than dodging it — 261/261 green.
+
+Census: **29 cfg sites / 25 `std::` paths -> 18 / 16**, and `nros-node` and
+`nros-core` now have **zero** `std::` paths.
+
+*Not caused by this work, found by it:* the native `realtime_tiers` cell fails
+on upstream `main` with `timer-overrun-runtime timer measured=2 declared=0`.
+Verified by stashing this change, rebuilding native fixtures from upstream and
+reproducing. Filed as issue 0736.
+
 
 #### The final commit's exact file set (2026-08-16)
 

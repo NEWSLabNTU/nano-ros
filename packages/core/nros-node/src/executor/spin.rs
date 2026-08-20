@@ -6458,10 +6458,12 @@ impl<'s> Executor<'s> {
     pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
         const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
-        // phase-359 W10 — the executor's own clock, not `Instant`. `now_us()`
-        // reads the platform monotonic counter wherever a port is linked and an
-        // `Instant` only where one is not, so this loop no longer needs `std`
-        // to know how long it has been running.
+        // phase-359 W10 — the executor's own clock. `now_us()` reads the
+        // PLATFORM's monotonic counter, and nothing else: the platform API is
+        // the clock, so a build with a port has one and a build without has
+        // none. There is no `std::time::Instant` third answer any more, which
+        // is what used to make "what time is it" depend on whether some crate
+        // in the graph happened to name `std`.
         //
         // `None` means this build has NO clock at all — and issue 0709 is what
         // the previous answer here cost. It read: "a timeout cannot be honoured
@@ -7366,25 +7368,8 @@ pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     {
         Some(default_platform_clock_us)
     }
-    #[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
-    {
-        Some(default_std_clock_us)
-    }
-    #[cfg(all(not(feature = "rmw-cffi"), not(feature = "std")))]
+    #[cfg(not(feature = "rmw-cffi"))]
     {
         None
     }
-}
-
-/// The `std`-without-a-port monotonic reader. Its base is seeded on first call,
-/// and `Executor` construction is the first call (`default_clock_us_fn()` feeds
-/// `last_spin_end_us`), so 0 still means "the construction instant" — the
-/// property W4's eager `clock_base` seed existed for.
-#[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
-fn default_std_clock_us() -> u64 {
-    static BASE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    BASE.get_or_init(std::time::Instant::now)
-        .elapsed()
-        .as_micros()
-        .min(u64::MAX as u128) as u64
 }

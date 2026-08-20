@@ -49,15 +49,6 @@ use core::time::Duration;
 /// // ... work ...
 /// let dt = nros::time::now() - t0;
 /// ```
-#[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
-#[must_use]
-pub fn now() -> Duration {
-    use std::{sync::OnceLock, time::Instant};
-    static EPOCH: OnceLock<Instant> = OnceLock::new();
-    EPOCH.get_or_init(Instant::now).elapsed()
-}
-
-/// Monotonic time since an unspecified epoch.
 ///
 /// Reads the platform port's `nros_platform_clock_ns` (RFC-0073) — on a hosted
 /// build too, which is the point: this and the executor must be ONE clock. What
@@ -77,7 +68,7 @@ pub fn now() -> Duration {
 }
 
 /// Convenience: [`now`] as whole microseconds.
-#[cfg(any(feature = "std", feature = "rmw-cffi"))]
+#[cfg(feature = "rmw-cffi")]
 #[must_use]
 pub fn now_us() -> u64 {
     u64::try_from(now().as_micros()).unwrap_or(u64::MAX)

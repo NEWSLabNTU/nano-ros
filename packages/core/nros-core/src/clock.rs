@@ -262,53 +262,19 @@ impl Clock {
     /// - **A platform port linked** (`platform-clock`): the port's wall clock,
     ///   on either flavour — it is the authority, and an image must not hold
     ///   two answers to "what time is it".
-    /// - **`std`, no port**: `std::time::SystemTime`.
-    /// - **Neither**: the internal counter, which the caller advances with
+    /// - **No port**: the internal counter, which the caller advances with
     ///   `update_steady_time()`.
+    ///
+    /// phase-359 W10 — there is no `std::time` arm. The platform API IS the
+    /// clock: a build with a port reads it, a build without one has no clock to
+    /// read and says so with the counter it was given. `SystemTime` used to sit
+    /// here as a third answer for hosted builds, which made "what time is it"
+    /// depend on whether some crate in the graph happened to name `std`.
     ///
     /// `SteadyTime` is the counter on every flavour, deliberately: it is
     /// advanced by its owner rather than read from a source, and the port's
     /// monotonic export (`nros_platform_clock_ns`) is the executor's business,
     /// not this type's.
-    #[cfg(feature = "std")]
-    pub fn now(&self) -> Time {
-        match self.clock_type {
-            ClockType::SystemTime => {
-                // The port first, exactly as the `no_std` arm below does — see
-                // `platform_wall_clock`. `SystemTime` is the answer for a build
-                // with no port to ask, not the answer for a hosted build.
-                if let Some(t) = platform_wall_clock() {
-                    return t;
-                }
-                let duration = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default();
-                Time::new(duration.as_secs() as i32, duration.subsec_nanos())
-            }
-            ClockType::SteadyTime => {
-                // Use the atomic counter for steady time
-                let nanos = atomic_time::get_steady();
-                Time::from_nanos(nanos)
-            }
-            ClockType::RosTime => {
-                let override_nanos = atomic_time::get_ros_override();
-                if override_nanos >= 0 {
-                    Time::from_nanos(override_nanos)
-                } else {
-                    // Fall back to system time
-                    Clock::system().now()
-                }
-            }
-        }
-    }
-
-    /// Get the current time from this clock (no_std version)
-    ///
-    /// `SystemTime` reads the platform's wall clock when the `platform-clock`
-    /// feature is on (see [`platform_wall_clock`]); otherwise, and for
-    /// `SteadyTime`, this is the internal counter, which the caller advances
-    /// with `update_steady_time()`.
-    #[cfg(not(feature = "std"))]
     pub fn now(&self) -> Time {
         match self.clock_type {
             ClockType::SystemTime => {

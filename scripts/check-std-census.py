@@ -168,7 +168,14 @@ BASELINE = {
     # arms stopped OVERLAPPING on a native build. The path count does not move
     # and should not: the `Instant` arm is the answer for a build with no port,
     # which is shipped (the metadata probe), not vestigial.
-    "nros": {"cfg": 8, "path": 15},
+    #
+    # phase-359 W10 RULING — 8/15 -> 5/14. `nros::time` is `rmw-cffi`-gated:
+    # the module exists where a port does, and is ABSENT where none is linked,
+    # which is the definition rather than a gap. What remains is the `env`
+    # capability's own reads (12 of the 14), `init`'s `Path`, and the
+    # `RMW_IMPLEMENTATION` hint — all of them `env`, which REQUIRES `std`
+    # because a process environment is a `std` facility.
+    "nros": {"cfg": 5, "path": 14},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
@@ -195,7 +202,13 @@ BASELINE = {
     # read `SystemTime` while the executor read the port: two wall clocks in one
     # image, agreeing on POSIX by coincidence and diverging the moment a port has
     # an opinion. The port outranks `std` now, as it already did on `no_std`.
-    "nros-core": {"cfg": 3, "path": 2},
+    #
+    # phase-359 W10 RULING — 3/1 -> 1/0, same rule. `Clock::now()` was TWO
+    # functions, one per flavour, and the `std` one answered `SystemTime` where
+    # the other answered the platform's wall clock. They are one function now:
+    # the port when `platform-clock` is on, the caller-advanced counter when it
+    # is not. The 1 that remains is `extern crate std`.
+    "nros-core": {"cfg": 1, "path": 0},
     #
     # phase-359 W10: 9 -> 7 cfg, 21 -> 18 path. `nros_cpp_time_ns` was the same
     # clock pair, and it is what `nros::Future::wait()` budgets its spin
@@ -353,7 +366,20 @@ BASELINE = {
     # `std::sync::Mutex` alone, and the portable mutex would have cost a `spin`
     # edge on EVERY build of this crate — measured: `spin` is in no board's
     # graph. The six-line pattern it wrapped is written out in the issue.
-    "nros-node": {"cfg": 9, "path": 6},
+    #
+    # phase-359 W10 RULING — 9/6 -> 3/0. **No `std::` path left in the executor
+    # crate.** The clock question is settled by definition rather than by
+    # fallback: THE PLATFORM API IS THE CLOCK. A build with a port reads it; a
+    # build without one has no default clock and says so (`None`, and a timed
+    # spin now fails loud — issue 0709). The `std::time::Instant` and
+    # `SystemTime` arms are deleted, and with them the third answer that made
+    # "what time is it" depend on whether some crate in the graph named `std`.
+    # A caller with a clock but no port installs it through
+    # `ExecutorConfig::clock_us` / `Executor::from_session_with`, the same seam
+    # a board uses — which is what the 96 mock-session tests now do.
+    # The 3 that remain are `extern crate std`, a `dead_code` allow, and the
+    # `drive_io` timeout policy for the mock configuration.
+    "nros-node": {"cfg": 3, "path": 0},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`

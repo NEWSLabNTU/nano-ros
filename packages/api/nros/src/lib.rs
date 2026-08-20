@@ -189,7 +189,10 @@ pub use init::{
 pub mod sizes;
 
 /// Monotonic time for portable node code (issue #504).
-#[cfg(any(feature = "std", feature = "rmw-cffi"))]
+///
+/// phase-359 W10 — `rmw-cffi`, not `any(std, rmw-cffi)`: the clock is the
+/// platform port's, and a build with no port has none to offer.
+#[cfg(feature = "rmw-cffi")]
 pub mod time;
 
 /// CDR encapsulation constants and helpers for FFI layers that handle raw

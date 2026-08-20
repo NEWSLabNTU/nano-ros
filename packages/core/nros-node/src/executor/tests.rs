@@ -1,4 +1,29 @@
 use super::*;
+
+/// An executor over `session` with a HOST clock installed.
+///
+/// phase-359 W10 — the core has no `std::time` fallback any more: the platform
+/// API is the clock, so a build with no port (which the mock-session
+/// configuration is, by construction — `mock` is `cfg(not(rmw-cffi))`) has none
+/// and says so. A test that measures elapsed time therefore brings its own,
+/// which is the same seam a board uses (`ExecutorConfig::clock_us`) and the
+/// reason `from_session_with` exists (issue 0709).
+///
+/// `std::time::Instant` here is not a flavour leak: this file is test code, the
+/// census excludes it, and a hosted test harness reading the host clock is
+/// exactly right. What was wrong was the CORE offering the same thing as a
+/// silent default.
+fn test_clock_us() -> u64 {
+    use std::{sync::OnceLock, time::Instant};
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
+}
+
+fn executor_with_clock(session: MockSession) -> Executor<'static> {
+    let cfg = ExecutorConfig::default().clock_us(test_clock_us);
+    Executor::from_session_with(session, &cfg)
+}
+
 use nros_core::{
     BorrowedMessage, CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed,
     LeSliceView, RosAction, RosMessage, SerError, Serialize,
@@ -40,7 +65,7 @@ fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::Spin
 #[test]
 fn idle_spins_never_raise_session_io_failures() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     // Far more idle spins than the C-side SPIN_ERROR_TOLERANCE (16).
     for _ in 0..64 {
         let r = executor.spin_once(core::time::Duration::from_millis(0));
@@ -123,7 +148,7 @@ fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
 #[test]
 fn test_add_subscription_and_spin_once_no_data() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     let nid = executor
         .node_builder("test_add_subscription_and_spin_once_no_data")
         .build()
@@ -148,7 +173,7 @@ fn test_add_subscription_and_spin_once_no_data() {
 #[test]
 fn test_add_subscription_and_spin_once_with_data() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_add_subscription_and_spin_once_with_data")
@@ -243,7 +268,7 @@ impl BorrowedMessage for ImageBorrow {
 #[test]
 fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     let nid = executor.node_builder("borrowed_e2e").build().unwrap();
 
     // Captured on the receive side: (width, pixels copy, ranges decoded).
@@ -297,7 +322,7 @@ fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
 #[test]
 fn test_multiple_subscriptions() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_multiple_subscriptions")
@@ -342,7 +367,7 @@ fn test_multiple_subscriptions() {
 fn test_edf_dispatch_order() {
     use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // `firing_order` records the data field of every msg the callbacks
     // see, in dispatch order.
@@ -439,7 +464,7 @@ fn test_os_priority_worker_dispatches_callback() {
         Ok(())
     }
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.register_os_priority_dispatcher(apply_noop);
     let nid = executor
         .node_builder("test_os_priority_worker_dispatches_callback")
@@ -492,7 +517,7 @@ fn test_os_priority_worker_dispatches_callback() {
 fn test_tt_window_gate_suppresses_outside_window() {
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // Window = [50ms..51ms) within a 60-second major frame.
     // Test runs in a single spin_once well under 50 ms after the
@@ -550,7 +575,7 @@ fn test_time_triggered_dispatch_active_window() {
     use crate::executor::sched_context::{TimeTriggeredSchedule, TimeTriggeredWindow};
 
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count_w0 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_w1 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -652,7 +677,7 @@ fn test_time_triggered_schedule_rejects_overlapping_windows() {
 fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_sporadic_budget_exhaustion")
@@ -724,7 +749,7 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
     };
 
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_atomic_sporadic_per_callback_runtime_consumed")
@@ -804,7 +829,7 @@ fn test_atomic_overrun_exceeds_budget() {
     };
 
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_atomic_sporadic_overrun_recorded")
@@ -885,7 +910,7 @@ fn test_open_threaded_two_executors_independent_lifecycle() {
 
     // Critical executor — would run at SCHED_FIFO os_pri 90 in a
     // privileged process.
-    let crit = Executor::from_session(MockSession::new());
+    let crit = executor_with_clock(MockSession::new());
     let crit_handle = unsafe {
         crit.open_threaded(
             SchedPolicy::Fifo { os_pri: 90 },
@@ -896,7 +921,7 @@ fn test_open_threaded_two_executors_independent_lifecycle() {
 
     // BE executor — would run at SCHED_FIFO os_pri 10 in a
     // privileged process.
-    let be = Executor::from_session(MockSession::new());
+    let be = executor_with_clock(MockSession::new());
     let be_handle = unsafe {
         be.open_threaded(
             SchedPolicy::Fifo { os_pri: 10 },
@@ -920,7 +945,7 @@ fn test_open_threaded_two_executors_independent_lifecycle() {
 fn test_open_threaded_spawn_and_halt() {
     use nros_platform_api::SchedPolicy;
     let session = MockSession::new();
-    let executor: Executor = Executor::from_session(session);
+    let executor: Executor = executor_with_clock(session);
 
     // Apply-policy fn that always succeeds — running as a non-root
     // unit test we can't actually lift to SCHED_FIFO, so the
@@ -954,7 +979,7 @@ fn test_open_threaded_spawn_and_halt() {
 fn test_bucketed_priority_dispatch_order() {
     use crate::executor::sched_context::{Priority, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
     let o_be = firing_order.clone();
@@ -1021,7 +1046,7 @@ fn test_bucketed_priority_dispatch_order() {
 fn test_fifo_default_binding_preserved_alongside_edf() {
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
     let o1 = firing_order.clone();
@@ -1079,7 +1104,7 @@ fn test_arena_overflow() {
     // plus a per-entry header, so an RX buffer of `ARENA_SIZE / 4` triggers
     // overflow well before `MAX_CBS` registrations.
     const OVERFLOW_RX_BUF: usize = crate::config::ARENA_SIZE / 4;
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
     let nid = executor
         .node_builder("test_arena_overflow")
         .build()
@@ -1129,7 +1154,7 @@ fn test_entry_slots_exhausted() {
     // one is refused. Small rx buffers so the slot table, not the arena,
     // is the bound being tested.
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
     let nid = executor
         .node_builder("test_entry_slots_exhausted")
         .build()
@@ -1188,7 +1213,7 @@ fn test_spin_once_result_counts() {
 #[test]
 fn test_drop_runs_without_panic() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_drop_runs_without_panic")
@@ -1206,7 +1231,7 @@ fn test_drop_runs_without_panic() {
 fn test_executor_spin_once_no_entries() {
     // Executor with no registered callbacks — spin_once just calls drive_io.
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(!result.any_work());
@@ -1215,7 +1240,7 @@ fn test_executor_spin_once_no_entries() {
 #[test]
 fn test_arena_alignment() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_arena_alignment")
@@ -1239,7 +1264,7 @@ fn test_arena_alignment() {
 #[test]
 fn test_add_timer_and_fire() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1263,7 +1288,7 @@ fn test_add_timer_and_fire() {
 #[test]
 fn test_timer_repeats() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1283,7 +1308,7 @@ fn test_timer_repeats() {
 #[test]
 fn test_timer_oneshot_fires_once() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1307,7 +1332,7 @@ fn test_timer_oneshot_fires_once() {
 #[test]
 fn test_timer_does_not_fire_at_zero_delta() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1325,7 +1350,7 @@ fn test_timer_does_not_fire_at_zero_delta() {
 #[test]
 fn test_timer_with_subscriptions() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let timer_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let timer_count2 = timer_count.clone();
@@ -1493,7 +1518,7 @@ impl RosAction for TestAction {
 fn test_add_action_server_registers() {
     let session = MockSession::new();
     // Use small buffers to fit within the 4096-byte arena.
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let handle = executor
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
@@ -1511,7 +1536,7 @@ fn test_add_action_server_registers() {
 #[test]
 fn test_action_server_spin_once_no_requests() {
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _handle = executor
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
@@ -1530,7 +1555,7 @@ fn test_action_server_spin_once_no_requests() {
 #[test]
 fn test_action_server_registers_and_spins() {
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _server_handle = executor
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
@@ -1550,7 +1575,7 @@ fn test_action_server_registers_and_spins() {
 #[test]
 fn test_drop_with_mixed_entries() {
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_drop_with_mixed_entries")
@@ -1586,7 +1611,7 @@ fn test_drop_with_mixed_entries() {
 #[test]
 fn test_spin_one_period_remaining_time() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // elapsed < period → remaining = period - elapsed
     let r = executor.spin_one_period(100, 30);
@@ -1597,7 +1622,7 @@ fn test_spin_one_period_remaining_time() {
 #[test]
 fn test_spin_one_period_overrun() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // elapsed > period → remaining saturates to 0
     let r = executor.spin_one_period(10, 50);
@@ -1607,7 +1632,7 @@ fn test_spin_one_period_overrun() {
 #[test]
 fn test_spin_one_period_exact() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // elapsed == period → remaining = 0
     let r = executor.spin_one_period(42, 42);
@@ -1640,7 +1665,7 @@ fn test_spin_options_builders() {
 #[test]
 fn test_spin_blocking_only_next() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // only_next exits after single iteration
     let result = executor.spin_blocking(SpinOptions::spin_once());
@@ -1650,7 +1675,7 @@ fn test_spin_blocking_only_next() {
 #[test]
 fn test_spin_blocking_halt() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // Pre-set halt flag → exits immediately
     executor.halt();
@@ -1680,7 +1705,7 @@ fn test_spin_blocking_halt() {
 #[test]
 fn spin_blocking_with_a_timeout_and_no_clock_errors() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
 
     let err = executor
@@ -1695,7 +1720,7 @@ fn spin_blocking_with_a_timeout_and_no_clock_errors() {
 #[test]
 fn spin_blocking_without_a_timeout_still_runs_with_no_clock() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
 
     let halt = executor.halt_flag();
@@ -1711,7 +1736,7 @@ fn spin_blocking_without_a_timeout_still_runs_with_no_clock() {
 #[test]
 fn spin_period_with_no_clock_errors() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
 
     let err = executor
@@ -1756,7 +1781,7 @@ fn from_session_with_installs_the_callers_clock() {
 #[test]
 fn test_spin_blocking_timeout() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let start = std::time::Instant::now();
     let result = executor.spin_blocking(SpinOptions::new().timeout_ms(50));
@@ -1768,7 +1793,7 @@ fn test_spin_blocking_timeout() {
 #[test]
 fn test_spin_one_period_timed_no_overrun() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let period = std::time::Duration::from_millis(50);
     let result = executor.spin_one_period_timed(period);
@@ -1780,7 +1805,7 @@ fn test_spin_one_period_timed_no_overrun() {
 #[test]
 fn test_halt_flag_clone() {
     let session = MockSession::new();
-    let executor: Executor = Executor::from_session(session);
+    let executor: Executor = executor_with_clock(session);
 
     let flag = executor.halt_flag();
     assert!(!executor.is_halted());
@@ -1792,7 +1817,7 @@ fn test_halt_flag_clone() {
 #[test]
 fn test_spin_period_halts() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let halt = executor.halt_flag();
     std::thread::spawn(move || {
@@ -1807,7 +1832,7 @@ fn test_spin_period_halts() {
 #[test]
 fn test_wake_handle_clone() {
     let session = MockSession::new();
-    let executor: Executor = Executor::from_session(session);
+    let executor: Executor = executor_with_clock(session);
 
     let wake = executor.wake_handle();
     assert!(!wake.load(std::sync::atomic::Ordering::SeqCst));
@@ -1819,7 +1844,7 @@ fn test_wake_handle_clone() {
 #[test]
 fn test_wake_cleared_each_spin() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // Pre-arm the flag — spin_once must swap-clear it.
     executor.wake();
@@ -1836,7 +1861,7 @@ fn test_wake_cleared_each_spin() {
 #[test]
 fn test_halt_raises_wake_flag() {
     let session = MockSession::new();
-    let executor: Executor = Executor::from_session(session);
+    let executor: Executor = executor_with_clock(session);
 
     let wake = executor.wake_handle();
     assert!(!wake.load(std::sync::atomic::Ordering::SeqCst));
@@ -1856,7 +1881,7 @@ fn test_guard_handle_send_across_thread() {
     // worker thread / signal handler can own it and call trigger()).
     // Sync impl assertion via thread move and rejoin.
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let (_id, handle) = executor
         .register_guard_condition(|| {})
@@ -1880,7 +1905,7 @@ fn test_wake_short_circuits_drive_timeout() {
     // wait on drive_io (timeout collapses to 0) and return promptly,
     // even when the caller asked for a 200ms tick.
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     executor.wake();
 
@@ -1900,7 +1925,7 @@ fn test_wake_short_circuits_drive_timeout() {
 #[test]
 fn test_handle_id_from_add_subscription() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_handle_id_from_add_subscription")
@@ -1979,7 +2004,7 @@ fn test_readiness_snapshot() {
 #[test]
 fn test_trigger_any_fires_on_data() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.set_trigger(Trigger::Any);
     let nid = executor
         .node_builder("test_trigger_any_fires_on_data")
@@ -2004,7 +2029,7 @@ fn test_trigger_any_fires_on_data() {
 #[test]
 fn test_trigger_any_no_data_no_dispatch() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.set_trigger(Trigger::Any);
     let nid = executor
         .node_builder("test_trigger_any_no_data_no_dispatch")
@@ -2024,7 +2049,7 @@ fn test_trigger_any_no_data_no_dispatch() {
 #[test]
 fn test_trigger_always_fires_without_data() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.set_trigger(Trigger::Always);
     let nid = executor
         .node_builder("test_trigger_always_fires_without_data")
@@ -2054,7 +2079,7 @@ fn test_trigger_always_fires_without_data() {
 #[test]
 fn test_trigger_one_fires_on_specific_handle() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_one_fires_on_specific_handle")
@@ -2093,7 +2118,7 @@ fn test_trigger_one_fires_on_specific_handle() {
 #[test]
 fn test_trigger_predicate() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_predicate")
@@ -2121,7 +2146,7 @@ fn test_trigger_predicate() {
 #[test]
 fn test_guard_condition_trigger_fires_callback() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
@@ -2146,7 +2171,7 @@ fn test_guard_condition_trigger_fires_callback() {
 #[test]
 fn test_guard_condition_clears_after_trigger() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -2179,7 +2204,7 @@ fn test_guard_condition_clears_after_trigger() {
 #[test]
 fn test_raw_subscription_callback() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     static RAW_CALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     static RAW_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -2223,7 +2248,7 @@ fn test_raw_subscription_callback() {
 fn test_raw_subscription_info_callback() {
     // Phase 189.M3.4 — the C-fn-ptr-with-attachment subscription path.
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     static INFO_CALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     static INFO_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -2298,7 +2323,7 @@ fn test_from_session_ptr_create_node() {
 #[test]
 fn test_set_invocation_mode() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_set_invocation_mode")
@@ -2330,7 +2355,7 @@ fn test_set_invocation_mode() {
 #[test]
 fn test_set_semantics() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // Default is RclcppExecutor
     assert_eq!(executor.semantics, ExecutorSemantics::RclcppExecutor);
@@ -2350,7 +2375,7 @@ fn test_let_semantics_pre_samples_data() {
     // even though the mock subscriber's pending data is consumed during
     // the pre-sample phase (not during try_process).
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
     let nid = executor
         .node_builder("test_let_semantics_pre_samples_data")
@@ -2381,7 +2406,7 @@ fn test_let_semantics_pre_samples_data() {
 fn test_let_semantics_raw_subscription() {
     // Verify LET pre-sampling works for raw subscriptions too.
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
 
     static RAW_LET_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -2425,7 +2450,7 @@ fn test_let_semantics_raw_subscription() {
 #[test]
 fn test_trigger_all_with_mixed_handles() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // Add a timer and a subscription
     executor
@@ -2465,7 +2490,7 @@ fn test_trigger_all_with_mixed_handles() {
 #[test]
 fn test_trigger_allof_fires_when_both_ready() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_allof_fires_when_both_ready")
@@ -2513,7 +2538,7 @@ fn test_trigger_allof_fires_when_both_ready() {
 #[test]
 fn test_trigger_allof_empty_set_always_fires() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_allof_empty_set_always_fires")
@@ -2540,7 +2565,7 @@ fn test_trigger_allof_empty_set_always_fires() {
 #[test]
 fn test_trigger_anyof_fires_when_one_ready() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_anyof_fires_when_one_ready")
@@ -2581,7 +2606,7 @@ fn test_trigger_anyof_fires_when_one_ready() {
 #[test]
 fn test_trigger_anyof_empty_set_never_fires() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let nid = executor
         .node_builder("test_trigger_anyof_empty_set_never_fires")
@@ -2615,7 +2640,7 @@ fn test_trigger_anyof_empty_set_never_fires() {
 #[test]
 fn test_timer_delta_accumulates_when_trigger_fails() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -2734,7 +2759,7 @@ impl nros_core::RosService for TestService {
 #[test]
 fn test_service_builder_qos() {
     // Phase 193.2 — NodeCtx service builder + convenient create_service.
-    let mut exec: Executor = Executor::from_session(MockSession::new());
+    let mut exec: Executor = executor_with_clock(MockSession::new());
     let id = exec.node_builder("n").build().unwrap();
 
     // convenient (fork tier) — default services QoS
@@ -2758,7 +2783,7 @@ fn test_service_builder_qos() {
 fn test_node_service_client_with_qos() {
     // Phase 193.2b — Node session-path create_service_with_qos /
     // create_client_with_qos (rclcpp-style qos overload).
-    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut executor: Executor = executor_with_clock(MockSession::new());
     let mut node = executor.create_node("n").unwrap();
     let q = QosSettings::default().reliable().keep_last(7);
     let _srv = node
@@ -2777,7 +2802,7 @@ fn test_node_service_client_with_qos() {
 fn test_service_client_callback_fires_at_spin() {
     use crate::executor::arena::ServiceClientSendHeader;
 
-    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut executor: Executor = executor_with_clock(MockSession::new());
     let nid = executor.node_builder("svc_cb").build().unwrap();
 
     let got = std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -2850,7 +2875,7 @@ fn test_action_client_callbacks_fire_at_spin() {
         (b, src.len())
     }
 
-    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut executor: Executor = executor_with_clock(MockSession::new());
     let nid = executor.node_builder("act_cb").build().unwrap();
 
     let goal_resp = std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -2951,7 +2976,7 @@ fn test_action_client_feedback_burst_buffered() {
         (b, n)
     }
 
-    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut executor: Executor = executor_with_clock(MockSession::new());
     let nid = executor.node_builder("act_burst").build().unwrap();
 
     let feedbacks = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
@@ -3007,7 +3032,7 @@ fn test_action_client_feedback_burst_buffered() {
 fn test_service_dispatch_respects_sched_context() {
     use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
     let order_late = firing_order.clone();
@@ -3081,7 +3106,7 @@ fn test_service_dispatch_respects_sched_context() {
 #[test]
 fn test_promise_try_recv_returns_none_then_some() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let mut node = executor.create_node("test").unwrap();
     let mut client = node.create_client::<TestService>("/test_svc").unwrap();
@@ -3133,7 +3158,7 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
     FIRES.store(0, Ordering::SeqCst);
 
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     // 50 ms periodic timer.
     let _timer = executor
@@ -3171,7 +3196,7 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
 /// resolution, and validates the slot against the opened set.
 #[test]
 fn node_builder_session_idx_binds_explicit_slot_and_validates() {
-    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut executor: Executor = executor_with_clock(MockSession::new());
     // Simulate `open_multi` having opened one extra session (slot 1).
     assert!(executor.extra_sessions.push(MockSession::new()).is_ok());
 
@@ -3320,7 +3345,7 @@ fn test_bind_node_name_sched_seeded_resolves() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     // SC slots 1 and 2 must exist for apply_node_default_sched to wire the
     // binding. create_sched_context fills slots in order starting at 1.
@@ -3355,7 +3380,7 @@ fn test_bind_node_name_sched_unseeded_defaults_to_zero() {
     use crate::executor::sched_context::SchedContextId;
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     // No bind call — table is empty.
     let nid = executor.node_builder("listener").build().unwrap();
@@ -3368,7 +3393,7 @@ fn test_bind_node_name_sched_explicit_beats_table() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     executor
         .create_sched_context(SchedContext::default())
@@ -3400,7 +3425,7 @@ fn test_bind_node_name_sched_namespace_disambiguates() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     executor
         .create_sched_context(SchedContext::default())
@@ -3440,7 +3465,7 @@ fn test_bind_group_sched_seeded_resolves() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     // Create SC slots: 1 and 2 must exist so the validity checks pass.
     let _sc1 = executor
@@ -3478,7 +3503,7 @@ fn test_bind_group_sched_sub_node_split() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _sc1 = executor
         .create_sched_context(SchedContext::default())
@@ -3513,7 +3538,7 @@ fn test_bind_group_sched_no_group_uses_node_default() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _sc1 = executor
         .create_sched_context(SchedContext::default())
@@ -3541,7 +3566,7 @@ fn test_bind_group_sched_unmapped_group_falls_back_to_node_default() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _sc1 = executor
         .create_sched_context(SchedContext::default())
@@ -3572,7 +3597,7 @@ fn test_bind_group_sched_group_beats_node_default() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     // SC 1, 2, 5 (skipping 3 and 4 to test non-contiguous ids).
     let _sc1 = executor
@@ -3623,7 +3648,7 @@ fn test_callback_group_timer_in_group_binds_to_group_sc() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     // Create SC 1 and SC 2.
     let _sc1 = executor
@@ -3663,7 +3688,7 @@ fn test_callback_group_subscription_in_group_binds_to_group_sc() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _sc1 = executor
         .create_sched_context(SchedContext::default())
@@ -3699,7 +3724,7 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
     use crate::executor::sched_context::{SchedContext, SchedContextId};
 
     let session = MockSession::new();
-    let mut executor = Executor::from_session(session);
+    let mut executor = executor_with_clock(session);
 
     let _sc1 = executor
         .create_sched_context(SchedContext::default())
@@ -3740,7 +3765,7 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
 fn deadline_skip_masks_remaining_same_sc_callbacks() {
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let fired = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
     let f_slow = fired.clone();
@@ -3812,7 +3837,7 @@ fn deadline_skip_masks_remaining_same_sc_callbacks() {
 fn deadline_warn_reports_without_skipping() {
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
 
     let fired = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
     let f_slow = fired.clone();
@@ -3875,7 +3900,7 @@ fn deadline_warn_reports_without_skipping() {
 #[test]
 fn a_stalled_timer_reports_a_timer_overrun_violation() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     let fires = std::sync::Arc::new(std::sync::Mutex::new(0u32));
     let f = fires.clone();
     let id = executor
@@ -3925,7 +3950,7 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
 #[test]
 fn a_violation_is_logged_and_still_drainable() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
@@ -3961,7 +3986,7 @@ fn a_violation_is_logged_and_still_drainable() {
 #[test]
 fn violations_beyond_the_ring_are_counted() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     // ONE timer, stalled repeatedly — not `MAX_VIOLATIONS + 4` timers.
     //
     // This test asked for 12 callback slots against a `MAX_CBS` that has
@@ -4000,7 +4025,7 @@ fn violations_beyond_the_ring_are_counted() {
 #[test]
 fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     // 33 ms on a 5 ms spin: alternates 35/30.
     executor
         .register_timer(TimerDuration::from_millis(33), || {})
@@ -4032,7 +4057,7 @@ fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
 #[test]
 fn spin_quantization_audit_accepts_exact_multiples() {
     let session = MockSession::new();
-    let mut executor: Executor = Executor::from_session(session);
+    let mut executor: Executor = executor_with_clock(session);
     let id = executor
         .register_timer(TimerDuration::from_millis(50), || {})
         .unwrap();

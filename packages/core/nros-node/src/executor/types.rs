@@ -1218,11 +1218,11 @@ pub const RMW_SELECTOR_CAP: usize = 32;
 // track the constructor's.
 #[allow(dead_code)]
 pub fn default_epoch_us_fn() -> Option<fn() -> u64> {
-    #[cfg(any(feature = "rmw-cffi", feature = "std"))]
+    #[cfg(feature = "rmw-cffi")]
     {
         Some(default_epoch_us)
     }
-    #[cfg(not(any(feature = "rmw-cffi", feature = "std")))]
+    #[cfg(not(feature = "rmw-cffi"))]
     {
         None
     }
@@ -1248,15 +1248,6 @@ pub fn default_epoch_us() -> u64 {
     // ONE symbol since issue 0532; the bounded re-read this carried against the
     // former `time_since_epoch_{secs,nanos}` pair is gone with it.
     unsafe { nros_platform_time_now_ns() / 1_000 }
-}
-
-/// The `std`-without-a-port wall clock. See [`default_epoch_us`].
-#[cfg(all(not(feature = "rmw-cffi"), feature = "std"))]
-pub fn default_epoch_us() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
