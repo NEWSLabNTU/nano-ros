@@ -107,10 +107,24 @@ if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
     nros_check_skip "check-sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
 elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
     nros_check_skip "check-sched-dim-arms(nuttx)" "arm-none-eabi-gcc not on PATH"
+elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
+    # Issue 0525. The tree is SHARED SOURCE, but `nuttx/config.h` is build
+    # OPTIONS, and one shared copy cannot hold two arches: it belongs to
+    # whichever was configured LAST. This arm compiles -mcpu=cortex-a7, so
+    # taking the shared copy means type-checking ARM against whatever riscv
+    # last wrote — silently, and it passes, which is worse than not running.
+    # Hence a SKIP rather than a fallback: no arm snapshot, no verdict.
+    nros_check_skip "check-sched-dim-arms(nuttx)" \
+        "no arm NuttX export snapshot (nros-nuttx-export-arm); the shared tree's config.h is another arch's"
 else
+    # Per-arch build options come from this arch's export snapshot; the shared
+    # tree supplies only source. Same split as
+    # `nros_build_paths::nuttx_include_root` and cmake's
+    # `nros_nuttx_include_root`, neither of which shell can call.
+    nuttx_inc="$NUTTX_DIR/nros-nuttx-export-arm/include"
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 -mthumb-interwork \
         -DCONFIG_SMP \
-        -I "$NUTTX_DIR/include" \
+        -I "$nuttx_inc" \
         -I "$NUTTX_DIR/sched" \
         -I "$repo_root/packages/api/nros-c/include" \
         -I "$repo_root/packages/platform/nros-platform-api/include" \
