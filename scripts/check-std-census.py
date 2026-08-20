@@ -66,6 +66,10 @@ is phase-359 W7, not this gate's business.
 import re
 import sys
 from pathlib import Path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 REPO = Path(__file__).resolve().parents[1]
 SCOPE = ["packages/core", "packages/api"]
@@ -400,7 +404,7 @@ def census():
             if not src.is_dir():
                 continue
             cfg = path = 0
-            for rs in sorted(src.rglob("*.rs")):
+            for rs in tracked(src, suffix=".rs"):
                 # Generated bindings are not hand-written std use.
                 if rs.name == "generated.rs":
                     continue
@@ -548,7 +552,7 @@ def module_cfgs(src: Path) -> dict:
 def guarded_features(src: Path) -> set:
     """Features named by a `compile_error!` guard anywhere in the crate."""
     out = set()
-    for rs in sorted(src.rglob("*.rs")):
+    for rs in tracked(src, suffix=".rs"):
         text = rs.read_text(errors="replace")
         for m in re.finditer(r"compile_error!", text):
             # The guard's own `#[cfg(all(feature = "F", not(feature = "std")))]`
@@ -651,7 +655,7 @@ def guard_check(crate_dirs=None):
                 continue
             mod_cfgs = module_cfgs(src)
             guards = guarded_features(src)
-            for rs in sorted(src.rglob("*.rs")):
+            for rs in tracked(src, suffix=".rs"):
                 if rs.name in ("generated.rs", "tests.rs"):
                     continue
                 for n, feats in site_features(rs, mod_cfgs.get(rs, set())):

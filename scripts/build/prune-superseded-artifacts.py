@@ -65,6 +65,7 @@ PAT = re.compile(r"^(?P<stem>.+)-(?P<hash>[0-9a-f]{8,})\.(?P<ext>rlib|rmeta|d|so
 def plan(root):
     """[(kept, [superseded…])] for every slot holding more than one identity."""
     groups = collections.defaultdict(list)
+    # walk-ok: deletes untracked build output; git cannot see what it removes
     for dirpath, _dirs, files in os.walk(root):
         for f in files:
             m = PAT.match(f)

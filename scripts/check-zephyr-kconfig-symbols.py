@@ -78,6 +78,7 @@ def referenced_symbols(text: str):
 def tree_symbols(tree: str):
     """Every symbol DEFINED anywhere under a Zephyr tree's Kconfig files."""
     found = set()
+    # walk-ok: walks the Zephyr submodule tree, whose contents this repo does not track
     for dirpath, dirnames, filenames in os.walk(tree):
         dirnames[:] = [d for d in dirnames if d not in (".git", "build", "twister-out")]
         for fn in filenames:

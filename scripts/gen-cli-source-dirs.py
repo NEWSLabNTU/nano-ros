@@ -53,6 +53,10 @@ import subprocess
 import sys
 from collections import deque
 from pathlib import Path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "packages" / "cli" / "cli-source-dirs.txt"
@@ -93,7 +97,7 @@ def embedded_input_dirs():
     cli = REPO / "packages" / "cli"
     pat = re.compile(r'include_(?:str|bytes)!\(\s*"(\.\./[^"]+)"')
     dirs = set()
-    for src in cli.rglob("*.rs"):
+    for src in tracked(cli, suffix=".rs"):
         if "target" in src.parts:
             continue
         try:

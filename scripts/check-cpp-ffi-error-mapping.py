@@ -27,6 +27,10 @@ from __future__ import annotations
 import pathlib
 import re
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SRC = REPO / "packages" / "api" / "nros-cpp" / "src"
@@ -57,7 +61,7 @@ def main() -> int:
     failures: list[str] = []
     scanned = 0
 
-    for path in sorted(SRC.rglob("*.rs")):
+    for path in tracked(SRC, suffix=".rs"):
         text = path.read_text()
         scanned += 1
         for lineno, line in enumerate(text.splitlines(), 1):

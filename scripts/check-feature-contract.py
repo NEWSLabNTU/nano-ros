@@ -105,6 +105,10 @@ def is_build_output(name):
 def manifests(root=None):
     root = root or ROOT
     out = []
+# walk-ok: scope is crates ON DISK under packages/, which includes submodule working
+# trees (play_launch, ros2_rust_examples) that `git ls-files` does not descend into:
+# index 203, --recurse-submodules 229, this walk 217. Bounded — is_build_output prunes
+# at DESCENT (0721).
     for base, dirs, files in os.walk(os.path.join(root, SCOPE)):
         dirs[:] = [d for d in dirs if not is_build_output(d)]
         if "Cargo.toml" in files:
@@ -133,6 +137,7 @@ def rust_files(crate_dir, subdirs=("src", "tests", "benches", "examples")):
         d = os.path.join(crate_dir, sub)
         if not os.path.isdir(d):
             continue
+# walk-ok: same scope as manifests() above; prunes build output at descent
         for base, dirs, files in os.walk(d):
             dirs[:] = [x for x in dirs if not is_build_output(x)]
             for f in files:

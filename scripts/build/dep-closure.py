@@ -141,6 +141,7 @@ def main() -> int:
     #    rows compile nothing, so this IS their dependency set. Without it an edit
     #    to `cmake/NanoRosCodegenCore.cmake` moved no signature at all, though 18
     #    in-repo modules are listed here for a single row.
+    # walk-ok: cmake bookkeeping under a build dir — build output, not tracked
     for mk in build_dir.rglob("CMakeFiles/Makefile.cmake"):
         try:
             text = mk.read_text(errors="replace")
@@ -155,6 +156,7 @@ def main() -> int:
     # 2) The Ninja generator records the same thing on its re-configure edge.
     #    `$` continues a line. A stale `build.ninja` copied from another checkout
     #    lists that checkout's paths; `keep()` drops anything outside this root.
+    # walk-ok: ninja files under a build dir — build output, not tracked
     for nj in build_dir.rglob("build.ninja"):
         try:
             text = nj.read_text(errors="replace")
@@ -170,6 +172,7 @@ def main() -> int:
                 keep(tok)
 
     # 3) Compiler / cargo dep-info.
+    # walk-ok: cmake dep files under a build dir — build output, not tracked
     for dep_file in build_dir.rglob("*.d"):
         try:
             text = dep_file.read_text(errors="replace")

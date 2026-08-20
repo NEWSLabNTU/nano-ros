@@ -59,6 +59,10 @@ Run: python3 scripts/check-example-leaf-target-dirs.py
 import os
 import re
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -326,6 +330,7 @@ def existing_leaf_target_dirs():
     """
     found = []
     root_examples = os.path.join(ROOT, "examples")
+    # walk-ok: hunts UNTRACKED leaf target/ dirs — the index cannot see them; prunes build* at descent
     for dirpath, dirnames, _ in os.walk(root_examples):
         # Prune `build*` at DESCENT, not at report time. The scoping rule below
         # already discards any `target` found under one — Corrosion scratch, not
@@ -362,12 +367,9 @@ def main():
     failures = []
     scanned = [os.path.join(ROOT, f) for f in SCAN_FILES if os.path.isfile(os.path.join(ROOT, f))]
     for d in SCAN_DIRS:
-        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, d)):
-            dirnames[:] = [x for x in dirnames if x not in (".git", "third-party")]
-            for fn in sorted(filenames):
-                if not fn.endswith(SCAN_SUFFIXES):
-                    continue
-                scanned.append(os.path.join(dirpath, fn))
+        for f in tracked(os.path.join(ROOT, d)):
+            if f.name.endswith(SCAN_SUFFIXES):
+                scanned.append(str(f))
     for path in scanned:
         rel = os.path.relpath(path, ROOT)
         try:

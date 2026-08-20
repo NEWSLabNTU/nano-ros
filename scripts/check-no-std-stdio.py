@@ -130,6 +130,7 @@ def _tracked_files(roots):
             walked.append(str(root.relative_to(REPO)))
         except ValueError:
             if root.is_dir():
+                # walk-ok: out-of-repo root has no index entry; serves --self-test temp trees only
                 found.extend(sorted(q for q in root.rglob("*") if q.is_file()))
     if walked:
         out = subprocess.run(

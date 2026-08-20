@@ -35,6 +35,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 # Crates whose purpose is to define `#[panic_handler]`, plus `zephyr`, which
 # supplies the RTOS's own (see `zephyr_entry/src/lib.rs`: "Zephyr's allocator +
@@ -70,7 +74,7 @@ def is_hosted(crate_dir: Path) -> bool:
 
 
 def has_provider(src_dir: Path) -> bool:
-    for rs in src_dir.rglob("*.rs"):
+    for rs in tracked(src_dir, suffix=".rs"):
         try:
             text = rs.read_text()
         except OSError:

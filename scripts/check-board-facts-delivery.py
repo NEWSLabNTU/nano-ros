@@ -34,6 +34,10 @@ Buildless: reads `cmake/**/*.cmake` and `zephyr/cmake/*.cmake`.
 import os
 import re
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CMAKE_DIRS = (os.path.join(ROOT, "cmake"), os.path.join(ROOT, "zephyr", "cmake"))
@@ -52,8 +56,8 @@ def main():
     offenders, checked, exempt = [], 0, 0
     walked = []
     for root in CMAKE_DIRS:
-        for dirpath, _dirs, files in os.walk(root):
-            walked.append((dirpath, files))
+        for f in tracked(root):
+            walked.append((str(f.parent), [f.name]))
     for dirpath, files in walked:
         for name in sorted(files):
             if not name.endswith(".cmake"):

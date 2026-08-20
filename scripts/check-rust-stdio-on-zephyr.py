@@ -32,6 +32,10 @@ from __future__ import annotations
 import pathlib
 import re
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -58,7 +62,7 @@ def main() -> int:
         root = REPO / rel
         if not root.is_dir():
             continue
-        for path in sorted(root.rglob("*.rs")):
+        for path in tracked(root, suffix=".rs"):
             scanned += 1
             in_macro_def = False
             for lineno, line in enumerate(path.read_text().splitlines(), 1):

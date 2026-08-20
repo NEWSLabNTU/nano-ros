@@ -101,6 +101,56 @@ for f in FILES:
                 bad.append(f"  {f}:{start+1}: recursive grep — use `git grep -- <pathspec>`")
         i += 1
 
+# --- python arm (issue 0721) -------------------------------------------------
+# The shell side of this repo is clean because this gate has policed it. The
+# python side was never read — the filter above accepts only .sh/.just/justfile,
+# though this gate is itself python scanning shell — so it accumulated 21 walk
+# sites, two of which never finished: `rglob("Cargo.toml")` over the 828 GB
+# examples/ tree ran >300 s against 0.002 s for the same 347 paths from the
+# index.
+#
+# Python hides the root behind a variable far more often than shell does, so
+# rather than guess which roots are big, EVERY recursive walk in a scanned file
+# must either go through the index or carry a marker saying why it cannot:
+#
+#     # walk-ok: <reason>
+#
+# anywhere in the contiguous comment block above the line, or trailing on it.
+# Legitimate reasons are real and common here — build dirs, staging copies, a
+# tree being deleted, an untracked submodule — so this is part of the rule, not
+# an escape hatch. A gate that demands an impossible fix gets disabled.
+PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"']\*\*|\bos\.walk\(")
+PY_ALLOW = re.compile(r"walk-ok:")
+
+PY_FILES = [f for f in FILES if f.endswith(".py")]
+for f in PY_FILES:
+    if f.endswith("check-no-tracked-file-find.py"):
+        continue
+    try:
+        lines = open(f).read().split("\n")
+    except OSError:
+        continue
+    for n, line in enumerate(lines, 1):
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        if not PY_WALK.search(line):
+            continue
+        if PY_ALLOW.search(line):
+            continue
+        # Contiguous comment block immediately above, same idiom as
+        # check-no-std-stdio's exemptions: a reason worth giving runs to
+        # several lines, and requiring it on the last one invites one-liners.
+        j, allowed = n - 2, False
+        while j >= 0 and lines[j].strip().startswith("#"):
+            if PY_ALLOW.search(lines[j]):
+                allowed = True
+                break
+            j -= 1
+        if not allowed:
+            bad.append(f"  {f}:{n}: recursive walk — use `git ls-files`, "
+                       f"or mark it `# walk-ok: <reason>`")
+
 if bad:
     print("FAIL: filesystem walk used to locate git-tracked files:")
     print("\n".join(bad))
