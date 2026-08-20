@@ -190,7 +190,7 @@ build-fixture-extras:
     fi
     echo "Building ThreadX-RV64 test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"

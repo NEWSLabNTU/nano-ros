@@ -161,7 +161,7 @@ build-fixture-extras:
     fi
     echo "Building FreeRTOS test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     # The normal Rust role examples are produced by `build-examples`.
     # Phase 88.15.b — nros-log severity-coverage smoke fixture, selected by
     # stable manifest id so `build-examples` stays limited to role examples.

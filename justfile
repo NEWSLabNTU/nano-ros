@@ -2504,13 +2504,28 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
     # can be dropped entirely: make hands out `budget` tokens and every cargo
     # and ninja in the tree draws from that one pool.
     if [ "${NROS_BUILD_POOL:-}" = "1" ]; then
-        outer="$(printf '%s\n' $lane_platforms | grep -c .)"
+        # Count the lane's stages HERE rather than reading $lane_platforms,
+        # which this recipe does not compute until further down — referencing it
+        # early made it empty, `grep -c .` returned 1, and `set -e` killed the
+        # recipe before the banner even printed.
+        outer=0
+        for _p in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
+            if in_lane "$_p"; then outer=$((outer + 1)); fi
+        done
+        [ "$outer" -lt 1 ] && outer=1
         [ "$outer" -gt "$budget" ] && outer="$budget"
         inner=""            # no static split; children inherit the jobserver
         make_jobs="$budget"
         echo "build-test-fixtures: POOLED — make -j$budget, $outer stage(s), shared tokens"
         # Children INHERIT the jobserver; nothing is unset.
         NROS_STAGE_ENV=""
+        # And they must not ALSO be handed an explicit width. A stage exports
+        # CMAKE_BUILD_PARALLEL_LEVEL from its budget, which becomes ninja's
+        # `-j` — and an explicit -j overrides jobserver throttling, so 7
+        # concurrent stages each ran 32 wide. Measured peak 44 runnable on 32
+        # cores. The per-platform recipes already know how to unset it; they
+        # just keyed on NROS_JOBSERVER alone, so tell them the same fact.
+        export NROS_INHERIT_JOBSERVER=1
     else
     outer=4
     [ "$outer" -gt "$budget" ] && outer="$budget"
@@ -2521,6 +2536,9 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
     # explicit split they were handed.
     NROS_STAGE_ENV="-u MAKEFLAGS -u CARGO_MAKEFLAGS"
     fi
+    # The generated recipes reference it as `$$NROS_STAGE_ENV`, i.e. the SHELL
+    # expands it at stage-run time, so it has to be in the environment.
+    export NROS_STAGE_ENV
     echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
     # Issue 0393 — the lane-filtered platform list, computed ONCE. The graph
     # names its targets in three places (.PHONY, `all:`, the rule loop) and they

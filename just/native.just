@@ -57,7 +57,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
                 ;;
         esac
     }
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then
         cargo_frontends="$(nros_cargo_frontend_jobs)"
     else
         cargo_frontends="$(nros_make_jobs "{{JOBS}}")"
@@ -110,7 +110,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     }
     export -f build_one
 
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then
         echo "NROS_JOBSERVER=1 — serial launcher; cargo inherits fifo tokens."
         while read -r toml; do build_one "$toml"; done < "$toml_list"
     else
@@ -238,7 +238,7 @@ build-fixture-extras:
     repo_root="$PWD"
     echo "Building native C/C++ + Cyclone test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
     # Phase 214.I.2 — fail-loud prereq guard: `ensure_native_rust_generated`
     # below invokes `nros sync`. Probe once; emit `[PREREQ]` + exit 0
@@ -360,7 +360,7 @@ check JOBS="75%":
     # itself (serial when no pinned make 4.4). Issue 0466 — GNU parallel is no
     # longer used here, so its absence is no longer a tier-1 prerequisite that
     # silently turned this lane into a ~99-leaf serial walk looking like a hang.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then
         echo "Checking examples (serial; outer jobserver owns the tokens)..."
         SERIAL=1
     else

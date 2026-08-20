@@ -220,7 +220,7 @@ build-fixtures-arm:
     fi
     echo "Building NuttX test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     # Phase 226 — Rust fixture cells come from the SSOT manifest, including the
     # logging-smoke fixture and any per-cell env. Keep the NuttX-only release
@@ -343,7 +343,7 @@ build-riscv-c:
     # and archive `arm_vectortab.o` into a riscv image's boot archive; the link
     # then reports it as a MISSING library, three steps from the cause.
     source scripts/nuttx/riscv-env.sh
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     echo "→ host nros-codegen (C)"
     nros_cargo_ensure_codegen_c
     codegen="$(nros_cargo_codegen_c_bin)"
