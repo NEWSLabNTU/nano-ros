@@ -17,6 +17,34 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/conn_mgr_monitor.h>
+#include <zephyr/version.h>
+
+/* Zephyr WIDENED the net-mgmt event from 32 to 64 bits in 4.0 — the mask ran
+ * out of bits. `net_mgmt_event_handler_t` changed with it:
+ *
+ *   3.7 LTS : void (*)(struct net_mgmt_event_callback *, uint32_t, struct net_if *)
+ *   4.x     : void (*)(struct net_mgmt_event_callback *, uint64_t, struct net_if *)
+ *
+ * This file supports both lines, so the parameter type has to follow the
+ * version rather than be picked. Hardcoding `uint32_t` builds clean on 3.7 and
+ * fails on every 4.x board with
+ *
+ *   error: passing argument 2 of 'net_mgmt_init_event_callback' from
+ *          incompatible pointer type
+ *
+ * which went unnoticed because the only Zephyr target this repo had ever built
+ * is native_sim, and NSOS takes the `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS` arm
+ * below that compiles none of this. Found bringing up mr_canhubk3 on 4.4.
+ *
+ * `ZEPHYR_VERSION_CODE` / `ZEPHYR_VERSION()` are emitted into the generated
+ * `<zephyr/version.h>` on both lines, so the guard needs no build-system help.
+ */
+#if defined(ZEPHYR_VERSION_CODE) && defined(ZEPHYR_VERSION)                     \
+    && ZEPHYR_VERSION_CODE >= ZEPHYR_VERSION(4, 0, 0)
+typedef uint64_t nros_net_mgmt_event_t;
+#else
+typedef uint32_t nros_net_mgmt_event_t;
+#endif
 
 LOG_MODULE_REGISTER(nros_net_wait, LOG_LEVEL_INF);
 
@@ -27,8 +55,8 @@ static K_SEM_DEFINE(net_l4_connected, 0, 1);
 
 static struct net_mgmt_event_callback l4_cb;
 
-static void l4_event_handler(struct net_mgmt_event_callback* cb, uint32_t event,
-                             struct net_if* iface) {
+static void l4_event_handler(struct net_mgmt_event_callback* cb,
+                             nros_net_mgmt_event_t event, struct net_if* iface) {
     if (event == NET_EVENT_L4_CONNECTED) {
         k_sem_give(&net_l4_connected);
     }
