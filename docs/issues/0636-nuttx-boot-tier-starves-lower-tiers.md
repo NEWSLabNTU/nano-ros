@@ -196,6 +196,74 @@ Other candidates, none tested:
 * host load: the whole series ran against a competing build, and this cell is
   QEMU.
 
+## Measured 2026-08-21 — 67/67, including under saturating load
+
+The section above says a defensible reading "needs ~30 runs per arm on an idle
+host, and has not been done". Done now, on the current tree (which contains both
+`17666723d` and `845637eff`), 48-core host:
+
+| arm | runs | pass | 1-min load (mean / peak) |
+| --- | --- | --- | --- |
+| ambient (host busy with unrelated work) | 20 | 20 | 3.05 / 4.36 |
+| ambient, second batch | 20 | 20 | 2.87 / 3.23 |
+| + 8 spinners | 15 | 15 | ~13 |
+| + 64 spinners (48 cores — oversubscribed) | 12 | 12 | 68.2 peak |
+| **total** | **67** | **67** | |
+
+The load arms are the point, not padding. Every failing run in this issue's
+history shared the host with a build, and CLAUDE.md records that full-sweep QEMU
+lanes flake under load — so a quiet-host pass would not have ruled the
+starvation out, only masked it. At 1.4x oversubscription the cell still passes
+12/12.
+
+Against the last recorded rate of 23/32 (72%), `P(67/67 | p=0.72) = 2.8e-10`.
+Even against a hypothetical 95%, `P = 0.032`. **The Rust arm's starvation is not
+reproducible on this tree**; the three landed fixes converged, and the "NOT
+converged" reading was small-n against a competing Zephyr build, exactly as that
+section warned about itself.
+
+What that does NOT license: the fixes' own justifications never rested on the
+rate (`tiers[0]` meaning opposite things on different kernels is indefensible
+regardless), and 67 runs on ONE host is not a claim about CI hardware.
+
+Reproduce with `scripts/dev/measure-tier-priority-cell.sh <runs> [spinners]`.
+It greps the cell's own `2/2 tiers ACCEPT` line rather than the aggregate test
+result — `sched_dims_applied` is one test over many cells, so a SKIPPED nuttx
+cell would otherwise read as a pass (the absorbing-verdict trap, issue 0445),
+which is how a rate can be collected from runs that never ran the thing.
+
+## Confirmed by inspection: the C arm still has the pre-fix arrangement
+
+The candidate this issue lists as untested — "the C arm (`nuttx_run_tiers.c`)
+still takes its own boot tier" — is real, and the contract makes it precise.
+`nros-cpp/include/nros/main.hpp:481` documents what the emitter produces:
+
+> `tiers` must be a non-null array of `n_tiers` `NativeTierSpec` entries
+> **sorted highest-priority-first** (the codegen emitter produces them in that
+> order)
+
+and `nuttx_run_tiers.c:536` takes:
+
+```c
+const nros_tier_spec_t* boot = &tiers[0];
+```
+
+So on the C/C++ arm the session owner is the MOST urgent tier — the arrangement
+`17666723d` removed from the Rust arm because it starves every peer under
+SCHED_FIFO on a uniprocessor guest. The two language arms on one board now
+disagree about which tier owns the session.
+
+Not measured here: the matrix has only `sched(TierPriority, NuttxArm, Rust,
+Runtime)`, so no cell asserts tier markers on the C/C++ arm at all. The
+`nuttx cpp SporadicBudget` cell does exercise `nuttx_run_tiers.c`, so the path
+runs — nothing checks this property of it.
+
+The fix is not a copy of `boot_tier_index` into C: that is the cross-language
+rule duplication this repo keeps paying for. It wants either a C ABI export of
+the Rust rule, or the emitter choosing the owner so both arms agree by
+construction. Picking between those is a real decision and is left to whoever
+takes it.
+
 ## Relationship to 0623
 
 Same family, one layer over: 0623 is a tier priority and a transport priority

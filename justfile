@@ -274,9 +274,28 @@ build-all:
     # per-fixture `.compile-ok` one level down.
     source scripts/build/fixture-lane.sh
     nros_fixtures_stamp_clear
+    # issue 0726 — the version match forks nothing.
+    #
+    # The version test used to be a quiet `-q` match piped from `make
+    # --version`, inline in the condition below. Such a match cannot
+    # distinguish a NON-MATCH from a matcher that failed to START, and
+    # `check-grep-q-error-conflation` ratchets on that shape. Here
+    # the mis-read is quiet rather than loud — a failed grep reads as "not 4.4"
+    # and silently drops to the slower non-jobserver path — which is exactly the
+    # kind of degradation nobody would ever trace back to a fork.
+    #
+    # A `case` on the captured string is fork-free and composes with the chain
+    # through a plain variable.
+    _nros_make_ver=""
+    if [ -x third-party/make/make ]; then
+        _nros_make_ver=$(third-party/make/make --version 2>/dev/null | head -1)
+    fi
+    case "$_nros_make_ver" in
+        *4.4*) _nros_make_44=1 ;;
+        *)     _nros_make_44=0 ;;
+    esac
     if [ -z "${NROS_NO_JOBSERVER:-}" ] \
-       && [ -x third-party/make/make ] \
-       && third-party/make/make --version | head -1 | grep -q "4.4" \
+       && [ "$_nros_make_44" = 1 ] \
        && [ -x third-party/ninja/ninja ]; then
         echo "build-all: unified jobserver path (make 4.4 + ninja 1.13; NROS_NO_JOBSERVER=1 to opt out)"
         exec just build-all-jobserver
@@ -5469,7 +5488,17 @@ _orchestrate verb tier="everything":
                 echo ""
                 echo "  Primary remedy (no sudo, portable): just qemu setup-qemu"
                 echo ""
-                if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
+                # issue 0726 — fork-free distro test. A matcher that fails to
+                # START reads as "not ubuntu" and silently prints the
+                # build-from-source remedy to an Ubuntu user, which is a wrong
+                # ANSWER rather than an error anyone would trace back.
+                _nros_os_id=""
+                if [ -f /etc/os-release ]; then
+                    while IFS= read -r _line; do
+                        case "$_line" in ID=ubuntu) _nros_os_id=ubuntu ;; esac
+                    done < /etc/os-release
+                fi
+                if [ "$_nros_os_id" = ubuntu ]; then
                     echo "  Fallback (system-wide, requires sudo) — Canonical PPA:"
                     echo "    sudo add-apt-repository ppa:canonical-server/server-backports"
                     echo "    then: nros setup --system   (composes the install command)"
