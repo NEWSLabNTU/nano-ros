@@ -32,11 +32,21 @@ for i in $(seq 1 "$N"); do
     load=$(awk '{print $1}' /proc/loadavg)
     out=$(timeout 300 cargo nextest run -p nros-tests --test sched_dims_applied_e2e \
             --no-fail-fast --success-output final 2>&1)
-    if printf '%s' "$out" | grep -q "nuttx rust TierPriority] 2/2 tiers ACCEPT"; then
+    # Fork-free match (issue 0726). A `grep -q` here cannot tell a NON-MATCH
+    # from a matcher that failed to START, and in a measurement loop the second
+    # is recorded as a FAILED RUN — a false negative that corrupts the very
+    # rate this script exists to establish, in the direction that looks like
+    # the bug still being present. `case` on the captured output forks nothing.
+    case "$out" in
+      *"nuttx rust TierPriority] 2/2 tiers ACCEPT"*) _hit=1 ;;
+      *) _hit=0 ;;
+    esac
+    if [ "$_hit" = 1 ]; then
         pass=$((pass+1)); verdict=PASS
     else
         fail=$((fail+1)); verdict=FAIL
-        printf '%s' "$out" | grep -iE "nuttx rust TierPriority|tier .low.|tier .high." | head -4 >&2
+        # Diagnostic only — a failure here costs context, not a verdict.
+        printf '%s\n' "$out" | grep -iE "nuttx rust TierPriority|tier .low.|tier .high." | head -4 >&2 || true
     fi
     echo "run $i: $verdict (load $load)"
 done
