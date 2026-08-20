@@ -41,8 +41,19 @@ for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/
     # so checking `<dir>` alone passes while `<dir>/<crate>` does not exist.
     # That is exactly how `packages/core` survived here after nros-c moved to
     # `packages/api`: `packages/core` is still a real directory.
+    # A path inside `$(wildcard …)` is OPTIONAL BY CONSTRUCTION — the Makefile
+    # names it precisely because it may be absent and a fallback follows (the
+    # CLI resolution chain: in-tree build → ~/.nros/bin → PATH). Demanding it
+    # exist fails every pristine checkout, i.e. exactly the tree `check-fast`
+    # documents itself green on — which is how this gate held pr-checks red
+    # from dd33eef35 until 2026-08-20 while every dev machine passed.
+    exempt="$(grep -oE '\$\(wildcard \$\(NANO_ROS_ROOT\)/[A-Za-z0-9._/-]+' "$mk" \
+             | sed 's|^\$(wildcard \$(NANO_ROS_ROOT)/||' | sort -u)"
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
+        if printf '%s\n' "$exempt" | grep -qxF "$rel"; then
+            continue
+        fi
         if [ ! -e "$rel" ]; then
             echo "  $mk names \$(NANO_ROS_ROOT)/$rel — which does not exist" >&2
             fail=1
