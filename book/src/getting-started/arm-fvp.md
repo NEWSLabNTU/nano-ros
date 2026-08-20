@@ -85,33 +85,14 @@ The FVP is a license-gated tool: nano-ros checks that it resolves via
 (the `[gated.arm-fvp]` entry in `nros-sdk-index.toml`), and warns —
 never hard-fails — when it can't.
 
-> **Contributors (in-tree fixture/test lanes):** `nros doctor --board
-> fvp-aemv8r-smp` runs that cross-check (it delegates part of its
-> report to `just doctor`, so it needs `just` on PATH). The
-> `just zephyr run-fvp-ws-entry` / `run-fvp-board-import` recipes do
-> the equivalent inline via `scripts/zephyr/resolve-fvp-bin.sh` and
-> skip with a clear hint when the binary can't be found.
+> **Contributors:** the in-tree doctor cross-check and FVP run recipes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#arm-fvp).
 
 ## Build
 
-> **Contributors (in-tree fixture/test lanes):**
-> `just zephyr build-fvp-all` runs the FVP build lanes.
->
-> ```bash
-> # The workspace C++ RT-tiers Entry — the canonical ASI-consumption
-> # reference (nano_ros_use_board + run_tiers).
-> just zephyr build-fvp-ws-entry
->
-> # The minimal board-crate IMPORT surface: nano_ros_use_board() and a
-> # trivial printk app, so the import path can be checked on its own.
-> just zephyr build-fvp-board-import
-> ```
-
-Each recipe shells `west build -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`
-inside the `zephyr-workspace/` directory and produces `zephyr.elf` at:
-
-- `zephyr-workspace/build-fvp-ws-entry/zephyr/zephyr.elf`
-- `zephyr-workspace/build-fvp-board-import/zephyr/zephyr.elf`
+> **Contributors:** the in-tree FVP build lanes (and the `zephyr.elf`
+> paths they produce) are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#arm-fvp).
 
 > Two standalone talker lanes (`build-fvp-aemv8r-cyclonedds{,-rust}`, over
 > `examples/zephyr/{cpp,rust}/talker-aemv8r`) used to live here. phase-298 W4
@@ -123,33 +104,9 @@ inside the `zephyr-workspace/` directory and produces `zephyr.elf` at:
 Once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are in
 place:
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> # Boot the workspace RT-tiers Entry (prints `[ctrl] tick=` / `[telem] tick=`).
-> just zephyr run-fvp-ws-entry
->
-> # Boot the board-import smoke (prints `nros: smoke ok`).
-> just zephyr run-fvp-board-import
-> ```
-
-Under the hood the recipe:
-
-1. Verifies `west` + the Zephyr workspace + `zephyr.elf` exist;
-   skips with a hint otherwise.
-2. Resolves the FVP binary directory via
-   `scripts/zephyr/resolve-fvp-bin.sh` (priority order:
-   `ARMFVP_BIN_PATH` → `ARM_FVP_DIR/models/Linux64_GCC-*/` →
-   `dirname $(command -v FVP_BaseR_AEMv8R)`).
-3. Exports `ARMFVP_BIN_PATH=<dir>` and shells
-   `west build -d <build-dir> -t run`, which drives Zephyr's
-   `cmake/emu/armfvp.cmake` target with the canonical
-   `boards/arm/fvp_baser_aemv8r/board.cmake` `-C` flags — UART
-   0–3 piped to stdout, GICv3, cache state, NUM_CORES from
-   `CONFIG_MP_MAX_NUM_CPUS`. No flags are duplicated in the
-   `just` recipe.
-
-Exit cleanly with `Ctrl-C`.
+> **Contributors:** the in-tree FVP run lanes (and what they do under
+> the hood) are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#arm-fvp).
 
 ## Expected output
 

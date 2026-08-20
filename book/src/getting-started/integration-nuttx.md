@@ -195,12 +195,9 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-> **Contributors (in-tree fixture/test lanes):** for nano-ros's own
-> in-tree QEMU examples, `just nuttx zenohd &` starts the router on
-> the fixture port (8200) and `just nuttx talker` wraps
-> `qemu-system-arm` with the right wiring. `talker` there is the Rust
-> variant; the C / C++ variants boot through the `make`-driven path
-> described under "Auto-configure glue" below.
+> **Contributors:** the in-tree fixture/test lanes for nano-ros's own
+> QEMU examples are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#nuttx).
 
 **Readiness signal.** After typing the app's NSH command (e.g.
 `nuttx_c_talker`), expect `Publishing: 'Hello World: 1'` on the NSH

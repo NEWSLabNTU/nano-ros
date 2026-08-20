@@ -347,10 +347,9 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort   # i
 # ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort  # BYO my_app
 ```
 
-> **Contributors (in-tree fixture/test lanes):** nano-ros's own
-> zephyr talker has a matching recipe for the canonical `native_sim`
-> build path: `just zephyr talker`, paired with `just zephyr zenohd &`
-> (listens on the fixture port 7400).
+> **Contributors:** nano-ros's own zephyr talker has a matching in-tree
+> recipe for the canonical `native_sim` build path — see
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#zephyr).
 
 The Zephyr boot banner runs first, then the talker fires: the
 canonical in-tree talker prints `Publishing: 'Hello World: 1'`,

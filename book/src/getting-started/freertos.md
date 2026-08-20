@@ -100,11 +100,8 @@ Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
 Ports: the shipped examples dial host port **7447**.
 
-> **Contributors (in-tree fixture/test lanes):** the prebuilt *test
-> fixtures* bake per-language allocator ports instead of 7447 so suites
-> run in parallel; `just freertos talker` boots the fixture, so pair it
-> with `just freertos zenohd` (listens on 7800, the Rust pub/sub
-> fixture port).
+> **Contributors:** the prebuilt test fixtures bake different ports —
+> see [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
 ## Build
 
@@ -127,9 +124,8 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
 cmake --build build --parallel
 ```
 
-> **Contributors (in-tree fixture/test lanes):** `just freertos
-> build-fixtures` builds every in-tree zenoh + DDS example across
-> Rust / C / C++ in one pass.
+> **Contributors:** the in-tree fixture build lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
 First Rust build pulls + cross-compiles deps (~5 min). C / C++ build
 also compiles FreeRTOS kernel + lwIP — first run ~3 min.
@@ -168,12 +164,8 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 
 QEMU exits via Ctrl-A x.
 
-> **Contributors (in-tree fixture/test lanes):** `just freertos
-> zenohd &` starts the router on the fixture port (7800) and
-> `just freertos talker` boots the prebuilt talker *fixture* in QEMU
-> instead of the copy-out example. For batch testing without manual
-> QEMU launches, `just freertos test` runs every E2E (pub/sub,
-> service, action) against a temporary in-test zenohd.
+> **Contributors:** the in-tree fixture run/test lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
 **Readiness signal.** Within ~20 seconds of QEMU boot, the talker
 should print `Publishing: 'Hello World: 1'` on its semihosting

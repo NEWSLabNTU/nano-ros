@@ -82,13 +82,8 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 
 **Build:**
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
-> just cyclonedds build-rmw   # build packages/rmw/cyclonedds/nros-rmw-cyclonedds
-> just cyclonedds test        # run the CTest harness
-> ```
+> **Contributors:** the in-tree Cyclone DDS build/test lanes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#cyclone-dds).
 
 Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
 configure time; the root `CMakeLists.txt` add_subdirectory's

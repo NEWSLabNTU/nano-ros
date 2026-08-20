@@ -55,8 +55,8 @@ cargo build --release          # Rust leaves (after `nros sync`)
 cmake -B build && cmake --build build   # C / C++ leaves
 ```
 
-> **Contributors (in-tree fixture/test lanes):** `just freertos build`
-> / `just freertos test` build and exercise the in-tree fixtures.
+> **Contributors:** the in-tree fixture build/test lanes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
 For real hardware, deployment step becomes flash/load/monitor. For QEMU,
 deployment is launching simulator with correct network setup.
@@ -106,12 +106,8 @@ workspace layout.
 
 ESP32 deployment uses the Espressif toolchain and flash tool.
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just esp32 build
-> just esp32 talker
-> ```
+> **Contributors:** the in-tree ESP32 build/run lanes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
 
 For physical boards, use the platform guide's `espflash` path.
 

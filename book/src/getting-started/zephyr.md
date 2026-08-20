@@ -291,22 +291,8 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 ## E2E Testing
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> # Zenoh examples
-> just zephyr build           # Build Rust zenoh examples
-> just zephyr build-c         # Build C zenoh examples
-> just zephyr test            # Run zenoh E2E tests
->
-> # XRCE examples
-> just zephyr build-xrce      # Build all XRCE examples (Rust + C)
-> just zephyr test-xrce       # Run XRCE E2E tests
->
-> # All examples
-> just zephyr build-all       # Build everything
-> just zephyr ci              # Doctor + test (CI shortcut)
-> ```
+> **Contributors:** the in-tree fixture/test lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#zephyr).
 
 ## Troubleshooting
 
@@ -354,8 +340,5 @@ west update
 
 To completely recreate the workspace:
 
-> **Contributors (in-tree checkout):**
->
-> ```bash
-> just zephyr setup --force
-> ```
+> **Contributors:** the in-tree workspace-recreate lane is in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#zephyr).

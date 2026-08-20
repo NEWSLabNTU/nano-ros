@@ -82,14 +82,8 @@ supply yourself:
 
 ## Building
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just nuttx build
-> ```
->
-> This cross-compiles all NuttX examples for `armv7a-nuttx-eabi` using
-> `cargo +nightly build --release`.
+> **Contributors:** the in-tree build lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#nuttx).
 
 The examples link against NuttX's POSIX
 layer, which provides sockets, pthreads, and standard I/O.
@@ -117,12 +111,8 @@ path is arch-agnostic. Provision and build with:
 nros setup qemu-riscv-nuttx --rmw zenoh
 ```
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just nuttx build-riscv-c        # C example fixtures
-> just nuttx build-riscv-rust     # Rust example fixtures
-> ```
+> **Contributors:** the in-tree RISC-V fixture build lanes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#nuttx).
 
 Board crate: `nros-board-nuttx-qemu` (in `packages/boards/`) — the same crate as
 the arm board above, selected by `deploy = "nuttx-riscv"`, which picks the
@@ -134,12 +124,8 @@ runtime lanes cover the multi-tier scheduling path on this board.
 
 ## Testing
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just nuttx test        # arm QEMU integration tests
-> just nuttx test-all    # including the networked E2E lanes
-> ```
+> **Contributors:** the in-tree test lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#nuttx).
 
 Tests run under `qemu-system-arm -M virt` with TAP networking. Each QEMU
 instance connects to the host bridge (`br-qemu`) via TAP devices for

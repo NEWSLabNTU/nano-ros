@@ -214,18 +214,8 @@ The integration test `test_qemu_serial_pubsub_e2e` in `packages/testing/nros-tes
 4. Start zenohd with `--connect serial//dev/pts/N#baudrate=115200`
 5. Subscribe and verify message delivery
 
-> **Contributors (in-tree fixture/test lanes):** run it with:
->
-> ```bash
-> source ./activate.sh
-> just qemu build-fixtures                  # the test consumes a prebuilt
->                                           # qemu-arm-baremetal fixture
-> cargo nextest run -p nros-tests --test emulator test_qemu_serial_pubsub_e2e
-> ```
->
-> (A bare `cargo nextest` counts a skipped-precondition test as a FAILURE;
-> the contributor lane `just test-all` is what rewrites those into skips. Read the panic text
-> before treating a red here as a regression.)
+> **Contributors:** the in-tree lane that runs this test is in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#serial-transport-qemu).
 
 ## Baud Rate Tuning
 

@@ -10,9 +10,8 @@ socket layer). Two flavours ship in-tree:
 
 Rust, C, and C++ are supported on both flavours.
 
-> **Contributors (in-tree fixture/test lanes):** `just <flavour>
-> build-fixtures` produces `threadx_cpp_*` and `riscv64_threadx_cpp_*`
-> binaries alongside the Rust + C ones.
+> **Contributors:** the in-tree fixture/test lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#threadx).
 
 See the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
@@ -169,12 +168,8 @@ nros sync
 cargo build --release
 ```
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> just threadx_linux build-fixtures     # build all rust + c examples
-> just threadx_riscv64 build-fixtures
-> ```
+> **Contributors:** the in-tree fixture build lanes for both flavours are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#threadx).
 
 First setup builds ThreadX + NetX Duo (~3 min). Subsequent example
 builds finish in seconds.
@@ -215,11 +210,8 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-> **Contributors (in-tree fixture/test lanes):**
-> `just threadx_riscv64 talker` boots the prebuilt riscv64 talker
-> fixture in `qemu-system-riscv64` with the virtio-net + Slirp wiring
-> baked in. For batch testing, `just threadx_linux test` runs every
-> pubsub / service / action against an in-test zenohd.
+> **Contributors:** the in-tree fixture run/test lanes are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#threadx).
 
 **Readiness signal.** threadx-linux: `Publishing: 'Hello World: 1'`
 within a few seconds of `cargo run --release` **on a warm

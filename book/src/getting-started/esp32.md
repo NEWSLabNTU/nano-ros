@@ -81,15 +81,12 @@ locator   = "tcp/10.0.2.2:9800"
 
 ## Build
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> # QEMU ESP32 (qemu-system-riscv32). `just esp32 build-qemu` (which
-> # `just esp32 talker` depends on) builds the QEMU-board variant; the
-> # example's build.rs invokes `nros generate-rust` automatically, so
-> # the `generated/` dir populates on first build (gitignored).
-> just esp32 build-qemu
-> ```
+> **Contributors:** the in-tree fixture/test lanes for this platform are in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
+
+The user-facing build story for this page is the ESP-IDF component path
+— see [ESP32 (ESP-IDF component)](./integration-esp-idf.md) — pending
+this page's rewrite.
 
 ## Run
 
@@ -100,16 +97,8 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9800"];scouting/multicas
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 ```
 
-> **Contributors (in-tree fixture/test lanes):**
->
-> ```bash
-> # Boot the talker binary in qemu-system-riscv32 (esp32c3):
-> just esp32 talker
-> # Expected serial output (per src/lib.rs):
-> #   Publishing: 'Hello World: 1'
-> #   Publishing: 'Hello World: 2'
-> #   ...
-> ```
+> **Contributors:** the in-tree run lane that boots the talker in QEMU is in
+> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
 
 ```bash
 # Verify from stock ROS 2 on the same network:
@@ -122,10 +111,6 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 **Readiness signal.** QEMU ESP32: ~15 seconds after boot.
-
-> **Contributors (in-tree fixture/test lanes):** the `just esp32
-> talker` recipe re-runs `build-qemu` every invocation, so a first /
-> cold run adds ~25 s of build time on top.
 
 If no `Publishing:` line:
 

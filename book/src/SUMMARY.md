@@ -132,6 +132,7 @@
 - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
 - [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
 - [Creating Examples](./internals/creating-examples.md)
+- [Per-Platform Contributor Lanes](./internals/platform-lanes.md)
 - [Contributing](./internals/contributing.md)
 
 # Reference
