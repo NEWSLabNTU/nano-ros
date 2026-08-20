@@ -7,7 +7,7 @@
 # image defines:
 #
 #   freertos  #if configUSE_CORE_AFFINITY == 1   -> vTaskCoreAffinitySet
-#   nuttx     #ifdef CONFIG_SMP                  -> sched_setaffinity
+#   nuttx     #ifdef CONFIG_SMP                  -> pthread_setaffinity_np
 #   threadx   #ifdef TX_THREAD_SMP               -> tx_thread_smp_core_exclude
 #
 # The fallback is honestly reported at runtime, so the TEST is not lying. What
@@ -87,14 +87,47 @@ else
     fi
 fi
 
-# --- nuttx / threadx --------------------------------------------------------
-# Not yet covered. Each needs its own synthetic config (NuttX: CONFIG_SMP plus
-# whatever its sched.h then demands; ThreadX: the SMP port's tx_api.h, which the
-# vendored single-core port does not ship at all). Listed here so the gap is
-# visible in the gate's own output rather than only in the issue.
-head2 "nuttx / threadx core-pin arms"
-say "NOT COVERED YET — issue 0260. nuttx needs CONFIG_SMP, threadx needs the"
-say "SMP port's headers, and neither is a flag flip on the vendored tree."
+# --- nuttx: pthread_setaffinity_np -----------------------------------------
+#
+# Cheaper than FreeRTOS: the generated `nuttx/config.h` simply has no
+# CONFIG_SMP (0 occurrences — it is a single-core defconfig), and NuttX gates
+# the declaration on `#ifdef CONFIG_SMP` alone. Defining it on the command line
+# exposes `cpu_set_t` / `CPU_ZERO` / `CPU_SET` / `pthread_setaffinity_np`
+# together, with no synthetic port needed. No STUB-DRIFT arm here for that
+# reason: there are no stubs to drift.
+head2 "nuttx core-pin arm (pthread_setaffinity_np)"
+if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
+    say "SKIP: NUTTX_DIR unset/absent (source ./activate.sh)"
+elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+    say "SKIP: arm-none-eabi-gcc not on PATH"
+else
+    out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 -mthumb-interwork \
+        -DCONFIG_SMP \
+        -I "$NUTTX_DIR/include" \
+        -I "$NUTTX_DIR/sched" \
+        -I "$repo_root/packages/api/nros-c/include" \
+        -I "$repo_root/packages/platform/nros-platform-api/include" \
+        "$repo_root/packages/boards/nros-board-nuttx-qemu/c/nuttx_run_tiers.c" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        say "OK: the accept arm type-checks against the vendored NuttX headers"
+    else
+        fail=1
+        say "FAIL: the accept arm does not compile — this IS the call site."
+        printf '%s\n' "$out" | grep -E 'error' | head -5 | sed 's/^/      /'
+    fi
+fi
+
+# --- threadx ----------------------------------------------------------------
+# Not covered. The vendored ThreadX is the SINGLE-CORE port: it does not ship
+# `tx_thread_smp_core_exclude` in any header, so there is no declaration to
+# type-check our call against. Unlike freertos (a synthetic port config) and
+# nuttx (one macro), this needs the SMP port sources vendored first — a
+# different and larger job. Stated here so the gap is visible in the gate's own
+# output, not only in the issue.
+head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
+say "NOT COVERED — issue 0260. The vendored ThreadX is the single-core port and"
+say "ships no SMP header, so there is no declaration to check against."
 
 echo
 if [ "$fail" -ne 0 ]; then
