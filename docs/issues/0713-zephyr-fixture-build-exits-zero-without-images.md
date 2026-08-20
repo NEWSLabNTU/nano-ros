@@ -1,6 +1,6 @@
 ---
 id: 713
-title: "Tier 2's zephyr stage reports OK while the images its own in-lane tests need do not exist"
+title: "Tier 2's zephyr BUILD set is narrower than its RUN set — 7 coordinates built, more demanded as in-lane"
 status: open
 type: bug
 area: build/zephyr
@@ -61,6 +61,49 @@ STALE in-tree CLI precondition (`nros-cli-core/src/lib.rs:77`) AFTER the
 configure pass — which is why a hand-run leaves 70 configured dirs and no ELFs.
 That is the documented CLI-then-fixtures ordering, not a bug.
 
+## Diagnosed (2026-08-20)
+
+The stage did exactly what it was asked. From its own log
+(`tmp/build-test-fixtures-latest/zephyr.log`, and the joblog row
+`zephyr … 18 0`):
+
+```
+zephyr-fixture-make-driver: targets=
+    zephyr-fixture-1-build-cpp-talker-xrce
+    zephyr-fixture-2-build-cpp-listener-xrce
+    zephyr-fixture-3-build-cpp-service-server-xrce
+    zephyr-fixture-4-build-cpp-service-client-xrce
+    zephyr-fixture-5-build-cpp-action-server-xrce
+    zephyr-fixture-6-build-cpp-action-client-xrce
+    zephyr-fixture-7-build-cortex-m-c-talker-zenoh
+```
+
+SEVEN targets — tier 2's 1-wise zephyr cover. All were already present, so they
+reused, the stage took 18 seconds and exited 0. Nothing is broken about that.
+
+The console silence that started this investigation is also normal: the make
+path redirects each stage to a per-stage log (`>$log 2>&1`), so a successful
+stage prints nothing between `== zephyr ==` and `== zephyr == OK`.
+
+What the failing tests demand is a DIFFERENT set:
+
+```
+build-cortex-m-cpp-talker-zenoh      build-cortex-m-rust-talker-zenoh
+build-ws-rs-qos-entry-zenoh          (+ logging-smoke, entry_matrix cells, …)
+```
+
+none of which the build lane was asked to produce — and the resolver treats them
+as IN-LANE coordinates, so it fails hard rather than skipping.
+
+That is issue 0482's subject exactly: **a lane answers TWO questions and they
+have different answers** — which fixtures must be FRESH (the build's cell cover)
+versus which must EXIST (a property of the RUN). `CiLane::run_scope` and
+`nros_lane_build_lane` are supposed to keep those in step; for zephyr they do
+not. Either the run is admitting coordinates the tier-2 cover excludes, or the
+cover is too narrow for the cells bound to it.
+
+## Superseded notes
+
 ## What remains established
 
 * Tier 2's fixture lane printed `== zephyr == OK`, with no build output between
@@ -100,12 +143,14 @@ it is failing silently, and the extra dirs changed nothing.
 
 ## Direction
 
-1. Find out what the tier-2 stage actually does. The recipe fails correctly in
-   isolation, so the gap is between `build-test-fixtures`'s zephyr stage and the
-   recipe — `run_stage zephyr just zephyr build-fixtures` under `in_lane zephyr`.
-   Instrument that stage before theorising again.
+1. Decide which side is wrong: does tier 2's zephyr cover need those
+   coordinates, or should the tests bound to them be out-of-lane for tier 2?
+   `matrix::CELLS` / `interop::CELLS` declare the run set; `fixtures-manifest.py
+   coords` computes the build set. They must agree per issue 0482, and the
+   `matrix_fixture_coverage.rs` gates exist to enforce exactly that — so the
+   first question is why those gates pass while this diverges.
 2. Separately, the `make: *** wait: No child processes` seen in a hand-run is
-   real and worth understanding. The `NROS_JOBSERVER=1` path omits
+   real and worth understanding, but it is NOT this issue's mechanism. The `NROS_JOBSERVER=1` path omits
    `ninja -j` / `CMAKE_BUILD_PARALLEL_LEVEL` deliberately, so a token-pool fault
    here starves the leaves rather than slowing them.
 3. A post-condition worth having regardless: the lane knows which coordinates it
