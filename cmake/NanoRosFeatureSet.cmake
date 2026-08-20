@@ -233,6 +233,91 @@ endfunction()
 #
 # `context` is the caller's name, used only in the diagnostic.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Public — `nros_apply_panic_policy(<policy> <context>)`
+#
+# issue 0719 — apply an image's ending to the imported nros-c/nros-cpp
+# staticlibs. THE one implementation, called by `nano_ros_entry()` and by every
+# path that builds an image without going through it.
+#
+# It exists because those paths cannot all call the entry: `nano_ros_entry()` is
+# entry-package shaped (NAME/BOARD/LAUNCH/MODEL/BRINGUP), while a board seam and
+# an ESP-IDF component are shaped by the build system that owns the image. What
+# they share is not the entry — it is this. #0666 was closed by converging one
+# leaf onto one path; this converges the CROSS-CUTTING HALF for the paths that
+# cannot converge.
+#
+# Before this, two of them carried hand-copied versions (added by #0688 and
+# #0700, each after a build broke), and both copies were INCOMPLETE in the same
+# two ways — no cross-entry conflict detection, and no respect for a lane that
+# applies the ending itself. A second spelling of a rule is how the rule drifts;
+# these were third and fourth.
+#
+# `context` names the caller, for the diagnostics.
+# ---------------------------------------------------------------------------
+function(nros_apply_panic_policy policy context)
+    if(NOT policy)
+        set(policy platform)
+    endif()
+    string(TOLOWER "${policy}" _app_policy)
+    nros_panic_policy_feature(_app_feature "${policy}" "${context}")
+
+    # One staticlib serves every image in a build, so two callers asking for
+    # different endings is a contradiction rather than a merge — taking the
+    # first silently would ship an image ending the way some OTHER caller asked.
+    get_property(_app_seen GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY)
+    if(_app_seen AND NOT _app_seen STREQUAL "${_app_policy}")
+        message(FATAL_ERROR
+            "${context}: PANIC ${_app_policy} conflicts with PANIC ${_app_seen} "
+            "already requested in this build. The nros-c/nros-cpp staticlib is "
+            "shared, so one ending applies to all of them — make them agree, or "
+            "build them separately.")
+    endif()
+    set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY "${_app_policy}")
+
+    # Some lanes apply the ending THEMSELVES because their Rust side is not a
+    # Corrosion target (zephyr's `nros_cargo_build`, nuttx's custom-target cargo
+    # build). Such a lane declares what it applied; this VERIFIES agreement
+    # instead of scanning for a target that will never exist (issue 0689).
+    get_property(_app_ext GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED)
+    get_property(_app_ext_lane GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_BY)
+    get_property(_app_ext_how GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW)
+    if(_app_ext)
+        string(TOLOWER "${_app_ext}" _app_ext_lc)
+        if(NOT _app_ext_lc STREQUAL "${_app_policy}")
+            message(FATAL_ERROR
+                "${context}: PANIC ${_app_policy} contradicts the ending already "
+                "built into this ${_app_ext_lane} image (${_app_ext_lc}). "
+                "${_app_ext_how}")
+        endif()
+        return()
+    endif()
+
+    if(NOT _app_feature)
+        return()  # `own` — the image supplies its own provider, by declaration.
+    endif()
+
+    # Corrosion names the importable target after the crate, and which spelling
+    # exists depends on the crate's `crate-type` and Corrosion's version.
+    set(_app_applied FALSE)
+    foreach(_app_target nros_c nros_cpp nros_c-static nros_cpp-static)
+        if(TARGET ${_app_target})
+            corrosion_set_features(${_app_target} FEATURES ${_app_feature})
+            set(_app_applied TRUE)
+        endif()
+    endforeach()
+    # A silent skip is the failure this exists to remove: the caller states an
+    # ending, the archive is built without it, and nothing says so until a panic
+    # does nothing — or the link fails four crates away, which is how #0688 and
+    # #0700 were both found.
+    if(NOT _app_applied)
+        message(FATAL_ERROR
+            "${context}: PANIC ${_app_policy} cannot be applied — no "
+            "nros-c/nros-cpp Rust target exists at this point in the configure. "
+            "The staticlib must be imported before the ending is declared.")
+    endif()
+endfunction()
+
 function(nros_panic_policy_feature out_var policy context)
     string(TOLOWER "${policy}" _p)
     if(_p STREQUAL "platform")

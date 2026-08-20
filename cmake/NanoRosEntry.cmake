@@ -194,88 +194,13 @@ function(nano_ros_entry)
     # said so, and now ends the way its board ends — printing where the port
     # prints, `k_panic()` on Zephyr, exiting QEMU on the ThreadX RV64 board. An
     # image that wants the old behaviour says `PANIC halt`.
-    if(NOT _NRA_PANIC)
-        set(_NRA_PANIC platform)
-    endif()
-    if(_NRA_PANIC)
-        string(TOLOWER "${_NRA_PANIC}" _nra_panic)
-        nros_panic_policy_feature(_nra_panic_feature
-            "${_NRA_PANIC}" "nano_ros_entry(${_NRA_NAME})")
-
-        # One staticlib serves every entry in a workspace, so two entries asking
-        # for different endings is not a merge — it is a contradiction, and
-        # silently taking the first would ship an image that ends the way some
-        # OTHER entry asked for.
-        get_property(_nra_panic_seen GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY)
-        if(_nra_panic_seen AND NOT _nra_panic_seen STREQUAL "${_nra_panic}")
-            message(FATAL_ERROR
-                "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} conflicts with "
-                "PANIC ${_nra_panic_seen} already requested by another entry in this "
-                "build. The nros-c/nros-cpp staticlib is shared, so one ending "
-                "applies to all of them — make the entries agree, or build them "
-                "separately.")
-        endif()
-        set_property(GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY "${_nra_panic}")
-
-        # Some lanes apply the ending THEMSELVES, because their Rust side is not
-        # a Corrosion target and there is nothing here to call
-        # `corrosion_set_features()` on. Such a lane declares what it applied and
-        # how it is set, and this call VERIFIES agreement instead of scanning for
-        # a target that will never exist:
-        #
-        #   zephyr  `zephyr/CMakeLists.txt` — `nros_cargo_build()` plus an
-        #           IMPORTED `nros_c_cargo`; `find_package(Zephyr)` fixes the
-        #           feature list before the app's `nano_ros_add_executable()`.
-        #   nuttx   `packages/api/nros-c/cmake/nros-nuttx.cmake` — an
-        #           `add_custom_target` cargo build of `nros-nuttx-ffi`, whose
-        #           COMMITTED manifest names the `nros-c` features.
-        #
-        # Issue 0689 — this was a Zephyr-only special case, and the next lane
-        # over hit the same FATAL_ERROR the moment it was made fatal. Two
-        # spellings of one rule is what CLAUDE.md warns about, so the property is
-        # lane-neutral and carries the lane's name for the message.
-        get_property(_nra_ext_panic GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED)
-        get_property(_nra_ext_lane GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_BY)
-        get_property(_nra_ext_how GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED_HOW)
-        if(_nra_ext_panic)
-            string(TOLOWER "${_nra_ext_panic}" _nra_ext_panic_lc)
-            if(NOT _nra_ext_panic_lc STREQUAL "${_nra_panic}")
-                message(FATAL_ERROR
-                    "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} contradicts "
-                    "the ending already built into this ${_nra_ext_lane} image "
-                    "(${_nra_ext_panic_lc}). ${_nra_ext_how}")
-            endif()
-            set(_nra_panic_feature "")
-        endif()
-
-        if(_nra_panic_feature)
-            # Corrosion names the importable target after the crate, and which
-            # spelling exists depends on the crate's `crate-type` and Corrosion's
-            # version — `nros_cpp` here, `nros_cpp-static` where the staticlib is
-            # imported directly. Try both.
-            set(_nra_panic_applied FALSE)
-            foreach(_nra_rust_target
-                    nros_c nros_cpp nros_c-static nros_cpp-static)
-                if(TARGET ${_nra_rust_target})
-                    corrosion_set_features(${_nra_rust_target}
-                        FEATURES ${_nra_panic_feature})
-                    set(_nra_panic_applied TRUE)
-                endif()
-            endforeach()
-            # A silent skip here is the failure this phase exists to remove: the
-            # entry would state its ending, the archive would be built without
-            # it, and nothing would say so until a panic did nothing (or the link
-            # failed four crates away). If no Rust target is importable yet, the
-            # keyword cannot be honoured and that is a build error, not a shrug.
-            if(NOT _nra_panic_applied)
-                message(FATAL_ERROR
-                    "nano_ros_entry(${_NRA_NAME}): PANIC ${_nra_panic} cannot be "
-                    "applied — no nros-c/nros-cpp Rust target exists at this point "
-                    "in the configure. The staticlib must be imported before the "
-                    "entry declares its ending.")
-            endif()
-        endif()
-    endif()
+    # issue 0719 — ONE applier, shared with the image paths that cannot call
+    # this function (board seams, the ESP-IDF component shim). Everything that
+    # used to be inline here — the default, the mapper, cross-entry conflict
+    # detection, the externally-applied-lane check (#0689), the four target
+    # spellings, and the fail-loud — lives in `nros_apply_panic_policy`, because
+    # two of those paths had hand-copied HALF of it.
+    nros_apply_panic_policy("${_NRA_PANIC}" "nano_ros_entry(${_NRA_NAME})")
 
     # Phase 241.D3-rev — infer LANG from the source extensions when not given.
     # The C and C++ umbrellas are now DISTINCT staticlibs (`libnros_c.a` vs

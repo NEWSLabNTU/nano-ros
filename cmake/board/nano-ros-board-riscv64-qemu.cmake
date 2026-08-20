@@ -642,25 +642,13 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
     #
     # `platform` is the same default `nano_ros_entry()` applies when an image
     # states no policy.
-    nros_panic_policy_feature(_rv64_panic_feature platform
+    # issue 0719 — the shared applier. This seam is not `nano_ros_entry()` and
+    # cannot be (it is board-shaped, not entry-shaped), which is exactly why the
+    # policy has to come from somewhere both can call. The hand-copy that used to
+    # live here (added by #0688) lacked the conflict detection and the
+    # externally-applied-lane check.
+    nros_apply_panic_policy(platform
         "nros_threadx_rv64_rust_app(${target})")
-    if(_rv64_panic_feature)
-        set(_rv64_panic_applied FALSE)
-        foreach(_rv64_rust_target nros_c nros_cpp nros_c-static nros_cpp-static)
-            if(TARGET ${_rv64_rust_target})
-                corrosion_set_features(${_rv64_rust_target}
-                    FEATURES ${_rv64_panic_feature})
-                set(_rv64_panic_applied TRUE)
-            endif()
-        endforeach()
-        # Same reasoning as the entry's: a silent skip here is the failure this
-        # fixes, so an unappliable policy is an error rather than a shrug.
-        if(NOT _rv64_panic_applied)
-            message(FATAL_ERROR
-                "nros_threadx_rv64_rust_app(${target}): no nros-c/nros-cpp "
-                "target was importable, so PANIC platform could not be applied.")
-        endif()
-    endif()
 
     add_executable(${target} "${_anchor}")
     # issue 0666 — NO `NanoRos::NanoRos` here. That umbrella pulls in

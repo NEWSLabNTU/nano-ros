@@ -140,39 +140,15 @@ idf_component_register(
 # the same as in a regular host build.
 add_subdirectory("${_nros_root}" nano_ros_root)
 
-# issue 0700 / 0692 — apply the image's panic policy to the imported nros-c,
-# exactly as `nano_ros_entry()` does for every leaf that goes through it.
+# issue 0719 — the shared applier, not a third hand-copy of it.
 #
-# This shim does not go through the entry, so nothing did, and `nros-c` is
-# imported with `--no-default-features` which strips its own
-# `default = ["panic-platform"]`. A staticlib is a FINAL artifact, so rustc
-# requires the lang item and the build died with
-# ``#[panic_handler]` function required, but not found` — four crates from
-# anything naming the cause. This is the THIRD site of that shape (the
-# threadx-rv64 Rust Cyclone seam was the first two); it is issue 0666's
-# "a bespoke build path misses the machinery the shared verb applies".
-#
-# Unlike the threadx Rust leaf, this image IS a C app linking the C API, so
-# `nros-c` is the RIGHT owner of the ending and there is no competing provider.
-nros_panic_policy_feature(_nros_idf_panic_feature platform
-    "integrations/nano-ros (esp-idf component shim)")
-if(_nros_idf_panic_feature)
-    set(_nros_idf_panic_applied FALSE)
-    foreach(_nros_idf_rust_target nros_c nros_cpp nros_c-static nros_cpp-static)
-        if(TARGET ${_nros_idf_rust_target})
-            corrosion_set_features(${_nros_idf_rust_target}
-                FEATURES ${_nros_idf_panic_feature})
-            set(_nros_idf_panic_applied TRUE)
-        endif()
-    endforeach()
-    # A silent skip here is the failure this fixes: the image would state an
-    # ending, the archive would be built without one, and nothing would say so.
-    if(NOT _nros_idf_panic_applied)
-        message(FATAL_ERROR
-            "integrations/nano-ros: no nros-c/nros-cpp target was importable, "
-            "so PANIC platform could not be applied.")
-    endif()
-endif()
+# This shim does not go through `nano_ros_entry()` and cannot: ESP-IDF owns the
+# image, and the entry is entry-package shaped. What it shares with the entry is
+# the cross-cutting half, which now lives in `nros_apply_panic_policy`. The copy
+# that used to be here (added by #0700, after `nros-c` failed to compile with
+# `#[panic_handler] required, but not found`) lacked the conflict detection and
+# the externally-applied-lane check that the entry has always had.
+nros_apply_panic_policy(platform "integrations/nano-ros (esp-idf component shim)")
 
 # Re-export the umbrella interface target. INTERFACE linkage so user
 # components depending on `nano-ros` pick up the transitive deps.
