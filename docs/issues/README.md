@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0731** (build/logging, open 2026-08-20, HIGH) — `main` is RED at tier 1. `check-workspace-features` runs
+`cargo test --no-run --workspace --exclude nros-c --no-default-features`, and `PlatformSink` references
+`nros_platform_log_write`/`_flush` — which no platform port defines when the consumer selects no features. Every
+test binary linking `nros-log` fails; the target named varies (whichever the linker reaches first), which is why
+it reads like an unrelated test breaking. Issue 0619's class one crate over. Reproduced on a HOST checkout and
+in the box, so not environmental, and NOT the #707/#704 work it was found under. Lead, not an attribution:
+#0708 and #0710 both landed 2026-08-20 and are both about which sink gets installed. Direction 1 (gate
+`PlatformSink` on having a port) answers the question the lane asks; direction 2 (give the test targets a port)
+makes the lane pass without making the CONFIGURATION valid. See `0731-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0704** — PlatformIO is not a supported integration, so its TEST SURFACE is
 deleted rather than left opt-in. The `pio run` bringup suite blew the 60 s budget on a COLD package cache and
 passed in 3.4 s warm — worse than a permanent red, since it passed for whoever had already run it. The opt-in
