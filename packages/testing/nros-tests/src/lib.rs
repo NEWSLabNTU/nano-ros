@@ -338,16 +338,94 @@ fn domain_in_slot(slot: u32, seq: u32) -> u8 {
     ((block.wrapping_add(seq % DOMAINS_PER_SLOT) % TEST_DOMAIN_MAX) + 1) as u8
 }
 
+/// Is a DDS participant already bound to this domain's discovery port?
+///
+/// Issue 0707 — RTPS derives its ports from the domain id, so "somebody is on
+/// domain d" is answerable locally without joining the bus: SPDP's multicast
+/// port is `7400 + 250*d`, and every participant on that domain binds it. Read
+/// the kernel's table rather than trying to bind: `SO_REUSEADDR` on a multicast
+/// socket means a successful bind proves nothing.
+///
+/// Local only, deliberately. The orphan this exists to dodge is a process the
+/// last run left behind on THIS host (issue 0659's class), and a peek that
+/// needed real discovery would have to create the participant it is trying to
+/// place.
+///
+/// Non-Linux, or `/proc` unreadable: answers "not busy", so the assignment is
+/// exactly what it was before. A probe that cannot see must not invent.
+#[cfg(target_os = "linux")]
+fn domain_discovery_port_busy(domain: u8) -> bool {
+    let want = 7400u32 + 250 * u32::from(domain);
+    for table in ["/proc/net/udp", "/proc/net/udp6"] {
+        let Ok(body) = std::fs::read_to_string(table) else {
+            continue;
+        };
+        for line in body.lines().skip(1) {
+            // `sl  local_address rem_address …` — local is `HEXADDR:HEXPORT`.
+            let Some(local) = line.split_whitespace().nth(1) else {
+                continue;
+            };
+            let Some((_, port_hex)) = local.rsplit_once(':') else {
+                continue;
+            };
+            if u32::from_str_radix(port_hex, 16).ok() == Some(want) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "linux"))]
+fn domain_discovery_port_busy(_domain: u8) -> bool {
+    false
+}
+
+/// [`domain_in_slot`], stepping to the next block while the domain is occupied.
+///
+/// Split out from [`unique_ros_domain_id`] so the stepping is testable without
+/// binding real sockets — the probe is the parameter.
+///
+/// Determinism is preserved where it was worth having: with nothing squatting,
+/// the first candidate is free and the result is bit-identical to the old
+/// scheme. It moves only in the case where reusing the domain would be wrong,
+/// which is the whole disagreement issue 0707 recorded between reproducibility
+/// and isolation — this keeps the former until it costs the latter.
+///
+/// Bounded at 25 attempts (the slot count the partition supports) and then
+/// gives up and returns the first candidate: an environment where every domain
+/// looks busy is not one this function can fix, and failing to return a domain
+/// would break every caller.
+fn domain_avoiding_busy(slot: u32, seq: u32, busy: impl Fn(u8) -> bool) -> u8 {
+    let first = domain_in_slot(slot, seq);
+    if !busy(first) {
+        return first;
+    }
+    let slots = TEST_DOMAIN_MAX / DOMAINS_PER_SLOT;
+    for step in 1..=slots {
+        let candidate = domain_in_slot(slot.wrapping_add(step), seq);
+        if !busy(candidate) {
+            return candidate;
+        }
+    }
+    first
+}
+
 pub fn unique_ros_domain_id() -> u8 {
     let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
     if let Some(slot) = std::env::var("NEXTEST_TEST_GLOBAL_SLOT")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
     {
-        return domain_in_slot(slot, seq);
+        // Issue 0707 — a FILTERED or solo nextest run is always global slot 0,
+        // so `0*4 + 0 + 1` made every such run take domain 1. That is the run an
+        // engineer does when retesting a red solo (which CLAUDE.md prescribes),
+        // i.e. the moment they are most likely to be chasing a ghost is the one
+        // guaranteed to reuse the bus that produced it.
+        return domain_avoiding_busy(slot, seq, domain_discovery_port_busy);
     }
     let pid = std::process::id();
-    domain_in_slot(pid, seq)
+    domain_avoiding_busy(pid, seq, domain_discovery_port_busy)
 }
 
 /// Poll a file descriptor for readability using poll(2).
@@ -849,6 +927,69 @@ pub fn pinned_nightly() -> String {
 
 #[cfg(test)]
 mod tests {
+    // ---- issue 0707: the domain assigner steps around an occupied bus -------
+
+    #[test]
+    fn a_free_domain_is_the_same_answer_as_before() {
+        // The property the old scheme was chosen for. With nothing squatting,
+        // probe-and-step must be bit-identical to plain partitioning, or the
+        // fix has traded away the reproducibility it promised to keep.
+        for slot in 0..30u32 {
+            for seq in 0..6u32 {
+                assert_eq!(
+                    super::domain_avoiding_busy(slot, seq, |_| false),
+                    super::domain_in_slot(slot, seq),
+                    "slot {slot} seq {seq} moved with nothing to avoid"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_occupied_domain_is_stepped_over() {
+        // The 0707 case exactly: a filtered/solo run is global slot 0, so the
+        // first candidate is domain 1 and an orphan is sitting on it.
+        let first = super::domain_in_slot(0, 0);
+        assert_eq!(first, 1, "the hazard's precondition changed");
+        let got = super::domain_avoiding_busy(0, 0, |d| d == first);
+        assert_ne!(got, first, "stayed on the occupied domain");
+        assert!((1..=super::TEST_DOMAIN_MAX as u8).contains(&got));
+    }
+
+    #[test]
+    fn every_domain_busy_still_returns_one() {
+        // Giving up must yield a domain, not hang or panic: a host where the
+        // probe says everything is taken is not something this can fix, and a
+        // caller with no domain has nowhere to go.
+        assert_eq!(
+            super::domain_avoiding_busy(0, 0, |_| true),
+            super::domain_in_slot(0, 0)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_probe_sees_a_real_bound_discovery_port() {
+        // Both directions against the kernel's own table, because a probe that
+        // stopped probing would look exactly like a quiet host.
+        let free = 97u8;
+        let busy = 96u8;
+        assert!(
+            !super::domain_discovery_port_busy(free),
+            "domain {free} looked busy before anything bound it"
+        );
+        let port = 7400u16 + 250 * u16::from(busy);
+        let Ok(sock) = std::net::UdpSocket::bind(("0.0.0.0", port)) else {
+            // Something else owns it; the assertion below would be meaningless.
+            return;
+        };
+        assert!(
+            super::domain_discovery_port_busy(busy),
+            "bound {port} and the probe did not see it"
+        );
+        drop(sock);
+    }
+
     use super::*;
 
     #[test]

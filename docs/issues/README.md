@@ -51,6 +51,8 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0707** — every filtered or solo nextest run is global slot 0, so
+
 Recently resolved (2026-08-20): **#0727** — `PlatformSink`'s extern pair rode #708/#710's new
 `nros-rmw-cffi -> nros-log` LIBRARY edge into host test binaries with no port, and whether the unreferenced
 vtable was GC'd before the link was codegen luck; the workspace `--no-default-features` test-compile lost
@@ -260,16 +262,6 @@ Three of the five boards that made this call independently got it partly wrong, 
 passes them, which is why `check-board-log-sink.py` is per-FUNNEL (delegation credited, build-script `run*`
 excluded). Acceptance is now a test: the fixture no longer publishes its own list, so it asserts the board's.
 See `archived/0708-*`. (2026-08-20)
-
-**#0707** (testing, open 2026-08-20) — every solo or filtered run takes ROS domain 1 (`slot 0, seq 0`), so an
-orphan left on domain 1 joins the next run. Filed on issue 0672's own instruction, which recorded the hazard
-as "reachable, not yet observed" and asked for an issue if a collision was ever seen directly. The
-2026-08-20 sweep's one real failure carried `[RTPS_READER_HISTORY Error] Change payload size of '28' bytes
-is larger than the history payload size of '15' bytes` — cross-talk from a participant the test did not put
-there. NOT established that the bus was domain 1: the message carries no domain and the run had a real
-slot. The defect is the DETERMINISM rather than the collision — hand-run repros and solo retests of a red,
-the workflow CLAUDE.md prescribes, all land on the same bus as whatever left the orphan. Three directions
-recorded, none free. See `0707-*`. (2026-08-20)
 
 Recently resolved (2026-08-19): **#666** + **#668** — the six ThreadX-RV64 rust leaves were the only
 standalone examples with TWO build paths (cargo for zenoh, CMake for cyclone) and TWO entry points, with the
