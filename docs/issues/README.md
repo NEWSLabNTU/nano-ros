@@ -1219,9 +1219,15 @@ strictness affordable — `just zephyr kconfig-trees` first (two shallow clones,
 READ from `west-4.4.yml`, no west workspace so no repeat of #0078), then an unchecked supported line
 became a FAILURE naming that command (`NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1` overrides, labelled PARTIAL).
 Verified four ways including that a renamed symbol is still reported `absent on 3.7` AND `absent on 4.4`
-with file:line — strictness did not displace the substantive check. Still open, both DECISIONS: promote a
-4.4 cell into tier 3 (a build cell still needs the full west workspace + py312), or drop the rolling line,
-which the policy allows. See `0651-*`.
+with file:line — strictness did not displace the substantive check. **Direction 3 also done:** `ci-full` (tier 3) now runs
+`check-zephyr-kconfig-symbols` plus `just zephyr tier3-cell`, a real 4.4 `build-one`. `ci-both` was the
+wrong vehicle — it SKIPS an unprovisioned line by design — so `tier3-cell` ASSERTS the workspace and fails
+with the remedy, with NO escape hatch: an opt-out would let ci-full print "tier 3 passed" over a line
+nobody built. Verified absent->rc=1 and present->control reaches `build-one`. **NOT verified: the 4.4
+build passing** — this host cannot provision the workspace (3.7's is 228 GB, 30 GB free; #0078 is a 4.4
+setup filling a CI disk), so the green path is unexecuted and the first machine with a 4.4 workspace proves
+it. Remaining is one DECISION: keep the rolling line or drop it, which the policy allows since nothing in
+the tree requires 4.4. See `0651-*`.
 
 Recently resolved (2026-08-17): **#642** (build/testing) — `check-archive-lang-items` failed `build-test-fixtures` on
 16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it

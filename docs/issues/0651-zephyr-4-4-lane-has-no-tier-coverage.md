@@ -217,10 +217,7 @@ rather than nominally.
 
 Directions 3 and 4, unchanged, and both are decisions rather than work:
 
-* **Promote a 4.4 cell into tier 3.** Now unblocked — the workspace question
-  that made it "skip and read as green" is answered for the KCONFIG tree. A
-  BUILD cell still needs the full west workspace and the py312 venv, so this is
-  not free.
+* ~~**Promote a 4.4 cell into tier 3.**~~ **Done — see below.**
 * **Decide the line's status.** Nothing in this tree is gated on 4.4; the
   support policy allows "at most one rolling", not "at least one". Dropping it
   remains a legitimate and cheaper answer than half-testing it.
@@ -229,3 +226,47 @@ Everything this gate can answer without building is now answered on both lines.
 Everything else — a symbol that exists on both but means something different, the
 patch sets, `k_mutex` owner-only-unlock, the py312 floor — still needs a build,
 and the nightly is still the only thing that does one.
+
+## Direction 3 done (2026-08-20) — tier 3 covers 4.4, and cannot skip it
+
+`ci-full` gained two steps, cheapest first:
+
+| step | needs | cost |
+| --- | --- | --- |
+| `check-zephyr-kconfig-symbols` | source only | ~2 s, `just zephyr kconfig-trees` (613 MB) |
+| `just zephyr tier3-cell` | the 4.4 west workspace | one real `build-one c/talker zenoh` |
+
+`ci-both` was the wrong vehicle for a tier and is left alone: it SKIPS a line
+whose workspace is absent, deliberately, and a skip that reports the same colour
+as a pass is precisely what this issue is about. `tier3-cell` ASSERTS the
+workspace and fails with the remedy instead.
+
+**No escape hatch, on purpose.** An opt-out here would let `ci-full` print
+"tier 3 passed" over a line nobody built — the thing being fixed. A host that
+cannot provision 4.4 runs tier 2, which never claimed to cover it. That is a
+real cost and it is the intended one: tier 3 is pre-release and on demand, so
+requiring what it claims is affordable there and nowhere else.
+
+### What is verified, and what is not
+
+Verified here:
+
+* workspace absent -> `rc=1`, naming `NROS_ZEPHYR_VERSION=4.4 just zephyr setup`,
+  and explaining why it is not a skip;
+* workspace present -> the guard passes and control reaches `build-one`
+  (checked with a stand-in directory: the run proceeds to
+  `=== tier 3: Zephyr 4.4 — building zephyr/c/talker (zenoh) ===` rather than
+  reporting the line absent);
+* `just --show ci-full` lists both new steps.
+
+**NOT verified: the 4.4 build itself passing.** This host cannot provision the
+workspace — `zephyr-workspace` (3.7) is 228 GB and the filesystem has 30 GB
+free, and issue 0078 is the record of a 4.4 setup filling a CI disk. So the
+green path of `tier3-cell` has never been executed. The first machine to run
+`just ci-full` with a 4.4 workspace is proving it, and if `build-one` needs a
+different example or extra env on that line, that is where it will surface.
+
+This is the honest state: tier 3 can no longer report success having built
+nothing on 4.4, which is the property the issue asked for. Whether the 4.4 build
+is currently green is a separate question the nightly answers and this host
+cannot.

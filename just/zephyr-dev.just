@@ -346,6 +346,44 @@ ci-both example="c/talker" rmw="zenoh":
     fi
     echo "OK: all present Zephyr lines built (skips reported above)."
 
+# Issue 0651 direction 3 — the 4.4 cell tier 3 runs. `ci-both` is the wrong
+# vehicle for a TIER: it SKIPS a line whose workspace is absent, by design, and
+# a skip that reports the same colour as a pass is the exact failure this issue
+# was filed about. Tier 3 is pre-release and on demand, so it can afford to
+# REQUIRE what it claims to cover.
+#
+# So this asserts the workspace before building, and fails with the remedy when
+# it is missing. There is deliberately NO escape hatch: an opt-out here would
+# reintroduce "ci-full says tier 3 passed" over a line nobody built. A host that
+# cannot provision 4.4 runs tier 2 (`just ci-matrix`), which never claimed to.
+#
+# One representative example, matching what the nightly's `ci-both` job builds —
+# the point is that a Kconfig or API change fails HERE rather than a day later
+# attributed to whatever else moved that night.
+[group("full-matrix")]
+tier3-cell example="c/talker" rmw="zenoh":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ws="${NROS_ZEPHYR_WORKSPACE_44:-../nano-ros-workspace-4.4}"
+    ws_abs="$(realpath "$ws" 2>/dev/null || echo "")"
+    if [ -z "$ws_abs" ] || [ ! -d "$ws_abs/zephyr" ]; then
+        echo "error: tier 3 covers the Zephyr 4.4 line and its workspace is absent." >&2
+        echo "  looked for: $ws/zephyr" >&2
+        echo >&2
+        echo "  Provision it:  NROS_ZEPHYR_VERSION=4.4 just zephyr setup" >&2
+        echo >&2
+        echo "  NOT skipped on purpose (issue 0651): a lane that skips when" >&2
+        echo "  unprovisioned reports the same colour as one that passed, which is" >&2
+        echo "  what let 4.4 breakage reach the nightly unattributed. If this host" >&2
+        echo "  cannot provision 4.4, run tier 2 (just ci-matrix) instead — it does" >&2
+        echo "  not claim to cover this line." >&2
+        exit 1
+    fi
+    echo "=== tier 3: Zephyr 4.4 — building zephyr/{{example}} ({{rmw}}) ==="
+    NROS_ZEPHYR_VERSION=4.4 NROS_ZEPHYR_WORKSPACE="$ws_abs" \
+        just zephyr build-one "{{example}}" "{{rmw}}"
+    echo "=== tier 3: Zephyr 4.4 OK ==="
+
 # CI: doctor + test
 [group("full-matrix")]
 ci: doctor test

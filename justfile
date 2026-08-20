@@ -3274,9 +3274,20 @@ sweep-family platform drop="0":
 # had been failing since phase-303 W4 added the XCDR2 DHEADER seam, found only
 # when 0345 ran it by hand and repaired the stubs. Green now, which is what makes
 # laning it worth doing today when it was not last week.
+# Issue 0651 — tier 3 now covers the Zephyr 4.4 rolling line, which until here
+# existed only in the nightly. Two steps, cheapest first:
+#   check-zephyr-kconfig-symbols  source only, ~2 s, needs `just zephyr
+#                                 kconfig-trees` (613 MB of shallow clones)
+#   zephyr tier3-cell             one real 4.4 build, needs the west workspace
+# Both FAIL rather than skip when unprovisioned. That is the point: a lane that
+# skips when unprovisioned reports the same colour as one that passed, which is
+# how a `select` correct on 3.7 and misspelled on 4.4 reached the nightly a day
+# later, attributed to whatever else moved. A host that cannot provision 4.4
+# runs tier 2, which never claimed to cover it.
 [group("ci")]
-ci-full: check rust-rtos-link-check test-all test-ignored
-    @echo "CI passed (tier 3 — full matrix)!"
+ci-full: check rust-rtos-link-check check-zephyr-kconfig-symbols test-all test-ignored
+    @just zephyr tier3-cell
+    @echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
 
 # =============================================================================
 # CI reorg (step A) — local mirrors of the standalone CI workflows + a fast lane.
