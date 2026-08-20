@@ -68,6 +68,16 @@ esp-println = { version = "~0.16.0", features = ["esp32c3", "log-04"] }
 # the QEMU console; without an installed logger they are silently dropped (the `log`
 # crate defaults to no logger / LevelFilter::Off).
 log = { version = "0.4", default-features = false }
+# issue 0708 — `node.rs`'s boot funnel calls `::nros_log::init_default()`, and
+# this crate declared no `nros-log` dependency at all: the call was added
+# without it, so the board did not compile
+# (`error[E0433]: cannot find `nros_log` in the crate root`). NOT optional —
+# `node.rs` is always compiled, and an always-compiled call cannot rest on an
+# optional dep. Same shape as the `nros-board-mps2-an385` fix beside it; every
+# other board that publishes at a funnel already deps this non-optionally, and
+# `nros-board-zephyr`'s IS optional only because its call sits behind the same
+# `tiers` feature that enables it.
+nros-log = { path = "../../core/nros-log", default-features = false }
 esp-alloc = { version = "~0.9.0" }
 
 # Atomics for riscv32imc (no hardware atomic support). Feature-gated by the
