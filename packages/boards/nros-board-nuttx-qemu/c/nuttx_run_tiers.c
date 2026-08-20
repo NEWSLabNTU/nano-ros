@@ -526,14 +526,51 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
      * spin loop never returns). */
     void* session_handle = nros_cpp_executor_session_handle(boot_storage);
 
-    /* --- Run boot tier (tiers[0]) setup on THIS thread FIRST --- */
+    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
+    /*
+     * This used to be `&tiers[0]`, which the emitter documents as the MOST
+     * urgent tier ("sorted highest-priority-first", nros/main.hpp). The boot
+     * thread owns the session and spins forever, so making it outrank every
+     * tier it spawned starves them: under SCHED_FIFO on a uniprocessor guest a
+     * lower-priority peer runs only when the holder BLOCKS, and a spin loop
+     * does not reliably block. `17666723d` removed that arrangement from the
+     * Rust arm (`nros_platform::boot_tier_index`); this file kept it, so the
+     * two language arms disagreed about which tier owns the session on one
+     * board.
+     *
+     * The array is sorted DESCENDING by raw priority and NuttX is
+     * bigger-is-more-urgent, so the least urgent tier is the LAST element and
+     * the remaining tiers stay CONTIGUOUS — which is what lets the existing
+     * chain-spawn walk them unchanged.
+     *
+     * That relies on the emitter's ordering, so it is CHECKED rather than
+     * assumed: a table that is not non-increasing means the contract changed,
+     * and the failure it would otherwise produce is silent starvation seconds
+     * later on one platform. Report and continue with index 0 — the behaviour
+     * before this change — rather than pick a tier from an ordering nobody
+     * guaranteed.
+     */
+    size_t boot_idx = n_tiers - 1u;
+    for (size_t i = 1u; i < n_tiers; ++i) {
+        if (tiers[i].priority > tiers[i - 1u].priority) {
+            printf("nros: tier table is not sorted highest-priority-first — "
+                   "boot tier falls back to index 0 (issue 0636)\n");
+            boot_idx = 0u;
+            break;
+        }
+    }
+    const nros_tier_spec_t* boot = &tiers[boot_idx];
+    /* The tiers the boot thread must spawn: everything except `boot`. Both
+     * arrangements leave a contiguous run. */
+    const nros_tier_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
+    const size_t n_rest = n_tiers - 1u;
+
     /* issue #144 — boot setup runs BEFORE any tier spawn: concurrent entity
      * declares from two threads race the zenoh-pico interest handshake, and the
      * losing publisher's write filter stays closed (every put silently
      * dropped). Running boot's declares first, then CHAINING the remaining
      * spawns, makes setup order total (boot, t1, t2, …) so no two declares
      * overlap. */
-    const nros_tier_spec_t* boot = &tiers[0];
 
     /* Gate the boot executor to its tier's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
@@ -554,14 +591,15 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier threads handle
      * their own spawn failures by parking + continuing to spin. */
-    int src = nuttx_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u);
+    int src = nuttx_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
         nros_platform_dealloc(boot_storage);
         return -1;
     }
 
-    /* The boot thread runs tiers[0] itself — adopt its declared RAW priority
+    /* The boot thread runs its chosen tier itself — adopt that tier's declared
+     * RAW priority
      * (the spawned tiers already got theirs at pthread_create; without this the
      * boot tier keeps the app_main-thread default and the declared tier QoS
      * would not hold for it). */

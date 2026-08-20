@@ -258,11 +258,32 @@ Runtime)`, so no cell asserts tier markers on the C/C++ arm at all. The
 `nuttx cpp SporadicBudget` cell does exercise `nuttx_run_tiers.c`, so the path
 runs — nothing checks this property of it.
 
-The fix is not a copy of `boot_tier_index` into C: that is the cross-language
-rule duplication this repo keeps paying for. It wants either a C ABI export of
-the Rust rule, or the emitter choosing the owner so both arms agree by
-construction. Picking between those is a real decision and is left to whoever
-takes it.
+### Fixed 2026-08-21
+
+The C arm now chooses the least urgent tier too, and the two arms agree again.
+
+Not by copying `boot_tier_index` into C — that is the cross-language rule
+duplication this repo keeps paying for — but by using the ordering the emitter
+already guarantees. `nros/main.hpp` documents the array as sorted
+highest-priority-first, and NuttX is bigger-is-more-urgent, so the least urgent
+tier is the LAST element. That also keeps the remaining tiers CONTIGUOUS, which
+is what lets the existing chain-spawn walk them unchanged; picking an interior
+index would have required rebuilding the array.
+
+Relying on an ordering guaranteed elsewhere is exactly the kind of assumption
+that rots quietly, so it is CHECKED: the loop verifies the table is
+non-increasing and, if it is not, says so and falls back to index 0 — the
+behaviour before this change. The alternative failure is silent starvation
+seconds later on one platform, which is what this issue spent its history
+chasing.
+
+Verified as far as the tree allows, which is not far: `just nuttx
+build-fixtures` RC=0, `[nuttx cpp SporadicBudget] ACCEPT` (the one cell that
+exercises `nuttx_run_tiers.c`), `realtime_tiers_e2e` green, and the Rust cell
+still 10/10. **Nothing asserts the starvation property on the C arm** — the
+matrix has no `sched(TierPriority, NuttxArm, Cpp, …)` cell, so this change is
+justified by the same reasoning that justified `17666723d` on the Rust side, not
+by a measurement of its own. A C/C++ TierPriority cell is the missing coverage.
 
 ## Relationship to 0623
 
