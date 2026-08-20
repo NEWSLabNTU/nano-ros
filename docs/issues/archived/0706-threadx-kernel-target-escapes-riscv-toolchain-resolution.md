@@ -1,7 +1,7 @@
 ---
 id: 706
 title: "A build tree survives a toolchain RESOLUTION change: the wipe guard compares the toolchain-file ARG, not the compiler it resolves to"
-status: open
+status: resolved
 type: bug
 area: build/cmake
 related: [issue-0391, issue-0674, issue-0678, issue-0680]
@@ -52,7 +52,41 @@ NOT verified: whether the surviving dirs' `.nros-cmake-configure.args` stamps
 were in fact identical. It is the mechanism the code implies, and the observed
 behaviour matches, but the stamps were deleted before this was understood.
 
-## Direction
+## Fixed (2026-08-20)
+
+`nros_cmake_guard_build_dir` gains rule 1b: when the toolchain FILE is unchanged,
+compare the compiler the tree was configured with against the one that file
+resolves TODAY, and wipe on a mismatch. The early `return 0` that skipped every
+compiler check "because the toolchain file pins it" is gone — it pinned the
+file, not the answer.
+
+Two supporting pieces:
+
+* `nros_cmake_toolchain_resolved_cc` asks the AUTHORITY — one real `cmake`
+  configure of an empty project against that toolchain file — because these
+  files resolve by searching and nothing in the file text predicts the result.
+  Memoized per toolchain file per shell, so a fan-out over 13 build dirs pays
+  one ~1 s configure, not 13. Any failure yields an empty answer and the tree is
+  left alone, so the guard never wipes on a guess.
+* `nros_cmake_dir_cc` reads `CMakeFiles/<ver>/CMakeCCompiler.cmake`, NOT
+  `CMAKE_C_COMPILER` from `CMakeCache.txt`. A cross build dir often has no such
+  cache line at all — only `CMAKE_C_COMPILER_AR` / `_RANLIB` — which is why an
+  earlier draft of this fix silently compared nothing.
+
+Verified on a throwaway tree configured with the real riscv64 toolchain file:
+
+```
+A) tree whose compiler matches today's resolution      -> KEPT
+B) same tree, CMakeCCompiler.cmake repointed at
+   /usr/bin/riscv64-unknown-elf-gcc                    -> WIPED
+      (toolchain RESOLUTION change: '/usr/bin/riscv64-unknown-elf-gcc'
+       -> '.../riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf-gcc')
+```
+
+and a native `fixtures-build.sh linux c zenoh` builds green with zero
+resolution-change reports, so a host lane is untouched.
+
+## Direction (superseded by the above)
 
 Record the resolved compiler in the configure stamp, not just the arguments —
 then a store install that changes the resolution invalidates the tree the same

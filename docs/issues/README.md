@@ -107,6 +107,17 @@ the prefix"), one level up: wipe when the RESOLUTION moves, not only the argumen
 resolved compiler in the configure stamp. Blast radius is the whole tier (1-wise over platform), like
 #0698. The issue records the four shortcuts that mislead — notably that deleting only `build-cyclonedds`
 leaves the ZENOH trees, and the zenoh pass builds the same `threadx_kernel` first. See `0706-*`.
+
+Recently resolved (2026-08-20): **#0706** — a build tree survived a toolchain RESOLUTION change.
+`nros_cmake_guard_build_dir` wiped on a toolchain-file ARGUMENT mismatch and skipped every compiler check
+when a toolchain file was present ("the toolchain file pins the compiler") — but it pins the FILE, not the
+answer: installing `riscv-none-elf-gcc` into the SDK store moves what `_nros_riscv64_find_prefix` resolves
+from Debian/picolibc to xPack/newlib with the argument byte-identical. Cost: #0680's newlib-only `reent.c`
+compiled against picolibc headers on a tree whose own configure had just printed `libc = newlib`, failing
+all of tier 2 and reading as a code bug for hours. FIXED with rule 1b — ask the toolchain file what it
+resolves to today (one memoized `cmake` probe per file per shell; empty answer never wipes) and compare
+against `CMakeFiles/<ver>/CMakeCCompiler.cmake`, NOT `CMAKE_C_COMPILER` in the cache, which a cross dir
+often lacks entirely. Verified both ways on a real tree; native lane unaffected. See `archived/0706-*`.
 (2026-08-20)
 
 Recently resolved (2026-08-19): **#666** + **#668** — the six ThreadX-RV64 rust leaves were the only
