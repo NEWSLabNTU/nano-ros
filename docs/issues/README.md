@@ -2084,7 +2084,7 @@ takes `build-test-fixtures lane=all` down with rc=2, so no tier needing the full
 still exits 0. Fixed by syncing each leaf after codegen, before the cargo build. See `archived/0510-*`.
 (2026-08-10)
 
-**#507** (rmw, open 2026-08-10) — the cyclonedds fork carries FIFTEEN nano-ros-only commits upstream lacks
+Recently resolved (2026-08-20): **#507** (rmw) — the cyclonedds fork carries FIFTEEN nano-ros-only commits upstream lacks
 (the census corrected the original "two"), the load-bearing ones being striped addrset locks (`942dda3c`)
 and the Zephyr-native ddsrt sync backend (`a09babf3`). Re-verified 2026-08-19: still exactly 15, fork tip ==
 the superproject gitlink (`8601ca66`, nothing unpushed), upstream `5e82de60` still has the per-addrset mutex
@@ -2094,7 +2094,14 @@ upstream has no CI for) stays as the record. Two traps for anyone verifying: the
 `releases/0.10.x`, which no longer exists on the fork (use `5041f356..nano-ros`, cross-checked by author =
 15; `master..nano-ros` gives 58 because it sweeps in upstream 0.10.x releases), and the submodule checkout
 is SHALLOW, so half the census commits read as absent objects until `git fetch --unshallow`.
-See `0507-*`. (2026-08-19)
+RESOLVED 2026-08-20: the framing was wrong, not the work. The pin tracks the cyclonedds **ROS ships**
+(0.10.5 = `ros-humble-cyclonedds`) because an image must speak the same Cyclone as the host's
+`rmw_cyclonedds_cpp`; upstream takes patches against `master` (11.x). So an upstream PR cannot retire this
+delta before a ROS distro migration, and its verification does not even transfer. The real defect was that
+the delta was UNENUMERATED — now `docs/reference/cyclonedds-fork-delta.md`, all 15 grouped by purpose with
+the re-derivation recipe. Three prep branches kept local/unpushed; `nano-ros-addrset-hash` is the one with
+near-term value (stripe hash goes 64->16 stripes if `sizeof (struct addrset)` reaches 48, and the allocator
+that matters is picolibc's, never measured). See `archived/0507-*`. (2026-08-20)
 
 Recently resolved (2026-08-12): **#508** (rmw) — the freertos/threadx ddsrt sync ports `abort()`ed on
 init failure with nothing logged. Fixed in `cyclonedds@8601ca66` (pushed, pin bumped): one helper per
