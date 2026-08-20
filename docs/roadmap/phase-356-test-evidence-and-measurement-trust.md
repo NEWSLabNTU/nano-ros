@@ -353,6 +353,49 @@ config, starting from whether `CONFIG_NET_L2_ETHERNET` + the static-IP path in
 `prj-zenoh.conf` assume a native_sim-only interface. Nothing further is blocked
 on a decision.
 
+### PLACEMENT PROVEN 2026-08-20 — and the fixture-axis route is blocked by phase-315
+
+The a53 board runs, and a pinned tier lands where it was told to:
+
+```
+nros: core pin tier=`high` cpu=1                  <- kernel accepted the pin
+[nros] tier task entered
+nros: core pin observed tier=`high` running_on=1  <- and it RAN there
+```
+
+Falsifiable, which is the whole point: the same image with no `core` declared
+reports `running_on=0`, so `1` cannot be "where an unpinned tier lands anyway".
+That is W3's full acceptance DEMONSTRATED — but not yet CAPTURED as a fixture.
+
+**What blocks capture.** The `core` value must differ per board: native_sim is
+uniprocessor, so `core = 1` there takes the loud fallback and would flip an
+already-green cell. `bringup` is a per-row field, so a second bringup
+(`smp_bringup`) declaring `core = 1` looked like the sanctioned fixture axis —
+no new workspace directory, RFC-0066 satisfied. `nros sync` refuses it:
+
+```
+sync: 2 bringups declare a system (demo_bringup, smp_bringup); selection
+facades are not generated for multi-system workspaces (phase-315 W1)
+```
+
+One workspace, one system. The attempt is reverted rather than left half-wired.
+
+**The fork, both arms costed rather than argued:**
+
+1. **A separate workspace** (`realtime-c-smp`). Works with the tooling as it
+   stands. Costs a near-duplicate workspace, which is what RFC-0066's "a
+   configuration is a fixture axis, never a new directory" exists to prevent —
+   though note that rule is about FEATURE variants, and a second SYSTEM is
+   arguably a different workspace by phase-315's own definition.
+2. **Make `core` overridable at bake time** — a cmake/Kconfig knob the codegen
+   honours, so one system.toml serves both boards. Keeps one workspace and makes
+   the axis real for every dim, not just this one. Costs a codegen feature, and
+   RFC-0063 says dims are AUTHORED in system.toml, so an override needs to be a
+   deliberate seam rather than a side door.
+
+Everything else W3 needs is already in place: the board overlay, both marker
+arms, and a measured run showing the assertion would pass.
+
 ---
 
 ## Deliberately not doing
