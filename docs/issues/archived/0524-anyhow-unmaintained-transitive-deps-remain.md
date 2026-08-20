@@ -184,3 +184,45 @@ wasip2/wasip3 -> wit-bindgen -> …`. Never compiled, for any target, in any
 configuration this workspace builds — a lockfile entry, not a dependency. It
 leaves when upstream moves. Anyone auditing later: that entry is not ours, and
 this table is how to re-check it in one command.
+
+## Postscript (2026-08-21) — a "live counter-example" that was a stale checkout
+
+`f64e864ba` re-added `anyhow` to `packages/cli/nros-launch-resolve/Cargo.lock`,
+reporting that "the play_launch pointer moved upstream and the lock did not
+follow" and that "the moved pin puts it back in the graph" — recorded there as a
+live counter-example to this issue's decision.
+
+It was not. Measured:
+
+```
+recorded pin:   141e7a5de99b0a322320170d7be430821d27e9e2
+checkout HEAD:  141e7a5de99b0a322320170d7be430821d27e9e2   (after `git submodule update`)
+
+anyhow declarations in play_launch_parser/Cargo.toml
+  at 141e7a5 (current pin):  0
+  at 65a7591 (previous pin): 1
+```
+
+The pointer's last movement was THIS issue's own commit, `42edca574`, and it
+moved FORWARD to the commit that deleted the declaration. At the current pin
+`anyhow` is not declared, so it cannot be in the graph — and a `lock-update` run
+with the submodule correctly checked out removes it again, after which the leaf
+resolves under `--locked` and `check-submodule-pinned-locks` is OK.
+
+What produced the wrong lock is the submodule WORKING TREE lagging the recorded
+pointer. `42edca574` moved the gitlink; a checkout that had not run
+`git submodule update` still had `65a7591` on disk, where the declaration exists,
+so cargo resolved it honestly and wrote it down. The lock was a faithful record
+of the wrong tree.
+
+This is the third instance of that class in one day — the others being a
+`cyclonedds` checkout sitting behind its pin (a rewind that would have unshipped
+someone's fix had it been committed) and issue 0725's resolver stamp. CLAUDE.md
+already names the rule: *"if a pull advances a submodule pointer … enter it,
+fetch, rebase local onto upstream, check out the superproject's expected commit"*.
+The generalisation worth carrying is narrower and sharper: **before regenerating
+any artifact derived from a submodule — a lock, a stamp, a generated tree —
+confirm the checkout matches the recorded pin.** Every one of these produced a
+plausible artifact and a confident, wrong conclusion.
+
+The decision in this issue stands unchanged.

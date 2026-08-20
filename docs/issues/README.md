@@ -3150,7 +3150,13 @@ implies them. Rewritten 2026-07-26 with the design review — contention is alre
 MutuallyExclusive callback groups (no new vocabulary for the intra-node case), a `holds:` contract
 field is rejected (locking is implementation, not interface), and `criticality → core pin` is
 rejected outright (unfalsifiable adjective; would look like a partitioning claim nothing backs).
-Prereqs: WCET fact, board peripheral registry, `SchedCaps` core count. See `0259-*`.
+Prereqs: WCET fact, board peripheral registry, `SchedCaps` core count. **Re-measured 2026-08-21: two of
+the three are MET** — #0404 landed the WCET production path (`mapper_input.rs:92`) and `caps.n_cores`
+exists, so the QUANTITATIVE blocker this issue was rewritten around is gone. The board peripheral registry
+is the only original prereq left (`BoardDescriptor` is still build-oriented, no device list). Neither
+hardcoded dim is thereby close: `non_preempt` needs a MODEL change nobody has scoped yet (per-callback
+priorities within a tier — until then `ceiling == priority` by construction and a derived threshold would
+say nothing), and `placement` needs the registry plus an interference model. See `0259-*`.
 (phase-296 W5.11 2026-07-24; reframed 2026-07-26)
 
 **#260** — the RFC-0052 Native sched dims are e2e-verified only on the FALLBACK arm: every realtime

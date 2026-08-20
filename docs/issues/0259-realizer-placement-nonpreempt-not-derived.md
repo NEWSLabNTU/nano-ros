@@ -295,6 +295,8 @@ Checked against the current tree, not assumed from the write-up:
 * **`exec_ms` is `Some(..)` in TEST CODE ONLY** (`rtos_realizer.rs:514`,
   `sched/src/chain.rs:336/379`). Nothing on the production path populates a
   WCET, so the budget arm is inert exactly as described.
+  **[STALE as of 2026-08-21 — issue 0404 landed a production path;
+  see the prerequisites section.]**
 * The unsoundness is visible in one line of `chain_aware_mapper.rs`:
 
   ```rust
@@ -315,13 +317,47 @@ independently of, staged step 1.
 
 ## Prerequisites (blocking, in order)
 
-1. **Per-callback WCET** in the node manifest (measured). Without it, budget +
-   blocking stay inert and the feasibility verdict stays optimistic.
-2. **Board peripheral registry** — `BoardDescriptor` today is build-oriented
-   (toolchain / features / link kind) with no device list; both cross-node
-   contention (`spi0`) and hardware locality (`drives: imu0`) need one.
-3. **`SchedCaps` core count** — `affinity: bool` exists, but placement
-   allocation needs the number of cores.
+**Status re-measured 2026-08-21 — two of the three are now MET.** The list below
+is the original; the annotations are what the tree actually holds.
+
+1. ~~**Per-callback WCET** in the node manifest (measured).~~ **MET.** Issue 0404
+   shipped the declaration schema (RFC-0078, `7ccfd38c9`) and the production path
+   now populates it: `mapper_input.rs:92`,
+   `exec_ms: wcet.and_then(|w| w.exec_ms(path_ref))`. The 2026-08-03
+   re-verification below still says "`exec_ms` is `Some(..)` in TEST CODE ONLY" —
+   that is no longer true. Note what MET does and does not mean here: a
+   declaration can now REACH the mapper, so budget and blocking are no longer
+   inert by construction. Whether any given tree HAS declarations is a separate
+   question, and RFC-0078's `SYNTHETIC` caveat below still applies on a host with
+   no hardware lane.
+2. **Board peripheral registry** — STILL OPEN. Re-checked: `BoardDescriptor`
+   (`nros-cli-core/src/orchestration/board_descriptor.rs:176`) carries names,
+   platform, target, toolchain, platform_feature, local_aliases, link_kind,
+   entry_kind and netstacks — all build-oriented, no device list. Both
+   cross-node contention (`spi0`) and hardware locality (`drives: imu0`) need
+   one. This is the only original prerequisite left.
+3. ~~**`SchedCaps` core count**~~ **MET.** `caps.n_cores` exists and is consumed
+   — set at `rtos_realizer.rs:239`, and the utilisation denominator reads it at
+   `:524`.
+
+### What that leaves, stated so the list is not read as "one step away"
+
+Neither remaining dim is unblocked by the two that were met, and neither is a
+realizer change — which is this issue's own repeated finding:
+
+* **`non_preempt`** is blocked on a MODEL change, not on a prerequisite in this
+  list: per-callback priorities within a tier, carried through `RealizedNode`
+  and the emitted `TierDef`, plus a runtime dispatch that honours them. Until
+  callbacks inside one task can hold different priorities, `ceiling(node's
+  callbacks) == priority(node)` by construction and emitting a threshold would
+  say nothing — see "NOT derived, and deliberately" above. That work item does
+  not exist yet.
+* **`placement`** is blocked on prerequisite 2, and then on the interference
+  model finding 2 describes.
+
+So the honest summary is: the QUANTITATIVE blocker this issue was rewritten
+around (finding 1, "the blocker is a missing NUMBER") is gone, and the two
+hardcoded dims are still blocked — on different things than the number.
 
 ## Direction (staged; each step lands green on its own)
 
