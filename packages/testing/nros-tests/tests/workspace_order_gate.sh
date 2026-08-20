@@ -38,9 +38,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 NROS="$ROOT/packages/cli/target/release/nros"
+# shellcheck source=../../../../scripts/build/check-skip.sh
+. "$ROOT/scripts/build/check-skip.sh"
+
+# The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
+# tier documents itself green on (issue 0650's list names it). Skip loudly —
+# the lane's closing report refuses to say "passed" over a skipped gate.
 [ -x "$NROS" ] || {
-    echo "FAIL: no in-tree nros at $NROS — run: just setup-cli" >&2
-    exit 1
+    nros_check_skip "check-workspace-order" "no in-tree nros at packages/cli/target/release/nros (just setup-cli)"
+    exit 0
 }
 
 WORK="$(mktemp -d)"

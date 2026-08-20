@@ -35,9 +35,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 NROS="$ROOT/packages/cli/target/release/nros"
 MODULE="$ROOT/cmake/NanoRosProviders.cmake"
 
+# shellcheck source=../../../../scripts/build/check-skip.sh
+. "$ROOT/scripts/build/check-skip.sh"
+
+# The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
+# tier documents itself green on (issue 0650's list names it). Skip loudly —
+# the lane's closing report refuses to say "passed" over a skipped gate.
 [ -x "$NROS" ] || {
-    echo "FAIL: no in-tree nros at $NROS — run: just setup-cli" >&2
-    exit 1
+    nros_check_skip "check-provider-index" "no in-tree nros at packages/cli/target/release/nros (just setup-cli)"
+    exit 0
 }
 [ -f "$MODULE" ] || {
     echo "FAIL: module not found at $MODULE" >&2
