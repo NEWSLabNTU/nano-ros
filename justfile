@@ -559,6 +559,7 @@ check-build: \
     check-required-features-tests \
     check-feature-set-ssot \
     check-no-tracked-file-find \
+    check-sched-dim-arms \
     native::check
     @echo "Build checks passed!"
 

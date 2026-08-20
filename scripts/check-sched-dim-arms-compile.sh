@@ -37,6 +37,13 @@ set -o pipefail
 cd "$(dirname "$0")/.."
 repo_root="$(pwd)"
 
+# issue 0650 — a gate that could not run must SAY so through the shared ledger,
+# or `check`'s closing "All checks passed!" stands for something that never
+# executed. This gate skips on an unprovisioned host by design (no RTOS sources,
+# no cross compiler), which is exactly the case the ledger exists for.
+# shellcheck source=scripts/build/check-skip.sh
+. "$repo_root/scripts/build/check-skip.sh"
+
 fail=0
 
 say()  { printf '  %s\n' "$*"; }
@@ -45,9 +52,9 @@ head2() { printf '\n== %s ==\n' "$*"; }
 # --- freertos: vTaskCoreAffinitySet ----------------------------------------
 head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
 if [ -z "${FREERTOS_DIR:-}" ] || [ ! -d "${FREERTOS_DIR}" ]; then
-    say "SKIP: FREERTOS_DIR unset/absent (source ./activate.sh)"
+    nros_check_skip "check-sched-dim-arms(freertos)" "FREERTOS_DIR unset/absent (source ./activate.sh)"
 elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    say "SKIP: arm-none-eabi-gcc not on PATH"
+    nros_check_skip "check-sched-dim-arms(freertos)" "arm-none-eabi-gcc not on PATH"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m3 -mthumb \
         -DconfigUSE_CORE_AFFINITY=1 \
@@ -97,9 +104,9 @@ fi
 # reason: there are no stubs to drift.
 head2 "nuttx core-pin arm (pthread_setaffinity_np)"
 if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
-    say "SKIP: NUTTX_DIR unset/absent (source ./activate.sh)"
+    nros_check_skip "check-sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
 elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    say "SKIP: arm-none-eabi-gcc not on PATH"
+    nros_check_skip "check-sched-dim-arms(nuttx)" "arm-none-eabi-gcc not on PATH"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 -mthumb-interwork \
         -DCONFIG_SMP \
