@@ -33,12 +33,23 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 
 
-def tracked(*roots, suffix=None, name=None, repo=None):
+def tracked(*roots, suffix=None, name=None, repo=None, submodules=False):
     """Tracked files under `roots`, as absolute Paths.
 
     `suffix` (".rs") and `name` ("Cargo.toml") filter the result; both are
     applied in Python rather than as a pathspec so a caller's existing filter
     logic ports over unchanged.
+
+    `submodules=True` adds `--recurse-submodules`, for a caller whose scope is
+    "crates ON DISK" rather than "crates this repo tracks". Issue 0721 —
+    `check-feature-contract` walked for exactly that reason: the plain index
+    misses the ~20 crates inside submodule working trees (`play_launch`,
+    `ros2_rust_examples`), and a contract gate that cannot see them is a gate
+    with a hole. Measured on 2026-08-20: plain index 202, walk 222,
+    `--recurse-submodules` 228, and the walk's set is a strict SUBSET of the
+    last — the 6 extras are `generated/` build output and 1 is a cmake
+    template, both of which the caller already filters. So the index answers
+    the same question the walk did, without descending build trees.
 
     Roots outside the repo fall back to a walk — they have no index entry, so
     there is nothing to look up. That path is for temp trees a `--self-test`
@@ -59,8 +70,11 @@ def tracked(*roots, suffix=None, name=None, repo=None):
                 # this serves --self-test temp trees, which are tiny.
                 found.extend(q for q in root.rglob("*") if q.is_file())
     if rels:
+        cmd = ["git", "-C", str(base), "ls-files", "-z"]
+        if submodules:
+            cmd.append("--recurse-submodules")
         out = subprocess.run(
-            ["git", "-C", str(base), "ls-files", "-z", "--", *rels],
+            [*cmd, "--", *rels],
             capture_output=True, text=True, check=True,
         ).stdout.split("\0")
         found.extend(base / r for r in out if r)

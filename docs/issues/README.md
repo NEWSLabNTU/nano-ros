@@ -88,14 +88,18 @@ not a measurement. `threadx_riscv64` alone is 1302 s. An `NROS_JOBSERVER=1` laun
 that shares FIFO tokens instead — unused, and its "needs pinned make 4.4" gate may be stale (system
 make is 4.4.1). Campaign issue; 0721 (gate I/O) already landed under it. See `0726-*`. (2026-08-20)
 
-**#0721** (build, open 2026-08-20) — the check-* gates walk built trees to find TRACKED files, and
-`check-no-tracked-file-find` — the gate that forbids exactly this — reads only `.sh`/`.just`/`justfile`,
-never a `.py`. So the shell side is clean and the Python side has 21 walk sites. Measured: `examples/`
-is 828 GB and `rglob("Cargo.toml")` over it did not finish in 300 s, vs 347 manifests in 0.002 s from
-`git ls-files`. SKIP_DIRS does not save it — the filter runs on what the walk ALREADY YIELDED, the same
-`-prune`/`glob("**")` trap 0684 and check-no-tracked-file-find each documented and each fixed only for
-themselves. Two fixed (`check-no-std-stdio` 300s+->3s, `check-example-leaf-target-dirs` 90s+->2s); the
-rest listed. Warm cache hides it, so measure cold or under a build. See `0721-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0721** — gate scripts walked built trees to find tracked files, and the
+gate forbidding it could not read Python. Closed after RE-MEASURING: five of the seven scripts in the
+issue's Remaining list were already converted by `5a9b77367`; `check-zephyr-kconfig-symbols` stays a walk
+(untracked submodule content, already scoped to `zephyr/`+`modules/`, 0.62 s); `check-feature-contract`
+converted via a new `tracked(submodules=True)` — its `walk-ok` reason was real (the plain index misses ~20
+crates in submodule WORKING trees) and `--recurse-submodules` answers it. Verified as SETS: 222 manifests
+and 1724 Rust files, zero differences either way. Three defects the conversion introduced are recorded in
+the issue: filtering the FILENAME dropped `build_output.rs`/`build.rs`; consulting the index per crate cost
+23.5 s against the walk's 0.42 s (fixed by one cached call + bisect: 0.12 s); and `--self-test` went green
+while testing nothing, because its temp trees live under `tmp/` and were looked up in the real index. Also
+fixed the gate's own false positive on docstrings that QUOTE the antipattern. See `archived/0721-*`.
+(2026-08-20)
 
 Recently resolved (2026-08-20): **#0722** — `nros-board-esp32-qemu`'s manifest declared `nros-log` twice in
 one `[dependencies]` table; issues 0708 and 0710 each added a copy and the dedup between them removed a

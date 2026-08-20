@@ -1,7 +1,7 @@
 ---
 id: 721
 title: "Gate scripts walk built trees to find tracked files, and the gate that forbids it never reads Python"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: build
@@ -92,6 +92,57 @@ Still walking, in rough priority:
 Legitimately walking, leave alone: `dep-closure.py` (build dirs),
 `prune-superseded-artifacts.py` (deleting untracked output), and the
 untracked-artifact half of `check-example-leaf-target-dirs.py`.
+
+## Resolved 2026-08-20 — and the Remaining list above was stale
+
+Re-measured before acting rather than worked from the list, which had been
+overtaken by `5a9b77367`:
+
+* **Five of the seven were already converted** — `check-std-census.py`,
+  `check-rust-stdio-on-zephyr.py`, `check-cpp-ffi-error-mapping.py`,
+  `gen-cli-source-dirs.py`, `check-board-facts-delivery.py` all import
+  `lib.tracked` today.
+* **`check-zephyr-kconfig-symbols.py` is already scoped** and stays a walk. It
+  reads the Zephyr submodule's Kconfig files, which this repo does not track, so
+  there is no index to consult; `line_trees()` walks `zephyr/` + `modules/`
+  rather than the whole workspace. Measured 0.62 s here. The 23 s in the list
+  above predates that scoping — not re-measurable on this host, which has no
+  full west workspace.
+* **`check-feature-contract.py` is converted, and the reason it had not been is
+  the interesting part.** Its `walk-ok:` said the scope is crates ON DISK,
+  including the submodule WORKING TREES a plain `git ls-files` does not descend
+  into — true, and a contract gate blind to 20 crates is a gate with a hole.
+  `--recurse-submodules` descends them. Verified as SETS, not counts: the walk's
+  222 manifests are a strict subset of the index's 228, the 7 extras being 6
+  under `generated/` (which `is_build_output` already rejects) and one cmake
+  template not named `Cargo.toml`. After filtering, old and new agree exactly —
+  222 manifests, 1724 Rust files, zero differences either way.
+
+`tracked()` grew a `submodules=True` option rather than the gate calling git
+itself, so there is still one spelling of "ask the index".
+
+### Three defects the conversion introduced, and how each was caught
+
+Recorded because each is a way a mechanical conversion goes silently wrong:
+
+1. **Filtering the FILENAME as well as the directories.** `is_build_output`
+   matches any name starting with `build`, so `nros-cli-core/src/build_output.rs`
+   and two `build.rs` vanished from the gate's view. The walk pruned directories
+   at descent and never judged filenames. Caught by comparing as sets — a count
+   comparison would have shown 1724 vs 1719 and invited a shrug.
+2. **The index consulted per crate.** Calling `tracked()` inside `rust_files`
+   is 222 `git ls-files --recurse-submodules` subprocesses: **23.5 s against the
+   walk's 0.42 s**, a 56x regression in the name of removing a walk. One call,
+   cached and filtered once, then `bisect` per crate: 0.12 s.
+3. **`--self-test` looked green while testing nothing.** Its temp trees live
+   under `tmp/`, inside the repo but untracked, so a root keyed on `ROOT` found
+   no sources there and clauses (c)/(e) reported firing "on a clean tree". The
+   root is derived from the path's `packages` component now. The self-test
+   caught this; nothing else would have.
+
+Net on this host: `check-feature-contract` 0.42 s -> 0.12 s of discovery
+(0.60 s for the whole gate), and it no longer descends build output to find
+2.3k files among 516k.
 
 ## The actual fix
 

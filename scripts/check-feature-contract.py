@@ -64,9 +64,14 @@ produced per host by `nros sync` and are not tracked.
 
 Run `--self-test` to verify each clause fires on a deliberate reintroduction.
 """
+import bisect
 import os
+import pathlib
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lib.tracked import tracked
 
 try:
     import toml
@@ -102,18 +107,122 @@ def is_build_output(name):
     return name.startswith("build") or name.startswith("target") or name == "generated"
 
 
+_INDEX_CACHE = {}
+
+
+def _on_disk(root):
+    """Every tracked path under `root`, ONCE, as repo-relative strings.
+
+    Issue 0721 — the index is only cheaper than a walk if it is consulted
+    once. The first version of this conversion called `tracked()` per crate
+    from `rust_files`, which is 222 `git ls-files --recurse-submodules`
+    subprocesses: measured 23.5 s against the walk's 0.42 s, a 56x
+    REGRESSION in the name of removing a walk. One call, cached, filtered in
+    Python.
+
+    A root outside this repo (the `--self-test` temp trees) has no index to
+    consult and falls back to a walk, which is what those trees are for: they
+    are built by the test, a dozen files each.
+    """
+    root = pathlib.Path(root)
+    key = str(root)
+    if key in _INDEX_CACHE:
+        return _INDEX_CACHE[key]
+    if root.resolve() == pathlib.Path(ROOT).resolve():
+        rels = [
+            str(pathlib.Path(p).relative_to(root))
+            for p in tracked(root / SCOPE, repo=root, submodules=True)
+        ]
+    else:
+        # walk-ok: a `--self-test` temp tree, outside any index and tiny by
+        # construction (issue 0721's own carve-out for out-of-repo roots).
+        # The marker has to sit on the line the walk is ON: the gate reads the
+        # CONTIGUOUS comment block above it, and an intervening `rels = [`
+        # ends the block.
+        rels = [str(q.relative_to(root)) for q in root.rglob("*") if q.is_file()]
+    _INDEX_CACHE[key] = rels
+    return rels
+
+
+def _kept(rel):
+    """Reject build output by DIRECTORY component only.
+
+    `is_build_output` matches any name starting with "build", and judging the
+    FILE name too silently dropped `nros-cli-core/src/build_output.rs` and two
+    `build.rs`. The walk this replaces pruned directories at descent and never
+    looked at filenames. Caught by comparing old and new as SETS, not counts.
+    """
+    return not any(is_build_output(part) for part in pathlib.PurePath(rel).parts[:-1])
+
+
+def _prepared(root):
+    """`(manifest rels, sorted .rs rels)` for `root`, filtered once.
+
+    The filtering is done HERE, not per query. Doing `_kept` inside
+    `rust_files` meant a `PurePath` per entry per crate — 222 x 5871 = 1.3M
+    constructions, 10.4 s. The whole point of issue 0721 is that the index is
+    cheap; it is only cheap if it is consulted, and filtered, once.
+    """
+    key = ("prep", str(root))
+    if key in _INDEX_CACHE:
+        return _INDEX_CACHE[key]
+    mans, rs = [], []
+    for rel in _on_disk(root):
+        if not _kept(rel):
+            continue
+        if pathlib.PurePath(rel).name == "Cargo.toml":
+            mans.append(rel)
+        elif rel.endswith(".rs"):
+            rs.append(rel)
+    out = (sorted(mans), sorted(rs))
+    _INDEX_CACHE[key] = out
+    return out
+
+
 def manifests(root=None):
-    root = root or ROOT
-    out = []
-# walk-ok: scope is crates ON DISK under packages/, which includes submodule working
-# trees (play_launch, ros2_rust_examples) that `git ls-files` does not descend into:
-# index 203, --recurse-submodules 229, this walk 217. Bounded — is_build_output prunes
-# at DESCENT (0721).
-    for base, dirs, files in os.walk(os.path.join(root, SCOPE)):
-        dirs[:] = [d for d in dirs if not is_build_output(d)]
-        if "Cargo.toml" in files:
-            out.append(os.path.join(base, "Cargo.toml"))
-    return sorted(out)
+    """Every crate manifest ON DISK under `SCOPE`, from the git index.
+
+    Issue 0721 — this walked, and the recorded reason was real: the scope is
+    crates on disk, which includes the submodule WORKING TREES (`play_launch`,
+    `ros2_rust_examples`) a plain `git ls-files` does not descend into.
+    `--recurse-submodules` does, so the index answers the same question.
+
+    Verified as a SET before the swap: the walk's 222 are a strict subset of the
+    index's 228 (plain index: 202). The 7 the index adds are 6 under
+    `generated/`, which `is_build_output` rejects, and one
+    `nros-serdes-standalone-Cargo.toml` cmake template, which is not named
+    `Cargo.toml`. After filtering, old and new agree exactly — 222 manifests and
+    1724 Rust files, zero differences either way.
+    """
+    root = pathlib.Path(root or ROOT)
+    return [str(root / rel) for rel in _prepared(root)[0]]
+
+
+def rust_files(crate_dir, subdirs=("src", "tests", "benches", "examples")):
+    """Rust sources under a crate's source dirs — same prepared index, found by
+    bisect on the sorted paths rather than a scan per crate (issue 0721)."""
+    crate = pathlib.Path(crate_dir).resolve()
+    # The root is the ancestor just above the `packages` component, NOT
+    # `ROOT` — `--self-test` builds crate trees under `tmp/`, which is inside
+    # this repo but untracked, so keying on `ROOT` looked them up in the real
+    # index, found no sources, and reported clauses (c)/(e) firing "on a clean
+    # tree". Deriving the root from the path serves both.
+    parts = crate.parts
+    root = pathlib.Path(ROOT)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == SCOPE:
+            root = pathlib.Path(*parts[:i])
+            break
+    rs = _prepared(root)[1]
+    for sub in subdirs:
+        d = crate / sub
+        if not d.is_dir():
+            continue
+        prefix = str(d.relative_to(root)) + os.sep
+        i = bisect.bisect_left(rs, prefix)
+        while i < len(rs) and rs[i].startswith(prefix):
+            yield str(root / rs[i])
+            i += 1
 
 
 def strip_comments(text):
@@ -130,19 +239,6 @@ def strip_comments(text):
             continue
         out.append(line.split("//", 1)[0])
     return "\n".join(out)
-
-
-def rust_files(crate_dir, subdirs=("src", "tests", "benches", "examples")):
-    for sub in subdirs:
-        d = os.path.join(crate_dir, sub)
-        if not os.path.isdir(d):
-            continue
-# walk-ok: same scope as manifests() above; prunes build output at descent
-        for base, dirs, files in os.walk(d):
-            dirs[:] = [x for x in dirs if not is_build_output(x)]
-            for f in files:
-                if f.endswith(".rs"):
-                    yield os.path.join(base, f)
 
 
 def read(p):
