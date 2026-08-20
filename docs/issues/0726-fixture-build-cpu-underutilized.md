@@ -279,3 +279,39 @@ failed six different ways.
 
 Until then `check-fast` stays serial and the fan-out is opt-in. The 11x is not
 worth a gate nobody trusts.
+
+### Bisection result: there is no single partner gate
+
+Harness: run a candidate subset concurrently with N repeats of the anchor gate,
+count anchor failures. Validated in both directions first — anchor alone at 25
+and 60 concurrent copies never fails (so it does not race itself, and the
+harness is not manufacturing the result), while all 110 candidates plus 25
+anchors reproduces.
+
+| subset | gates | attempts | anchor failures |
+| --- | --- | --- | --- |
+| none (anchor alone) | 0 | 3 (25, 60, 60 reps) | 0, 0, 0 |
+| all candidates | 110 | 3 | 1, 0, 0 |
+| first half | 57 | 3 | 0, 1, 0 |
+| second half | 53 | 3 | 1, 0, 0 |
+
+**Both disjoint halves reproduce it.** With the self-race excluded, that kills
+the single-partner hypothesis: there is no one gate to find, and bisecting
+further is pointless — every subset large enough to load the machine will test
+positive.
+
+What distinguishes a positive subset from the negative control is not WHICH
+gates it holds but how much concurrent work it represents. 60 anchors alone are
+32-way concurrent too, but they are 167 ms each and drain immediately; a subset
+with real gates in it keeps the machine busy across the anchor's whole window.
+
+So this is load-dependent behaviour inside the gate, not a cross-gate write/read
+pair — which also means my earlier "generic load" tests were underpowered rather
+than exculpatory: 40 sequential anchor runs beside a fan-out is a far weaker
+probe than being scheduled inside one.
+
+Next step is instrumentation, not more scheduling experiments: make the gate
+dump the manifest text and the `git ls-files` result it actually saw when it
+decides an anchor is missing, then run the positive control until it trips. Six
+scheduling hypotheses and a bisection have now failed to identify it from the
+outside; the gate has to report what it read.
