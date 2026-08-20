@@ -51,25 +51,24 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0727** (core/testing, open 2026-08-20) — tier 2's first run on this host caught it: `PlatformSink`'s
-extern pair (`nros_platform_log_write`/`_flush`) is a link-time platform requirement riding #708/#710's new
-`nros-rmw-cffi -> nros-log` LIBRARY edge, and the workspace `--no-default-features` test-compile cannot link
-it. A `platform-sink` default feature now exists but transitive default-features re-enable it; `-p` builds
-link only because the unreferenced vtable gets GC'd. Principled fix = the sink is the IMAGE's choice
-(phase-366's doctrine): library edges go `default-features = false`, boards/entries enable `platform-sink`.
-Landed: WEAK host stubs (issue 0050's discipline) — build.rs compiles no-op weak defs only when TARGET==HOST,
-so ports override, cross builds still fail loud, and the lane links with no new exclusions. The issue stays
-open for the eventual edge flip. See `0727-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0727** — `PlatformSink`'s extern pair rode #708/#710's new
+`nros-rmw-cffi -> nros-log` LIBRARY edge into host test binaries with no port, and whether the unreferenced
+vtable was GC'd before the link was codegen luck; the workspace `--no-default-features` test-compile lost
+that bet. First fix landed WEAK host-only stubs (`ede77608e`); superseded and REMOVED, on the project rule
+that weak symbols are avoided here. Replaced structurally: `PlatformSink` moved to `nros_platform_cffi::log`
+— the crate that owns the ABI binding — so the question is a DEPENDENCY (a property of the binary) instead
+of a feature (a property of the build, which is #0723's finding). `nros_log::early` holds records raised
+before `init` and replays them, so dropping 0710's auto-install costs nothing. The stub, `build.rs`,
+allowlist entry, `platform-sink` feature and `check-board-log-sink.py` are all gone; the extern is declared
+once, in bindgen output from `<nros/platform.h>`. See `archived/0727-*`. (2026-08-20)
 
-**#0723** (build, open 2026-08-20) — `just check` is STILL red after #0714: seven `nros-rmw-cffi` targets
-fail `undefined symbol: nros_platform_log_write` in the Phase 214.G.2 workspace `--no-default-features`
-test compile. 0714 put 0710's auto-install behind `nros-log/platform-sink` on the reasoning that consumers
-with no port never get the link requirement — but cargo unifies features across every member ONE build
-selects, and `--workspace` selects them all, while LINKING stays per-binary. `nros-board-linux` (a root
-member) requests the feature unconditionally, so it is on for the whole graph. Signature:
-`-p nros-rmw-cffi` solo is OK, `--workspace` is red, same features. A cargo feature is a property of a
-COMPILATION and an undefined symbol is a property of a LINK, so no feature can express "only the binaries
-that also link a port". 0714's gate is not wrong, it asks a different question. See `0723-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0723** — 0714's `nros-log/platform-sink` gate could not survive
+`cargo --workspace` unification: cargo unifies features across every member ONE build selects while LINKING
+stays per-binary, so `nros-board-linux` requesting the feature turned it on for the whole graph. The
+finding is exact, and it is why the FEATURE approach was abandoned entirely — a cargo feature is a property
+of a COMPILATION and an undefined symbol is a property of a LINK. The feature is deleted along with the
+gate that enforced it; the sink moved to `nros_platform_cffi::log`, where a dependency answers the
+question. See `archived/0723-*` and `archived/0727-*`. (2026-08-20)
 
 **#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
 `NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today

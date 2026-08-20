@@ -28,19 +28,23 @@ c-stub-test = ["dep:cc", "dep:nros-cc-flags"]
 # in-crate integration test `tests/c_port_posix.rs` consumes it.
 # Mutually exclusive with `c-stub-test` (both would supply
 # definitions for the same symbols).
-posix-c-port = ["dep:cc", "dep:nros-cc-flags", "dep:nros-log", "nros-log/platform-sink"]
+posix-c-port = ["dep:cc", "dep:nros-cc-flags"]
 
 [dependencies]
 # issue 0710 follow-up — `posix-c-port` compiles the POSIX C port, which DEFINES
 # `nros_platform_log_write`. The dep exists for the feature alone (no code use):
 # it is how a provider says the symbol `nros-log`'s default sink calls is
 # supplied here, so the auto-install is safe to compile in.
-nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
 # issue 0710 — for `LogSink`/`Record`, so the platform-ABI sink can live beside
 # the ABI it speaks. The edge points this way and only this way: `nros-log` is a
 # facade and must not depend on any port, which is what kept the sink stranded
 # on the wrong side of the layering.
+#
+# NOT optional. It was, briefly, when `posix-c-port` forwarded a
+# `nros-log/platform-sink` feature; that feature is gone (issues 0723/0727) and
+# `src/log.rs` compiles unconditionally, which is the whole point — the sink's
+# availability is this crate's presence, not a flag.
 nros-log = { workspace = true }
 
 [build-dependencies]

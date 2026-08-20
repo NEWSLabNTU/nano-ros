@@ -46,21 +46,6 @@ alloc = []
 # covers the FreeRTOS/ThreadX coarseness).
 platform-clock = []
 
-# issue 0710 follow-up — let `dispatch` install the platform console on first
-# use, so a board cannot silently drop records by forgetting `init`.
-#
-# OFF by default because `PlatformSink` calls `nros_platform_log_write` /
-# `_flush`, and referencing those from the ALWAYS-reachable dispatch path turns
-# a platform port into a link requirement for every consumer of this crate —
-# including host tools and the test harness, which have no port and never did.
-# That is the same reasoning `platform-clock` above records, one function over.
-#
-# Enabled by the BOARD crates rather than by consumers: a board is exactly "an
-# image with a platform console", and cargo unifies features, so any graph
-# containing one turns this on without anybody opting in. The set is checkable
-# from the manifests (`check-board-log-sink.py`) — which is what issues 0708 and
-# 0710 both failed to get from searching for boot funnels.
-platform-sink = []
 
 max-level-trace = []
 max-level-debug = []
@@ -128,9 +113,3 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 [lints]
 workspace = true
 
-[build-dependencies]
-# issue 0727 — compiles the weak host log stubs (c/host_log_stub.c);
-# host-target-only, see build.rs. nros-cc-flags carries the repo cc policy
-# (issues 0383/0478).
-cc = "1"
-nros-cc-flags = { path = "../../tooling/nros-cc-flags" }

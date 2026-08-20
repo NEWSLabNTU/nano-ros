@@ -1,7 +1,7 @@
 ---
 id: 723
 title: "`platform-sink` cannot gate a LINK requirement, because `cargo --workspace` unifies features while linking stays per-binary"
-status: open
+status: resolved
 type: bug
 severity: high
 area: build
@@ -91,3 +91,41 @@ This is 0714's design to finish, so it is filed rather than patched.
 it checks that boards request the feature, which they do. The gate and the red
 are not in contradiction; the gate simply asks a different question than the one
 that fails.
+
+## Resolved 2026-08-20 — the feature this issue is about is DELETED
+
+This issue landed a fix (`ede77608e`): weak host-only stubs for
+`nros_platform_log_write`/`_flush`, compiled by a new `nros-log/build.rs` when
+`TARGET == HOST`, with an entry in `scripts/weak-symbols-allowlist.txt`. It
+worked, and its diagnosis was sharper than the parallel session's — the hazard
+is not merely that the sink is reachable but that **whether the unreferenced
+vtable is GC'd before the link is codegen luck**, and the lane lost that bet.
+
+It has been superseded rather than extended, on a project rule the fix could not
+know about: **weak symbols are avoided here.** The stub, the `build.rs`, the
+allowlist entry, the `platform-sink` feature (#0723's subject) and the
+`check-board-log-sink.py` gate that enforced it are all gone.
+
+What replaces them removes the requirement instead of satisfying it:
+
+* **`PlatformSink` moved to `nros_platform_cffi::log`** — the crate that owns
+  the ABI binding. "Does this binary need `nros_platform_log_write`?" is now a
+  DEPENDENCY question, which is a property of the binary. A feature is a
+  property of the BUILD, which is exactly why #0723 found the gate could not
+  survive `cargo --workspace` unification, and why a weak stub was needed to
+  cover what the gate could not. With the symbol referenced only from a crate a
+  portless binary does not link, neither is required.
+* **`nros_log::early`** holds records raised before `init` and replays them when
+  the board installs its sinks — so removing the dispatch auto-install (#0710's
+  mechanism) costs nothing. It is a better answer than the auto-install was: the
+  early records land in the sink the board PICKED, not one dispatch guessed.
+
+The extern is also declared exactly once now, in `nros-platform-cffi`'s bindgen
+output from `<nros/platform.h>` — the SSoT RFC-0054 names — instead of a second
+hand-written copy in the facade.
+
+**What is lost by removing the stubs, stated plainly:** a host binary that links
+a port but somehow fails to define the pair now fails at link rather than
+silently dropping. That is the #0708 failure mode staying caught, which the
+stub's own comment says it wanted to preserve for cross builds; the move
+preserves it for host builds too.

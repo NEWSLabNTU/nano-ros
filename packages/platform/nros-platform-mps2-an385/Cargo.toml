@@ -31,7 +31,7 @@ critical-section = ["cortex-m/critical-section-single-core"]
 # Phase 121.2.embedded — emit the canonical `nros_platform_*` C ABI
 # symbols by expanding the `nros-platform-cffi` macro against
 # `Mps2An385Platform`.
-cffi-export = ["dep:nros-platform-cffi", "dep:nros-log", "nros-log/platform-sink"]
+cffi-export = ["dep:nros-platform-cffi", "dep:nros-log"]
 # phase-361 W8.c / issue 0594 — `global-alloc` is GONE. Its job (zenoh-pico
 # `z_malloc` and Rust `Box`/`Vec` on ONE heap) is unchanged and now automatic:
 # this crate's free-list heap is the arena, `Mps2An385Platform: PlatformAlloc`

@@ -32,7 +32,7 @@ log = { version = "0.4", default-features = false }
 # dispatch auto-install. Cargo unifies the feature into any image holding this
 # crate; consumers with no port (host tools, the test harness) never get the
 # link requirement. Gated by `check-board-log-sink.py`.
-nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"] }
+nros-log = { path = "../../core/nros-log", default-features = false }
 # 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
 # generic `run<B>` is generic over. Trait-only surface; no
 # build-script transitive deps pulled.

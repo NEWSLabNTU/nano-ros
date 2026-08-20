@@ -564,7 +564,6 @@ check-test-targets:
 check-build: \
     check-cli-fresh check-required-features-reachable check-host-triple-literals \
     check-literal-domain-id \
-    check-board-log-sink \
     check-cmake-export-closure \
     check-launch-resolve-builds \
     check-test-targets \
@@ -1165,17 +1164,6 @@ check-required-features-reachable:
 check-host-triple-literals:
     @python3 scripts/check-host-triple-literals.py
 
-# Issue 0656 — an entity declared with a LITERAL domain declares on THAT domain
-# whatever `ROS_DOMAIN_ID` says, and the keyexpr is `<domain_id>/<name>/…`. A
-# peer honouring the value matches nothing and times out with no diagnostic on
-# either side. Invisible while both peers drop the domain identically.
-# issue 0708 — a board's boot funnel must publish the nros_log sink list, or the
-# records it should carry are dropped SILENTLY. Per-FUNNEL, not per-crate: both
-# boards carrying the bug also contained the call somewhere else, so any
-# per-crate check passes them. Buildless source grep, so it belongs in this tier.
-[private]
-check-board-log-sink:
-    @python3 scripts/check-board-log-sink.py
 
 # Issues 0400/0706 — the cmake `export -f` list in fixtures-build.sh must close
 # over its call graph, or a helper added to an exported function dies
