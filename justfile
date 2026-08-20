@@ -429,6 +429,20 @@ check: check-cli-fresh check-fast check-build
 # worktree with no CLI, no sources and no `nros sync` runs this lane green in
 # 23s. If you add a gate here, check it against that, not against your own
 # provisioned tree, where everything passes for the wrong reason.
+# `check-fast`'s gates, fanned out across the machine (issue 0726).
+#
+# Same gate set, derived from check-fast's own dependency line so it cannot
+# drift. 111 gates, 90s serial -> 8s at -P32 on a 32-core host; the floor is the
+# slowest single gate (~7.7s), so there is little left to win by optimising
+# individual gates — the distribution has no outlier (mean 501ms).
+#
+# Reports EVERY failing gate rather than stopping at the first, which serial
+# just-dependency ordering cannot do. That is the same trade `check-tier-
+# preconditions` makes: one failure per attempt is what makes a check something
+# people stop running.
+check-fast-parallel:
+    @bash scripts/build/run-gates-parallel.sh
+
 [group("main")]
 check-fast: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \

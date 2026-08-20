@@ -223,3 +223,31 @@ overhead — order 10 s against 90 s serial, and far more when cold.
 Independence must be established first, not assumed: `_check-skip-reset` is
 ordered first by design, and some gates regenerate files (`check-cbindgen-
 headers`, `check-abi-bindings`) rather than only reading.
+
+### Gate fan-out: 90 s -> 8 s, but the gates are not all independent
+
+`scripts/build/run-gates-parallel.sh` runs the same 111 gates concurrently,
+derived from `check-fast`'s own dependency line so the list cannot drift:
+
+```
+serial `just check-fast`      90 s
+parallel at -P32               8 s     (slowest single gate 7.7 s = the floor)
+```
+
+11x, and there is nothing left to win gate-by-gate — the distribution has no
+outlier (mean 501 ms), so the floor is one gate's runtime.
+
+**It is opt-in, not the default, because the gates are not independent.** On the
+first full run `check-rmw-force-link-anchor` failed, reporting that a zephyr
+example declares `rmw-xrce` without a `force_link_backend!` anchor. It passes
+standalone, and two immediate re-runs of the whole fan-out were green. An
+intermittent failure that cannot reproduce serially means some gate transiently
+rewrites what another reads — a generated tree, or a leaf config.
+
+That has to be found before `check-fast` switches over: a flaky gate is worse
+than a slow one, because the response to a flaky gate is to stop believing it.
+Note the fan-out is also what SURFACED this — the serial order has been hiding a
+write/read pair between two gates that nothing else would have shown.
+
+The shared skip log is not the culprit: `nros_check_skip` does a single short
+`printf >>`, and one write under O_APPEND below PIPE_BUF is atomic.
