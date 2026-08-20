@@ -217,7 +217,42 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* tier_class, 
     memset(&sp, 0, sizeof(sp));
     sp.sched_priority = nuttx_clamp_priority(priority);
     sp.sched_ss_low_priority = sched_get_priority_min(SCHED_FIFO);
-    sp.sched_ss_max_repl = 1;
+    /* issue 0736 — the kernel's configured maximum, NOT 1.
+     *
+     * `sched_ss_max_repl` bounds how many replenishments may be IN FLIGHT.
+     * NuttX allocates one per suspend/resume of the thread (sched_sporadic.c
+     * `sporadic_alloc_repl`), and an executor tier suspends every spin — 1000us
+     * here. With one slot, the second suspend finds none free, and the kernel's
+     * documented fall-back is to DO NOTHING:
+     *
+     *     serr("ERROR: Failed to allocate timer, nrepls=%d\n", ...);
+     *     // "Doing nothing is our fall-back behavior and that is not a
+     *     //  failure from the standpoint of higher level logic."
+     *
+     * The consumed budget is then never replenished, so the thread stays at
+     * `sched_ss_low_priority` — which is the FLOOR, below every other tier —
+     * for the rest of its life. Measured: the 10ms `high` tier published at
+     * ~1 Hz while the 100ms `low` tier ran at ~10 Hz, an inversion of ~70x.
+     *
+     * 1 is only correct for a thread that runs exactly once per period and is
+     * never preempted inside it, which no spin-loop tier is. The kernel's own
+     * bound is the right ceiling to ask for: it is what this build's config
+     * sized the array to, and `sporadic_alloc_repl` DEBUGASSERTs against
+     * exactly this value.
+     *
+     * Latent until #636 — the boot tier's path does not apply sporadic at all,
+     * and `high` WAS the boot tier until `boot_tier_index` made the least
+     * urgent tier the session owner. Moving it to the spawned path reached
+     * this line for the first time.
+     *
+     * HONEST SCOPE: this is NOT the cause of issue 0736, which is what found
+     * it. Measured on nuttx-arm/rust: 1 -> CONFIG (3) left the symptom bit for
+     * bit unchanged (ctrl 2, telem 21), and disabling SCHED_SPORADIC outright
+     * did not fix it either (ctrl 5, telem 13 — still inverted). 0736 turned
+     * out to be the tier's TIMER under-firing, not its scheduling. The line is
+     * corrected anyway because 1 is wrong on its own terms.
+     */
+    sp.sched_ss_max_repl = CONFIG_SCHED_SPORADIC_MAXREPL;
     sp.sched_ss_repl_period.tv_sec = (time_t)(period_us / 1000000u);
     sp.sched_ss_repl_period.tv_nsec = (long)(period_us % 1000000u) * 1000L;
     sp.sched_ss_init_budget.tv_sec = (time_t)(budget_us / 1000000u);

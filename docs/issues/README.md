@@ -184,13 +184,17 @@ built, both cells fail `no 'Received:' line — nothing was delivered` while the
 caused by phase-359 W10, verified by stashing it and reproducing on upstream main. Contradicts phase-370 W3's
 "deliver /chatter end to end" — likely a hand-build whose env the lane does not supply. See `0737-*`. (2026-08-20)
 
-**#0736** (testing/core, open 2026-08-20) — `realtime_tiers` fails SOLO 3/3 (~47 s) and PASSES in the full
-`just ci` sweep (21.6 s), which is the reverse of this repo's QEMU story, so neither "retest solo" nor "it's
-load" applies. Two different assertions in two days: `timer-overrun-runtime timer measured=2 declared=0`
-before rebasing onto ~19 upstream commits, and afterwards `nuttx-arm/rust: high-tier /ctrl counter 2 is not
->= 3x the low-tier /telem counter 20`. Live confounder to clear FIRST: the `nuttx-arm` row's fixture is not
-rebuilt by `lane=native`, so every run executed a museum binary. NOT caused by phase-359 W10 — verified for
-the first form by stashing it and reproducing on upstream main. See `0736-*`. (2026-08-21)
+**#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
+fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7
+timer(s) fired`: it IS scheduled a thousand times, and its 10 ms timer — due every ~10 spins of a 1 ms spin
+loop — fired 7. So the defect is the TIMER/CLOCK, not scheduling, and the assertion's wording points at the
+wrong layer. RULED OUT with measurements: SCHED_SPORADIC (raising the hardcoded `sched_ss_max_repl=1`
+changed nothing; compiling sporadic out left it inverted), #636's boot-tier choice, phase-359 W10 (NuttX has
+had no `std` since W7, so both clock arms are unchanged vs `121b555c9^`). Two claims in the first draft were
+WRONG and are corrected in place: it is not a museum binary, and it does not "pass in the sweep" — tier 1
+puts the nuttx rows out of lane (4 ran, 12 out of lane). Uncovered a SECOND failure: `nuttx-riscv/rust` gets
+`/ctrl` 0 with no priority applied and `sporadic FAILED rc=22`, hidden until its fixture was built. See
+`0736-*`. (2026-08-21)
 
 **#0734** (rmw-zenoh, open 2026-08-20) — `nros-rmw-zenoh` is compiled TWICE into a C++ image: `libnros_c.a`
 and `libnros_cpp.a` each carry their own build, under different `-C metadata`, so the statics do not even

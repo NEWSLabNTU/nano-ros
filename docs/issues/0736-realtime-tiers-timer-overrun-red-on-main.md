@@ -1,70 +1,101 @@
 ---
 id: 736
-title: "`realtime_tiers` fails SOLO and passes in the sweep — two different
-  assertions in two days, neither of them a clean flake"
+title: "`realtime_tiers` nuttx-arm/rust: the 10 ms tier's TIMER fires 7 times in
+  1000 spins — the tier is scheduled, its clock is not advancing with it"
 status: open
 type: bug
-area: testing, core
-related: [phase-359, issue-0623, issue-0636]
+area: core, platform, testing
+related: [phase-281, issue-0636, issue-0623]
 ---
 
-## Two failures, recorded in the order they were seen
-
-**Form 1 (2026-08-20, before rebasing onto ~19 upstream commits):** the runtime
-timer contract.
+## Symptom
 
 ```
-[WARN] nros: contract violation: timer-overrun-runtime timer measured=1 declared=0
-[WARN] nros: contract violation: timer-overrun-runtime timer measured=2 declared=0
+cargo nextest run -p nros-tests --test realtime_tiers_e2e --retries 0
+
+nuttx-arm/rust: high-tier /ctrl counter 2 is not >= 3x the low-tier /telem
+counter 21 — the 10 ms tier is not outrunning the 100 ms tier
 ```
 
-3/3 solo, ~47 s per run. `declared=0` means the entry baked no runtime for that
-timer, so any measurement over zero violates — the monitor reporting "you told
-me this takes no time and it took 2".
+The FAST tier delivers fewer messages than the SLOW one, inverted ~70x.
+Deterministic.
 
-**Form 2 (2026-08-21, after the rebase and a native fixture rebuild):** form 1
-is gone and a different row fails.
+## The measurement that reframes it
+
+Run the fixture by hand for 30 s (`qemu-system-arm -M virt -cpu cortex-a7
+-icount shift=auto -kernel <nuttx_entry> -netdev user,...`, with `just zenohd
+tcp/0.0.0.0:8291` for the baked locator) and the tier reports on itself:
 
 ```
-realtime_tiers: 1 of 16 row(s) FAILED:
-  nuttx-arm/rust: high-tier /ctrl counter 2 is not >= 3x the low-tier /telem
-  counter 20 — the 10 ms tier is not outrunning the 100 ms tier
+nros: tier `high` alive — 1000 spin(s), 7 timer(s) fired, 0 sub callback(s), 0 error(s)
 ```
 
-Also 3/3 solo, also ~47 s. `/ctrl` received 3 messages; `/telem` received 21.
+**1000 spins, 7 timer fires.** The tier is being scheduled — a thousand times.
+Its spin period is 1000 us and its timer period is 10 ms, so the timer is due
+every ~10 spins and should have fired ~100 times. It fired 7, i.e. the timer's
+clock advanced ~70 ms across 1000 spins that asked for 1 s.
 
-## The part that is stranger than either failure
+So this is NOT a scheduling defect, and everything the assertion's wording
+suggests ("the 10 ms tier is not outrunning the 100 ms tier") points the reader
+at the wrong layer. The tier runs. Its sense of time does not keep up with it.
 
-**It PASSES in the full sweep** — 21.6 s, green, in the same `just ci` run
-whose junit reports one unrelated real failure. Solo it fails 3/3 at 47 s.
-That is the reverse of this repo's usual QEMU story (CLAUDE.md: retest a QEMU
-red SOLO before filing, because in-sweep lanes flake under load), so the normal
-diagnosis does not apply and neither does dismissing it as load.
+The `low` tier is the control: 10 ms spin, 100 ms timer — the same 10-spins-per-
+fire ratio — and it delivers at roughly its declared rate. Whatever this is, it
+bites the 1 ms spin and not the 10 ms one.
 
-The 47 s vs 21.6 s split is the thing to chase first: the same binaries take
-twice as long solo, which means the solo run is doing something the sweep is
-not — or waiting for something the sweep has already warmed.
+## Ruled out, with the measurement for each
 
-## Confounder that is live and must be cleared first
+* **SCHED_SPORADIC.** `[tiers.high.nuttx] budget_us=5000 period_us=10000`
+  engages it, and `sched_ss_max_repl` was hardcoded to 1 — genuinely wrong (see
+  below). Raising it to `CONFIG_SCHED_SPORADIC_MAXREPL` left the symptom bit for
+  bit unchanged (ctrl 2, telem 21). Compiling the sporadic call out entirely
+  gave ctrl 5 / telem 13 — moved, still inverted. Not the cause.
+* **#636 / the boot-tier choice.** `boot_tier_index` did move `high` from the
+  boot thread to the spawned path, which is why this became reachable, but the
+  spawned tier gets its priority (`tier priority set tier=high prio=110`) and
+  runs 1000 spins. It is scheduled.
+* **phase-359 W10's clock ruling.** NuttX has had no `std` since W7, so both
+  `Clock::now()`'s `no_std` body and `default_clock_us_fn`'s
+  `not(rmw-cffi)` arm are the same before and after W10. Checked against
+  `121b555c9^`.
+* **A museum binary.** This issue's first draft claimed `lane=native` does not
+  rebuild the row so every run used a stale fixture. Wrong: the row produced
+  runtime output, so the freshness gate passed it. It has since been rebuilt
+  with `just nuttx build-fixtures` and behaves identically.
+* **"Fails solo, passes in the sweep."** Also this issue's first draft, also
+  wrong, and worth recording because it invented a mystery. `just ci` is tier 1;
+  `nros_tests::lane_scope::admits` puts the nuttx rows OUT OF LANE. Measured:
+  `NROS_TEST_SCOPE=native` -> "4 row(s) ran, 12 out of lane". The 47 s vs 21.6 s
+  was 16 rows against 4, not a load effect.
 
-The `nuttx-arm/rust` row's fixture is NOT rebuilt by `just build-test-fixtures
-lane=native`, so every run above executed a binary built before this tree's
-current core. That is the museum-binary condition CLAUDE.md warns about, and
-until the nuttx lane is rebuilt (`just nuttx build-fixtures`, or a tier-2
-build) form 2 cannot be attributed to anything.
+## Where to look next
 
-Do that before theorising about the tier ratio.
+The tier's spin loop and the clock its timer compares against are the two
+suspects, and the 1 ms-vs-10 ms split is the discriminator. Concretely: does
+`spin_once` return early without waiting its declared period (so 1000 spins
+really did take only ~70 ms of guest time), or does it wait correctly while the
+clock under-reports? The tier's own counters can tell these apart — a spin count
+alongside the clock delta at the alive report would settle it in one run, and
+that instrumentation does not exist yet.
 
-## Not caused by phase-359 W10
+Related but separate: the executor's contract monitor prints
+`timer-overrun-runtime timer measured=8 declared=0` continuously. `measured=8`
+means a publish costs ~8 ms on this emulated target while the deployment
+declared no runtime at all, so the declaration is empty and the monitor cannot
+do anything but complain. That was this issue's ORIGINAL title, before the
+counters showed it to be a passenger rather than the driver.
 
-Form 1 was checked directly: stash the `packages/core` + `packages/api` edits,
-`just setup-cli`, rebuild native fixtures from upstream `main`, run — failed
-identically on the untouched tree.
+## A second, different failure this uncovered
+
+`nuttx-riscv/rust` also fails, and not the same way: `/ctrl` counter **0**, no
+`tier priority set tier=high` line at all, no FIRST dispatch, and `sporadic
+budget FAILED tier=high rc=22` (EINVAL) where the arm build succeeds. It was
+invisible because its fixture had never been built — `realtime_tiers` reported
+"16 ran, 10 skipped" until `just nuttx build-fixtures` brought it down to 5.
 
 ## Reproduce
 
 ```
-just build-test-fixtures lane=native
-cargo nextest run -p nros-tests --test realtime_tiers_e2e --retries 0   # fails
-just ci                                                                # passes
+just nuttx build-fixtures
+cargo nextest run -p nros-tests --test realtime_tiers_e2e --retries 0
 ```
