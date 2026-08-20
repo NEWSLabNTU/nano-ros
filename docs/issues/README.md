@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0712** (build, open 2026-08-20) — `export -f` closure is ungated: a function shipped to a make
+leaf calls a sibling that was never exported, and the leaf is a fresh bash with only what `export -f`
+gave it. Third occurrence (0400, phase-340 B2, now 0706's two cache-guard helpers); the last one took
+out the whole tier-2 fixture build after four platforms had passed, reporting only
+`nros_cmake_toolchain_resolved_cc: command not found`. The comment above the list claims
+`build_root_derivation.sh` gates it — that script no longer exists, and covered a different list. A
+static closure walk finds it (11 functions checked, exactly the 2 gaps). See `0712-*`. (2026-08-20)
+
 **#0711** (testing/rmw-zenoh, open 2026-08-20) — zenoh PEER mode is now BUILDABLE but still not EXERCISED.
 `MULTICAST_TRANSPORT` was a hard-coded `const bool = false` (issue 0682's size decision), so
 `nano2nano::test_peer_mode_communication` could only ever SKIP — a capability nothing could run. It is now a
