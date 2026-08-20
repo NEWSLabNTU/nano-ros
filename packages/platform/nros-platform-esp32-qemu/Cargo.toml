@@ -16,9 +16,15 @@ default = []
 # / xrce builds keep their 32 KB footprint.
 dds-heap = []
 # Phase 121.2.embedded — canonical C ABI export.
-cffi-export = ["dep:nros-platform-cffi"]
+cffi-export = ["dep:nros-platform-cffi", "dep:nros-log", "nros-log/platform-sink"]
 
 [dependencies]
+# issue 0710 follow-up — this crate EMITS `nros_platform_log_write`, so it is
+# one of the places that can safely turn on `nros-log`'s dispatch auto-install.
+# The dep exists for the feature alone (no code use): cargo has no other way to
+# say "the symbol my sibling calls is supplied here". Boards do the same for the
+# RTOS ports, whose symbols come from C linked at the board level.
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 nros-platform-api = { path = "../../platform/nros-platform-api" }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }
 zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc" }

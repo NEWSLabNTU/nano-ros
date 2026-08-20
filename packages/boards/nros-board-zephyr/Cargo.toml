@@ -34,5 +34,9 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # run_tiers wires the nros_log dispatcher to the platform console at boot
 # (mirrors nros-board-linux); without it a Node pkg's `nros_info!` on a
 # Zephyr multi-tier entry produced no output at all.
-nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
+# issue 0710 follow-up — a board IS the platform console, so it turns on the
+# dispatch auto-install. Cargo unifies the feature into any image holding this
+# crate; consumers with no port (host tools, the test harness) never get the
+# link requirement. Gated by `check-board-log-sink.py`.
+nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"], optional = true }
 log = { version = "0.4", optional = true }

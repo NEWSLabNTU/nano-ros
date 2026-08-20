@@ -73,7 +73,11 @@ log = { version = "0.4", default-features = false }
 # other board that publishes at a funnel already deps this non-optionally, and
 # `nros-board-zephyr`'s IS optional only because its call sits behind the same
 # `tiers` feature that enables it.
-nros-log = { path = "../../core/nros-log", default-features = false }
+# issue 0710 follow-up — a board IS the platform console, so it turns on the
+# dispatch auto-install. Cargo unifies the feature into any image holding this
+# crate; consumers with no port (host tools, the test harness) never get the
+# link requirement. Gated by `check-board-log-sink.py`.
+nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"] }
 esp-alloc = { version = "~0.9.0" }
 
 # Atomics for riscv32imc (no hardware atomic support). Feature-gated by the

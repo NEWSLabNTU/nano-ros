@@ -28,7 +28,11 @@ log = { version = "0.4", default-features = false }
 # run_tiers_entry wires the nros_log dispatcher at boot (mirrors the
 # nros-board-linux/zephyr funnels); without it a Node pkg's `nros_info!`
 # is silently dropped on FreeRTOS multi-tier entries.
-nros-log = { path = "../../core/nros-log", default-features = false }
+# issue 0710 follow-up — a board IS the platform console, so it turns on the
+# dispatch auto-install. Cargo unifies the feature into any image holding this
+# crate; consumers with no port (host tools, the test harness) never get the
+# link requirement. Gated by `check-board-log-sink.py`.
+nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"] }
 # 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
 # generic `run<B>` is generic over. Trait-only surface; no
 # build-script transitive deps pulled.

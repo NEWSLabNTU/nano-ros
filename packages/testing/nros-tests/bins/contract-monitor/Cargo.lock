@@ -501,6 +501,7 @@ version = "0.5.0"
 dependencies = [
  "cc",
  "nros-cc-flags",
+ "nros-log",
  "nros-platform-api",
 ]
 

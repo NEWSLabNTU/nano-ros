@@ -31,7 +31,7 @@ critical-section = ["cortex-m/critical-section-single-core"]
 # Phase 121.2.embedded — emit the canonical `nros_platform_*` C ABI
 # symbols by expanding the `nros-platform-cffi` macro against
 # `Mps2An385Platform`.
-cffi-export = ["dep:nros-platform-cffi"]
+cffi-export = ["dep:nros-platform-cffi", "dep:nros-log", "nros-log/platform-sink"]
 # phase-361 W8.c / issue 0594 — `global-alloc` is GONE. Its job (zenoh-pico
 # `z_malloc` and Rust `Box`/`Vec` on ONE heap) is unchanged and now automatic:
 # this crate's free-list heap is the arena, `Mps2An385Platform: PlatformAlloc`
@@ -41,6 +41,12 @@ cffi-export = ["dep:nros-platform-cffi"]
 # both it and `nros-platform/global-allocator` failed to compile.
 
 [dependencies]
+# issue 0710 follow-up — this crate EMITS `nros_platform_log_write`, so it is
+# one of the places that can safely turn on `nros-log`'s dispatch auto-install.
+# The dep exists for the feature alone (no code use): cargo has no other way to
+# say "the symbol my sibling calls is supplied here". Boards do the same for the
+# RTOS ports, whose symbols come from C linked at the board level.
+nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
 # Platform trait definitions (trait impls live in lib.rs)
 nros-platform-api = { path = "../../platform/nros-platform-api" }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", optional = true }

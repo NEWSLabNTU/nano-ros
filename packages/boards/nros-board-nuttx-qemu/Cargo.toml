@@ -20,7 +20,11 @@ name = "nros_board_nuttx_qemu"
 
 [dependencies]
 # issue 0710 — the `nsh_main` boot funnel publishes the nros_log sink list.
-nros-log = { path = "../../core/nros-log", default-features = false }
+# issue 0710 follow-up — a board IS the platform console, so it turns on the
+# dispatch auto-install. Cargo unifies the feature into any image holding this
+# crate; consumers with no port (host tools, the test harness) never get the
+# link requirement. Gated by `check-board-log-sink.py`.
+nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"] }
 # No platform crate needed — NuttX is POSIX-compatible, zenoh-pico reuses unix/ platform.
 # No smoltcp/lwIP needed — NuttX has built-in BSD sockets.
 # No custom Ethernet driver — NuttX has virtio-net built into the kernel.

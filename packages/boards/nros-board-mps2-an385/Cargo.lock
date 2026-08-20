@@ -587,6 +587,7 @@ dependencies = [
  "cortex-m-semihosting",
  "mps2-an385-pac",
  "nros-baremetal-common",
+ "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-smoltcp",

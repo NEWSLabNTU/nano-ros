@@ -80,7 +80,11 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # publish the sink list is the defect this issue is about. The two features
 # below used to enable it; making it unconditional is what lets the funnel
 # keep its promise in the configurations they do not cover.
-nros-log = { path = "../../core/nros-log", default-features = false }
+# issue 0710 follow-up — a board IS the platform console, so it turns on the
+# dispatch auto-install. Cargo unifies the feature into any image holding this
+# crate; consumers with no port (host tools, the test harness) never get the
+# link requirement. Gated by `check-board-log-sink.py`.
+nros-log = { path = "../../core/nros-log", default-features = false, features = ["platform-sink"] }
 
 # phase-337 W6.a — SPSC queue behind the `rtic` feature's deferred-callback
 # dispatch surface (was a dep of the folded `nros-board-rtic-mps2-an385`).

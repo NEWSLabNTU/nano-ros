@@ -1900,6 +1900,7 @@ dependencies = [
  "cc",
  "libc",
  "nros-cc-flags",
+ "nros-log",
  "nros-node",
  "nros-platform-api",
 ]
@@ -1917,6 +1918,7 @@ version = "0.4.0"
 dependencies = [
  "esp-hal",
  "nros-baremetal-common",
+ "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-smoltcp",
@@ -1931,6 +1933,7 @@ dependencies = [
  "cortex-m-semihosting",
  "mps2-an385-pac",
  "nros-baremetal-common",
+ "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-smoltcp",
@@ -1944,6 +1947,7 @@ dependencies = [
  "cortex-m",
  "defmt 0.3.100",
  "nros-baremetal-common",
+ "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-smoltcp",

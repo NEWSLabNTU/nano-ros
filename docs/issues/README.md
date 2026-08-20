@@ -83,6 +83,17 @@ thread-suspend signals — or you stop on them instead of the fault. Uncaught un
 tier-2 coordinate and tier 2 had never completed here: blocked in sequence by #0698, a stale index row, a
 NuttX header gate, and #0708's two non-compiling boards. See `0715-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0714** — issue 0710's auto-install references `nros_platform_log_write` from
+the path EVERY record reaches, which turned a platform port into a LINK requirement for every `nros-log`
+consumer: after `fe974d1e9`, every `nros-tests` target linking `nros-log` without a port failed with
+`undefined symbol: nros_platform_log_write`. `cargo check` does not link, so the class is invisible to a
+check-only lane. `nros-log`'s own `platform-clock` comment had already recorded the reasoning one feature
+over. Fixed with a `platform-sink` feature, default OFF, enabled by the crates that SUPPLY the symbol (board
+crates; the `cffi-export` port crates; `nros-platform-cffi`'s `posix-c-port`) — cargo unifies it into any
+image holding one, and a graph with no port behaves exactly as it did before 0710. `check-board-log-sink.py`
+now checks those MANIFEST rows instead of searching for boot funnels, which is the first spelling of the rule
+that is actually checkable. See `archived/0714-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0710** — issue 0708's rule ("every `pub fn run*` in a board crate reaches
 `init_default`") was a SEARCH for boot paths, and it kept losing: NuttX's funnel is `pub extern "C" fn
 nsh_main`; esp32's board did not depend on `nros-log` at all; mps2-an385's dep was optional behind two

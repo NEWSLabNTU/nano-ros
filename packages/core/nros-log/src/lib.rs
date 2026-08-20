@@ -467,7 +467,17 @@ fn dispatch_to_sinks(record: &Record<'_>) {
     if recursion_guard_check_and_set() {
         return;
     }
+    // `mut` only when the auto-install below is compiled in.
+    #[cfg_attr(not(feature = "platform-sink"), allow(unused_mut))]
     let mut ptr = SINKS_PTR.load(Ordering::Acquire);
+    // `platform-sink` — see the feature's comment in `Cargo.toml`. The install
+    // below references `nros_platform_log_write`/`_flush` from a path every
+    // record reaches, so ungated it makes a platform port a LINK requirement for
+    // every consumer of this crate. It is a board that has a console, and a
+    // board that enables the feature; cargo unifies it into any image holding
+    // one. Host tools and the test harness link no port, get no auto-install,
+    // and behave exactly as they did before issue 0710.
+    #[cfg(feature = "platform-sink")]
     if ptr.is_null() {
         // issue 0710 — install the platform sink rather than drop the record.
         //
