@@ -71,6 +71,18 @@ env around the whole fixture build would pollute the shared tree every other tes
 REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
 See `0711-*`. (2026-08-20)
 
+**#0715** (boards/threadx-linux, open 2026-08-20) — every threadx-linux **CycloneDDS** image SEGVs
+(`rc=139`, 3/3 reproducible: c_talker, c_service_server, c_action_server). Each completes init, prints its
+READY banner, then faults in the ThreadX TIMER thread — `_tx_thread_timeout` ← `_tx_timer_thread_entry` ←
+`_tx_thread_shell_entry` — i.e. the kernel's expiry walk, not application code and not Cyclone's threads,
+which points at a corrupted/freed entry still linked into the timeout list. Explains three tier-2 failures
+at once (service "produced no calls/requests" with EMPTY server output, action "produced no result",
+talker→native-listener "never received 2 messages"). Under gdb you must
+`handle SIGUSR1 SIGUSR2 SIGALRM nostop noprint pass` — those are the Linux port's timer-interrupt and
+thread-suspend signals — or you stop on them instead of the fault. Uncaught until now because this is a
+tier-2 coordinate and tier 2 had never completed here: blocked in sequence by #0698, a stale index row, a
+NuttX header gate, and #0708's two non-compiling boards. See `0715-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0710** — issue 0708's rule ("every `pub fn run*` in a board crate reaches
 `init_default`") was a SEARCH for boot paths, and it kept losing: NuttX's funnel is `pub extern "C" fn
 nsh_main`; esp32's board did not depend on `nros-log` at all; mps2-an385's dep was optional behind two
