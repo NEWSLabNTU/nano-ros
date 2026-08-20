@@ -236,7 +236,15 @@ def report_silent_suites(junit_path: str) -> int:
     print("")
     print(f"rewrite-skipped-junit: {len(silent)} suite(s) ran and asserted NOTHING:")
     for suite, n, reasons, is_setup in silent:
-        tag = "SETUP GAP" if is_setup else "capability"
+        # NOT "capability" for the false branch. That word is also a SKIP CLASS
+        # (`capability` vs `lane`, counted three lines above in "skips by
+        # class"), and printing it here as the else-branch of an unrelated
+        # SETUP-GAP heuristic makes a `lane`-classed suite read as misfiled.
+        # It cost a real misreading: a reviewer concluded the classifier had
+        # put a `skip_class!(lane, …)` test under `capability`, when the counts
+        # were right and only this label collided. Two taxonomies, one word,
+        # three lines apart.
+        tag = "SETUP GAP" if is_setup else "no remedy named"
         print(f"  [{tag}] {suite}: all {n} case(s) skipped")
         for r in reasons[:2]:
             print(f"      {r}")

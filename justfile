@@ -593,6 +593,7 @@ check-build: \
     check-feature-set-ssot \
     check-no-tracked-file-find \
     check-pool-inventory \
+    check-lane-skip-class \
     check-grep-q-error-conflation \
     check-sched-dim-arms \
     check-image-paths-apply-policy \
@@ -3462,6 +3463,13 @@ check-cli-source-dirs:
 [private]
 check-pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
+
+# Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
+# `capability`, so a fixture the lane deliberately did not build gets counted as
+# a missing capability and the sweep summary lies about which gap a run has.
+[private]
+check-lane-skip-class:
+    @python3 scripts/check-lane-skip-class.py
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.

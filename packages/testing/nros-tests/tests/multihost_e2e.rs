@@ -292,7 +292,14 @@ fn multihost() {
         );
     }
     if cells.is_empty() {
-        nros_tests::skip!(
+        // The class is `lane`, not the `capability` a plain `skip!` defaults to
+        // (issue 0584). Every cell here is out of the RUN's lane — the fixtures
+        // were deliberately not built — which is a different fact from "this
+        // machine cannot do it", and the two are counted separately in the
+        // sweep summary. `baremetal_run_plan_runtime` already carries the
+        // classed spelling and a comment about getting it wrong once.
+        nros_tests::skip_class!(
+            lane,
             "every cell is out of this run's lane:\n  {}",
             out_of_lane.join("\n  ")
         );
