@@ -129,9 +129,18 @@ def _on_disk(root):
     if key in _INDEX_CACHE:
         return _INDEX_CACHE[key]
     if root.resolve() == pathlib.Path(ROOT).resolve():
+        # `--recurse-submodules` lists what the SUBMODULES' indexes track, and
+        # nano-ros initialises `play_launch` NON-recursively on purpose — its
+        # layer-3 runtime submodules (`src/vendor/*`, container, msgs) are never
+        # checked out here. git names those files; they are not on disk, and
+        # opening one raises FileNotFoundError, which is what took every fixture
+        # build down. This helper is `_on_disk`, so honour that: keep the paths
+        # that actually exist. The walk it replaced could not see them either.
         rels = [
-            str(pathlib.Path(p).relative_to(root))
-            for p in tracked(root / SCOPE, repo=root, submodules=True)
+            rel
+            for pth in tracked(root / SCOPE, repo=root, submodules=True)
+            if (rel := str(pathlib.Path(pth).relative_to(root)))
+            and pathlib.Path(pth).is_file()
         ]
     else:
         # walk-ok: a `--self-test` temp tree, outside any index and tiny by
