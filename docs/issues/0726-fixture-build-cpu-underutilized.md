@@ -315,3 +315,55 @@ dump the manifest text and the `git ls-files` result it actually saw when it
 decides an anchor is missing, then run the positive control until it trips. Six
 scheduling hypotheses and a bisection have now failed to identify it from the
 outside; the gate has to report what it read.
+
+### Instrumented: the read was COMPLETE, so the grep itself failed
+
+Tripped on the third attempt of the positive control, with diagnostics:
+
+```
+cat rc=0, src_text bytes=4267
+git ls-files returned:
+  examples/zephyr/rust/talker/src/app_main.rs
+  examples/zephyr/rust/talker/src/lib.rs
+per-file re-read for force_link_backend!(nros_rmw_xrce_cffi):
+  PRESENT on disk: examples/zephyr/rust/talker/src/app_main.rs  <-- read lost it
+  absent: examples/zephyr/rust/talker/src/lib.rs (3387 bytes)
+```
+
+The arithmetic rules out a short read. app_main.rs is 896 bytes and lib.rs 3387,
+so 4283 on disk against a measured 4267 — and `${#var}` counts CHARACTERS, with
+7 non-ASCII lines across the two files making up the difference. Nothing was
+lost. `cat` also returned 0.
+
+So `src_text` DID contain `force_link_backend!(nros_rmw_xrce_cffi)` — the anchor
+sits at byte 809 of 896, and a per-file re-read finds it — and
+
+```sh
+if ! printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"; then
+```
+
+still took the failure branch.
+
+**`grep -q` returns 1 for "not found" and >=2 for an ERROR, and `if !` cannot
+tell them apart.** Under a 32-way fan-out a forked `grep` can fail to start
+(EAGAIN / resource limits) or be killed; either way the gate reads it as "the
+anchor is missing" and reports a confident, specific, wrong finding.
+
+That explains every observation the earlier hypotheses could not: load-dependent
+but not tied to any gate (any subset heavy enough to strain fork does it),
+moving between examples (whichever iteration loses the race), no file
+corruption, `cat rc=0`, and clean standalone runs at any repetition.
+
+This is a CLASS, not one site: `if ! ... | grep -q` conflates error with
+absence everywhere it appears, and a gate that reports absence on error is a
+gate that fails green->red under load and red->green never. The fix is to
+capture the status and treat >=2 as a hard error:
+
+```sh
+printf '%s' "$src_text" | grep -q "$pat"; rc=$?
+case $rc in 0) ;; 1) <real finding> ;; *) echo "grep failed (rc=$rc)"; exit 2 ;; esac
+```
+
+Worth a sweep of the gate scripts for the same shape before the fan-out becomes
+the default — this is exactly the "fix the class" rule, and the fan-out is what
+made a latent 1-in-N bug visible at all.

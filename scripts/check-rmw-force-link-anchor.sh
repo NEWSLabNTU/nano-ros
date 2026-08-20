@@ -47,6 +47,15 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
     [ -n "$src_files" ] || continue
     # shellcheck disable=SC2086
     src_text=$(cat $src_files)
+    # Issue 0726 — capture what `cat` actually returned. Under a 32-way gate
+    # fan-out this gate intermittently reports a missing anchor for an example
+    # that plainly has one, and the read is the only step that can lose content
+    # while still leaving enough behind to pass the `zephyr_component_main!`
+    # scope test below. `cat` reports a per-file failure on stderr and CONTINUES
+    # with the rest, so a partial read is indistinguishable from a real absence
+    # by the time the anchor grep runs.
+    cat_rc=$?
+    src_bytes=${#src_text}
     src="$dir/src"
 
     # Only examples that actually use the facade entry macro are in scope.
@@ -69,6 +78,25 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
         esac
 
         if ! printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"; then
+            # Issue 0726 — say what was READ, not just what was concluded. If
+            # the anchor is present on disk but absent from `src_text`, this is
+            # the fan-out flake and not a real finding; per-file greps below
+            # settle which, because they re-read from disk independently.
+            {
+                echo "--- 0726 diagnostics ---"
+                echo "    cat rc=${cat_rc}, src_text bytes=${src_bytes}"
+                echo "    git ls-files returned:"
+                printf '%s\n' "$src_files" | sed 's/^/      /'
+                echo "    per-file re-read for force_link_backend!(${krate}):"
+                # shellcheck disable=SC2086
+                for f in $src_files; do
+                    if grep -q "force_link_backend!(${krate})" "$f" 2>/dev/null; then
+                        echo "      PRESENT on disk: $f  <-- read lost it"
+                    else
+                        echo "      absent: $f ($(wc -c <"$f" 2>/dev/null) bytes)"
+                    fi
+                done
+            } >&2
             echo "ERROR: $src declares '${feature}' forwarding to dep:${dep}," >&2
             echo "       but never invokes nros::force_link_backend!(${krate})." >&2
             echo "       Without the anchor rustc's staticlib DCE drops" >&2
