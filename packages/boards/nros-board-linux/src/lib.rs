@@ -366,9 +366,9 @@ impl LinuxBoard {
 
     /// Phase 228.E — per-tier multi-task entry. Opens the one RMW
     /// session, then runs one `Executor` per [`TierSpec`] over that
-    /// shared session: the highest-priority tier (`tiers[0]`, the
-    /// resolver orders highest-first) runs on the boot task; the rest
-    /// are spawned as `std::thread`s. Each tier sets its
+    /// shared session: the LEAST urgent tier runs on the boot task (chosen by
+    /// `boot_tier_index` — issue 0636, because an owner that outranks its peers
+    /// and then spins starves them); the rest are spawned as `std::thread`s. Each tier sets its
     /// `active_groups` filter, runs `setup` (register-only — only this
     /// tier's callbacks take), then spins forever.
     ///
@@ -447,10 +447,25 @@ impl LinuxBoard {
         // the one shared session is serialized (see `run_one_tier`).
         let setup_lock = std::sync::Mutex::new(());
         let setup_lock = &setup_lock;
+        // issue 0636 — the boot tier is CHOSEN, not `tiers[0]`. POSIX runs
+        // bigger-is-more-urgent, and `resolve_tiers` orders by raw number
+        // descending without inverting per kernel, so `tiers[0]` was the MOST
+        // urgent tier here. An owner that outranks its peers and then spins
+        // starves them on any single-CPU deployment (measured on NuttX, which
+        // runs this same POSIX shape); `boot_tier_index` picks the tier that
+        // outranks nothing. Where every tier declares the same priority — or
+        // none — this is still index 0.
+        let boot_index = ::nros_platform::boot_tier_index(
+            tiers,
+            ::nros_platform::PriorityDirection::BiggerIsMoreUrgent,
+        );
         std::thread::scope(|scope| {
-            // Spawn every tier after the first; each borrows the shared
-            // session pointer and `&setup` from the enclosing scope.
-            for tier in &tiers[1..] {
+            // Spawn every tier except the one the boot task runs; each borrows
+            // the shared session pointer and `&setup` from the enclosing scope.
+            for (spawn_index, tier) in tiers.iter().enumerate() {
+                if spawn_index == boot_index {
+                    continue;
+                }
                 let mut builder =
                     std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
                 // phase-302 W2 (issue 0262) — honor a declared per-tier stack
@@ -484,7 +499,7 @@ impl LinuxBoard {
                 tiers.len()
             ));
             // Boot tier runs on this task, reusing the owning executor.
-            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[0], setup, setup_lock);
+            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[boot_index], setup, setup_lock);
         });
 
         // Unreachable: the boot tier's spin loop never returns.

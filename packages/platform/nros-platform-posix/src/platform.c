@@ -202,6 +202,31 @@ void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
     attr->core = -1;            /* unpinned */
 }
 
+/* issue 0636 — one spelling of "what native priority does this attribute ask
+ * for", shared by the pthread_attr path (before create) and the running-thread
+ * path (after). Returns < 0 for "no priority requested", which both callers
+ * read as "leave it inherited".
+ *
+ * POSIX runs the same direction as the band (higher = more urgent) but only
+ * under a real-time policy: under the default SCHED_OTHER the value is ignored,
+ * and selecting SCHED_FIFO needs privilege the process may not have. */
+static int nros_posix_native_priority(int32_t priority) {
+    if (priority == NROS_PLATFORM_PRIORITY_INHERIT) {
+        return -1;
+    }
+    if (NROS_PLATFORM_PRIORITY_IS_RAW(priority)) {
+        return (int) NROS_PLATFORM_PRIORITY_RAW_VALUE(priority);
+    }
+    int lo = sched_get_priority_min(SCHED_FIFO);
+    int hi = sched_get_priority_max(SCHED_FIFO);
+    if (priority >= 0 && hi > lo) {
+        int32_t band =
+            priority > NROS_PLATFORM_PRIORITY_MAX ? NROS_PLATFORM_PRIORITY_MAX : priority;
+        return lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
+    }
+    return -1;
+}
+
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     /* phase-364 W1 — INVALID: the caller passed a NULL where storage or an
@@ -255,6 +280,32 @@ int8_t nros_platform_task_init(void *task, void *attr,
         if ((a->flags & NROS_PLATFORM_TASK_DETACHED) != 0u) {
             (void) pthread_attr_setdetachstate(&pattr, PTHREAD_CREATE_DETACHED);
         }
+        /* issue 0636 — set the priority ON THE ATTRIBUTE, so the task is BORN
+         * with it. The block after `pthread_create` below applied it to a
+         * running thread instead, which leaves a window where the child holds
+         * the SPAWNER's priority — and under SCHED_FIFO on a uniprocessor an
+         * equal-priority peer never preempts, so a child that should have
+         * outranked the owner ran only when the owner happened to block.
+         *
+         * That window is what `sched_dims_applied`'s NuttX cell kept losing:
+         * measured 4 of 8 runs with the owner at the child's own priority (the
+         * two are equal exactly when the attribute did not take), against 8 of
+         * 8 once the attribute carries it.
+         *
+         * `PTHREAD_EXPLICIT_SCHED` is the half that makes the other two
+         * settings mean anything: without it POSIX says the child INHERITS the
+         * creator's policy and priority and the attribute is ignored, which is
+         * a silent no-op rather than an error. */
+        int want_native = nros_posix_native_priority(a->priority);
+        if (want_native >= 0) {
+            struct sched_param sp;
+            memset(&sp, 0, sizeof(sp));
+            sp.sched_priority = want_native;
+            if (pthread_attr_setinheritsched(&pattr, PTHREAD_EXPLICIT_SCHED) == 0
+                && pthread_attr_setschedpolicy(&pattr, SCHED_FIFO) == 0) {
+                (void) pthread_attr_setschedparam(&pattr, &sp);
+            }
+        }
     }
 
     pthread_t *t = (pthread_t *) task;
@@ -284,21 +335,16 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * tier self-applies its priority at entry through
      * `nros_nuttx_apply_current_priority`; this covers the create-time case the
      * ABI can express portably. */
-    if (a != NULL && a->priority != NROS_PLATFORM_PRIORITY_INHERIT) {
-        int lo = sched_get_priority_min(SCHED_FIFO);
-        int hi = sched_get_priority_max(SCHED_FIFO);
-        int native;
-        if (NROS_PLATFORM_PRIORITY_IS_RAW(a->priority)) {
-            native = (int) NROS_PLATFORM_PRIORITY_RAW_VALUE(a->priority);
-        } else if (a->priority >= 0 && hi > lo) {
-            int32_t band = a->priority > NROS_PLATFORM_PRIORITY_MAX
-                               ? NROS_PLATFORM_PRIORITY_MAX
-                               : a->priority;
-            native = lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
-        } else {
-            native = -1;
-        }
+    if (a != NULL) {
+        int native = nros_posix_native_priority(a->priority);
         if (native >= 0) {
+            /* Belt and braces: the attribute above is what makes the task BORN
+             * with this priority (issue 0636). This repeats it on the running
+             * thread for the case the attribute did not take — a kernel that
+             * declines `PTHREAD_EXPLICIT_SCHED`, or a host without the
+             * privilege to select SCHED_FIFO. Still best-effort: a refusal is
+             * not a spawn failure, because the task runs at the inherited
+             * priority, which is what it did before this field existed. */
             struct sched_param sp;
             memset(&sp, 0, sizeof(sp));
             sp.sched_priority = native;

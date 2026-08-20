@@ -239,7 +239,7 @@ pub mod sys {
     /// single-core guest an equal-priority FIFO peer does not preempt, so the
     /// new tier ran only when the boot tier's spin happened to block, and its
     /// self-apply (with the marker RFC-0052 requires) was reached late or not
-    /// within the cell's window. Measured 1 of 5 runs passing before this, 
+    /// within the cell's window. Measured 1 of 5 runs passing before this,
     /// which read as a flake and was a priority inversion for the whole
     /// interval between spawn and self-apply.
     pub(crate) fn spawn_tier(
@@ -259,7 +259,9 @@ pub mod sys {
         // NuttX's is 1..=255, so anything outside that is not a priority this
         // port can express and falls back to INHERIT rather than wrapping into
         // some other tier's band.
-        let priority = i32::try_from(priority).ok().filter(|p| (1..=255).contains(p));
+        let priority = i32::try_from(priority)
+            .ok()
+            .filter(|p| (1..=255).contains(p));
         /// Mirrors `nros_platform_task_attr_t` from `<nros/platform.h>`.
         #[repr(C)]
         struct TaskAttr {
@@ -291,8 +293,12 @@ pub mod sys {
 
         // Task storage is sized by the port, never guessed here.
         // SAFETY: documented pure probes, callable before any task exists.
-        let (size, align) =
-            unsafe { (nros_platform_task_storage_size(), nros_platform_task_storage_align()) };
+        let (size, align) = unsafe {
+            (
+                nros_platform_task_storage_size(),
+                nros_platform_task_storage_align(),
+            )
+        };
         let Ok(layout) = core::alloc::Layout::from_size_align(size.max(1), align.max(1)) else {
             return -7; // INVALID
         };
@@ -495,7 +501,8 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
         ""
     } else {
         // SAFETY: the ABI contract is `len` readable bytes at `msg`.
-        core::str::from_utf8(unsafe { core::slice::from_raw_parts(msg, len) }).unwrap_or("<non-utf8>")
+        core::str::from_utf8(unsafe { core::slice::from_raw_parts(msg, len) })
+            .unwrap_or("<non-utf8>")
     };
     println!("nros: PANIC {text}");
     sys::exit_process(1)
@@ -557,7 +564,6 @@ where
     // `run` / `run_generic`; future work could probe link state
     // via `SIOCGIFFLAGS` instead.
     sys::sleep_secs(5);
-
 
     // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
     // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
@@ -841,7 +847,6 @@ where
     // silent. Idempotent, so nesting funnels may each call it.
     ::nros_platform_cffi::log::init_default();
 
-
     <B as nros_platform::BoardInit>::init_hardware();
 
     // NuttX virtio-net warm-up — same magic number + rationale as `run_entry`.
@@ -912,7 +917,19 @@ where
     let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
 
     // issue #144 — boot-tier declares FIRST, before spawning any other tier.
-    let boot_tier = &tiers[0];
+    //
+    // issue 0636 — the boot tier is CHOSEN, not `tiers[0]`. This board runs a
+    // uniprocessor guest under SCHED_FIFO, and `resolve_tiers` orders by raw
+    // number descending without inverting per kernel, so `tiers[0]` was the
+    // MOST urgent tier here. An owner that outranks its peers and then spins
+    // starves them — measured at 1 of 5 runs before a spawned tier reached its
+    // first statement at all — and `sched_yield` cannot rescue it, because
+    // under FIFO a yield rotates the caller within its OWN priority queue and
+    // never lets a lower-priority thread run. `boot_tier_index` picks the tier
+    // that outranks nothing.
+    let boot_index =
+        nros_platform::boot_tier_index(tiers, nros_platform::PriorityDirection::BiggerIsMoreUrgent);
+    let boot_tier = &tiers[boot_index];
     // issue 0572 — say WHICH tier is the session-owning boot tier, and with what.
     // The boot tier is the one that prints no priority marker (it keeps the
     // inherited FIFO priority by design), so the console showed the spawned
@@ -990,7 +1007,20 @@ where
         // Spawn every non-boot tier; each borrows the shared session pointer +
         // `&setup`. The boot declares are already done, so these only overlap the
         // boot tier's spin.
-        for tier in &tiers[1..] {
+        // issue 0636 — the owner keeps its INHERITED priority through the spawn
+        // loop and adopts its own (least urgent) one after it, at the call
+        // below. Applying it here instead was measured WORSE — 4 of 8 against
+        // 6 of 8 — and the failing console stopped dead after the owner's own
+        // marker, before it had spawned anything: dropping to the least urgent
+        // priority while the tier topology does not yet exist puts the owner
+        // below the transport and system tasks that are already running, and
+        // it never gets the CPU back to do the spawning. That is issue 0623's
+        // hazard (a tier priority and a transport priority in one scheduler)
+        // reached from the other side.
+        for (spawn_index, tier) in tiers.iter().enumerate() {
+            if spawn_index == boot_index {
+                continue; // this one runs on the boot task
+            }
             // issue 0572 — the spawned tiers' identity + groups, same reason.
             println!(
                 "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
@@ -1128,22 +1158,17 @@ where
         // sorting so tiers[0] is the numerically-largest = lowest-priority tier
         // and never needs to outrank anything (issue 0251). Two answers exist;
         // this board now has one of them rather than neither.
-        // Hand the CPU to the tiers just spawned BEFORE raising this one above
-        // them. The guest is uniprocessor and every tier is SCHED_FIFO: once
-        // the owner sits at the highest declared priority in a spin loop, a
-        // lower tier runs only in whatever gap the owner's `spin_once` leaves,
-        // so a tier's own entry work — including the priority marker RFC-0052
-        // requires it to print — was reached only when that gap happened to
-        // arrive first. Measured 1 of 5 runs before this yield (and before the
-        // spawn attr carried the priority), 3 of 5 with the attr alone.
+        // issue 0636 — the `yield_now()` run that stood here is gone. It existed
+        // to hand the CPU to tiers the owner was about to OUTRANK, and the
+        // owner does not outrank them any more: a more urgent tier preempts the
+        // moment it is runnable. Under SCHED_FIFO a yield never lets a
+        // lower-priority thread run in any case, which is why those yields
+        // moved the rate to 4 of 6 and then stopped moving it.
         //
-        // `yield_now`, not a sleep: at this point the owner still holds its
-        // INHERITED priority, so it and the new tiers are peers and a yield is
-        // enough to run each one to its first blocking point. The count is the
-        // tier count — one yield per tier that has to get there.
-        for _ in 0..tiers.len() {
-            sys::yield_now();
-        }
+        // The owner adopts its own priority HERE — after spawning, before
+        // spinning. Both neighbours were tried and measured: before the spawn
+        // loop the owner starved against the transport tasks (4 of 8), and
+        // never applying it at all leaves the marker RFC-0052 requires unset.
         apply_tier_priority(boot_tier);
         nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
     }
@@ -1235,7 +1260,6 @@ fn nuttx_run_one_tier<F, E>(
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
@@ -1273,7 +1297,6 @@ fn nuttx_spin_tier_forever(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &nros_platform::TierSpec<'_>,
 ) {
-
     // issue 0572 — which wait the executor's spin will take. The primary
     // (session-owning) executor sleeps in the wake primitive when the backend
     // installed a wake callback; a borrowed one polls. `storage_size() == 0`

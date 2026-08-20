@@ -90,6 +90,77 @@ Option 1 fixes the TEST honestly; options 2 and 3 fix the RUNTIME. They are not
 alternatives to each other — a consumer whose low tier is starved for seconds
 has a real problem whether or not a marker printed.
 
+## Partly fixed 2026-08-20 — 50% -> 80%, NOT converged
+
+Three changes landed, each correct on its own; the cell is still not reliable
+and this issue stays open. Measured on one host, with an unrelated Zephyr build
+competing for CPU throughout, so treat the absolute rates as this machine's.
+
+**1. The boot tier is CHOSEN, not `tiers[0]` — and this was never NuttX-only.**
+`resolve_tiers` orders by RAW priority descending and deliberately does not
+invert per kernel, so `tiers[0]` is the MOST urgent tier on bigger-number-wins
+kernels (NuttX, FreeRTOS, POSIX) and the LEAST urgent on smaller-number-wins
+ones (Zephyr, ThreadX). Its own doc says so. Zephyr was not "taking a different
+answer" as this issue supposed — it gets the non-starving arrangement as a side
+effect of the sort direction. Which tier owned the session depended on the
+kernel's number direction, which nobody chose.
+
+`nros_platform::boot_tier_index(tiers, direction)` now picks the least urgent
+tier, with the direction supplied by the board. Ties keep index 0, so a table
+whose tiers are all equal behaves exactly as before. Wired on `nros-board-nuttx`
+and `nros-board-linux`; `freertos`, `zephyr`, `threadx` still take `tiers[0]`
+(the last two already get the right tier from the sort, so for them the call is
+about stating the invariant, not changing behaviour).
+
+**2. The POSIX port sets the child's priority on the pthread ATTRIBUTE.** It
+applied it after `pthread_create` and discarded the result. That leaves a window
+where the child holds the SPAWNER's priority, and under SCHED_FIFO on a
+uniprocessor an equal-priority peer never preempts — so a child that should have
+outranked the owner ran only when the owner happened to block. Now
+`PTHREAD_EXPLICIT_SCHED` + `setschedpolicy` + `setschedparam` before create, so
+the task is BORN with it; the post-create call stays as a fallback for a kernel
+that declines the attribute. Without `EXPLICIT_SCHED` POSIX says the child
+inherits the creator's policy AND priority and the attribute is ignored — a
+silent no-op, not an error.
+
+**3. Where the owner applies its own priority is load-bearing, and both
+neighbours were measured.** Before the spawn loop: 4 of 8, and the failing
+console stopped dead after the owner's own marker, before it had spawned
+anything — dropping to the least urgent priority while the tier topology does
+not yet exist puts the owner below the transport and system tasks already
+running, and it never gets the CPU back. After the spawn loop: the rate above.
+The `yield_now()` run is deleted; it existed to hand the CPU to tiers the owner
+was about to outrank, and under SCHED_FIFO a yield never lets a lower-priority
+thread run at all.
+
+### The series, in order
+
+| arrangement | rate |
+| --- | --- |
+| baseline (as this issue left it) | 3/6 |
+| + boot tier chosen | 6/8 |
+| + owner applies its priority BEFORE spawning | 4/8 (worse) |
+| + priority on the pthread attr, owner applies AFTER spawning | 16/20 |
+
+**The last row's first ten runs were 10/10 and the next ten were 6/10.** A
+ten-run batch is not enough to call this converged, and reporting the good batch
+alone would have been the mistake this issue's own history warns about — two
+earlier partial fixes were recorded as 1/5 -> 3/5 -> 4/6 for the same reason.
+
+### What remains
+
+The residual failure is still `high` (the spawned, more urgent tier) missing its
+marker, on a console that otherwise looks healthy. Candidates, none tested:
+
+* the C arm (`nuttx_run_tiers.c`) still takes its own boot tier and has not been
+  moved onto `boot_tier_index`, so the two language arms now disagree about
+  which tier owns the session;
+* whether `PTHREAD_EXPLICIT_SCHED` is honoured by this NuttX config at all — the
+  attribute path reports nothing, so a silent decline is indistinguishable from
+  success (the marker is the only evidence, which is what #579 was for);
+* host load: the whole series ran against a competing build, and this cell is
+  QEMU.
+
 ## Relationship to 0623
 
 Same family, one layer over: 0623 is a tier priority and a transport priority

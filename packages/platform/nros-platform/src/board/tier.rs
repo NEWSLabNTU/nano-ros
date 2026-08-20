@@ -7,8 +7,27 @@
 //! opens the session once, then spawns one task per spec — each task
 //! opens an `Executor` over the *same* session (the `Borrowed` store),
 //! sets its `active_groups` filter, registers nodes (only its tier's
-//! callbacks take), and spins. The highest-priority tier runs on the
-//! boot task itself; the rest are spawned.
+//! callbacks take), and spins. The LEAST urgent tier runs on the boot
+//! task itself ([`boot_tier_index`]); the rest are spawned.
+//!
+//! Issue 0636 — that last sentence used to read "the highest-priority tier
+//! runs on the boot task", and it was both wrong and harmful. Boards took
+//! `tiers[0]`, and `resolve_tiers` orders by RAW number descending WITHOUT
+//! inverting per kernel, so `tiers[0]` is the most urgent tier on
+//! bigger-number-wins kernels (NuttX, FreeRTOS, POSIX) and the least urgent on
+//! smaller-number-wins ones (Zephyr, ThreadX). Which tier owned the session
+//! therefore depended on the kernel's number direction, which nobody chose.
+//!
+//! On a uniprocessor with FIFO scheduling, an owner that outranks its peers and
+//! then spins starves them: a lower-priority tier runs only in whatever gap the
+//! owner's `spin_once` happens to leave. Measured on NuttX at 1 of 5 runs
+//! reaching a spawned tier's first statement at all. `sched_yield` cannot fix
+//! it — under SCHED_FIFO a yield rotates the caller within its OWN priority
+//! queue and never lets a lower-priority thread run, which is why two partial
+//! fixes moved the rate to 4 of 6 and could not converge.
+//!
+//! So the owner is chosen, not inherited from an ordering: it is the tier that
+//! outranks nothing.
 //!
 //! Priorities are declared on a normalized **0–31** scale (RFC-0016):
 //! 0 = idle, 12 = normal (default app), 31 = critical. The per-RTOS
@@ -70,6 +89,55 @@ pub struct TierSpec<'a> {
     pub deadline_us: Option<u64>,
     /// On deadline miss: `"ignore"` | `"warn"` | `"skip"` | `"fault"`.
     pub deadline_policy: Option<&'a str>,
+}
+
+/// Which way a kernel's raw priority numbers run.
+///
+/// `TierSpec::priority` is RAW — the number the system author wrote in
+/// `[tiers.<name>.<rtos>].priority`, already in the target kernel's scale — so
+/// only the board knows which end is urgent. Issue 0636.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PriorityDirection {
+    /// NuttX (1..=255), FreeRTOS (0..=7), POSIX SCHED_FIFO: bigger wins.
+    BiggerIsMoreUrgent,
+    /// Zephyr (negative = cooperative), ThreadX (0..=31): smaller wins.
+    SmallerIsMoreUrgent,
+}
+
+/// Index of the tier the BOOT task should run: the least urgent one.
+///
+/// Issue 0636 — the boot task owns the session and spins forever, so it must
+/// not outrank the tiers it spawned. See the module docs for what happened when
+/// it did.
+///
+/// * **Ties keep the earliest index**, so a table whose tiers all declare the
+///   same priority (or none) behaves exactly as `tiers[0]` did.
+/// * **An undeclared priority is least urgent, but only where 0 is out of
+///   range.** On bigger-wins kernels the valid range starts at 1 and `0` is the
+///   "inherit" sentinel every board already tests for, so a tier that declared
+///   nothing makes no claim and is the safest owner. On smaller-wins kernels 0
+///   is a REAL priority — a very urgent one on ThreadX — and treating it as a
+///   sentinel would hand the session to the most urgent tier, which is the bug
+///   this function exists to prevent.
+#[must_use]
+pub fn boot_tier_index(tiers: &[TierSpec<'_>], direction: PriorityDirection) -> usize {
+    /// Bigger = more urgent, in one comparable scale.
+    fn urgency(priority: i64, direction: PriorityDirection) -> i64 {
+        match direction {
+            PriorityDirection::BiggerIsMoreUrgent if priority <= 0 => i64::MIN,
+            PriorityDirection::BiggerIsMoreUrgent => priority,
+            // Negate rather than subtract: the range is the kernel's, and any
+            // fixed origin would be one more number to keep in step with it.
+            PriorityDirection::SmallerIsMoreUrgent => priority.saturating_neg(),
+        }
+    }
+    let mut best = 0;
+    for (i, tier) in tiers.iter().enumerate().skip(1) {
+        if urgency(tier.priority, direction) < urgency(tiers[best].priority, direction) {
+            best = i;
+        }
+    }
+    best
 }
 
 impl<'a> TierSpec<'a> {
@@ -172,5 +240,68 @@ mod tests {
         let t = TierSpec::single();
         assert!(t.groups.is_empty());
         assert_eq!(t.priority, 0);
+    }
+
+    fn spec(name: &'static str, priority: i64) -> TierSpec<'static> {
+        TierSpec {
+            name,
+            priority,
+            ..TierSpec::single()
+        }
+    }
+
+    /// issue 0636 — the owner must be the tier that outranks nothing, and
+    /// "nothing" depends on which end of the kernel's scale is urgent.
+    #[test]
+    fn boot_tier_is_the_least_urgent_on_either_direction() {
+        // As `resolve_tiers` hands them over: RAW number, descending.
+        let tiers = [spec("high", 110), spec("mid", 105), spec("low", 100)];
+
+        // Bigger wins (NuttX, FreeRTOS, POSIX): 100 is least urgent. This is
+        // the case that starved — the board used to take index 0 (110) and
+        // spin there.
+        assert_eq!(
+            boot_tier_index(&tiers, PriorityDirection::BiggerIsMoreUrgent),
+            2
+        );
+        // Smaller wins (Zephyr, ThreadX): 110 is least urgent, which is index
+        // 0 — the arrangement those boards already had, now stated rather than
+        // inherited from the sort direction.
+        assert_eq!(
+            boot_tier_index(&tiers, PriorityDirection::SmallerIsMoreUrgent),
+            0
+        );
+    }
+
+    /// A tier that declared nothing makes no claim, so it is the safest owner —
+    /// but only where 0 is out of the kernel's range.
+    #[test]
+    fn undeclared_is_least_urgent_only_where_zero_is_a_sentinel() {
+        let tiers = [spec("declared", 12), spec("undeclared", 0)];
+        assert_eq!(
+            boot_tier_index(&tiers, PriorityDirection::BiggerIsMoreUrgent),
+            1
+        );
+        // On ThreadX 0 is a REAL priority, and the most urgent one. Treating it
+        // as a sentinel would hand the session to the tier that must never own
+        // it — the exact inversion this function exists to prevent.
+        assert_eq!(
+            boot_tier_index(&tiers, PriorityDirection::SmallerIsMoreUrgent),
+            0
+        );
+    }
+
+    /// Ties keep the earliest index, so a table with one tier — or with every
+    /// tier equal — behaves exactly as `tiers[0]` did before issue 0636.
+    #[test]
+    fn ties_and_single_tier_keep_index_zero() {
+        let same = [spec("a", 7), spec("b", 7), spec("c", 7)];
+        for dir in [
+            PriorityDirection::BiggerIsMoreUrgent,
+            PriorityDirection::SmallerIsMoreUrgent,
+        ] {
+            assert_eq!(boot_tier_index(&same, dir), 0);
+            assert_eq!(boot_tier_index(&same[..1], dir), 0);
+        }
     }
 }
