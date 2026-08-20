@@ -1365,6 +1365,29 @@ lang = "rust"
 dir = "examples/native/rust/listener"
 features = ["link-tls"]
 
+# Peer-mode variant (isolated target dir) — issue 0711.
+#
+# `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport, scouting and
+# multicast declarations that issue 0682 turned OFF by default for size. The
+# default native pair therefore REFUSES peer mode up front, which is why
+# `nano2nano::test_peer_mode_communication` could only ever skip.
+#
+# The env is part of the group signature, so this pair lands in its own artifact
+# root and the default native tree keeps its footprint. Do NOT author a
+# `target_dir` here: phase-340 W2 strips an authored dir, because a dir names a
+# group rather than opting the row out.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/native/rust/talker"
+env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/native/rust/listener"
+env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+
 # E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
 # build in target-safety/; now a dedicated fixture bin with the safety
 # features baked, so the example manifest stays free of test-only features).

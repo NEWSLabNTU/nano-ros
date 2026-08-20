@@ -86,6 +86,21 @@ rather than patched. NOTE this issue RETRACTS its own earlier claim that the dds
 subproject; from clean it IS the fix for the lwIP assert, and is now fork commit `99cfac88`, pushed and
 pinned. See `0733-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0711** — peer mode is now EXERCISED. The fixture half of this issue was
+right (a `[[fixture]]` variant carrying `ZPICO_MULTICAST_TRANSPORT=1` in its own artifact root, resolved by
+`FixtureVariant::plain().with_env(…)`); the transport half was WRONG. `multicast_locator` configures
+SCOUTING, not the multicast transport — with neither `connect` nor `listen` set, `_z_open` scouts, times
+out and reports `ConnectionFailed` ~13 s in, and naming a multicast locator only changes where it scouts.
+The transport comes from a LISTEN endpoint, so `ZENOH_LISTEN='udp/224.0.0.224:7446#iface=lo'` was all that
+was needed and NO backend change was required. `#iface=` is mandatory (`_z_f_link_open_udp_multicast`
+returns `_Z_ERR_CONFIG_LOCATOR_INVALID` without it) and zenoh-pico's default names none, so peer mode could
+not open on ANY host — the old "expected on some network configurations" message described a condition that
+was unconditional. The wrong reading survived two attempts because the failure takes ~13 s and the repros
+ran under an 8 s timeout, so three "successes" were three failures measured too early. The test's tail
+(`received_count == 0` -> two `[INFO]` prints -> PASS) is now an assertion, and a negative control confirms
+it fails against the default pair. See `archived/0711-*`. (2026-08-20)
+
+
 Recently resolved (2026-08-20): **#0731** — DUPLICATE of #0723/#0727, filed while two other sessions were
 fixing it (0727's title is its subject verbatim). `PlatformSink`'s extern pair broke
 `cargo test --no-run --workspace --exclude nros-c --no-default-features`, reddening tier 1. The fix went
@@ -206,18 +221,6 @@ single file reads as incomplete. All six fixed; gated by `check-example-leaf-bui
 of being a post-build check, since a leaf's build dirs come from shell positionals inside the `just`
 recipes and a static parse would have to guess. See `archived/0718-*`.
 
-
-**#0711** (testing/rmw-zenoh, open 2026-08-20) — zenoh PEER mode is now BUILDABLE but still not EXERCISED.
-`MULTICAST_TRANSPORT` was a hard-coded `const bool = false` (issue 0682's size decision), so
-`nano2nano::test_peer_mode_communication` could only ever SKIP — a capability nothing could run. It is now a
-build input, `ZPICO_MULTICAST_TRANSPORT`, default UNCHANGED, read through one function feeding BOTH emitters
-(the three C `#define`s and `ZPICO_PEER_MODE_SUPPORTED`) so C and Rust cannot disagree, with a
-`rerun-if-env-changed` edge because it bypasses `env_usize` (issue 0475's class). Verified both ways: default
-`false`, env-set `true`, and the test then RUNS instead of skipping. Still missing: `nano2nano` SPAWNS prebuilt
-fixtures, which `build-test-fixtures` produces without the flag, so it needs a fixture VARIANT — exporting the
-env around the whole fixture build would pollute the shared tree every other test reads. A lane was written and
-REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
-See `0711-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0713** — tier 2 failed seven zephyr fixtures as MISSING that its own
 lane had deliberately not built. West leaves have manifest rows but are unattributable BY PATH (west

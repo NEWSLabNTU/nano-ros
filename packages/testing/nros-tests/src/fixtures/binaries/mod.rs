@@ -86,6 +86,9 @@ static MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new
 
 /// Cached path to the native-rs-talker binary with link-tls
 static NATIVE_TALKER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// issue 0711 — the peer-mode pair, built with the multicast transport ON.
+static NATIVE_TALKER_PEER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_LISTENER_PEER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the native-rs-listener binary with link-tls
 static NATIVE_LISTENER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -4467,6 +4470,48 @@ pub fn lifecycle_node_binary() -> PathBuf {
     build_native_lifecycle_node()
         .expect("Failed to build native-rs-lifecycle-node")
         .to_path_buf()
+}
+
+/// The peer-mode talker — issue 0711.
+///
+/// `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport + scouting
+/// that issue 0682 turned off for size, so `ZPICO_PEER_MODE_SUPPORTED` is true
+/// and the session layer stops refusing peer mode up front. The default native
+/// talker is built WITHOUT it, which is why `test_peer_mode_communication`
+/// could only ever skip: the binaries it spawns are prebuilt, and no env
+/// exported around the test crate can change what they were compiled with.
+///
+/// Row-selected rather than path-selected (issue 0517): "the talker row built
+/// with this env", not "the talker's peer dir". The env is part of the group
+/// signature, so the pair lands in its own artifact root and the default native
+/// tree keeps its footprint.
+pub fn build_native_talker_peer() -> TestResult<&'static Path> {
+    NATIVE_TALKER_PEER_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_row(
+                "examples/native/rust/talker",
+                &crate::fixtures::groups::FixtureVariant::plain()
+                    .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
+            )?;
+            let rel = PathBuf::from(format!("{}/talker", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// The peer-mode listener — issue 0711. See [`build_native_talker_peer`].
+pub fn build_native_listener_peer() -> TestResult<&'static Path> {
+    NATIVE_LISTENER_PEER_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_row(
+                "examples/native/rust/listener",
+                &crate::fixtures::groups::FixtureVariant::plain()
+                    .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
+            )?;
+            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
 }
 
 /// Build native-rs-talker with link-tls feature (cached)

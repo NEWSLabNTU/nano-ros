@@ -1,10 +1,11 @@
 ---
 id: 711
 title: "zenoh PEER mode is now buildable but still not EXERCISED: `nano2nano` spawns prebuilt fixtures, which are built without it"
-status: open
+status: resolved
 type: bug
 area: testing, rmw-zenoh
 related: [issue-0682, issue-0393, issue-0650, issue-0400]
+resolved: 2026-08-20
 ---
 
 ## Where this stands
@@ -130,3 +131,83 @@ The capability assertion the removed lane carried is worth keeping when it comes
 back: read `ZPICO_PEER_MODE_SUPPORTED` out of the generated `shim_constants.rs`
 BEFORE running, so a lane that accidentally built the default shim fails loudly
 instead of skipping green.
+
+
+## Resolved (2026-08-20) — and the fix direction above was wrong
+
+The fixture half was right and landed as written. The transport half was not:
+this issue (and the first attempt at it) concluded the missing piece was "a way
+to name the interface — an env → `multicast_locator` property". That is not what
+peer mode needs, and building it does not help.
+
+### What peer mode actually needs
+
+`multicast_locator` configures SCOUTING — where to look for a router to connect
+to. It never opens a multicast transport. `_z_open` reads `Z_CONFIG_CONNECT_KEY`
+and `Z_CONFIG_LISTEN_KEY`; with neither set it finds no locators and falls
+through to `_z_locators_by_scout`, which waits out the scouting timeout and
+returns nothing. Setting `multicast_locator` only changes WHERE it scouts, so
+the session still fails with `ConnectionFailed` — about 13 s in.
+
+The multicast transport comes from a LISTEN endpoint, and `ZENOH_LISTEN` was
+already mapped to the `listen` property. **No backend change was needed at all.**
+
+```
+NROS_SESSION_MODE=peer ZENOH_LISTEN='udp/224.0.0.224:7446#iface=lo'
+  -> [INFO] nros: session open      (was: ConnectionFailed after ~13 s)
+```
+
+`#iface=` is not optional. `_z_f_link_open_udp_multicast` reads
+`UDP_CONFIG_IFACE_KEY` and returns `_Z_ERR_CONFIG_LOCATOR_INVALID` when it is
+absent, and `Z_CONFIG_MULTICAST_LOCATOR_DEFAULT` names no interface — so peer
+mode could not open on ANY host. The test's old message ("may require multicast
+support … expected on some network configurations") described an environmental
+condition; the failure was unconditional.
+
+`lo` works exactly as well as a real NIC (measured: 11 messages delivered over
+each), so the test uses loopback and stays host-independent and off the LAN.
+
+### How the wrong reading survived two attempts
+
+Peer mode fails ~13 s in, and the manual repros were run under an 8-second
+timeout. A process still alive at the timeout reads as success, so three
+consecutive "successes" were three failures measured too early — and they
+appeared to depend on whether a second process was running, which produced a
+confident and entirely false story about a same-host multicast bind conflict.
+Two-listener and two-talker controls killed that. The lesson is the archived
+0148/0164 one in a new place: **when a failure has a latency, a timeout shorter
+than it manufactures a passing result.**
+
+### What landed
+
+* two `[[fixture]]` rows carrying `env = { ZPICO_MULTICAST_TRANSPORT = "1" }`,
+  landing in their own artifact root by group signature (verified:
+  `build/cargo-fixtures/linux-14372940` has `ZPICO_PEER_MODE_SUPPORTED = true`,
+  the other native groups `false`);
+* `build_native_talker_peer` / `build_native_listener_peer`, row-selected via
+  `FixtureVariant::plain().with_env(…)` — the `link-tls` pattern (issue 0517:
+  "the row built with this env", not "the peer dir");
+* `test_peer_mode_communication` rewritten: it resolves that pair, sets
+  `ZENOH_LISTEN`, and ASSERTS delivery.
+
+No `test-zpico-peer` lane was needed after all: the rows build under
+`lane=native`, so the test runs in the ordinary suite rather than behind a
+wrapper only one recipe invokes.
+
+### The tail that reported green
+
+The old test ended with `received_count == 0` falling through two
+`eprintln!("[INFO] …")` lines and PASSING — so the run that opened no session
+and received nothing was reported as a pass. It is now an assertion.
+
+Note this is the issue 0702 class, and `check-tests-can-fail.py` does NOT catch
+it: that gate matches `Err(..) => {…}` arms, and this is an `if/else`. The gate's
+coverage is narrower than the rule it enforces (the issue-0196 shape). Widening
+it is likely to surface more instances and is worth its own change.
+
+### Verified
+
+* `test_peer_mode_communication` PASSES against the peer pair.
+* Negative control — resolvers repointed at the DEFAULT row: the test FAILS with
+  "the peer fixture was built WITHOUT multicast transport", quoting the
+  backend's own refusal. So the test can fail, and passes only on real delivery.

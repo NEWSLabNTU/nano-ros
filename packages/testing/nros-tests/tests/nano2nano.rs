@@ -131,98 +131,128 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
 // Peer Mode Tests (no router required)
 // =============================================================================
 
-/// Test peer-to-peer communication without a zenohd router
+/// Peer-to-peer delivery with no zenohd router — issue 0711.
 ///
-/// In peer mode, nros nodes can discover each other via multicast
-/// without requiring a central router.
-#[rstest]
-fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf) {
+/// # Why this needs its own fixture pair
+///
+/// Peer mode needs the multicast transport, scouting and multicast declarations
+/// that issue 0682 compiled OUT by default: three more code paths in a library
+/// whose point is fitting on an MCU. The default native pair therefore refuses
+/// peer mode up front, so this test could only ever SKIP — and it spawns
+/// PREBUILT binaries, so no env exported around the test crate could change
+/// what they were compiled with. Hence a fixture variant carrying
+/// `ZPICO_MULTICAST_TRANSPORT=1`, in its own artifact root.
+///
+/// # Why `ZENOH_LISTEN` and not a multicast locator
+///
+/// This is the part issue 0711 had wrong, and it cost the first attempt.
+/// `multicast_locator` configures SCOUTING — where to look for a router to
+/// connect to. It does not open a multicast transport. With neither `connect`
+/// nor `listen` set, `_z_open` finds no locators in the config and falls
+/// through to `_z_locators_by_scout`, which waits out the scouting timeout and
+/// returns nothing, so the session fails with `ConnectionFailed` about 13
+/// seconds in. Setting `multicast_locator` only changes WHERE it scouts; it
+/// still scouts, and still fails.
+///
+/// The multicast transport comes from a LISTEN endpoint. `ZENOH_LISTEN` already
+/// mapped to the `listen` property, so no backend change was needed at all.
+///
+/// `#iface=` is not optional: `_z_f_link_open_udp_multicast` reads
+/// `UDP_CONFIG_IFACE_KEY` and returns `_Z_ERR_CONFIG_LOCATOR_INVALID` when it is
+/// absent, and zenoh-pico's default multicast locator names no interface. So
+/// peer mode cannot open on ANY host until something supplies one — which is
+/// why the old failure looked like a network-configuration quirk when it was
+/// unconditional.
+///
+/// `lo` rather than a real NIC deliberately: it keeps the test host-independent
+/// and off the LAN. Measured identical delivery over `lo` and `eno1`.
+#[test]
+fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
     use std::process::Command;
 
-    eprintln!("Testing peer mode communication (no router)...");
+    let talker_binary = nros_tests::fixtures::build_native_talker_peer()?;
+    let listener_binary = nros_tests::fixtures::build_native_listener_peer()?;
 
-    // Start listener in peer mode
-    let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd.env("NROS_SESSION_MODE", "peer");
+    let domain = nros_tests::unique_ros_domain_id().to_string();
+    // The multicast group zenoh-pico defaults to, with the interface it will
+    // not open without.
+    let listen = "udp/224.0.0.224:7446#iface=lo";
+
+    let mut listener_cmd = Command::new(listener_binary);
+    listener_cmd
+        .env("NROS_SESSION_MODE", "peer")
+        .env("ZENOH_LISTEN", listen)
+        .env("NROS_DOMAIN_ID", &domain);
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
-    // Wait for listener readiness.
-    //
-    // Issue 0682 — this used to end at `skip!("peer mode may not be supported")`,
-    // a GUESS about the one thing this test is positioned to answer: a build that
-    // never had peer mode and a peer mode that regressed produced the same green
-    // lane. The backend now REFUSES peer mode when the shim is compiled without
-    // multicast transport / scouting, and says so, so this can read the answer
-    // off the fixture instead of inferring it from a timeout.
     let startup = listener
         .wait_for_output_pattern(
             nros_tests::output::LISTENER_READY_MARKER,
-            Duration::from_secs(5),
+            Duration::from_secs(20),
         )
         .unwrap_or_else(|e| format!("{e}"));
 
-    if startup.contains(nros_tests::output::ZENOH_PEER_MODE_UNSUPPORTED_MARKER) {
-        // The documented, deliberate configuration. A SKIP, but one that names
-        // the compiled capability rather than shrugging at a timeout.
-        listener.kill();
-        nros_tests::skip!(
-            "peer mode is not compiled into this shim (multicast transport + scouting \
-             are off by size decision — issue 0682); the backend refused the session \
-             up front, which is the intended behaviour"
-        );
-    }
-
-    // Not refused ⇒ the build claims peer mode. Then readiness is REQUIRED: a
-    // listener that neither refuses nor comes up is the regression this test
-    // exists to catch, and it must not pass as a skip.
+    // The capability assertion, and it is an ASSERT rather than a skip.
+    //
+    // This pair's whole reason to exist is that it was built with the multicast
+    // transport on. If the backend refuses peer mode here, the row's env did not
+    // reach the build — a broken fixture, not an absent capability, and issue
+    // 0650 is exactly about not letting the second spelling hide the first.
+    assert!(
+        !startup.contains(nros_tests::output::ZENOH_PEER_MODE_UNSUPPORTED_MARKER),
+        "the peer fixture was built WITHOUT multicast transport — the row's \
+         `ZPICO_MULTICAST_TRANSPORT=1` did not reach the build, so this pair \
+         cannot answer the question it exists for. Output:\n{startup}"
+    );
     assert!(
         startup.contains(nros_tests::output::LISTENER_READY_MARKER),
-        "peer mode was not refused, so this build claims to support it — but the \
-         listener never reported readiness (still running: {}). Output:\n{startup}",
+        "peer listener never reported readiness (still running: {}). A session \
+         that fails here takes ~13 s and reports `ConnectionFailed`, which is \
+         what a missing or interface-less `ZENOH_LISTEN` looks like. Output:\n{startup}",
         listener.is_running()
     );
 
-    // Start talker in peer mode
-    let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("NROS_SESSION_MODE", "peer");
+    let mut talker_cmd = Command::new(talker_binary);
+    talker_cmd
+        .env("NROS_SESSION_MODE", "peer")
+        .env("ZENOH_LISTEN", listen)
+        .env("NROS_DOMAIN_ID", &domain);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-peer")
         .expect("Failed to start talker in peer mode");
 
-    // Wait for talker readiness
-    if talker
-        .wait_for_output_pattern(
-            nros_tests::output::TALKER_READY_MARKER,
-            Duration::from_secs(5),
-        )
-        .is_err()
-        && !talker.is_running()
-    {
-        nros_tests::skip!("peer mode may not be supported — talker exited early");
-    }
-
-    // Wait for listener to receive messages (event-driven)
-    eprintln!("Waiting for peer communication...");
-    let listener_output = listener.collect_until(
-        nros_tests::output::LISTENER_LOG_PREFIX,
-        Duration::from_secs(10),
+    assert!(
+        talker
+            .wait_for_output_pattern(
+                nros_tests::output::TALKER_READY_MARKER,
+                Duration::from_secs(20),
+            )
+            .is_ok(),
+        "peer talker never reported readiness (still running: {})",
+        talker.is_running()
     );
 
-    // Kill talker first
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(15),
+    );
     talker.kill();
 
-    eprintln!("Listener output:\n{}", listener_output);
-
     let result = output::parse_listener(&listener_output);
-    eprintln!("Listener received {} messages", result.received_count);
 
-    if result.received_count > 0 {
-        eprintln!("[PASS] Peer mode communication works");
-    } else {
-        // Peer mode may require specific network configuration (multicast enabled)
-        eprintln!("[INFO] No messages received - peer discovery may require multicast support");
-        eprintln!("[INFO] This is expected on some network configurations");
-    }
+    // Issue 0711 — this tail used to be two `eprintln!("[INFO] …")` lines and a
+    // fall-through, so a run whose session never opened and which received
+    // ZERO messages was reported GREEN. Its message blamed "some network
+    // configurations"; the failure was unconditional. An assertion, because the
+    // delivery is the whole claim.
+    assert!(
+        result.received_count > 0,
+        "peer mode delivered NOTHING. Both processes reported ready, so the \
+         session opened and this is a delivery failure rather than a config \
+         one. Listener output:\n{listener_output}"
+    );
+
+    Ok(())
 }
 
 // =============================================================================
