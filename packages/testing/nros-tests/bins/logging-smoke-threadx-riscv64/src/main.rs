@@ -10,10 +10,7 @@
 #![no_main]
 
 use nros_board_threadx_qemu_riscv64::{Config, ThreadxQemuRiscv64};
-use nros_log::{
-    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
-    register_logger, sinks,
-};
+use nros_log::{Logger, Severity, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger};
 
 static LOGGER: Logger = Logger::new("smoke");
 
@@ -66,7 +63,18 @@ extern "C" fn main() -> ! {
     // and exits via the QEMU test-finisher (`exit_success`).
     let _ = ThreadxQemuRiscv64::run_bare(Config::from_toml(CONFIG), || {
         register_logger(&LOGGER);
-        init(sinks::default());
+        // issue 0708 — deliberately NO `init(sinks::default())` here.
+        //
+        // A fixture that publishes its own sink list proves the PLATFORM half
+        // (`nros_platform_log_write` exists, issue 0420's question) and nothing about
+        // whether this BOARD publishes one. Six boards did not, and library records —
+        // `nros_error!` raised inside a crate whose author cannot know what the board
+        // did — were dropped. Relying on the board is what makes this an assertion
+        // about the board.
+        //
+        // If this image ever emits nothing again, do not add an `init` here: that
+        // hides the defect the assertion exists to catch. The boot funnel is where it
+        // belongs, and `check-board-log-sink` names the funnel that is missing it.
         let logger = &LOGGER;
         logger.set_level(Severity::Trace);
 

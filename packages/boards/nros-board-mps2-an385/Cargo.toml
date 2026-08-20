@@ -75,7 +75,12 @@ mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"], optional = true }
 # Phase 244.D1 — agnostic logging dispatcher installed by `BoardEntry::boot`
 # so declarative nodes can `nros_info!` without a per-example boot closure.
-nros-log = { path = "../../core/nros-log", default-features = false, optional = true }
+# issue 0708 — NOT optional. `mod node` is ungated, so its `run_bare` boot
+# funnel exists in every feature configuration, and a funnel that cannot
+# publish the sink list is the defect this issue is about. The two features
+# below used to enable it; making it unconditional is what lets the funnel
+# keep its promise in the configurations they do not cover.
+nros-log = { path = "../../core/nros-log", default-features = false }
 
 # phase-337 W6.a — SPSC queue behind the `rtic` feature's deferred-callback
 # dispatch surface (was a dep of the folded `nros-board-rtic-mps2-an385`).
@@ -107,7 +112,7 @@ safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
 # `run(Config, closure)` examples don't need it.
-board-entry = ["dep:nros", "dep:nros-log"]
+board-entry = ["dep:nros"]
 # phase-337 W6.a — the RTIC entry surface (`src/rtic.rs`), formerly the separate
 # `nros-board-rtic-mps2-an385` crate. Independent of `board-entry`: the two are
 # different entry shapes on one board (RTIC owns its own reset vector + deferred
@@ -121,7 +126,7 @@ board-entry = ["dep:nros", "dep:nros-log"]
 # reject `dispatch = "inline"` on every DIRECT-EXEC Entry pkg that path-deps
 # this board. The cost is that the RTIC-requires-Deferred lint no longer fires
 # for a path-dep'd RTIC workspace; no in-tree workspace path-deps this board.
-rtic = ["dep:heapless", "dep:mps2-an385-pac", "dep:nros", "dep:nros-log"]
+rtic = ["dep:heapless", "dep:mps2-an385-pac", "dep:nros"]
 # phase-337 W6.a — synthetic callback enqueued at RTIC `#[init]`, so the
 # run-plan E2E fixture proves deferred dispatch without a live peer.
 e2e-synthetic-callback = []
