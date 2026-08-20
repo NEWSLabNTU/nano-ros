@@ -83,6 +83,17 @@ thread-suspend signals — or you stop on them instead of the fault. Uncaught un
 tier-2 coordinate and tier 2 had never completed here: blocked in sequence by #0698, a stale index row, a
 NuttX header gate, and #0708's two non-compiling boards. See `0715-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0717** — the cmake `export -f` list in `fixtures-build.sh` is
+hand-maintained and had broken twice, each time as a helper added to an already-exported function: 0400's
+`nros_cmake_guard_build_dir`, then 0706's `nros_cmake_toolchain_resolved_cc` / `nros_cmake_dir_cc`, which took
+out every NuttX C row of the tier-2 fixture build. A make leaf is a fresh bash with only what `export -f`
+gave it, so the failure exists in the WORKER and nowhere else — running the same code by hand works. Both
+fixes appended to the list; neither made the next one impossible. The CARGO half of the same statement was
+already covered by `build_root_derivation.sh`'s make-leaf scenario — same file, same mechanism, one list
+checked (issue 0196's shape). Now `check-cmake-export-closure.sh` walks the call graph TRANSITIVELY (0706's
+is one level deeper than 0400's, so a one-deep check would have passed it), verified by deleting the name
+from the live list and reproducing the real error. See `archived/0717-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0714** — issue 0710's auto-install references `nros_platform_log_write` from
 the path EVERY record reaches, which turned a platform port into a LINK requirement for every `nros-log`
 consumer: after `fe974d1e9`, every `nros-tests` target linking `nros-log` without a port failed with

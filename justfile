@@ -551,6 +551,7 @@ check-build: \
     check-cli-fresh check-required-features-reachable check-host-triple-literals \
     check-literal-domain-id \
     check-board-log-sink \
+    check-cmake-export-closure \
     check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
@@ -1160,6 +1161,14 @@ check-host-triple-literals:
 [private]
 check-board-log-sink:
     @python3 scripts/check-board-log-sink.py
+
+# Issues 0400/0706 — the cmake `export -f` list in fixtures-build.sh must close
+# over its call graph, or a helper added to an exported function dies
+# "<name>: command not found" in the make WORKER and nowhere else. Twice now.
+# The cargo half of the same list is covered by build_root_derivation.sh.
+[private]
+check-cmake-export-closure:
+    @bash scripts/check-cmake-export-closure.sh
 
 [group("main")]
 check-literal-domain-id:
