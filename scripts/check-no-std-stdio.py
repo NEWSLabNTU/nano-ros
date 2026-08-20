@@ -57,6 +57,7 @@ other arms can route Zephyr through `nros_log`.
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -75,6 +76,8 @@ ALLOW_RE = re.compile(r"//\s*nros-allow-std-stdio:")
 NO_STD_RE = re.compile(r"^\s*#!\[[^\n]*\bno_std\b", re.MULTILINE)
 
 PROC_MACRO_RE = re.compile(r"^\s*proc-macro\s*=\s*true", re.MULTILINE)
+
+REPO = Path(__file__).resolve().parent.parent
 
 SKIP_DIRS = {"generated", "target", "build", ".git", "third-party", "node_modules"}
 
@@ -97,15 +100,56 @@ def crate_is_no_std(crate_root: Path):
     return False, None
 
 
-def crate_roots(roots):
+# `git ls-files`, not `rglob`. Every file this gate wants is TRACKED, and the
+# roots it is given are the two biggest trees in the repo once built: measured
+# here, `examples/` is 828 GB on disk and `Path.rglob("Cargo.toml")` over it had
+# not finished after 300 s, while the index answers for both roots in 0.002 s.
+#
+# SKIP_DIRS did not save it, and that is the whole trap: the filter runs on what
+# rglob has ALREADY YIELDED, so the walk still descends every `target/`,
+# `build/` and `third-party/` tree to discover the paths it then discards.
+# Pruning cannot be done after the fact. Same lesson `scripts/
+# check-no-tracked-file-find.sh` records for `find -prune`, and the same one
+# `check-image-panic-policy.py` learned for `glob("**")` — that gate is the
+# reason this comment can cite it, and this file is the sibling nobody fixed.
+#
+# SKIP_DIRS is still applied: some skipped dirs ARE tracked (the committed
+# `packages/interfaces/*/generated` trees), so the index lists them.
+def _tracked_files(roots):
+    """Paths under `roots`: the git index for in-repo roots, a walk otherwise.
+
+    The walk is not a silent fallback for the real scan — it exists because
+    `--self-test` builds synthetic crates in a temp dir, which is untracked by
+    construction and tiny. An in-repo root always takes the index path, so the
+    cost above can never come back through here.
+    """
+    found, walked = [], []
     for root in roots:
         root = Path(root)
-        if not root.is_dir():
+        try:
+            walked.append(str(root.relative_to(REPO)))
+        except ValueError:
+            if root.is_dir():
+                found.extend(sorted(q for q in root.rglob("*") if q.is_file()))
+    if walked:
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "ls-files", "-z", "--"] + walked,
+            capture_output=True, text=True, check=True,
+        ).stdout.split("\0")
+        found.extend(REPO / r for r in out if r)
+    return found
+
+
+def crate_roots(roots):
+    seen = set()
+    for path in _tracked_files(roots):
+        if path.name != "Cargo.toml":
             continue
-        for manifest in root.rglob("Cargo.toml"):
-            if any(p in SKIP_DIRS for p in manifest.parts):
-                continue
-            yield manifest.parent
+        if any(p in SKIP_DIRS for p in path.parts):
+            continue
+        if path.parent not in seen:
+            seen.add(path.parent)
+            yield path.parent
 
 
 def exempted_above(lines, i):
@@ -134,7 +178,9 @@ def scan_crate(crate_root):
     src = crate_root / "src"
     if not src.is_dir():
         return hits
-    for rs in sorted(src.rglob("*.rs")):
+    for rs in sorted(_tracked_files([src])):
+        if rs.suffix != ".rs":
+            continue
         if any(p in SKIP_DIRS for p in rs.parts):
             continue
         lines = rs.read_text(errors="replace").splitlines()
