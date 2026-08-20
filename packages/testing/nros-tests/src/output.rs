@@ -722,6 +722,19 @@ pub const ZEPHYR_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// literals in both Zephyr arms — keep in lockstep.
 pub const ZEPHYR_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
+/// issue 0260 — the CPU a tier was OBSERVED running on, printed from the tier's
+/// own thread.
+///
+/// Distinct from [`ZEPHYR_CORE_PIN_MARKER`], which reports only that the kernel
+/// ACCEPTED the pin. On a uniprocessor image that acceptance is true and says
+/// nothing: a pin to cpu 0 is accepted and cpu 0 is the only CPU. This marker
+/// is what an SMP fixture must assert on; without it the SMP image proves
+/// exactly what native_sim already proves.
+///
+/// ABSENT on an image that cannot answer (no `CONFIG_SMP` — the posix arch does
+/// not provide `arch_proc_id`), rather than reporting a fabricated `cpu 0`.
+pub const ZEPHYR_CORE_PIN_OBSERVED_MARKER: &str = "nros: core pin observed tier=";
+
 /// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
 /// `nros_nuttx_apply_current_affinity` — shared by the C/C++ AND Rust tier
 /// arms) when the kernel accepted a tier's SMP core pin (phase-296 W5.11, the

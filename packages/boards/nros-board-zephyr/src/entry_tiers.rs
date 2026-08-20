@@ -63,7 +63,14 @@ unsafe extern "C" {
     /// (`k_thread_cpu_pin`). Returns 0 on success, `-ENOSYS` when the image
     /// lacks `CONFIG_SCHED_CPU_MASK_PIN_ONLY`, else the kernel error.
     fn nros_zephyr_thread_cpu_pin(cpu: i32) -> i32;
+    /// issue 0260 — the CPU the CALLING thread is observed on, or
+    /// `NROS_ZEPHYR_CPU_UNKNOWN` when the image cannot say (no `CONFIG_SMP`;
+    /// the posix arch does not provide `arch_proc_id` at all).
+    fn nros_zephyr_current_cpu() -> u32;
 }
+
+/// Mirrors `NROS_ZEPHYR_CPU_UNKNOWN` in `nros_platform_zephyr_shims.c`.
+const CPU_UNKNOWN: u32 = u32::MAX;
 
 /// Apply this tier's kernel EDF deadline on the CALLING thread, when the
 /// tier is real-time and carries a deadline. Gated by the `zephyr-edf`
@@ -253,6 +260,28 @@ where
         ctx.tier.deadline_policy,
     );
     apply_tier_deadline(&ctx.tier);
+    // issue 0260 — report the CPU this tier is OBSERVED on, from the tier's own
+    // thread, which is the only place that can answer.
+    //
+    // Distinct from the pin markers above, and deliberately so: those report
+    // that the kernel ACCEPTED `k_thread_cpu_pin`, which on a uniprocessor
+    // image is true and uninformative — a pin to cpu 0 is accepted and cpu 0 is
+    // the only CPU there is. Until something reports where the tier ACTUALLY
+    // ran, an SMP fixture would assert exactly what native_sim already asserts.
+    //
+    // Silent when the image cannot answer, rather than printing a fabricated
+    // `cpu=0`.
+    {
+        let observed = unsafe { nros_zephyr_current_cpu() };
+        if observed != CPU_UNKNOWN {
+            ::log::info!(
+                "nros: core pin observed tier=`{}` running_on={}",
+                ctx.tier.name,
+                observed
+            );
+        }
+    }
+
     // issue 0655 — NO core pin here. This runs on the tier's own thread, which
     // is started, and Zephyr refuses a cpu mask on a started thread. The pin
     // was applied inside `nros_zephyr_tier_task_create`, before the start;

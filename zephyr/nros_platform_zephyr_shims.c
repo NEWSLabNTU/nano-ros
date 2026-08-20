@@ -89,6 +89,39 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
 #endif
 }
 
+/* The "this image cannot answer" value. Deliberately not 0: a uniprocessor
+ * image reporting cpu 0 is indistinguishable from a correct pin to cpu 0, which
+ * is the exact confusion this marker exists to end. Mirrored in
+ * `entry_tiers.rs` and `nros_tests::output`. */
+#define NROS_ZEPHYR_CPU_UNKNOWN 0xFFFFFFFFu
+
+/* issue 0260 / phase-356 — which CPU is the CALLING thread actually on?
+ *
+ * The pin markers report the kernel's verdict on `k_thread_cpu_pin`, i.e. that
+ * the call was ACCEPTED. That is not the same claim as "the tier ran where it
+ * was asked to", and the difference is invisible on a uniprocessor image, where
+ * a pin to cpu 0 is accepted and cpu 0 is the only place it could have run.
+ * #260's SMP fixture only earns its cost if the tier reports the CPU it was
+ * OBSERVED on; otherwise it asserts exactly what the uniprocessor image already
+ * asserts.
+ *
+ * `arch_proc_id()` is the API for it — and it is declared INSIDE
+ * `#ifdef CONFIG_SMP` in `arch_interface.h`. The posix arch (native_sim) does
+ * not provide it at all: its `arch_inlines.h` defines only `arch_num_cpus`. So
+ * this is SMP-only by construction, not by choice, and a uniprocessor image
+ * gets the sentinel rather than a fabricated 0 — reporting "cpu 0" on an image
+ * that cannot answer the question is precisely the false evidence this exists
+ * to remove.
+ *
+ * Returns the CPU id, or NROS_ZEPHYR_CPU_UNKNOWN when the image cannot say. */
+uint32_t nros_zephyr_current_cpu(void) {
+#ifdef CONFIG_SMP
+    return arch_proc_id();
+#else
+    return NROS_ZEPHYR_CPU_UNKNOWN;
+#endif
+}
+
 /* Phase 110.E.b — periodic timer for Sporadic-server budget refill.
  * Wraps `k_timer_*` (static inlines) plus a per-timer bridge struct
  * holding (callback, user_data) so the Rust side can pass an
