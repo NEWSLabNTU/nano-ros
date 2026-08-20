@@ -75,23 +75,65 @@ autoware-safety-island carries an idempotent sed patch
 that appends `,alloc` to the cyclonedds `_nros_cpp_features` line; it
 self-retires when the pattern disappears upstream.
 
-## Resolution (2026-08-20)
+## Fixed 2026-08-20 — `alloc` named ONCE for every backend, not patched per branch
 
-`alloc` appended to the cyclone `_nros_cpp_features` branch in
-`zephyr/CMakeLists.txt`, with the causal chain in a comment at the site: the
-mapper stays exhaustive (0586), the variant is alloc-gated because it carries
-a heap diagnostic, and `platform-zephyr` provides the allocator WITHOUT the
-feature — so this was the one bare-`rmw-cffi` composition (zenoh gets `alloc`
-via nros-rmw-zenoh's pinned `nros-rmw-cffi/alloc`; native_sim via `,std`).
-E0599 reproduced on `aarch64-unknown-none` before, compiles clean after; the
-C lanes were audited (`nros-c` compiles the same coordinate without `alloc` —
-`support.rs` maps the variants differently) and left unchanged.
+The issue's fix shape, with the audit it asked for — and the audit changed the
+answer.
 
-The pairwise-class gap is now gated at the layer it failed: `just check-cpp`
-compiles nros-cpp with the cyclone branch's feature string — READ from
-`zephyr/CMakeLists.txt`, not a second spelling — on `aarch64-unknown-none`
-(loud SKIP when the target is absent). Verified red without `alloc`, green
-with.
+### Reproduced without the board
 
-The autoware-safety-island sed patch
-(`scripts/patches/nros-cpp-embedded-alloc-patch.sh`) self-retires.
+The report needed a downstream aarch64-none board crate. It is reachable in
+seconds from this tree:
+
+```
+cargo check -p nros-cpp --no-default-features \
+    --features "rmw-cffi,platform-zephyr,ros-humble,panic-platform" \
+    --target aarch64-unknown-none
+
+error[E0599]: no variant, associated function, or constant named
+  `BackendDynamic` found for enum `nros_node::TransportError`
+```
+
+Worth recording, because the issue's repro implies hardware and this is a
+15-second check on any host with the target installed.
+
+### The audit found a SECOND branch
+
+Measured per branch on `aarch64-unknown-none`:
+
+| nros-cpp features | result |
+| --- | --- |
+| `rmw-cffi` (cyclonedds) | **E0599** — the reported one |
+| `rmw-cffi,rmw-xrce-cffi` | **E0599** — not reported |
+| `rmw-zenoh-cffi` | builds |
+
+zenoh survives only because `rmw-zenoh-cffi` pulls `dep:nros-rmw-zenoh`, which
+drags `alloc` in transitively. So two of three branches were broken, and the
+third was right by accident.
+
+The C lane is NOT affected: all three `_nros_c_for_cpp_features` coordinates
+compile without `alloc`. That sibling was audited because the issue said to, and
+it is clean — recorded so nobody re-audits it.
+
+### Why one append rather than two fixes
+
+`string(APPEND _nros_cpp_features ",alloc")` runs once after the if/elseif
+chain. Patching the two failing branches would leave the shape that produced the
+bug: a capability INHERITED from whichever backend happens to depend on it. With
+one append, a backend added later cannot reintroduce the gap, and a dependency
+change under zenoh cannot silently remove it. phase-361 W8.d puts the spelling
+at the dep-site, and for a Zephyr image this module IS that site.
+
+The un-gated arm stays un-gated. Its comment already explains why gating is
+wrong (the implication runs one way, and cargo unifies features across the
+graph), and it PREDICTED this exact failure: "if a genuinely alloc-free build is
+ever made to work, this line fails to compile with 'no variant named
+BackendDynamic' — a loud, local error pointing straight here". It did, and it
+did point straight here.
+
+### Verified
+
+* All three branches build on `aarch64-unknown-none` with `alloc`.
+* `just zephyr build-cpp` completes with **0 errors** — the module change
+  reaches the real cargo step, not just a hand-run `cargo check`.
+

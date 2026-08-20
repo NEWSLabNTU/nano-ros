@@ -377,7 +377,20 @@ if(CONFIG_NROS_CPP_API)
         zephyr_compile_definitions(NROS_RMW_XRCE=1)
         # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
         # above: cffi runtime + C backend + Zephyr platform feature.
-        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble")
+        # issue 0730 follow-up — `alloc` here too. MEASURED on
+        # `aarch64-unknown-none`: this composition fails the same E0599 as the
+        # cyclonedds one.
+        #
+        #   rmw-cffi                 (cyclonedds)  E0599
+        #   rmw-cffi,rmw-xrce-cffi                 E0599   <- this branch
+        #   rmw-zenoh-cffi                         builds
+        #
+        # So the note below is one branch short: xrce is not a bare `rmw-cffi`
+        # composition, but `rmw-xrce-cffi` pulls `dep:nros-rmw-xrce-cffi`, which
+        # unlike nros-rmw-zenoh does NOT carry `alloc`. Reaching the capability
+        # through whichever backend happens to depend on it is the shape that
+        # produced the original bug; both sites now spell it.
+        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,alloc,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # cyclonedds bypasses Cargo: the standalone nros-rmw-cyclonedds
         # C++ lib (compiled into the Zephyr app library by the RMW
@@ -394,12 +407,16 @@ if(CONFIG_NROS_CPP_API)
         # links and only the variant is missing (E0599 — issue 0730). The
         # sibling lanes get `alloc` transitively (zenoh via
         # nros-rmw-zenoh's pinned nros-rmw-cffi/alloc; native_sim via
-        # `,std`); this branch is the only bare-`rmw-cffi` composition.
+        # `,std`). NOTE: the xrce branch above needs it too — measured, see
+        # its comment; this is not the only composition that lacked it.
         set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,ros-humble")
     endif()
 
+
     # native_sim targets use the host Rust target; keep std enabled so
     # the final native_sim executable links Rust's panic personality.
+    # (`std` implies `alloc`; the repeat above is harmless and keeps the
+    # capability stated where it is required rather than where it is implied.)
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
         string(APPEND _nros_cpp_features ",std")
     endif()
