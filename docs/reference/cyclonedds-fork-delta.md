@@ -1,0 +1,174 @@
+# The cyclonedds fork: what it carries, and why
+
+nano-ros builds Cyclone DDS from a fork
+([NEWSLabNTU/cyclonedds](https://github.com/NEWSLabNTU/cyclonedds), branch
+`nano-ros`) rather than from the ROS package. This page records exactly what
+that fork adds, so the delta is a deliberate, reviewable thing rather than an
+accumulation nobody can enumerate.
+
+**The delta is carried on purpose. It is not tech debt awaiting an upstream PR** —
+see "Why upstreaming does not retire it" below, which is the part that is easy to
+get wrong.
+
+## The pin tracks ROS, not upstream
+
+| | version |
+| --- | --- |
+| fork pin (`third-party/dds/cyclonedds`) | **0.10.5** |
+| `ros-humble-cyclonedds` | **0.10.5** |
+| upstream `master` | 11.x |
+
+The pin matches the cyclonedds **that ROS ships**, and must. A ROS node on the
+host links the distro's Cyclone through `rmw_cyclonedds_cpp`; an embedded image
+speaking a different Cyclone is the same drift class as issue 0609, where a
+vendored zenoh pin fell behind the one `rmw_zenoh_cpp` actually used. Moving the
+fork to upstream `master` would be a wire-and-ABI divergence from every ROS peer
+we exist to talk to.
+
+So the fork is rebased when **ROS's** cyclonedds moves (a distro migration), not
+when upstream releases.
+
+## What the fork adds
+
+15 commits, 39 files, +2251/−117 against the 0.10.x boundary `5041f356`.
+Five groups:
+
+### 1. ThreadX / NetX Duo port (6 commits) — a platform upstream does not have
+
+| commit | subject |
+| --- | --- |
+| `902f7707` | ddsrt: add ThreadX NetX port |
+| `56e6170a` | fix(threadx): stabilize Cyclone DDS runtime |
+| `e8ce7315` | fix(ddsrt/threadx): multicast byte-order + multi-iovec datagram sendto |
+| `5558c6ae` | fix(ddsrt/threadx): network byte order for parsed/interface addresses |
+| `12b4af2c` | fix(ddsrt/threadx): join multicast with INADDR_ANY interface |
+| `6eb92277` | fix(ddsrt/threadx): drop duplicate ddsrt_setsockreuse (use generic) |
+
+Almost entirely **additive** — new `ddsrt/{sync,threads,sockets,time,heap,
+ifaddrs,process}/threadx/` trees plus the `DDSRT_WITH_THREADX` selection arms.
+Retired only if upstream accepts a ThreadX port, which nobody has offered.
+
+### 2. Zephyr platform gaps (3 commits)
+
+| commit | subject |
+| --- | --- |
+| `290152c0` | fix(zephyr): tolerate NSOS socket gaps |
+| `1d794c0a` | ddsi_udp: Zephyr multicast join via `struct ip_mreqn` (issue 0231) |
+| `4aa337b0` | q_sockwaitset: AF_UNIX socketpair self-pipe on native-IP-stack Zephyr |
+
+Upstream *does* have a Zephyr port (`ports/zephyr`, `WITH_ZEPHYR`); these are
+places where it does not survive contact with Zephyr's native IP stack / NSOS.
+
+### 3. Lock-pool scaling (2 commits) — the pair this issue was opened about
+
+| commit | subject |
+| --- | --- |
+| `a09babf3` | ddsrt: Zephyr-native sync backend — `k_mutex`/`k_condvar` instead of pooled pthreads |
+| `942dda3c` | ddsi/addrset: stripe the lock instead of one mutex per addrset |
+
+The substantive ones. Zephyr's POSIX `pthread_mutex_t`/`pthread_cond_t` are
+handles into **fixed static pools** (`CONFIG_MAX_PTHREAD_MUTEX_COUNT` and
+friends). Cyclone puts a mutex in every entity — one per addrset, three per
+writer — and the count scales with the **remote** graph (proxy entities, SEDP
+announcements), not just what this node creates. That makes "how large a ROS
+graph can this board join" a compile-time RAM constant.
+
+Measured (issue 0371): a 33-node Autoware graph exhausted 16384 slots ~19 s in
+and died as an anonymous `abort()`; clearing it needed 131072 slots ≈ 4.1 MiB
+static. Raising the Kconfig knob is the stock workaround and is a bad trade — the
+RAM cost is proportional to a worst case you cannot know at build time, and
+getting it wrong fails deep inside discovery with nothing to point at.
+
+The two changes attack the term from different sides and **neither alone was
+enough**: with striping only, 2048 slots still exhausted on the remaining
+per-proxy-entity locks. The native backend removes ddsrt sync from the pool
+entirely; striping stops the addrset term scaling at all.
+
+Both carry a behavioural asymmetry worth remembering: **`k_mutex` is recursive
+where a POSIX NORMAL mutex deadlocks**, so a self-relock bug hangs on Linux and
+passes on Zephyr. See also `docs/reference/platform-implementation-notes.md`.
+
+### 4. Diagnostics for the failure above (3 commits)
+
+| commit | subject |
+| --- | --- |
+| `4c8ff8c2` | ddsrt/posix: fail loudly when `pthread_mutex_init` fails |
+| `5b87ee52` | fix(ddsrt/posix): say which pool ran out, and fix cond/rwlock too |
+| `8601ca66` | ddsrt: the freertos/threadx sync ports say what failed before aborting |
+
+Stock Cyclone ignores the return of `pthread_mutex_init`. That is defensible on a
+desktop and useless here: it converts pool exhaustion into an anonymous `abort()`
+seconds later, which is exactly how 0371 cost as much time as it did.
+
+### 5. FreeRTOS (1 commit)
+
+| commit | subject |
+| --- | --- |
+| `22150fbf` | fix(freertos): avoid TLS-only DDS state |
+
+## Why upstreaming does not retire it
+
+Upstream accepts patches against `master` (11.x). nano-ros consumes 0.10.5 and
+will keep doing so until a ROS distro migration. **A merged upstream PR therefore
+changes nothing about this delta for years.** Upstreaming is worth doing for
+future-proofing and for the community, but it is not the exit, and treating it as
+one produces work whose verification does not even transfer (a green ctest on
+11.x says nothing about the 0.10.5 code that actually ships).
+
+Three prep branches exist locally in the submodule, unpushed (fork remotes are
+maintainer-gated):
+
+| branch | base | verified |
+| --- | --- | --- |
+| `upstream-zephyr-sync` | fork's `master` mirror | wiring verified at configure time; code identical to shipped |
+| `upstream-addrset-stripe` | fork's `master` mirror | builds clean, ctest 1498/1498 |
+| `nano-ros-addrset-hash` | fork pin `8601ca66` | builds clean, ctest 1282/1282 |
+
+The first two need an eclipse-cyclonedds remote added and a rebase off real
+upstream before they are PR-able; the fork's `master` mirror lags.
+
+`nano-ros-addrset-hash` is the one with near-term value: it makes the stripe hash
+independent of the allocator. The shipped hash divides the address by
+`2 * sizeof (void *)`, which distributes well only when the allocator's chunk
+spacing for that exact struct size is coprime with the stripe count — measured
+with glibc, all 64 stripes at sizeof 40/64/96/128 but **16 of 64 at 48**.
+`sizeof (struct addrset)` is 40 today, one added field from the bad case, and the
+allocator that matters is picolibc's on Zephyr, which nobody measured.
+
+## Re-deriving the delta
+
+Three separate mechanisms have made this fork *look* like it carries commits
+nobody can fetch. All three were wrong, and each cost real time. Start here:
+
+```sh
+cd third-party/dds/cyclonedds
+git remote prune origin        # stale remote-tracking refs (branches that moved)
+git fetch --unshallow origin   # the default checkout is SHALLOW: 8 commits, not 2375
+```
+
+Then, two recipes that cross-check each other:
+
+```sh
+# by boundary: 5041f356 is the newest upstream 0.10.x commit the stack sits on
+git log --oneline 5041f356..origin/nano-ros          # -> 15
+
+# by authorship, as an independent check
+git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 15
+```
+
+Do not count `origin/master..origin/nano-ros` alone: it sweeps in upstream 0.10.x
+release commits (version bumps, iceoryx fixes, deserializer patches) and reports
+58.
+
+**`origin` is the NEWSLabNTU fork**, carrying only `master` and `nano-ros`. It is
+not eclipse-cyclonedds, and any `releases/*` ref you remember seeing is a stale
+remote-tracking entry.
+
+## Testing the fork
+
+`ctest` on a host build of the fork is 1282/1282, **excluding** the
+iceoryx/shm tests, which abort with `POSH__RUNTIME_NO_WRITABLE_SHM_SEGMENT`
+regardless of any nano-ros change — confirm against a baseline build before
+attributing one of those to your work. Note the 0.10.5 tree names them
+`iceoryx_*` and `shm_*`, not `psmx_*_iox` as 11.x does, so a `-E iox` filter
+silently misses them.

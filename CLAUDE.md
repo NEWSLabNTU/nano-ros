@@ -376,6 +376,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   [docs/reference/qemu-icount.md](docs/reference/qemu-icount.md).
 - **Embedded Cyclone:** transient samples use `ddsrt_{malloc,calloc,free}`, never libc — RTOS heap
   is separate. → [docs/reference/cyclonedds-known-limitations.md](docs/reference/cyclonedds-known-limitations.md).
+- **The cyclonedds fork is pinned to the cyclonedds ROS SHIPS (0.10.5), not upstream** — an image
+  must speak the same Cyclone as the host's `rmw_cyclonedds_cpp`, so upstream `master` (11.x) is not
+  a rebase target and an upstream PR cannot retire the delta before a distro migration (issue 0507,
+  same drift class as 0609). The 15 carried commits are enumerated in
+  [docs/reference/cyclonedds-fork-delta.md](docs/reference/cyclonedds-fork-delta.md) — add a row
+  there when the fork gains one. Before believing ANY claim about what the fork carries, run
+  `git remote prune origin && git fetch --unshallow origin`: stale remote-tracking refs and the
+  shallow default checkout each make the pin read as unfetchable, which cost time three times.
 - **XRCE:** flush `uxr_buffer_request_data` immediately; reliable `STREAM_HISTORY ≥ 2`.
   → platform-implementation-notes.md.
 - **Zephyr Rust allocator is picolibc `malloc`** — size `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`
