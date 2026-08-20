@@ -11,10 +11,7 @@
 
 use cortex_m_rt::entry;
 use cortex_m_semihosting::debug;
-use nros_log::{
-    init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger,
-    sinks, Logger, Severity,
-};
+use nros_log::{nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger, Logger, Severity};
 use panic_semihosting as _;
 
 // Force-link the per-platform PlatformLog impl so its
@@ -27,7 +24,13 @@ static LOGGER: Logger = Logger::new("smoke");
 
 #[entry]
 fn main() -> ! {
-    init(sinks::default());
+    // issue 0710 — deliberately NO `init(sinks::default())`.
+    //
+    // This image takes its own `#[entry]` and never reaches board code, so no
+    // funnel can publish for it. It emits anyway because dispatch installs the
+    // platform sink on first use — which is the property that replaced issue
+    // 0708's search for boot paths. If this image ever falls silent, the
+    // default stopped being correct; do not paper over it with an `init` here.
     let logger = register_logger(&LOGGER);
     // Drop the threshold so every severity macro emits.
     logger.set_level(Severity::Trace);

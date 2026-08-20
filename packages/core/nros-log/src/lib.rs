@@ -467,7 +467,30 @@ fn dispatch_to_sinks(record: &Record<'_>) {
     if recursion_guard_check_and_set() {
         return;
     }
-    let ptr = SINKS_PTR.load(Ordering::Acquire);
+    let mut ptr = SINKS_PTR.load(Ordering::Acquire);
+    if ptr.is_null() {
+        // issue 0710 — install the platform sink rather than drop the record.
+        //
+        // The C entry point (`nros_log_emit`) has always done this. The Rust
+        // macro path did not, so a record raised before any board called `init`
+        // was constructed, dispatched and DROPPED — silently, and invisibly to
+        // its author, who cannot know what the board did.
+        //
+        // Issue 0708 answered that by requiring every board boot funnel to call
+        // `init_default()`, and gated it on funnels spelled `pub fn run*`. That
+        // is a search for boot paths, and it kept missing them: NuttX's is
+        // `pub extern "C" fn nsh_main`; three board crates did not even link
+        // `nros-log` in the configuration holding the funnel. Every one surfaced
+        // from a booted image, never from the gate.
+        //
+        // So stop searching. A path that cannot be enumerated cannot be checked,
+        // but it also does not need to be if the default is correct: dispatch
+        // installs the platform sink on first use, and a board that WANTS
+        // different sinks still calls `init` before any record fires, exactly as
+        // before. Nothing an image can forget changes whether its records land.
+        init(sinks::default());
+        ptr = SINKS_PTR.load(Ordering::Acquire);
+    }
     if !ptr.is_null() {
         // SAFETY: `init` published a valid `'static` slice reference.
         let sinks: &'static [&'static dyn LogSink] = unsafe { *ptr };

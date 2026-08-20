@@ -71,6 +71,15 @@ in the FIXTURE, so no board code runs at all (not a board defect; that image own
 `init` is correct). Found by a booted image, not by reading — 0708's gate was green throughout. Residue: a
 wider regex would flag every `extern "C"` FFI shim and get deleted, so the honest fix is finishing 0708's
 runtime assertion across board families rather than widening the grep. See `0710-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0710** — issue 0708's rule ("every `pub fn run*` in a board crate reaches
+`init_default`") was a SEARCH for boot paths, and it kept losing: NuttX's funnel is `pub extern "C" fn
+nsh_main`; esp32's board did not depend on `nros-log` at all; mps2-an385's dep was optional behind two
+features while the funnel's module was ungated; and the mps2 smoke image takes its own `#[entry]` and reaches
+no board code. Every miss surfaced from a booted image while the gate stayed green. Fixed by removing the
+need for the list: `dispatch_to_sinks` installs the platform sink on first use, as the C entry point always
+did — the asymmetry between the two paths was the bug. Proof is the image that bypasses the board with no
+`init` anywhere: six severities, previously silent. Additive, so boards that publish are untouched. See
+`archived/0710-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0705** — `case_08_c_qos` in-sweep saw `Publisher count: 1` naming ANOTHER
 test's `talker` on /chatter while its own `qos_talker` was absent. Neither filed candidate was right: the port

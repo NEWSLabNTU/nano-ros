@@ -1,12 +1,59 @@
 ---
 id: 710
 title: "A board's boot path need not be a `pub fn run*`, so issue 0708's rule and its gate miss the ones that are not"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: platform, testing
 related: [issue-0708, issue-0589, issue-0420]
 ---
+
+## Resolution — the enumeration was the defect, so it is gone
+
+`dispatch_to_sinks` now installs the platform sink on first use, exactly as the C
+entry point `nros_log_emit` has always done via `ensure_default_sinks`. That
+asymmetry between the two paths WAS the bug: a C caller never had to publish
+anything, while a Rust caller silently lost every record until some board
+remembered to.
+
+Issue 0708 answered the same problem by requiring each board boot funnel to call
+`init_default()`, gated on funnels spelled `pub fn run*`. That is a SEARCH for
+boot paths, and it kept losing:
+
+* NuttX's funnel is `pub extern "C" fn nsh_main`, which the rule cannot match;
+* `nros-board-esp32-qemu` did not depend on `nros-log` at all, so its call had
+  never compiled;
+* `nros-board-mps2-an385` had the dep optional behind two features while the
+  module holding the funnel was ungated;
+* `logging-smoke-mps2-baremetal` takes its own `#[entry]` and reaches no board
+  code, so no funnel could ever serve it.
+
+Every one surfaced from a booted image. The gate was green throughout. A rule
+that must enumerate boot paths keeps losing to whatever spelling comes next, and
+the answer is not a better regex — it is to stop needing the list.
+
+### Evidence
+
+The sharpest case available: `logging-smoke-mps2-baremetal`, which bypasses the
+board entirely and now publishes no sink list of its own. **Nothing** installs
+one for it, and it emits all six severities. Before this change that image was
+silent unless it published its own.
+
+The two host-side cells were rebuilt and re-run, including
+`native_rust_logging_example_threshold_raise_filters_round_two` — the test that
+would notice a behavioural change in filtering. Both PASS. The install is
+additive: it fires only when no list has been published, so a board that already
+publishes is untouched, and a board wanting custom sinks still calls `init`
+before any record fires exactly as before.
+
+### What this leaves
+
+`check-board-log-sink` now enforces a rule nothing depends on. It is kept for
+now, deliberately: boards SHOULD still publish at their funnel — it is where a
+custom sink list belongs, and the platform default is a floor rather than an
+intention. But it is no longer load-bearing, and a future funnel it cannot see is
+no longer a silent failure. If it starts costing more than it catches, delete it;
+that judgement wants a reason recorded, not a quiet removal.
 
 ## What 0708 established, and where it stops
 
