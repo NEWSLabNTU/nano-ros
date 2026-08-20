@@ -19,6 +19,35 @@ fn is_ros_available() -> bool {
     std::env::var("AMENT_PREFIX_PATH").is_ok()
 }
 
+/// Print the one line a reader needs when a ROS-dependent test cannot run.
+///
+/// Issue 0693. These used to say `eprintln!("Skipping test: ROS not sourced")`
+/// and return — the shape that let `rosidl-codegen` answer "19 tests, 0.027 s,
+/// all green" over work it never did, because a suite that bails when ROS is
+/// absent is indistinguishable from one that bails because its own detection
+/// broke.
+///
+/// Early-returning really is the only option here: `cargo test` has no runtime
+/// skip, and `check-cli-tests` runs this sub-workspace with a plain
+/// `cargo test --manifest-path packages/cli/Cargo.toml`, so there is no junit
+/// rewrite and `nros_tests::skip!` would be an ordinary failure. What changes
+/// is that the line now SAYS the test did not run, in a marker that greps.
+///
+/// The mitigation is the same one `rosidl-codegen`'s `note_no_ros` relies on:
+/// "no ROS" stays quiet, but ROS PRESENT and broken is loud — with
+/// `AMENT_PREFIX_PATH` set, `test_find_std_msgs` fails if the index cannot find
+/// `std_msgs` rather than warning past it.
+///
+/// Spelled here as well as in `rosidl-codegen/tests/parity_helpers.rs` because
+/// test helpers do not cross a crate boundary; the marker string is deliberately
+/// identical so one grep finds every non-run.
+fn note_no_ros(test: &str) {
+    eprintln!(
+        "[NO-ROS] {test}: AMENT_PREFIX_PATH is unset (source your ROS 2 install) \
+         — this test did not run. See issue 0693."
+    );
+}
+
 // Process env is shared across the parallel test threads:
 // `test_ament_index_not_available` REMOVES `AMENT_PREFIX_PATH` for its
 // negative probe, and any env-reading ament test that interleaves with that
@@ -139,7 +168,7 @@ mod with_ros {
     fn test_ament_index_available() {
         let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
-            eprintln!("Skipping test: ROS not sourced");
+            note_no_ros("test_ament_index_available");
             return;
         }
 
@@ -153,7 +182,7 @@ mod with_ros {
     fn test_discover_ament_packages() {
         let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
-            eprintln!("Skipping test: ROS not sourced");
+            note_no_ros("test_discover_ament_packages");
             return;
         }
 
@@ -175,7 +204,7 @@ mod with_ros {
     fn test_find_std_msgs() {
         let _env = AMENT_ENV_LOCK.lock().unwrap();
         if !is_ros_available() {
-            eprintln!("Skipping test: ROS not sourced");
+            note_no_ros("test_find_std_msgs");
             return;
         }
 
