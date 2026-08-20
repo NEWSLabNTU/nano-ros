@@ -83,31 +83,6 @@ foreign node appearing, not the local one missing. Discriminator: log the leased
 dialled, compare on failure. In-sweep only, ~1 in 2; runs solely where ROS 2 exists (the distrobox). See
 `0705-*`. (2026-08-20)
 
-**#0706** (boards/threadx-riscv64, open 2026-08-20) — on a CLEAN tree, `threadx_kernel` compiles `reent.c`
-with Debian's `/usr/bin/riscv64-unknown-elf-gcc` (`-isystem /usr/lib/picolibc/...`) while every configure in
-the same run prints `riscv64 toolchain prefix .../riscv-none-elf-gcc/14.2-nros1` and `libc = newlib`. The
-verdict and the compiler are about DIFFERENT toolchains, so the board's correct
-`if(NROS_RISCV64_LIBC STREQUAL "newlib")` guard adds newlib-only `reent.c` and hands it to picolibc's
-compiler: `fatal error: sys/reent.h: No such file or directory`. The store toolchain DOES have that header
-(verified). `riscv64-threadx.cmake` already fixed this for STICKY caches (#0680, probe `CMAKE_C_COMPILER`
-not the prefix) — but both build dirs were deleted first, so stickiness is not the explanation; the kernel
-target reaches Debian's compiler by a route the probe never sees. Found by tier 2, which is the first lane
-to build this coordinate; six other platforms pass. Blast radius is the whole tier (1-wise over platform),
-exactly like #0698. Reproduce ONLY via `just threadx_riscv64 build-fixture-extras` — three adjacent
-invocations mislead, and the issue records how. See `0706-*`. (2026-08-20)
-
-**#0706** (build/cmake, open 2026-08-20) — a build tree survives a toolchain RESOLUTION change. Pre-existing
-riscv64 dirs compile `reent.c` with Debian's picolibc gcc (`fatal error: sys/reent.h`); delete EVERY
-`examples/qemu-riscv64-threadx/*/*/build-*` and the same recipe is green, 34 configures all resolving the
-xPack store toolchain. `nros_cmake_guard_build_dir` (#0391) wipes on a toolchain-file ARGUMENT mismatch,
-but the argument never changed — installing `riscv-none-elf-gcc` into the SDK store changes what
-`_nros_riscv64_find_prefix` RESOLVES to, silently, with the arg byte-identical. Same shape as #0674/#0678
-("the libc verdict must come from the compiler actually used") and #0680 ("probe `CMAKE_C_COMPILER`, not
-the prefix"), one level up: wipe when the RESOLUTION moves, not only the argument. Direction: record the
-resolved compiler in the configure stamp. Blast radius is the whole tier (1-wise over platform), like
-#0698. The issue records the four shortcuts that mislead — notably that deleting only `build-cyclonedds`
-leaves the ZENOH trees, and the zenoh pass builds the same `threadx_kernel` first. See `0706-*`.
-
 Recently resolved (2026-08-20): **#0706** — a build tree survived a toolchain RESOLUTION change.
 `nros_cmake_guard_build_dir` wiped on a toolchain-file ARGUMENT mismatch and skipped every compiler check
 when a toolchain file was present ("the toolchain file pins the compiler") — but it pins the FILE, not the
