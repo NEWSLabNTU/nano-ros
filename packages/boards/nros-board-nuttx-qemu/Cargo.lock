@@ -335,6 +335,7 @@ version = "0.4.0"
 dependencies = [
  "nros-board-common",
  "nros-board-nuttx",
+ "nros-log",
  "nros-platform",
 ]
 
