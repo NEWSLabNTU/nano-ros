@@ -2484,10 +2484,42 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
         echo "Invalid NROS_BUILD_JOBS=$budget; expected positive integer" >&2
         exit 2
     }
+    # Issue 0726 — POOLED launcher, opt-in via NROS_BUILD_POOL=1.
+    #
+    # The static split below measured 45% of its wall clock running ONE stage
+    # against an inner cap of 8 on a 32-core host: a 25% ceiling, because a
+    # fixed partition cannot reclaim capacity as stages drain, which is exactly
+    # when the longest stage is still going. The serial NROS_JOBSERVER=1 path
+    # is not the answer either — measured 3-4/32 runnable, because one stage at
+    # a time starves whenever that stage's own graph is narrow (zephyr's west
+    # configure steps are largely single-threaded).
+    #
+    # What the evidence asks for is BOTH: stages overlapping so narrow ones run
+    # together, and ONE token pool so the tail can expand into what the others
+    # release. That is possible now because both heavy children are jobserver
+    # CLIENTS — cargo always was, and ninja since 1.13 (verified here on 1.13.2:
+    # 8 ninja edges under `make -j2 --jobserver-style=fifo` peaked at 2). So the
+    # outer jobserver no longer has to be hidden from them, and `-j` per child
+    # can be dropped entirely: make hands out `budget` tokens and every cargo
+    # and ninja in the tree draws from that one pool.
+    if [ "${NROS_BUILD_POOL:-}" = "1" ]; then
+        outer="$(printf '%s\n' $lane_platforms | grep -c .)"
+        [ "$outer" -gt "$budget" ] && outer="$budget"
+        inner=""            # no static split; children inherit the jobserver
+        make_jobs="$budget"
+        echo "build-test-fixtures: POOLED — make -j$budget, $outer stage(s), shared tokens"
+        # Children INHERIT the jobserver; nothing is unset.
+        NROS_STAGE_ENV=""
+    else
     outer=4
     [ "$outer" -gt "$budget" ] && outer="$budget"
     inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1
     make_jobs=$((outer + 1))
+    # The outer jobserver is a LAUNCHER width, not a build budget, so it must
+    # not leak into children that would join the tiny pool instead of using the
+    # explicit split they were handed.
+    NROS_STAGE_ENV="-u MAKEFLAGS -u CARGO_MAKEFLAGS"
+    fi
     echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
     # Issue 0393 — the lane-filtered platform list, computed ONCE. The graph
     # names its targets in three places (.PHONY, `all:`, the rule loop) and they
@@ -2516,7 +2548,11 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
         zephyr_prereq=""
         if in_lane zephyr; then zephyr_prereq=" | zephyr"; fi
         for platform in $lane_platforms; do
-            child_jobs="$inner"
+            # Pooled: hand each stage the full budget and let the shared
+            # jobserver throttle. A jobserver client asks for tokens before it
+            # runs anything, so `budget` is a ceiling it will not reach unless
+            # the machine is actually free — which is the entire point.
+            child_jobs="${inner:-$budget}"
             prereq="$zephyr_prereq"
             if [ "$platform" = "zephyr" ]; then
                 child_jobs="$budget"
@@ -2535,7 +2571,7 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # printing it as OK is what hid an unprovisioned Zephyr workspace
             # until `_lane-gate` failed on artifacts twenty minutes later. The
             # reason comes back through the lane log's `NROS_LANE_SKIP:` marker.
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env -u MAKEFLAGS -u CARGO_MAKEFLAGS NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env $NROS_STAGE_ENV NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
                 "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
