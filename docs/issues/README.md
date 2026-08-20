@@ -63,14 +63,6 @@ env around the whole fixture build would pollute the shared tree every other tes
 REMOVED rather than shipped, because it could not pass and "skip cleanly" would be issue 0650's skip-to-green.
 See `0711-*`. (2026-08-20)
 
-**#0710** (platform/testing, open 2026-08-20) — issue 0708's rule ("every `pub fn run*` in a board crate
-reaches `init_default`") names a SPELLING, not the thing it cares about, so a boot path spelled otherwise is
-invisible to both the fix and the gate. Two exist: NuttX enters through `pub extern "C" fn nsh_main` (a board
-funnel the rule could not see — fixed), and `logging-smoke-mps2-baremetal` enters through `#[entry] fn main()`
-in the FIXTURE, so no board code runs at all (not a board defect; that image owns its own logging, and its
-`init` is correct). Found by a booted image, not by reading — 0708's gate was green throughout. Residue: a
-wider regex would flag every `extern "C"` FFI shim and get deleted, so the honest fix is finishing 0708's
-runtime assertion across board families rather than widening the grep. See `0710-*`. (2026-08-20)
 Recently resolved (2026-08-20): **#0710** — issue 0708's rule ("every `pub fn run*` in a board crate reaches
 `init_default`") was a SEARCH for boot paths, and it kept losing: NuttX's funnel is `pub extern "C" fn
 nsh_main`; esp32's board did not depend on `nros-log` at all; mps2-an385's dep was optional behind two
