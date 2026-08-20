@@ -71,6 +71,14 @@ someone added it there — #0688 (threadx-rv64 seam) and #0700 (ESP-IDF componen
 the ESP-IDF shim because a COMMENT in it named the verb — any gate here must key on something structural.
 See `0719-*`. (2026-08-20)
 
+**#0726** (build, open 2026-08-20) — the fixture build hardcodes `outer=4` and strips its own
+jobserver from children (`env -u MAKEFLAGS`), so 32 cores are statically split 4x8 and capacity cannot
+be reclaimed as stages drain. Measured on the lane=tier2 joblog: wall 1449 s, of which **655 s (45%)**
+runs ONE stage at an 8/32 = 25% ceiling; mean usable ceiling 20.7/32 = **65%**, and that is a ceiling
+not a measurement. `threadx_riscv64` alone is 1302 s. An `NROS_JOBSERVER=1` launcher already exists
+that shares FIFO tokens instead — unused, and its "needs pinned make 4.4" gate may be stale (system
+make is 4.4.1). Campaign issue; 0721 (gate I/O) already landed under it. See `0726-*`. (2026-08-20)
+
 **#0721** (build, open 2026-08-20) — the check-* gates walk built trees to find TRACKED files, and
 `check-no-tracked-file-find` — the gate that forbids exactly this — reads only `.sh`/`.just`/`justfile`,
 never a `.py`. So the shell side is clean and the Python side has 21 walk sites. Measured: `examples/`
