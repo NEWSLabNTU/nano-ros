@@ -31,6 +31,7 @@
 /* ---- Provided elsewhere ---- */
 /* freertos_hooks.c */
 extern void semihosting_write0(const char *s);
+extern void nros_board_freertos_run_init_array(void);
 /* network_glue.c */
 extern int nros_freertos_init_network(const uint8_t mac[6], const uint8_t ip[4],
                                       const uint8_t netmask[4], const uint8_t gw[4]);
@@ -195,6 +196,14 @@ static void seed_platform_rng(const uint8_t ip[4], const uint8_t mac[6]) {
 
 static void app_task_entry(void *arg) {
     (void)arg;
+
+    /* phase-370 W4 (issue 0733) — run the static constructors FIRST. This flat
+     * bare-metal image has no crt0, so nothing else walks `.init_array`, and
+     * the Cyclone message-descriptor registration TUs are constructors. Before
+     * `app_main`, before any session: a descriptor looked up before this runs
+     * is a miss, and the miss surfaces as a bare `-1` from publisher/subscriber
+     * create. Same placement as the threadx board's #195 walk. */
+    nros_board_freertos_run_init_array();
 
     seed_platform_rng(NROS_APP_CONFIG.network.ip, NROS_APP_CONFIG.network.mac);
 

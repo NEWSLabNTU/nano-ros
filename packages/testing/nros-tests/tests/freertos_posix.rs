@@ -31,10 +31,12 @@
 //! Run with: `cargo nextest run -p nros-tests --test freertos_posix`
 
 use nros_tests::{
+    alloc::domain_of,
     fixtures::{
         ManagedProcess, build_freertos_posix_workspace_c_entry,
         build_freertos_posix_workspace_cpp_entry, freertos,
     },
+    matrix::{Lang, PlatformId, Workload},
     output::{INT32_LISTENER_LOG_PREFIX, INT32_TALKER_LOG_PREFIX, WORKSPACE_C_TALKER_LOG_PREFIX},
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -54,8 +56,21 @@ fn require_freertos() {
 }
 
 /// Boot the image and return everything it wrote.
-fn run_entry(entry: &PathBuf, label: &str) -> String {
+///
+/// Each cell gets its OWN DDS domain, from the matrix allocator that every
+/// other cyclone pair uses (`domain_of(platform, lang, workload)`; CLAUDE.md:
+/// "Cyclone fixture pairs bake distinct domains for parallel SPDP"). Without
+/// it the C and C++ images sit on the default domain together, and since both
+/// carry a talker AND a listener, each hears the other: the C listener can
+/// print before its own talker does, and the ordering assertion below — the
+/// part that makes this evidence of DELIVERY rather than of a startup log —
+/// fails. It reproduced exactly that way, passing solo and failing in a pair.
+///
+/// `ROS_DOMAIN_ID` is the right knob because this image is a HOST process; the
+/// hosted rung of the domain ladder reads it (`nros-c/src/support.rs`, #206).
+fn run_entry(entry: &PathBuf, domain: u8, label: &str) -> String {
     let mut cmd = Command::new(entry);
+    cmd.env("ROS_DOMAIN_ID", domain.to_string());
     cmd.env("NROS_ENTRY_SPIN_MS", SPIN_MS);
     let mut proc = ManagedProcess::spawn_command(cmd, label)
         .unwrap_or_else(|e| panic!("spawn the {label} image at {}: {e}", entry.display()));
@@ -94,7 +109,8 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
              (just freertos build-fixtures): {e:?}"
         )
     });
-    let out = run_entry(&entry.to_path_buf(), "freertos-posix-c");
+    let domain = domain_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
+    let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c");
     // The pure-C workspace talker spells its marker differently from the C++
     // one; both listeners agree on `Received:`.
     assert_delivered(&out, WORKSPACE_C_TALKER_LOG_PREFIX, "freertos-posix-c");
@@ -109,6 +125,7 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
              (just freertos build-fixtures): {e:?}"
         )
     });
-    let out = run_entry(&entry.to_path_buf(), "freertos-posix-cpp");
+    let domain = domain_of(PlatformId::FreertosPosix, Lang::Cpp, Workload::EntryPubsub);
+    let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
     assert_delivered(&out, INT32_TALKER_LOG_PREFIX, "freertos-posix-cpp");
 }

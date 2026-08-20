@@ -1,8 +1,8 @@
 # Phase 370 — freertos-posix board variant + first live Cyclone-on-FreeRTOS cell
 
-**Status (2026-08-20).** W1–W3 LANDED. W4 PARTIAL — the embedded Cyclone
-lane now builds and boots and gets a participant, and stops at writer
-creation (issue 0733). W5 (the ASI consumer switch) is open. Implements the "go, small"
+**Status (2026-08-20).** W1–W4 LANDED. The embedded Cyclone × FreeRTOS cell
+builds, boots, and creates writers and readers — the stretch item's goal.
+W5 (the ASI consumer switch) is open. Implements the "go, small"
 scoping decision recorded in phase-292 W4.a: the FreeRTOS POSIX simulator
 is a BOARD-level variant, not a new platform layer, and its RMW/network
 half is the existing posix Cyclone path verbatim.
@@ -105,11 +105,24 @@ Five defects between those two states, none of them about a new board:
    rationale was false (`sys_sem_new` takes FreeRTOS heap, not lwIP memp). It has
    been reverted.
 
-The remaining `-1` is now diagnosed rather than mysterious: the type-descriptor
-registry is empty, because descriptors register through
-`__attribute__((constructor))` and `.init_array` is not walked on bare metal —
-the #48 hazard this tree already moved RMW backend registration off in
-phase-249 P3. Two credible fixes, so it stays issue 0733 rather than a guess.
+5. The type-descriptor registry was empty, so `nros_publisher_init` returned a
+   bare `-1`. Descriptors register from `__attribute__((constructor))` and the
+   FreeRTOS linker script had no `.init_array` output section, so the ctor
+   BODIES were discarded. Fixed with the #195 pattern
+   `nros-board-threadx-qemu-riscv64` has used since that issue: a `.init_array`
+   KEEP block plus an idempotent walk in both boot lanes (issue 0733).
+
+   The fix INVERTED after measurement, which is worth recording. The first
+   reading said the register objects were never pulled from the archive and
+   recommended an aggregate strong registrar. They ARE pulled — the type-support
+   archives are whole-archived on bare metal by a branch written for exactly
+   that case, and the image carried 9 descriptor symbols. A registrar would have
+   been a second registration mechanism beside #195's.
+
+   It also needed `__dso_handle` / `__cxa_atexit` / `_fini` no-ops: keeping
+   `.init_array` retains C++ statics WITH DESTRUCTORS, which register through
+   `__cxa_atexit(dtor, obj, &__dso_handle)` — symbols a `-nostartfiles` image
+   does not link. Caught by the C++ workspace entry, not the C one.
 
 ## Work items
 

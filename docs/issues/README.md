@@ -109,15 +109,17 @@ the FreeRTOS `NROS_APP_CONFIG` TU. Configure and build both succeed; the image i
 ESP-IDF, NuttX and PlatformIO shells, not one board. One-line fix (drop the outer guard, keep the
 board-name test as one of the three OR arms). See `0735-*`. (2026-08-20)
 
-**#0733** (freertos, open 2026-08-20) — embedded Cyclone × FreeRTOS boots and gets a participant, then
-`nros_publisher_init` returns -1 because the type-descriptor registry is EMPTY: descriptors register
-through `__attribute__((constructor))`, and `.init_array` is not walked on bare-metal/RTOS — the #48
-hazard this tree already moved RMW BACKEND registration off (phase-249 P3). Two real fixes (emit an
-aggregate strong registrar like the backends do, or have the board walk `.init_array`), so it is filed
-rather than patched. NOTE this issue RETRACTS its own earlier claim that the ddsrt lwIP thread fix
-"changes nothing" — that was measured on an INCREMENTAL build which never recompiled the cyclonedds
-subproject; from clean it IS the fix for the lwIP assert, and is now fork commit `99cfac88`, pushed and
-pinned. See `0733-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0733** — embedded Cyclone × FreeRTOS boots, and `nros_publisher_init`
+returned a bare -1 because the type-descriptor registry was EMPTY: descriptors register from
+`__attribute__((constructor))` and the FreeRTOS linker script had no `.init_array` output section, so the
+ctor BODIES were discarded. Fixed with the #195 pattern the threadx-riscv64 board has used since that
+issue — a `.init_array` KEEP block plus an idempotent walk in both boot lanes. The chosen fix INVERTED
+after measurement: the first reading claimed the register objects were never pulled from the archive, but
+they are (whole-archived on bare metal by a branch written for exactly that, 9 descriptor symbols in the
+image), so an aggregate registrar would have been a SECOND mechanism beside #195's. Also needed
+`__dso_handle`/`__cxa_atexit`/`_fini` no-ops: keeping `.init_array` retains C++ statics WITH DESTRUCTORS,
+which a `-nostartfiles` image cannot link. Talker publishes, listener subscribes.
+See `archived/0733-*`.
 
 Recently resolved (2026-08-20): **#0711** — peer mode is now EXERCISED. The fixture half of this issue was
 right (a `[[fixture]]` variant carrying `ZPICO_MULTICAST_TRANSPORT=1` in its own artifact root, resolved by

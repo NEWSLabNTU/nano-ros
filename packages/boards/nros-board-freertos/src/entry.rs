@@ -265,6 +265,20 @@ unsafe fn freertos_boot_bringup<B>(config: &Config)
 where
     B: BoardPrint + BoardExit,
 {
+    // phase-370 W4 (issue 0733) — run the static constructors FIRST.
+    //
+    // This flat bare-metal image has no crt0, so nothing walks `.init_array`
+    // unless the board does. The Cyclone message-descriptor registration TUs
+    // are `__attribute__((constructor))`, so without this every descriptor
+    // lookup misses and publisher/subscriber create returns a bare `-1` naming
+    // nothing. The C/C++ lane's `freertos_c_entry.c` does the same at the same
+    // point; the walk itself is idempotent, and its bounds come from the shared
+    // linker script's `.init_array` KEEP block.
+    unsafe extern "C" {
+        fn nros_board_freertos_run_init_array();
+    }
+    unsafe { nros_board_freertos_run_init_array() };
+
     if let Err(e) = init_network(config) {
         B::println(format_args!("Error initializing network: {:?}", e));
         B::exit_failure();
