@@ -1,7 +1,7 @@
 ---
 id: 719
 title: "Seven image-producing cmake paths link `NanoRos::NanoRos` without going through `nano_ros_entry()`, so each one re-earns whatever the entry applies — twice already"
-status: open
+status: resolved
 type: tech-debt
 area: build, integrations
 related: [issue-0666, issue-0692, issue-0688, issue-0700, phase-369, rfc-0077]
@@ -87,3 +87,71 @@ mentioned `nano_ros_entry()`. A textual gate keying on the name rather than on a
 call is exactly the sort that reports a clean sweep over a site it never
 examined (issue 0196's rule). Whatever gate lands here should key on something
 structural.
+
+## Fixed 2026-08-20 — every image path applies an ending, and a gate keeps it that way
+
+Directions 1 and 2, together. Direction 1 alone leaves the next bespoke path free
+to skip the applier; direction 2 alone enforces a rule instead of removing the
+need for one. Neither is sufficient, which is why both.
+
+**Direction 1 had already landed** (`b60cf8341`): `nros_apply_panic_policy` is
+the one implementation, and the entry plus the two paths that had hand-copied
+it now call it. What was left is the five paths still marked "no", which this
+finishes:
+
+* `cmake/platform/nano-ros-nuttx.cmake` — applied inside
+  `nros_platform_link_app()`, the PER-IMAGE seam. NuttX owns the image (its apps
+  build system calls that seam per target), so it is the analogue of what #0688
+  did for the riscv64 board. The include is at FILE scope, because
+  `CMAKE_CURRENT_LIST_DIR` inside a function body resolves at CALL time to the
+  caller's directory — the `_NROS_ENTRY_DIR` gotcha CLAUDE.md records.
+* `examples/templates/cpp-port-minimal-publisher`,
+  `examples/templates/rclcpp-compat-smoke`,
+  `packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke` — one
+  call each, with a guarded include because these are reached several ways
+  (`find_package`, `add_subdirectory`, an ament overlay) and not all of them
+  have pulled `NanoRosEntry.cmake` first.
+
+**Deliberately NOT applied**, and this is a correction to this issue's own
+table: `cmake/compat/NrosRclcppCompat.cmake` and
+`cmake/compat/stubs/Findrclcpp.cmake` are an ALIAS LAYER that
+`nano_rosConfig.cmake` includes for every consumer, image or not. Applying there
+would impose an ending on builds that never link an image, and would FATAL
+against an entry that legitimately chose a different one — the applier treats a
+second, different policy as a contradiction, correctly, because the staticlib is
+shared. They are exempt in the gate WITH that reason.
+
+### The gate, and the trap this issue warned about
+
+`scripts/check-cmake-image-policy.py`: a tracked cmake file that links
+`NanoRos::NanoRos*` into an executable must CALL `nros_apply_panic_policy`
+(directly, or via `nano_ros_entry` / `nano_ros_add_executable`, which do it for
+their callers).
+
+It keys on a CALL, never a name, because this issue recorded the failure
+first-hand: a mechanical grep for "goes through the shared verb" excluded the
+ESP-IDF shim because a COMMENT there mentioned `nano_ros_entry()`. So comments
+are stripped before anything is matched and the pattern is `name(`. The
+self-test carries that exact case — a file whose only mention of the verb is in
+a comment MUST still be flagged.
+
+It reads `git ls-files` rather than walking: build trees and the scratch `tmp/`
+carry generated CMakeLists that are not the project's to fix, and a gate that
+reports them teaches people to skim its output. (Found immediately — the first
+run flagged a `tmp/phase-150-smoke-*` scratch tree.)
+
+`check-image-panic-policy.py` is the Rust-side sibling and states that it cannot
+see "the C/C++ side, where the policy is a cargo feature on the staticlib". This
+is that side; the two are now the halves of one question.
+
+### Verified
+
+* Gate self-test: 6 cases, both directions, including the comment trap.
+* MUTATION-checked: deleting the call from the smoke fixture makes the gate fail
+  and name that file; restoring it passes. A gate nobody has watched fail has
+  unknown discriminating power.
+* `cmake_add_subdirectory_smoke` configures AND links clean with the change
+  (`Linking C executable smoke`), so the added call is not merely accepted by
+  the parser.
+* Wired into `check-fast`, beside its Rust-side sibling.
+

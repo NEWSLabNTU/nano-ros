@@ -456,7 +456,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cmake-image-policy check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3383,6 +3383,14 @@ check-just-recipe-refs:
 # provider has no archive to count — issue 0617). Buildless, source-level.
 check-image-panic-policy:
     @python3 scripts/check-image-panic-policy.py
+
+# issue 0719 — the C/C++ half of the same question. `check-image-panic-policy`
+# reads what a RUST image declares (`nros::main!(panic = …)`) and says outright
+# that it cannot see "the C/C++ side, where the policy is a cargo feature on the
+# staticlib". This is that side: every cmake path that links `NanoRos::NanoRos*`
+# into an executable must apply an ending, directly or through the entry verbs.
+check-cmake-image-policy:
+    @python3 scripts/check-cmake-image-policy.py
 
 # Issue 0604 — `packages/cli/cli-source-dirs.txt` must equal cargo's resolve.
 #

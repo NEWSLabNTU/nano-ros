@@ -147,6 +147,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-nuttx.cm
 # whether the call is a no-op (NuttX) or a real link (FreeRTOS).
 # ---------------------------------------------------------------------------
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
+# issue 0719 — the shared panic-policy applier. Included at FILE scope, because
+# `CMAKE_CURRENT_LIST_DIR` inside a function body resolves at CALL time to the
+# caller's directory, not this one (the `_NROS_ENTRY_DIR` gotcha CLAUDE.md
+# records).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosFeatureSet.cmake")
 
 # ---------------------------------------------------------------------------
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.
@@ -255,6 +260,19 @@ function(nros_platform_link_app target)
         message(FATAL_ERROR
             "nros_platform_link_app: '${target}' is not a CMake target.")
     endif()
+
+    # issue 0719 — apply the image's cross-cutting facts here, because NuttX
+    # images do not go through `nano_ros_entry()`: NuttX owns the image (its
+    # apps build system calls this seam per target), and the entry is
+    # entry-package shaped. This is the per-image seam, so it is where the
+    # entry's other half belongs.
+    #
+    # Today that half is the panic policy. Routing through the ONE applier is
+    # the point: whatever is added to it next arrives here without anyone
+    # remembering to copy it. Repeat calls with the same policy are fine; a
+    # DIFFERENT one is a hard error, which is correct — the nros-c staticlib is
+    # shared across the images in a build.
+    nros_apply_panic_policy(platform "nros_platform_link_app(${target}) [nuttx]")
 
     # Phase 249 P2b — generated STRONG `nros_app_register_backends` for every
     # C/C++ app (manifest-driven). On NuttX the backend is already whole-archived

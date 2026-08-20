@@ -51,6 +51,8 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0719** — the five remaining image paths that bypassed `nano_ros_entry()`
+
 Recently resolved (2026-08-20): **#0524** — `anyhow` is unmaintained; the last actionable chain was a DEAD
 declaration in the vendored `play_launch_parser` (0 uses across src/ and tests/, `thiserror` does the work)
 that was still compiled into every consumer. Removed in the fork (`NEWSLabNTU/play_launch` `141e7a5`, pushed
@@ -154,16 +156,6 @@ through the bundle-aware resolver; the provisioning contract loads from either f
 (`Cargo.toml` else `board.cmake`), and `BoardCatalog::load` attaches bundle names as aliases of the
 family descriptor so `resolve_deploy` — shared by board-facts and the site-config gate — sees them.
 See `archived/0729-*`. (2026-08-20)
-
-**#0719** (build/integrations, open 2026-08-20) — seven image-producing cmake paths link
-`NanoRos::NanoRos` without going through `nano_ros_entry()`, where an image's cross-cutting facts (today
-the panic policy) get applied. `nano_ros_add_executable` delegates to the entry, so ~160 call sites are
-covered by construction; these are not. Two of the seven carry the policy only because a build broke and
-someone added it there — #0688 (threadx-rv64 seam) and #0700 (ESP-IDF component shim), each found as a
-`#[panic_handler]` error four crates from its cause. Generalises the sentence phase-369 closed #0666 with:
-"a bespoke path silently misses machinery the shared one applies". NOTE the mechanical sweep first EXCLUDED
-the ESP-IDF shim because a COMMENT in it named the verb — any gate here must key on something structural.
-See `0719-*`. (2026-08-20)
 
 **#0726** (build, open 2026-08-20) — the fixture build hardcodes `outer=4` and strips its own
 jobserver from children (`env -u MAKEFLAGS`), so 32 cores are statically split 4x8 and capacity cannot
