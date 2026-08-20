@@ -20,9 +20,40 @@ Every one printed something a human would read as "fine" and returned success.
 Grep found them only because somebody went looking; this makes the shape
 unspellable at authoring time instead.
 
-WHAT IS REJECTED — a diverging arm (`Err(..) =>`, or an `if`/`let else` that
-returns early) whose body prints and then falls through or returns, with no
-`panic!`, `assert*`, `skip!`, `?`, `return Err`, or `unreachable!` in it.
+WHAT IS REJECTED — two shapes, both "print a diagnosis, report PASS":
+
+  1. a diverging arm (`Err(..) =>`) whose body prints and then falls through,
+     with no `panic!`, `assert*`, `skip!`, `?`, `return Err`, or `unreachable!`.
+
+  2. a FINAL `else` block that prints and decides nothing — the last statement
+     of the test, so reaching it ends the test green. Added after issue 0711
+     found a live one the `Err`-arm rule could not see:
+
+         if result.received_count > 0 {
+             eprintln!("[PASS] Peer mode communication works");
+         } else {
+             eprintln!("[INFO] No messages received - peer discovery may ...");
+             eprintln!("[INFO] This is expected on some network configurations");
+         }
+
+     That test ran with a session that never opened, received zero messages, and
+     was reported GREEN — while explaining itself in a way that reads like a
+     note. The gate scanned the file and passed it, because the gate's coverage
+     was narrower than the rule it enforces (issue 0196's shape).
+
+     `else` specifically, and only when it ENDS the function: a trailing
+     `if verbose { eprintln!(..) }` after real assertions is ordinary, and an
+     `if/else` in the middle of a test is not the verdict.
+
+     KNOWN LIMIT, stated rather than papered over: a print-and-pass `else`
+     NESTED inside another block is not caught, because "is this the function's
+     verdict?" stops being answerable without parsing. One such site was found
+     by hand and fixed while widening this rule
+     (`cargo-nano-ros/tests/integration_tests.rs`, a `std_msgs` lookup that
+     warned and passed). If more turn up, the answer is a real Rust parser, not
+     a looser brace heuristic — the first draft of this rule used "the next
+     character is `}`" and flagged a reporting LOOP, which is how a gate starts
+     costing more than it catches.
 
 WHAT IS NOT — the honest spellings, all of which stay available:
   * `nros_tests::skip!(…)`  — the harness counts it, junit records it
@@ -59,6 +90,9 @@ DECIDES = re.compile(
 
 # `Err(..) => { … }` / `Err(..) => expr,` — the match-arm form.
 ERR_ARM = re.compile(r"\bErr\s*\(\s*[^)]*\)\s*=>\s*", re.S)
+
+# `} else {` — the fall-through form (shape 2 above).
+ELSE_BLOCK = re.compile(r"\belse\s*\{")
 
 
 def _strip_comments(src: str) -> str:
@@ -157,6 +191,30 @@ def offenders(paths):
                 line = src[: m.start()].count("\n") + 1
                 snippet = " ".join(raw.splitlines()[line - 1].split())[:70]
                 found.append((rel, line, snippet))
+
+        for m in ELSE_BLOCK.finditer(src):
+            blk = _block_at(src, m.end() - 1)
+            if blk is None:
+                continue
+            body, end = blk
+            if not PRINTS.search(body) or DECIDES.search(body):
+                continue
+            # Only when the block ENDS the FUNCTION, so reaching it IS the
+            # verdict. "The next character is `}`" is NOT that test — it also
+            # matches an else that ends a `for` body, which is how the first
+            # draft of this rule flagged `report_portability_baseline`, a
+            # reporting loop with no verdict to give. So require that the brace
+            # closing this block is followed by item level: EOF, or the start of
+            # the next item / attribute / doc comment.
+            rest = src[end:].lstrip()
+            if not rest.startswith("}"):
+                continue
+            after = rest[1:].lstrip()
+            if after and not re.match(r"(#\[|//|/\*|pub\b|fn\b|mod\b|impl\b|use\b|const\b|static\b|type\b|struct\b|enum\b)", after):
+                continue
+            line = src[: m.start()].count("\n") + 1
+            snippet = " ".join(raw.splitlines()[line - 1].split())[:70]
+            found.append((rel, line, snippet))
     return found
 
 
@@ -205,6 +263,20 @@ def self_test():
         # An arm that prints nothing is not this gate's business.
         write("fn t(){ match go() { Ok(v)=>assert!(v), Err(_)=>{ } } }\n")
         check(False, "a silent Err arm was reported")
+
+        # Shape 2 — the issue 0711 form: a FINAL else that prints and decides
+        # nothing, so reaching it ends the test green.
+        write('fn t(){ if ok() { assert!(true); } else { eprintln!("expected sometimes"); } }\n')
+        check(True, "a print-only FINAL else was NOT reported")
+
+        # …but only when it ends the function. A trailing debug print after the
+        # verdict, or an if/else mid-test, is ordinary code.
+        write('fn t(){ if v() { eprintln!("dbg"); } else { eprintln!("dbg2"); } assert!(go()); }\n')
+        check(False, "a mid-test if/else was reported")
+        write('fn t(){ if ok() { assert!(true); } else { eprintln!("x"); panic!("no"); } }\n')
+        check(False, "a final else that panics was reported")
+        write('fn t(){ if ok() { assert!(true); } else { nros_tests::skip!("absent"); } }\n')
+        check(False, "a final else that skips was reported")
 
         # Prose must not be read as code — issue 0683's lesson, inverted.
         write('fn t(){ /* Err(e) => { eprintln!("x"); } */ assert!(true); }\n')

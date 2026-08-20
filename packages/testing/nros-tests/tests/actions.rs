@@ -75,19 +75,26 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
-    // Wait briefly — client will timeout without server
-    let _ = client.wait_for_output_pattern(
-        nros_tests::output::ACTION_SENDING_GOAL_MARKER,
-        Duration::from_secs(5),
+    // Issue 0711's class — this used to discard the wait result and then print
+    // "[PASS] started" or "[INFO] exited (no server available)", passing either
+    // way. Both branches were green, so a client that never reached the action
+    // API at all read the same as one waiting for a server.
+    //
+    // The claim that does NOT depend on a server is that the client got far
+    // enough to SEND a goal, so assert exactly that and nothing more.
+    let startup = client
+        .wait_for_output_pattern(
+            nros_tests::output::ACTION_SENDING_GOAL_MARKER,
+            Duration::from_secs(5),
+        )
+        .unwrap_or_else(|e| format!("{e}"));
+    assert!(
+        startup.contains(nros_tests::output::ACTION_SENDING_GOAL_MARKER),
+        "action client never reached the goal-send path (still running: {}). \
+         No server is expected here — reaching the send IS the claim. \
+         Output:\n{startup}",
+        client.is_running()
     );
-
-    // Check process is still running (may timeout without server)
-    if client.is_running() {
-        eprintln!("[PASS] native-rs-action-client started successfully (waiting for server)");
-    } else {
-        // Client may exit if no server is available - that's OK
-        eprintln!("[INFO] native-rs-action-client exited (no server available)");
-    }
 }
 
 // phase-329 W4 — the DELIVERY test (rust/zenoh) FOLDED into the native-example

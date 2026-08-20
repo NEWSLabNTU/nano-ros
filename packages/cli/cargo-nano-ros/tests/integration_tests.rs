@@ -184,13 +184,19 @@ mod with_ros {
         let index = AmentIndex::from_env().unwrap();
         let std_msgs = index.find_package("std_msgs");
 
-        if let Some(package) = std_msgs {
-            eprintln!("Found std_msgs at: {}", package.share_dir.display());
-            assert!(package.share_dir.exists());
-            assert_eq!(package.name, "std_msgs");
-        } else {
-            eprintln!("Warning: std_msgs not found (is it installed?)");
-        }
+        // Issue 0711's class — the `else` warned and PASSED, so the assertions
+        // above ran only when the lookup already worked and the test could not
+        // fail on the thing it is named for. ROS availability is guarded at the
+        // top, so reaching here means ament IS sourced and a `std_msgs` the
+        // index cannot find is a real lookup failure.
+        let package = std_msgs.expect(
+            "AmentIndex could not find `std_msgs`, with ROS sourced — the \
+             package lookup this test exists to check is broken (or std_msgs \
+             is genuinely not installed in this ROS)",
+        );
+        eprintln!("Found std_msgs at: {}", package.share_dir.display());
+        assert!(package.share_dir.exists());
+        assert_eq!(package.name, "std_msgs");
     }
 }
 

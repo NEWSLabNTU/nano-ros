@@ -205,8 +205,14 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
 
         println!("SUCCESS: RELIABLE QoS maintains message delivery");
     } else {
-        println!(
-            "INFO: Not enough messages to verify gap-free delivery ({})",
+        // Issue 0711's class — this used to print "INFO: Not enough messages"
+        // and PASS, so a run that received nothing was green. Under RELIABLE
+        // QoS, receiving fewer than the gap check needs IS the failure: the
+        // talker publishes throughout the window, so a short tally is loss.
+        panic!(
+            "RELIABLE QoS delivered {} message(s), too few to check for gaps. \
+             Under RELIABLE this is itself the defect, not a shortfall in the \
+             sample. Received: {received_values:?}",
             received_values.len()
         );
     }
@@ -283,8 +289,11 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
 
         println!("SUCCESS: QoS history preserves message ordering");
     } else {
-        println!(
-            "INFO: Not enough messages to verify ordering ({})",
+        // Issue 0711's class — see the RELIABLE test above. A tally too short
+        // to check ordering is a delivery failure, not a reason to pass.
+        panic!(
+            "received {} message(s), too few to verify ordering. Received: \
+             {received_values:?}",
             received_values.len()
         );
     }
@@ -514,9 +523,16 @@ fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
 
     // The publisher uses reliable().keep_last(10) which should encode as:
     // reliability=1 (RELIABLE), depth=10
-    if output.contains("1:2:1,10") || output.contains(",10:") {
-        println!("SUCCESS: QoS settings encoded in liveliness keyexpr");
-    } else {
-        println!("INFO: QoS encoding format may vary, but liveliness keyexpr is present");
-    }
+    // Issue 0711's class — the `else` used to say "QoS encoding format may
+    // vary" and PASS. Accepting either outcome asserts nothing: this test's
+    // whole claim is that the publisher's `reliable().keep_last(10)` reaches
+    // the wire, so an encoding that is absent (or that changed shape) is the
+    // finding, not a variation to note.
+    assert!(
+        output.contains("1:2:1,10") || output.contains(",10:"),
+        "liveliness keyexpr carries no QoS encoding — expected `1:2:1,10` \
+         (reliability:durability:history,depth) from `reliable().keep_last(10)`. \
+         Output:\n{output}"
+    );
+    println!("SUCCESS: QoS settings encoded in liveliness keyexpr");
 }

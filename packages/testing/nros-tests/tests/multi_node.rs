@@ -463,8 +463,12 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
 
         println!("SUCCESS: Message ordering preserved over time");
     } else {
-        println!(
-            "INFO: Not enough messages to verify ordering ({})",
+        // Issue 0711's class — a tally too short to verify ordering is a
+        // delivery failure. Printing it and passing made sustained-communication
+        // regressions invisible.
+        panic!(
+            "sustained communication delivered {} message(s), too few to verify \
+             ordering. Received: {received_values:?}",
             received_values.len()
         );
     }

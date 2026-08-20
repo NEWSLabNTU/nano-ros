@@ -106,12 +106,17 @@ fn test_qemu_cortex_m3_available() {
         .output()
         .expect("Failed to query QEMU machines");
 
+    // Issue 0711's class — this printed "Warning: … not found" and PASSED, so
+    // a QEMU without the machine every Cortex-M3 test needs reported green.
+    // QEMU itself is already skip-guarded above; reaching here means QEMU IS
+    // present, so a missing machine is a real defect in the install.
     let machines = String::from_utf8_lossy(&output.stdout);
-    if machines.contains("lm3s6965evb") {
-        eprintln!("QEMU lm3s6965evb machine available for Cortex-M3 emulation");
-    } else {
-        eprintln!("Warning: lm3s6965evb machine not found in QEMU");
-    }
+    assert!(
+        machines.contains("lm3s6965evb"),
+        "QEMU is installed but has no `lm3s6965evb` machine — the Cortex-M3 \
+         emulation every baremetal test needs cannot run"
+    );
+    eprintln!("QEMU lm3s6965evb machine available for Cortex-M3 emulation");
 }
 
 #[test]
@@ -126,12 +131,16 @@ fn test_qemu_semihosting_support() {
         .output()
         .expect("Failed to query QEMU help");
 
+    // Issue 0711's class — see the machine check above. Semihosting is how the
+    // baremetal fixtures report at all; a QEMU without it cannot run them, and
+    // saying so in a warning that passes is the failure this gate now forbids.
     let help = String::from_utf8_lossy(&output.stdout);
-    if help.contains("semihosting") {
-        eprintln!("QEMU semihosting support available");
-    } else {
-        eprintln!("Warning: semihosting not mentioned in QEMU help");
-    }
+    assert!(
+        help.contains("semihosting"),
+        "QEMU is installed but reports no semihosting support — the baremetal \
+         fixtures have no way to emit output without it"
+    );
+    eprintln!("QEMU semihosting support available");
 }
 
 // =============================================================================

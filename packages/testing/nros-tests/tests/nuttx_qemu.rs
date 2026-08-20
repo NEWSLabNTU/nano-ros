@@ -120,14 +120,21 @@ fn test_nuttx_kernel_boots() {
     let has_nsh = output.contains("nsh>") || output.contains("NuttShell");
     let has_nuttx = output.contains("NuttX");
 
-    if has_nsh {
-        eprintln!("[PASS] NuttX booted to NSH prompt");
-    } else if has_nuttx {
-        eprintln!("[PARTIAL] NuttX started but NSH prompt not found");
-    } else {
-        eprintln!("[INFO] No NuttX output detected — kernel may need configuration");
-        eprintln!("Build: scripts/nuttx/build-nuttx.sh");
-    }
+    // Issue 0711's class — the three branches all PASSED, so a boot test that
+    // saw no NuttX output whatsoever ("kernel may need configuration") reported
+    // green. Every precondition is skip-guarded above, so reaching here means
+    // the kernel and QEMU are both present and a failure to boot is real.
+    assert!(
+        has_nsh,
+        "NuttX did not reach an NSH prompt in 10 s ({}). Kernel: {}\nOutput:\n{output}",
+        if has_nuttx {
+            "the kernel started — `NuttX` appeared — but no `nsh>`/`NuttShell`"
+        } else {
+            "no NuttX output at all"
+        },
+        kernel.display()
+    );
+    eprintln!("[PASS] NuttX booted to NSH prompt");
 }
 
 // =============================================================================
