@@ -123,6 +123,16 @@ build-examples:
     # phase-263 C2c — the embedded MIXED (C+C++ + no_std Rust) workspace LAUNCH entry,
     # consumed by tests/entry_e2e.rs (freertos_mixed cell).
     bash scripts/build/workspace-fixtures-build.sh freertos mixed
+    # phase-370 — the freertos-posix board variant. Its two `[[workspace_fixture]]`
+    # rows carry `platform = "freertos-posix"`, a DIFFERENT fixture token from the
+    # `freertos` rows above, so nothing here built them: the coordinate was
+    # selectable by a lane while no recipe on that lane's path could produce it,
+    # which is issue #405's shape and what `matrix_fixture_coverage`'s recipe-graph
+    # gate names. The board still lives under `just freertos` (PlatformId
+    # ::FreertosPosix maps to this module), so the calls belong here rather than in
+    # a module of their own.
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix c
+    bash scripts/build/workspace-fixtures-build.sh freertos-posix cpp
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

@@ -3113,7 +3113,7 @@ rust-rtos-link-check: _require-leaf-includes
 #
 # Why `native` and not `tier1`: this lane scopes its run with
 # `NROS_TEST_SCOPE=native`, which selects every native test BINARY. That is a
-# broader set than `coords(Tier1)` (10 of 48 coordinates), so building only the
+# broader set than `coords(Tier1)` (10 of 50 coordinates), so building only the
 # tier-1 coordinates would leave the remaining native binaries absent and the
 # run would mass-fail "Binary not found". The build set has to cover the run
 # set, not the gate set.
@@ -3126,14 +3126,14 @@ ci:
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
 # The selection is 1-wise over platform x lang x rmw x kind (`nros_tests::ci_lane`),
-# computed from `matrix::CELLS` and emitted by `lane-coords`. 13 of 48 coordinates
+# computed from `matrix::CELLS` and emitted by `lane-coords`. 14 of 50 coordinates
 # (the count is gated by `ci_lane::tests::documented_lane_table_is_live`; do not
 # hand-edit it here — run `lane-coords tier2 | wc -l`).
 #
 # Why 1-wise and not pairwise, which is what this lane originally specified: cost
 # is COORDINATES, not cells, because cells share fixtures and fixtures are what
-# take hours. The pairwise cover is 36 of 192 cells (19 %) but 36 of 48
-# coordinates (75 %) — a middle tier costing 75 % of the sweep is one nobody runs,
+# take hours. The pairwise cover is 37 of 194 cells (19 %) but 37 of 50
+# coordinates (74 %) — a middle tier costing 75 % of the sweep is one nobody runs,
 # which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
 # `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
 # the 0268 / 0245 / 0332 class lives.
