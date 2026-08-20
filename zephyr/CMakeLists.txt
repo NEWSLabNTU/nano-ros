@@ -496,10 +496,32 @@ if(CONFIG_NROS_CPP_API)
         add_dependencies(app nros_ws_runtime_cargo_build)
         zephyr_library_link_libraries(nros_ws_runtime_cargo)
     else()
-        # Link nros-c (log glue) + nros-cpp directly (pure-C / pure-C++ / pure-Rust entries).
-        if(NOT CONFIG_NROS_C_API AND TARGET nros_c_cargo)
-            zephyr_library_link_libraries(nros_c_cargo)
-        endif()
+        # issue 0734 — link nros-cpp ONLY. `libnros_cpp.a` is a `staticlib`
+        # whose crate DEPENDS on nros-c (`nros-cpp/Cargo.toml:227`), and a
+        # staticlib bundles its ENTIRE dependency closure — so it already
+        # carries every C-ABI symbol `libnros_c.a` exports, `nros_log_emit`
+        # included. Linking both therefore links the shared closure TWICE.
+        #
+        # That is not free: the two archives are separate cargo builds with
+        # different `-C metadata`, so `nros-rmw-zenoh`'s statics do not even
+        # collide — the linker allocates both copies. Measured on
+        # mr_canhubk3/s32k344 (320 KiB SRAM):
+        #
+        #   0x20474cf1 0x20000 libnros_c.a  (…Cs*ewqHElJteY4*…SUBSCRIBER_BUFFERS)
+        #   0x2049ccfb 0x20000 libnros_cpp.a(…Cs*hvwoP2UscId*…SUBSCRIBER_BUFFERS)
+        #
+        # ~195 KiB of duplicated `.bss`, and the subscriber ring state
+        # (SUBSCRIBER_BUFFERS / NEXT_BUFFER_INDEX / OVERFLOW_DROPS) present in
+        # two divergent copies.
+        #
+        # The Phase 168.X comment above still explains why nros-c is BUILT here
+        # — nros-cpp compiles against its generated headers — and that stays.
+        # Its further claim, that the log glue "ships only with libnros_c.a" and
+        # so the archive must also be LINKED, is no longer true: verified with
+        # `nm` on both archives, `nros_log_emit` is defined in each, and of the
+        # 427 symbols present in libnros_c.a but not libnros_cpp.a, ZERO are
+        # non-mangled C ABI — they are Rust internals whose names differ only by
+        # `-C metadata`.
         zephyr_library_link_libraries(nros_cpp_cargo)
     endif()
 
