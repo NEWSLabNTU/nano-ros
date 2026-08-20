@@ -86,9 +86,33 @@ fn run_entry(entry: &PathBuf, domain: u8, label: &str) -> String {
 /// something at startup". Greps go through `nros_tests::output` constants, never
 /// literals — the example banners get slimmed and a literal here would make a
 /// green test into a timeout nobody could read (CLAUDE.md).
-fn assert_delivered(out: &str, talker_marker: &str, label: &str) {
+/// What the environment looked like, for a failure that does not reproduce.
+///
+/// issue 0737 reported both cells publishing and delivering nothing, on a tree
+/// where they pass here — bare, under saturating load, and through the lane
+/// recipe. An unreproducible red costs a second investigation unless the first
+/// one leaves its evidence behind, so a failure prints the inputs that could
+/// differ between hosts rather than only the output that did.
+fn env_report(domain: u8) -> String {
+    let show = |k: &str| std::env::var(k).unwrap_or_else(|_| "<unset>".into());
+    format!(
+        "  domain asked for (ROS_DOMAIN_ID)       : {domain}\n\
+           ambient ROS_DOMAIN_ID                  : {}\n\
+           ambient CYCLONEDDS_URI                 : {}\n\
+           ambient RMW_IMPLEMENTATION             : {}\n\
+         Both nodes live in ONE participant in this image, so delivery needs no\n\
+         network — a total absence of `Received:` points at the participant or\n\
+         the domain, not the transport (issue 0737).",
+        show("ROS_DOMAIN_ID"),
+        show("CYCLONEDDS_URI"),
+        show("RMW_IMPLEMENTATION"),
+    )
+}
+
+fn assert_delivered(out: &str, talker_marker: &str, domain: u8, label: &str) {
+    let env = env_report(domain);
     let talked = out.find(talker_marker).unwrap_or_else(|| {
-        panic!("{label}: no `{talker_marker}` line — the talker never published.\n{out}")
+        panic!("{label}: no `{talker_marker}` line — the talker never published.\n{env}\n{out}")
     });
     let heard = out.find(INT32_LISTENER_LOG_PREFIX).unwrap_or_else(|| {
         panic!("{label}: no `{INT32_LISTENER_LOG_PREFIX}` line — nothing was delivered.\n{out}")
@@ -96,7 +120,7 @@ fn assert_delivered(out: &str, talker_marker: &str, label: &str) {
     assert!(
         heard > talked,
         "{label}: the listener's first `{INT32_LISTENER_LOG_PREFIX}` precedes the talker's \
-         first `{talker_marker}`, so it is not evidence of delivery.\n{out}"
+         first `{talker_marker}`, so it is not evidence of delivery.\n{env}\n{out}"
     );
 }
 
@@ -117,7 +141,12 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c");
     // The pure-C workspace talker spells its marker differently from the C++
     // one; both listeners agree on `Received:`.
-    assert_delivered(&out, WORKSPACE_C_TALKER_LOG_PREFIX, "freertos-posix-c");
+    assert_delivered(
+        &out,
+        WORKSPACE_C_TALKER_LOG_PREFIX,
+        domain,
+        "freertos-posix-c",
+    );
 }
 
 #[test]
@@ -135,5 +164,5 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     });
     let domain = domain_of(PlatformId::FreertosPosix, Lang::Cpp, Workload::EntryPubsub);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
-    assert_delivered(&out, INT32_TALKER_LOG_PREFIX, "freertos-posix-cpp");
+    assert_delivered(&out, INT32_TALKER_LOG_PREFIX, domain, "freertos-posix-cpp");
 }
