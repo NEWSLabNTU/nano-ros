@@ -711,12 +711,56 @@ fn run_cell(pcell: &MCell) {
             // fails) without ROS 2, so the cell keeps its delivery coverage
             // everywhere and gains the profile check where a peer exists.
             if require_ros2() {
-                let report = ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, topic)
-                    .unwrap_or_else(|e| {
-                        lis.kill();
-                        tlk.kill();
-                        panic!("[{} {}] ros2 topic info failed: {e}", lang, workload)
-                    });
+                // POLL, do not sample once. ROS 2 discovery is eventually
+                // consistent: the delivery wait above already proves both
+                // endpoints exist and are QoS-matched, but a liveliness token
+                // reaching THIS `ros2` invocation is a separate event, and
+                // under sweep load it can lag the first message by seconds.
+                //
+                // Issue 0705 — a single-shot query is a race by construction,
+                // and the way it failed hid that. The report showed
+                // `Publisher count: 1` naming a node `talker` (some other
+                // test's; 24 launch files use that name on /chatter) while this
+                // cell's `qos_talker` was absent — so it read as "the wrong
+                // graph" rather than "not yet propagated". Selecting by node,
+                // which issue 0690 added, already makes a foreign endpoint
+                // harmless; what remained was asserting before our own had
+                // arrived.
+                //
+                // This does not weaken the assertion: it still requires OUR
+                // node's endpoint and still asserts the full declared profile.
+                // On timeout it fails exactly as before, carrying the last
+                // report.
+                let deadline = Instant::now() + Duration::from_secs(20);
+                let (report, pub_eps, sub_eps) = loop {
+                    let report = ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, topic)
+                        .unwrap_or_else(|e| {
+                            lis.kill();
+                            tlk.kill();
+                            panic!("[{} {}] ros2 topic info failed: {e}", lang, workload)
+                        });
+                    let pub_eps = nros_tests::ros2::topic_endpoints_for_node(
+                        &report,
+                        "PUBLISHER",
+                        "qos_talker",
+                    );
+                    let sub_eps = nros_tests::ros2::topic_endpoints_for_node(
+                        &report,
+                        "SUBSCRIPTION",
+                        "qos_listener",
+                    );
+                    // More than one match is NOT something to wait out — it is
+                    // the sibling-cell case, and waiting would only make the
+                    // report bigger. Break and let the assertion below name it.
+                    if (!pub_eps.is_empty() && !sub_eps.is_empty())
+                        || pub_eps.len() > 1
+                        || sub_eps.len() > 1
+                        || Instant::now() >= deadline
+                    {
+                        break (report, pub_eps, sub_eps);
+                    }
+                    std::thread::sleep(Duration::from_millis(500));
+                };
                 // Issue 0312 (fixed) — both endpoints are asserted. The
                 // subscription used to be absent from discovery entirely: these
                 // C examples pass an EMPTY type hash, which landed in the
@@ -738,24 +782,8 @@ fn run_cell(pcell: &MCell) {
                 // silently taking the first: the two need different remedies,
                 // and collapsing them here would rebuild the bug one level up.
                 let blocks: Vec<(&str, &str, Vec<nros_tests::ros2::TopicEndpoint>)> = vec![
-                    (
-                        "PUBLISHER",
-                        "qos_talker",
-                        nros_tests::ros2::topic_endpoints_for_node(
-                            &report,
-                            "PUBLISHER",
-                            "qos_talker",
-                        ),
-                    ),
-                    (
-                        "SUBSCRIPTION",
-                        "qos_listener",
-                        nros_tests::ros2::topic_endpoints_for_node(
-                            &report,
-                            "SUBSCRIPTION",
-                            "qos_listener",
-                        ),
-                    ),
+                    ("PUBLISHER", "qos_talker", pub_eps),
+                    ("SUBSCRIPTION", "qos_listener", sub_eps),
                 ];
                 for (kind, node, found) in blocks {
                     if found.len() > 1 {
@@ -780,8 +808,11 @@ fn run_cell(pcell: &MCell) {
                             lis.kill();
                             tlk.kill();
                             panic!(
-                                "[{} {}] ros2 discovered no {kind} named `{node}` on {topic} \
-                                 ({}):\n{report}",
+                                "[{} {}] ros2 still discovered no {kind} named `{node}` on \
+                                 {topic} after polling for 20s ({}). The delivery assertion \
+                                 above already passed, so the endpoints exist and are \
+                                 QoS-matched — this is discovery, not wiring (issue \
+                                 0705):\n{report}",
                                 lang, workload, cell.note
                             )
                         });

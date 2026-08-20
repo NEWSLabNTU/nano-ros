@@ -1,7 +1,7 @@
 ---
 id: 705
 title: "`case_08_c_qos` in-sweep: `ros2 topic info` sees ANOTHER test's `talker` on /chatter and not this cell's own `qos_talker`, despite a per-cell router"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0690, issue-0309, issue-0312, phase-263, rfc-0051]
@@ -108,3 +108,44 @@ them on failure — if they differ, it is the lease.
 
 Do NOT respond by loosening the assertion. The cell is correctly reporting that
 it cannot see its own node; that is a real property of the run.
+
+## Fixed 2026-08-20 — the query sampled discovery once; it now polls
+
+The mechanism was neither candidate. Both were about the cell reaching the
+WRONG graph; the truth is simpler and the evidence pointed at it all along.
+
+`lease_ephemeral_port()` already holds an `O_EXCL` lock for the router's
+lifetime (issue 0470, and `ZenohRouter._lease` keeps it), so the port-lease
+TOCTOU cannot happen between our own fixtures — that candidate is dead. And
+scouting never fitted: it explains a foreign node appearing, not the local one
+being absent.
+
+What is left is timing. The cell ran `ros2 topic info` ONCE, immediately after
+the third sample arrived. ROS 2 discovery is eventually consistent, so a
+liveliness token reaching that particular `ros2` invocation is a separate event
+from delivery working — and under sweep load it lags. The foreign `talker` was
+already in the graph because its test had been running for a while; ours had
+not propagated yet. `Publisher count: 1` was not "the wrong graph", it was "the
+graph so far".
+
+So the query polls until this cell's own endpoints appear, up to 20 s, and only
+then asserts. This does NOT weaken anything: it still requires OUR node by name
+(issue 0690's selection), still asserts the full declared profile, and on
+timeout fails exactly as before with the last report. More than one match still
+fails immediately rather than being waited out — that is the sibling-cell case,
+and waiting would only grow the report.
+
+The failure message now says it polled and that delivery already passed, so the
+next reader is not sent looking at wiring.
+
+### Verified
+
+A full tier-1 sweep in the ROS distrobox: **1480 cases, 0 real failures**,
+`case_08_c_qos` among them. Against a prior in-sweep rate of roughly 1 in 2
+that is meaningful but not conclusive — one green sweep cannot prove a flake
+gone, and the honest claim is that the race it removes is the one the evidence
+describes.
+
+Solo runs prove nothing here and were not used as evidence: 3/3 rounds of the
+three qos cells passed before the fix as well.
+

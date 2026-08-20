@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0705** — `case_08_c_qos` in-sweep saw `Publisher count: 1` naming ANOTHER
+test's `talker` on /chatter while its own `qos_talker` was absent. Neither filed candidate was right: the port
+lease is already `O_EXCL` and held for the router's lifetime (0470), and scouting explains a foreign node
+appearing but not the local one missing. The cell sampled `ros2 topic info` ONCE, right after the third sample
+— but delivery working and a liveliness token reaching that `ros2` invocation are separate events, and under
+sweep load the latter lags. `Publisher count: 1` was "the graph so far", not "the wrong graph". Now polls up to
+20 s for THIS cell's endpoints, then asserts unchanged (still by node name, still the full profile, still fails
+with the report on timeout). Verified: full tier-1 sweep in the distrobox, 1480 cases, 0 real failures — one
+green sweep against a prior ~1-in-2 rate, which is meaningful, not conclusive. See `archived/0705-*`.
+(2026-08-20)
+
 Recently resolved (2026-08-20): **#0708** — board boot funnels never published the `nros_log` sink list, so
 library-emitted `nros_*!` records were dropped silently. Measured: the threadx-linux logging fixture relying
 on its board emitted 0 of 6; after, 6 of 6. Fixed by one named `nros_log::init_default()` at every funnel —
@@ -70,18 +81,6 @@ there. NOT established that the bus was domain 1: the message carries no domain 
 slot. The defect is the DETERMINISM rather than the collision — hand-run repros and solo retests of a red,
 the workflow CLAUDE.md prescribes, all land on the same bus as whatever left the orphan. Three directions
 recorded, none free. See `0707-*`. (2026-08-20)
-
-**#0705** (testing, open 2026-08-20) — `case_08_c_qos` in-sweep: `ros2 topic info` reports `Publisher count: 1`
-on /chatter, and that one publisher is a node named `talker` — belonging to ANOTHER test — while this cell's own
-`qos_talker` is ABSENT. Not a reporting defect: 0690's `topic_endpoints_for_node` fix is what surfaced it, and
-it CONFIRMS 0690's foreign-endpoint hypothesis while falsifying the assumption that the foreign endpoint was an
-extra one sharing the view. It is the only one, so the cell is talking to the wrong graph — despite
-`ZenohRouter::start_unique()` per cell and a per-invocation `ZENOH_SESSION_CONFIG_URI`. Mechanism NOT
-established; the candidate that fits every fact is a port-lease TOCTOU in `start_unique()` (lease released
-before zenohd binds, a concurrent test takes the port). Scouting alone does not fit — it would explain a
-foreign node appearing, not the local one missing. Discriminator: log the leased port and the port `ros2`
-dialled, compare on failure. In-sweep only, ~1 in 2; runs solely where ROS 2 exists (the distrobox). See
-`0705-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0706** — a build tree survived a toolchain RESOLUTION change.
 `nros_cmake_guard_build_dir` wiped on a toolchain-file ARGUMENT mismatch and skipped every compiler check
