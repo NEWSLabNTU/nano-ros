@@ -50,3 +50,26 @@ Verified against the real regression, not only against fixtures: deleting
 as `nros_cmake_toolchain_resolved_cc (called by nros_cmake_guard_build_dir)`.
 `--self-test` covers five shapes including both historical depths, backslash
 continuations, and a name merely mentioned in prose (which must NOT be reported).
+
+## Superseded (2026-08-20) — the scope was narrower than the rule, twice over
+
+`scripts/check-cmake-export-closure.sh` is replaced by
+`scripts/check-export-f-closure.sh` (issue 0712), which audits EVERY `export -f`
+list in `scripts/build/*.sh` rather than the closure from one entry point.
+
+Two things this issue asserted did not hold up:
+
+* **"The CARGO half of the same list is already covered by
+  `build_root_derivation.sh`'s make-leaf scenario."** That script exists and does
+  read the list, but the scenario EXECUTES `nros_fixture_target_dir_flag` in a
+  fresh bash and compares its output. It proves the call path those arguments
+  take; a helper reached only on a branch not taken is invisible to it. Real
+  prior coverage was one static closure over one entry plus one execution of one
+  path — against thirteen `export -f` statements.
+* **"on the fast lane."** The recipe was wired into `check-build`, the compile
+  tier that runs on PR + nightly. A text scan sat behind minutes of compilation
+  for as long as this gate existed. The replacement is in `check-fast`, verified
+  by name in the log rather than by reading the dependency list.
+
+The fix itself was right and is kept — folded continuations, transitive walk,
+self-test both directions. Only its scope and its tier were wrong.

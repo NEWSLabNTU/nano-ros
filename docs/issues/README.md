@@ -74,6 +74,26 @@ Resuming it means making `pio run` a BUILD-stage fixture, not run-time compilati
 
 Recently resolved (2026-08-20): **#0707** — every filtered or solo nextest run is global slot 0, so
 
+**#0732** (build/testing, open 2026-08-20) — `check-workspace-order`'s T2 scenario reported a SIGPIPE in
+its own harness ("failed printing to stdout: Broken pipe") as `FAIL[T2]: the provider stopped being
+discoverable` — a false, specific claim about the tree produced by a child that died rather than answered.
+**#0726 one gate over**, different tool: that issue is `grep -q` conflating a tool ERROR with a NON-MATCH,
+found the same way (a forked grep failing to start under a 32-way fan-out, reported as a missing
+force-link anchor). Fails green→red only under load, the direction that teaches people to re-run a gate
+instead of believing it. Not deterministic: 3/3 solo and 2/2 `check-fast` runs pass. See `0732-*`.
+(2026-08-20)
+
+Recently resolved (2026-08-20): **#0712** — nothing checked that an exported shell function's callees
+are also exported, so a helper added to an exported function died "<name>: command not found" in the make
+WORKER and nowhere else. Three times: #0400, phase-340 B2, #0706 (which took out every NuttX C row of the
+tier-2 fixture build). Now `check-export-f-closure.sh` on the fast line — every `export -f` list in
+`scripts/build/*.sh` unioned, each exported function's body walked TRANSITIVELY, 49 names across 5 files.
+It supersedes the #0717 gate, which checked ONE entry point because it believed `build_root_derivation.sh`
+covered the rest: that script exists (this issue claimed otherwise) but only EXECUTES one call path, so a
+helper on an untaken branch was invisible. #0717 was also wired into `check-build`, not the fast line both
+issues specified. Falsified against the live tree by deleting a real name and reproducing #0706.
+See `archived/0712-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0727** — `PlatformSink`'s extern pair rode #708/#710's new
 `nros-rmw-cffi -> nros-log` LIBRARY edge into host test binaries with no port, and whether the unreferenced
 vtable was GC'd before the link was codegen luck; the workspace `--no-default-features` test-compile lost
@@ -169,13 +189,6 @@ single file reads as incomplete. All six fixed; gated by `check-example-leaf-bui
 of being a post-build check, since a leaf's build dirs come from shell positionals inside the `just`
 recipes and a static parse would have to guess. See `archived/0718-*`.
 
-**#0712** (build, open 2026-08-20) — `export -f` closure is ungated: a function shipped to a make
-leaf calls a sibling that was never exported, and the leaf is a fresh bash with only what `export -f`
-gave it. Third occurrence (0400, phase-340 B2, now 0706's two cache-guard helpers); the last one took
-out the whole tier-2 fixture build after four platforms had passed, reporting only
-`nros_cmake_toolchain_resolved_cc: command not found`. The comment above the list claims
-`build_root_derivation.sh` gates it — that script no longer exists, and covered a different list. A
-static closure walk finds it (11 functions checked, exactly the 2 gaps). See `0712-*`. (2026-08-20)
 
 **#0711** (testing/rmw-zenoh, open 2026-08-20) — zenoh PEER mode is now BUILDABLE but still not EXERCISED.
 `MULTICAST_TRANSPORT` was a hard-coded `const bool = false` (issue 0682's size decision), so

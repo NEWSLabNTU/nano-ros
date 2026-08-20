@@ -26,7 +26,6 @@
   "scripts/check-cargo-locked.sh": 3,
   "scripts/check-cc-build-policy.sh": 1,
   "scripts/check-cli-fresh.sh": 1,
-  "scripts/check-cmake-export-closure.sh": 1,
   "scripts/check-emitter-just-spelling.sh": 3,
   "scripts/check-feature-set-ssot.sh": 2,
   "scripts/check-image-paths-apply-policy.sh": 3,

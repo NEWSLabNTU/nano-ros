@@ -47,13 +47,18 @@ for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/
     # exist fails every pristine checkout, i.e. exactly the tree `check-fast`
     # documents itself green on — which is how this gate held pr-checks red
     # from dd33eef35 until 2026-08-20 while every dev machine passed.
+    # Space-joined so membership below is a bash `case` rather than a `grep -q`
+    # forked once per path: issue 0726 is about a checker drawing a verdict from
+    # a grep that failed to START, and not forking is a better answer than
+    # handling it. Exact-match is preserved — the charset matched above excludes
+    # spaces, so a space-delimited test cannot straddle two entries.
     exempt="$(grep -oE '\$\(wildcard \$\(NANO_ROS_ROOT\)/[A-Za-z0-9._/-]+' "$mk" \
-             | sed 's|^\$(wildcard \$(NANO_ROS_ROOT)/||' | sort -u)"
+             | sed 's|^\$(wildcard \$(NANO_ROS_ROOT)/||' | sort -u | tr '\n' ' ')"
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
-        if printf '%s\n' "$exempt" | grep -qxF "$rel"; then
-            continue
-        fi
+        case " $exempt " in
+            *" $rel "*) continue ;;
+        esac
         if [ ! -e "$rel" ]; then
             echo "  $mk names \$(NANO_ROS_ROOT)/$rel — which does not exist" >&2
             fail=1

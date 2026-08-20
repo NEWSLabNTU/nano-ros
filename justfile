@@ -461,6 +461,7 @@ check-fast: _check-skip-reset \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-sysdep-remedies \
+    check-export-f-closure \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-example-leaf-build-dirs check-fixture-binary-names check-manifests-parse check-build-rs-rerun-paths \
     check-lane-skip-protocol check-skip-marker-matching \
@@ -563,7 +564,6 @@ check-test-targets:
 check-build: \
     check-cli-fresh check-required-features-reachable check-host-triple-literals \
     check-literal-domain-id \
-    check-cmake-export-closure \
     check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
@@ -1171,13 +1171,15 @@ check-host-triple-literals:
     @python3 scripts/check-host-triple-literals.py
 
 
-# Issues 0400/0706 — the cmake `export -f` list in fixtures-build.sh must close
+# Issues 0400/0706/0712 — EVERY `export -f` list in scripts/build/ must close
 # over its call graph, or a helper added to an exported function dies
-# "<name>: command not found" in the make WORKER and nowhere else. Twice now.
-# The cargo half of the same list is covered by build_root_derivation.sh.
+# "<name>: command not found" in the make WORKER and nowhere else. Three times
+# now. Supersedes the #0717 gate, which checked one entry point on the reasoning
+# that build_root_derivation.sh covered the other — true, but that scenario
+# EXECUTES one call path, so a helper on a branch not taken is invisible to it.
 [private]
-check-cmake-export-closure:
-    @bash scripts/check-cmake-export-closure.sh
+check-export-f-closure:
+    @bash scripts/check-export-f-closure.sh
 
 [group("main")]
 check-literal-domain-id:
