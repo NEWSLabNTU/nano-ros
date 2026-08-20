@@ -1,7 +1,7 @@
 ---
 id: 651
 title: "The Zephyr 4.4 line is reachable only from nightly, so a Kconfig or API change lands unverified for a day"
-status: open
+status: resolved
 type: tech-debt
 area: build/zephyr
 related: [issue-0078, issue-0626]
@@ -149,10 +149,10 @@ Not diagnosed further; these are candidates, not a plan.
 - **Promote a single 4.4 cell into tier 3.** `ci-full` is already pre-release and
   on-demand, so the latency cost lands where it is affordable — but only if the
   workspace question above is solved first, or it will SKIP and read as green.
-- **Decide the line's status deliberately.** If no feature requires 4.4 and the
-  gap is not worth closing, then dropping the rolling line is a legitimate
-  answer, and cheaper than half-testing it. The support policy allows "at most
-  one rolling", not "at least one".
+- ~~**Decide the line's status deliberately.**~~ **Decided 2026-08-20: KEEP.**
+  See the closing section — the premise this direction rested on ("no feature
+  requires 4.4") was bounded by what the repository can show, and the answer
+  came from outside it.
 
 Whichever way it goes, the failure mode to design against is the one above: a
 lane that skips when unprovisioned and reports the same colour as a lane that
@@ -218,9 +218,7 @@ rather than nominally.
 Directions 3 and 4, unchanged, and both are decisions rather than work:
 
 * ~~**Promote a 4.4 cell into tier 3.**~~ **Done — see below.**
-* **Decide the line's status.** Nothing in this tree is gated on 4.4; the
-  support policy allows "at most one rolling", not "at least one". Dropping it
-  remains a legitimate and cheaper answer than half-testing it.
+* ~~**Decide the line's status.**~~ **Decided — KEEP. See below.**
 
 Everything this gate can answer without building is now answered on both lines.
 Everything else — a symbol that exists on both but means something different, the
@@ -270,3 +268,52 @@ This is the honest state: tier 3 can no longer report success having built
 nothing on 4.4, which is the property the issue asked for. Whether the 4.4 build
 is currently green is a separate question the nightly answers and this host
 cannot.
+
+## Direction 4 decided (2026-08-20) — KEEP, and the premise this issue argued from was wrong
+
+Maintainer's decision: the rolling line stays, because **nano-ros has users
+outside this repository and they are on it.**
+
+That closes the question, and it invalidates the reasoning that made "drop it"
+look reasonable. The census above checked the "a feature requires 4.4"
+recollection against phase-199 and `65c1998a4`, found nothing in the tree gated
+on 4.4, concluded the line was a POLICY slot — and invited correction:
+
+> If a 4.4-requiring feature does exist and predates this note, correct this
+> section — it changes the priority, because then the untested line is one the
+> product depends on rather than one the policy maintains.
+
+The correction is stronger than the form anticipated. It is not an in-tree
+feature gate; it is downstream consumers, which **no amount of reading this
+repository could have revealed.** The census was sound and its premise was
+incomplete — "nothing in the tree needs X" bounds what the tree knows, not what
+is true, and this issue spent a section being careful about the wrong half.
+
+Recorded in `docs/development/zephyr-version-support.md`, not only here: that is
+the document someone reads before proposing to drop a line, and an archived
+issue is not.
+
+Consequence for priority: 4.4 coverage is worth paying for, so tier 3 REQUIRING
+the line (direction 3) is right rather than merely defensible, and "drop it,
+cheaper than half-testing it" is off the table.
+
+## Resolution
+
+The title's complaint — 4.4 reachable only from nightly, so a change lands
+unverified for a day — no longer holds:
+
+* symbol existence is checked on BOTH lines from source in ~2 s, with the trees
+  one command away (`just zephyr kconfig-trees`), and an unchecked line FAILS;
+* tier 3 (`just ci-full`) builds the 4.4 line and cannot skip it.
+
+What remains is inherent rather than a gap: everything needing a BUILD to answer
+— a symbol present on both lines but meaning something different, the per-line
+patch sets, `k_mutex` owner-only-unlock, the py312 floor — costs a west
+workspace, and tier 3 is where that cost belongs.
+
+One thing is deliberately unproven, called out in direction 3: the 4.4 build's
+GREEN path has never executed here, because this host cannot provision the
+workspace (3.7's is 228 GB against 30 GB free; issue 0078 is a 4.4 setup filling
+a CI disk). The first machine to run `just ci-full` with a 4.4 workspace proves
+it. If that surfaces a real defect it wants its own issue — this one is about
+coverage, and the coverage now exists.

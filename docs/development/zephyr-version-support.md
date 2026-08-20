@@ -37,6 +37,30 @@ autoware-safety-island) must be on **≥ 3.7**.
 Zephyr releases on a 6-month cadence (Apr/Oct); an LTS every ~2.5–3 yr. When a
 new LTS is declared, it becomes the default and the old rolling line is dropped.
 
+### The rolling line is KEPT because consumers outside this repo use it
+
+Decided 2026-08-20 (maintainer), and worth stating here because the record on
+its own says the opposite. Issue 0651 checked the "a feature requires 4.4"
+recollection against phase-199 and the commit that pinned `west-4.4.yml`, found
+no feature gated on it, and concluded the rolling line was a POLICY slot — which
+made "drop it rather than half-test it" a legitimate answer to the cost of
+maintaining a line no local tier could reach.
+
+That conclusion was drawn from what is visible in this repository, and it is
+wrong in the way repository-only evidence usually is: **nano-ros has users
+outside this tree, and they are on the rolling line.** Nothing in the code or
+git history can show that. So the rolling line is not an optional policy
+artifact whose upkeep is weighed against convenience — dropping it breaks real
+consumers, and the cost of the 4.4 line is a cost of shipping, not of tidiness.
+
+Practical consequence: 4.4 coverage is worth paying for. That is why tier 3
+(`just ci-full`) now REQUIRES the 4.4 line rather than skipping it when
+unprovisioned, and why `just zephyr kconfig-trees` exists to make the cheap
+half of that check available without a west workspace.
+
+If you are about to argue from "nothing in the tree needs 4.4", read this
+paragraph first — the argument is sound and the premise is not.
+
 ## Stable surfaces vs the churn
 
 Build only on Zephyr's **stable** surfaces (versioned ≥ 1.0.0, frozen ≥ 2

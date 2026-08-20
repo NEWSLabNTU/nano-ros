@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0651** — Zephyr **4.4** was reachable only from the nightly, so a
+Kconfig or API change landed unverified for a day. Now: symbol existence is gated on BOTH lines from
+source in ~2 s with the trees one command away (`just zephyr kconfig-trees`, 613 MB of shallow clones,
+revisions READ from `west-4.4.yml`), an unchecked line FAILS instead of printing OK with a footnote (its
+first version hard-failed only when NO line was present, so the ordinary dev host went green having
+measured nothing about 4.4), and tier 3 (`ci-full`) BUILDS the line via `just zephyr tier3-cell`, which
+asserts the workspace rather than skipping — `ci-both` skips by design and a skip that looks like a pass is
+what this issue was about. **Direction 4 decided: KEEP the rolling line** — nano-ros has users outside this
+repo who are on it. That invalidates this issue's own careful census ("nothing in the tree is gated on
+4.4"): the premise was bounded by what the repository can show. Recorded in
+`docs/development/zephyr-version-support.md`, where someone proposing to drop a line will actually read it.
+NOT verified: the 4.4 build's green path — this host cannot provision the workspace (3.7's is 228 GB, 30 GB
+free). See `archived/0651-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0719** — the five remaining image paths that bypassed `nano_ros_entry()`
 
 Recently resolved (2026-08-20): **#0524** — `anyhow` is unmaintained; the last actionable chain was a DEAD
@@ -1198,36 +1212,6 @@ and left 0 references to the bad one. Corrects a claim in the first version of t
 absent from this ROS install, it sits in `lib/x86_64-linux-gnu`, which `_nros_idlc_runs` already derives —
 so 0601's fallback was always sufficient here and merely never ran. See `archived/0633-*`. (2026-08-16)
 
-**#651** (build/zephyr, open 2026-08-16) — nothing runnable before a push touches Zephyr **4.4**.
-`NROS_ZEPHYR_VERSION` defaults to `3.7` and no tier sets it, so tiers 1–3 all resolve `west.yml`; the 4.4
-line lives only in `nightly.yml` (10 of 20 matrix cells, plus `ci-both` and a copy-out check), behind a
-path filter and a `0 5 * * *` schedule. 3.7 is a poor proxy — the lines differ in Kconfig option sets (a
-`select` of a symbol absent in the other line is a WARNING, not an error), in patch set
-(`patches/4.4.sh`: three NSOS re-anchors + a `pthread_mutex_unlock` relaxation for 4.x owner-only-unlock
-`k_mutex`), and in workspace (separate sibling dir, py312 floor) — and `ci-both` SKIPS an unprovisioned
-line, so one workspace reads the same colour as two. Surfaced by #626's
-`select POSIX_PRIORITY_SCHEDULING`: verified on 3.7, unverifiable on 4.4 without a full west fetch.
-Checked the "a feature requires 4.4" recollection against the record — phase-199 says the rolling line is a
-POLICY slot (LTS + ≤1 rolling, floor set by `zephyr-lang-rust`), `65c1998a4` names no feature, and all
-4.4-specific issue history (0058, 0078) is keeping the line building rather than a capability 3.7 lacks;
-correct that section if a counter-example predates it, because it changes the priority.
-**2026-08-20:** the symbol half is gated on BOTH lines and the gate no longer lies about coverage. Its
-first version hard-failed only when NO line was present, so on the ordinary dev host — 3.7 present, 4.4
-nowhere — it printed `OK … lines checked: 3.7` with a footnote and exited 0, having measured nothing about
-the line it exists for: verbatim the failure mode this issue names. Fixed in the order that makes
-strictness affordable — `just zephyr kconfig-trees` first (two shallow clones, 613 MB measured, revisions
-READ from `west-4.4.yml`, no west workspace so no repeat of #0078), then an unchecked supported line
-became a FAILURE naming that command (`NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1` overrides, labelled PARTIAL).
-Verified four ways including that a renamed symbol is still reported `absent on 3.7` AND `absent on 4.4`
-with file:line — strictness did not displace the substantive check. **Direction 3 also done:** `ci-full` (tier 3) now runs
-`check-zephyr-kconfig-symbols` plus `just zephyr tier3-cell`, a real 4.4 `build-one`. `ci-both` was the
-wrong vehicle — it SKIPS an unprovisioned line by design — so `tier3-cell` ASSERTS the workspace and fails
-with the remedy, with NO escape hatch: an opt-out would let ci-full print "tier 3 passed" over a line
-nobody built. Verified absent->rc=1 and present->control reaches `build-one`. **NOT verified: the 4.4
-build passing** — this host cannot provision the workspace (3.7's is 228 GB, 30 GB free; #0078 is a 4.4
-setup filling a CI disk), so the green path is unexecuted and the first machine with a 4.4 workspace proves
-it. Remaining is one DECISION: keep the rolling line or drop it, which the policy allows since nothing in
-the tree requires 4.4. See `0651-*`.
 
 Recently resolved (2026-08-17): **#642** (build/testing) — `check-archive-lang-items` failed `build-test-fixtures` on
 16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it
