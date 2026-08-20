@@ -127,3 +127,67 @@ Fixture builds are incremental and the page cache is hot after one run, so a
 second run of the same lane measures almost nothing. Compare like for like: same
 lane, same starting state, and record the banner line (`budget=`, `pool=`) with
 every number, since it is the only evidence of which scheduler ran.
+
+## Measured 2026-08-20 (second pass): the gate phase, and the jobserver launcher
+
+Two results, and they redirect the campaign away from the scheduler.
+
+### The 1449 s baseline undercounted the build by 481 s
+
+The joblog begins at the FIRST STAGE, so everything before it was invisible to
+the measurement above. Timed from process start to the first `== zephyr ==`:
+
+```
+start -> first stage:   481 s   at ~2 of 32 runnable (6%)
+```
+
+Eight minutes of `check-fast` — 115 gates, run serially as just dependencies —
+at essentially one core. True wall for the lane is ~1930 s, of which **25% is
+spent at 6% CPU before a single compiler runs**.
+
+This is the largest single loss found so far and it is not a build at all. It is
+also why issue 0721 mattered more than its own numbers suggested: those gates sit
+on this serial path, so a gate that wastes 300 s wastes it with 31 cores idle.
+
+### The jobserver launcher does not saturate either
+
+`NROS_JOBSERVER=1` (serial stage dispatch, children inheriting FIFO tokens),
+sampled from `/proc/loadavg` runnable count during the build stages:
+
+| phase | mean runnable | peak |
+| --- | --- | --- |
+| zephyr + west fixtures | 4/32 | 12/32 |
+| into native | 3/32 | 6/32 |
+
+That is WORSE than the 4x8 static split, and it confirms the risk this issue
+recorded rather than refuting it: serial dispatch only wins if one stage's graph
+is wide enough to fill the machine. Zephyr's is not — west configure steps are
+largely single-threaded, so one-stage-at-a-time leaves ~28 cores idle.
+
+So neither existing option is right:
+
+- **static 4x8** — good while >=4 stages run (37.5% of wall at a 32/32 ceiling),
+  starves on the tail (45% of wall at 8/32).
+- **serial + jobserver** — no tail problem by construction, but starves whenever
+  the running stage is narrow, which is most of zephyr and the west fixtures.
+
+The shape the evidence points at is BOTH: stage-level concurrency so narrow
+stages overlap, AND a shared token pool so the tail stage can expand into the
+capacity the others release. That is not either of the two launchers today.
+
+### Corrected priority
+
+1. **The gate phase (481 s at 6%)** — biggest, cheapest, and independent of the
+   scheduler question. 115 gates that are almost all pure readers.
+2. **A launcher that overlaps stages and shares tokens** — replaces the either/or
+   above. Needs the measurement harness below to evaluate.
+3. The `threadx_riscv64` tail (1302 s) — bounds the build under any scheduler.
+
+### How to measure this honestly
+
+`/proc/loadavg`'s runnable field sampled on an interval is enough to separate
+"the scheduler permits N cores" from "N cores are busy", and the joblog cannot:
+it records stage spans, so it can only ever produce a CEILING. Every number in
+the first section of this issue is a ceiling; every number here is a sample.
+Record which, always — the 65% ceiling above and the 3-4/32 measured here are
+not in conflict, they answer different questions.
