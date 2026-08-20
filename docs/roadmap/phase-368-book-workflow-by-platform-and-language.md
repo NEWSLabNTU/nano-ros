@@ -67,8 +67,18 @@ host — its e2e lane is deliberately optional), which is also why the
 board's package list does NOT gain the fork: the tree treats the emulator
 as an explicit opt-in, and the page now says so instead of implying it.
 
-Still deferred: the resolver's z3 hard-dep feature-gate (upstream
-play_launch/rlm). The maintainer-approved TARGET DESIGN below defines
+**The z3 feature-gate LANDED (2026-08-20) — nothing deferred remains.**
+rlm v0.1.8 puts the checker's SMT satisfiability rule (the crate's only z3
+consumer) behind a default-on `smt` feature; a no-smt build registers a
+stub under the same rule id that emits one Info diagnostic whenever the
+rule battery runs, so checking less is never silent. play_launch forwards
+the choice; nano-ros's shipped `nros-launch-resolve` opts out — its
+dependency graph carries ZERO z3, so `libclang-dev` and `libz3-dev` left
+all four of the book's prerequisite spellings. Proven the only way this
+phase accepts: the clean-container probe re-ran on the slimmed list,
+PROBE=0, both scaffolded workspaces publishing. Every current consumer of
+rlm/play_launch defaults is byte-for-byte unchanged (smt defaults on end
+to end; verified 176/176 resolver tests in both states). The maintainer-approved TARGET DESIGN below defines
 W8–W14 (restructure the book for user personas: C++-first workspace quick
 start, cyclonedds default, no `just` on the user track).
 
