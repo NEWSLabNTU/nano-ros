@@ -1,7 +1,7 @@
 ---
 id: 730
 title: "Zephyr embedded C++ cyclonedds lane omits `alloc`, so nros-cpp's un-gated `TransportError::BackendDynamic` arm fails E0599 on aarch64-none"
-status: open
+status: resolved
 type: bug
 area: zephyr
 related: [issue-0591, issue-0586]
@@ -74,3 +74,24 @@ autoware-safety-island carries an idempotent sed patch
 (`scripts/patches/nros-cpp-embedded-alloc-patch.sh`, applied by its build.sh)
 that appends `,alloc` to the cyclonedds `_nros_cpp_features` line; it
 self-retires when the pattern disappears upstream.
+
+## Resolution (2026-08-20)
+
+`alloc` appended to the cyclone `_nros_cpp_features` branch in
+`zephyr/CMakeLists.txt`, with the causal chain in a comment at the site: the
+mapper stays exhaustive (0586), the variant is alloc-gated because it carries
+a heap diagnostic, and `platform-zephyr` provides the allocator WITHOUT the
+feature — so this was the one bare-`rmw-cffi` composition (zenoh gets `alloc`
+via nros-rmw-zenoh's pinned `nros-rmw-cffi/alloc`; native_sim via `,std`).
+E0599 reproduced on `aarch64-unknown-none` before, compiles clean after; the
+C lanes were audited (`nros-c` compiles the same coordinate without `alloc` —
+`support.rs` maps the variants differently) and left unchanged.
+
+The pairwise-class gap is now gated at the layer it failed: `just check-cpp`
+compiles nros-cpp with the cyclone branch's feature string — READ from
+`zephyr/CMakeLists.txt`, not a second spelling — on `aarch64-unknown-none`
+(loud SKIP when the target is absent). Verified red without `alloc`, green
+with.
+
+The autoware-safety-island sed patch
+(`scripts/patches/nros-cpp-embedded-alloc-patch.sh`) self-retires.

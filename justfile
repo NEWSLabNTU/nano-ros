@@ -4058,6 +4058,27 @@ check-cpp: check-cpp-fmt
     # from a `cc` line that says nothing about cargo. Diagnosing that cost four
     # wrong hypotheses; the build's own error names the cause in one line.
     cargo build -p nros-c -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble" --quiet
+    # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
+    # pairwise-class gap no runtime tier covers (cyclone fixtures run on
+    # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:
+    # the cyclone branch was the one bare-`rmw-cffi` composition, so
+    # `TransportError::BackendDynamic` (alloc-gated) vanished under the
+    # exhaustive mapper. Check that exact composition on an embedded target.
+    # The feature string is READ FROM the zephyr module's cyclone branch, so
+    # this gate follows the lane instead of being a second spelling of it.
+    if rustup target list --installed | grep -qx aarch64-unknown-none; then
+        _cyc_features="$(sed -n '/CONFIG_NROS_RMW_CYCLONEDDS/,/endif()/ s/.*set(_nros_cpp_features "\([^"]*\)").*/\1/p' zephyr/CMakeLists.txt | head -1)"
+        if [ -z "$_cyc_features" ]; then
+            echo "check-cpp: could not extract the cyclone _nros_cpp_features line from zephyr/CMakeLists.txt" >&2
+            exit 1
+        fi
+        echo "  - embedded cyclone coordinate (issue 0730): ${_cyc_features},panic-platform @ aarch64-unknown-none"
+        cargo check -p nros-cpp --no-default-features \
+            --features "${_cyc_features},panic-platform" \
+            --target aarch64-unknown-none --quiet
+    else
+        echo "  - embedded cyclone coordinate (issue 0730): SKIP — aarch64-unknown-none not installed"
+    fi
     for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
         # Phase 209 — `rclcpp_compat.hpp` is a source-compat shim still
         # being aligned with the live nros::Result / nros::QoS API. The

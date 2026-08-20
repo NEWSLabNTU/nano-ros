@@ -384,7 +384,18 @@ if(CONFIG_NROS_CPP_API)
         # backend block above) registers the vtable via
         # nros_rmw_cyclonedds_register(). nros-cpp only needs the
         # generic cffi runtime + Zephyr platform feature.
-        set(_nros_cpp_features "rmw-cffi,platform-zephyr,ros-humble")
+        #
+        # `alloc` is spelled here because this module IS the dep-site
+        # composing the consumer's feature set (phase-361 W8.d): nros-cpp's
+        # error mapper references the alloc-gated
+        # `TransportError::BackendDynamic` un-gated (issue 0586 keeps
+        # mappers exhaustive), and on embedded Zephyr the platform provides
+        # a global allocator WITHOUT the `alloc` feature, so the image
+        # links and only the variant is missing (E0599 — issue 0730). The
+        # sibling lanes get `alloc` transitively (zenoh via
+        # nros-rmw-zenoh's pinned nros-rmw-cffi/alloc; native_sim via
+        # `,std`); this branch is the only bare-`rmw-cffi` composition.
+        set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets use the host Rust target; keep std enabled so

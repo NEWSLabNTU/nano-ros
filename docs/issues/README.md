@@ -174,14 +174,11 @@ of a COMPILATION and an undefined symbol is a property of a LINK. The feature is
 gate that enforced it; the sink moved to `nros_platform_cffi::log`, where a dependency answers the
 question. See `archived/0723-*` and `archived/0727-*`. (2026-08-20)
 
-**#0730** (zephyr, open 2026-08-20) — the Zephyr EMBEDDED C++ cyclonedds lane composes nros-cpp
-features as bare `rmw-cffi,platform-zephyr,ros-humble` (no `alloc`), while the error mapper's
-`TransportError::BackendDynamic` arm is deliberately un-gated (0591) — E0599 on aarch64-none. The
-lib.rs "no buildable configuration lacks the variant" claim assumed no-alloc ⇒ no allocator, but
-`platform-zephyr` supplies the allocator without the feature; native_sim's `,std` hides the gap
-in-tree (a (zephyr-embedded × C++ × cyclonedds) pairwise-class coordinate). Found by the
-autoware-safety-island bring-up, which carries a sed patch until the lane adds `alloc`. See
-`0730-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0730** — the zephyr embedded C++ cyclonedds lane was the one
+bare-`rmw-cffi` feature composition, so the alloc-gated `TransportError::BackendDynamic` vanished
+under nros-cpp's deliberately exhaustive mapper (E0599 on `aarch64-none`). `alloc` is now spelled at
+the dep-site (phase-361 W8.d) and `just check-cpp` compiles the exact coordinate with the feature
+string read from the cmake lane. See `archived/0730-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0729** — `nros setup board` and `board-facts` resolved boards by
 the retired `packages/boards/nros-board-<name>` directory, so every phase-337 bundle board (all
