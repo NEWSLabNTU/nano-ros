@@ -1,7 +1,7 @@
 ---
 id: 524
 title: "`anyhow` is unmaintained: the first-party deps are gone, three transitive ones remain"
-status: open
+status: resolved
 type: tech-debt
 area: build
 related: [issue-0523, rfc-0070]
@@ -136,3 +136,51 @@ moves, which is not ours to schedule.
   lockfile resolves `anyhow` except through the wasi chain.
 * A note in this issue when the wasi chain drops it upstream, so the remaining
   entry is not mistaken for ours.
+
+## Resolved 2026-08-20
+
+Chain A is gone. The dead declaration is removed in the fork
+(`NEWSLabNTU/play_launch` `141e7a5`, pushed BEFORE the pointer moved) and the
+superproject pin advanced `65a7591 -> 141e7a5` — forward, six commits, no rewind.
+
+Note the acceptance list above is stale where it says "`play_launch_parser` uses
+`eyre`". The Decisions section already superseded that: there was no usage to
+port, so it is a deletion, not a conversion. Re-verified at `origin/main` before
+touching anything — 0 occurrences of `anyhow` across the crate's `src/` and
+`tests/`, manifest only, with `thiserror` supplying the error type. The fork's
+`play_launch_wasm_codegen` / `play_launch_wasm_runtime` use `anyhow` for real and
+are untouched; they are layer 3 and nano-ros never builds them.
+
+### The locks could not be regenerated, and finding out mattered
+
+`cargo metadata --offline` in the fork **fails** (`jiff-static` is not vendored)
+and rewrites the lock anyway — the attempt dropped 14 packages, including every
+generated ROS message crate (`std_msgs`, `action_msgs`, …), which are codegen
+path deps absent from a bare checkout. That is the "re-resolved everything"
+failure CLAUDE.md warns about, arriving through a command that also reported an
+error. Reverted and edited surgically instead: the `play_launch_parser -> anyhow`
+EDGE removed from the four fork locks that record the crate, plus the orphaned
+`[[package]]` stanza in the three where nothing else needed it. The fork's root
+lock keeps its stanza — six other edges remain, from the wasm crates. 19
+deletions, all `anyhow`, all four verified to parse.
+
+The nano-ros side went through `just lock-update` as required: 7 deletions in
+`packages/cli/nros-launch-resolve/Cargo.lock`, nothing added.
+
+### Acceptance, measured
+
+| criterion | result |
+| --- | --- |
+| first-party manifests declare `anyhow` | none (`git grep '^anyhow' -- '*.toml'` empty outside `third-party/`) |
+| lockfiles resolving `anyhow` | 4 -> **3**; `nros-launch-resolve` no longer among them |
+| the 3 remaining are the wasi chain | yes — each carries 5 `wit-bindgen` stanzas |
+| `anyhow` compiled anywhere | no: `cargo tree -i anyhow` for `--target all` and for the host prints nothing; in `nros-launch-resolve` it is now "did not match any packages" |
+| resolver rebuilt and agrees with the pin | `nros-launch-resolve 0.5.0 (play_launch 141e7a5…)` = `git ls-tree HEAD` |
+
+### Chain B stays, per the decision above
+
+Three lockfiles still carry it through `cbindgen -> tempfile -> getrandom ->
+wasip2/wasip3 -> wit-bindgen -> …`. Never compiled, for any target, in any
+configuration this workspace builds — a lockfile entry, not a dependency. It
+leaves when upstream moves. Anyone auditing later: that entry is not ours, and
+this table is how to re-check it in one command.

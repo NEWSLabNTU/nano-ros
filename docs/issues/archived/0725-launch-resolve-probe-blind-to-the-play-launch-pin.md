@@ -97,3 +97,30 @@ compares", and it has exactly two instances, now both correct and now both
 computing the pin the same way. A gate over two call sites costs more than it
 catches; what protects the next one is that `source_stamp.rs` and
 `launch-resolve-stale.sh` each name the other.
+
+## Correction (2026-08-20) — the range notation was backwards
+
+This issue and its commit message both wrote the pin move as
+`420904826055..65a7591e5165`. That is the wrong direction: `65a7591` is the
+OLDER commit and an ANCESTOR of `4209048`, which was `origin/main`. The
+superproject pinned `65a7591` while the resolver binary had been built from
+`4209048`, five commits ahead.
+
+As a git range, `4209048..65a7591` is empty, so the sentence "touched `tests/**`
+and nothing else" cannot be re-derived from it. The correct range is
+`65a7591..4209048`, and the CONTENT claim was right — all five commits are
+`tests/`, docs and lock changes, nothing under `src/ros-launch-resolve`:
+
+```
+$ git -C packages/cli/third-party/play_launch diff --stat 65a7591 4209048 -- src/ros-launch-resolve
+                                    # empty
+```
+
+Nothing about the diagnosis or the fix changes: the two identities disagreed
+because layer-2 content was identical across the two commits while the pin was
+not, which is exactly what the stamp now folds in. Only the direction was
+misstated, and a reader re-deriving it from the range as written would find an
+empty diff and conclude the issue was wrong.
+
+(Found while landing issue 0524, which moved this same pin forward
+`65a7591 -> 141e7a5`.)

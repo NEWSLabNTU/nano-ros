@@ -51,6 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-20): **#0524** — `anyhow` is unmaintained; the last actionable chain was a DEAD
+declaration in the vendored `play_launch_parser` (0 uses across src/ and tests/, `thiserror` does the work)
+that was still compiled into every consumer. Removed in the fork (`NEWSLabNTU/play_launch` `141e7a5`, pushed
+BEFORE the pointer moved), pin advanced `65a7591 -> 141e7a5`, forward, no rewind. The fork's locks could not
+be regenerated here: `cargo metadata --offline` FAILS (jiff-static unvendored) and rewrites the lock anyway,
+dropping 14 packages including every generated ROS message crate — so the edge was removed surgically (19
+deletions, all `anyhow`, all four locks re-parsed). nano-ros side via `just lock-update`, 7 deletions, none
+added. Lockfiles resolving `anyhow`: 4 -> 3, all three the wasi/`wit-bindgen` chain, never compiled for any
+target (`cargo tree -i anyhow` prints nothing); it leaves when upstream moves.
+See `archived/0524-*`. (2026-08-20)
+
 Recently resolved (2026-08-20): **#0732** — `check-workspace-order`'s T2 piped `nros` into `grep -q`.
 `grep -q` exits at the first match, closing the pipe while `nros` is still writing; Rust ignores SIGPIPE so
 `println!` PANICS on EPIPE, and under `set -o pipefail` the pipeline is non-zero **even though grep
@@ -2120,13 +2131,6 @@ not exit code: `nros/struct.Executor.html` exists, which is the link the recipe 
 Root cause of the rot: no lane runs `just book` — wiring it into one is the durable fix and is NOT done.
 See `archived/0581-*`. (2026-08-15)
 
-**#524** — `anyhow` is unmaintained and this tree standardises on `eyre`. Census of every tracked
-manifest and lockfile: the two FIRST-PARTY deps were both DEAD — `nros-build-profile` declared
-`anyhow = "1"` with zero uses, and `packages/cli`'s `[workspace.dependencies]` entry was inherited by
-no member — so both were deleted rather than ported (root lock diff: one line, the dependency edge).
-What remains is transitive, in two chains: `play_launch_parser -> anyhow`, which is a FORK WE PIN and
-therefore actionable via the vendored-fork workflow, and `wasip2`/`wasip3` -> `wit-bindgen` -> … ->
-`anyhow`, which is upstream wasi tooling nothing here chooses. See `0524-*`. (2026-08-12)
 
 RESOLVED 2026-08-13: **#534** — the Zephyr C zenoh leaves failed on `zenoh-pico/system/platform/zephyr.h:18:
 fatal error: version.h: No such file or directory`, taking the zephyr fixture module — and with it `ci-matrix`
