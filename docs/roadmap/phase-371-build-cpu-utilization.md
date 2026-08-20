@@ -179,3 +179,51 @@ jobserver, gate phase, cmake configure), and two instruments had to be repaired
 before they could kill anything. The honest state is that the cause of low
 occupancy is UNKNOWN, and the next step is the lineage-scoped sampler on a quiet
 box rather than another guess.
+
+## The fan-out "regression" was cold cargo caches (2026-08-20, later)
+
+Reported the fan-out as broken — 8 s earlier, >200 s later — and reverted it off
+the fixture-build path. That was the right call with the information available
+and the wrong diagnosis.
+
+The four gates left hanging (`check-core-only-predicate`,
+`check-deploy-board-resolves`, `check-example-leaf-target-dirs`,
+`check-site-config`) were slow **solo**, not only under fan-out:
+`check-deploy-board-resolves` exceeded 200 s alone against 6.7 s that morning,
+`check-core-only-predicate` 53 s against 8.3 s. So the fan-out was not the
+variable.
+
+They invoke cargo, and their caches had been invalidated by my own sccache probe
+and the overlapping runs before it. Re-timed once warm: **5 s**, with sccache
+enabled or disabled — identical. The fan-out then completed in **21 s**.
+
+**Third time cold-versus-warm has produced a false conclusion today**, after the
+481 s gate phase and the 33 s cmake configure. The pattern is always the same: a
+single measurement taken right after disturbing the tree, read as steady state.
+Any timing in this phase that was not taken twice should be treated as unproven.
+
+### sccache: false alarm, it works
+
+`RUSTC_WRAPPER` is exported at `justfile:13` and resolves to the store sccache.
+`sccache --show-stats` reporting 0 requests is not evidence of a dead
+integration — the server idles out and resets its counters. A direct probe drove
+requests 0 -> 5 with 1 hit and 1 miss. There is nothing to enable, and
+"enabling" it would have been a change that did nothing while appearing to help.
+
+### Three real reds on main, surfaced by the fan-out
+
+`check-board-cargo-config-applied`, `check-provider-index` and
+`check-workspace-order` fail — and fail SOLO, so they are genuine, not
+concurrency artifacts. `just check-fast` was green at 42 s earlier the same day,
+so they arrived with intervening pulls.
+
+Serial `check-fast` stops at the first red and would have reported one of them.
+The fan-out reports all three, which is the property it was built for and an
+argument for adopting it independent of speed.
+
+### Status of the fan-out
+
+Opt-in, working, 21 s warm against ~90 s serial. NOT on the fixture-build path:
+the swap was reverted and has not been re-attempted. Re-attempting it should wait
+until the three reds above are fixed, so that a real failure is not mistaken for
+fan-out fallout a second time.
