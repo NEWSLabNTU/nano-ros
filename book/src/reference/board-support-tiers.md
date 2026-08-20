@@ -29,6 +29,7 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
 | `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | Real two-way QEMU e2e (esp32_emulator.rs). |
+| `nros-board-freertos-posix` | FreertosPosix | *unassigned* |  |
 | `nros-board-mps2-an385` | QemuBaremetal | *unassigned* | phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row. |
 | `nros-board-nuttx-qemu` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
 | `nros-board-threadx-qemu-riscv64` | ThreadxRiscv64 | *unassigned* | All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage. |

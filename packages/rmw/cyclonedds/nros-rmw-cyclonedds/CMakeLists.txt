@@ -151,6 +151,20 @@ if(DEFINED NANO_ROS_PLATFORM
     if(TARGET freertos_kernel)
         target_link_libraries(nros_rmw_cyclonedds PRIVATE freertos_kernel)
     endif()
+    # phase-370 — the platform SHIM, which carries `nros/platform.h` on its
+    # PUBLIC include interface. `internal.hpp` includes that header
+    # unconditionally, so without this the freertos branch cannot compile:
+    # `fatal error: nros/platform.h: No such file or directory`.
+    #
+    # The threadx branch below has always linked its shim; this one linked only
+    # the kernel and lwIP. Neither of those carries the header, so the omission
+    # was not a subtle one — it had simply never been reached, which is what
+    # "Cyclone on embedded FreeRTOS is ~70% plumbed with ZERO live cells"
+    # (phase-370's own framing) means in practice. The POSIX simulator is the
+    # first board to compile this branch.
+    if(TARGET nros_platform_freertos)
+        target_link_libraries(nros_rmw_cyclonedds PRIVATE nros_platform_freertos)
+    endif()
     if(TARGET lwip)
         target_link_libraries(nros_rmw_cyclonedds PRIVATE lwip)
     endif()
@@ -174,11 +188,54 @@ endif()
 # first. Only meaningful for the find_package path (an imported shared
 # `libddsc.so`); a self-provisioned source build links a static `ddsc`
 # in-tree, so there is no external `.so` to rpath. Phase 186.
+#
+# phase-370 — ASK the imported target which configurations it has, rather than
+# guessing two names.
+#
+# This probed `IMPORTED_LOCATION_RELEASE` and then the config-less
+# `IMPORTED_LOCATION`. ROS Humble's CycloneDDS export has NEITHER: it ships
+# `CycloneDDSTargets-none.cmake`, so the property is `IMPORTED_LOCATION_NONE`
+# (Debian builds Cyclone with an empty `CMAKE_BUILD_TYPE`). Both lookups
+# returned empty, so `NROS_RMW_CYCLONEDDS_DDSC_LIBRARY` was never set on the
+# find_package path — and the root CMakeLists then took its `else()` branch,
+# whole-archiving `nros_rmw_cyclonedds` ALONE. A raw `-Wl,--whole-archive,<file>`
+# flag names a file, so it carries none of the target's PUBLIC
+# `CycloneDDS::ddsc`, and every `dds_*` symbol went undefined at the final link.
+#
+# It stayed hidden because the workspace roots hardwired `BACKEND zenoh` (fixed
+# in the same phase): the two `*-native-cyclonedds` workspace rows have been
+# linking zenoh, so nothing reached this path. The phase-368 W4 RPATH stamp
+# below has the same dependency and was equally inert.
+#
+# `IMPORTED_CONFIGURATIONS` is the target's own list, so this covers RELEASE,
+# NONE, DEBUG, RELWITHDEBINFO and any vendor spelling without another guess.
 set(_ddsc_loc "")
 if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "find_package")
-    get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION_RELEASE)
+    get_target_property(_ddsc_cfgs CycloneDDS::ddsc IMPORTED_CONFIGURATIONS)
+    if(_ddsc_cfgs)
+        # Prefer the build's own config when the target has it, so a
+        # multi-config export does not silently hand back the wrong one.
+        set(_ddsc_cfg_order "")
+        if(CMAKE_BUILD_TYPE)
+            string(TOUPPER "${CMAKE_BUILD_TYPE}" _ddsc_want)
+            list(APPEND _ddsc_cfg_order "${_ddsc_want}")
+        endif()
+        list(APPEND _ddsc_cfg_order ${_ddsc_cfgs})
+        foreach(_cfg IN LISTS _ddsc_cfg_order)
+            if(NOT _ddsc_loc)
+                get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION_${_cfg})
+            endif()
+        endforeach()
+    endif()
     if(NOT _ddsc_loc)
         get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION)
+    endif()
+    if(NOT _ddsc_loc)
+        message(WARNING
+            "nano-ros: CycloneDDS::ddsc resolved through find_package but exposes no "
+            "IMPORTED_LOCATION for any of its configurations (${_ddsc_cfgs}). The "
+            "backend archive will be whole-archived WITHOUT libddsc, which fails the "
+            "final link on every `dds_*` symbol. Report the Cyclone package layout.")
     endif()
 endif()
 if(_ddsc_loc)

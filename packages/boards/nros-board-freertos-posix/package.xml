@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_freertos_posix</name>
+  <version>0.0.0</version>
+  <description>
+    FreeRTOS POSIX simulator board support for nano-ros (phase-370 W1).
+
+    The FreeRTOS kernel's `ThirdParty/GCC/Posix` port running on a Linux host:
+    FreeRTOS tasks are pthreads, the scheduler is signal-driven, and the network
+    stack is the host's rather than lwIP. That makes it the freertos family's
+    first non-QEMU, CI-runnable end-to-end lane.
+
+    Descriptor-only, like the sibling `linux` board: there is no Rust board
+    crate, because the cells this board carries are C and C++ (the FreeRTOS
+    POSIX port has no Rust entry shape of its own — it reuses the family's).
+    The package.xml must sit beside the descriptor, because that is where
+    `descriptor_path()` looks.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS a board. Must equal the
+      descriptor's declared names, canonical first — `check-provider-announcements.py`
+      compares them, because two spellings of one fact drift.
+    -->
+    <nano_ros_provides kind="board" name="freertos-posix"/>
+  </export>
+</package>

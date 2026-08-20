@@ -163,7 +163,20 @@ endif()
 # Guarded on the cyclonedds RMW; inert for other RMWs and for the prebuilt path
 # (find_package wins → the WITH_* cache vars go unused).
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_FREERTOS_FLAGS_STAGED)
+#
+# phase-370 W2 — this block is for boards whose network stack is lwIP, which is
+# every FreeRTOS board except the POSIX simulator. There the host kernel owns
+# the stack, so ddsrt must build its POSIX port exactly as the `posix` platform
+# branch does: `WITH_FREERTOS`/`WITH_LWIP` would select a ddsrt whose sockets
+# are lwIP's, against a build that has no lwIP to link. The overlay states which
+# it is; the default is TRUE so every pre-existing board and the board-less
+# ESP-IDF shell keep the behaviour they had.
+if(NOT DEFINED NROS_FREERTOS_BOARD_HAS_LWIP)
+    set(NROS_FREERTOS_BOARD_HAS_LWIP TRUE)
+endif()
+
+if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
+        AND NOT DEFINED NROS_CYCLONE_FREERTOS_FLAGS_STAGED)
     set(NROS_CYCLONE_FREERTOS_FLAGS_STAGED TRUE)
     foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING
                  BUILD_EXAMPLES BUILD_DDSPERF BUILD_DOCS ENABLE_SECURITY ENABLE_SSL
@@ -203,7 +216,9 @@ endif()
 # shim sub-build.
 # ---------------------------------------------------------------------------
 set(FREERTOS_KERNEL_TARGET freertos_kernel CACHE STRING "" FORCE)
-set(FREERTOS_LWIP_TARGET   lwip            CACHE STRING "" FORCE)
+if(NROS_FREERTOS_BOARD_HAS_LWIP)
+    set(FREERTOS_LWIP_TARGET   lwip        CACHE STRING "" FORCE)
+endif()
 set(NROS_PLATFORM_FREERTOS_INSTALL OFF CACHE BOOL
     "Skip nros-platform-freertos install rules (umbrella owns install)" FORCE)
 add_subdirectory(

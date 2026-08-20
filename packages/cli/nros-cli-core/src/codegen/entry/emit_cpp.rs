@@ -94,7 +94,20 @@ fn board_cpp_path(board: &str) -> &str {
         // netif, and dispatches to the typed entry's `app_main`, so `FreertosBoard`'s
         // `run_components` runs WITHOUT re-entering the kernel — same machinery as the
         // ThreadX/NuttX adapters.
-        "freertos" | "mps2-an385-freertos" => "::nros::board::FreertosBoard",
+        // phase-370 — `freertos-posix` is the same adapter: the FreeRTOS POSIX
+        // simulator's `main` is owned by the board too
+        // (`nros-board-freertos-posix/c/freertos_posix_entry.c` creates the app
+        // task and starts the scheduler), so the entry must emit `nros_app_main`
+        // and NOT an `int main`. It is a host process, but the nodes still run
+        // as FreeRTOS TASKS — a plain `int main` would run them on the process
+        // thread and exercise no kernel at all.
+        //
+        // Until it was listed, this key fell through to the `LinuxBoard`
+        // default below, which is a SILENT wrong answer rather than the
+        // configure error that comment assumes: the emitter produced the native
+        // `int main` + `nros_board_native_run_components_named` shape, and the
+        // build got as far as the link before `app_main` came up undefined.
+        "freertos" | "mps2-an385-freertos" | "freertos-posix" => "::nros::board::FreertosBoard",
         // Phase 246 — Azure RTOS ThreadX family (threadx-linux host sim +
         // bare-metal qemu-riscv64). The board's C `startup.c` enters the kernel
         // and dispatches to the typed entry's `app_main` inside the app thread, so

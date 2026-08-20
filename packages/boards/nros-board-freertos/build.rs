@@ -9,7 +9,7 @@
 //! | `libfreertos.a`          | kernel core + port + heap_4                       |
 //! | `liblwip.a`              | core + IPv4 + API + netif + ethernet + sys_arch   |
 //! | `libnros_platform_freertos.a` | C port providing the `nros_platform_*` ABI   |
-//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_run_tiers.c` |
+//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_task_glue.c` + `c/freertos_run_tiers.c` |
 //!
 //! `c/freertos_c_entry.c` is deliberately NOT in that list: it is the C/C++
 //! lane's boot path (`main`), and on the cargo lane `main` is the Rust entry.
@@ -236,6 +236,9 @@ fn main() {
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.file(manifest_dir.join("c/freertos_hooks.c"));
     glue.file(manifest_dir.join("c/network_glue.c"));
+    // phase-370 W1 — the kernel-only half of what `network_glue.c` used to be.
+    // Split out so a board with no lwIP can compile it; this lane compiles both.
+    glue.file(manifest_dir.join("c/freertos_task_glue.c"));
     glue.file(manifest_dir.join("c/freertos_run_tiers.c"));
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route

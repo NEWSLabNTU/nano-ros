@@ -75,9 +75,19 @@ extern void nros_platform_dealloc(void* ptr);
 #define NROS_FREERTOS_EXECUTOR_STORAGE_BYTES 81920u
 #endif
 
-/* phase-296 W5.11 — the board's semihosting console (freertos_hooks.c), used
- * for the loud placement-dim note below. Declared here (no shared header). */
-extern void semihosting_write0(const char* s);
+/* The board's console, used for the loud placement-dim note below. Declared
+ * here (no shared header).
+ *
+ * phase-370 — this was `semihosting_write0` (the ARM helper in
+ * `freertos_hooks.c`), which made a file that is otherwise pure FreeRTOS + the
+ * nros-cpp FFI depend on one board family's DEBUG TRANSPORT. It linked only
+ * because every FreeRTOS board was a Cortex-M under QEMU; the POSIX simulator
+ * board is not, and the failure was an undefined reference from this TU naming
+ * a symbol nothing in this file is about.
+ *
+ * Every FreeRTOS board compiles exactly one board TU, so each supplies one
+ * STRONG definition — no weak fallback, and no board `#ifdef` here. */
+extern void nros_board_freertos_console_write(const char* s);
 
 /* --- Local tier-spec type ---
  *
@@ -307,13 +317,13 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
         const char* tname = (t->name != NULL) ? t->name : "?";
 #if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
         vTaskCoreAffinitySet(task, (UBaseType_t)1u << (t->core_plus1 - 1u));
-        semihosting_write0("nros: core pin tier=`");
-        semihosting_write0(tname);
-        semihosting_write0("`\n");
+        nros_board_freertos_console_write("nros: core pin tier=`");
+        nros_board_freertos_console_write(tname);
+        nros_board_freertos_console_write("`\n");
 #else
-        semihosting_write0("nros: core pin FAILED tier=`");
-        semihosting_write0(tname);
-        semihosting_write0("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
+        nros_board_freertos_console_write("nros: core pin FAILED tier=`");
+        nros_board_freertos_console_write(tname);
+        nros_board_freertos_console_write("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
                            "(uniprocessor), tier runs unpinned\n");
         (void)task;
 #endif

@@ -54,6 +54,11 @@ elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
+# phase-370 W3 — the same FreeRTOS platform on the host: no toolchain file is
+# mapped above, because the POSIX port compiles with the host compiler. That
+# absence is the whole difference at this level.
+elseif(NANO_ROS_BOARD STREQUAL "freertos-posix")
+    list(APPEND _ws_subdirs src/freertos_posix_entry)
 elseif(NANO_ROS_BOARD STREQUAL "nuttx-qemu-arm")
     list(APPEND _ws_subdirs src/nuttx_entry)
     # phase-263 C2b — the NuttX kernel-link custom command (cargo nros-nuttx-ffi) bakes the
@@ -76,8 +81,24 @@ endif()
 # `<exec_depend>talker_pkg</exec_depend>` and friends, which is the same
 # constraint the old "Node pkgs BEFORE entries" comments asked authors to keep
 # by hand.
+# phase-370 W3 — forward `-DNROS_RMW` instead of hardwiring the backend.
+#
+# `BACKEND zenoh` is authoritative over the cache variable by design (a
+# workspace root is the one place that declares its system), so a row asking for
+# another RMW LOST. phase-368 made that loud rather than silent, and the warning
+# it added has been firing on rows that already exist: `workspace-c-native-cyclonedds`
+# and `workspace-cpp-native-cyclonedds` pass `-DNROS_RMW=cyclonedds` — the `rmw`
+# field expands to exactly that (`fixtures-manifest.py`) — and linked zenoh.
+#
+# The forwarding shape below is the one phase-368's own warning text prescribes
+# and the scaffolded template ships. zenoh stays the DEFAULT, so every row that
+# does not ask for something else is unchanged.
+if(NOT DEFINED NROS_RMW)
+    set(NROS_RMW zenoh)
+endif()
+
 nano_ros_workspace(
-    BACKEND  zenoh
+    BACKEND  ${NROS_RMW}
     PLATFORM "${NANO_ROS_PLATFORM}"
     SYSTEM   demo_bringup
     ORDER_FROM_DEPENDS

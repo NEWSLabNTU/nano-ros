@@ -117,7 +117,25 @@ function(nros_feature_set out_var)
     elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3"
            OR _FS_PLATFORM STREQUAL "esp_idf")
         # ESP-IDF is Espressif's FreeRTOS port — same no_std tier.
-        list(APPEND _feats alloc platform-freertos)
+        #
+        # phase-370 — FreeRTOS gained the same two tiers ThreadX has, and for the
+        # same reason, so it takes the same test. `mps2-an385-freertos` and
+        # ESP-IDF are cross builds with no hosted libc; the POSIX simulator
+        # (`freertos-posix`) is a HOST build whose FreeRTOS tasks are pthreads.
+        # The phase-338 W5.a note below argues at length that the property, not
+        # the board name, is what decides this — deriving it here rather than
+        # naming the board is that argument applied one platform over.
+        #
+        # It is not cosmetic. `alloc` without `std` on a HOST target links the
+        # sysroot's `alloc` rlib, which is built for unwinding and references
+        # `rust_eh_personality` from a `.data.DW.ref` section; with no `std` in
+        # the link nothing defines it, and the image fails on a symbol no
+        # nano-ros source mentions.
+        if(_cross)
+            list(APPEND _feats alloc platform-freertos)
+        else()
+            list(APPEND _feats std platform-freertos)
+        endif()
     elseif(_FS_PLATFORM STREQUAL "nuttx" OR _FS_PLATFORM STREQUAL "nuttx_armv7a")
         list(APPEND _feats std platform-nuttx)
     elseif(_FS_PLATFORM STREQUAL "threadx_linux")

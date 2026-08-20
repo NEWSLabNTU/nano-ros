@@ -303,6 +303,13 @@ static NATIVE_WORKSPACE_MIXED_SERVICE_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = O
 static NATIVE_WORKSPACE_MIXED_ACTION_SERVER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_MIXED_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-370 W3 — cached paths to the FreeRTOS POSIX simulator workspace
+/// EMBEDDED entries (`nano_ros_entry(BOARD freertos-posix …)`), C and C++.
+/// Host processes: FreeRTOS tasks are pthreads and the sockets are the host's,
+/// so these are the freertos family's first entries with no QEMU behind them.
+static FREERTOS_POSIX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static FREERTOS_POSIX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
 /// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
 static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2490,6 +2497,39 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
                 // along: a missing binary and an absent toolchain look identical
                 // from here.
                 "threadx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-370 W3 — the FreeRTOS POSIX simulator C workspace embedded entry (cached).
+///
+/// Both languages share one `build-workspace-fixtures-freertos-posix` dir per
+/// workspace, matching the manifest rows. No baked locator and no slirp net:
+/// the RMW is host CycloneDDS over the host's own stack, so the entry needs
+/// nothing the `linux` rows do not.
+pub fn build_freertos_posix_workspace_c_entry() -> TestResult<&'static Path> {
+    FREERTOS_POSIX_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-freertos-posix",
+                "c",
+                "build-workspace-fixtures-freertos-posix",
+                "freertos_posix_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-370 W3 — the C++ projection of the entry above.
+pub fn build_freertos_posix_workspace_cpp_entry() -> TestResult<&'static Path> {
+    FREERTOS_POSIX_WORKSPACE_CPP_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-freertos-posix",
+                "cpp",
+                "build-workspace-fixtures-freertos-posix",
+                "freertos_posix_entry",
             )
         })
         .map(|p| p.as_path())

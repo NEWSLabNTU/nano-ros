@@ -101,6 +101,19 @@ pub const INT32_TALKER_LOG_PREFIX: &str = "Published:";
 /// See [`INT32_TALKER_LOG_PREFIX`] — the listener/sink side (`"Received:"`).
 pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 
+/// phase-370 — the PURE-C workspace talker's publish marker
+/// (`examples/workspaces/c/src/talker_pkg/src/Talker.c`).
+///
+/// A separate constant because the two workspaces do not agree: the C++ talker
+/// prints [`INT32_TALKER_LOG_PREFIX`] (`"Published:"`) and the C one prints
+/// `"[talker_pkg] sent:"`. The doc on that constant claims it covers "the
+/// workspace demo packages", which is true of the listener side (both print
+/// `"Received:"`) and NOT of the talker side. Naming the C spelling here is
+/// cheaper than reconciling two examples' output, and it keeps the divergence
+/// written down instead of rediscovered by the next test that greps the wrong
+/// one — which is what this module exists to prevent.
+pub const WORKSPACE_C_TALKER_LOG_PREFIX: &str = "[talker_pkg] sent:";
+
 /// issue 0441 — the receive-side `MessageInfo` marker emitted by the
 /// `message-info-observer` bin (`seq=<n> gid=<hex> ts=<t>`).
 ///

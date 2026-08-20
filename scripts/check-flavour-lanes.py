@@ -125,10 +125,29 @@ def board_flavour(crate, _seen=None):
     return "no_std"
 
 
+def _is_declarative(crate):
+    """A board that ships a descriptor and no Rust crate.
+
+    phase-370 — boards come in two shapes, and `check-board-tiers` says so in
+    as many words: "crate boards (`Cargo.toml`) and declarative ones
+    (`nros-board.toml`, e.g. posix/zephyr)". This gate assumed the first shape
+    for every registry row, so the first declarative row to carry a
+    `matrix_platform` — `nros-board-freertos-posix` — was reported as naming an
+    unreadable crate, which is a true statement about a file that is not
+    supposed to exist.
+
+    A declarative board has no Rust crate, so it has no Rust std/no_std flavour
+    to partition on and is excluded rather than guessed at. Its images still get
+    a flavour, but from `nros_feature_set` at configure time, which is a
+    different question than the one this gate asks.
+    """
+    return (BOARDS_DIR / crate / "nros-board.toml").is_file()
+
+
 def derive():
     """platform -> {flavour: [crates]}, plus rows whose crate is unreadable."""
     rows = parse_registry(REGISTRY.read_text())
-    by_platform, unreadable = {}, []
+    by_platform, unreadable, declarative = {}, [], []
     for r in rows:
         platform = r.get("matrix_platform")
         crate = r.get("crate")
@@ -136,14 +155,17 @@ def derive():
             continue  # `infra` rows carry no platform, by design
         fl = board_flavour(crate)
         if fl is None:
-            unreadable.append((crate, platform))
+            if _is_declarative(crate):
+                declarative.append((crate, platform))
+            else:
+                unreadable.append((crate, platform))
             continue
         by_platform.setdefault(platform, {}).setdefault(fl, []).append(crate)
-    return by_platform, unreadable
+    return by_platform, unreadable, declarative
 
 
 def main():
-    by_platform, unreadable = derive()
+    by_platform, unreadable, declarative = derive()
 
     if "--print" in sys.argv:
         for platform in sorted(by_platform):
@@ -181,7 +203,16 @@ def main():
             print(f"    {crate} (platform {platform}) — no packages/boards/{crate}/Cargo.toml", file=sys.stderr)
         rc = 1
     if rc == 0:
-        print(f"\nflavour lanes: OK ({len(by_platform)} platform(s), each one flavour)")
+        note = ""
+        if declarative:
+            names = ", ".join(f"{c} ({p})" for c, p in sorted(declarative))
+            note = (
+                f"\n  {len(declarative)} declarative board(s) carry no Rust crate and so no "
+                f"flavour to partition: {names}"
+            )
+        print(
+            f"\nflavour lanes: OK ({len(by_platform)} platform(s), each one flavour){note}"
+        )
     return rc
 
 

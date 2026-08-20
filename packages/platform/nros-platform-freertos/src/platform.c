@@ -173,7 +173,41 @@ void nros_platform_dealloc(void *ptr) {
  * FreeRTOS heap_4/5: used = configTOTAL_HEAP_SIZE − current free. FreeRTOS
  * is a Mode-A platform (nano-ros owns the allocator; zenoh-pico's z_malloc
  * → pvPortMalloc once Wave 1c funnels it), so this tracks the nano-ros +
- * RMW heap. `xPortGetFreeHeapSize` is available on heap_4/heap_5. */
+ * RMW heap. `xPortGetFreeHeapSize` is available on heap_4/heap_5.
+ *
+ * phase-370 — and NOT on heap_3, which is a thin wrapper over the C library's
+ * `malloc`/`free` and keeps no free-list to measure. The sentence above already
+ * said "heap_4/heap_5"; until the FreeRTOS POSIX simulator board there was no
+ * heap_3 build to make it a link error, and it presented as `undefined
+ * reference to xPortGetFreeHeapSize` from this TU with nothing naming the heap
+ * scheme.
+ *
+ * On heap_3 the numbers come from the C library instead, which is BETTER than
+ * the `return 0` an unknown would justify: heap_3 forwards to the same
+ * allocator `mallinfo2` reports on, so the answer is exact rather than absent.
+ * `nros-platform-posix` reads the same interface for the same reason, and falls
+ * back to 0 where it is unavailable — the two are one policy, not two.
+ *
+ * `configTOTAL_HEAP_SIZE` is deliberately not consulted on heap_3: the port
+ * never enforces it, so reporting it as a total would describe a budget nothing
+ * applies. */
+#if defined(NROS_FREERTOS_HEAP_3)
+#  if defined(__GLIBC__)
+#    include <malloc.h>
+size_t nros_platform_heap_used_bytes(void) {
+    struct mallinfo2 mi = mallinfo2();
+    return (size_t) mi.uordblks;
+}
+
+size_t nros_platform_heap_total_bytes(void) {
+    struct mallinfo2 mi = mallinfo2();
+    return (size_t) (mi.arena + mi.hblkhd);
+}
+#  else
+size_t nros_platform_heap_used_bytes(void) { return 0u; }
+size_t nros_platform_heap_total_bytes(void) { return 0u; }
+#  endif
+#else
 size_t nros_platform_heap_used_bytes(void) {
     return (size_t) (configTOTAL_HEAP_SIZE - xPortGetFreeHeapSize());
 }
@@ -181,6 +215,7 @@ size_t nros_platform_heap_used_bytes(void) {
 size_t nros_platform_heap_total_bytes(void) {
     return (size_t) configTOTAL_HEAP_SIZE;
 }
+#endif
 
 /*
  * FreeRTOS has no `pvPortRealloc` in stock builds. Emulate it with

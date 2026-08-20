@@ -91,6 +91,16 @@ link_check_example = "examples/threadx-linux/rust/talker"
 tier = 1
 maintainers = []
 
+# phase-370 — the FreeRTOS POSIX simulator. Descriptor-only (no Rust board
+# crate): the cells are C and C++, since the POSIX port has no Rust entry shape
+# of its own. This is the freertos family's first lane that runs without QEMU.
+[[board]]
+crate = "nros-board-freertos-posix"
+matrix_platform = "FreertosPosix"
+nightly_token = "freertos_posix"
+tier = 2
+maintainers = []
+
 # ===== tier 2 — verified ===================================================
 
 [[board]]

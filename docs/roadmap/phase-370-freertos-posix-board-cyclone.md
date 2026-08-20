@@ -1,10 +1,59 @@
 # Phase 370 — freertos-posix board variant + first live Cyclone-on-FreeRTOS cell
 
-**Status (2026-08-20).** OPEN — filed from the ASI reference-consumer side
-(ASI roadmap phase-4 W5.a is the consuming half). Implements the "go,
-small" scoping decision recorded in phase-292 W4.a: the FreeRTOS POSIX
-simulator is a BOARD-level variant, not a new platform layer, and its
-RMW/network half is the existing posix Cyclone path verbatim.
+**Status (2026-08-20).** W1–W3 LANDED; W4 (the embedded QEMU Cyclone cell)
+and W5 (the ASI consumer switch) are open. Implements the "go, small"
+scoping decision recorded in phase-292 W4.a: the FreeRTOS POSIX simulator
+is a BOARD-level variant, not a new platform layer, and its RMW/network
+half is the existing posix Cyclone path verbatim.
+
+**Landed:** `nros-board-freertos-posix` (declarative — no Rust crate, the
+cells are C/C++), `cmake/board/nano-ros-board-freertos-posix.cmake`, a
+`FreertosPosix` matrix witness at index 10, C and C++ `cyclonedds`
+workspace rows, and `tests/freertos_posix.rs`. Both cells build on a plain
+Linux host and deliver `/chatter` end to end — the freertos family's first
+runtime lane with no emulator behind it.
+
+**What the bring-up actually cost.** Seven defects, every one of them a
+seam that had never been reached rather than anything specific to this
+board. Recorded here because the phase's premise — "the RMW/network half
+is the existing posix path verbatim, zero new RMW work" — was true of the
+DESIGN and not of the code:
+
+1. `network_glue.c` held three KERNEL-only helpers
+   (`nros_freertos_start_scheduler`, `_create_task`,
+   `_set_current_task_priority`) behind unconditional `lwip/*.h` includes,
+   so a board with host sockets could not reach them. Split into
+   `freertos_task_glue.c`; both lanes compile it.
+2. `freertos_run_tiers.c` — the "board-agnostic tier runner" — called
+   `semihosting_write0`, one board family's ARM debug transport. Now
+   `nros_board_freertos_console_write`, one strong definition per board.
+3. The platform shim's heap stats called `xPortGetFreeHeapSize`, which
+   heap_3 does not define. Its own comment already said "heap_4/heap_5";
+   no heap_3 board had existed to make it a link error.
+4. `cyclonedds_compat.c` supplies `__aeabi_read_tp`/`gethostname`/
+   `clock_gettime` for BARE METAL, as its first line says. On a host it
+   fails to link (`__tls_base`) and would shadow glibc.
+5. The cyclonedds RMW's freertos branch linked the kernel and lwIP but not
+   the platform SHIM, so `internal.hpp` could not find `nros/platform.h`.
+   The threadx branch beside it had always linked its shim. This is the
+   "~70% plumbed, ZERO live cells" note below, measured.
+6. `nros_feature_set` gave every FreeRTOS target `alloc` without `std`. On
+   a HOST that links the sysroot's unwinding `alloc` and leaves
+   `rust_eh_personality` undefined. phase-338 W5.a had already solved this
+   for ThreadX by deriving the tier from `_cross` rather than the board
+   name; FreeRTOS now takes the same test.
+7. The entry emitter did not know the board key, so it fell through to
+   `LinuxBoard` and emitted a native `int main` — silently, not as the
+   configure error that fallback's comment assumes.
+
+Two more were found beside the path rather than on it, and both were
+pre-existing reds nothing had reported: the `c`/`cpp`/`mixed` workspace
+roots hardwired `BACKEND zenoh`, so their `*-native-cyclonedds` rows had
+been linking ZENOH (phase-368 made that loud; nothing then fixed the
+rows); and `CycloneDDS::ddsc` was probed for `IMPORTED_LOCATION_RELEASE`
+only, while ROS Humble exports config `NONE` — so the whole-archive flag
+named no libddsc and every `dds_*` symbol went undefined. The second was
+invisible because the first kept anything from reaching it.
 
 ## Why
 

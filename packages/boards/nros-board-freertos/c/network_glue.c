@@ -1,6 +1,15 @@
 /*
  * network_glue.c — lwIP + FreeRTOS network plumbing called from Rust
  *
+ * phase-370 W1 — the three KERNEL-only helpers that used to sit here
+ * (`nros_freertos_start_scheduler`, `nros_freertos_create_task`,
+ * `nros_freertos_set_current_task_priority`) moved to
+ * `freertos_task_glue.c`. They touch no lwIP symbol, but this TU includes
+ * `lwip/*.h` unconditionally, so a board whose network stack is the HOST's
+ * could not reach them without dragging in a stack it does not have. The
+ * FreeRTOS POSIX simulator is that board. Splitting was the alternative to a
+ * second copy of `xTaskCreate` in a second file.
+ *
  * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
  * Phase 152.1.B.2 — board-specific Ethernet init lifted to the
  * weak `nros_board_register_netif` / `nros_board_poll_netif`
@@ -119,53 +128,6 @@ int nros_freertos_init_network(
  */
 void nros_freertos_poll_network(void) {
     nros_board_poll_netif();
-}
-
-/*
- * Start the FreeRTOS scheduler.  Does not return.
- */
-void nros_freertos_start_scheduler(void) {
-    vTaskStartScheduler();
-    /* Should never reach here */
-    for (;;) {}
-}
-
-/*
- * Create a FreeRTOS task.
- * Returns 0 on success, -1 on failure.
- */
-int nros_freertos_create_task(
-    void (*entry)(void *),
-    const char *name,
-    uint32_t stack_words,
-    void *arg,
-    uint32_t priority)
-{
-    /* configSTACK_DEPTH_TYPE defaults to StackType_t (uint32_t on Cortex-M3
-     * via portmacro.h). The previous (uint16_t) cast silently truncated
-     * stack depths > 65535 words (>256 KB), leaving tasks with a 0-word
-     * stack and a wild SP. Drop the cast — xTaskCreate accepts the full
-     * uint32_t we already declared in this wrapper. */
-    BaseType_t ret = xTaskCreate(entry, name, stack_words, arg,
-                                 (UBaseType_t)priority, NULL);
-    return (ret == pdPASS) ? 0 : -1;
-}
-
-/*
- * Set the CALLING task's priority (raw FreeRTOS units), clamped to
- * configMAX_PRIORITIES - 1 (the shared FreeRTOSConfig.h defines a live
- * configASSERT, so an out-of-range value must not reach
- * vTaskPrioritySet). Used by the multi-tier boot path: the boot task is
- * created at the generic app priority but then RUNS tiers[0] (the
- * highest tier), so it must assume that tier's declared priority the
- * same way a spawned tier task is born with its own.
- */
-void nros_freertos_set_current_task_priority(uint32_t priority)
-{
-    if (priority >= (uint32_t)configMAX_PRIORITIES) {
-        priority = (uint32_t)configMAX_PRIORITIES - 1u;
-    }
-    vTaskPrioritySet(NULL, (UBaseType_t)priority);
 }
 
 /*

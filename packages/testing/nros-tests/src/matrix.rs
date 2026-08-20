@@ -53,6 +53,17 @@ pub enum PlatformId {
     ZephyrQemuCortexM,
     /// FreeRTOS on QEMU MPS2-AN385 (lwIP).
     FreertosMps2,
+    /// FreeRTOS POSIX simulator on the build host (phase-370).
+    ///
+    /// The kernel's `ThirdParty/GCC/Posix` port: FreeRTOS tasks are pthreads,
+    /// the tick is a host timer signal, and the network stack is the HOST's
+    /// rather than lwIP. That last one is why it is a separate witness from
+    /// `FreertosMps2` and not a config of it — the RMW below it is the `posix`
+    /// branch's host ddsrt, so the two exercise different halves of the family.
+    ///
+    /// Cells here are C/C++ only: the POSIX port has no Rust entry shape of its
+    /// own, and this board carries no Rust board crate.
+    FreertosPosix,
     /// NuttX on QEMU arm virt (Cortex-A7).
     NuttxArm,
     /// NuttX on QEMU rv-virt (riscv32).
@@ -104,8 +115,17 @@ impl PlatformId {
             // answer, because at that point the window scheme is genuinely full
             // and needs narrowing, not another renumber.
             PlatformId::ZephyrQemuCortexM => 9,
-            PlatformId::Fvp => 10,
-            PlatformId::Px4 => 11,
+            // phase-370 takes 10 on the rule the paragraph above states: a LOW
+            // index is the scarce resource and belongs to a platform that
+            // BAKES. `domain_of` is `1 + index*21 + slot*3 + lang`, so index 10
+            // tops out at 231 and index 11 at 252 — 10 is the last usable slot,
+            // and it was held by a tier-3 witness with zero Runtime cells.
+            // `Fvp` and `Px4` move up into arithmetic that is unreachable for
+            // exactly as long as they bake nothing, which is the same trade the
+            // comment above already made on their behalf.
+            PlatformId::FreertosPosix => 10,
+            PlatformId::Fvp => 11,
+            PlatformId::Px4 => 12,
         }
     }
 
@@ -155,6 +175,12 @@ impl PlatformId {
             // lane-scoped build and the whole staleness gate select on.
             PlatformId::ZephyrQemuCortexM => &["zephyr-cortex-m"],
             PlatformId::FreertosMps2 => &["freertos"],
+            // A token of its own, for the reason the ZephyrQemuCortexM comment
+            // above gives: the witness leaves spell the same `lang` and `rmw`
+            // as their mps2 siblings, so one shared token would give two
+            // distinct rows one coordinate — and a coordinate is what every
+            // lane-scoped build and the staleness gate select on.
+            PlatformId::FreertosPosix => &["freertos-posix"],
             PlatformId::NuttxArm => &["nuttx"],
             PlatformId::NuttxRiscv => &["nuttx-riscv"],
             PlatformId::ThreadxLinux => &["threadx-linux"],
@@ -193,7 +219,9 @@ impl PlatformId {
             PlatformId::ZephyrNativeSim | PlatformId::Fvp | PlatformId::ZephyrQemuCortexM => {
                 "zephyr"
             }
-            PlatformId::FreertosMps2 => "freertos",
+            // One module, two boards — the RFC-0064 shape, same as the three
+            // Zephyr witnesses above. `just freertos build-posix-*` owns it.
+            PlatformId::FreertosMps2 | PlatformId::FreertosPosix => "freertos",
             PlatformId::NuttxArm | PlatformId::NuttxRiscv => "nuttx",
             PlatformId::ThreadxLinux => "threadx_linux",
             PlatformId::ThreadxRiscv64 => "threadx_riscv64",
@@ -217,6 +245,7 @@ impl PlatformId {
         PlatformId::ZephyrNativeSim,
         PlatformId::ZephyrQemuCortexM,
         PlatformId::FreertosMps2,
+        PlatformId::FreertosPosix,
         PlatformId::NuttxArm,
         PlatformId::NuttxRiscv,
         PlatformId::ThreadxLinux,
@@ -720,6 +749,13 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Rust, Zenoh, EntryPubsub, Workspace, Runtime),
+    // phase-370 W3 — the freertos family's first cells that run without QEMU.
+    // The POSIX simulator is a host process, so `Runtime` here costs a process
+    // spawn rather than an emulator, and the RMW is the same host CycloneDDS
+    // the `Linux` rows use. No Rust row: the POSIX port has no Rust entry shape
+    // of its own and the board carries no Rust board crate.
+    cell(FreertosPosix, C,   Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(FreertosPosix, Cpp, Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(NuttxArm, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     // Corrected during the phase-295 W3.b entry consolidation: the seed
     // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub

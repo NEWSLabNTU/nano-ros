@@ -81,6 +81,7 @@ set(_NROS_FREERTOS_NET_C
 set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_hooks.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
     "${_NROS_BOARD_DIR}/c/board_mps2.c")

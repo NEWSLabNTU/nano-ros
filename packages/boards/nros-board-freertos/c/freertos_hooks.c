@@ -41,6 +41,17 @@ static void semihost_write0(const char *s) {
     semihosting_write0(s);
 }
 
+/* phase-370 — the family console hook `freertos_run_tiers.c` reports through.
+ *
+ * That TU used to call `semihosting_write0` directly, which tied a file about
+ * FreeRTOS tiers to one board family's debug transport. On a Cortex-M board
+ * under QEMU the console IS semihosting, so this is a one-line forward; the
+ * POSIX simulator board defines the same symbol over `stderr`. Exactly one
+ * strong definition per image, because exactly one board TU is compiled. */
+void nros_board_freertos_console_write(const char *s) {
+    semihosting_write0(s);
+}
+
 /* ---- FreeRTOS assert ---- */
 void freertos_assert_failed(const char *file, int line) {
     semihosting_write0("FreeRTOS ASSERT FAILED: ");

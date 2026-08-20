@@ -561,6 +561,39 @@ cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", 
 # QEMU slirp with a matching net (host=192.0.3.1) and the entry dials
 # `tcp/192.0.3.1:<port>`. Own build_subdir (one board per CMake configure). Consumed by
 # tests/entry_e2e.rs (freertos_c cell) (cross-process /chatter from the QEMU guest).
+# phase-370 W3 — the freertos family's first NON-QEMU, CI-runnable e2e cells.
+#
+# The FreeRTOS POSIX simulator (`ThirdParty/GCC/Posix`): tasks are host pthreads,
+# the tick is a host timer signal, and the network stack is the HOST's — so the
+# RMW below is the same host CycloneDDS the `linux` rows use, and the whole cell
+# needs no cross toolchain and no emulator. `cyclonedds` rather than zenoh
+# because it is the backend the ASI consumer this board exists for runs, and
+# because it needs no router to deliver.
+#
+# Own `build_subdir` per language for the usual reason: one board per CMake
+# configure, and a different RMW is a different `nros_config_generated.h`.
+[[workspace_fixture]]
+id = "workspace-c-freertos-posix"
+platform = "freertos-posix"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+entry = "freertos_posix_entry"
+build_subdir = "build-workspace-fixtures-freertos-posix"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-posix"
+platform = "freertos-posix"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "freertos_posix_entry"
+build_subdir = "build-workspace-fixtures-freertos-posix"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
+
 [[workspace_fixture]]
 id = "workspace-c-freertos"
 platform = "freertos"

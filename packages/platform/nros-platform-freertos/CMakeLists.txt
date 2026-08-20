@@ -62,7 +62,24 @@ if(NOT DEFINED FREERTOS_LWIP_TARGET)
         "Name of the imported lwIP CMake target (optional)")
 endif()
 
-set(_nros_freertos_sources src/platform.c src/timer.c src/cyclonedds_compat.c)
+set(_nros_freertos_sources src/platform.c src/timer.c)
+
+# phase-370 — `cyclonedds_compat.c` fills in what a BARE-METAL image lacks for
+# Cyclone's ddsrt: `__aeabi_read_tp` (the ARM EABI TLS helper, resolving
+# `__tls_base` from the linker script), `gethostname`, and `clock_gettime`. Its
+# own opening line says "when linked into the nano-ros MPS2 bare-metal image".
+#
+# On a HOSTED board every one of those comes from the C library, so compiling
+# this TU is not merely redundant — `__aeabi_read_tp` fails to link (`undefined
+# reference to __tls_base`: there is no linker script defining it) and the other
+# two would shadow glibc's. Same opt-out shape as `net.c` above, and the same
+# reason: a source that answers a question the host already answered.
+option(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT
+       "Include cyclonedds_compat.c (bare-metal fill-ins for Cyclone's ddsrt: \
+__aeabi_read_tp/__tls_base, gethostname, clock_gettime)" ON)
+if(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT)
+    list(APPEND _nros_freertos_sources src/cyclonedds_compat.c)
+endif()
 
 # net.c pulls <lwip/sockets.h>; skip it when no lwIP target is around.
 # Downstream builds without networking (smoke tests, MCU profiles that
@@ -75,6 +92,18 @@ endif()
 
 add_library(nros_platform_freertos STATIC ${_nros_freertos_sources})
 target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
+
+# phase-370 — the heap scheme, which `platform.c`'s heap-stat pair depends on.
+# `xPortGetFreeHeapSize` exists on heap_4/heap_5 and NOT on heap_3, which is a
+# wrapper over the C library's `malloc` and keeps no free-list. A board building
+# with heap_3 sets this so the stats read `mallinfo2` instead of failing to
+# link. Default OFF preserves every existing board (all heap_4).
+option(NROS_PLATFORM_FREERTOS_HEAP_3
+       "The board builds FreeRTOS with heap_3 (C library malloc), so the heap stats \
+read mallinfo2 rather than xPortGetFreeHeapSize" OFF)
+if(NROS_PLATFORM_FREERTOS_HEAP_3)
+    target_compile_definitions(nros_platform_freertos PRIVATE NROS_FREERTOS_HEAP_3=1)
+endif()
 # Phase 212.M.7 — ESP-IDF's vendor headers (`lwip/netdb.h`,
 # `freertos/portmacro.h`, soc `REG_READ` macro) use GCC extensions
 # (`#include_next`, statement-expressions). They're transitively

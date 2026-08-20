@@ -95,6 +95,14 @@ nodes = ["/listener"]
 kind = "embedded"
 board = "mps2-an385-freertos"
 
+# phase-370 W3 — the FreeRTOS POSIX simulator. `kind = "embedded"` like its
+# `mps2-an385-freertos` sibling and NOT `native`: the image is a host process,
+# but the nodes run as FreeRTOS TASKS under a scheduler the board's `main`
+# starts, which is the property `kind` names.
+[deploy.freertos-posix]
+kind = "embedded"
+board = "freertos-posix"
+
 [deploy.zephyr]
 kind = "embedded"
 board = "native_sim/native/64"

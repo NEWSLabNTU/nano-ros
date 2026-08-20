@@ -1,0 +1,37 @@
+# phase-370 W1 — board descriptor for the FreeRTOS POSIX simulator.
+#
+# The FreeRTOS kernel's `ThirdParty/GCC/Posix` port runs tasks as host pthreads
+# with signal-driven preemption, so this is a BOARD-level variant of the
+# freertos platform rather than a platform of its own (the "go, small" scoping
+# decision recorded in phase-292 W4.a). Everything above the kernel is the
+# existing freertos family; everything below it is the host.
+#
+# Two consequences follow from "below it is the host", and they are the whole
+# difference from `nros-board-mps2-an385-freertos`:
+#
+#   * `supported_netstacks = []` — the HOST kernel owns the network stack, so
+#     there is no lwIP and no netif driver. An empty list is a statement, not an
+#     omission: a deploy naming a stack is refused. Same spelling, and the same
+#     reason, as the `linux` board's (phase-351 W4).
+#   * no cross toolchain — `toolchain = "stable"` builds for the host triple,
+#     which is what makes this the freertos family's first CI-runnable e2e lane
+#     without QEMU.
+[[board]]
+names = ["freertos-posix"]
+platform = "freertos"
+toolchain = "stable"
+platform_feature = "platform-freertos"
+link_kind = "none"
+# `hosted-main` and not the mps2 board's `board-run`: the image IS a host
+# process, and its `main` is an ordinary one that starts the scheduler. The
+# entry is `c/freertos_posix_entry.c`.
+entry_kind = "hosted-main"
+supported_netstacks = []
+
+# RFC-0042 D2 — declared capabilities (SSoT). Same three as the mps2 board: the
+# kernel supplies heap and threads, and the host supplies atomics natively
+# rather than through `portable-atomic`.
+[board.capabilities]
+heap = true
+atomics = true
+threads = true

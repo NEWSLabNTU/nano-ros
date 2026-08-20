@@ -56,14 +56,34 @@ elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
     list(APPEND _ws_subdirs src/threadx_entry)
 elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
+# phase-370 W3 — the same FreeRTOS platform on the host: no toolchain file is
+# mapped above, because the POSIX port compiles with the host compiler.
+elseif(NANO_ROS_BOARD STREQUAL "freertos-posix")
+    list(APPEND _ws_subdirs src/freertos_posix_entry)
 endif()
 
 # phase-348 W4 — the add_subdirectory() order comes from each package's
 # `<depend>` tags. The list still chooses the SET (platform filtering is a
 # selection no dependency can express); it no longer has to be written in a
 # valid order.
+# phase-370 W3 — forward `-DNROS_RMW` instead of hardwiring the backend.
+#
+# `BACKEND zenoh` is authoritative over the cache variable by design (a
+# workspace root is the one place that declares its system), so a row asking for
+# another RMW LOST. phase-368 made that loud rather than silent, and the warning
+# it added has been firing on rows that already exist: the `native-cyclonedds`
+# workspace rows pass `-DNROS_RMW=cyclonedds` — the `rmw` field expands to
+# exactly that (`fixtures-manifest.py`) — and linked zenoh.
+#
+# The forwarding shape below is the one phase-368's own warning text prescribes
+# and the scaffolded template ships. zenoh stays the DEFAULT, so every row that
+# does not ask for something else is unchanged.
+if(NOT DEFINED NROS_RMW)
+    set(NROS_RMW zenoh)
+endif()
+
 nano_ros_workspace(
     ORDER_FROM_DEPENDS
-    BACKEND  zenoh
+    BACKEND  ${NROS_RMW}
     PLATFORM "${NANO_ROS_PLATFORM}"
     SUBDIRS  ${_ws_subdirs})
