@@ -5,3 +5,4 @@
 /Cargo.lock
 /build/
 /build-cyclonedds/
+/build-zenoh/

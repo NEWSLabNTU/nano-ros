@@ -260,7 +260,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
     });
     let listener_bin = build_threadx_rv64_rust_example_rmw(
         "listener",
-        "riscv64_threadx_rust_listener_cyclonedds",
+        "riscv64_threadx_rust_listener",
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {

@@ -70,6 +70,34 @@ is 828 GB and `rglob("Cargo.toml")` over it did not finish in 300 s, vs 347 mani
 themselves. Two fixed (`check-no-std-stdio` 300s+->3s, `check-example-leaf-target-dirs` 90s+->2s); the
 rest listed. Warm cache hides it, so measure cold or under a build. See `0721-*`. (2026-08-20)
 
+Recently resolved (2026-08-20): **#0722** — `nros-board-esp32-qemu`'s manifest declared `nros-log` twice in
+one `[dependencies]` table; issues 0708 and 0710 each added a copy and the dedup between them removed a
+THIRD. Cargo refuses such a file rather than warning, so every nested example workspace failed
+`cargo metadata` (four frames up, naming `esp32_entry_nros_selection`, which is how it took out
+`just format`) — while `cargo metadata` from the repo ROOT stayed green, because the root workspace does
+not include that board. The duplicate itself was removed upstream by `0cb380fce` (#0714) while fixing a
+different consequence of the same 0710 change; this issue contributes the GATE, since nothing yet stopped
+the next one — `check-manifests-parse`: every git-tracked `Cargo.toml` must parse, keyed on `git ls-files`
+rather than on workspace membership. See `archived/0722-*`.
+
+Recently resolved (2026-08-20): **#0720** — a fixture binary name that no CMake target produces does not
+fail a test, it SILENCES one: the resolver's path does not exist, and the call site reports that as
+`fixture missing (just … build-fixtures)`. phase-369 W4's RMW-neutral rename (`7c455016f`) updated the
+threadx-rv64 talker's test site and missed the listener's, so the only consumer of the rust CycloneDDS
+image — the image issue 0692 was about — skipped every run while 0692 was investigated and archived.
+`check-skip-budget` saw `1 skip(s) — capability=1`, a count and not a name. Fixed, and gated statically by
+`check-fixture-binary-names`, which fails on the rename commit rather than the next sweep. See
+`archived/0720-*`.
+
+Recently resolved (2026-08-20): **#0718** — the six threadx-riscv64 `rust/` leaves are built for BOTH
+RMWs, and their `.gitignore` named `/build-cyclonedds/` but not `/build-zenoh/`, so every fixture build
+left six untracked directories of object files in `git status` — the state in which a blanket add commits
+build output. Invisible per-leaf: the `c/`/`cpp/` siblings list both, and every rust leaf lists one, so no
+single file reads as incomplete. All six fixed; gated by `check-example-leaf-build-dirs`, which asks
+`git status --porcelain` rather than walking paths, so it carries no naming logic of its own — at the cost
+of being a post-build check, since a leaf's build dirs come from shell positionals inside the `just`
+recipes and a static parse would have to guess. See `archived/0718-*`.
+
 **#0712** (build, open 2026-08-20) — `export -f` closure is ungated: a function shipped to a make
 leaf calls a sibling that was never exported, and the leaf is a fresh bash with only what `export -f`
 gave it. Third occurrence (0400, phase-340 B2, now 0706's two cache-guard helpers); the last one took

@@ -2,6 +2,7 @@
 /target-zenoh/
 /target-dds/
 /build-cyclonedds/
+/build-zenoh/
 /generated/
 /Cargo.lock
 /build/

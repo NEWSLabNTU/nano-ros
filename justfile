@@ -449,7 +449,7 @@ check-fast: _check-skip-reset \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
     check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-sysdep-remedies \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
-    check-cargo-target-spelling check-example-leaf-target-dirs check-build-rs-rerun-paths \
+    check-cargo-target-spelling check-example-leaf-target-dirs check-example-leaf-build-dirs check-fixture-binary-names check-manifests-parse check-build-rs-rerun-paths \
     check-lane-skip-protocol check-skip-marker-matching \
     check-package-xml-comments check-provider-announcements check-provider-index \
     check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
@@ -4305,6 +4305,28 @@ check-fixture-groups:
 [private]
 check-example-leaf-target-dirs:
     @python3 scripts/check-example-leaf-target-dirs.py
+
+# issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
+# directory a recipe gives it must be named in that leaf's own .gitignore.
+# The six threadx rust leaves ignored `build-cyclonedds` and not `build-zenoh`,
+# and their c/cpp siblings ignored both, so no single leaf looked wrong.
+[private]
+check-example-leaf-build-dirs:
+    @python3 scripts/check-example-leaf-build-dirs.py
+
+# issue 0720 — a test asks a fixture resolver for an artifact BY NAME, and a
+# name no CMake target produces resolves to a missing path, which the test
+# reports as a `fixture missing` SKIP. So the failure mode is silence, not red.
+[private]
+check-fixture-binary-names:
+    @python3 scripts/check-fixture-binary-names.py
+
+# issue 0722 — a manifest is read by whichever workspace claims it, and this
+# tree has many roots. A crate no root claims can carry a duplicate key that
+# cargo REFUSES, while `cargo metadata` from the repo root stays green.
+[private]
+check-manifests-parse:
+    @python3 scripts/check-manifests-parse.py
 
 # issue 0650 — a fixture lane that cannot run must report SKIPPED (rc 78), never
 # build nothing and print "<platform> test fixtures built." with exit 0. That
