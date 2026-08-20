@@ -701,7 +701,7 @@ where
     // Wire the default nros_log sink (platform console) at the boot funnel,
     // as the linux/zephyr run_tiers do — idempotent; without it Node-pkg
     // `nros_info!` output is silently dropped on multi-tier entries.
-    ::nros_log::init(::nros_log::sinks::default());
+    ::nros_log::init_default();
 
     report_tiers_above_transport::<B>(&config, tiers);
 
@@ -877,6 +877,11 @@ where
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    // A record raised inside a LIBRARY (the zenoh session-pool diagnostic of
+    // issue 0589, for one) is dropped until a sink list exists, and its author
+    // cannot know whether the board published one. Idempotent.
+    ::nros_log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros FreeRTOS Platform"));
@@ -966,6 +971,11 @@ where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    // A record raised inside a LIBRARY (the zenoh session-pool diagnostic of
+    // issue 0589, for one) is dropped until a sink list exists, and its author
+    // cannot know whether the board published one. Idempotent.
+    ::nros_log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros FreeRTOS Platform (bare)"));

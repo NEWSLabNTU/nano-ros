@@ -51,15 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0708** (platform/testing, open 2026-08-20) — the ThreadX and NuttX boot funnels never call
-`nros_log::init`, so every library-emitted `nros_*!` record is dropped. Measured: the threadx-linux logging
-fixture with only its OWN `init` removed boots fully and emits 0 of 6 records; restoring it gives 6. Both
-families wire a `log`-crate logger instead (`install_uart_logger` / `install_stdout_logger`), which is a
-DIFFERENT facade — bridging needs `LogCrateSink`, which appears nowhere outside the book. Issue 0420
-measured the half BELOW the facade (`nros_platform_log_write` exists on both) using fixtures that supply
-their own `init`, so it could not test this half. Bites LIBRARY records specifically, which is exactly where
-issue 0589 put the zenoh pool diagnostic "so it would reach `no_std` targets". Records a wrong fix that was
-tried: patching next to `install_uart_logger` misses `run_bare`. See `0708-*`. (2026-08-20)
+Recently resolved (2026-08-20): **#0708** — board boot funnels never published the `nros_log` sink list, so
+library-emitted `nros_*!` records were dropped silently. Measured: the threadx-linux logging fixture relying
+on its board emitted 0 of 6; after, 6 of 6. Fixed by one named `nros_log::init_default()` at every funnel —
+and the funnel set was bigger than the issue said in BOTH directions: `nros-board-freertos` (named as
+unaffected) had 2 of 3 funnels bare, and the gate then found `nros-board-mps2-an385::node.rs::run_bare`.
+Three of the five boards that made this call independently got it partly wrong, and every per-CRATE reading
+passes them, which is why `check-board-log-sink.py` is per-FUNNEL (delegation credited, build-script `run*`
+excluded). Acceptance is now a test: the fixture no longer publishes its own list, so it asserts the board's.
+See `archived/0708-*`. (2026-08-20)
 
 **#0707** (testing, open 2026-08-20) — every solo or filtered run takes ROS domain 1 (`slot 0, seq 0`), so an
 orphan left on domain 1 joins the next run. Filed on issue 0672's own instruction, which recorded the hazard

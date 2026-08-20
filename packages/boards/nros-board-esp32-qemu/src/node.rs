@@ -308,6 +308,11 @@ pub fn run_bare<F, E: core::fmt::Debug>(config: Config, setup: F) -> !
 where
     F: FnOnce() -> core::result::Result<(), E>,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    // A record raised inside a LIBRARY (the zenoh session-pool diagnostic of
+    // issue 0589, for one) is dropped until a sink list exists, and its author
+    // cannot know whether the board published one. Idempotent.
+    ::nros_log::init_default();
     init_hardware(&config);
     register_log_writer();
     match setup() {

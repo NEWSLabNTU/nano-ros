@@ -497,6 +497,11 @@ pub fn run_bare<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel; a
+    // LIBRARY record is dropped until one exists. This crate's other two
+    // funnels (entry.rs, rtic.rs) had it and this one did not, which is why
+    // the gate is per-FUNNEL: any per-crate check passes a crate like this.
+    nros_log::init_default();
     init_hardware(&config);
     match f(&config) {
         Ok(()) => {

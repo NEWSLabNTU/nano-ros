@@ -561,6 +561,20 @@ where
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    //
+    // The board also installs a `log`-crate logger below, and that is a
+    // DIFFERENT facade: an `nros_error!` raised inside a LIBRARY (the zenoh
+    // session-pool diagnostic of issue 0589, for one) dispatches through
+    // nros_log, which drops every record until a sink list is published.
+    // Measured before the fix: the threadx-linux logging fixture with its own
+    // `init` removed booted fully and emitted 0 of 6 records.
+    //
+    // At the FUNNEL, not next to `install_uart_logger`/`install_stdout_logger`:
+    // those live in inner helpers, and a first attempt that patched them left
+    // `run_bare` — the funnel the fixture actually boots through — still
+    // silent. Idempotent, so nesting funnels may each call it.
+    ::nros_log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform (multi-tier)"));
@@ -732,6 +746,20 @@ where
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    //
+    // The board also installs a `log`-crate logger below, and that is a
+    // DIFFERENT facade: an `nros_error!` raised inside a LIBRARY (the zenoh
+    // session-pool diagnostic of issue 0589, for one) dispatches through
+    // nros_log, which drops every record until a sink list is published.
+    // Measured before the fix: the threadx-linux logging fixture with its own
+    // `init` removed booted fully and emitted 0 of 6 records.
+    //
+    // At the FUNNEL, not next to `install_uart_logger`/`install_stdout_logger`:
+    // those live in inner helpers, and a first attempt that patched them left
+    // `run_bare` — the funnel the fixture actually boots through — still
+    // silent. Idempotent, so nesting funnels may each call it.
+    ::nros_log::init_default();
     // Issue #214 — echo the effective identity/domain so a two-node QEMU
     // pair failure is diagnosable from the console (the `run_entry` path
     // prints an equivalent banner; this path had none).
@@ -920,6 +948,20 @@ where
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    //
+    // The board also installs a `log`-crate logger below, and that is a
+    // DIFFERENT facade: an `nros_error!` raised inside a LIBRARY (the zenoh
+    // session-pool diagnostic of issue 0589, for one) dispatches through
+    // nros_log, which drops every record until a sink list is published.
+    // Measured before the fix: the threadx-linux logging fixture with its own
+    // `init` removed booted fully and emitted 0 of 6 records.
+    //
+    // At the FUNNEL, not next to `install_uart_logger`/`install_stdout_logger`:
+    // those live in inner helpers, and a first attempt that patched them left
+    // `run_bare` — the funnel the fixture actually boots through — still
+    // silent. Idempotent, so nesting funnels may each call it.
+    ::nros_log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform"));
@@ -1035,6 +1077,20 @@ where
     F: FnOnce() -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0708 — publish the nros_log sink list at the boot funnel.
+    //
+    // The board also installs a `log`-crate logger below, and that is a
+    // DIFFERENT facade: an `nros_error!` raised inside a LIBRARY (the zenoh
+    // session-pool diagnostic of issue 0589, for one) dispatches through
+    // nros_log, which drops every record until a sink list is published.
+    // Measured before the fix: the threadx-linux logging fixture with its own
+    // `init` removed booted fully and emitted 0 of 6 records.
+    //
+    // At the FUNNEL, not next to `install_uart_logger`/`install_stdout_logger`:
+    // those live in inner helpers, and a first attempt that patched them left
+    // `run_bare` — the funnel the fixture actually boots through — still
+    // silent. Idempotent, so nesting funnels may each call it.
+    ::nros_log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
     B::println(format_args!("  nros ThreadX Platform (bare)"));

@@ -550,6 +550,7 @@ check-test-targets:
 check-build: \
     check-cli-fresh check-required-features-reachable check-host-triple-literals \
     check-literal-domain-id \
+    check-board-log-sink \
     check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
@@ -1152,6 +1153,14 @@ check-host-triple-literals:
 # whatever `ROS_DOMAIN_ID` says, and the keyexpr is `<domain_id>/<name>/…`. A
 # peer honouring the value matches nothing and times out with no diagnostic on
 # either side. Invisible while both peers drop the domain identically.
+# issue 0708 — a board's boot funnel must publish the nros_log sink list, or the
+# records it should carry are dropped SILENTLY. Per-FUNNEL, not per-crate: both
+# boards carrying the bug also contained the call somewhere else, so any
+# per-crate check passes them. Buildless source grep, so it belongs in this tier.
+[private]
+check-board-log-sink:
+    @python3 scripts/check-board-log-sink.py
+
 [group("main")]
 check-literal-domain-id:
     @python3 scripts/check-literal-domain-id.py

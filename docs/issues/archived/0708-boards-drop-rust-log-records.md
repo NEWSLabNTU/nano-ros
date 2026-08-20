@@ -1,7 +1,7 @@
 ---
 id: 708
 title: "The ThreadX and NuttX boot funnels never call `nros_log::init`, so every library-emitted `nros_*!` record is dropped"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: platform, testing
@@ -91,7 +91,69 @@ nros-board-threadx/src/entry.rs : run_tiers_entry, run_app_thread, run_entry, ru
 nros-board-nuttx/src/lib.rs     : run_entry, run_tiers
 ```
 
-## Direction
+## Resolution
+
+`nros_log::init_default()` — one named spelling — called at every board boot
+funnel, plus a per-funnel gate.
+
+**The funnel set was bigger than this issue first said, in two directions.**
+Writing the gate is what found the rest:
+
+| crate | funnels fixed |
+| --- | --- |
+| `nros-board-threadx` | `run_entry`, `run_tiers_entry`, `run_app_thread`, `run_bare` |
+| `nros-board-nuttx` | `run_entry`, `run_tiers` |
+| **`nros-board-freertos`** | **`run_entry`, `run_bare`** |
+| **`nros-board-esp32-qemu`** | **`run_bare`** |
+| **`nros-board-mps2-an385`** | **`run_bare`** (found by the gate, after I thought I was done) |
+
+The bolded rows are the correction. This issue named FreeRTOS as NOT affected
+because `nros-board-freertos` contains the call — it does, in
+`run_tiers_entry`, and 2 of its 3 funnels had none. `nros-board-mps2-an385` had
+it in `entry.rs` and `rtic.rs` and not in `node.rs`. So of the five boards that
+made this decision independently, **three got it partly wrong**, and every
+per-crate reading of the tree — including mine, twice — passes them.
+
+That is why the gate is per-FUNNEL. `check-board-log-sink.py` requires every
+`pub fn run*` in a board crate to reach `init_default`, directly or by
+delegating to a funnel that does (`nros-board-threadx-qemu-riscv64::run_app_thread`
+forwards, and is credited). `nros-board-common` is excluded by path with the
+reason recorded: its `run*` functions drive image links at BUILD time.
+
+Mutation-checked: reverting `nros-board-threadx::run_bare` to its shipped state
+fails the gate naming that exact line. The script's `--self-test` covers the three
+shapes it needed to learn — a multi-line signature, delegation, and a
+neighbouring `install_uart_logger` NOT counting.
+
+### Acceptance, as a test rather than a one-off
+
+`logging-smoke-threadx-linux` no longer publishes its own sink list. It used to,
+which is precisely why it proved the platform half (0420's question) and nothing
+about the board half. Now it emits 6 of 6 only because the funnel published one,
+so the assertion is about the board. The fixture carries a comment saying not to
+"fix" a future silence by adding an `init` back.
+
+Measured: 0 of 6 before, 6 of 6 after, same fixture, same host, freshly compiled
+both times (the first attempt at this measurement read a stale binary from a
+failed build and had to be redone).
+
+### Also folded in
+
+The five surviving hand-written `init(sinks::default())` copies — each with its
+own comment explaining the same hazard — now call `init_default()`. Six leaf
+lockfiles were regenerated through `just lock-update` for the new `nros-log`
+dependency on `nros-board-threadx` / `nros-board-nuttx`; the diff is six lines
+and zero added packages.
+
+### Not done
+
+Only the ThreadX-linux fixture's acceptance was executed here — it is the one
+host-runnable board. The other six `logging-smoke-*` fixtures still publish
+their own sink list, so they still cannot detect a regression in their board's
+funnel. Converting them is the same one-line change each, but it needs their
+QEMU lanes to verify and those were not run. Worth a follow-up.
+
+## Direction (as filed)
 
 1. `nros_log::init_default()` — one named spelling, so this is greppable and
    gate-able rather than five hand-written copies of `init(sinks::default())`

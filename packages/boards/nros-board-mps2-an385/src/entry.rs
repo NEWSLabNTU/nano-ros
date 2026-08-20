@@ -117,7 +117,7 @@ where
     // ships; this only wires the dispatcher to the default sinks). Replaces the
     // per-example `nros_log::init(...)` that used to live in each talker's boot
     // closure. Nodes still `register_logger(&LOGGER)` in their `register()`.
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init_default();
 
     // phase-338 W7 — bridge the `log` facade too, so BOTH work here.
     //

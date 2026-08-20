@@ -19,6 +19,8 @@ name = "nros_board_nuttx"
 # Cargo side ships `Config` + `run` shape only; no `build.rs`
 # bundles the kernel here.
 [dependencies]
+# issue 0708 — the boot funnels publish the nros_log sink list (`init_default`).
+nros-log = { path = "../../core/nros-log", default-features = false }
 # 152.4.B — `BoardInit` trait used by the `run<B: BoardInit>`
 # generic entry point. `nros-board-common` is itself no_std-friendly
 # (no `nros/std` activation) so it can stay unconditional.

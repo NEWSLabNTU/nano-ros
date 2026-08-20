@@ -212,7 +212,7 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
     // `BoardEntry` boot (`crate::entry`); the RTIC entry never did — nodes
     // registered their `Logger` against an uninitialized dispatcher and every
     // record was silently dropped.
-    nros_log::init(nros_log::sinks::default());
+    nros_log::init_default();
 
     // phase-338 W7 — bridge `log` on the RTIC path too, not just `entry::boot`.
     // Without this an RTIC node body written against `log::info!` compiles and

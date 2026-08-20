@@ -281,7 +281,7 @@ impl LinuxBoard {
         // Phase 264 W3 — wire the default log sink (host → stdout/stderr) so a Node
         // pkg's `nros_info!` produces output without per-app `nros_log::init`.
         // Idempotent (swaps the sink list atomically).
-        ::nros_log::init(::nros_log::sinks::default());
+        ::nros_log::init_default();
         // phase-338 W3 — and the `log` facade's host sink, for the same reason.
         // Four of the five scheduled-platform node bodies log via `log::info!`
         // (their boards bridge it: threadx's `install_uart_logger`, nuttx's
@@ -400,7 +400,7 @@ impl LinuxBoard {
         register_linked_rmw();
         <Self as BoardInit>::init_hardware();
         // Phase 264 W3 — default log sink at boot (see `run`).
-        ::nros_log::init(::nros_log::sinks::default());
+        ::nros_log::init_default();
         // Same rationale as `run` (phase-338 W3): bridge the `log` facade
         // too, or a node body using `log::info!` prints nothing on the
         // multi-tier native entry while working on every RTOS board.

@@ -324,6 +324,7 @@ dependencies = [
  "log",
  "nros",
  "nros-board-common",
+ "nros-log",
  "nros-platform",
  "nros-rmw-zenoh",
 ]
