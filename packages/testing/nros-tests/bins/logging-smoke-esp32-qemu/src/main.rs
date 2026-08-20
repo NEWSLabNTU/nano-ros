@@ -13,10 +13,7 @@
 
 use esp_backtrace as _;
 use nros_board_esp32_qemu::{Config, entry, run_bare};
-use nros_log::{
-    Logger, Severity, init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
-    register_logger, sinks,
-};
+use nros_log::{Logger, Severity, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn, register_logger};
 
 nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -31,7 +28,10 @@ const CONFIG: &str = include_str!("../config.toml");
 fn main() -> ! {
     run_bare(Config::from_toml(CONFIG), || {
         register_logger(&LOGGER);
-        init(sinks::default());
+        // issues 0708/0710 — deliberately NO `init(sinks::default())`: the board's
+        // `run_bare` funnel publishes the sink list. Relying on it is what makes this
+        // an assertion about the BOARD rather than about the platform ABI, which is
+        // the only check a spelling-based gate cannot fool.
         let logger = &LOGGER;
         logger.set_level(Severity::Trace);
 

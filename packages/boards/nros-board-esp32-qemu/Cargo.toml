@@ -9,6 +9,10 @@ description = "ESP32-C3 QEMU board crate for nros (platform init + run() entry p
 name = "nros_board_esp32_qemu"
 
 [dependencies]
+# issue 0708/0710 — the `run_bare` boot funnel publishes the nros_log sink
+# list. Not optional: the funnel exists in every configuration, and a funnel
+# that cannot publish is the defect those issues are about.
+nros-log = { path = "../../core/nros-log", default-features = false }
 # Phase 173.1 — Board super-trait + the generic direct-exec `run`.
 nros-board-common = { path = "../nros-board-common", default-features = false }
 # Unified platform primitives (clock, memory, random, sleep, libc stubs)

@@ -75,6 +75,39 @@ way to the application, which no regex sees. Options, none free:
   converted fixtures, which is what caught this. That argues for finishing 0708's
   follow-up across every board rather than widening the grep.
 
-The third is the most honest: a booted image that emits nothing is the only
+## Progress — the runtime assertion, extended
+
+Taking the third option. Board families whose logging fixture now publishes NO
+sink list of its own, so a pass proves the BOARD published one:
+
+| board | boot funnel it asserts | |
+| --- | --- | --- |
+| threadx-linux | `run_bare` | PASS |
+| threadx-riscv64 | delegates to `nros-board-threadx` | PASS |
+| zephyr-native-sim | `run_tiers` | PASS |
+| freertos-mps2 | `nros_board_freertos::run_entry` | PASS |
+| nuttx-qemu-arm | `nsh_main` (this issue) | PASS |
+| esp32-qemu | `run_bare` | PASS |
+
+`nros-board-esp32-qemu` did not depend on `nros-log` at all — the crate was named
+only in a comment — so issue 0708's call there had never compiled in any
+configuration that reached it. Same shape as `nros-board-mps2-an385`, where the
+dep was optional behind two features while the funnel's module was ungated. Both
+are now unconditional, for the reason the issue gives: a funnel that cannot
+publish is the defect.
+
+### The one family still unasserted, and why it is not a simple fix
+
+`mps2-baremetal` has no image that exercises its board's funnels.
+`logging-smoke-mps2-baremetal` enters through `#[entry] fn main()` in the fixture
+and never reaches board code, so converting it asserts nothing — it would only
+break a correct image. The board's three funnels (`entry.rs`, `rtic.rs`,
+`node.rs::run_bare`) are covered by the source gate and by nothing at runtime.
+
+Closing that needs a DIFFERENT image — one that boots through the board entry and
+emits a record — not a change to this fixture. Left open deliberately rather than
+papered over by converting the one image that cannot test it.
+
+The third option is the most honest: a booted image that emits nothing is the only
 check that cannot be fooled by a spelling. It costs a fixture per board family
 and it found this defect on its first run.
