@@ -191,3 +191,35 @@ it records stage spans, so it can only ever produce a CEILING. Every number in
 the first section of this issue is a ceiling; every number here is a sample.
 Record which, always — the 65% ceiling above and the 3-4/32 measured here are
 not in conflict, they answer different questions.
+
+### Correction: the 481 s was cold and contended; check-fast is 90 s warm
+
+The 481 s figure above is not reproducible and should not be quoted. Measured
+again on a quiet machine:
+
+| | |
+| --- | --- |
+| `just check-fast` end to end | **90 s** |
+| sum of the 112 gates timed individually | 56 s |
+| slowest single gate (`check-core-only-predicate`) | 8.3 s |
+| other pre-stage deps (`generate-bindings`, `setup-launch-resolve`, …) | 5 s total |
+
+The 481 s reading was taken immediately after killing an earlier build attempt,
+so the cargo-invoking gates (the three fmt gates, `check-cargo-locked`,
+`check-version-lockstep`) were resolving cold and contending. Cold-vs-warm on
+this path is a 5x spread, which is exactly the trap the section below warns
+about — and I walked into it while writing that warning.
+
+What survives the correction is the SHAPE, not the number: `check-fast` runs 112
+gates strictly serially as just dependencies, at 1-2 of 32 cores, and nothing
+about that changes with cache temperature. It costs 90 s warm and several
+hundred cold, always at ~5% CPU.
+
+The distribution says parallelise rather than optimise: no outlier owns the
+time (slowest 8.3 s, mean 501 ms), so there is no second 0721 hiding here. A
+fan-out across 32 cores bounds the phase at roughly the slowest gate plus
+overhead — order 10 s against 90 s serial, and far more when cold.
+
+Independence must be established first, not assumed: `_check-skip-reset` is
+ordered first by design, and some gates regenerate files (`check-cbindgen-
+headers`, `check-abi-bindings`) rather than only reading.
