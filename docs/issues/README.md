@@ -60,6 +60,16 @@ the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, 
 sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
 pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
 
+Recently resolved (2026-08-21): **#0742** — `just build-test-fixtures` exited 2 on main. The script runs
+once per compile-check unit IN PARALLEL (36 on `lane=native`) and every invocation drove the
+`px4_bridge_ffi` block against one shared `build/px4-msgs-codegen/bridge-cpp`. #0520 had already answered
+this shape for the Rust px4 leaves with an advisory lock; the C++ block #0738 added took the lock around
+`nros generate-px4-msgs` ONLY, leaving the `rm -rf` one line above it, the `-fsyntax-only` header check and
+the `cargo check` (which reaches the tree via `NROS_PX4_BRIDGE_GEN`) outside — i.e. it guarded the operation
+that FAILED rather than the shared state, and the destructive one stayed unguarded. Now held on FD 9 across
+the whole block, which is nearly free here because cargo already serializes that check on its own
+build-directory lock. Verified 0 failures against 2/2 before. See `archived/0742-*`. (2026-08-21)
+
 Recently resolved (2026-08-21): **#0404** — the WCET declaration schema is implemented and the issue
 outlived it. Its own last note said "RFC only, by scope — the Rust type and its validator are deliberately
 a separate work item"; that work item landed as `7ccfd38c9`. All four questions answered in code: keyed on

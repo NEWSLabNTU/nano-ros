@@ -769,18 +769,34 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
         id="px4_bridge_ffi"
         echo "== px4-compile-check: $id =="
         bridge_gen="$(nros_build_dir "$NROS_KIND_PX4_MSGS_CODEGEN")/bridge-cpp"
-        rm -rf "$bridge_gen"; mkdir -p "$bridge_gen"
         bridge_ok=1
-        # Same advisory lock as the Rust path above: one generator, one staging
-        # discipline, and this runs concurrently with those 87 units.
+        # issue 0742 — the CRITICAL SECTION is the whole block, not the
+        # generator call. This script runs once per compile-check unit, in
+        # parallel (32 of them on `lane=native`), and every one of them drives
+        # this same `bridge-cpp` path: the `rm -rf` below deletes a sibling's
+        # output, its `.px4_msg_stage` and the headers a third one is about to
+        # read. The lock that used to wrap only `nros generate-px4-msgs` left
+        # all three outside it, so the failures land on files that plainly
+        # exist:
+        #
+        #     Error: write header for DebugKeyValue: No such file or directory
+        #     Error: read message file .../.px4_msg_stage/msg/DebugKeyValue.msg
+        #     rm: cannot remove '.../.px4_msg_stage/msg': Directory not empty
+        #     cc1plus: fatal error: .../debug_key_value.hpp: No such file
+        #
+        # Extending the lock is nearly free here, unlike the Rust path above
+        # where the note about not serializing 87 `cargo check`s belongs: this
+        # generates ONE message, syntax-checks ONE header, and its `cargo check`
+        # is already serialized by cargo's own build-directory lock (the run log
+        # is full of "Blocking waiting for file lock on build directory").
+        _px4_bridge_locked=0
         if command -v flock >/dev/null 2>&1; then
-            flock "$px4_lockfile" nros generate-px4-msgs --px4 "$px4_autopilot_dir" \
-                --lang cpp --ros-edition jazzy --topics debug_key_value \
-                -o "$bridge_gen" || bridge_ok=0
-        else
-            nros generate-px4-msgs --px4 "$px4_autopilot_dir" --lang cpp \
-                --ros-edition jazzy --topics debug_key_value -o "$bridge_gen" || bridge_ok=0
+            exec 9>"$px4_lockfile"
+            flock 9 && _px4_bridge_locked=1
         fi
+        rm -rf "$bridge_gen"; mkdir -p "$bridge_gen"
+        nros generate-px4-msgs --px4 "$px4_autopilot_dir" --lang cpp \
+            --ros-edition jazzy --topics debug_key_value -o "$bridge_gen" || bridge_ok=0
         [ "$bridge_ok" = 1 ] || echo "   px4_msgs C++ codegen FAILED for $id (no stamp)" >&2
 
         # The header must PARSE on its own. A generated header that only compiles
@@ -835,6 +851,13 @@ if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
             fi
         else
             px4_fail_n=$((px4_fail_n + 1))
+        fi
+        # End of issue 0742's critical section — everything above reads or
+        # writes the shared `bridge-cpp` tree, including the `cargo check`,
+        # which reaches it through `NROS_PX4_BRIDGE_GEN`.
+        if [ "$_px4_bridge_locked" = 1 ]; then
+            flock -u 9
+            exec 9>&-
         fi
     fi
 else
