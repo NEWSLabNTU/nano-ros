@@ -125,16 +125,62 @@ else
     fi
 fi
 
-# --- threadx ----------------------------------------------------------------
-# Not covered. The vendored ThreadX is the SINGLE-CORE port: it does not ship
-# `tx_thread_smp_core_exclude` in any header, so there is no declaration to
-# type-check our call against. Unlike freertos (a synthetic port config) and
-# nuttx (one macro), this needs the SMP port sources vendored first — a
-# different and larger job. Stated here so the gap is visible in the gate's own
-# output, not only in the issue.
+# --- threadx: tx_thread_smp_core_exclude ------------------------------------
+#
+# This gate previously said threadx was NOT COVERABLE because "the vendored
+# ThreadX is the single-core port and ships no SMP header". That was wrong: the
+# vendored tree carries `common_smp/` AND `ports_smp/` (a5/a34/a35/a53, linux,
+# mips...), so the real declaration is right there. Nothing needed vendoring.
+#
+# Port choice is load-bearing, and the wrong one fails for an unrelated reason.
+# `ports_smp/linux/gnu` looks obvious (host gcc, no cross toolchain) and trips
+# this file's own static assertion — its `ULONG` is `unsigned long`, 8 bytes on
+# x86_64, and `threadx_hooks.c` asserts 4 (phase-337 W4.a). An ARM32 SMP port
+# has a 4-byte ULONG and satisfies it, so `cortex_a5_smp` is used with the same
+# arm-none-eabi-gcc the other arms need.
 head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
-say "NOT COVERED — issue 0260. The vendored ThreadX is the single-core port and"
-say "ships no SMP header, so there is no declaration to check against."
+if [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
+    nros_check_skip "check-sched-dim-arms(threadx)" "THREADX_DIR unset, or no common_smp/inc (source ./activate.sh)"
+elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+    nros_check_skip "check-sched-dim-arms(threadx)" "arm-none-eabi-gcc not on PATH"
+else
+    out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 \
+        -DTX_THREAD_SMP \
+        -I "$THREADX_DIR/common_smp/inc" \
+        -I "$THREADX_DIR/ports_smp/cortex_a5_smp/gnu/inc" \
+        -I "$repo_root/packages/api/nros-c/include" \
+        -I "$repo_root/packages/platform/nros-platform-api/include" \
+        "$repo_root/packages/boards/nros-board-common/c/threadx_hooks.c" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        say "OK: the accept arm type-checks against the vendored ThreadX SMP headers"
+    elif ! printf '%s' "$out" | grep -E 'error|note' | grep -q 'threadx_hooks[.]c'; then
+        # NOTE lines count, and that is the whole subtlety. These APIs are
+        # MACROS, so a bad call is blamed on the macro DEFINITION in the vendor
+        # header, and our file is named only by the follow-up
+        # `note: in expansion of macro ...`. Inspecting error lines alone
+        # therefore reports a call-site fault as a port fault — measured, after
+        # writing it that way first.
+        #
+        # No diagnostic names OUR translation unit, so the failure is in the
+        # PORT/vendor headers, not the call site. Classifying by WHICH FILE the
+        # compiler blamed beats matching one symptom: the two wrong-port
+        # failures look nothing alike — host gcc + linux port trips this file's
+        # 4-byte-ULONG assertion (phase-337 W4.a), while arm-none-eabi + linux
+        # port dies on `semaphore.h: No such file`, a bare-metal toolchain
+        # having no POSIX headers. Keying on either string alone misses the
+        # other and misreports it as a call-site fault.
+        fail=1
+        say "PORT-MISMATCH: the chosen ports_smp port is not usable with this"
+        say "               compiler — every diagnostic is in vendor headers,"
+        say "               none in threadx_hooks.c. Call site NOT implicated."
+        printf '%s\n' "$out" | grep 'error' | head -2 | sed 's/^/               /'
+    else
+        fail=1
+        say "FAIL: the accept arm does not compile — this IS the call site."
+        printf '%s\n' "$out" | grep -E 'error' | head -5 | sed 's/^/      /'
+    fi
+fi
 
 echo
 if [ "$fail" -ne 0 ]; then
