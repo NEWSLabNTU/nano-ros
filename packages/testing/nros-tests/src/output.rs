@@ -366,6 +366,19 @@ pub const ZENOH_PEER_MODE_UNSUPPORTED_MARKER: &str = "peer mode unsupported:";
 /// its service is up (`"Waiting for service requests"`).
 pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";
 
+/// issue 0697 — the marker an exhausted zenoh session pool prints.
+///
+/// Mirrors `nros_rmw_zenoh::zpico::SESSION_POOL_EXHAUSTED_MARKER`, which is the
+/// definition. Kept as a constant here rather than a literal at the grep site
+/// because a slimmed banner has broken ~10 tests before; kept as a MIRROR rather
+/// than a re-export because `nros-tests` reaches this module without the zenoh
+/// backend in every feature set. `pool_exhaustion_marker_matches_the_backend`
+/// (in the consuming test) asserts the two agree wherever both are present.
+pub const ZENOH_SESSION_POOL_EXHAUSTED: &str = "zenoh session pool exhausted";
+
+/// The verdict line the issue-0697 fixture prints when BOTH halves hold.
+pub const POOL_EXHAUSTION_VERDICT: &str = "second session refused with Full";
+
 // ---------------------------------------------------------------------------
 // Action (Fibonacci) demo wording — phase-277 W5.
 //

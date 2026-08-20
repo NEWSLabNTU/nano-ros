@@ -223,18 +223,15 @@ competing lang item on the link line. Root cause of the whole thing: the bespoke
 `nano_ros_entry()`, so it never applied a panic policy — #0666's shape, recorded there.
 See `archived/0692-*`. (2026-08-19)
 
-**#0697** (rmw/zenoh, open 2026-08-19) — the zenoh session-pool exhaustion arm (`ZpicoError::Full`) is
-hardened for firmware and executed only on native. #0589 deliberately moved its log from `std::eprintln!`
-to `nros_log` so it would reach `no_std` targets, because "firmware is where a fixed-size pool actually
-fills" — but **no embedded build raises `ZPICO_MAX_SESSIONS`** (empty across `zephyr/`, `packages/boards/`,
-`config/`, every fixture row and example CMakeLists), and **nothing tests the `Full` error on any
-platform**: the only reference outside the backend is a doc comment saying the test SKIPS when the pool is
-1, so exhaustion is what that test avoids rather than asserts. Explicitly NOT a matrix axis (multi-session
-is the BRIDGE shape, not a deployed configuration) and NOT a raised default (#0465 rejected that as "the
-wrong trade for a `no_std` project" and fixed its rclcpp-shim consumer by sharing one session instead; the
-zenoh→cyclone bridge uses one zenoh session plus a Cyclone participant, a different pool). Direction: ONE
-embedded cell asserting both the `Full` return and that the message reaches the console — the second half
-being the point, since only a target can prove 0589's fix. See `0697-*`. (2026-08-19)
+Recently resolved (2026-08-20): **#0697** — the zenoh session-pool exhaustion arm was hardened for `no_std`
+by issue 0589 and had never executed on one. Cell added on `threadx-linux`: it prints both `zenoh session
+pool exhausted` (the backend diagnostic, on a firmware console) and `second session refused with Full` (the
+error kept distinguishable from a transport failure, issue 0465). No router — `Context::new` releases its
+slot on failure, so a first session that cannot reach one leaves the pool EMPTY and the second open succeeds
+for the wrong reason; the fixture exhausts the pool with a raw acquire and still reaches the arm through
+`Context::new`. Could not have passed before 0708 (the funnel published no sink list), which the cell now
+also guards. Mutation-checked against both regressions. The exhaustion block, duplicated byte-for-byte in
+two methods, is now one helper with a named marker constant. See `archived/0697-*`. (2026-08-20)
 
 Recently resolved (2026-08-19): **#0690** — `case_08_c_qos` failed in-sweep and passed solo on the SAME
 binaries, with the publisher advertising exactly `nros_c_qos_default()`. `topic_endpoint_block` returns the

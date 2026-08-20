@@ -1,0 +1,28 @@
+[workspace]
+
+[package]
+name = "pool-exhaustion-threadx-linux"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "issue 0697 — the zenoh session-pool exhaustion arm, executed on a no_std target"
+
+[[bin]]
+name = "pool-exhaustion-threadx-linux"
+test = false
+bench = false
+
+[dependencies]
+nros-board-threadx-linux = { path = "../../../../boards/nros-board-threadx-linux" }
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+# `platform-threadx`, not `platform-posix`: the point of this fixture is that the
+# arm runs on a `no_std` target, and the posix flavour would be a second
+# implementation of the platform layer (ARCHITECTURE §2).
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "platform-threadx",
+]
+ }
+# The raw pool handle, to establish the PRECONDITION (a full pool) without a
+# network. The arm under test is still reached through `Context::new`.
+zpico-sys = { path = "../../../../rmw/zenoh/zpico-sys", default-features = false }

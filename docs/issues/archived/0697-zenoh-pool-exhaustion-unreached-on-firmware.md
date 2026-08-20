@@ -1,7 +1,7 @@
 ---
 id: 697
 title: "The zenoh session-pool exhaustion path is hardened for firmware and reached only on native — no embedded build raises `ZPICO_MAX_SESSIONS`, and nothing tests the `Full` error"
-status: open
+status: resolved
 type: tech-debt
 area: rmw/zenoh
 related: [issue-0348, issue-0465, issue-0589, issue-0393]
@@ -53,7 +53,64 @@ Worth stating, because the obvious remedies are both wrong:
 The existing single lane is the right size for the native probes. What it cannot
 cover is the `no_std` arm.
 
-## Direction
+## Resolution
+
+A cell on `threadx-linux` — `packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux`,
+asserted by `tests/pool_exhaustion_firmware.rs`. Both halves, measured:
+
+```
+[ERROR] nros: zenoh session pool exhausted — this build allows ZPICO_MAX_SESSIONS=1…
+[INFO]  nros: pool-exhaustion: second session refused with Full
+```
+
+The first line is the backend's diagnostic reaching the console of a `no_std`
+image — the thing issue 0589 hardened and nothing had ever executed. The second
+is `Full`, distinguished from a transport error (issue 0465).
+
+### Two design choices worth the lines
+
+**No router, and that is deliberate.** The obvious shape — open a real first
+session, then a second — cannot work here: `Context::new` takes a slot before any
+I/O and RELEASES it on failure, so a first session that cannot reach a router
+leaves the pool EMPTY and the second open succeeds for the wrong reason. Tried it
+first; on this board the network is NetX's stack rather than the host loopback and
+the first open failed with `Session`. The fixture instead exhausts the pool with a
+raw `zpico_session_acquire()` — the precondition — and still reaches the arm under
+test through `Context::new`. It is deterministic and needs nothing running.
+
+**It refuses to report a false pass.** If the raw acquire fails, the pool is not
+full and the run proves nothing; the image says so and exits non-zero rather than
+printing a verdict. That is the arm that fired during development.
+
+### It could not have passed before 0708
+
+This family's boot funnel never published an `nros_log` sink list, so the record
+was constructed, dispatched and dropped before any console. That is why the cell
+this issue asked for did not exist, and it is now a second thing the cell guards.
+
+### Mutation-checked, both assertions
+
+* mute the backend's `nros_error!` (the 0589 regression) → FAIL
+* mute `init_default()` in all four ThreadX funnels (the 0708 regression) → FAIL
+* restore → PASS
+
+### Also folded in
+
+The exhaustion block was duplicated BYTE FOR BYTE in `Context::new` and
+`Context::with_config` — 25 lines each, comments included. Now one
+`acquire_session_slot()`, and the message is a named constant
+(`SESSION_POOL_EXHAUSTED_MARKER`, mirrored as
+`nros_tests::output::ZENOH_SESSION_POOL_EXHAUSTED`) so the grep is not a literal.
+Two copies of a message a test pins is two things to keep in step, and the test
+would have pinned only one.
+
+### Not done
+
+Only `threadx-linux` carries the cell — it is the one host-runnable `no_std`
+board, so it is the one where this is cheap to keep honest. FreeRTOS and NuttX
+run the same arm through the same code and are not separately asserted.
+
+## Direction (as filed)
 
 ONE embedded cell, not a lane family: a firmware image built with
 `ZPICO_MAX_SESSIONS=1` that deliberately opens a second session, asserting the

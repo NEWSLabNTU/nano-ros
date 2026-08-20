@@ -4228,6 +4228,25 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-0697 `pool-exhaustion-threadx-linux` fixture binary.
+static POOL_EXHAUSTION_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt ThreadX Linux zenoh session-pool exhaustion binary.
+///
+/// issue 0697 — the arm this image executes was hardened for `no_std` targets by
+/// issue 0589 and, until this fixture, had never run on one.
+pub fn build_pool_exhaustion_threadx_linux() -> TestResult<&'static Path> {
+    POOL_EXHAUSTION_THREADX_LINUX_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/pool-exhaustion-threadx-linux",
+                "pool-exhaustion-threadx-linux",
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the `logging-smoke-threadx-linux` fixture binary.
 static LOGGING_SMOKE_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

@@ -239,6 +239,49 @@ pub struct Context {
     handle: *mut zpico_session_t,
 }
 
+/// The message an exhausted session pool prints, and the marker a test greps.
+///
+/// Named because it is asserted from OUTSIDE this crate, and CLAUDE.md's rule is
+/// that test greps use constants rather than literals — a slimmed banner has
+/// broken ~10 tests before.
+pub const SESSION_POOL_EXHAUSTED_MARKER: &str = "zenoh session pool exhausted";
+
+/// Take a pool slot, or report the one failure whose reason exists only here.
+///
+/// Issue 0465 — this is the ONLY frame that knows why. Downstream the C ABI
+/// collapses it to an int and the reason is gone, which is how an exhausted
+/// session pool spent two months looking like `Transport(ConnectionFailed)` —
+/// a router/network problem, and chased as one.
+///
+/// issue 0589 — `nros_log`, not `std::eprintln!`: std stdio SIGSEGVs a Zephyr
+/// native_sim image, which would replace the one explanation this failure has
+/// with a bare core dump. It also reaches `no_std` targets, where the old
+/// `cfg(feature = "std")` arm left the pool exhaustion mute — and firmware is
+/// where a fixed-size pool actually fills.
+///
+/// issue 0697 — ONE function, because this block was duplicated BYTE FOR BYTE in
+/// `new` and `with_config`, 25 lines each with the comments. Two copies of a
+/// message a test greps is two things to keep in step, and the test would have
+/// pinned only one of them.
+fn acquire_session_slot() -> Result<*mut zpico_sys::zpico_session_t> {
+    // SAFETY: no arguments; returns a pool slot or null.
+    let handle = unsafe { zpico_session_acquire() };
+    if handle.is_null() {
+        nros_log::nros_error!(
+            nros_log::get_logger("nros_rmw_zenoh"),
+            "{} — this build allows ZPICO_MAX_SESSIONS={} and one is already \
+             open. A non-bridge application opens exactly ONE session; two \
+             usually means something opened a second executor instead of \
+             reusing the global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if \
+             the extra session is genuinely wanted (a bridge).",
+            SESSION_POOL_EXHAUSTED_MARKER,
+            crate::zpico::ZPICO_MAX_SESSIONS
+        );
+        return Err(ZpicoError::Full);
+    }
+    Ok(handle)
+}
+
 impl Context {
     /// Create a new shim context with the given locator
     ///
@@ -311,31 +354,7 @@ impl Context {
     pub fn new(locator: &[u8]) -> Result<Self> {
         ffi_guard(|| {
             // Acquire a pool slot up front; release it on any init/open failure.
-            let handle = unsafe { zpico_session_acquire() };
-            if handle.is_null() {
-                // Issue 0465 — this is the ONLY frame that knows why. Downstream
-                // the C ABI collapses it to an int and the reason is gone, which
-                // is how an exhausted session pool spent two months looking like
-                // `Transport(ConnectionFailed)` — a router/network problem, and
-                // chased as one.
-                // issue 0589 — `nros_log`, not `std::eprintln!`: std stdio
-                // SIGSEGVs a Zephyr native_sim image, which would replace the
-                // one explanation this failure has with a bare core dump. It
-                // also reaches `no_std` targets, where the old
-                // `cfg(feature = "std")` arm left the pool exhaustion mute —
-                // and firmware is where a fixed-size pool actually fills.
-                nros_log::nros_error!(
-                    nros_log::get_logger("nros_rmw_zenoh"),
-                    "zenoh session pool exhausted — this build allows \
-                     ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
-                     application opens exactly ONE session; two usually means \
-                     something opened a second executor instead of reusing the \
-                     global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
-                     extra session is genuinely wanted (a bridge).",
-                    crate::zpico::ZPICO_MAX_SESSIONS
-                );
-                return Err(ZpicoError::Full);
-            }
+            let handle = acquire_session_slot()?;
             let connect = Self::connect_with_retry(handle, || {
                 // Safety: locator is a valid byte slice, cast to c_char for C string
                 let ret = unsafe { zpico_init(handle, locator.as_ptr().cast()) };
@@ -403,31 +422,7 @@ impl Context {
             None => unsafe { LOC_VALID = false },
         }
         ffi_guard(|| {
-            let handle = unsafe { zpico_session_acquire() };
-            if handle.is_null() {
-                // Issue 0465 — this is the ONLY frame that knows why. Downstream
-                // the C ABI collapses it to an int and the reason is gone, which
-                // is how an exhausted session pool spent two months looking like
-                // `Transport(ConnectionFailed)` — a router/network problem, and
-                // chased as one.
-                // issue 0589 — `nros_log`, not `std::eprintln!`: std stdio
-                // SIGSEGVs a Zephyr native_sim image, which would replace the
-                // one explanation this failure has with a bare core dump. It
-                // also reaches `no_std` targets, where the old
-                // `cfg(feature = "std")` arm left the pool exhaustion mute —
-                // and firmware is where a fixed-size pool actually fills.
-                nros_log::nros_error!(
-                    nros_log::get_logger("nros_rmw_zenoh"),
-                    "zenoh session pool exhausted — this build allows \
-                     ZPICO_MAX_SESSIONS={} and one is already open. A non-bridge \
-                     application opens exactly ONE session; two usually means \
-                     something opened a second executor instead of reusing the \
-                     global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if the \
-                     extra session is genuinely wanted (a bridge).",
-                    crate::zpico::ZPICO_MAX_SESSIONS
-                );
-                return Err(ZpicoError::Full);
-            }
+            let handle = acquire_session_slot()?;
             let connect = Self::connect_with_retry(handle, || {
                 // Read the locator from its constant static address (not a
                 // captured pointer) so the retry survives the backoff clobber.

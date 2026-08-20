@@ -2006,6 +2006,16 @@ platform = "threadx-linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux"
 
+# issue 0697 — the zenoh session-pool exhaustion arm, executed on a `no_std`
+# target. Needs no router: the pool is exhausted by a raw slot acquire, so the
+# arm is reached deterministically and the cell cannot fail for network reasons.
+[[fixture]]
+id = "threadx-linux-pool-exhaustion"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux"
+
 # ===========================================================================
 # threadx-riscv64 (qemu RISC-V64 ThreadX/NetX) — Rust role examples, zenoh RMW
 # into target-zenoh/. The board config dirs (THREADX_CONFIG_DIR/NETX_CONFIG_DIR)
