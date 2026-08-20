@@ -46,14 +46,22 @@
 //
 // So the guards select the IMPLEMENTATION and gate the header that backs it.
 // What was never justified is DECLARING the ABI by hand inside them.
+
+// phase-370 W4 — `env_lookup`, kept in its own dependency-free header so the
+// light TUs that need it do not acquire this file's CycloneDDS includes.
+//
+// Included OUTSIDE the platform switch: it sat in the FREERTOS arm only, while
+// `session.cpp` calls `env_lookup` unconditionally, so every non-FreeRTOS
+// platform failed to compile it. ThreadX is where that surfaced (tier-2
+// fixture build); Zephyr and the host arm had the same hole. The header pulls
+// in nothing, which is the whole reason it exists, so there is no arm that
+// cannot afford it.
+#include "env_compat.hpp"
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
 #include "nros/platform.h"
 
-// phase-370 W4 — `env_lookup`, kept in its own dependency-free header so the
-// light TUs that need it do not acquire this file's CycloneDDS includes.
-#include "env_compat.hpp"
 #elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
 #include "nros/platform.h"
 #elif defined(NROS_PLATFORM_THREADX)
