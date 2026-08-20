@@ -574,6 +574,7 @@ check-build: \
     check-required-features-tests \
     check-feature-set-ssot \
     check-no-tracked-file-find \
+    check-grep-q-error-conflation \
     check-sched-dim-arms \
     check-image-paths-apply-policy \
     native::check
@@ -741,6 +742,12 @@ check-feature-set-ssot:
     @./scripts/check-feature-set-ssot.sh
 
 # Forbid `find` scans for git-tracked files (7m36s -> 0.8s, measured).
+# Ratchet: no NEW `grep -q` conditional that reads a tool error as a
+# non-match (issue 0726). Existing sites are baselined per file.
+[private]
+check-grep-q-error-conflation:
+    @python3 scripts/check-grep-q-error-conflation.py
+
 [group("check")]
 check-no-tracked-file-find:
     @./scripts/check-no-tracked-file-find.sh
