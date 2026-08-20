@@ -972,22 +972,47 @@ mod tests {
     fn the_probe_sees_a_real_bound_discovery_port() {
         // Both directions against the kernel's own table, because a probe that
         // stopped probing would look exactly like a quiet host.
-        let free = 97u8;
-        let busy = 96u8;
-        assert!(
-            !super::domain_discovery_port_busy(free),
-            "domain {free} looked busy before anything bound it"
-        );
-        let port = 7400u16 + 250 * u16::from(busy);
-        let Ok(sock) = std::net::UdpSocket::bind(("0.0.0.0", port)) else {
-            // Something else owns it; the assertion below would be meaningless.
-            return;
+        //
+        // NO domain number is written down here. The first version named two
+        // (97 "free", 96 "busy"), and the free half is not this test's to
+        // assert: the probe reads `/proc/net/udp`, so it reports ANY bound
+        // socket, and on 2026-08-21 an unrelated `python3` on this host held
+        // 31650 — domain 97's discovery port — which failed tier 1 with
+        // "domain 97 looked busy before anything bound it". The test was
+        // describing the host, not the probe.
+        //
+        // So find a domain by BINDING it, which is the only evidence that it
+        // was free, and then drive both directions through that one domain:
+        // held => busy, dropped => free.
+        let mut acquired = None;
+        for domain in 1..=super::TEST_DOMAIN_MAX as u8 {
+            let port = 7400u16 + 250 * u16::from(domain);
+            if super::domain_discovery_port_busy(domain) {
+                continue;
+            }
+            if let Ok(sock) = std::net::UdpSocket::bind(("0.0.0.0", port)) {
+                acquired = Some((domain, port, sock));
+                break;
+            }
+        }
+        let Some((domain, port, sock)) = acquired else {
+            crate::skip!(
+                "every domain in 1..={} has its discovery port bound — the host \
+                 has no free bus to test the probe against",
+                super::TEST_DOMAIN_MAX
+            );
         };
+
         assert!(
-            super::domain_discovery_port_busy(busy),
-            "bound {port} and the probe did not see it"
+            super::domain_discovery_port_busy(domain),
+            "bound {port} (domain {domain}) and the probe did not see it"
         );
         drop(sock);
+        // UDP has no TIME_WAIT, so the table entry is gone by the next read.
+        assert!(
+            !super::domain_discovery_port_busy(domain),
+            "released {port} (domain {domain}) and the probe still calls it busy"
+        );
     }
 
     use super::*;
