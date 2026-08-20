@@ -1210,7 +1210,18 @@ line, so one workspace reads the same colour as two. Surfaced by #626's
 Checked the "a feature requires 4.4" recollection against the record — phase-199 says the rolling line is a
 POLICY slot (LTS + ≤1 rolling, floor set by `zephyr-lang-rust`), `65c1998a4` names no feature, and all
 4.4-specific issue history (0058, 0078) is keeping the line building rather than a capability 3.7 lacks;
-correct that section if a counter-example predates it, because it changes the priority. See `0651-*`.
+correct that section if a counter-example predates it, because it changes the priority.
+**2026-08-20:** the symbol half is gated on BOTH lines and the gate no longer lies about coverage. Its
+first version hard-failed only when NO line was present, so on the ordinary dev host — 3.7 present, 4.4
+nowhere — it printed `OK … lines checked: 3.7` with a footnote and exited 0, having measured nothing about
+the line it exists for: verbatim the failure mode this issue names. Fixed in the order that makes
+strictness affordable — `just zephyr kconfig-trees` first (two shallow clones, 613 MB measured, revisions
+READ from `west-4.4.yml`, no west workspace so no repeat of #0078), then an unchecked supported line
+became a FAILURE naming that command (`NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1` overrides, labelled PARTIAL).
+Verified four ways including that a renamed symbol is still reported `absent on 3.7` AND `absent on 4.4`
+with file:line — strictness did not displace the substantive check. Still open, both DECISIONS: promote a
+4.4 cell into tier 3 (a build cell still needs the full west workspace + py312), or drop the rolling line,
+which the policy allows. See `0651-*`.
 
 Recently resolved (2026-08-17): **#642** (build/testing) — `check-archive-lang-items` failed `build-test-fixtures` on
 16-day-old GITIGNORED metadata-probe residue, and spent ~22 min of wall clock against ~15 s of CPU doing it

@@ -24,11 +24,18 @@ late.
 
 * Symbols this repo defines itself (`NROS_*` in `zephyr/Kconfig`) are ours; only
   symbols we expect ZEPHYR to provide are checked.
-* A line is checked when its tree is present. Which lines were checked is always
-  REPORTED — a gate for an invisible-warning class must not itself be quietly
-  partial.
-* Checking NO line is a failure, not a pass. Issue 0702's whole subject is
-  checks that report success having measured nothing.
+* Which lines were checked is always REPORTED — a gate for an invisible-warning
+  class must not itself be quietly partial.
+* Checking FEWER THAN ALL supported lines is a failure, not a pass. The first
+  version failed only when NO line was present, so on the ordinary dev host —
+  3.7 from `just zephyr setup`, no 4.4 anywhere — it checked 3.7, printed OK and
+  noted in passing that it had not looked at 4.4. Green, having measured nothing
+  about the only line whose failures are invisible until the nightly. That is
+  the exact shape issue 0651 names as the thing to design against: "a lane that
+  skips when unprovisioned and reports the same colour as a lane that passed".
+  Strictness is affordable because the remedy is now one command
+  (`just zephyr kconfig-trees`, ~600 MB of shallow clones, no west workspace).
+  `NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1` overrides it deliberately and LOUDLY.
 
 ## Trees
 
@@ -221,15 +228,30 @@ def main():
         )
         sys.exit(1)
 
+    if unchecked and not os.environ.get("NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL"):
+        sys.stderr.write(
+            "error: %d supported Zephyr line(s) were NOT checked: %s\n\n"
+            "  checked: %s\n\n"
+            "This gate exists BECAUSE the unchecked line's failures are invisible\n"
+            "until the nightly (issue 0651). Passing here having skipped it would\n"
+            "report the same colour as a run that actually looked — which is the\n"
+            "failure mode 0651 was filed about.\n\n"
+            "Fetch the source (~600 MB of shallow clones, no west workspace):\n\n"
+            "    just zephyr kconfig-trees\n\n"
+            "Deliberately partial run: NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1\n"
+            % (len(unchecked), ", ".join(unchecked), checked)
+        )
+        sys.exit(1)
+
     sys.stdout.write(
         "zephyr-kconfig-symbols OK — %d referenced symbol(s), lines checked: %s\n"
         % (len(refs), checked)
     )
     if unchecked:
         sys.stdout.write(
-            "  NOT checked: %s — no tree present. This gate exists because that\n"
-            "  line's failures are invisible until the nightly (issue 0651).\n"
-            % ", ".join(unchecked)
+            "  PARTIAL (NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL): %s NOT checked. This\n"
+            "  gate exists because that line's failures are invisible until the\n"
+            "  nightly (issue 0651).\n" % ", ".join(unchecked)
         )
 
 

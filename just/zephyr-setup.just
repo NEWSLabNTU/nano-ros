@@ -51,6 +51,17 @@ setup *ARGS:
         just xrce setup
     fi
 
+# Issue 0651. Two shallow clones, NOT a west workspace: Kconfig lives in the
+# `zephyr` repo plus the modules west pins, and of those only `zephyr-lang-rust`
+# defines a symbol this repo references (`RUST`). A full 4.4 west workspace is
+# ~20 modules and filled a CI disk once (issue 0078). Revisions are read from
+# `west-4.4.yml`, never restated. Idempotent; `--force` refetches.
+#
+# Fetch the Zephyr 4.4 source `check-zephyr-kconfig-symbols` needs (~600 MB).
+[group("setup")]
+kconfig-trees *ARGS:
+    @bash scripts/zephyr/fetch-kconfig-trees.sh {{ARGS}}
+
 # Diagnose Zephyr install status (read-only).
 [group("setup")]
 doctor:

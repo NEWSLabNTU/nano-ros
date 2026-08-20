@@ -157,3 +157,75 @@ Not diagnosed further; these are candidates, not a plan.
 Whichever way it goes, the failure mode to design against is the one above: a
 lane that skips when unprovisioned and reports the same colour as a lane that
 passed.
+
+## 2026-08-20 (second pass) — the gate was green on every host that lacked 4.4
+
+The symbol gate landed above (`08e421df6`) and its own account of itself was
+accurate but narrower than the rule this issue states. Measured on a normal dev
+host, before any change:
+
+```
+$ just check-zephyr-kconfig-symbols ; echo rc=$?
+zephyr-kconfig-symbols OK — 11 referenced symbol(s), lines checked: 3.7 (3.7)
+  NOT checked: 4.4 — no tree present. …
+rc=0
+```
+
+**OK, exit 0, having looked at neither symbol on the line the gate exists for.**
+The code hard-failed only on `if not trees:` — zero lines present. With 3.7 from
+`just zephyr setup` and no 4.4 anywhere, which this issue itself describes as
+every ordinary dev host ("a developer with a working 3.7 setup has no 4.4 setup
+at all"), it reported success. That is verbatim the failure mode named at the
+bottom of this issue: *a lane that skips when unprovisioned and reports the same
+colour as a lane that passed.*
+
+The claim "Checking NO line is a hard failure, not a pass" was true and is not
+the same statement.
+
+### Direction 2 — the 4.4 source is now one command
+
+`just zephyr kconfig-trees` -> `scripts/zephyr/fetch-kconfig-trees.sh`. Two
+shallow clones into `build/zephyr-kconfig/` (gitignored), **613 MB measured**, no
+west workspace and so no repeat of issue 0078's disk exhaustion. Revisions are
+READ from `west-4.4.yml` — `zephyr` at its tag, `zephyr-lang-rust` at the SHA —
+never restated in a second file that could disagree with the manifest. A tag
+clones shallow by name; a bare SHA cannot, so that path does an empty clone plus
+a single-object fetch, still shallow. Idempotent: a re-run with both trees at
+their pins prints `already at` and exits.
+
+### Direction 1's second half — the verdict is now honest
+
+An unchecked SUPPORTED line is a failure, not a footnote. Strictness is only
+affordable because the remedy above exists; making it fail first would have been
+the trap this issue warns about. `NROS_ZEPHYR_KCONFIG_ALLOW_PARTIAL=1` overrides
+it and labels the run `PARTIAL` in the output.
+
+Verified in all four directions rather than the happy path:
+
+| condition | result |
+| --- | --- |
+| both lines present | `OK … lines checked: 3.7 (3.7), 4.4 (4.4)`, rc=0 |
+| 4.4 absent | rc=1, `1 supported Zephyr line(s) were NOT checked: 4.4`, naming `just zephyr kconfig-trees` |
+| 4.4 absent + `ALLOW_PARTIAL=1` | rc=0, output labelled `PARTIAL` |
+| a symbol renamed in `zephyr/Kconfig` | rc=1, reported `absent on 3.7` AND `absent on 4.4`, each with file:line |
+
+The fourth row is the one that matters for regression: strictness did not
+displace the substantive check, and 4.4 is now genuinely covered on this host
+rather than nominally.
+
+## What is still open
+
+Directions 3 and 4, unchanged, and both are decisions rather than work:
+
+* **Promote a 4.4 cell into tier 3.** Now unblocked — the workspace question
+  that made it "skip and read as green" is answered for the KCONFIG tree. A
+  BUILD cell still needs the full west workspace and the py312 venv, so this is
+  not free.
+* **Decide the line's status.** Nothing in this tree is gated on 4.4; the
+  support policy allows "at most one rolling", not "at least one". Dropping it
+  remains a legitimate and cheaper answer than half-testing it.
+
+Everything this gate can answer without building is now answered on both lines.
+Everything else — a symbol that exists on both but means something different, the
+patch sets, `k_mutex` owner-only-unlock, the py312 floor — still needs a build,
+and the nightly is still the only thing that does one.

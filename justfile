@@ -4486,10 +4486,12 @@ check-tests-can-fail:
 # passes when it can check nothing (issue 0702).
 #
 #   3.7:  just zephyr setup
-#   4.4:  git clone --depth 1 --branch v4.4.0 --single-branch \
-#           https://github.com/zephyrproject-rtos/zephyr build/zephyr-kconfig/zephyr-4.4
-#         git clone https://github.com/zephyrproject-rtos/zephyr-lang-rust \
-#           build/zephyr-kconfig/zephyr-lang-rust-4.4   # then check out west-4.4.yml's pin
+#   4.4:  just zephyr kconfig-trees      (two shallow clones, no west workspace)
+#
+# Issue 0651 second half: an unchecked supported line is now a FAILURE, not an
+# OK with a footnote. It used to fail only when NO line was present, so the
+# ordinary dev host — 3.7 present, 4.4 nowhere — went green having measured
+# nothing about the line the gate exists for.
 check-zephyr-kconfig-symbols:
     @python3 scripts/check-zephyr-kconfig-symbols.py
 
