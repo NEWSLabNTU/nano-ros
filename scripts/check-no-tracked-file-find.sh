@@ -130,7 +130,28 @@ for f in PY_FILES:
         lines = open(f).read().split("\n")
     except OSError:
         continue
+    # Triple-quoted blocks are PROSE, not code. `scripts/lib/tracked.py` — the
+    # helper this rule exists to send people to — documents the antipattern by
+    # showing it, so the gate flagged its own remedy and `just check` went red
+    # on a file nobody could fix without deleting the explanation. A docstring
+    # that quotes forbidden code is the normal way to explain why it is
+    # forbidden; the rule is about what the interpreter RUNS.
+    in_doc = None
     for n, line in enumerate(lines, 1):
+        if in_doc is not None:
+            if in_doc in line:
+                in_doc = None
+            continue
+        opened = False
+        for delim in ('"""', "'''"):
+            # Odd count = the block is still open when the line ends. An even
+            # count is a complete one-line string, which is also not code.
+            if line.count(delim) % 2 == 1:
+                in_doc = delim
+                opened = True
+                break
+        if opened or ('"""' in line or "'''" in line):
+            continue
         stripped = line.lstrip()
         if stripped.startswith("#"):
             continue
