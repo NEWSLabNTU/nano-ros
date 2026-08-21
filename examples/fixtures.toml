@@ -857,6 +857,39 @@ build_subdir = "build-workspace-fixtures"
 # (nros-board-freertos glue): one RTOS task per tier over one shared session.
 # ctrl (high tier, prio=5, 10 ms) + telem (low tier, prio=2, 100 ms).
 # Consumed by tests/realtime_tiers_cpp_freertos_e2e.rs.
+# issue 0636 gap 2 — the RUST 2-tier realtime workspace on FreeRTOS/mps2-an385
+# (QEMU), sibling of workspace-{c,cpp}-freertos-realtime.
+#
+# The Rust FreeRTOS multi-tier path (`Mps2An385Freertos::run_tiers` →
+# `nros-board-freertos`'s `run_tiers_entry`) was exported, reachable from the
+# `nros::main!` macro, and called by NOTHING: every FreeRTOS realtime fixture
+# was C or C++, and the one Rust FreeRTOS entry (`workspaces/rust`) is
+# single-tier `run_entry`. So #0636's boot-tier fix landed on this arm by
+# reasoning, not measurement. This row is what measures it.
+#
+# A CARGO row, unlike the C/C++ siblings' cmake ones: the entry is `#![no_std]
+# #![no_main]` cross-built for thumbv7m. `--release` for the same reason those
+# rows pass `CMAKE_BUILD_TYPE=Release` (#126): a -O0 zenoh-pico on the emulated
+# Cortex-M3 cannot finish the session handshake inside the e2e budget.
+#
+# The locator is the SLIRP GATEWAY 192.0.3.1 (the lane boots QEMU with
+# `net=192.0.3.0/24,host=192.0.3.1`), not the 10.0.2.2 the pubsub Rust FreeRTOS
+# entry uses — copying that one gives an address nothing answers on. Port 7891
+# is `port_of(FreertosMps2, Rust, RealtimeTiers)`, never hand-picked.
+#
+# Consumed by tests/realtime_tiers_e2e.rs (`Proof::SerialDispatch`).
+[[workspace_fixture]]
+id = "workspace-rust-freertos-realtime"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-rust"
+bringup = "src/demo_bringup"
+entry = "freertos_realtime_entry"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/freertos"
+target = "thumbv7m-none-eabi"
+
 [[workspace_fixture]]
 id = "workspace-cpp-freertos-realtime"
 platform = "freertos"

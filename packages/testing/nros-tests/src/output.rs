@@ -230,6 +230,24 @@ pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
     format!("[{tier}] tick=")
 }
 
+/// issue 0636 gap 2 — the RUST realtime nodes' per-tier dispatch marker.
+///
+/// `realtime-rust`'s `ctrl_pkg` / `telem_pkg` print
+/// `on_<x>: first publish OK (tier `<name>` is dispatching)` on their FIRST
+/// successful publish and nothing per tick after it — a recorded decision
+/// (issue 0572), because the 10 ms tier would swamp the serial console the
+/// e2e observers read. So the C/C++ [`tier_tick_marker`] has no Rust
+/// counterpart, and a serial-console proof for a Rust cell has to anchor here.
+///
+/// It is the right anchor for what #0636 is about: the defect that issue keeps
+/// finding is a tier that is NEVER SCHEDULED, and "this tier dispatched and its
+/// publish succeeded" is exactly that property. It does not prove ONGOING
+/// publication — `CounterRatio3x` is the proof for that, and it needs host
+/// observers the freertos/mps2 lane does not use.
+pub fn tier_dispatch_marker(tier: impl std::fmt::Display) -> String {
+    format!("(tier `{tier}` is dispatching)")
+}
+
 /// The exact talker log line for sequence value `n`
 /// (`"Publishing: 'Hello World: N'"`).
 pub fn talker_line(n: impl std::fmt::Display) -> String {

@@ -50,6 +50,7 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
+        build_freertos_workspace_rust_realtime_entry,
         build_native_workspace_c_realtime_entry, build_native_workspace_cpp_rclcpp_realtime_entry,
         build_native_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
         build_nuttx_riscv_workspace_c_realtime_entry,
@@ -110,6 +111,13 @@ enum Proof {
     /// FreeRTOS serial proof: each listed tier's `[<tier>] tick=` marker
     /// must appear on the QEMU serial console (publish-gated prints).
     SerialTicks(&'static [&'static str]),
+    /// issue 0636 gap 2 — serial-console proof for a RUST cell on a lane with
+    /// no host observers. Each named tier must print its dispatch marker
+    /// (`nros_tests::output::tier_dispatch_marker`), which the Rust realtime
+    /// nodes emit on their first successful publish. `SerialTicks` cannot be
+    /// reused: those nodes deliberately print no per-tick line (issue 0572 —
+    /// the 10 ms tier would swamp the console).
+    SerialDispatch(&'static [&'static str]),
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
@@ -271,6 +279,25 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_tiers glue \
                    (codegen routes embedded-C via the C++ emitter + NROS_C_COMPONENT seam)",
         }],
+        // issue 0636 gap 2 — the Rust arm of the FreeRTOS multi-tier path, which
+        // was exported from `nros-board-freertos`, reachable from the macro, and
+        // called by NOTHING: every FreeRTOS realtime fixture was C or C++, and
+        // the only Rust FreeRTOS entry is single-tier `run_entry`. That is the
+        // arm #0636's fix had to be reasoned onto rather than measured.
+        //
+        // `SerialDispatch`, not `SerialTicks` like the C/C++ siblings: the Rust
+        // nodes print no per-tick line by decision (issue 0572). Both tiers
+        // dispatching IS the property this issue is about — a tier that never
+        // runs is the defect.
+        (MP::FreertosMps2, ML::Rust) => vec![Exec {
+            label: "rust",
+            resolver: freertos_rust_entry,
+            port,
+            boot: Boot::FreertosMps2,
+            proof: Proof::SerialDispatch(&["low", "high"]),
+            note: "issue 0636 gap 2: Mps2An385Freertos::run_tiers — boot tier is `low` \
+                   (least urgent, bigger-is-more-urgent kernel), `high` chain-spawned",
+        }],
         (MP::ThreadxLinux, ML::Rust) => vec![Exec {
             label: "rust",
             resolver: threadx_linux_rust_entry,
@@ -338,6 +365,9 @@ fn freertos_c_entry() -> TestResult<PathBuf> {
 }
 fn threadx_linux_rust_entry() -> TestResult<PathBuf> {
     build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf())
+}
+fn freertos_rust_entry() -> TestResult<PathBuf> {
+    build_freertos_workspace_rust_realtime_entry().map(|p| p.to_path_buf())
 }
 fn freertos_cpp_entry() -> TestResult<PathBuf> {
     build_freertos_workspace_cpp_realtime_entry().map(|p| p.to_path_buf())
@@ -628,6 +658,44 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     let observer_locator = format!("tcp/127.0.0.1:{}", router.port());
 
     // FreeRTOS: serial-tick proof, no host observers.
+    if let Proof::SerialDispatch(tiers) = cell.proof {
+        let mut qemu = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
+            .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
+        // ORDER-INDEPENDENT, unlike `SerialTicks` above, and that is not
+        // fussiness: `wait_for_output_pattern` CONSUMES the stream, so a
+        // sequential wait silently misses a marker that already went past. The
+        // boot tier here is `low` (100 ms) while `high` is 10 ms, so once both
+        // are set up `high` publishes FIRST — waiting for `low` first ate
+        // `high`'s line and the cell reported a tier that had in fact
+        // dispatched. Accumulate instead, and only wait for what is not yet
+        // seen; the assertion is "every tier dispatched", which says nothing
+        // about the order they got there in.
+        let mut seen = String::new();
+        let mut timeout = Duration::from_secs(90);
+        for tier in tiers {
+            let marker = nros_tests::output::tier_dispatch_marker(tier);
+            if seen.contains(&marker) {
+                continue;
+            }
+            let out = qemu
+                .wait_for_output_pattern(&marker, timeout)
+                .unwrap_or_else(|e| {
+                    qemu.kill();
+                    panic!(
+                        "[{} {}] tier `{tier}` never dispatched (`{marker}` absent) — \
+                         {}.\nerr: {e:?}\n--- guest console so far ---\n{seen}",
+                        platform, lang, cell.note
+                    )
+                });
+            seen.push_str(&out);
+            assert!(seen.contains(&marker));
+            // The first marker carries the cold-boot budget (session open +
+            // zenoh handshake); the rest only need their own period.
+            timeout = Duration::from_secs(30);
+        }
+        qemu.kill();
+        return;
+    }
     if let Proof::SerialTicks(tiers) = cell.proof {
         let mut qemu = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
@@ -835,6 +903,6 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 );
             }
         }
-        Proof::SerialTicks(_) => unreachable!("handled above"),
+        Proof::SerialTicks(_) | Proof::SerialDispatch(_) => unreachable!("handled above"),
     }
 }

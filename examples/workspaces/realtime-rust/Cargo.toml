@@ -27,6 +27,12 @@ members = [
     # ThreadX threads are pthreads). Needs `THREADX_DIR` (activate.sh) for the
     # board dep's kernel build, like the monolith ws's threadx_linux_entry.
     "src/threadx_entry",
+    # issue 0636 gap 2 — FreeRTOS / MPS2-AN385 multi-tier entry. Built ONLY
+    # with `--target thumbv7m-none-eabi` (it is `#![no_std] #![no_main]` and
+    # links a Cortex-M board), so the fixture lane builds it
+    # `-p freertos_realtime_entry --target …`, never wholesale on host — the
+    # same treatment `nuttx_entry` and `riscv_nuttx_entry` get above.
+    "src/freertos_realtime_entry",
 ]
 # `src/zephyr_entry` is a Zephyr `west build` app (phase-276 W2) — excluded
 # so plain `cargo build` in the workspace never tries to link the RTOS app.

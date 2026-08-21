@@ -317,6 +317,60 @@ freertos rows (C and C++, the multi-tier path this changes) RAN and passed;
 only, so the Rust multi-tier arm is COMPILED by the lane and not RUN by any
 cell. Same gap as the NuttX C arm above, one language over.
 
+### Both coverage gaps closed 2026-08-21
+
+This issue's two "not covered" notes are gone.
+
+**NuttX C/C++ `TierPriority`** — see the section above. Closing it turned up
+that the C arm never printed the marker at all.
+
+**FreeRTOS Rust `RealtimeTiers`** — `Mps2An385Freertos::run_tiers` →
+`run_tiers_entry` was exported, reachable from the `nros::main!` macro, and
+called by NOTHING: every FreeRTOS realtime fixture was C or C++, and the one
+Rust FreeRTOS entry (`workspaces/rust`) is single-tier `run_entry`. So this
+issue's own FreeRTOS fix landed on that arm by reasoning. It now has a cell,
+and the path works:
+
+```
+[INFO] Control::register on a tier admitting group `ctrl`
+[INFO] Telem::register on a tier admitting group `telem`
+[INFO] on_ctrl:  first publish OK (tier `high` is dispatching)
+[INFO] on_telem: first publish OK (tier `low`  is dispatching)
+Multi-tier setup complete — entering boot-tier spin loop.
+```
+
+`realtime_tiers_e2e`: 17 rows ran, 0 failed.
+
+Three things the build taught that reading would not have:
+
+* **The board link flags must live at the WORKSPACE `.cargo/config.toml`, not
+  the leaf's.** The lane runs `cd <workspace>; cargo build -p <entry>`, so a
+  leaf config is never on cargo's path from the CWD upward. The failure is not
+  loud: the build SUCCEEDS and emits a 10 KB image with a zero vector table,
+  which QEMU meets as `Lockup: can't escalate 3 to HardFault` with every
+  register zero.
+* **The locator is the slirp gateway `192.0.3.1`, not the `10.0.2.2` the pubsub
+  Rust FreeRTOS entry uses.** The realtime lane boots QEMU with
+  `net=192.0.3.0/24,host=192.0.3.1`; the pubsub address answers nothing.
+* **The proof has to be order-independent.** `wait_for_output_pattern` CONSUMES
+  the stream, and the boot tier here is `low` (100 ms) while `high` is 10 ms —
+  so `high` publishes FIRST. A sequential wait on `low` then `high` ate `high`'s
+  line and reported a tier that had dispatched as one that never did. The new
+  `Proof::SerialDispatch` accumulates and only waits for what it has not seen;
+  the assertion is "every tier dispatched", which says nothing about order.
+
+`SerialDispatch` rather than the C/C++ cells' `SerialTicks`: the Rust realtime
+nodes deliberately print no per-tick line (issue 0572 — a 10 ms tier would swamp
+the console), so their marker is the first-publish one. That is the right anchor
+for THIS issue anyway: the defect it keeps finding is a tier that is never
+scheduled, and "this tier dispatched" is exactly that property.
+
+One thing the run surfaced and did not fix: the 0623 transport-band diagnostic
+fires on these priorities (`tier `high` at 5 >= transport floor 4 — this tier
+PREEMPTS transport I/O`). The numbers are copied from `realtime-cpp`, so its
+cells sit in the same arrangement. The diagnostic exists to make that a choice;
+nobody has made it.
+
 ## Relationship to 0623
 
 Same family, one layer over: 0623 is a tier priority and a transport priority

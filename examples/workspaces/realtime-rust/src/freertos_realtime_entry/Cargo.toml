@@ -1,0 +1,55 @@
+# Entry pkg — boots the RT-tiers `demo_bringup` system on FreeRTOS / MPS2-AN385.
+#
+# issue 0636 gap 2 — the tiers-on-FreeRTOS projection of `realtime-rust`, and
+# the first consumer of the Rust FreeRTOS multi-tier path (`run_tiers_entry`)
+# anywhere in the tree. The `[tiers.*.freertos]` sub-tables in the bringup's
+# `system.toml` route the `nros::main!()` proc-macro onto
+# `<Mps2An385Freertos>::run_tiers`: one FreeRTOS task per tier over ONE shared
+# zenoh session.
+#
+# Built by the cargo lane (`scripts/build/workspace-fixtures-build.sh freertos
+# rust`), which selects manifest rows by platform+lang and so picks this up
+# with no new recipe — unlike the `freertos-posix` rows, whose platform token
+# had no producer at all (issue 0737).
+
+[package]
+name = "freertos_realtime_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Entry pkg — boots the RT-tiers system on FreeRTOS MPS2-AN385."
+
+[[bin]]
+name = "freertos_realtime_entry"
+path = "src/main.rs"
+test = false
+bench = false
+
+# `deploy = "freertos"` routes the macro onto the MPS2-AN385 board and feeds
+# `nros check`. Locator port is allocator-derived —
+# `nros_tests::alloc::port_of(FreertosMps2, Rust, RealtimeTiers)` — never
+# hand-picked (phase-295 W4): `port_of(FreertosMps2, Rust, RealtimeTiers)` is
+# 7891, and the cpp sibling's 8091 is the same formula one language over.
+#
+# 192.0.3.1, NOT the 10.0.2.2 the pubsub Rust FreeRTOS entry uses: the realtime
+# lane boots QEMU with `-nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1`
+# so the guest's gateway IS the slirp host. Copying the locator from the pubsub
+# entry gives an address nothing answers on.
+[package.metadata.nros.entry]
+deploy = "freertos"
+
+[package.metadata.nros.deploy.freertos]
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/192.0.3.1:7891"
+
+[dependencies]
+freertos_realtime_entry_nros_selection = { path = "../../generated/nros-selection/freertos_realtime_entry" }
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos" }
+nros-platform = { path = "../../../../../packages/platform/nros-platform", default-features = false, features = ["platform-freertos"] }
+panic-semihosting = "0.6"
+
+# The model-named Node pkgs — the macro emits both `register` calls.
+ctrl_pkg = { path = "../ctrl_pkg", default-features = false }
+telem_pkg = { path = "../telem_pkg", default-features = false }

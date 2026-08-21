@@ -2786,6 +2786,38 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
 /// phase-274 W3 (#126) — the 2-tier C++ realtime FreeRTOS/mps2 entry
 /// (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
 /// over one shared session via `FreertosBoard::run_tiers` (RFC-0015 Model 1).
+/// issue 0636 gap 2 — the 2-tier **Rust** realtime FreeRTOS/mps2 entry
+/// (`realtime-rust`): ctrl (high, 10 ms) + telem (low, 100 ms) over one shared
+/// session via `Mps2An385Freertos::run_tiers` → `run_tiers_entry`.
+///
+/// That Rust path was exported from `nros-board-freertos` and reachable from
+/// the `nros::main!` macro with NO consumer anywhere: every FreeRTOS realtime
+/// fixture was C or C++, and the one Rust FreeRTOS entry (`workspaces/rust`) is
+/// single-tier `run_entry`. So it is the arm #0636's boot-tier fix had to be
+/// reasoned onto rather than measured — which is the gap this closes.
+///
+/// A CARGO row, unlike its C/C++ siblings' cmake ones: the entry is a
+/// `#![no_std] #![no_main]` bin cross-built for `thumbv7m-none-eabi`.
+pub fn build_freertos_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
+    static FREERTOS_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    FREERTOS_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
+        .get_or_try_init(|| {
+            let fixture_id = "workspace-rust-freertos-realtime";
+            workspace_example_dir("realtime-rust")?;
+            let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+            let binary_path = target_dir.join(format!(
+                "thumbv7m-none-eabi/{}/freertos_realtime_entry",
+                cargo_target_profile_dir()
+            ));
+            require_prebuilt_workspace_binary(
+                fixture_id,
+                &binary_path,
+                &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {

@@ -879,6 +879,10 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxRiscv, Cpp,  Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(NuttxRiscv, C,    Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(NuttxRiscv, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
+    // issue 0636 gap 2 — the Rust arm. `run_tiers_entry` was exported and
+    // reachable and called by nothing, so the boot-tier fix on this board was
+    // reasoned onto Rust rather than measured. This cell measures it.
+    cell(FreertosMps2, Rust, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, Cpp, Zenoh, RealtimeTiers, Workspace, Runtime),
     cell(FreertosMps2, C,   Zenoh, RealtimeTiers, Workspace, Runtime),
     // phase-297 W5 (RFC-0053) — ThreadX multi-tier run_tiers acceptance:

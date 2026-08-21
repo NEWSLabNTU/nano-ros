@@ -76,6 +76,14 @@ period_us = 10000
 # read the model; this file feeds `play_launch resolve --system`).
 [tiers.high.threadx]
 priority = 5
+# issue 0636 gap 2 — RAW FreeRTOS priority (0..configMAX_PRIORITIES-1; the MPS2
+# board builds with 8, so 0..7). Bigger is more urgent, which is why the BOOT
+# tier on this board is `low` and not `high`: `resolve_tiers` sorts descending
+# by raw number and the boot tier is the least urgent one, so `high` (ctrl,
+# 10 ms) is chain-spawned. Mirrors the `realtime-cpp` bringup's freertos
+# numbers so the two language arms are comparable.
+[tiers.high.freertos]
+priority = 5
 
 [tiers.low]
 spin_period_us = 10000
@@ -90,6 +98,12 @@ priority = 10
 [tiers.low.nuttx]
 priority = 100
 core = 0
+[tiers.low.freertos]
+priority = 2
+# No `core` here: mps2-an385 is uniprocessor, so a declared pin can only
+# produce the loud fallback (RFC-0052). `realtime-cpp` declares one on its
+# `low` tier precisely to exercise that fallback; this arm asserts tier
+# PRIORITY, so it does not need a second copy of that experiment.
 [tiers.low.threadx]
 priority = 15
 # THREADX-SCOPED: preemption threshold + round-robin slice; `core` is an SMP
