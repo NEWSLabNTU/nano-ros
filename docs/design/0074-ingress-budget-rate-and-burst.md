@@ -216,33 +216,75 @@ left to a follow-up; an env-gated A/B moved chain delivery 13-17% →
 - **A pure rate cap, no burst term.** Refuted by the cap-at-offered-rate
   cell above.
 
+## What the budget actually bounds — occupancy, not rate
+
+Established 2026-08-21 by a frames sweep, and it settles several questions
+below at once. A budget of N frames then a 1 ms rest permits ~N x 10^3 msg/s,
+an order of magnitude above the ~750 msg/s this island can drain — so the
+budget is almost never the binding RATE constraint. What it bounds is the
+CONTIGUOUS run of the read task, which is exactly the harm the trace
+attributed (bursts holding `zpico_read` for 100-340 ms).
+
+The sweep confirms it. Worst observed gap against the frame budget:
+
+| frames | 8 | 32 | 128 | unbounded |
+|---|---|---|---|---|
+| worst gap | 21 ms | 38 ms | 132 ms | 610 ms |
+| stalls/run | 0.0 | 0.0 | **12.5** | 9.1 |
+| n | 12 | 6 | 6 | 12 |
+
+Worst gap is linear in frames at roughly **0.8-1.0 ms per frame** plus a ~14 ms
+floor. That is a per-frame processing cost, and it is the per-platform number
+this design needs.
+
+**A budget can be set too large.** At 128 frames the stall COUNT is worse than
+unbounded (12.5 vs 9.1) while the worst gap is far better (132 vs 610 ms): it
+bounds occupancy, but not below the 50 ms stall threshold, so rare huge bursts
+become regular moderate ones. The knob is only useful when
+`frames x per_frame_cost` fits inside the tightest tier's slack.
+
 ## Open questions
 
-1. **Per-subscription declaration, per-session enforcement.** The budget
-   is naturally per-session (one read task, one socket) while the
-   declaration is per-subscription. The keyexpr *is* decoded before
-   dispatch, so rx-side classification is cheap — but whether the budget
-   can be attributed per-endpoint without a second buffer is unresolved.
-2. **What validates `rate_hz` at resolve time?** Nothing records a
-   per-board absorb capacity, and the one figure measured (~750 msg/s)
-   turned out to describe burstiness rather than capacity.
-3. **Does BEST_EFFORT already express part of this?** Unchecked: whether
-   zenoh-pico's reliability setting causes the router to shed for a
-   cooperative publisher. It cannot be the whole answer — the threat
-   model includes a non-cooperating publisher — but it should be
-   positioned relative to this RFC.
-4. **Failure mode.** Reject at resolve time when declared ingress
-   exceeds a known capacity, or admit and shed with a counter? Whatever
-   sheds must count; silent shedding is how this class of problem hides.
-5. **How the declaration compiles to the task budget.** The measured
-   cells fix frames (8, 32) and rest (1000 µs) by hand. `rate_hz` and
-   `burst` have to map onto that pair against a per-platform drain
-   figure, which is open question 2 by another route.
-6. **Does the budget cost chain latency?** Chain p95 was flat across all
-   three cells, but p50 read 38 / 95 / 38 ms — non-monotonic, so either
-   noise or an effect the current design cannot separate from it. This
-   is the figure that would decide whether chain/flood separation is
-   needed alongside the budget.
+1. ~~**Per-subscription declaration, per-session enforcement.**~~ **Largely
+   dissolved.** CPU occupancy is inherently a per-SESSION property — one read
+   task, one socket — so per-session enforcement is the correct scope rather
+   than an implementation compromise. The declaration stays per-subscription
+   because that is what a user can state, and the resolver aggregates. What
+   remains open is only whether SHEDDING wants per-endpoint attribution, and
+   shedding lives at the router (enforcement point 1).
+2. **What validates `rate_hz` at resolve time?** Still open, but the figure to
+   record is now identified: **per-frame processing cost** (~0.8-1.0 ms on this
+   lane), not a msg/s envelope. That is a stabler quantity — issue 0506 showed
+   ~750 msg/s described burstiness, whereas per-frame cost is a property of the
+   decode path. Nothing records it yet.
+3. ~~**Does BEST_EFFORT already express part of this?**~~ **Answered: no.**
+   Checked in zenoh-pico: `reliability` is a PUBLISHER-side field
+   (`publisher->reliability`, stamped per message on the tx path), and
+   `_z_declare_subscriber` takes keyexpr, callback, dropper, arg and
+   `allowed_origin` — no QoS or reliability parameter. `_z_subscriber_t` holds
+   only an entity id and a session handle. A subscriber therefore cannot signal
+   "shed for me"; there is no field on the declare to carry it. BEST_EFFORT is
+   not a partial answer to this RFC.
+4. **Failure mode — and the two points differ.** The device budget sheds
+   NOTHING: it defers, and TCP backpressures the sender (`_z_zbuf_reset` is
+   above the loop). So "whatever sheds must count" applies to the router rule,
+   whose observable is a drop counter. The device half's observable is
+   different — deferral time or occupancy — and the RFC should not ask one
+   question of both.
+5. **How the declaration compiles to the task budget.** With occupancy as the
+   mechanism, `burst` maps onto FRAMES (the contiguous run a device will
+   tolerate) and `rate_hz` onto the duty cycle. That the contract term and the
+   knob mean the same thing is an argument for this mechanism. The remaining
+   step is question 2's per-frame cost, which turns a deadline slack into a
+   frame count.
+6. **Does the budget cost chain latency?** Unresolved, and now better bounded.
+   Chain p95 is flat across every cell (850 / 903 / 892 / 854 ms), so there is
+   no tail catastrophe — nothing resembling `TCP_WND 1xMSS`. But p50 over 12
+   runs reads 39 (unbounded) vs 85 (budget 8), while budget 32 reads 38 and
+   budget 128 reads 56. A deferral effect should be monotonic in the budget and
+   this is not, so it is either noise or something this harness cannot separate
+   from noise. It remains the figure that would decide whether chain/flood
+   separation is needed alongside the budget.
 
 ## Changelog
 
