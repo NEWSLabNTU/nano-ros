@@ -445,3 +445,55 @@ committing to an order.
 
 Item 1 (`~/.cargo`) is the exception worth doing regardless: it is correct on
 first principles for any Rust CI, and its absence is not a judgement call.
+
+## CI timings measured — item 5's ranking INVERTS
+
+Pulled from `gh run list` / the jobs API, 2026-08-22. Workflow wall clock:
+
+| workflow | runs | median |
+| --- | --- | --- |
+| nightly | 2 | 1681 s |
+| **pr-checks** | 10 | **200 s** |
+| docs | 5 | 90 s |
+
+Per-step, on a green `pr-checks` run:
+
+| job | total | dominant steps |
+| --- | --- | --- |
+| `check` | **214 s** | **`just check-fast` 144 s**, container init 59 s |
+| `nros new -> sync -> resolve` | 113 s | container init 61 s, scaffold 29 s |
+| `colcon build` | 119 s | apt repo 39 s + ROS/colcon install 48 s |
+
+`check-fast` across four green runs: **144, 112, 142, 148 s** (median ~143).
+Consistent, so this is not a single-sample artifact — which the first draft of
+this section was, with only one green run available.
+
+### The caching plan was wrong, and would have reported a win that did not exist
+
+The section above ranked `~/.cargo` caching first and called it "correct on
+first principles regardless". The timings show **no cargo-download step, no SDK
+provisioning step, and no compile step of consequence** in `pr-checks`. The 33 s
+cold configure extrapolated from the local tree does not appear at all, because
+CI never builds the fixture trees that produced it.
+
+Had that been implemented, it would have cached something no measured step
+spends time on. Recording it because "correct on first principles" is precisely
+the reasoning this phase has been burned by five times — first principles said
+the store must be cold, and it is, but nothing in this workflow pays for that.
+
+### Revised ranking, on measurements
+
+1. **`just check-fast` — 144 s, 67% of the critical job.** The fix already
+   exists: the fan-out runs the same gates in 7 s locally against 45 s serial.
+   Expect a far smaller ratio on a 2-core runner than on 32 cores, so this needs
+   measuring in CI rather than assuming the local speed-up transfers.
+2. **ROS 2 apt install — 87 s** (39 s repo + 48 s packages) in the colcon job. A
+   prebuilt container image is the fix. This was ranked LAST before the
+   measurement.
+3. **Container init — 59 s + 61 s** across two jobs. Fixed overhead; worth
+   knowing it is ~30% of `pr-checks` wall before optimising anything else.
+4. Everything previously listed — `~/.cargo`, SDK store, sccache dir — has **no
+   measured step** in this workflow. Not worth doing on current evidence.
+
+Note nightly is 1681 s and was NOT broken down. If CI time matters, nightly is
+8x pr-checks and is where the hours are.
