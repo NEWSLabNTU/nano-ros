@@ -37,35 +37,63 @@ and it is too coarse to plan from. Measured 2026-08-21:
 | ThreadX | yes — `ports_smp/cortex_a5_smp` is vendored (the compile gate already type-checks against it) | our ThreadX lane is a **Linux simulator**, not that port |
 | FreeRTOS | **no** — see below | no SMP port exists for anything we emulate |
 
-### NuttX — closest, and blocked on the build tree rather than the kernel
+### NuttX — closest, and the plan is B + C below
 
-The board family the nuttx-arm fixtures already use ships an SMP config. The
-obstacle is that NuttX here has ONE build tree with ONE configuration at a time:
-`scripts/nuttx/build-nuttx.sh` reconfigures `$NUTTX_DIR` from
-`$NUTTX_DEFCONFIG` (default
-`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`) and
-rebuilds in place. Adding an SMP variant means a second configuration competing
-for that tree.
+**Correction (2026-08-21), same day this issue was filed.** The first draft said
+the shared kernel tree is the obstacle and listed "second tree / config-identity
+stamp / accept serial reconfiguration" as three open options. That framing was
+wrong about the hazard, because it missed a layer that already exists.
 
-**This is [issue 0743](archived/0743-nuttx-kernel-path-has-no-arch-discrimination.md)
-again, in a form 0743's fix cannot see.** 0743 made `nuttx_kernel_path_for()`
-read the ELF's `e_machine` so an arm consumer can never be handed the riscv
-build. But `arm-uniprocessor` and `arm-SMP` are the SAME `e_machine`. A stale
-SMP kernel would satisfy the arch check and silently run the uniprocessor
-tests — or vice versa — with no guard anywhere. So this work needs the
-build-tree question answered FIRST:
+`scripts/nuttx/build-nuttx.sh` does reconfigure `$NUTTX_DIR` in place from
+`$NUTTX_DEFCONFIG`. But **consumers do not link the tree.** phase-339 W2 gives
+each build a per-arch SNAPSHOT, `nros-nuttx-export-<arch>/`, carrying its own
+`.nros-export-key` — and that key is already `HEAD:sha256(defconfig)`, i.e. it
+ALREADY distinguishes two configs of the same arch. The script's own comment
+says why: "records what produced it, so freshness never depends on the shared
+tree."
 
-* a second NuttX checkout/tree per configuration (costs disk + a submodule-ish
-  story), or
-* per-config artifact staging with a config-identity stamp the resolver checks
-  (the `e_machine` check widened to "which defconfig produced this?"), or
-* accept serial reconfiguration and make the cost explicit in the lane.
+So the shared tree is a BUILD-time serialization point, not a consumption
+hazard. The only thing missing is granularity: the snapshot DIRECTORY is keyed
+on `<arch>`, and `arm` and `arm-smp` are both `arm`, so the two configs would
+land in one directory and overwrite each other — while the key file inside
+correctly reports a mismatch and forces a rebuild. That is a thrash, loud and
+slow, not the silent wrong-kernel the first draft feared.
 
-Guessing here is how 0743 happened; pick deliberately.
+It is still [issue 0743](archived/0743-nuttx-kernel-path-has-no-arch-discrimination.md)
+one level in — `nuttx_kernel_path_for()` reads `e_machine`, and
+arm-uniprocessor and arm-SMP share it — so the RESOLVER still cannot tell the
+two apart. Both halves want the same fix.
+
+**B — widen the identity from arch to config.** The snapshot dir becomes
+`nros-nuttx-export-arm-smp/` beside `-arm`; the id comes from the defconfig's
+own directory name (`nuttx-config/<id>/defconfig`), so it is derived, not a
+hand-maintained list. `nuttx_include_root()`'s `snapshot_arch` argument becomes
+that id — its callers already pass an arch string, so the change is the value,
+not the shape. The resolver then asks for a NAMED CONFIG and can check the
+snapshot's key/`config.h` (does it actually have `CONFIG_SMP`?) instead of
+inferring from `e_machine`, which is the check that cannot work here.
+
+**C — one more lane, shaped exactly like riscv.** `build-fixtures-arm-smp`
+gated on `nros_lane_wants_platform nuttx-arm-smp`, mirroring
+`build-fixtures-riscv` line for line, so a lane naming no SMP coordinate pays
+nothing. `NUTTX_DEFCONFIG` points at the new `nuttx-config/arm-smp/defconfig`.
+Then a `[[fixture]]` row and a `CorePinPlacement`-style cell asserting the exact
+`running_on=1` line, `AcceptOnly`, the way the Zephyr a53 cell does.
+
+**A — a second NuttX tree — is NOT recommended.** `NUTTX_DIR` is already
+env-overridable so the wiring is trivial, and it would buy parallel builds. But
+NuttX is a SUBMODULE: a second checkout means either a second submodule entry
+(two pins for one upstream, which must move forward together under the
+forward-only rule, with `check-submodule-pins` widened to both) or a worktree
+the pin gate does not model. That is a permanent drift liability bought to avoid
+a serialization cost that C only pays when a lane actually names SMP. It also
+buys nothing the snapshot layer does not already provide, now that the snapshot
+is understood.
 
 Note also the shipped `qemu-armv7a/configs/smp` defconfig has **no networking**
 (`CONFIG_NET=y` absent), and every nros fixture needs a transport, so the
 variant is our defconfig + `CONFIG_SMP=y` + core count, not the stock config.
+That is the real work here; B and C are small beside it.
 
 ### ThreadX — the port exists, the board does not
 
@@ -116,5 +144,7 @@ Per RTOS, either:
 * a recorded, specific reason it cannot be, of the FreeRTOS-port kind above —
   not "needs SMP".
 
-And for NuttX specifically: whatever the build-tree answer is, a guard that
-distinguishes the configurations, so the 0743 class cannot recur one level in.
+And for NuttX specifically, B before C — the snapshot identity widened from
+`<arch>` to `<config>` BEFORE a second arm config exists, so the two never share
+a directory and the resolver can name what it wants. Building the fixture first
+and adding the guard after is the ordering that produced 0743.
