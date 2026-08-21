@@ -51,6 +51,12 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-22): **#0753** (cmake/zephyr, resolved on arrival) — filed to verify the
+consumer-side belief that the Zephyr module's `nros_generate_interfaces()` misparses `SKIP_INSTALL` as a
+message path; it does not, and has not since Phase 210.E.3.c (the option is parsed and deliberately
+ignored — Zephyr has no install layout). Parity already holds; the ASI lane gate keyed on
+`TARGET zephyr_interface` is dead weight on the consumer side. See `archived/0753-*`. (2026-08-22)
+
 Recently resolved (2026-08-22): **#0750** (testing, WONTFIX by demand) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check-sched-dim-arms`) but have never RUN. Closed on the question nobody asked while the plan was being drawn: which shipped device needs it? Census of `matrix::CELLS` — 197 Runtime cells, and the platform the reference consumer actually names (`nano_ros_use_board(fvp-aemv8r-smp)`, Cortex-R52 SMP, the architecture `nros-board-s32z270-freertos` targets in silicon) has ZERO, while a host simulator (ThreadxLinux) has 21. No multi-core NuttX or ThreadX target exists here, and FreeRTOS's Posix port has no SMP hooks at all — only RP2040 (hardware) does. CI tiers are COMPUTED covers, so a cell on a rarely-demanded platform taxes tier 2 and nightly forever to re-prove what the Zephyr a53 cell proves today. What stays: B (`22e511442`, a real fix — `snapshot_root` honoured `$NUTTX_EXPORT_DIR` and `nuttx_include_root` did not, so an image could link SMP libs against uniprocessor headers), the opt-in `arm-smp` defconfig/lane that demonstrate it, and the board-neutral `CORE_PIN_OBSERVED_CPU1`. If SMP coverage grows it grows toward R52/FVP, whose obstacle is licensing, not test design. See `archived/0750-*`. (2026-08-22)
 
 Recently resolved (2026-08-22): **#0751** — `check-kconfig-knob-forwarding` held its two reader classes to
@@ -272,6 +278,34 @@ and refuses a mismatch with a rebuild hint; the test itself was removed in the s
 does NOT cover, and is still open ground: `check-nuttx-shared-tree-headers` inspects header includes
 only, so a Rust helper joining `$NUTTX_DIR/nuttx` was invisible to it (0196 pattern). Filed from a
 tier-2 failure without searching archived/ first. See `archived/0748-*`. (2026-08-21)
+
+**#0757** (rmw/memory, open 2026-08-22) — the C++ arena dispatch trampoline swallows every non-OK take, so
+`BUFFER_TOO_SMALL` drops samples with zero diagnostics while cyclone ACKs them at transport level — the
+subscription looks matched and healthy from every outside probe while the app waits forever. This is
+#0749's open half, previously tracked only as a sentence in the archived issue; it cost a consumer-side
+tshark session to attribute 13.4 KiB trajectories silently discarded by every Zephyr image. Direction:
+throttled fail-loud `nros_log` at the drop site (RFC-0052) naming sample size vs buffer size, plus a sweep
+of the sibling take sites (C dispatch, service/action, param service). See `0757-*`. (2026-08-22)
+
+**#0756** (zephyr/memory, open 2026-08-22) — `NROS_MAX_PARAMETERS=256` hangs Zephyr boot right after
+`dds_create_participant`: no fault, no panic, no output. Bisected knob-level on the ASI FVP image
+(2026-08-22); 32 boots clean and runs the full driving loop, FreeRTOS lanes run 256 fine. Reachable only
+since `d1c5b3b3b` made the sizing knobs act on the Zephyr Rust lane (#0749/#0752). Suspected
+knob-scaled stack temporary on the boot path. Consumer pins the lane to 32 until fixed; boot should also
+fail loud when a sizing knob makes a stack unviable. See `0756-*`. (2026-08-22)
+
+**#0755** (cmake, open 2026-08-22) — `NanoRosBoardFacts.cmake` never forwards the entry's DEPLOY even
+though `nano_ros_add_executable` knows it and the verb accepts `--deploy`; when a bringup's system.toml
+carries several deploys on one board that resolve differently, the verb's (correct) ambiguity refusal is
+soft-skipped by the wrapper and board facts silently vanish from the image. Thread DEPLOY through to a
+`--deploy` flag like `--board`. See `0755-*`. (2026-08-22)
+
+**#0754** (cmake/zephyr/rmw, open 2026-08-22) — the Zephyr module's idlc store rung re-finds the CLI with
+`find_program(_NROS_CLI_IDLC nros)` on PATH instead of reusing the already-resolved
+`_NROS_ZEPHYR_CODEGEN_TOOL`/`_NANO_ROS_CODEGEN_TOOL`, so consumers handing an explicit CLI still must
+export PATH themselves — and a stale PATH `nros` can answer for a build that was told to use another
+(0663/0625 shadowing class). Reuse the validated tool first, fall back to `find_program` only when unset.
+See `0754-*`. (2026-08-22)
 
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
 reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
