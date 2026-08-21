@@ -1,11 +1,16 @@
 # Phase 358 — Embedded runtime under load: footprint, overrun, overload
 
-**Status (2026-08-16). THREE of five DONE; W1 blocked, W3 open.** This header
+**Status (2026-08-21). THREE of five DONE; W1 RESTATED (its premise refuted, #271 closed), W3 open.** This header
 said "PLANNING — nothing implemented" while ELEVEN commits named the phase — my
 error, corrected here.
 
-* **W1 (#271, Orin SPE footprint)** — BLOCKED. The re-measurement it asked for
-  cannot run: three API removals stand in front of it (`af478b64d`). #271 open.
+* **W1 (#271, Orin SPE footprint)** — RESTATED 2026-08-21, was BLOCKED. #271 is
+  now RESOLVED and archived at 91 % recovered, with the remaining ~11 KB
+  consumer-side. The re-measurement still cannot run here (the three API
+  removals are real, and the `autoware_sentinel` repro is not on this host), but
+  the seam its consumer port waits on — phase-346 — COMPLETED 2026-08-12, before
+  the entry that recorded the block. **This phase's premise did not survive**:
+  see W1 below.
 * **W2 (#505, timer overrun)** — DONE. The policy is written down where the
   decision belongs (`74badc8f2`); #505 resolved.
 * **W3 (#506, transport budget)** — OPEN, and the blocker cleared twice over:
@@ -84,6 +89,34 @@ build of the minimal image, i.e. the port.
 A host-side `EXECUTOR_OPAQUE_U64S` under #271's knob set was measured (18031
 u64s ≈ 144 KB) and deliberately NOT offered as the answer: the budget is a
 256 KB BTCM on armv7r, where pointers are half the width.
+
+**RESTATED 2026-08-21 — the premise this wave was built on does not hold.**
+
+W1 opens "This number is likely stale in the project's favour … a large part of
+#271 may already be recovered" by `58d271471` (Executor 11632 -> 4992). That
+commit did not delete the remap table. It CARVED it out of the struct into
+caller-owned storage, in its own words:
+
+> The required backing grows by the same bytes, but that lands in the caller's
+> STATIC buffer instead of on the stack, which is the entire point.
+
+6,664 bytes moved from a stack temporary to static backing. It fixes a STACK
+overflow (issue 0552), not image size — the bytes never left the image, and
+#271's remaining 14,404 were all `.bss`. So re-measuring is unlikely to show the
+recovery this wave hoped for, and the urgency that justified "no footprint work
+before W1's re-measurement" is largely gone.
+
+**#271 is CLOSED** (2026-08-21) at 91 % recovered — 168,760 bytes of overflow ->
+~11,268 once `NROS_RMW_MESSAGE_INFO_SLOTS=8` is applied — with everything
+remaining consumer-side. Its durable half became issue 0739 (the static-pool
+inventory), which is DONE and needed no consumer port at all.
+
+**What is left of W1**, honestly: a current BTCM figure is still unproduced and
+still needs the consumer port, which is now possible (phase-346 landed the
+out-of-tree board seam) but is consumer work, not nano-ros work. It is no longer
+a blocker on anything in this tree — the size-gate follow-on this wave named can
+be designed against the pool inventory instead of against a number nobody can
+refresh.
 
 ## W2 — Timer overrun policy and counter (#505)
 

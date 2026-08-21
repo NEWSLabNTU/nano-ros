@@ -337,14 +337,28 @@ closing issues 0415 and 0432 — which predates the entry that names it as
 pending. `nros-board-orin-spe` and `platform-orin-spe` are still gone, so the
 port is still WORK, but the seam it was waiting for exists.
 
-**Phase 358's suspicion is most likely a false lead, and the disproof is in
-this file.** 358 hoped `58d271471` (Executor 11632 -> 4992) recovered much of
-the overflow, and treats an armv7r image as the only way to test it. But the
-"false lead worth recording" section above already ran that experiment:
-shrinking `__NROS_SIZE_EXECUTOR_SIZE` from 154,432 to 59,200 moved the overflow
-**not at all**, because it is a size-EXPORT blob `--gc-sections` drops. By the
-same reasoning the Executor carve should not move BTCM either. Whoever picks
-this up should re-read that section before spending a cycle on the arena.
+**Phase 358's suspicion is most likely wrong — CORRECTED 2026-08-21.** 358 hoped
+`58d271471` (Executor 11632 -> 4992) recovered much of the overflow.
+
+An earlier version of this note argued that from the "false lead worth
+recording" section above — that shrinking `__NROS_SIZE_EXECUTOR_SIZE` moved the
+overflow by zero because `--gc-sections` drops it. **That reasoning was wrong**:
+the export blob and the Executor STRUCT are different objects, and the struct is
+live.
+
+The right reason is in `58d271471` itself. It did not delete the remap table; it
+CARVED it out of the struct into caller-owned storage, and says so:
+
+> The required backing grows by the same bytes, but that lands in the caller's
+> STATIC buffer instead of on the stack, which is the entire point.
+
+So 6,664 bytes moved from a stack temporary into static backing. It fixes a
+STACK overflow (issue 0552, Zephyr Cortex-M main stack), not image size — the
+bytes never left the image. BTCM `.bss`/`.data` should be unchanged by it, and
+this issue's remaining 14,404 bytes were all `.bss` anyway.
+
+So the suspicion is still unlikely to hold, but anyone testing it should expect
+a STACK win, not a footprint one, and should not cite the export-blob argument.
 
 (Separately, the claim that no comparable figure is obtainable has also expired:
 32-bit in-tree builds report `EXECUTOR_OPAQUE_U64S` today — `armv7a-nuttx-eabihf`
