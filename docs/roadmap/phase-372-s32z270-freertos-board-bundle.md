@@ -43,12 +43,24 @@ reference-consumer side. Successor to phase-370.
   with a tap/socket-netdev lane or on hardware (W5). Heap: the QEMU cell
   budgets 3 MiB (`NROS_FREERTOS_HEAP_KB`), consistent with the 7 MiB
   Zephyr lesson; the 40-participant test also waits for W5.
-* **Wall worth keeping**: a long-lived dev tree can produce
-  deterministically-faulting images for this family's QEMU cells while a
-  fresh worktree at the SAME commit builds bootable ones (byte-identical
-  code, benign layout deltas, hardfault at boot) — the museum-binary
-  class one level deeper than issue 0268. Verdicts about these cells come
-  from a clean worktree or CI, never from a lived-in tree.
+* **The boot-or-hardfault flicker: ROOT-CAUSED AND FIXED (2026-08-22).**
+  For days, byte-equivalent rebuilds of the MPS2 cyclone cell flickered
+  between booting and instantly hard-faulting, tracking nothing but text
+  layout — first mis-read as tree-local museum state. The mechanism: the
+  shared section layout let `.bss` CONTINUE `.data`'s load region
+  (`.data : AT(_etext)`), producing one PT_LOAD whose LMA sits at
+  `_etext` in flash and whose `p_memsz` includes the multi-MiB FreeRTOS
+  heap. QEMU's ROM loader registers that blob as `[_etext,
+  _etext+memsz)`; when text drift pushes the span past the code region's
+  end, `load_elf` rejects the WHOLE image SILENTLY — the machine executes
+  zeroed memory (linear-sweep trace, INVSTATE, lockup) and it looks
+  exactly like a code bug. Proven by patching `p_memsz := p_filesz` in a
+  faulting image (boots) and by single-stepping (guest memory all
+  zeros). Fix: `.bss (NOLOAD) : AT(ADDR(.bss))` — own segment,
+  paddr = vaddr inside RAM, no flash-side span. Plus the 0475-class
+  guard: `-T` scripts now register as `INTERFACE_LINK_DEPENDS`, so an
+  edited layout actually relinks. Every prior "cell regressed/works"
+  observation this phase that tracked rebuilds and not code was this.
 
 ## Why
 

@@ -294,5 +294,18 @@ function(nros_freertos_compose_platform)
 
     if(_NFCP_LINK_OPTIONS)
         target_link_options(freertos_platform INTERFACE ${_NFCP_LINK_OPTIONS})
+        # phase-372 (issue 0475's class) — a linker script reached through a
+        # raw `-T` flag gets no rebuild edge, so an edited .ld leaves every
+        # image linked against the OLD layout until something else forces a
+        # relink (this is exactly how the .bss-LMA loader fix stayed
+        # invisible on first rebuild). Register every -T argument (and its
+        # shared INCLUDE, which lives next to it or on a -L path) as a link
+        # dependency of the composed platform.
+        foreach(_opt IN LISTS _NFCP_LINK_OPTIONS)
+            if(_opt MATCHES "^-T(.+)$")
+                set_property(TARGET freertos_platform APPEND PROPERTY
+                    INTERFACE_LINK_DEPENDS "${CMAKE_MATCH_1}")
+            endif()
+        endforeach()
     endif()
 endfunction()

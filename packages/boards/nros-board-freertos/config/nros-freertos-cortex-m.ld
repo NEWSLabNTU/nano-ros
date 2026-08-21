@@ -143,8 +143,23 @@ SECTIONS
         _edata = .;
     } > RAM
 
-    /* Zero-initialized data */
-    .bss :
+    /* Zero-initialized data.
+     *
+     * phase-372 root-cause (the "image boots or hardfaults depending on
+     * unrelated rebuilds" flicker): without NOLOAD + an explicit AT>RAM,
+     * .bss CONTINUES .data's load region — one PT_LOAD whose LMA sits at
+     * _etext in FLASH and whose p_memsz includes the multi-MiB heap that
+     * lives here. QEMU's ROM loader registers that blob as
+     * [_etext, _etext + memsz), and whenever _etext drifts high enough for
+     * the span to cross the code region's end, load_elf rejects the WHOLE
+     * image SILENTLY: the machine then executes zeroed memory and dies in
+     * a lockup that looks like a code bug. Whether any given build trips
+     * it is a function of text-size drift — which is why byte-equivalent
+     * rebuilds flickered between booting and faulting for days. AT>RAM
+     * pins the segment's paddr to its vaddr (inside the RAM region, where
+     * it always fits) and NOLOAD keeps the multi-MiB span out of the
+     * file. */
+    .bss (NOLOAD) : AT(ADDR(.bss))
     {
         . = ALIGN(4);
         _sbss = .;
@@ -160,7 +175,7 @@ SECTIONS
     } > RAM
 
     /* Ensure enough room for the main stack */
-    ._check_stack :
+    ._check_stack (NOLOAD) :
     {
         . = ALIGN(4);
         . = . + _Min_Stack_Size;
