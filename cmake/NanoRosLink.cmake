@@ -103,6 +103,41 @@ function(nano_ros_link_rmw TARGET)
             LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
     endif()
 
+    # Issue 0737 — bind the CycloneDDS this image was COMPILED against.
+    #
+    # `nano-ros-posix.cmake` already names this hazard on the self-provision
+    # path, and answers it by building a STATIC ddsc so "there is no runtime
+    # libddsc.so, hence no rpath needed and, crucially, no risk of ld.so
+    # resolving the app's `libddsc.so.0` against a *different* system /opt/ros
+    # Cyclone". The find_package path has the same exposure and had no guard.
+    #
+    # What that costs, measured: the `freertos-posix` cells compiled against the
+    # SDK fork (`~/.nros/sdk/cyclonedds/0.10.5-nros1`, chosen by find_package)
+    # and at RUNTIME loaded `/opt/ros/humble/lib/x86_64-linux-gnu/libddsc.so.0`,
+    # because both carry SONAME `libddsc.so.0` and a sourced ROS puts its lib dir
+    # on `LD_LIBRARY_PATH`. CMake had written the right directory into the
+    # binary — as **DT_RUNPATH**, which ld.so searches AFTER `LD_LIBRARY_PATH`,
+    # so it lost. The mismatch surfaced as `dds_stream_write_sample` refusing to
+    # re-serialise every taken sample; the executor then discarded it and the
+    # cell "published but never received" on a ROS-sourced host and passed on a
+    # host without one. Forcing the matching library made the same binary deliver.
+    #
+    # DT_RPATH is searched BEFORE `LD_LIBRARY_PATH`, which is exactly the
+    # property wanted here: an environment must not be able to substitute a
+    # different build of the same SONAME under a running nano-ros image. That it
+    # is no longer overridable is the point, not a side effect.
+    # Keyed on the resolved library PATH, not on `TARGET CycloneDDS::ddsc`: that
+    # imported target is created by `find_package` inside the backend's own
+    # directory scope and is not visible from the leaf that builds the image, so
+    # a `if(TARGET …)` here is silently false — the first cut of this block was,
+    # and left the RUNPATH in place.
+    if(_chosen STREQUAL "cyclonedds" AND UNIX AND NOT APPLE
+       AND DEFINED NROS_RMW_CYCLONEDDS_DDSC_LIBRARY
+       AND NROS_RMW_CYCLONEDDS_DDSC_LIBRARY MATCHES "\\.so(\\.[0-9]+)*$")
+        set_property(TARGET ${TARGET} APPEND PROPERTY
+            LINK_OPTIONS "-Wl,--disable-new-dtags")
+    endif()
+
     # Phase 104.B.6 — accumulate the chosen RMW into the target's
     # `_NANO_ROS_LINKED_RMWS` list and (re)generate the strong-stub
     # `nros_app_register_backends()` TU. Idempotent across repeat calls.

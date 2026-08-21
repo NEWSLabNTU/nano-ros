@@ -51,6 +51,22 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-21): **#0737** — both `freertos-posix` cells published and received nothing. Two
+defects. (1) No recipe built their fixtures (#405's shape) — fixed by `just freertos build-fixtures-posix`.
+(2) The image LOADED a different CycloneDDS than it compiled against: `find_package` resolved the SDK fork
+(`~/.nros/sdk/cyclonedds/0.10.5-nros1`) while `ldd` showed `/opt/ros/humble/.../libddsc.so.0`, because CMake
+wrote that directory as **DT_RUNPATH** — searched AFTER `LD_LIBRARY_PATH`, which a sourced ROS occupies. The
+fork's delta then made `dds_stream_write_sample` refuse every taken sample. Proof before any fix: the same
+binary delivers 0 vs 7 with one `LD_LIBRARY_PATH`. THAT is the host axis three passes could not find — not
+the machine, but whether ROS is sourced. `nano_ros_link_rmw` now emits `-Wl,--disable-new-dtags` so DT_RPATH
+wins (native images self-provision a STATIC ddsc and are unaffected); `nano-ros-posix.cmake` had already
+named this hazard and guarded only the from-source path. Second fix, the one that generalises:
+`drain_into_buffer_raw_c` treated `Err(_)` like `Ok(None)` in both arms, destroying an already-CONSUMED
+sample while `alive — … 0 error(s)` reported health — it now propagates to `subscription_errors`. Both cells
+un-`#[ignore]`d and passing. See `archived/0737-*`. (2026-08-21)
+
+Recently resolved (2026-08-21): **#0740** — the config-header mirror's file edge was Ninja-only, so a
+
 Recently resolved (2026-08-21): **#0744** (boards, open 2026-08-21) — freertos-posix: a task blocking in a RAW host primitive (the
 platform shim's pthread-layout condvars, or a blocking syscall from task context) parks the WHOLE
 simulated kernel — the GCC/Posix port's tick cannot preempt a block it does not own — so RT tiers see
@@ -192,18 +208,6 @@ serialization one. Sibling `test_xrce_action_ros2_client` and `test_xrce_to_ros2
 run, so it is specific to the service reply type. Deterministic 3/3 in-sweep and 1/1 solo. NOT caused by
 phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstream, rebuilding fixtures and
 reproducing. See `0741-*`. (2026-08-21)
-
-**#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing.
-Defect 1 (no recipe built their fixtures — #405's shape) FIXED. Defect 2 reproduces on one host, not another,
-and is now instrumented on both sides with sink-independent probes: in 8 s the executor enters
-`sub_buffered_raw_c_try_process` **759** times, Cyclone's take path hands back a **valid** sample once per
-publish into a 1024-byte buffer (no `BUFFER_TOO_SMALL`, no invalid-sample reject), and execution reaches the
-`match &entry.buffer` on the NEXT line **0** times — on a single compilation. The duplicate-`nros-node`
-reading (#0734/#0616 shape) was the strongest explanation and is REFUTED: one crate disambiguator,
-`Cs14FYpzIjoeU_9nros_node`. Earlier readings also withdrawn: not the #0623/#0636 family (the entry is
-`run_components`, one task) and the app does not fail to take. Next probe named in the issue. The cross-host
-cost came from a callback that dropped samples silently — now gated by `check-no-silent-sample-drop`, which
-found 5 more sites. See `0737-*`. (2026-08-21)
 
 **#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
 fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7

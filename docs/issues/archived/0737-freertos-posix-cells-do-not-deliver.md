@@ -2,7 +2,8 @@
 id: 737
 title: "Both `freertos-posix` cells publish and deliver nothing — and no recipe
   built their fixtures, so the lane reported green on binaries that did not exist"
-status: open
+status: resolved
+resolved: 2026-08-21
 type: bug
 area: testing, platform, rmw
 related: [phase-370, issue-0405]
@@ -384,3 +385,86 @@ the record the registration wrote — and those two are distinguishable by the
 address alone.
 
 **Reverted:** all probes. Nothing from this pass is committed as code.
+
+## RESOLVED 2026-08-21 — the image loaded a different CycloneDDS than it was compiled against
+
+The contradiction dissolved once the probe tags were unambiguous. The previous
+pass reported "0 arrivals at the line after the drain"; that was a MEASUREMENT
+bug of mine — the tag regex `PROBE: [a-zA-Z >-]+` truncates at `_`, so
+`try_process ENTER`, `try_push None` and `try_recv_raw ERR` all collapsed into
+one bucket, and `[P3d-ring-ERR]` was invisible because of its uppercase. With
+distinct tags:
+
+```
+759 [P1-enter]      759 [P3-drain-ring]      759 [P4-after-drain]
+759 [P6-ring-pop]   752 [P3c-ring-nodata]      7 [P3d-ring-ERR]
+```
+
+Seven errors, seven publishes. `try_recv_raw` returns `Err` on exactly the
+samples that matter.
+
+**The error.** Cyclone's `subscription_try_recv_raw` takes a valid sample and
+then fails to re-serialise it: `dds_stream_write_sample` returns false, so the
+backend returns `NROS_RMW_RET_ERROR`. Not the descriptor — `Int32_` is
+`DDS_TOPIC_FIXED_SIZE`, 4 bytes, 3 ops, `opt_size_xcdr1 = opt_size_xcdr2 = 4`,
+which is the memcpy fast path and cannot fail. Retrying in XCDR2 failed too.
+
+**Why it fails: the image loads a different libddsc than it compiled against.**
+
+```
+find_package  → /home/aeon/.nros/sdk/cyclonedds/0.10.5-nros1   (the fork)
+ldd           → /opt/ros/humble/lib/x86_64-linux-gnu/libddsc.so.0   (ROS stock)
+readelf -d    → DT_RUNPATH [/home/aeon/.nros/sdk/cyclonedds/0.10.5-nros1/lib]
+```
+
+Both carry SONAME `libddsc.so.0`. CMake wrote the right directory into the
+binary — as **DT_RUNPATH**, which `ld.so` searches AFTER `LD_LIBRARY_PATH`, and
+a sourced ROS puts its lib dir there. So the loader silently substituted a
+different build of the same library, and the fork's carried delta landed inside
+`dds_stream_write_sample`.
+
+Proof, before any fix — same binary, one environment variable:
+
+```
+$ ./freertos_posix_entry | grep -c Received:
+0
+$ LD_LIBRARY_PATH=~/.nros/sdk/cyclonedds/0.10.5-nros1/lib:$LD_LIBRARY_PATH ./freertos_posix_entry | grep -c Received:
+7
+```
+
+**That is the host axis** the last three passes could not find, and it is not a
+property of the machine: it is whether ROS is on `LD_LIBRARY_PATH` when the
+image runs. A host without a sourced ROS gets the library it compiled against
+and passes.
+
+`cmake/platform/nano-ros-posix.cmake` already names this exact hazard — it
+builds a STATIC ddsc on the self-provision path so that "there is no runtime
+libddsc.so, hence no rpath needed and, crucially, no risk of ld.so resolving the
+app's `libddsc.so.0` against a *different* system /opt/ros Cyclone". The
+find_package path had the same exposure and no guard.
+
+## The two fixes
+
+**1. Bind the library you compiled against** — `nano_ros_link_rmw`, the one seam
+every consumer goes through, now emits `-Wl,--disable-new-dtags` for a
+cyclonedds image whose resolved ddsc is a shared library. DT_RPATH is searched
+BEFORE `LD_LIBRARY_PATH`; that it is no longer overridable is the point. Keyed
+on the resolved library PATH, not `if(TARGET CycloneDDS::ddsc)` — that imported
+target is created in the backend's own directory scope and is invisible from the
+leaf, so the first cut of this block was silently false and left the RUNPATH in
+place. Native cyclone images are unaffected: they self-provision a STATIC ddsc
+and carry an empty RUNPATH.
+
+**2. Stop the core swallowing the error.** `drain_into_buffer_raw_c` read
+`if let Ok(Some(len)) = … else { break }` in both arms, which treats `Err(_)`
+exactly like `Ok(None)`. The backend has already CONSUMED the sample when it
+reports the error, so the message was destroyed and the only observable was that
+nothing arrived. The executor's own `alive — … 0 error(s)` line reported health
+throughout, because the error never reached the counter that prints it. It now
+propagates, and `spin_once` maps it to `subscription_errors`.
+
+Fix 2 is the one that matters beyond this issue: with it, this defect announces
+itself in one run on any host instead of costing three investigations across two.
+
+**Verified:** both cells pass, un-`#[ignore]`d; `readelf -d` shows DT_RPATH and
+`ldd` the SDK library; native cyclone fixtures rebuild unchanged.

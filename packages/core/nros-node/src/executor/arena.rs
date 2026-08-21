@@ -920,24 +920,37 @@ pub(crate) struct SubBufferedRawCEntry {
 }
 
 /// Drain helper for C-style raw buffered entries.
-unsafe fn drain_into_buffer_raw_c(entry: &mut SubBufferedRawCEntry) {
+/// Issue 0737 — a transport ERROR is not "no data", and conflating them
+/// destroys the sample without a trace.
+///
+/// Both arms used to read `if let Ok(Some(len)) = … else { break }`, which
+/// treats `Err(_)` exactly like `Ok(None)`. The backend has ALREADY consumed
+/// the sample by the time it reports the error, so the message is gone and the
+/// only observable is that nothing arrived — indistinguishable from a publisher
+/// that never published. 0737 spent two hosts' investigations inside that
+/// ambiguity while the executor's own `alive — … 0 error(s)` line reported
+/// health, because the error never reached the counter that prints it.
+///
+/// Now it propagates: `spin_once` maps an `Err` from `try_process` to
+/// `subscription_errors`, so the count stops lying and the failure has a name.
+unsafe fn drain_into_buffer_raw_c(entry: &mut SubBufferedRawCEntry) -> Result<(), TransportError> {
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+            if let Some(len) = entry.handle.try_recv_raw(slot)? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
-                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
-                    ring.commit_push(len);
-                } else {
-                    break;
+                match entry.handle.try_recv_raw(slot)? {
+                    Some(len) => ring.commit_push(len),
+                    None => break,
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Dispatch for C-style raw buffered subscriptions.
@@ -950,7 +963,9 @@ pub(crate) unsafe fn sub_buffered_raw_c_try_process(
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawCEntry) };
 
-    unsafe { drain_into_buffer_raw_c(entry) };
+    // Issue 0737 — drain first, and let a transport error OUT. Anything already
+    // buffered from an earlier spin is still dispatched below on the next call.
+    unsafe { drain_into_buffer_raw_c(entry)? };
 
     match &entry.buffer {
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
