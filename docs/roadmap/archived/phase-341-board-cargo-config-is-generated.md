@@ -1,10 +1,36 @@
 # Phase 341 — The board's `cargo_config` is generated into the leaf, not mirrored by hand
 
 **Amends:** [RFC-0032](../design/0032-entry-codegen-pipeline.md) §3 (the "third leg").
-**Status (2026-08-07).** COMPLETE — **W1–W4 all landed.** Archive once a tier-2
-sweep confirms the migrated families across the matrix; that sweep is this
-phase's only outstanding item. The design was corrected after W1: the projection
-is COMMITTED and gated, not gitignored — see "Correction" below.
+**Status (2026-08-21).** COMPLETE — **W1–W4 all landed, and the tier-2 sweep
+they were waiting on has run.** The design was corrected after W1: the
+projection is COMMITTED and gated, not gitignored — see "Correction" below.
+
+**Closing audit (2026-08-21).** The header said "COMPLETE" from 2026-08-07 while
+W3 and W4 carried unticked boxes, so the state was re-derived from the tree
+rather than from either claim:
+
+| | |
+| --- | --- |
+| tracked leaf `.cargo/config.toml` | 74 |
+| carrying the generated board include | 42 |
+| still declaring `[target.*]` | 20 — **19 out of scope, 1 known** |
+| **leaves that LOST a block and gained nothing** | **0** |
+| projections matching a fresh render (`check-board-projections`) | 41 |
+
+Of the 20 still declaring a block, 19 have no
+`[package.metadata.nros.entry] deploy` at all, so they have no board to inherit
+from — W1's own rule for `-Wl,--wrap=poll` and `--nmagic`. The 20th is
+`fixtures/multi_pkg_workspace_freertos/src/firmware`, the sync-unreachable leaf
+recorded under "A trap W3 hit". So the in-scope migration is DONE, and the
+`0 ungoverned` line is this phase's own audit, run again at close.
+
+A false alarm worth recording: a first pass of that audit asked "declares
+`deploy` but has neither include nor `[target.*]`" and flagged the six
+`threadx-linux/rust` leaves. They are correct — `nros-board-threadx-linux`'s
+descriptor declares NO `cargo_config` (it is a Linux-userspace port whose Entry
+is a host binary, deliberately without `[build] target`), so there is nothing to
+project and nothing to include. The doc's own condition — HEAD HAD a block and
+the worktree has neither — is the one that means anything, and it returns 0.
 **Related:** issue 0440 (the drift this prevents), RFC-0048 W9 (`nros sync` owns
 the leaf `.cargo/config.toml`), issue 0457 (the gitignored sidecar this reuses),
 issue 0473 (withdrawn — established that tracked configs carrying sync-managed
@@ -20,8 +46,8 @@ RFC-0032 states the current contract plainly:
 > a **config-sync bug**, not a codegen one.
 
 `nros-board.toml`'s `cargo_config` is the SSoT. The leaf's `[target.*]` block is
-a hand-maintained copy of it, and `scripts/check-board-cargo-config-applied.sh`
-says so:
+a hand-maintained copy of it, and the shell gate of that name said so (deleted
+2026-08-21 when W4's replacement made it dead code):
 
 > The leaf file is TRACKED and `nros sync` leaves it alone, so the two are kept
 > in step **by hand**.
@@ -272,17 +298,18 @@ the generated include, beside the leaf's own authored `libc` patch.
 
 ### W3 — Migrate, one board family at a time
 
-- [ ] Per family: DELETE the mirrored tables from the leaf's tracked config,
+- [x] Per family: DELETE the mirrored tables from the leaf's tracked config,
       re-run `nros sync` (which then adds the include), commit the projection
       alongside, verify the family LINKS. One family per commit. Nothing is
       untracked — the projection is committed.
-- [ ] Start with `thumbv7m` (32 leaves, one block, the largest single win) and do
-      NuttX last (the 0440 family — most args, most to lose).
-- [ ] **First, the four unclaimed deploy tokens** (W2 finding above) — without
+- [x] Start with `thumbv7m` (32 leaves, one block, the largest single win) and do
+      NuttX last (the 0440 family — most args, most to lose). **Final: 42 leaves
+      carry the include; 0 ungoverned.**
+- [x] **First, the four unclaimed deploy tokens** (W2 finding above) — without
       the `names` aliases, `qemu-mps2-an385` / `rtic-mps2-an385` /
       `threadx-qemu-riscv64` / `qemu-esp32-baremetal` leaves get no projection at
       all, which is most of `thumbv7m`.
-- [ ] **Then `check-cargo-config-tracked`'s `has_authored_content`**: it treats
+- [x] **Then `check-cargo-config-tracked`'s `has_authored_content`**: it treats
       the whole `include = ` line as sync output, so a leaf left holding only the
       board include reads as "pure sync output IS tracked" and the gate demands
       untracking it — which would delete the very include a clone needs. Either
@@ -293,12 +320,12 @@ config count drops by the family's size.
 
 ### W4 — Replace the gate with a regeneration check
 
-- [ ] Swap `check-board-cargo-config-applied` for a check that re-renders each
+- [x] Swap `check-board-cargo-config-applied` for a check that re-renders each
       board's `cargo_config` and compares it to the committed
       `.cargo/nros-board.toml`, in the `check-abi-bindings` mould. Exact
       comparison, not a representative arg.
-- [ ] Keep it in `check-fast` — it is buildless, like the gate it replaces.
-- [ ] The comparison must re-render through the SAME withholding rule W2 uses
+- [x] Keep it in `check-fast` — it is buildless, like the gate it replaces.
+- [x] The comparison must re-render through the SAME withholding rule W2 uses
       (`committable_board_config`), or every NuttX projection reads as drift
       against a descriptor whose `${workspace}` row can never be committed.
 
@@ -370,3 +397,18 @@ generated path is proven per family. The overlap is deliberate.
 them they cannot migrate, and a partial migration must leave them working —
 which the include-based composition does naturally, since an absent sidecar
 simply means the tracked block still governs.
+
+## W4 as landed — the replacement, and where it lives
+
+The `check-board-cargo-config-applied` RECIPE was rewritten in place to call
+`nros ws check-board-projections`, which re-renders each descriptor through the
+same `project_board_configs_with` the writer uses (CHECK mode) and compares it to
+the committed projection. Sharing the renderer is the point: a second
+implementation in shell would be the drift this phase removed.
+
+The old shell script sat unreferenced beside it until 2026-08-21 and is now
+deleted. It is worth knowing it misled a reader: its docstring still asserted the
+leaf and descriptor "are kept in step **by hand**", the sentence this phase
+falsifies, so judging W4 from the file's existence read as "not started" when the
+recipe had not called it for two weeks. **A replaced gate is not replaced until
+the old implementation is gone.**

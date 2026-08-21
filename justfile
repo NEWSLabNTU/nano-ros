@@ -1354,8 +1354,8 @@ fixture-staleness:
 [private]
 check-board-cargo-config-applied:
     #!/usr/bin/env bash
-    # phase-341 W4 — REPLACED, not deleted. The old gate
-    # (scripts/check-board-cargo-config-applied.sh) asked whether a leaf still
+    # phase-341 W4 — REPLACED. The old gate (a shell script of this name,
+    # deleted 2026-08-21 once nothing invoked it) asked whether a leaf still
     # carried a REPRESENTATIVE `-l` arg copied from its board, because the leaf
     # mirrored the descriptor BY HAND. It caught a lost GROUP (issue 0440) but
     # not a lost argument, and it covered 8 leaves of the 59 that carried a

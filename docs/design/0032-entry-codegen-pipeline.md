@@ -165,7 +165,7 @@ pure-cargo path. The linker script is the third leg — the Entry pkg's
 > their board's block verbatim or a superset (three extra args exist in total,
 > `--gc-sections` accounting for 32 of them). `check-board-cargo-config-applied`
 > guards 8 of those 59 and is representative rather than exhaustive by design.
-> [phase-341](../roadmap/phase-341-board-cargo-config-is-generated.md) moves the
+> [phase-341](../roadmap/archived/phase-341-board-cargo-config-is-generated.md) moves the
 > block to a generated projection of the descriptor — COMMITTED and gated in the
 > `check-abi-bindings` mould, so a clone still links while drift becomes
 > uncommittable rather than merely detectable. (A gitignored projection was
