@@ -372,3 +372,58 @@ This does not explain why one host fails and two pass on the SAME pinned agent �
 see above. It explains why the failure is POSSIBLE at all, and removes the
 setting that makes it possible.
 
+## The sha1 discriminator is ruled out too (2026-08-21) — byte-identical libraries
+
+Answering the question the section above asks, from the green distrobox:
+
+```
+8e4aea5ce69605ebf24e087fda36ee52a9e80758  /opt/ros/humble/lib/libfastrtps.so.2.6.12
+897971f5829ad150bf1fd0fa31edbb8df61aea24  /opt/ros/humble/lib/librmw_fastrtps_cpp.so
+```
+
+**Identical to the failing host, byte for byte.** Same apt rebuild, not merely
+the same version string. So the "different snapshot at equal version" axis is
+out.
+
+Standing tally of everything now excluded: agent build (same pinned
+2.4.3-nros1), Fast-DDS and rmw versions, the library BINARIES themselves,
+fixture freshness (rebuilt twice on the failing host), profiles XML, and the
+domain/RMW env. The DDS stack on the two machines is the same software.
+
+### Where that points, and it is not the stack
+
+If the code is identical on both sides, the difference is what else is ON THE
+BUS. That is worth stating because this issue's own reasoning — a reader sized
+from a max-serialized-size learned AT DISCOVERY — does not require the reply
+type to be the one it matched. A reader that discovered a DIFFERENT endpoint
+would size itself from THAT type, and 15 bytes is not any `AddTwoInts`
+serialization (the section above already establishes 28 is the correct one),
+which is exactly what matching something else looks like.
+
+Two candidates, both about a foreign participant rather than a version:
+
+* **Issue 0707's hazard, which this issue's own filing predicted.** 0707 was
+  filed FROM this failure — "an orphan from the last run joins the next one" —
+  and its fix makes a filtered/solo run step off an occupied domain. If the
+  failing host carries a stale participant (issue 0659's class: this host has
+  had days-old `zenohd`/agent processes before), the ROS client can discover it.
+  Note the failing runs above predate that fix landing, and 0707 explicitly did
+  NOT claim to fix this failure.
+* **A second XRCE agent or ROS node already running**, holding the reply topic
+  with a differently-registered type.
+
+### The check that would settle it
+
+On the failing host, WHILE the test runs, list who else is on the bus rather
+than inspecting versions again:
+
+```
+ros2 node list        # during the run, in the test's ROS_DOMAIN_ID
+ros2 topic info -v /<service reply topic>
+ss -unap | grep -E ':(7[0-9]{3}|[0-9]{5})'   # RTPS ports, stray participants
+```
+
+A second endpoint on the reply topic is the finding; none, and the foreign-peer
+hypothesis dies with it. Cheaper than another version comparison, and it is the
+first check that has not already been answered identically on both machines.
+
