@@ -29,7 +29,7 @@
 use std::fmt::Write;
 
 use super::{
-    Plan, QosOverrideSpec, emit_boot_config_static, emit_c::emit_declare_remaps, sanitize_pkg,
+    Plan, QosOverrideSpec, emit_boot_config_static, emit_c::emit_declare_params, emit_c::emit_declare_remaps, sanitize_pkg,
 };
 
 /// Emit a `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…};` + the
@@ -464,6 +464,12 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
                  return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
             );
 
+            // Issue 0745 — seeds (emit_declare_params) run BEFORE each
+            // construction; the executor lazily creates the parameter STORE
+            // on first declare. Service registration stays post-construction
+            // below (service servers need live entities) and PRESERVES the
+            // seeded store.
+
             for (i, n) in plan.nodes.iter().enumerate() {
                 let node_name = n.name.as_deref().unwrap_or(&n.exec);
                 // Only emit nodes pinned to this tier.
@@ -475,6 +481,7 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
                 // Phase 305 W3 (issue 0255) — remap rules BEFORE construction:
                 // an rclcpp-shape ctor registers entities immediately.
                 emit_declare_remaps(&mut out, n, "        ", "executor");
+                emit_declare_params(&mut out, n, "        ", "executor");
                 if is_rust_node(n) {
                     // Rust node: install onto the tier's explicit executor handle.
                     let pkg = sanitize_pkg(&n.pkg);
@@ -537,20 +544,15 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             if ti == 0 {
                 if plan.param_services {
                     out.push_str(
-                        "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+                        "    /* Phase 269 (W1) — param-services: register the runtime get/set surface\n     * (seeding: emit_declare_params, pre-construction — issue 0745). */\n",
                     );
                     out.push_str("    {\n");
-                    out.push_str("        nros_cpp_register_parameter_services(executor);\n");
-                    for n in &plan.nodes {
-                        for (k, v) in &n.params {
-                            let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
-                            let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
-                            let _ = writeln!(
-                                out,
-                                "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
-                            );
-                        }
-                    }
+                    out.push_str(
+                        "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * (e.g. cyclonedds today) registration fails — the runtime get/set RPC\n         * is unavailable, but the SEEDED store above already carries the launch\n         * initials, so boot proceeds. */\n",
+                    );
+                    out.push_str(
+                        "        (void)nros_cpp_register_parameter_services(executor);\n",
+                    );
                     out.push_str("    }\n");
                 }
                 if let Some(autostart) = &plan.lifecycle {
@@ -824,6 +826,9 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             out.push_str("    }\n");
         }
 
+        // Issue 0745 — per-node seeds (emit_declare_params below) run before
+        // each construction; the executor lazily creates the parameter store
+        // on first declare. Service registration stays post-construction.
         for (i, n) in plan.nodes.iter().enumerate() {
             let node_name = n.name.as_deref().unwrap_or(&n.exec);
             let name_lit = node_name.replace('\\', "\\\\").replace('"', "\\\"");
@@ -831,6 +836,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             // Phase 305 W3 (issue 0255) — remap rules BEFORE construction (rclcpp
             // ctors register entities immediately). Global executor handle here.
             emit_declare_remaps(&mut out, n, "        ", "::nros::global_handle()");
+            emit_declare_params(&mut out, n, "        ", "::nros::global_handle()");
             if is_rust_node(n) {
                 // Phase 257 (W0-B) — Rust node on global executor.
                 let pkg = sanitize_pkg(&n.pkg);
@@ -892,24 +898,19 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
         }
         if plan.param_services {
             out.push_str(
-                "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+                "    /* Phase 269 (W1) — param-services: register the runtime get/set surface\n     * (seeding: emit_declare_params, pre-construction — issue 0745). */\n",
             );
             out.push_str("    {\n");
             out.push_str("        void* __exec = ::nros::global_handle();\n");
             out.push_str(
                 "        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);\n",
             );
-            out.push_str("        nros_cpp_register_parameter_services(__exec);\n");
-            for n in &plan.nodes {
-                for (k, v) in &n.params {
-                    let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
-                    let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
-                    let _ = writeln!(
-                        out,
-                        "        nros_cpp_declare_param(__exec, \"{k_esc}\", \"{v_esc}\");"
-                    );
-                }
-            }
+            out.push_str(
+                "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * registration fails — the seeded store already carries the launch\n         * initials, so boot proceeds without the get/set RPC. */\n",
+            );
+            out.push_str(
+                "        (void)nros_cpp_register_parameter_services(__exec);\n",
+            );
             out.push_str("    }\n");
         }
         if let Some(autostart) = &plan.lifecycle {
@@ -1536,8 +1537,10 @@ mod tests {
 
     #[test]
     fn typed_emit_param_services_block_present_when_enabled() {
-        // Phase 269 W1 — when param_services is true, the post-configure block emits
-        // nros_cpp_register_parameter_services + nros_cpp_declare_param per node param.
+        // Phase 269 W1 (amended by issue 0745) — param SEEDING now emits per
+        // node BEFORE construction (emit_declare_params, the 0255 remap rule:
+        // an rclcpp ctor reads declare_parameter initials immediately);
+        // param_services gates only the runtime get/set surface.
         let mut plan = fixture_plan_typed(&[(
             "param_talker_pkg",
             "param_talker",
@@ -1549,7 +1552,13 @@ mod tests {
         plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
         let src = emit_typed(&plan).expect("typed cpp emit ok");
         assert!(src.contains("nros_cpp_register_parameter_services(__exec)"));
-        assert!(src.contains("nros_cpp_declare_param(__exec, \"publish_period_ms\", \"250\")"));
+        assert!(src.contains(
+            "nros_cpp_declare_param(::nros::global_handle(), \"publish_period_ms\", \"250\")"
+        ));
+        // issue 0745 — seeding precedes construction.
+        let seed_at = src.find("nros_cpp_declare_param").unwrap();
+        let construct_at = src.find(".configure(").or_else(|| src.find("new (")).unwrap();
+        assert!(seed_at < construct_at, "param seeding must precede construction");
         // must appear after configure, before return 0
         let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
         let ret_at = src.rfind("return 0;").unwrap();

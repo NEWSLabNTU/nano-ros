@@ -5336,7 +5336,9 @@ impl<'s> Executor<'s> {
                     let crate::parameter_services::ParamState {
                         server, services, ..
                     } = &mut **params;
-                    let _ = services.process_services(server);
+                    if let Some(services) = services {
+                        let _ = services.process_services(server);
+                    }
                 }
             }
 
@@ -5825,8 +5827,10 @@ impl<'s> Executor<'s> {
                 let crate::parameter_services::ParamState {
                     server, services, ..
                 } = &mut **params;
-                if let Ok(n) = services.process_services(server) {
-                    result.services_handled += n;
+                if let Some(services) = services {
+                    if let Ok(n) = services.process_services(server) {
+                        result.services_handled += n;
+                    }
                 }
             }
         }
@@ -6126,12 +6130,22 @@ impl<'s> Executor<'s> {
             },
         );
 
-        self.params = Some(alloc::boxed::Box::new(
-            crate::parameter_services::ParamState {
-                server: nros_params::ParameterServer::new(),
-                services: alloc::boxed::Box::new(servers),
-            },
-        ));
+        // Issue 0745 — PRESERVE an already-initialized store: launch-param
+        // seeding may have run before any node existed (services can't be
+        // registered that early). Overwriting here would wipe the seeds.
+        let services_box: alloc::boxed::Box<dyn crate::parameter_services::ParamServiceProcessor> =
+            alloc::boxed::Box::new(servers);
+        match &mut self.params {
+            Some(params) => params.services = Some(services_box),
+            None => {
+                self.params = Some(alloc::boxed::Box::new(
+                    crate::parameter_services::ParamState {
+                        server: nros_params::ParameterServer::new(),
+                        services: Some(services_box),
+                    },
+                ));
+            }
+        }
 
         Ok(())
     }
@@ -6337,8 +6351,24 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "param-services")]
 impl<'s> Executor<'s> {
+    /// Issue 0745 — lazily create the parameter STORE (no services yet).
+    /// Launch-param seeding runs before any node is constructed; the six
+    /// service servers attach later in `register_parameter_services`,
+    /// which preserves this store.
+    fn ensure_parameter_store(&mut self) {
+        if self.params.is_none() {
+            self.params = Some(alloc::boxed::Box::new(
+                crate::parameter_services::ParamState {
+                    server: nros_params::ParameterServer::new(),
+                    services: None,
+                },
+            ));
+        }
+    }
+
     /// Declare a parameter with a value. Returns `true` if successful.
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
+        self.ensure_parameter_store();
         if let Some(params) = &mut self.params {
             params.server.declare(name, value)
         } else {
@@ -6353,6 +6383,7 @@ impl<'s> Executor<'s> {
         value: nros_params::ParameterValue,
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
+        self.ensure_parameter_store();
         if let Some(params) = &mut self.params {
             params
                 .server

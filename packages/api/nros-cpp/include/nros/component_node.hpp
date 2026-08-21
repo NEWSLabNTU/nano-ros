@@ -423,10 +423,56 @@ class ComponentNode {
     // (hosted) routes to a default-capacity `Seq` so the vendored
     // `declare_parameter<std::vector<double>>(name, {…})` compiles unchanged.
 
+#if defined(NROS_SYSTEM_PARAM_SERVICES)
+    /// Issue 0745 — adopt a launch-seeded initial from the EXECUTOR param
+    /// store. The generated entry seeds `nros_cpp_declare_param` into the
+    /// EXECUTOR's store BEFORE any component ctor runs, but this node's
+    /// `params_` is a separate per-node ParameterServer — without this
+    /// adoption the ctor-read `declare_parameter` silently used the C++
+    /// default and every launch param was dead weight (measured on the ASI
+    /// consumer: `ctrl_period` 0.03 seeded, 0.15 ran). Compiled only when
+    /// the bringup declares the `param_services` capability (which is also
+    /// what links the executor-store FFI). `bool` params are not adoptable
+    /// yet — the executor shim has no bool getter; they fall through to the
+    /// code default.
+    template <typename T>
+    void adopt_launch_seed_(const char* name, T& def) {
+        void* ex = node_.executor_handle_;
+        if (ex == nullptr) {
+            return;
+        }
+        if constexpr (::std::is_same<T, bool>::value) {
+            (void)name;
+        } else if constexpr (::std::is_floating_point<T>::value) {
+            double v = 0.0;
+            if (nros_cpp_get_param_double(ex, name, &v) == NROS_CPP_RET_OK) {
+                def = static_cast<T>(v);
+            }
+        } else if constexpr (::std::is_integral<T>::value) {
+            int64_t v = 0;
+            if (nros_cpp_get_param_integer(ex, name, &v) == NROS_CPP_RET_OK) {
+                def = static_cast<T>(v);
+            }
+        }
+#ifdef NROS_CPP_STD
+        else if constexpr (::std::is_same<T, ::std::string>::value) {
+            char buf[256] = {0};
+            if (nros_cpp_get_param_string(ex, name, buf, sizeof(buf)) == NROS_CPP_RET_OK) {
+                def = buf;
+            }
+        }
+#endif
+    }
+#endif
+
     /// Declare + read back a **scalar** parameter, rclcpp value-returning shape.
     template <typename T,
               typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
     T declare_parameter(const char* name, T default_value = T{}) {
+#if defined(NROS_SYSTEM_PARAM_SERVICES)
+        // Issue 0745 — launch-seeded initials win over the code default.
+        adopt_launch_seed_(name, default_value);
+#endif
         Result r = params_.template declare_parameter<T>(name, default_value);
         // Launch-seeded params (phase-269 entry post-configure) are DECLARED
         // before the component ctor runs; a component re-declare is the rclcpp

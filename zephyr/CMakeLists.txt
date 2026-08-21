@@ -421,6 +421,18 @@ if(CONFIG_NROS_CPP_API)
         string(APPEND _nros_cpp_features ",std")
     endif()
 
+    # Issue 0745 — the Zephyr lane has no workspace-style capability
+    # resolution (`nros config show`) yet; the consumer passes
+    # -DNANO_ROS_FEATURES=<axes> (semicolon list) and this mirrors the
+    # workspace lowering: the param-services cargo feature (so the entry's
+    # launch-param seeds link) + the directory-wide define ComponentNode's
+    # seed-adoption gates on. Follow-up: resolve from the entry's BRINGUP
+    # like nano_ros_workspace(SYSTEM ...) does.
+    if("param_services" IN_LIST NANO_ROS_FEATURES)
+        string(APPEND _nros_cpp_features ",param-services")
+        add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
+    endif()
+
     # Phase 168.X gap 1 — `nros_log_emit` + `nros_log_emit_fmt`
     # symbols (the C-side log glue every `NROS_LOG_*` macro from
     # `<nros/log.h>` expands to) ship only with `libnros_c.a`.

@@ -48,6 +48,38 @@ pub(super) fn emit_declare_remaps(
     }
 }
 
+/// Issue 0745 — bake one `nros_cpp_declare_param` call per launch param,
+/// BEFORE the component's construction/configure: an rclcpp-shape ctor reads
+/// `declare_parameter` initials immediately (the 0255 remap rule, one row
+/// over). Seeding is initial VALUES and is independent of whether the
+/// param-SERVICES surface (`nros_cpp_register_parameter_services`) is
+/// enabled — the old emission sat inside the `plan.param_services` gate and
+/// AFTER construction, so a plan without param services silently dropped
+/// every launch param (measured on the ASI consumer: `ctrl_period` and
+/// `control_output` both fell back to compiled defaults). Shared by the C
+/// and C++ typed emitters (the non-drift rule).
+pub(super) fn emit_declare_params(
+    out: &mut String,
+    n: &super::PlanNode,
+    indent: &str,
+    exec_expr: &str,
+) {
+    for (k, v) in &n.params {
+        let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
+        let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(out, "{indent}{{");
+        let _ = writeln!(
+            out,
+            "{indent}    nros_cpp_ret_t prc = nros_cpp_declare_param({exec_expr}, \"{k_esc}\", \"{v_esc}\");"
+        );
+        let _ = writeln!(
+            out,
+            "{indent}    if (prc != NROS_CPP_RET_OK) return (int32_t)prc;"
+        );
+        let _ = writeln!(out, "{indent}}}");
+    }
+}
+
 /// Issue #52 — bake the node's QoS-override table + the
 /// `nros_cpp_node_set_qos_overrides` call. Must run BEFORE the component's
 /// configure registers entities, so `create_publisher`/`create_subscription`
@@ -222,6 +254,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 );
                 out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
                 emit_declare_remaps(&mut out, n, "        ", "executor");
+                emit_declare_params(&mut out, n, "        ", "executor");
                 emit_qos_overrides(&mut out, n, i, "        ");
                 let _ = writeln!(
                     out,
@@ -405,6 +438,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             );
             out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
             emit_declare_remaps(&mut out, n, "        ", "executor");
+                emit_declare_params(&mut out, n, "        ", "executor");
             emit_qos_overrides(&mut out, n, i, "        ");
             let _ = writeln!(
                 out,

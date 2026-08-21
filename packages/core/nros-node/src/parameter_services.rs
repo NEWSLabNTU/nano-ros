@@ -689,7 +689,12 @@ impl ParamServiceProcessor for ParameterServiceServers {
 /// Stored outside the arena so it doesn't consume `MAX_CBS` slots.
 pub(crate) struct ParamState {
     pub(crate) server: ParameterServer,
-    pub(crate) services: Box<dyn ParamServiceProcessor>,
+    /// Issue 0745 — `None` until `register_parameter_services` attaches the
+    /// six service servers. The STORE half exists earlier: launch-param
+    /// seeding (`declare_parameter`) runs BEFORE any node is constructed —
+    /// service servers cannot be created that early, but initial values
+    /// must be, or ctor-read parameters silently use compiled defaults.
+    pub(crate) services: Option<Box<dyn ParamServiceProcessor>>,
 }
 
 #[cfg(test)]

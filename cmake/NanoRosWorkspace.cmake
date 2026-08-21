@@ -310,6 +310,12 @@ function(nano_ros_workspace)
                 "SYSTEM '${_NRW_SYSTEM}':\n${_caps_err}")
         endif()
         include("${_caps_cmake}")
+        # Issue 0745 — LOWER the axes too: `nros_lower_system_features` was
+        # defined (phase-261 W5) but called from no path, so the C/C++
+        # lowering (e.g. NROS_SYSTEM_PARAM_SERVICES for ComponentNode's
+        # launch-seed adoption) never reached component TUs.
+        include("${_nros_root}/cmake/NanoRosCapabilities.cmake")
+        nros_lower_system_features("${NANO_ROS_FEATURES}")
         # Re-configure when the declaration changes.
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
             "${CMAKE_SOURCE_DIR}/src/${_NRW_SYSTEM}/system.toml")

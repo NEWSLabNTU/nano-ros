@@ -65,8 +65,14 @@ function(nros_lower_system_features features)
             set(NANO_ROS_SAFETY_E2E ON CACHE BOOL
                 "nano-ros: E2E message-integrity (CRC) — from [system].features" FORCE)
         elseif(_feat STREQUAL "param_services")
-            # Known axis, no CMake knob (entry-umbrella-only; the `#define`
-            # NROS_SYSTEM_PARAM_SERVICES in system_config.h is its only C/C++ lowering).
+            # Known axis, no CMake OPTION. Issue 0745 — the define is now a
+            # directory-wide compile definition (not just system_config.h):
+            # ComponentNode's header-inline `declare_parameter` gates its
+            # seed-adoption on it, and that code compiles in COMPONENT TUs,
+            # which never include the entry's system_config.h. Capabilities
+            # resolve BEFORE the runtime import (issue 0353), so this reaches
+            # every subdirectory of the workspace configure.
+            add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
         elseif(_feat STREQUAL "lifecycle")
             # Phase 269 W2 — Known axis, no CMake knob. lifecycle-services is always
             # compiled into nros-cpp/nros-c (CMakeLists.txt always-on features); the only
