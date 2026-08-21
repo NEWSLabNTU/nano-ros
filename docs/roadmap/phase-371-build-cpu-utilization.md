@@ -391,3 +391,57 @@ build change, and it should not be pursued as a local optimisation.
   bottleneck.
 * **the gate phase's wall clock** — done: fan-out is the default, 45 s -> 7 s.
 * **`nros_resolve_corrosion`** — retracted, cold-cache one-off.
+
+## Item 5 scoped: the CI cold path is UNCACHED, not slow
+
+Survey of `.github/workflows/` (2026-08-22). CI caches exactly one thing:
+
+```yaml
+- name: Cache CLI build
+  uses: actions/cache@v4
+  with:
+    path: packages/cli/target
+```
+
+Everything else the cold path needs is re-created on every job:
+
+| | state in CI |
+| --- | --- |
+| `~/.cargo` registry + git checkouts | **not cached** — re-downloaded every run |
+| SDK store `~/.nros` | **not cached** — re-provisioned every run |
+| sccache cache directory | **not cached** — so sccache is INERT in CI by construction |
+| ROS 2 Humble + colcon | apt-installed per run |
+
+This reframes the 33 s cold configure measured earlier. It was never a cmake
+defect: it is **cache population**, paid once locally and on **every job, every
+run** in CI, where the caches that would absorb it do not exist.
+
+Note the sccache consequence in particular. It is verified working locally, but
+with no persisted cache directory a CI run can only ever MISS — so it is pure
+wrapper overhead there, not a saving. "sccache works" and "sccache helps CI" are
+different claims and only the first is established.
+
+### Ranked, and each is a workflow change rather than a build change
+
+1. **Cache `~/.cargo`** (registry + git), keyed on `Cargo.lock`. Standard
+   practice, largest single win, lowest risk.
+2. **Cache the SDK store `~/.nros`**, keyed on `nros-sdk-index.toml`. This is
+   what the cold configure populates. CAREFUL: issue 0500 — the store
+   ACCUMULATES and prefixes are enumerated newest-first, so a restored stale
+   Corrosion can shadow the pinned one and both provisioning paths still print
+   success. The key must include the index hash, and a restore must not be able
+   to resurrect a superseded version.
+3. **Cache sccache's directory.** Without it sccache cannot help CI at all.
+4. ROS apt deps — a prebuilt container image beats apt-install-per-run, but that
+   is a larger change than the three above.
+
+### Not yet measured — do not implement from this section alone
+
+There is **no CI job timing** behind any of the above. The ranking is inferred
+from what is ABSENT in the workflow, not from a timed run, and this phase has
+already retracted five conclusions drawn from plausible stories rather than
+measurements. Pull real job durations (`gh run list`, per-step timings) before
+committing to an order.
+
+Item 1 (`~/.cargo`) is the exception worth doing regardless: it is correct on
+first principles for any Rust CI, and its absence is not a judgement call.
