@@ -61,13 +61,14 @@ buckets, a 32-way fan-out and sequential PIDs, two participants 101 PIDs apart s
 inside one sweep is the expected case rather than bad luck. Fix: give all three the same probe, in one
 commit. See `0747-*`. (2026-08-21)
 
-**#0746** (core, open 2026-08-21) — the executor timer OVER-CREDITS under subscription load: a 30 ms
-timer (0745-seeded, tier-bound) is exact standalone (31.6 ms mean, n=1265) but publishes at ~50 Hz —
-1.5x — against real traffic (8.8 KiB trajectories at 10 Hz + four more subs), sustained over 25 s, so
-not bounded catch-up. Direction points at a double credit source (wall-elapsed AND assumed drive_io
-timeout). For a controller the publish rate IS the control rate; ASI's phase-4 soak gates on this.
-Minimal repro shape: realtime-cpp ctrl tier + a flood publisher, hz vs standalone. See `0746-*`.
-(2026-08-21)
+Recently resolved (2026-08-21): **#0746** (core, wontfix) — CLOSED, executor exonerated: the "50 Hz from a
+30 ms timer under load" was `ros2 topic hz` aggregating MULTIPLE stale island processes publishing the same
+topic (min ~0 bursts + max ≈ period is the multi-publisher signature; the historical 12.4 Hz @ 150 ms datum
+is exactly 2 × 6.3). Instrumented verification: per-spin credit == tick clock to the microsecond, standalone
+AND under the full Autoware planner graph; single-process fire rate 31.7 Hz vs wire 31.669 Hz (std 0.06 ms).
+The suspected wall+timeout double credit does not exist. 31.6-vs-30 ms standalone is the freertos POSIX
+port's usleep tick overshoot (~5.2 %, simulator-only). Lesson: prove the publisher count (`ros2 topic info
+-v` / `pgrep`) before trusting a hz reading. See `archived/0746-*`. (2026-08-21)
 
 **#0745** (codegen, resolved 2026-08-21) — launch params NEVER reached a component ctor: emitters
 gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node
