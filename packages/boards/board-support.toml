@@ -79,10 +79,23 @@ maintainers = []
 # see the bundle's nros-board.toml.
 [[board]]
 crate = "nros-board-s32z270-freertos"
-matrix_platform = "FreertosMps2"
+# NO matrix_platform, deliberately. It read `FreertosMps2` "until a hardware
+# witness exists" — reusing the family lane's PlatformId — and that is the
+# declaration check-board-tiers exists to reject: FreertosMps2 HAS Runtime
+# cells (RealtimeTiers, TierPriority C/C++), so a tier-3 row pointing at it
+# claims build-only support from a platform whose cells assert running code.
+# The cells are MPS2-AN385's; this board is a Cortex-R52 automotive part with
+# no emulator here, and the two share only a kernel. That mismatch is the exact
+# defect phase-320 W1.a fixed for FVP, one family over.
+#
+# The key is optional for tier 3 (only tiers 1 and 2 must name a platform), and
+# a row without one is skipped by check-flavour-lanes and renders "—" in the
+# support table — which is the honest answer: no matrix platform witnesses this
+# board yet. Give it a real PlatformId when it gets a witness, not the
+# neighbour's.
 tier = 3
 maintainers = []
-notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). matrix_platform reuses FreertosMps2 (same freertos family lane) until a hardware witness exists; link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
+notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
 
 # phase-337 W3.d — ONE crate, TWO witnesses, TWO tiers. This row and the
 # `NuttxRiscv` row below are the reason W1.c re-keyed the registry by
