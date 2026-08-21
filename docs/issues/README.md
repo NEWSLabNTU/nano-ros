@@ -68,6 +68,17 @@ against the real gate. See `archived/0751-*`. (2026-08-22)
 
 Recently resolved (2026-08-21): **#0745** — launch params NEVER reached a component ctor: emitters gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction `emit_declare_params`, lazy `ensure_parameter_store` (ParamState.services now Option, registration preserves seeds, non-fatal on RMWs without service servers), ComponentNode seed-adoption gated on the NOW-WIRED `nros_lower_system_features` lowering (the fn was defined and called from no path), and a Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declared, 0.15 ran; after — 31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter, cyclone service-server gap. See `0745-*`. (2026-08-21) See `archived/0745-*`. (2026-08-21)
 
+Recently resolved (2026-08-22): **#0752** (zephyr) — five sizing knobs
+(`NROS_EXECUTOR_ARENA_SIZE`, `NROS_RMW_SUBSCRIBER_SLOTS`, and the three
+`ZPICO_SUBSCRIBER_*` payload-class knobs) had no `_nros_resolve_knob` row, so
+they reached `build.rs` only from the environment of whatever shell ran ninja. A
+consumer's `just` recipe built the right image; the same configured tree rebuilt
+by a bare `ninja` silently built a different one. Most of that reversion
+overflows RAM and fails loudly, but `NROS_RMW_SUBSCRIBER_SLOTS` drops 12 → 8 and
+re-opens the 0269 failure (`BAD_ALLOC` → opaque `SubscriberCreationFailed`) with
+the fix still in the tree. Found by ASI sizing the four-node island into 320 KiB.
+See `0752-*`. (2026-08-22)
+
 Recently resolved (2026-08-22): **#0749** (zephyr) — the Zephyr lane's curated cargo environment dropped five
 of six executor sizing knobs (0316 fixed only `NROS_EXECUTOR_MAX_CBS`; `NROS_SUBSCRIPTION_BUFFER_SIZE`,
 `NROS_MAX_PARAMETERS` etc. had no Kconfig and no resolve row), so every Zephyr image silently built

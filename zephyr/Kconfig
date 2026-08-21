@@ -426,6 +426,36 @@ config NROS_SUBSCRIBER_BUFFER_SIZE
       Size of the static buffer for each subscriber slot (bytes).
       Maps to ZPICO_SUBSCRIBER_BUFFER_SIZE.
 
+config NROS_SUBSCRIBER_RING_DEPTH
+    int "Receive ring depth per subscriber"
+    default 4
+    help
+      Samples held per subscriber before the ring drops the oldest. This is
+      the receive queue depth, so lowering it is a QoS reduction, not slack.
+      It multiplies BOTH zenoh payload classes:
+        SMALL_PAYLOADS = ZPICO_MAX_SUBSCRIBERS x DEPTH x SUBSCRIBER_BUFFER_SIZE
+        LARGE_PAYLOADS = MAX_LARGE_SUBSCRIBERS x DEPTH x SUBSCRIBER_LARGE_SIZE
+      Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
+
+config NROS_MAX_LARGE_SUBSCRIBERS
+    int "Subscribers served from the large payload class"
+    default 2
+    help
+      Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
+      are therefore served from LARGE_PAYLOADS. Bounded separately from
+      ZPICO_MAX_SUBSCRIBERS so raising SUBSCRIBER_LARGE_SIZE for one
+      image-scale topic does not multiply across every subscriber.
+      Maps to ZPICO_MAX_LARGE_SUBSCRIBERS.
+
+config NROS_SUBSCRIBER_LARGE_SIZE
+    int "Large-class payload buffer size"
+    default 16384
+    help
+      Per-sample capacity in the large payload class (bytes). The default is
+      sized for image-scale messages; an image whose largest subscribed type
+      is a few hundred bytes pays 2 x 4 x 16384 = 128 KiB for nothing.
+      Maps to ZPICO_SUBSCRIBER_LARGE_SIZE.
+
 config NROS_SERVICE_BUFFER_SIZE
     int "Per-service static buffer size"
     default 1024
@@ -584,6 +614,28 @@ config NROS_PARAM_SERVICE_BUFFER_SIZE
     help
       Buffer for parameter service requests/replies (nros-node build.rs
       PARAM_SERVICE_BUFFER_SIZE).
+
+config NROS_RMW_SUBSCRIBER_SLOTS
+    int "Static subscription-handle slots (no_std targets)"
+    default 8
+    help
+      nros-rmw-cffi keeps subscription handles in a static slot pool on
+      no_std targets, since there is no allocator to Box them into. The
+      Nth+1 create_subscription returns BAD_ALLOC and the executor surfaces
+      it as an opaque SubscriberCreationFailed, so this must be at least the
+      number of subscriptions the image creates. Pool size is this x 1024
+      bytes. Read by nros-rmw-cffi build.rs.
+
+config NROS_EXECUTOR_ARENA_SIZE
+    int "Executor arena size in bytes (0 = derive)"
+    default 0
+    help
+      Explicit executor arena size. 0 means let nros-node build.rs derive it,
+      which budgets EVERY callback slot at action-client size (~18 KiB) --
+      correct, but an order of magnitude over for a pub/sub-only image, which
+      needs about max_cbs * (3 * NROS_SUBSCRIPTION_BUFFER_SIZE + 512) + 2048.
+      Set it only with that arithmetic in hand; too small fails at runtime,
+      not at link.
 
 config NROS_MAX_PARAMETERS
     int "Maximum declared parameters per image"

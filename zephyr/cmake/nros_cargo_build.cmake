@@ -192,6 +192,33 @@ function(nros_resolve_knobs)
             "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
         _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+
+        # The payload-class trio. These size LARGE_PAYLOADS and SMALL_PAYLOADS
+        # (subscriber.rs:199-200) and were reachable only from the environment
+        # of whatever shell ran ninja: a consumer exporting them got the right
+        # image, and the same tree rebuilt by a bare `ninja` silently got crate
+        # defaults. Same class as issue 0316 / #0749.
+        _nros_resolve_knob(ZPICO_SUBSCRIBER_RING_DEPTH
+            "${CONFIG_NROS_SUBSCRIBER_RING_DEPTH}")
+        _nros_resolve_knob(ZPICO_MAX_LARGE_SUBSCRIBERS
+            "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}")
+        _nros_resolve_knob(ZPICO_SUBSCRIBER_LARGE_SIZE
+            "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}")
+    endif()
+
+    # nros-rmw-cffi's static subscription-handle pool. Backend-independent:
+    # the no_std slot path is in the cffi adapter, not in a transport.
+    _nros_resolve_knob(NROS_RMW_SUBSCRIBER_SLOTS
+        "${CONFIG_NROS_RMW_SUBSCRIBER_SLOTS}")
+
+    # The arena is tri-state. nros-node build.rs DERIVES a size when the knob
+    # is absent, so forwarding a literal 0 would hand it a zero-byte arena
+    # rather than the derivation. Resolve it only when someone actually chose
+    # a value -- Kconfig non-zero, or an explicit environment override.
+    if(DEFINED ENV{NROS_EXECUTOR_ARENA_SIZE}
+       OR NOT "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL "0")
+        _nros_resolve_knob(NROS_EXECUTOR_ARENA_SIZE
+            "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}")
     endif()
 
     # XRCE transport tuning.
