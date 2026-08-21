@@ -433,8 +433,7 @@ class ComponentNode {
     /// consumer: `ctrl_period` 0.03 seeded, 0.15 ran). Compiled only when
     /// the bringup declares the `param_services` capability (which is also
     /// what links the executor-store FFI).
-    template <typename T>
-    void adopt_launch_seed_(const char* name, T& def) {
+    template <typename T> void adopt_launch_seed_(const char* name, T& def) {
         void* ex = node_.executor_handle_;
         if (ex == nullptr) {
             return;

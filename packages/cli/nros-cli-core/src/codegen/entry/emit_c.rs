@@ -438,7 +438,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             );
             out.push_str("        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;\n");
             emit_declare_remaps(&mut out, n, "        ", "executor");
-                emit_declare_params(&mut out, n, "        ", "executor");
+            emit_declare_params(&mut out, n, "        ", "executor");
             emit_qos_overrides(&mut out, n, i, "        ");
             let _ = writeln!(
                 out,

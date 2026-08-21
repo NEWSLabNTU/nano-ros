@@ -69,7 +69,7 @@ Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declare
 31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter,
 cyclone service-server gap. See `0745-*`. (2026-08-21)
 
-**#0744** (boards, wontfix 2026-08-21) — CLOSED as misdiagnosed, superseded by #0745: the freertos-posix
+Recently resolved (2026-08-21): **#0744** (boards, wontfix) — CLOSED as misdiagnosed, superseded by #0745: the freertos-posix
 "80-140 ms tier stalls" were the timer's real period — the seeded 30 ms never reached the node, so the
 compiled 0.15 s default ran. Port-signal masking and CPU pinning both falsified as fixes. The surviving
 kernel: the load-time timer over-credit, tracked under 0745. See `archived/0744-*`. (2026-08-21)

@@ -29,7 +29,9 @@
 use std::fmt::Write;
 
 use super::{
-    Plan, QosOverrideSpec, emit_boot_config_static, emit_c::emit_declare_params, emit_c::emit_declare_remaps, sanitize_pkg,
+    Plan, QosOverrideSpec, emit_boot_config_static,
+    emit_c::{emit_declare_params, emit_declare_remaps},
+    sanitize_pkg,
 };
 
 /// Emit a `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…};` + the
@@ -550,9 +552,7 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
                     out.push_str(
                         "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * (e.g. cyclonedds today) registration fails — the runtime get/set RPC\n         * is unavailable, but the SEEDED store above already carries the launch\n         * initials, so boot proceeds. */\n",
                     );
-                    out.push_str(
-                        "        (void)nros_cpp_register_parameter_services(executor);\n",
-                    );
+                    out.push_str("        (void)nros_cpp_register_parameter_services(executor);\n");
                     out.push_str("    }\n");
                 }
                 if let Some(autostart) = &plan.lifecycle {
@@ -908,9 +908,7 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
             out.push_str(
                 "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * registration fails — the seeded store already carries the launch\n         * initials, so boot proceeds without the get/set RPC. */\n",
             );
-            out.push_str(
-                "        (void)nros_cpp_register_parameter_services(__exec);\n",
-            );
+            out.push_str("        (void)nros_cpp_register_parameter_services(__exec);\n");
             out.push_str("    }\n");
         }
         if let Some(autostart) = &plan.lifecycle {
@@ -1557,8 +1555,14 @@ mod tests {
         ));
         // issue 0745 — seeding precedes construction.
         let seed_at = src.find("nros_cpp_declare_param").unwrap();
-        let construct_at = src.find(".configure(").or_else(|| src.find("new (")).unwrap();
-        assert!(seed_at < construct_at, "param seeding must precede construction");
+        let construct_at = src
+            .find(".configure(")
+            .or_else(|| src.find("new ("))
+            .unwrap();
+        assert!(
+            seed_at < construct_at,
+            "param seeding must precede construction"
+        );
         // must appear after configure, before return 0
         let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
         let ret_at = src.rfind("return 0;").unwrap();
