@@ -129,7 +129,7 @@ nros (top-level) -> nros-node -> nros-rmw
 - `ShimSubscriber`: `SafetyValidator` field, `try_recv_validated()` method
 
 **`nros-node`** (API surface):
-- `ShimNodeSubscription`: `try_recv_safe()` returning `(M, IntegrityStatus)`
+- `ShimNodeSubscription`: `try_recv_validated()` returning the message + `IntegrityStatus`
 
 **Unchanged**:
 - CDR serialization (`nros-serdes`) -- payload format unchanged

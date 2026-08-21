@@ -152,7 +152,9 @@ nros = { path = "…/nros", default-features = false, features = [
 nros-rmw-xrce-cffi = { path = "…/nros-rmw-xrce-cffi", features = ["platform-nuttx", "xrce-serial"] }
 ```
 
-## How the pieces link decoupled `nros` from concrete backends — `nros` carries
+## How the pieces link
+
+Phase 208 decoupled `nros` from concrete backends — `nros` carries
 no RMW crate dependency. Instead:
 
 - **RMW.** The consuming crate's `nros-rmw-*` dep ships a `#[ctor]`

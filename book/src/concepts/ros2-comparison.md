@@ -93,7 +93,7 @@ nano-ros runs in three modes that map onto target capability:
 |------|----------------|------------|
 | `std` | `std` (default on POSIX) | Everything. POSIX threading, full async runtime. |
 | `no_std + alloc` | `alloc` + a `#[global_allocator]` | Everything except features that need `std::sync::Mutex`. Used by FreeRTOS / NuttX / ThreadX / Zephyr / ESP32. |
-| `no_std + nostd-runtime` (cooperative) | `nostd-runtime`, RTIC apps | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385, single-core RTIC. |
+| `no_std` cooperative | no `std`/`alloc` platform threading (bare-metal board crates, RTIC apps) | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385, single-core RTIC. |
 
 **Why.** Heap presence is not a binary "embedded yes/no" — it is a
 spectrum. Stm32-class boards have a heap; Cortex-M0+-class might not.
@@ -305,7 +305,7 @@ storage). `params.raw()` exposes the underlying
 `nros_param_server_t*` for future ROS 2 service-backed registration.
 
 **Why no `Box<dyn FnMut>` callback yet.** The same constraint that
-shapes's event callbacks applies here: nano-ros's
+shapes the QoS event callbacks applies here: nano-ros's
 `#[no_std]` core forbids alloc-style indirection. A future
 descriptor-+-validation-callback path will use a function pointer +
 `void* user_context` pair, registered at declare-time. Tracked under
@@ -335,7 +335,7 @@ If you are coming from `rclrs`:
   into `rclrs_*`. `nros::prelude` gives you everything.
 - `Executor::open(&config)` is the equivalent of
   `Context::default_from_env()` + `Executor::new(...)`.
-- The async surface is in `nros::dds_async` (re-exported at the crate
+- The async surface is on the executor + handles themselves (re-exported at the crate
   root). Compatible with tokio out of the box.
 
 If you are coming from `rclc`:
@@ -353,4 +353,4 @@ If you are coming from `rclc`:
   [C++](../reference/cpp-api.md).
 - Why the executor / RMW / platform layers split this way →
   [Architecture Overview](architecture.md).
-- Cooperative `no_std + nostd-runtime` model → [no_std Support](no-std.md).
+- Cooperative `no_std` model → [no_std Support](no-std.md).

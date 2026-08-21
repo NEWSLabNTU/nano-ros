@@ -39,11 +39,16 @@ configuration knobs address.
 
 ## Configuration knobs
 
+The knobs live on **`SpinOptions`** (passed to
+`Executor::spin_blocking(opts)`), not on `ExecutorConfig` — the config
+struct carries identity/transport (locator, domain, node name, clock),
+while scheduling shape is a property of each spin call:
+
 | Knob | Default | When to change |
 |------|---------|----------------|
-| `ExecutorConfig::max_callbacks_per_spin` | `usize::MAX` (drain all) | Set to `1` for upstream-`rclcpp`-style "one callback per `spin_once`" — gives the executor a chance to re-check timers / GCs / yield between callbacks |
-| `ExecutorConfig::time_budget_per_spin_ms` | `None` (no budget) | Set to fixed wall-clock budget for time-triggered apps — `drive_io` returns when the budget expires regardless of pending work |
-| `ExecutorConfig::spin_period_ms` | platform-dependent | Tighten for lower worst-case latency; loosen for less CPU spent in the spin loop |
+| `SpinOptions::max_callbacks(n)` | `None` (drain all ready work) | Set to `1` for upstream-`rclcpp`-style "one callback per iteration" — gives the executor a chance to re-check timers / GCs / yield between callbacks |
+| `SpinOptions::timeout_ms(ms)` | `None` (spin forever) | Bound one spin call by wall clock — the time-triggered pattern calls `spin_blocking` once per cycle with the cycle's ROS slot as the timeout |
+| `SpinOptions::spin_once()` / `only_next` | off | One round of work then return — the cooperative-loop building block |
 
 Backends opt into one additional behaviour automatically:
 `Session::next_deadline_ms()` tells the executor about the backend's
@@ -56,29 +61,21 @@ optimization.
 ### Cooperative single-task
 
 ```rust
-ExecutorConfig {
-    max_callbacks_per_spin: usize::MAX,    // default — drain all
-    time_budget_per_spin_ms: None,         // default — no budget
-    spin_period_ms: 1,                     // tight loop on the dedicated task
-    ..Default::default()
-}
+// One dedicated task; drain everything each round.
+executor.spin_blocking(SpinOptions::default())?;
 ```
 
-Drain everything; one task, no fairness concern. Spin tightly to
-keep latency low.
+Drain everything; one task, no fairness concern.
 
 ### Preemptive priority RTOS — recommended
 
 ```rust
-ExecutorConfig {
-    max_callbacks_per_spin: 1,             // one callback per spin_once
-    time_budget_per_spin_ms: None,
-    spin_period_ms: 1,
-    ..Default::default()
+loop {
+    executor.spin_blocking(SpinOptions::new().max_callbacks(1))?;
 }
 ```
 
-`max_callbacks_per_spin = 1` matches upstream's `rclcpp`
+`max_callbacks(1)` matches upstream's `rclcpp`
 single-threaded executor pattern. Each `spin_once` fires one
 callback and then re-checks timers + GCs. ROS-internal entities
 share the task priority, but the spin-loop iteration is the
@@ -86,19 +83,17 @@ scheduling unit; timer expiries are bounded by *one* callback's
 WCET, not the sum across all ready callbacks.
 
 If max-callback dispatch latency is still too high in this profile
-(e.g., a single callback is slow), the next refinement is moving
-timer and guard-condition dispatch *into* `drive_io`'s loop so the
-`max_callbacks = 1` cap covers them too. This is the path where one
-slow sub callback no longer delays a timer that should have fired
-mid-callback.
+(e.g., a single callback is slow), the remaining bound is that one
+callback's WCET — split the slow callback, or move it to its own
+tier/task (see [Scheduling Models](../internals/scheduling-models.md)).
 
 ### WCET-bounded real-time (RTIC / Embassy)
 
-Don't use the spin loop. Use the async path:
+Don't use the spin loop. Use the async path — a buffered subscription
+handle whose `recv()` is an async fn with waker integration:
 
 ```rust
-let executor = Executor::open_async(&config)?;
-let sub = node.create_subscription_async::<MyMsg>("/topic")?;
+let mut sub = node.create_subscription::<MyMsg>("/topic")?;
 loop {
     let msg = sub.recv().await?;        // suspends; waker integration
     handle(msg);
@@ -113,19 +108,15 @@ applies to each `recv().await` continuation, not to a spin loop.
 ### Time-triggered cyclic
 
 ```rust
-ExecutorConfig {
-    max_callbacks_per_spin: usize::MAX,    // not the bottleneck here
-    time_budget_per_spin_ms: Some(5),      // 5 ms ROS budget per cycle
-    spin_period_ms: 5,                     // matches the cycle's ROS slot
-    ..Default::default()
-}
+// Called once per cycle from the cyclic frame:
+executor.spin_blocking(SpinOptions::new().timeout_ms(5))?;   // 5 ms ROS slot
 ```
 
-The cycle gives ROS a fixed wall-clock slot. `time_budget_per_spin_ms`
-bounds time spent in `drive_io` regardless of pending work. The
-backend respects the budget by checking elapsed wall-clock between
-callbacks and returning when exceeded. Pending work resumes next
-cycle.
+The cycle gives ROS a fixed wall-clock slot; the `timeout_ms` bound
+returns control when the slot expires regardless of pending work.
+Pending work resumes next cycle. (There is no finer-grained
+per-callback budget knob today — if a single callback can overrun the
+slot, that callback's WCET is your design constraint.)
 
 ### Async runtime
 
@@ -143,9 +134,9 @@ No knobs apply.
 
 | Configuration | Throughput | Per-callback latency | Timer-callback fairness | Code-size cost |
 |---------------|-----------|---------------------|-------------------------|----------------|
-| `max_callbacks = MAX` (default) | High | Bounded by ALL ready callbacks' total WCET | Poor under load | Smallest |
-| `max_callbacks = 1` | Slightly lower (more spin loop iterations) | Bounded by ONE callback's WCET | Good | Same — the cap is just an integer |
-| `time_budget = Some(N)` | Lower (clock reads per callback) | Bounded by N ms wall clock | Good if N tight, fair if N loose | One clock read per callback (~10–50 ns) |
+| drain-all (default) | High | Bounded by ALL ready callbacks' total WCET | Poor under load | Smallest |
+| `max_callbacks(1)` | Slightly lower (more spin loop iterations) | Bounded by ONE callback's WCET | Good | Same — the cap is just an integer |
+| `timeout_ms(N)` per cycle | Lower | Bounded by N ms wall clock + one callback's WCET | Good if N tight | One clock read per iteration |
 | async / `spin_async` | Per-future | Per-future Future poll | Cooperative — futures yield voluntarily | Async runtime cost |
 
 ## Backends and their wait primitives

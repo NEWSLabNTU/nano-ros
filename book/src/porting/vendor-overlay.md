@@ -1,8 +1,9 @@
 # Vendor Overlay Board Crate
 
-An **overlay** crate is a small (~50–150 LOC) Cargo crate that depends
+An **overlay** crate is a small Cargo crate that depends
 on a generic per-kernel board crate (`nros-board-freertos`,
-`nros-board-threadx`, `nros-board-nuttx`, `nros-board-baremetal-cortex-{m,a}`)
+`nros-board-threadx`, `nros-board-nuttx` — there is no bare-metal
+family crate; that one was deliberately deleted in phase-337 W7.c)
 and patches the deltas a specific vendor board / fork needs:
 
 - Vendor HAL source files (NXP `fsl_*`, STM `HAL_*`, NVIDIA FSP, …).
@@ -13,8 +14,9 @@ and patches the deltas a specific vendor board / fork needs:
 - Custom clock-tree / pin-mux init.
 
 This page documents the contract: what the generic crate exposes,
-what the overlay overrides, and how to publish a community / vendor
-overlay to crates.io.
+what the overlay overrides, and how to distribute an overlay.
+(nano-ros is source-only — nothing is published to crates.io — so
+overlays are consumed as path or git dependencies.)
 
 ## Why overlays
 
@@ -31,14 +33,15 @@ phase that landed the architecture.
 
 ## Contract
 
-A generic per-kernel board crate exposes:
+A generic per-kernel board crate (taking `nros-board-freertos` as the
+worked case) exposes:
 
 | Item | Type | Purpose |
 |---|---|---|
-| `Config` | struct | TOML-loaded network + zenoh config; overlay can extend. |
-| `run(Config, FnOnce(&Config) -> Result<()>)` | function | Entry point. Initialises kernel + network, calls closure inside the app thread. |
-| `BoardInit` | trait | Hooks the overlay implements: `init_clocks`, `init_eth`, `init_extra_drivers`. |
-| `init_hardware()` | function | Default no-op; overlay re-exports a board-specific version. |
+| `Config` / `BaseConfig` | structs | Network + transport config; overlay can extend. |
+| `run_bare` / `run_entry` / `run_tiers_entry` | generic functions | Entry points, generic over a board **marker type**. Initialise kernel + network, then call your closure inside the app task. |
+| `nros_platform::BoardInit` | trait | One required method — `init_hardware()`, called once before the executor opens. Your marker type implements it (plus `BoardPrint` / `BoardExit` / `BoardEntry` from the same family). |
+| `nros_board_register_netif` / `nros_board_poll_netif` | **weak C hooks** (`c/network_glue.c`) | The network attach points: the overlay provides strong definitions wiring the vendor Ethernet driver into lwIP. |
 
 The overlay's `build.rs`:
 
@@ -54,22 +57,28 @@ The overlay's `build.rs`:
 // nros-board-stm32f4-freertos/src/lib.rs
 #![no_std]
 
-// Re-export the generic Config + run from the upstream kernel crate.
-pub use nros_board_freertos::{Config, run};
+// Re-export the generic config types from the kernel-family crate.
+pub use nros_board_freertos::{BaseConfig, Config};
 
-/// Board-specific clock-tree configuration.
-/// Called from `run()` before lwIP init.
-#[no_mangle]
-pub extern "C" fn nros_board_init_clocks() {
-    // HAL_RCC_OscConfig + HAL_RCC_ClockConfig + ...
-}
+/// Per-board marker for trait dispatch into `nros_board_freertos::run_*`.
+pub struct Stm32F4;
 
-/// Wire the STM32 ETH peripheral into lwIP.
-/// Called from `run()` after kernel start, before app callback.
-#[no_mangle]
-pub extern "C" fn nros_board_init_eth() {
-    // HAL_ETH_Init + lwIP netif_add binding
+impl nros_platform::BoardInit for Stm32F4 {
+    fn init_hardware() {
+        // HAL_RCC_OscConfig + HAL_RCC_ClockConfig + pin mux + ...
+    }
 }
+// (implement BoardPrint / BoardExit / BoardEntry the same way —
+//  `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs` is the
+//  working precedent to copy.)
+
+/// The network attach point is a strong definition of the generic
+/// crate's WEAK C hook (c/network_glue.c) — typically provided from a
+/// C file your build.rs compiles, wiring the vendor Ethernet driver
+/// into lwIP:
+///
+///   int nros_board_register_netif(const uint8_t *mac, ...);
+///   void nros_board_poll_netif(void);
 ```
 
 ```rust
@@ -121,7 +130,10 @@ description = "STM32F4 + FreeRTOS overlay on nros-board-freertos"
 repository = "https://github.com/<you>/nros-board-stm32f4-freertos"
 
 [dependencies]
-nros-board-freertos = "0.1"
+# Path into your vendored nano-ros checkout (or a git dep on your fork).
+# nano-ros is source-only: these names are NOT on crates.io.
+nros-board-freertos = { path = "../nano-ros/packages/boards/nros-board-freertos" }
+nros-platform = { path = "../nano-ros/packages/platform/nros-platform", default-features = false }
 
 [build-dependencies]
 cc = "1.0"
@@ -131,42 +143,37 @@ User application code stays identical to the generic-crate case
 except for the `[dependencies]` line:
 
 ```rust
-use nros_board_stm32f4_freertos::{Config, run};
-use nros::prelude::*;
+use nros_board_stm32f4_freertos::{Config, Stm32F4};
 
-run(Config::from_toml(include_str!("../config.toml")), |config| {
-    let exec_config = ExecutorConfig::new(config.zenoh_locator);
-    let mut executor = Executor::open(&exec_config)?;
-    // ...
-    Ok::<(), NodeError>(())
+// The `nros::main!(board = Stm32F4)` macro emits this dispatch; the
+// manual form is:
+nros_board_freertos::run_entry::<Stm32F4, _, _>(Config::default(), None, |runtime| {
+    // register your nodes on `runtime`
+    Ok(())
 })
 ```
 
 ## Canonical in-tree precedent
 
-`packages/boards/nros-board-orin-spe/` is the canonical FSP-FreeRTOS
-overlay (refactors it explicitly into this shape):
-
-- Re-exports `Config` + `run` from `nros-board-freertos`.
-- `build.rs` reads `NV_SPE_FSP_DIR`, pulls FreeRTOS V10.4.3 headers
-  from NVIDIA's FSP install.
-- Replaces lwIP with IVC link via `zpico-link-ivc`.
-- Provides `nros_board_init_ivc()` instead of `init_eth()`.
-
 `packages/boards/nros-board-mps2-an385-freertos/` is the canonical
-"stock kernel + custom Ethernet driver" overlay:
+"stock kernel + custom Ethernet driver" overlay, and the ONLY in-tree
+one (the former orin-spe overlay was removed in phase-337 W7.b):
 
-- Re-exports `Config` + `run` from `nros-board-freertos`.
+- Re-exports `BaseConfig` + `Config` from `nros-board-freertos`.
+- Defines the `Mps2An385` marker and implements the
+  `nros_platform` board traits on it.
 - `build.rs` adds the LAN9118 driver C sources + per-board linker
   script.
-- Provides LAN9118 IRQ-binding code in `init_eth()`.
+- Provides the strong `nros_board_register_netif` /
+  `nros_board_poll_netif` definitions binding LAN9118 into lwIP.
 
-Read both for working code.
+Read it for working code; [Adding a FreeRTOS
+Board](freertos-board.md) walks the same contract step by step.
 
 ## Naming convention
 
-Publish to crates.io as
-**`nros-board-<vendor>-<chip-or-board>-<rtos>`**. Examples:
+Name the crate **`nros-board-<vendor>-<chip-or-board>-<rtos>`**.
+Examples:
 
 - `nros-board-stm32f4-freertos`
 - `nros-board-stm32h7-threadx`
@@ -176,17 +183,16 @@ Publish to crates.io as
   board contract via DTS; only needed when a non-Zephyr nano-ros
   consumer wants to target an nRF board outside the Zephyr build)
 
-Crates.io has no namespacing; the `nros-board-` prefix is the
-informal namespace. The `nros-board-` names listed
-audit are all unclaimed today.
+The `nros-board-` prefix is the informal namespace; keep it so a
+reader can tell a board crate from an app crate at a glance.
 
 ## What overlays DO
 
 - ✅ Re-export `Config` + `run` (or extend `Config` with vendor-
   specific fields and re-implement `run` if needed).
 - ✅ Add vendor HAL C sources via `cc::Build`.
-- ✅ Provide `#[no_mangle]` hooks the generic crate's C glue calls
-  (`nros_board_init_clocks`, `nros_board_init_eth`, etc.).
+- ✅ Provide strong definitions of the generic crate's weak C hooks
+  (`nros_board_register_netif`, `nros_board_poll_netif`).
 - ✅ Ship board-specific config files (linker script,
   `FreeRTOSConfig.h`, `tx_user.h`).
 - ✅ Read vendor-SDK env vars (`STM32_HAL_DIR`, `NXP_SDK_DIR`,
@@ -226,27 +232,23 @@ cargo build --release --target thumbv7em-none-eabihf
 `templates/overlay-board/` ships a minimal skeleton:
 
 - `Cargo.toml.template` — deps on the generic kernel crate.
-- `src/lib.rs.template` — `pub use` re-exports + `#[no_mangle]` hook
-  stubs.
+- `src/lib.rs.template` — marker type + trait-impl and hook stubs.
 - `build.rs.template` — cc-rs HAL-source injection scaffold.
-- `README.md.template` — env vars + setup recipe.
+- `README.md` — env vars + setup recipe.
 
 Copy the directory, rename the placeholder, and fill in the
 vendor-specific bits. See `templates/overlay-board/README.md` for
 the per-file walkthrough.
 
-## Publishing to crates.io
+## Distributing an overlay
 
-Same flow as any Rust crate. Recommend:
-
-1. `cargo publish --dry-run` to sanity-check.
-2. Pin the generic crate dep to a minor-version range
-   (`nros-board-freertos = "0.1"`); avoid `^0.0` — that won't lock
-   on patch bumps.
-3. Tag a release on your repo for traceability.
-4. Open a PR against
-   `book/src/getting-started/community-board-crates.md` (TODO —
-   landed by) to add a link to your crate.
+nano-ros is **source-only** (decision 2026-05-14): nothing — including
+board crates — is on crates.io, so do not `cargo publish`. Ship the
+overlay as a git repository and have consumers take it as a `git` or
+`path` dependency next to their vendored nano-ros checkout. Tag
+releases against the `nros-v<X.Y.Z>` tag of nano-ros you developed
+against, and state that pairing in your README — the board-trait
+surface is versioned with the tree, not semver-independent.
 
 ## Related
 

@@ -281,10 +281,11 @@ west build -b native_sim/native/64 apps/my_app -- -DCONF_FILE="prj.conf;$overlay
 west build -b qemu_cortex_a9 apps/my_app
 ```
 
-(Verified end-to-end on a fresh BYO west workspace: this builds to `zephyr.exe`
-and runs to `Published: 0` against `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456`."];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd On the 4.4
-line, `find_package(Python3)` requires ≥ 3.12 and you select the RMW with
-`-S nros-zenoh` instead of the overlay.)
+(Verified end-to-end on a fresh BYO west workspace: this builds to
+`zephyr.exe` and runs to `Published: 0` against a router started with
+`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd`.
+On the Zephyr 4.4 line, `find_package(Python3)` requires ≥ 3.12 and you
+select the RMW with `-S nros-zenoh` instead of the overlay.)
 
 For a quick sanity check that the module is wired correctly:
 

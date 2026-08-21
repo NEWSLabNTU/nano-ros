@@ -34,28 +34,26 @@ families:
 | bare-metal Cortex-M + smoltcp | *(no family crate — copy `nros-board-mps2-an385`)* | `BOARD_LINKER_SCRIPT_DIR` |
 
 ```toml
-# user_app/Cargo.toml
+# user_app/Cargo.toml — registry-style names resolved by the
+# `nros sync`-managed [patch.crates-io] table (nano-ros is source-only;
+# nothing is on crates.io):
 [dependencies]
-nros-board-freertos = "0.1"
-nros = { version = "0.1", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
-nros-rmw-zenoh = { version = "0.1", features = ["platform-freertos"] }
-std_msgs = { version = "*", default-features = false }
+nros-board-freertos = { version = "*", default-features = false }
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-freertos"] }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 ```
 
 ```rust
-// user_app/src/main.rs
-use nros::prelude::*;
-use nros_board_freertos::{Config, run};
+// user_app/src/main.rs — the macro form; it expands to
+// `nros_board_freertos::run_entry::<Board, _, _>(...)` dispatch.
+#![no_std]
+#![no_main]
+nros::main!(spin = "forever");
 
-fn main() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
-        let mut executor = Executor::open(
-            &ExecutorConfig::new(config.zenoh_locator).node_name("my_node"),
-        )?;
-        // publishers, subscriptions, services, actions, timers...
-        Ok::<(), NodeError>(())
-    })
-}
+// Manual form, for full control:
+// nros_board_freertos::run_entry::<Mps2An385, _, _>(
+//     Config::default(), None, |runtime| { /* register nodes */ Ok(()) })
 ```
 
 ```bash
@@ -76,15 +74,16 @@ NXP `fsl_*`, NVIDIA FSP, Renesas Synergy SSP, …) on top of one of
 the generic crates, write a small (~50 LOC) overlay crate that:
 
 1. Depends on the matching generic board crate.
-2. Re-exports `Config` + `run`.
-3. Implements `#[no_mangle]` board-init hooks
-   (`nros_board_init_clocks`, `nros_board_init_eth`,
-   `nros_board_init_extra_drivers`).
+2. Defines a board **marker type** and implements the
+   `nros_platform` board traits on it (`BoardInit::init_hardware()`
+   and siblings); re-exports `Config`.
+3. Provides strong definitions of the generic crate's weak C network
+   hooks (`nros_board_register_netif`, `nros_board_poll_netif`).
 4. Pulls vendor HAL `.c` sources via its own `build.rs` cc-rs
    invocation.
 
-The full cookbook + working precedents
-(`nros-board-orin-spe`, `nros-board-mps2-an385-freertos`) live in
+The full cookbook + the working precedent
+(`nros-board-mps2-an385-freertos`) live in
 [Vendor Overlay Board Crate](../porting/vendor-overlay.md).
 
 ## Why so many paths

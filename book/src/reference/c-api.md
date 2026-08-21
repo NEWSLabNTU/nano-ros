@@ -76,7 +76,7 @@ yourself between async calls until your callback flags the result. See
 the example layouts in `examples/native/c/action-client/` and
 `examples/qemu-arm-freertos/c/action-client/`.
 
-added a separate L1 polling family
+Phase 122.3 added a separate L1 polling family
 (`nros_action_client_init_polling` + the `_raw` send/recv siblings)
 that stores `ActionClientCore` inline in the
 `nros_action_client_t._opaque` slot and skips the executor entirely;
@@ -84,8 +84,10 @@ see the Doxygen for the full L1 verb list.
 
 ## CMake integration
 
-Out-of-tree projects use the `NanoRos::C` CMake target and the
-`nano_ros_generate_interfaces()` function — covered in
+Out-of-tree projects link the `NanoRos::NanoRos` CMake target and
+generate C bindings with `nros_generate_interfaces(<pkg> LANGUAGE C)`
+(note: `nano_ros_generate_interfaces()` defaults to `LANGUAGE CPP`) —
+covered in
 [`docs/reference/c-api-cmake.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/c-api-cmake.md).
 
 ## Generating locally

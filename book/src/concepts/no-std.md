@@ -49,9 +49,9 @@ is propagated through the feature chain but does not add any API surface.
 - `ExecutorConfig::new(locator)` -- manual configuration
 - `executor.create_node(name)` -- create a node
 - `executor.spin_once(timeout_ms)` -- single spin iteration
-- `executor.spin_period_polling(period_ms)` -- periodic spin without `std::thread::sleep`
+- `executor.spin_period(period)` -- periodic spin without `std::thread::sleep`
 
-**Two-layer API.** unified the verb discipline:
+**Two-layer API.** Phase 122 unified the verb discipline:
 
 - **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
   handle. Caller drives `try_recv` / `call` / `try_accept_goal` /
@@ -159,7 +159,9 @@ protocol layer requires it.
 | `SpinPeriodResult`                                            | nros-node/types.rs   | Contains `std::time::Duration`                          |
 | `ParameterVariant` for `std::string::String`, `std::vec::Vec` | nros-params/types.rs | Convenience conversions for std types                   |
 
-## Typical Configurations decoupled the `nros` umbrella from concrete RMW crates.
+## Typical Configurations
+
+Phase 208 decoupled the `nros` umbrella from concrete RMW crates.
 A consuming `Cargo.toml` lists **three** path deps: `nros` (with
 `rmw-cffi` + a `platform-*` feature), the chosen backend crate
 (`nros-rmw-zenoh` / `nros-rmw-xrce-cffi`), and —
@@ -174,7 +176,7 @@ nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
 Async: `spin_async()`, `Promise`, `try_recv()`, `.await` -- all available without std or alloc.
-Use `spin_once()` or `spin_period_polling()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
+Use `spin_once()` or `spin_period()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
 
 **Embedded with allocator (e.g., Zephyr with heap):**
 ```toml
