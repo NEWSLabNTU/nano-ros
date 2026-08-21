@@ -41,9 +41,10 @@ if(COMMAND nros_platform_link_app)   # defined by zephyr/threadx platforms only
 endif()
 
 # Optional — generate C bindings for ROS 2 .msg / .srv / .action files.
-# nros_generate_interfaces() is reachable in-tree once nano-ros has been
-# add_subdirectory'd; no install step required.
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+# (LANGUAGE defaults to CPP; full spelling table → user-guide
+# "Message Generation".)
+nano_ros_generate_interfaces(std_msgs LANGUAGE C
+    DEPENDENCIES builtin_interfaces)
 target_link_libraries(my_app PRIVATE std_msgs__nano_ros_c)
 ```
 

@@ -145,7 +145,8 @@ Standard ROS 2 uses `ament` + `rosidl` to compile message packages
 your application links against.
 
 nano-ros's `nros generate-rust` (Rust) and
-`nano_ros_generate_interfaces()` (C / C++ via CMake) write message
+`nano_ros_generate_interfaces()` (C / C++ via CMake — one of five
+entry points; see the [spelling table](../user-guide/message-generation.md#which-cmake-spelling-one-table)) write message
 type definitions *into your build tree*. No `_msgs` library, no ament
 overlay, no colcon workspace required.
 

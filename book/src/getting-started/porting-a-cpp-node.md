@@ -85,6 +85,9 @@ same `src/` builds under `colcon build` (CI-gated by Phase 210.F.2).
 
 ### Legacy `nros_generate_interfaces(<pkg>)` shape
 
+(The full current-vs-legacy spelling table lives in
+[Message Generation](../user-guide/message-generation.md#which-cmake-spelling-one-table).)
+
 Per-package `nros_generate_interfaces(std_msgs LANGUAGE CPP SKIP_INSTALL)`
 calls still work (back-compat preserved) but are **deprecated for new
 code** — they bypass the ROS-convention smart Find-stub + workspace

@@ -270,10 +270,26 @@ the ament index takes precedence over bundled files.
 - Regenerate with `--force` flag
 - Check nros crate compatibility
 
+## Which CMake spelling (one table)
+
+Five codegen entry points exist in the CMake surface. They are NOT
+interchangeable spellings of one thing — each serves one audience, and
+two are back-compat only. Pick by what you are doing:
+
+| You are… | Use | Notes |
+|---|---|---|
+| **Consuming** an existing msg package from an app/node pkg | `find_package(<pkg> REQUIRED)` | **The recommended default.** The smart Find-stub resolves the package through the 3-layer search (workspace → ament → bundled) and generates bindings on the fly. Zero codegen calls in your file. |
+| **Defining** msgs in a message package | `rosidl_generate_interfaces(${PROJECT_NAME} msg/… DEPENDENCIES …)` | **Recommended** — the stock ROS shape, intercepted by nano-ros. Your msg pkg carries zero nano-ros-specific lines and cross-builds under colcon unchanged. |
+| Defining msgs and you want the nano-ros verb explicitly (or C bindings) | `nano_ros_generate_interfaces(<name> <files…> [LANGUAGE C\|CPP] [DEPENDENCIES …])` | The ament-shape alias (RFC-0048 §5). **Defaults to `LANGUAGE CPP`** like rosidl — pass `LANGUAGE C` for C. |
+| Building a **workspace root** with several msg pkgs | `nros_workspace_interfaces()` after `set(NROS_INTERFACE_SEARCH_PATH …/src)` | Bulk-builds every workspace msg pkg in topological order; one line, no per-pkg `add_subdirectory`. |
+| Generating **this pkg's `package.xml` dependencies** (no find_package flow) | `nros_find_interfaces([LANGUAGE C\|CPP] [SKIP_INSTALL])` | Consume-by-manifest: resolves the transitive interface closure of your own `package.xml`. Used by the workspace node pkgs. Defaults `LANGUAGE CPP`. |
+| — | `nros_generate_interfaces(<target> <files…>)` | **Deprecated for new code** (Phase 210.E.4). The low-level generator everything above routes through; direct calls are back-compat only. |
+
 ## C Code Generation (CMake)
 
-The `nano_ros_generate_interfaces()` CMake function generates C bindings for `.msg`, `.srv`,
-and `.action` files. It uses a bundled codegen library — no external `nros` binary needed.
+`nano_ros_generate_interfaces(… LANGUAGE C)` generates C bindings for `.msg`, `.srv`,
+and `.action` files (the function **defaults to C++** — the `LANGUAGE C`
+argument is what makes it the C generator). It uses a bundled codegen library — no external `nros` binary needed.
 
 ### Prerequisites
 

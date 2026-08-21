@@ -63,7 +63,8 @@ Choose API language first:
 
 - **Rust** — use `nros`, generated message crates, and `Executor`.
 - **C** — include `nros/nros.h` and generate interfaces with
-  `nros_find_interfaces(LANGUAGE C)` in CMake.
+  `nros_find_interfaces(LANGUAGE C)` in CMake (one of five codegen
+  entry points — [which to use](message-generation.md#which-cmake-spelling-one-table)).
 - **C++** — include `nros/nros.hpp` and use typed wrappers.
 
 Start with one of the Linux starters above, then adapt to your
