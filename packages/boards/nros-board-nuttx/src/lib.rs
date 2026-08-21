@@ -1328,6 +1328,31 @@ fn nuttx_spin_tier_forever(
     // ~1 s, not 5: the e2e kills the guest a couple of seconds after the slow
     // tier's anchor, so a 5 s heartbeat never printed once.
     let heartbeat_every = (1_000_000 / tier.spin_period_us.max(1)).max(1);
+
+    // issue 0736 — the discriminator the issue asks for, and it needs no host.
+    //
+    // The symptom is 1000 spins producing 7 fires of a 10 ms timer: the tier IS
+    // scheduled, and its sense of time is not keeping up. Two candidates fit
+    // that equally from outside — `spin_once` returning early without waiting
+    // its declared period, or the clock the timer compares against
+    // under-reporting — and the spin count alone cannot separate them.
+    //
+    // Reading the PLATFORM MONOTONIC clock at each heartbeat does: print the
+    // clock delta beside the time those spins ASKED for. If they agree, the
+    // spins really did take that little and the wait is the defect; if the
+    // clock is far behind what was asked, the wait happened and the clock is.
+    //
+    // Deliberately the same clock the executor's timers compare against
+    // (`nros_platform_clock_ns`, the platform ABI's monotonic source) — a
+    // second, healthier clock would prove only that two clocks disagree.
+    unsafe extern "C" {
+        fn nros_platform_clock_ns() -> u64;
+    }
+    // SAFETY: a bare monotonic read, no arguments, defined by whichever
+    // platform port linked this image — the same contract `nros-node` uses.
+    let clock_ns = || unsafe { nros_platform_clock_ns() };
+    let spin_start_ns = clock_ns();
+
     let mut iters: u64 = 0;
     let (mut timers, mut subs, mut errs) = (0usize, 0usize, 0usize);
     let mut announced_first = false;
@@ -1360,9 +1385,16 @@ fn nuttx_spin_tier_forever(
             );
         }
         if iters % heartbeat_every == 0 {
+            // issue 0736 — `clock` is what the platform monotonic source says
+            // elapsed; `asked` is what those spins requested. A large gap
+            // between them is the defect, and which side is wrong is the
+            // question this line exists to answer.
+            let clock_us = clock_ns().saturating_sub(spin_start_ns) / 1_000;
+            let asked_us = iters.saturating_mul(tier.spin_period_us as u64);
             println!(
-                "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), {} error(s)",
-                tier.name, iters, timers, subs, errs
+                "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), \
+                 {} error(s), clock {} us vs asked {} us",
+                tier.name, iters, timers, subs, errs, clock_us, asked_us
             );
         }
     }

@@ -99,3 +99,73 @@ invisible because its fixture had never been built — `realtime_tiers` reported
 just nuttx build-fixtures
 cargo nextest run -p nros-tests --test realtime_tiers_e2e --retries 0
 ```
+
+## Measured 2026-08-21 — the clock is not BEHIND, it is 6.5x AHEAD
+
+The issue asks for "a spin count alongside the clock delta at the alive report
+… that instrumentation does not exist yet". It exists now (the NuttX tier loop
+reads `nros_platform_clock_ns` — the same monotonic source the timers compare
+against, deliberately, since a second healthier clock would only prove two
+clocks disagree) and it answers the question the other way round:
+
+```
+tier `low`  100 spin(s),   54 timer(s) fired, clock  6551000 us vs asked 1000000 us
+tier `low`  200 spin(s),  125 timer(s) fired, clock 15460000 us vs asked 2000000 us
+tier `low`  300 spin(s),  190 timer(s) fired, clock 24558000 us vs asked 3000000 us
+tier `high` 1000 spin(s),   5 timer(s) fired, clock 25924000 us vs asked 1000000 us
+tier `low`  400 spin(s),  246 timer(s) fired, clock 31448000 us vs asked 4000000 us
+```
+
+**"The tier's sense of time does not keep up with it" is backwards.** The clock
+runs 6.5–7.9x AHEAD of the time the spins asked for — unsurprising under
+`-icount` emulation, where a 1 ms spin cannot complete in 1 ms of guest time.
+Neither candidate the issue named is what happened: `spin_once` is not returning
+early, and the clock is not under-reporting.
+
+### What the numbers actually say
+
+Comparing the two tiers at the same point in guest time:
+
+| | spins | clock | timer fires | fires the clock implies | ratio |
+| --- | --- | --- | --- | --- | --- |
+| `low` (10 ms spin, 100 ms timer) | 300 | 24.6 s | 190 | ~245 | **78 %** |
+| `high` (1 ms spin, 10 ms timer) | 1000 | 25.9 s | 5 | ~2590 | **0.2 %** |
+
+`low` is roughly keeping up. `high` is not, by three orders of magnitude — and
+crucially **not** by a one-fire-per-`spin_once` cap either: that cap would give
+`high` ~1000 fires, and it produced 5. `low` meanwhile manages 0.63 fires per
+spin, so more than one fire per spin is clearly reachable.
+
+Each `high` spin also consumes ~26 ms of clock for a declared 1 ms — so by
+elapsed time the timer is ~26 periods overdue on EVERY spin, and still does not
+fire.
+
+### One hypothesis eliminated before it is proposed
+
+Tick granularity is the obvious suspect and it is **not** a 10 ms-tick problem:
+the built image has `CONFIG_USEC_PER_TICK=1000` with `CONFIG_SCHED_TICKLESS`
+unset, so a 1 ms spin period is exactly one tick, not a sub-tick round-to-zero.
+Recorded because it is where a reader would go first.
+
+### Where that leaves it
+
+The defect is in when the executor decides a timer is DUE, on a tier whose spin
+period is 1 ms — not in scheduling, not in the clock, and not in the wait. The
+next measurement is inside `spin_once_counted`: what it computes as the next due
+time and what it compares against, for a 1 ms period versus a 10 ms one.
+
+### Reproducing the numbers
+
+The e2e window is too short to reach a heartbeat — the fast tier needs 1000
+spins and gets ~39 per second of guest clock. Use the manual run, which now
+works in the ROS distrobox (it needs both QEMU and a router, and until this
+issue neither host had both — the box lacked `qemu`, and a ROS-less host has no
+`rmw_zenohd`):
+
+```
+just zenohd tcp/0.0.0.0:8291 &
+qemu-system-arm -M virt -cpu cortex-a7 -nographic -icount shift=auto \
+  -kernel examples/workspaces/realtime-rust/target-fixtures/nuttx/armv7a-nuttx-eabihf/nros-minsizerel/nuttx_entry \
+  -netdev user,id=net0 -device virtio-net-device,netdev=net0
+```
+
