@@ -185,3 +185,67 @@ gate phase (landed: fan-out is the default, 45 s -> 7 s).
    re-verified green, then a full pooled lane ran 8/8 stages green. NOTE: no
    timing from these runs is evidence — a CarlaUE4 + Autoware sim owned the box
    throughout (standing rule).
+
+## Item 1 done: lineage-scoped measurement CONFIRMS "blocked, not capped"
+
+`scripts/build/sample-build-lineage.sh` counts only descendants of the build PID
+captured at launch. Validated against a known tree first (two `sleep` children:
+`alive=2 runnable=0 sleeping=2`), because the previous two samplers were both
+wrong and neither was checked before use.
+
+Pooled-off `lane=tier2`, 1327 samples over 2712 s on 32 cores:
+
+| | |
+| --- | --- |
+| alive (build's own processes) | mean **36.3**, peak 214 |
+| **runnable** | mean **0.1**, median **0**, peak 11 |
+| sleeping | mean 33.0 |
+| disk-wait (D state) | mean 3.25, peak 33 |
+| loadavg runnable | mean 1.9 |
+
+| runnable | share of run |
+| --- | --- |
+| **0 — nothing on CPU** | **92.6%** |
+| 1-4 | 7.1% |
+| 5-15 | 0.3% |
+| 16+ | 0.0% |
+
+**92.6% of the build has zero of its own processes running.** The claim survives,
+and in a stronger form than the contaminated version stated it.
+
+Two corrections to the earlier figures, both in the same direction:
+
+* `alive 51` was inflated — the build's own tree averages **36**, and the rest
+  was the Autoware container.
+* `runnable 8` was badly inflated — the build's own runnable count averages
+  **0.1**. Nearly all of that 8 belonged to someone else's compilers.
+
+The `loadavg` column is the reason this run is trustworthy: mean 1.9 against a
+build runnable of 0.1 means the machine as a whole was near-idle too, so there is
+no hidden competitor inflating or starving the numbers. That cross-check is why
+it is recorded next to the descendant count rather than instead of it.
+
+### What this rules out
+
+Any further launcher work. Static-vs-pooled, token pools, stage overlap — all of
+it allocates permission to run, and permission has never been the constraint.
+A build that is 92.6% idle by its own processes cannot be helped by being
+allowed to run more of them. **Item 2 (cold A/B) is therefore demoted**: worth
+doing only to close the question, not as an optimisation.
+
+### What it points at
+
+`sleeping 33` against `runnable 0.1` and `disk-wait 3.25`. Most of the tree is
+in S, not D — so this is NOT primarily disk-bound either. Processes are waiting
+on *something else*: children (make/sh supervisors legitimately sit in
+`do_wait`), locks, pipes, or timers.
+
+Distinguishing "supervisor correctly waiting on its child" from "worker that
+cannot proceed" is the next instrument, and it is a `wchan` breakdown restricted
+to the same lineage — the earlier `wchan` attempt was contaminated by name-based
+matching, and its cmake/futex/IO percentages were withdrawn.
+
+Concretely: of ~36 processes, how many are supervisors? A deep
+make -> sh -> cargo -> rustc chain accounts for many. If nearly all 36 are
+supervisors and the leaf worker count is ~1, the build is a SERIAL PIPELINE and
+the fix is pipeline depth, not parallelism.
