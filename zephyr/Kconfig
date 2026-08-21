@@ -547,6 +547,53 @@ config NROS_EXECUTOR_MAX_CBS
       effect of repairing the plumbing. Raise it deliberately — the arena
       scales with it.
 
+config NROS_SUBSCRIPTION_BUFFER_SIZE
+    int "Per-subscription receive buffer size (bytes)"
+    default 1024
+    help
+      Serialized-sample capacity of every executor arena subscription
+      (nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
+      is dropped at try_recv with BUFFER_TOO_SMALL — for the C++ arena
+      dispatch path that drop is silent, so an undersized buffer looks
+      like a subscription that never fires. Size it to the largest
+      serialized message the image subscribes to (e.g. an Autoware
+      /planning trajectory runs 9-14 KiB). The executor arena is derived
+      from this value times the callback-slot count — raise it
+      deliberately. This knob was resolvable only via environment on
+      native lanes before; the Zephyr lane's curated cargo environment
+      dropped it, so every Zephyr image silently compiled 1024
+      (same class as issue 0316 / the NROS_EXECUTOR_MAX_CBS history).
+
+config NROS_EXECUTOR_MAX_SC
+    int "Maximum scheduling-context slots per executor"
+    default 8
+    help
+      SchedContext slots per executor (nros-node build.rs MAX_SC,
+      RFC-0052 / Phase 110.B).
+
+config NROS_EXECUTOR_MAX_NODES
+    int "Maximum nodes per executor"
+    default 4
+    help
+      Nodes attachable to one executor (nros-node build.rs MAX_NODES,
+      Phase 104.C.2).
+
+config NROS_PARAM_SERVICE_BUFFER_SIZE
+    int "Parameter service request/reply buffer size (bytes)"
+    default 4096
+    help
+      Buffer for parameter service requests/replies (nros-node build.rs
+      PARAM_SERVICE_BUFFER_SIZE).
+
+config NROS_MAX_PARAMETERS
+    int "Maximum declared parameters per image"
+    default 32
+    help
+      Static parameter-store pool size (nros-params build.rs). A node
+      declaring more parameters than this fails declare_parameter with
+      ErrorCode::Full (-5) at boot. The Autoware trajectory follower
+      declares ~150.
+
 # =============================================================================
 # Common Platform Configuration
 # =============================================================================

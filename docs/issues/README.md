@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-22): **#0749** (zephyr) — the Zephyr lane's curated cargo environment dropped five
+of six executor sizing knobs (0316 fixed only `NROS_EXECUTOR_MAX_CBS`; `NROS_SUBSCRIPTION_BUFFER_SIZE`,
+`NROS_MAX_PARAMETERS` etc. had no Kconfig and no resolve row), so every Zephyr image silently built
+1024-byte subscription buffers and a 32-slot param store regardless of what the consumer exported — ASI's
+13.4 KiB Autoware trajectories were reassembled, ACKed, and thrown away with zero diagnostics (the C++
+arena dispatch path swallows BUFFER_TOO_SMALL — that fail-loud half is still open). Fixed: the whole knob
+class is now Kconfig-backed and resolved env-wins into the cargo env. See `0749-*`. (2026-08-22)
+
 Recently resolved (2026-08-21): **#0747** — `check-rmw-cyclonedds` went 3 red in ~6 in-sweep `just check`
 runs and 0 red in 3 solo, a different test each time, once printing `failed to bind to ANY:8650: address in
 use` (domain 5) — not #0703's ephemeral-range cause but a plain collision. #0707 had taught only the RUST

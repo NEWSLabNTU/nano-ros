@@ -217,6 +217,20 @@ function(nros_resolve_knobs)
     # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
     # C API limits are derived from MAX_CBS via Cargo `links` metadata.
     _nros_resolve_knob(NROS_EXECUTOR_MAX_CBS "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+    # Issue 0316's fix listed ONE of nros-node's six build.rs knobs; the other
+    # five stayed unreachable on Zephyr (the curated cargo environment drops
+    # any knob not resolved here, and shell exports do not survive it), so a
+    # consumer exporting NROS_SUBSCRIPTION_BUFFER_SIZE=16384 silently built
+    # 1024-byte subscription buffers — every serialized sample above that is
+    # dropped, and the C++ arena dispatch path drops it silently. Resolve the
+    # whole class (nros-node + nros-params sizing knobs) in one place.
+    _nros_resolve_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
+        "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}")
+    _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
+    _nros_resolve_knob(NROS_EXECUTOR_MAX_NODES "${CONFIG_NROS_EXECUTOR_MAX_NODES}")
+    _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
+        "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
+    _nros_resolve_knob(NROS_MAX_PARAMETERS "${CONFIG_NROS_MAX_PARAMETERS}")
 endfunction()
 
 # =============================================================================
