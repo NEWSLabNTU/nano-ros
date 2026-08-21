@@ -1845,10 +1845,10 @@ pub fn interop_environment_fingerprint() -> String {
                             .map(str::to_string)
                     })
                 });
-            if let Some(ver) = ver {
-                if !seen.contains(&ver) {
-                    seen.push(ver);
-                }
+            if let Some(ver) = ver
+                && !seen.contains(&ver)
+            {
+                seen.push(ver);
             }
         }
         let _ = match seen.len() {
