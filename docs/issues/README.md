@@ -51,6 +51,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0746** (core, open 2026-08-21) — the executor timer OVER-CREDITS under subscription load: a 30 ms
+timer (0745-seeded, tier-bound) is exact standalone (31.6 ms mean, n=1265) but publishes at ~50 Hz —
+1.5x — against real traffic (8.8 KiB trajectories at 10 Hz + four more subs), sustained over 25 s, so
+not bounded catch-up. Direction points at a double credit source (wall-elapsed AND assumed drive_io
+timeout). For a controller the publish rate IS the control rate; ASI's phase-4 soak gates on this.
+Minimal repro shape: realtime-cpp ctrl tier + a flood publisher, hz vs standalone. See `0746-*`.
+(2026-08-21)
+
 **#0745** (codegen, resolved 2026-08-21) — launch params NEVER reached a component ctor: emitters
 gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node
 init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction
