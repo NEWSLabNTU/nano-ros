@@ -51,14 +51,11 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0740** (build, open 2026-08-21) — nros-c's mirrored `nros_config_generated.h` (the 0088/0268
-producer edge) is a cross-directory custom-command OUTPUT, and the 0090 file-level OBJECT_DEPENDS on it
-only resolves under Ninja: under Unix Makefiles a CLEAN downstream consumer build dies with "No rule to
-make target …include/nros/nros_config_generated.h" on the generated entry TU, and a second pass
-"fixes" it (the mirror now exists on disk). In-tree lanes never see it because their stage order leaves
-the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, not only the file —
-sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
-pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
+Recently resolved (2026-08-21): **#0740** — the config-header mirror's file edge was Ninja-only, so a
+clean Unix Makefiles consumer died 'No rule to make target' on the cross-directory mirror path. Fixed by
+`_nros_config_header_stamp`: a LOCAL stamp rule per consumer directory, going stale exactly when the
+mirror does in both generators; applied at all six OBJECT_DEPENDS sites. Verified single-shot clean on
+the scaffolded C++ workspace consumer. See `archived/0740-*`. (2026-08-21)
 
 Recently resolved (2026-08-21): **#0200** — the fixture-build timing campaign is closed on phase-353 W3's
 SECOND acceptance arm ("or #200 is restated … so a future runner is sized correctly"). Stated plainly: the

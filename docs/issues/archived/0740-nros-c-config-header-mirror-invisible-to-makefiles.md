@@ -1,7 +1,7 @@
 ---
 id: 740
 title: "nros-c's mirrored config header is invisible to the Unix Makefiles generator across directories — consumer entry TUs die with 'No rule to make target'"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0088, issue-0268, issue-0090]
@@ -64,3 +64,21 @@ the same Makefiles hole (0090 lists the sites).
 Second build pass, or `cmake --build build --target nros_c_config_header`
 before the entry target; ASI's build lane currently rides the
 second-pass behavior.
+
+## Resolution (2026-08-21)
+
+Fixed by `5024f2b93`: `_nros_config_header_stamp` (NanoRosNodeRegister.cmake)
+gives every consumer directory a LOCAL `add_custom_command(OUTPUT <stamp>)`
+whose recipe copies the mirror — so Unix Makefiles has an in-directory rule
+for the prerequisite, while the stamp's own deps (the cargo/mirror targets
+plus the staticlib FILE) keep it going stale exactly when the mirror does in
+both generators (the 0268 museum-mirror hazard stated in the helper).
+Applied at all six OBJECT_DEPENDS sites (NodeRegister ×2, Entry ×2,
+GenerateInterfaces, plus the C-node arm).
+
+Verified 2026-08-21 on the repro shape: clean single-shot
+`cmake -G "Unix Makefiles"` + `cmake --build` of a scaffolded
+`multi-node-workspace-cpp` consumer — `robot_entry_nros_main_generated.cpp.o`
+(the failing TU class) compiles on the FIRST pass; the log shows
+`config-header stamp nros_config_generated (issue 0740)` ordering the mirror.
+ASI's second-pass workaround can retire.
