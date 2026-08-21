@@ -784,3 +784,97 @@ This is the fourth pass of this issue where reading source produced a
 conclusion that an artefact then contradicted, and the issue's own note predicted
 it: "`nm` is four seconds." It was. The cost of the previous three was two
 recorded results and one closed issue aimed at dead code.
+
+## Design options for the device-side half (2026-08-21)
+
+With `_zp_unicast_read` shown absent from the image, RFC-0074's enforcement
+point 2 needs re-aiming rather than unblocking. What follows is the option set,
+with the two structural facts that decide most of it read off the LIVE path
+(`_zp_unicast_read_task`, `src/transport/unicast/read.c:386`):
+
+```c
+_z_mutex_lock(&ztu->_common._mutex_rx);   // acquired and KEPT for the task's life
+_z_zbuf_reset(&ztu->_common._zbuf);       // ONCE, before the loop
+while (running) { _z_unicast_client_read(...); _z_unicast_process_messages(...); }
+```
+
+* **The reset is outside the loop.** This is the whole difference from the failed
+  probe: a cap on `_zp_unicast_read`'s INNER loop was lossy because that
+  function resets per call, so declined frames were discarded. Pausing the TASK
+  between iterations discards nothing — bytes stay in the socket and TCP
+  backpressures the sender.
+* **`_mutex_rx` is held for the task's lifetime, and nothing else locks it** —
+  elsewhere in the tree it is only `_z_mutex_init` / `_z_mutex_drop`. So
+  sleeping inside the loop blocks nothing in steady state. (Teardown already
+  clears `_read_task_running` and joins.)
+
+### A. Lower the read task below the tiers — REJECTED, with evidence
+
+The obvious move, and measured bad: this is the configuration that starved the
+RX drain and froze `rt-eval`'s island for 1-3 s on lwIP retransmission. Kept in
+the option set only so it stops being re-proposed; `report_tiers_above_transport`
+exists to catch someone arriving at it by accident.
+
+### B. Budget the read TASK (the re-aimed enforcement point 2)
+
+Bound the task by frames or microseconds per replenishment period and block
+until the next one — a sporadic server in application clothing, applied to the
+task loop rather than to an inner loop that does not exist here.
+
+Viable on the two facts above: non-lossy, and mutex-safe in steady state. Its
+real cost is the one the TCP_WND experiment already measured: deferring the
+drain leaves flood bytes queued ahead of chain bytes on one reliable ordered
+stream, which converts CPU preemption into head-of-line delay (1xMSS: cadence
+perfect, chain p50 45 ms -> 446 ms). **So B alone relocates the harm.**
+
+One difference from TCP_WND worth testing rather than assuming: a budget engages
+only ABOVE the declared rate, where the 1xMSS window was permanently small. Under
+nominal traffic B is inert. Whether that makes the head-of-line cost acceptable
+in practice is unmeasured, and is the experiment B needs before it ships.
+
+### C. Separate the chain from the flood — the actual precondition
+
+Priority classes, per-criticality topics, or separate sessions. Priority
+REORDERS the link and cannot reduce a per-message decode cost, so it does not
+substitute for a budget; but it is what makes B help instead of relocate.
+
+**This replaces #0567 as enforcement point 2's blocker.** RFC-0074 currently
+states the precondition as "a resumable rx path (#0567)". On this lane #0567's
+fix (`43ddb0ec`) is in `_zp_unicast_read` and is not linked, and there is no
+inner loop to resume. The precondition that actually binds is separation.
+
+That is a better place to be blocked: #0567 is a change to zenoh-pico's rx state
+machine, whereas separation is a topology and contract question this project
+already has vocabulary for.
+
+### D. Ship enforcement point 1 alone
+
+Router-side pacing is the only mechanism measured to fix BOTH harms, and it does
+not depend on the device's rx structure — which today's finding makes the more
+robust half. The RFC could make EP1 normative and EP2 an explicit non-goal until
+B has evidence.
+
+Cost, and it is real: a device cannot then enforce its own ingress contract, and
+the rule ships outside the device with whoever deploys the router. The RFC
+already names this as the price of being the only place the CPU is saved.
+
+### E. Admission control at resolve time — complementary, currently unfounded
+
+Reject a declared ingress that exceeds the platform's capacity. Cheap and it
+catches misconfiguration rather than overload. Blocked on a definition: this
+issue established that "~750 msg/s" is NOT a capacity — paced, the same island
+sustains 740-752 msg/s with zero stalls, and unpaced it collapses to 157-265.
+Capacity is a (rate, burst) pair, and nothing measures one today.
+
+### Recommendation
+
+D now, B+C as the follow-up, in that order — because D is the only thing with
+evidence behind it, and B without C is measured to move the harm rather than
+remove it. The RFC edit this implies is small: EP2's blocker changes from #0567
+to separation, and its mechanism changes from the inner drain loop to the read
+task's budget.
+
+The experiment that would settle B is also now well-posed, which it was not
+before: run the task-level budget with the chain and the flood on separate
+sessions, and compare chain p50/p95 against the 1xMSS cell. That needs an image
+plus the eval workspace's 3-phase harness, not a new instrument.
