@@ -91,3 +91,50 @@ just build-test-fixtures lane=native
 cargo nextest run -p nros-tests --test xrce_ros2_interop \
     -E 'test(test_xrce_service_ros2_client)' --retries 0
 ```
+
+## Counter-measurement (2026-08-21) — GREEN in the ROS distrobox, so this is an environment axis
+
+The issue's own command, on current `main`, in the ROS distrobox:
+
+```
+cargo nextest run -p nros-tests --test xrce_ros2_interop \
+    -E 'test(test_xrce_service_ros2_client)' --retries 0
+
+PASS [ 3.343s] (1/1) nros-tests::xrce_ros2_interop test_xrce_service_ros2_client
+```
+
+and in a full `just ci` sweep in the same environment: 1490 cases, **0 real
+failures**, with all eleven `xrce_ros2_interop` / xrce-service cases passing.
+
+So "upstream `main` is red here" is true of that host and not of this one. That
+matters for the diagnosis: the issue reasons from the 15-byte history to "a
+type-registration/discovery defect on the XRCE side", and a defect in the
+registration itself would not care which machine ran it. Something in the
+environment is choosing the advertised max-serialized-size.
+
+Exact versions where it passes, so the difference is checkable rather than
+guessed:
+
+| component | version |
+| --- | --- |
+| ROS | Humble (Ubuntu 22.04 distrobox) |
+| Fast-DDS | 2.6.12-1jammy |
+| rmw_fastrtps_cpp | 6.2.10-1jammy |
+| XRCE agent | 2.4.3-nros1 (the SDK-index pin, `~/.nros/sdk/xrce-agent/`) |
+
+The agent is the component that registers the DDS type the ROS reader sizes
+itself from, so it is the first thing to compare — but it is PINNED by the
+index, which makes Fast-DDS / rmw_fastrtps the more likely axis if the failing
+host also has 2.4.3-nros1.
+
+**Worth ruling out before the type-registration hypothesis:** fixture
+freshness. A museum XRCE binary is the most common cause of a deterministic
+interop red in this tree, and the run above was on a fixture set rebuilt from
+scratch minutes earlier (CLI first, then `build-test-fixtures lane=native`).
+If the failing host's fixtures predate a `nros` CLI rebuild, they are not
+testing the code the diagnosis is about.
+
+Not closing: it fails there, and that is real. What this changes is the
+question — from "what is wrong with the service reply type registration" to
+"which of agent / Fast-DDS / fixture-freshness differs between the two hosts".
+
