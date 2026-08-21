@@ -432,9 +432,7 @@ class ComponentNode {
     /// default and every launch param was dead weight (measured on the ASI
     /// consumer: `ctrl_period` 0.03 seeded, 0.15 ran). Compiled only when
     /// the bringup declares the `param_services` capability (which is also
-    /// what links the executor-store FFI). `bool` params are not adoptable
-    /// yet — the executor shim has no bool getter; they fall through to the
-    /// code default.
+    /// what links the executor-store FFI).
     template <typename T>
     void adopt_launch_seed_(const char* name, T& def) {
         void* ex = node_.executor_handle_;
@@ -442,7 +440,10 @@ class ComponentNode {
             return;
         }
         if constexpr (::std::is_same<T, bool>::value) {
-            (void)name;
+            bool v = false;
+            if (nros_cpp_get_param_bool(ex, name, &v) == NROS_CPP_RET_OK) {
+                def = v;
+            }
         } else if constexpr (::std::is_floating_point<T>::value) {
             double v = 0.0;
             if (nros_cpp_get_param_double(ex, name, &v) == NROS_CPP_RET_OK) {

@@ -151,6 +151,45 @@ pub unsafe extern "C" fn nros_cpp_get_param_double(
     }
 }
 
+/// Get a boolean parameter by name from the C++ executor's parameter store.
+///
+/// Issue 0745 follow-up — the missing bool getter: without it, seeded bool
+/// launch params were not ctor-adoptable (`ComponentNode::adopt_launch_seed_`
+/// fell through to the compiled default for `bool`).
+///
+/// # Safety
+/// `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+/// UTF-8. `out_value` must be valid and writable.
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_get_param_bool(
+    executor: *mut c_void,
+    name: *const c_char,
+    out_value: *mut bool,
+) -> nros_cpp_ret_t {
+    if out_value.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    match ctx
+        .executor
+        .get_parameter(name_str)
+        .and_then(|v| v.as_bool())
+    {
+        Some(v) => {
+            unsafe { *out_value = v }
+            NROS_CPP_RET_OK
+        }
+        None => NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
 /// Get a string parameter by name from the C++ executor's parameter store.
 ///
 /// Copies the value into `out_buf` (null-terminated). Returns `NROS_CPP_RET_FULL`

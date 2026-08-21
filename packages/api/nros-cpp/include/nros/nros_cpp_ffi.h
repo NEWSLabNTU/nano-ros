@@ -2445,6 +2445,19 @@ nros_cpp_ret_t nros_cpp_get_param_integer(void *executor, const char *name, int6
 nros_cpp_ret_t nros_cpp_get_param_double(void *executor, const char *name, double *out_value);
 
 /**
+ * Get a boolean parameter by name from the C++ executor's parameter store.
+ *
+ * Issue 0745 follow-up — the missing bool getter: without it, seeded bool
+ * launch params were not ctor-adoptable (`ComponentNode::adopt_launch_seed_`
+ * fell through to the compiled default for `bool`).
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
+ * UTF-8. `out_value` must be valid and writable.
+ */
+nros_cpp_ret_t nros_cpp_get_param_bool(void *executor, const char *name, bool *out_value);
+
+/**
  * Get a string parameter by name from the C++ executor's parameter store.
  *
  * Copies the value into `out_buf` (null-terminated). Returns `NROS_CPP_RET_FULL`
