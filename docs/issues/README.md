@@ -3279,11 +3279,20 @@ priorities within a tier — until then `ceiling == priority` by construction an
 say nothing), and `placement` needs the registry plus an interference model. See `0259-*`.
 (phase-296 W5.11 2026-07-24; reframed 2026-07-26)
 
-**#260** — the RFC-0052 Native sched dims are e2e-verified only on the FALLBACK arm: every realtime
-fixture is uniprocessor, so the SMP core-pin ACCEPT path (`k_thread_cpu_pin` /
-`pthread_setaffinity_np` / `vTaskCoreAffinitySet`, `#ifdef CONFIG_SMP`) is compile-verified only.
-Needs ONE SMP fixture (a separate zephyr native_sim SMP variant, not the shared image) to flip a
-two-mode core-pin e2e to accept. See `0260-*`. (phase-296 W5.11 2026-07-24)
+Recently resolved (2026-08-21): **#260** — the RFC-0052 Native sched dims were e2e-verified only on
+the FALLBACK arm: every realtime fixture was uniprocessor, so the SMP core-pin ACCEPT path was
+compile-verified only. Both halves are now done. Every arm COMPILES —
+`just check-sched-dim-arms` type-checks the freertos/nuttx/threadx call sites against their own
+vendored headers under a synthetic SMP config, and Zephyr's compiles for real since #0655. And one
+arm RUNS and is OBSERVED: fixture `workspace-zephyr-c-realtime-smp` on
+`qemu_cortex_a53/qemu_cortex_a53/smp` (**2 CPUs**, `core = 1` on the spawned `high` tier) drives the
+`CorePinPlacement` cell, which asserts PLACEMENT rather than acceptance — the EXACT line
+`running_on=1`, since the prefix also matches `running_on=0` where an unpinned tier lands anyway —
+with no fallback arm to hide behind. Measured `[zephyr c CorePinPlacement] ACCEPT`, 14 cells ran.
+Residual is board enablement, not this issue: nuttx/freertos/threadx need multi-core bring-ups
+(FreeRTOS has no SMP port here at all). Note the original guess that a "zephyr native_sim SMP
+variant" would do was wrong — the POSIX arch has no SMP support, which is why this took a real a53
+board. See `archived/0260-*`. (2026-08-21)
 
 
 

@@ -1,7 +1,7 @@
 ---
 id: 260
 title: "Native sched dims (core-pin, sporadic budget) are e2e-verified only on the FALLBACK arm — no fixture exercises the kernel-ACCEPT path"
-status: open
+status: resolved
 type: limitation
 area: testing
 related: [phase-296, issue-0259]
@@ -206,3 +206,68 @@ What it does change is the shape of the remaining work:
   config here). 0655 was found by making ONE of them compile; the same move on
   the other three is the cheap next step, and whether any shares 0655's bug is
   unread. Their APIs differ, so it must be checked rather than assumed.
+
+## Resolution (2026-08-21) — both pieces of the narrowed Direction are done
+
+### Piece 1 — every arm compiles
+
+`just check-sched-dim-arms` (`scripts/check-sched-dim-arms-compile.sh`,
+phase-356 W3) type-checks each RTOS call site against that RTOS's own vendored
+headers under a synthetic SMP config, because the arms sit behind macros no
+image defines:
+
+```
+freertos core-pin arm (vTaskCoreAffinitySet)       OK
+nuttx core-pin arm (pthread_setaffinity_np)        OK
+threadx core-pin arm (tx_thread_smp_core_exclude)  OK
+```
+
+Zephyr's fourth arm compiles for real (issue 0655's fix put it on the
+`k_thread_create` → `k_thread_start` window). So the "a typo in these bodies is
+invisible" hazard — the one this issue exists to name — is closed on all four.
+
+The justfile comment above that recipe used to say nuttx and threadx were "not
+yet" covered and told readers to trust the script's own output. The script has
+printed all three sections since it landed; the comment described a state that
+never shipped and has been corrected.
+
+### Piece 2 — one arm RUNS on a real SMP image and is observed
+
+The Direction asked for "one SMP fixture and a dedicated cell pointed at it".
+Both exist:
+
+* fixture `workspace-zephyr-c-realtime-smp`, board
+  `qemu_cortex_a53/qemu_cortex_a53/smp`, **2 CPUs**, `core = 1` on the spawned
+  `high` tier;
+* matrix cell `sched(CorePinPlacement, ZephyrNativeSim, C, Runtime)`, consumed
+  by `sched_dims_applied_e2e`.
+
+Measured 2026-08-21:
+
+```
+sched-dim arm: [zephyr c CorePinPlacement] ACCEPT
+sched_dims: 14 cell(s) ran, 8 skipped, 0 out of lane
+```
+
+Two details make that a real proof rather than a green box. The cell asserts
+PLACEMENT, not acceptance — `nros: core pin observed tier=`high` running_on=1`,
+i.e. the tier reports the CPU it actually ran on, so a kernel that accepted the
+mask and then ignored it still fails. And it matches the EXACT line rather than
+the marker prefix, because the prefix also matches `running_on=0`, which is
+where an unpinned tier lands anyway. Its shape is `AcceptOnly` with no fallback
+arm: on an image that cannot answer, the board prints nothing and the cell fails.
+
+### Residual, and why it is not this issue
+
+NuttX, FreeRTOS and ThreadX core-pin arms still have never RUN — their images
+are uniprocessor and the eight cells that need them skip on this host. Making
+them run is not a conf tweak but three multi-core board bring-ups (FreeRTOS
+needs an SMP port at all; `mps2-an385` is single-core Cortex-M3). That is
+board-enablement scope, and each should be a fixture axis on its own board when
+that board arrives.
+
+What this issue asserted — "Native sched dims are e2e-verified only on the
+FALLBACK arm; no fixture exercises the kernel-ACCEPT path" — is no longer true
+in any part: every Native dim has a kernel-accepted arm somewhere, the four
+core-pin bodies all compile, and multi-core placement is observed on hardware
+that has more than one core. Resolved.
