@@ -33,8 +33,10 @@ do not fight it from the command line.
 
 ## Single C/C++ package (no workspace function)
 
-A standalone package that consumes nano-ros as a CMake subdirectory
-(`add_subdirectory` — there is no `find_package(NanoRos)` path) — for
+A standalone package that consumes nano-ros in source form — either
+`find_package(nano_ros REQUIRED)` (the ament-shape entry point,
+`nano_rosConfig.cmake` at the checkout root, located via
+`nano_ros_ROOT`; RFC-0048) or a raw `add_subdirectory` — for
 example a copied-out leaf like `examples/native/c/talker/` — picks its
 backend on the configure line:
 

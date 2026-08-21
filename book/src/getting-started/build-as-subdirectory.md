@@ -1,10 +1,13 @@
 # Build as a CMake subdirectory
 
-This is **the** way to integrate nano-ros into a C or C++ project. The
-nano-ros repo ships a top-level `CMakeLists.txt` that exposes
-everything via `add_subdirectory(...)`. No install step, no
-`find_package(NanoRos)`, no install prefix removed every
-last trace of that pipeline.
+This is one of the two ways to integrate nano-ros into a C or C++
+project, and the lower-level one: the repo's top-level `CMakeLists.txt`
+exposes everything via `add_subdirectory(...)`. The higher-level,
+ament-shaped alternative is `find_package(nano_ros REQUIRED)` —
+`nano_rosConfig.cmake` at the checkout root, located via
+`nano_ros_ROOT` (RFC-0048) — which every in-tree example now uses.
+Either way there is NO install step: phase-140 removed the install
+prefix and the old `find_package(NanoRos)` (capital) config pipeline.
 
 ## Layout
 
@@ -24,13 +27,15 @@ project(my_app C)
 
 # Pick platform + RMW BEFORE add_subdirectory.
 set(NANO_ROS_PLATFORM posix)   # posix | freertos | nuttx | threadx | zephyr | baremetal
-set(NANO_ROS_RMW     zenoh)    # zenoh | dds | xrce | cyclonedds
+set(NANO_ROS_RMW     zenoh)    # zenoh | xrce | cyclonedds
 
 add_subdirectory(third_party/nano-ros nano_ros)
 
 add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
-nros_platform_link_app(my_app)
+if(COMMAND nros_platform_link_app)   # defined by zephyr/threadx platforms only
+    nros_platform_link_app(my_app)
+endif()
 
 # Optional — generate C bindings for ROS 2 .msg / .srv / .action files.
 # nros_generate_interfaces() is reachable in-tree once nano-ros has been
@@ -60,8 +65,8 @@ sub-project consumes them at include time.
 
 ## What about installing?
 
-deleted every `install(...)` rule. nano-ros is consumed in
-source form — never out of an installed prefix. If you need a
+Phase-140 deleted every nano-ros-side `install(...)` rule. nano-ros is
+consumed in source form — never out of an installed prefix. If you need a
 shippable artefact, your *user project* owns the install layout; ship
 your binary, not nano-ros itself.
 

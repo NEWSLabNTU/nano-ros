@@ -94,10 +94,10 @@ nros::main!();
 // 2. Single-node, explicit board type.
 nros::main!(board = LinuxBoard);
 
-// 3. Multi-node (CANONICAL): bake from a resolved SystemModel
-//    committed in the Bringup pkg. Reads
-//    `<bringup>/config/system_model.yaml` by default; pass an explicit
-//    relative path after `:`.
+// 3. Multi-node (CANONICAL): name your INPUT — the Bringup pkg (and
+//    optionally a launch file inside it; default is its default launch).
+//    `nros sync` resolves it into a SystemModel build artifact that the
+//    macro bakes from.
 nros::main!(launch = "demo_bringup");
 nros::main!(launch = "demo_bringup:variant_b.launch.xml");
 
@@ -107,27 +107,28 @@ nros::main!(launch = "demo_bringup:variant_b.launch.xml");
 //    host's nodes — no extra macro key needed.
 nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host", "robot1")]);
 
-// 5. DEPRECATED (retiring): direct launch-file forms. These re-parse the
-//    launch XML at build time instead of consuming the reviewed model;
-//    they warn at bake time and will be removed once the ecosystem is
-//    fully migrated (phase-296 R4).
-nros::main!(launch = "demo_bringup");
-nros::main!(launch = "demo_bringup:sim.launch.xml");
+// 5. DEPRECATED (expert override): name the resolved model ARTIFACT
+//    directly instead of the input. Skips the sync-freshness contract;
+//    warns at bake time (phase-330 W7).
+nros::main!(model = "demo_bringup");
 ```
 
-`launch` and `model` are mutually exclusive. `model` is the **canonical**
-path — the same resolved artifact drives the Linux runtime (play_launch) and
-every embedded image, so contract budgets, tiers, and QoS never drift between
-runtimes. `launch` is the transitional path (parses launch XML + `system.toml`
-at build time). Produce the model once with:
+`launch` and `model` are mutually exclusive. `launch` is the **canonical**
+spelling (phase-330 W7): it names your *input* — the bringup package and
+launch file — and the entry consumes the SystemModel that `nros sync`
+resolves from it. The same resolved artifact drives the Linux runtime
+(play_launch) and every embedded image, so contract budgets, tiers, and
+QoS never drift between runtimes. `model` names the resolved artifact
+directly — a deprecated expert override. Produce/refresh the model with:
 
 ```console
-$ nros sync    # resolves/refreshes demo_bringup/config/system_model.yaml
+$ nros sync    # resolves models into <ws>/build/nros/models/<bringup>/
 ```
 
-`nros sync` (the pre-build step every workflow already runs) materializes
+`nros sync` (the pre-build step every workflow already runs) re-resolves
 the model whenever a bringup's launch XML or `system.toml` is newer than
-it. Commit the result.
+it. **SystemModels are build artifacts — never commit one** (the
+`check-no-tracked-models` gate enforces this).
 
 `nros sync` is the only verb you need. Under the hood it runs the pinned
 `nros-launch-resolve` helper (RFC-0060 layer 2; **contributors** build it

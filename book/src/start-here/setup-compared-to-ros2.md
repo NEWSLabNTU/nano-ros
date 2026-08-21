@@ -91,7 +91,9 @@ set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory(<repo-root>  nano_ros)
 
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
-nros_platform_link_app(my_app)
+if(COMMAND nros_platform_link_app)   # defined by zephyr/threadx platforms only
+    nros_platform_link_app(my_app)
+endif()
 nano_ros_link_rmw(my_app RMW zenoh)
 ```
 

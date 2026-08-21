@@ -2,8 +2,8 @@
 
 nano-ros uses three complementary verification tools to ensure correctness of its core libraries:
 
-- **Kani** -- bounded model checking with 160 harnesses across 6 crates. Checks memory safety, integer overflow, and panic-freedom within bounded inputs.
-- **Verus** -- deductive (unbounded) proofs with 102 verified properties. Proves functional correctness of scheduling, serialization, time arithmetic, and safety protocols.
+- **Kani** -- bounded model checking with 148 harnesses across 6 crates. Checks memory safety, integer overflow, and panic-freedom within bounded inputs.
+- **Verus** -- deductive (unbounded) proofs with 83 verified properties. Proves functional correctness of scheduling, serialization, time arithmetic, and safety protocols.
 - **Miri** -- runtime undefined behavior detection for unsafe code.
 
 All three run via just recipes:
@@ -23,7 +23,7 @@ Kani is a bounded model checker that translates Rust code to a verification IR a
 just verify-kani
 ```
 
-160 harnesses are spread across 6 crates:
+148 harnesses are spread across 6 crates (counts as of the last audit — regenerate with `grep -rc '#[kani::proof' packages/`):
 
 | Crate | Focus |
 |-------|-------|
@@ -253,6 +253,8 @@ packages/verification/nros-verification/src/
 ├── time.rs           # Duration/Time arithmetic proofs
 ├── action.rs         # GoalStatus state machine proofs
 ├── params.rs         # ParameterValue + range proofs
+├── progress.rs       # Executor progress / liveness proofs
+├── safety.rs         # Safety-protocol proofs
 └── e2e.rs            # End-to-end data path proofs
 ```
 

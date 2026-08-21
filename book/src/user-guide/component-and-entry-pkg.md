@@ -63,7 +63,9 @@ into the Entry pkg directly.
 `launch/*.launch.xml` is the ROS 2 launch schema verbatim — `<launch>`,
 `<arg>`, `<node>`, `<param>`, `<remap>`, `<group>`, `<include>`, with
 `$(find <pkg>)` / `$(var)` / `$(env)` substitutions. Stock nav2/Autoware
-XML pastes in and Just Works (Python `.launch.py` is not supported yet).
+XML pastes in and Just Works; Python `.launch.py` files are resolved by
+`nros sync` too (the RFC-0060 resolver executes them — see the bringup
+tutorial).
 See [the workspace bringup tutorial](../getting-started/workspace-bringup.md).
 
 ## Entry pkg
@@ -101,24 +103,24 @@ nros::main!();                                          // single-node self-brin
 nros::main!(board = LinuxBoard);                       // single-node, explicit board
 nros::main!(launch = "demo_bringup");                   // multi-node (CANONICAL): the bringup's default launch
 nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, a named launch file
-nros::main!(                                            // multi-host: a PER-HOST model (resolved with `host:=robot1`)
-    model = "demo_bringup:config/multihost_robot1_model.yaml",
+nros::main!(                                            // multi-host: per-host slice via launch args
+    launch = "demo_bringup:multihost.launch.xml",
+    args = [("host", "robot1")],
 );
-// DEPRECATED (retiring): direct launch-file forms — re-parse the launch XML
-// at build time instead of consuming the reviewed model; bake-time warning.
-nros::main!(launch = "demo_bringup");
-nros::main!(launch = "demo_bringup:sim.launch.xml");
+// DEPRECATED (expert override): name the resolved model ARTIFACT directly
+// instead of the input — skips the sync-freshness contract; bake-time warning.
+nros::main!(model = "demo_bringup");
 ```
 
 Form-1 (no args) reads
 `[package.metadata.nros.entry] deploy = "<board>"` from this Entry
 pkg's own `Cargo.toml` and maps the board key
 (`"native"`/`"freertos"`/`"zephyr"`/…) to the right board crate
-via a small lookup table. The model forms reference a Bringup pkg by `<bringup>[:<relpath>]` — the
-Bringup pkg commits `config/system_model.yaml`, the SystemModel that
-`nros sync` resolves from the launch file (+ optional `--system`
-config). The deprecated launch forms take `<bringup>[:<file>]` against
-`launch/<file>.launch.xml` + `system.toml [system] default_launch`.
+via a small lookup table. The `launch` forms take `<bringup>[:<file>]`
+against `launch/<file>.launch.xml` + `system.toml [system]
+default_launch`; `nros sync` resolves that input into a SystemModel
+under `<ws>/build/nros/models/<bringup>/` (a build artifact — never
+committed; gate `check-no-tracked-models`), and the macro bakes from it.
 The `nros::main!()` expansion replaces the older
 `build.rs + include!(env!("OUT_DIR")/run_plan.rs)` shape end-to-end;
 new Entry pkgs no longer need a `build.rs` or a `nros-build`
@@ -133,7 +135,7 @@ Key rules:
 - **One Entry pkg per board target.** Want to run the same nodes on native POSIX, on a QEMU-MPS2-AN385 FreeRTOS target, and on a real ThreadX board? Three Entry pkgs (`robot_entry_native`, `robot_entry_qemu_freertos`, `robot_entry_acme_threadx`) sharing the same Node pkgs and (usually) the same `launch/system.launch.xml` via symlink or `<include>`.
 - **`launch/system.launch.xml` is the canonical name.** `nros plan` resolution order: `--file <path>` → `<dir>/launch/<pkg>.launch.xml` → `<dir>/launch/system.launch.xml` → the single `<dir>/launch/*.launch.xml` → synth (only for non-Entry, single-Node pkgs).
 - **Deploy config lives in `Cargo.toml`.** `[package.metadata.nros.deploy.<target>]` holds board / RMW / domain / locator per target; `[[package.metadata.nros.domain]]` and `[[package.metadata.nros.bridge]]` carry multi-domain topology.
-- **C++ analogue:** cmake fn `nano_ros_entry(NAME <name> LANGUAGE CXX MODEL …)` plus `NROS_MAIN(...)` (deprecated `LAUNCH` keyword retiring). Metadata flows through `${BUILD}/nros-metadata.json` rather than a sidecar TOML.
+- **C++ analogue:** cmake fn `nano_ros_entry(NAME <name> LANG CXX BRINGUP … LAUNCH …)` plus `NROS_MAIN(...)` (`MODEL` is the deprecated artifact-naming override, mirroring the macro). Metadata flows through `${BUILD}/nros-metadata.json` rather than a sidecar TOML.
 
 ## Workspace shape
 

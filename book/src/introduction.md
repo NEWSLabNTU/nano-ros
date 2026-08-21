@@ -80,7 +80,7 @@ When a project grows beyond one node, continue with
   The `alloc` and `std` features are opt-in.
 - **Standalone tooling** — `nros generate-rust` produces message
   bindings without a ROS 2 installation (bundled interface definitions).
-- **Formally verified** — 160 Kani bounded model checking harnesses and 102
+- **Formally verified** — 148 Kani bounded model checking harnesses and 83
   Verus deductive proofs cover CDR serialization, scheduling, and protocol
   correctness.
 - **ROS 2 compatible** — interoperates with standard ROS 2 nodes via

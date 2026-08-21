@@ -204,9 +204,10 @@ zenoh endpoints communicate intent through the topic-key encoding.
 `assert_liveliness()` explicitly to refresh the lease. Available on
 every language surface (Rust `Publisher<M>::assert_liveliness()`, C
 `nros_publisher_assert_liveliness(&pub)`, C++
-`pub.assert_liveliness()`). Backends without manual-assertion wiring
-treat the call as a no-op — none of the surviving backends wire it
-natively yet. See [Status events](status-events.md) for the runtime-event
+`pub.assert_liveliness()`). The zenoh backend wires it: a shim-side
+keepalive lease that `assert_liveliness()` refreshes, with
+`LivelinessLost` fired on expiry. Backends without manual-assertion
+wiring (xrce, cyclonedds) treat the call as a no-op. See [Status events](status-events.md) for the runtime-event
 side of liveliness, deadline, and message-lost.
 
 **Per-backend coverage** is documented in

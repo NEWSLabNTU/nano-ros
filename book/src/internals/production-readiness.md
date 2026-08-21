@@ -61,11 +61,11 @@ may differ.
       `ros-humble-cyclonedds`). XRCE-DDS Micro-Client at its
       workspace pin.
 - [ ] **All required QoS policies supported** by your backend. The
-      [Choosing an RMW Backend](../user-guide/rmw-backends.md)
-      capability matrix lists per-backend coverage (Zenoh: 4/7;
-      XRCE: 4/7; Cyclone DDS: 7/7).
+      per-policy table is in
+      [RMW API: Differences from upstream rmw.h §7](../design/rmw-vs-upstream.md);
+      the authoritative source is each backend's `supported_qos_policies()`.
 - [ ] **Discovery stability** over your network topology.
-      Zenoh-pico in client mode needs zenohd reachable; loss of
+      Zenoh-pico in client mode needs the router reachable; loss of
       router = lost routing but local node lives. XRCE needs
       Agent uptime. Cyclone DDS discovers via multicast SPDP.
 - [ ] **Bridge stability** if multi-backend. Confirm no memory
@@ -76,10 +76,10 @@ may differ.
 
 ## 4. Safety + formal verification
 
-- [ ] **`just verify-kani`** clean against your build. 160 bounded
+- [ ] **`just verify-kani`** clean against your build. 148 bounded
       harnesses; non-trivial coverage of CDR + scheduling + RMW
       glue.
-- [ ] **`just verify-verus`** clean. 102 deductive proofs.
+- [ ] **`just verify-verus`** clean. 83 deductive proofs.
 - [ ] **CRC32 attached** if using `safety-e2e` feature. The
       37-byte attachment is transparent to stock ROS 2 (ignored
       gracefully) and detected by other nano-ros nodes.

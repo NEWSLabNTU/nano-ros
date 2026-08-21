@@ -29,8 +29,8 @@ comparison.
 | **Multi-executor preemption** | `Executor::open_threaded` per-RTOS via `PlatformScheduler` trait | Single executor per process |
 | **Multi-backend bridge in one binary** | Yes — `Executor::open_with_rmw` + multi-Node | No (single XRCE session per process) |
 | **Discovery** | Zenoh liveliness, RTPS SPDP, XRCE-via-Agent | XRCE-via-Agent |
-| **QoS support** | Backend-dependent matrix (Zenoh 4/7, XRCE 4/7, Cyclone DDS 7/7) | Subset of XRCE QoS |
-| **Formal verification** | 160 Kani harnesses + 102 Verus proofs (CDR, scheduling, RMW glue) | None published |
+| **QoS support** | Backend-dependent — per-policy table in [RMW vs upstream §7](../design/rmw-vs-upstream.md) | Subset of XRCE QoS |
+| **Formal verification** | 148 Kani harnesses + 83 Verus proofs (CDR, scheduling, RMW glue) | None published |
 | **E2E safety protocol** | CRC-32/ISO-HDLC + sequence tracking, EN 50159-mapped (`safety-e2e` feature) | None |
 | **ROS 2 distro coverage** | Humble, Iron, Jazzy (`ros-humble`/`ros-iron`/`ros-jazzy` features, RFC-0056) | Humble, Iron, Jazzy |
 | **Build system** | Cargo + CMake + platform tools (`west`, `idf.py`, `probe-rs`) plus `just` recipes; C/C++ consume via `add_subdirectory(<repo>)` | colcon + CMake; per-RTOS meta-build (`create`/`configure`/`build`/`flash_firmware.sh`) |

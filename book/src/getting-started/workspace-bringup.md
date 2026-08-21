@@ -203,8 +203,10 @@ that doesn't exist is a build error, not a silent skip.
 > **Note:** the baked values are seeded through the parameter services, so
 > they reach nodes only when `param_services` is enabled in `system.toml`.
 
-> **Note:** Python `.launch.py` files are not yet supported in v1 — use the XML
-> schema above.
+> **Note:** Python `.launch.py` files ARE resolved by `nros sync` (the
+> RFC-0060 resolver executes them with its bundled CPython; `$(find-pkg-share)`
+> against ROS packages needs a sourced `AMENT_PREFIX_PATH`). The XML schema
+> above is the native authoring format.
 
 ---
 
