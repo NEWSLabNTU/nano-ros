@@ -216,6 +216,7 @@ def main():
 
     # --- per-entry predicates -------------------------------------------------
     unowned = 0
+    borrowed: list[tuple[str, str, str]] = []
     for e in reg:
         crate = e.get("crate", "<no crate key>")
         tier = str(e.get("tier", ""))
@@ -242,10 +243,37 @@ def main():
                     f"{crate}: declared tier {tier} but platform {plat} has NO Runtime cell "
                     "in matrix.rs — tiers 1 and 2 promise asserted runtime coverage")
         if tier == "3" and has_runtime:
-            errors.append(
-                f"{crate}: declared tier 3 (build-only) but platform {plat} HAS Runtime "
-                "cells. Either it is really tier 2, or those cells overstate what the lane "
-                "can do — the exact defect phase-320 W1.a fixed for FVP")
+            # A platform's Runtime cells prove SOME board. When a DIFFERENT row
+            # already claims that platform at tier 1/2, those cells are its
+            # witness, and a build-only board sharing the token is not thereby
+            # proven — so the contradiction this rule names does not exist.
+            #
+            # phase-372's `nros-board-s32z270-freertos` is the first of these:
+            # a Cortex-R52 bundle that borrows `FreertosMps2` for the freertos
+            # family lane "until a hardware witness exists", while the MPS2 board
+            # owns that platform's cells. Read as a function platform -> tier,
+            # the row looks like the FVP defect; read against the registry, it is
+            # honest, and its `notes` already say so.
+            #
+            # Inferred from rows that already exist rather than a new key: a
+            # `borrowed = true` flag would be a claim a board makes about itself,
+            # and this is a fact about who owns the cells.
+            owner = next(
+                (o.get("crate") for o in reg
+                 if o.get("crate") != crate
+                 and o.get("matrix_platform") == plat
+                 and str(o.get("tier", "")) in ("1", "2")),
+                None,
+            )
+            if owner:
+                borrowed.append((crate, plat, owner))
+            else:
+                errors.append(
+                    f"{crate}: declared tier 3 (build-only) but platform {plat} HAS Runtime "
+                    "cells and NO other row claims that platform at tier 1/2, so those cells "
+                    "are this board's own witness. Either it is really tier 2, or those cells "
+                    "overstate what the lane can do — the exact defect phase-320 W1.a fixed "
+                    "for FVP")
         if tier == "scaffold":
             if has_runtime:
                 errors.append(
@@ -267,6 +295,9 @@ def main():
                 errors.append(
                     f"{crate}: link_check_example {ex!r} is not built by rust-rtos-link-check")
 
+    for crate, plat, owner in sorted(borrowed):
+        print(f"  tier-3 {crate} BORROWS platform {plat}; its Runtime cells are "
+              f"{owner}'s witness, not this board's")
     print(f"board-support registry: {len(reg)} entries, {len(on_disk)} directories")
     print(f"  platforms with Runtime cells: {', '.join(sorted(rt)) or '(none)'}")
     print(f"  nightly sweep: {', '.join(sorted(nl)) or '(none)'}")

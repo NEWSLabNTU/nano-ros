@@ -5,4 +5,16 @@
   <description>NXP S32Z270 RTU (Cortex-R52) board crate for nros on FreeRTOS + lwIP</description>
   <maintainer email="dev@newslabntu.org">NEWSLab NTU</maintainer>
   <license>MIT OR Apache-2.0</license>
+  <export>
+    <!--
+      Provision, NOT consumption: this package IS a board, rather than selecting
+      one. Must equal the descriptor's declared `names`, canonical first —
+      `check-provider-announcements.py` compares them, because two spellings of
+      one fact drift. Without this block the board is invisible to the phase-348
+      source-time scan, which is what the gate caught.
+    -->
+    <nano_ros_provides kind="board" name="s32z270-freertos"/>
+    <nano_ros_provides kind="board" name="s32z270"/>
+    <nano_ros_provides kind="board" name="S32Z270"/>
+  </export>
 </package>

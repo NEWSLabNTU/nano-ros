@@ -41,6 +41,7 @@ Compiles. **No CI lane can boot it** — real hardware or a license-gated model 
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
+| `nros-board-s32z270-freertos` | FreertosMps2 | *unassigned* | S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). matrix_platform reuses FreertosMps2 (same freertos family lane) until a hardware witness exists; link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port. |
 | `nros-board-zephyr` | Fvp | *unassigned* | **Gated SDK: `arm-fvp`.** License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for. |
 
 ## Infrastructure — not boards
