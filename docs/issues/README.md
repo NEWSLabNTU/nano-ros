@@ -51,6 +51,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0750** (testing, open 2026-08-21) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check-sched-dim-arms`) but have never RUN; #0260 closed on Zephyr's SMP placement proof and declined to carry this. The three are NOT equally blocked, which "three multi-core bring-ups" hid: NuttX already ships `qemu-armv7a/configs/smp` and is blocked on the SHARED single-config kernel tree — and that is #0743 in a form its fix cannot see, since arm-uniprocessor and arm-SMP have the same `e_machine`. ThreadX has a vendored `cortex_a5_smp` port but our lane is the Linux simulator, so it needs a new board. FreeRTOS is genuinely blocked: the Posix port has ZERO `configNUMBER_OF_CORES` and none of the SMP hooks, and only the RP2040 (hardware) port has them. See `0750-*`. (2026-08-21)
+
+Recently resolved (2026-08-21): **#0749** — the Zephyr lane dropped five of six executor sizing knobs, so every image built 1024-byte subscription buffers and a 32-slot param store and silently discarded oversize samples. Issue 0316 had resolved exactly ONE of nros-node's six `build.rs` knobs into the curated cargo environment; the other five never reached the Zephyr cargo builds. Found by ASI on the FVP closed-loop demo — the Zephyr island ACKed every fragment of a 13.4 KiB Autoware trajectory and threw it away, with zero diagnostics. Fixed in `d1c5b3b3b`. See `archived/0749-*`. (2026-08-21)
+
 Recently resolved (2026-08-22): **#0749** (zephyr) — the Zephyr lane's curated cargo environment dropped five
 of six executor sizing knobs (0316 fixed only `NROS_EXECUTOR_MAX_CBS`; `NROS_SUBSCRIPTION_BUFFER_SIZE`,
 `NROS_MAX_PARAMETERS` etc. had no Kconfig and no resolve row), so every Zephyr image silently built
