@@ -73,8 +73,41 @@ nothing).
   interval == period). Standalone it is exact. Separate defect in the
   executor's timer crediting under load; measured at ~50 Hz for a 33 Hz
   intent on the ASI loop.
-- `nros_cpp_get_param_*` has no bool getter → bool launch params are not
-  ctor-adoptable.
+- ~~`nros_cpp_get_param_*` has no bool getter → bool launch params are not
+  ctor-adoptable.~~ Done — `6fb8579dd` added `nros_cpp_get_param_bool` and the
+  `is_same<T, bool>` arm of `adopt_launch_seed_` (which must stay ahead of the
+  `is_integral` arm, since `bool` satisfies both).
 - `register_parameter_services` fails on cyclonedds (no service servers) —
   pre-existing, now visible; the param get/set RPC is silently absent
   there.
+
+## The C emitter kept the pre-0745 block — fixed 2026-08-21
+
+The "moves to a NON-FATAL post-construction call" above was true of the C++
+emitter only. Both C sites (`emit_c.rs`, the flat path and the tiered
+`ti == 0` path) still emitted the phase-269 block verbatim:
+
+```c
+nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);
+if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;
+```
+
+So on an RMW without service servers a **C** entry declaring `param_services`
+aborted boot with the registration rc, where the C++ entry next to it degraded
+to "no get/set RPC, seeds intact" — the exact asymmetry the third follow-up
+above predicts, one language over. The block also re-declared every launch
+param AFTER construction, which is defect 2 of this issue surviving in the arm
+nobody re-read; it was invisible only because `emit_declare_params` had already
+seeded the same values pre-construction, so the late duplicate re-wrote what
+was already correct.
+
+Visible without a build, in the untracked generated corpus: every
+`build-workspace-fixtures/src/native_c_*_entry/*_generated.c` carried `ps_ret`,
+every `native_cpp_*`/`native_mixed_*` `.cpp` carried `(void)`.
+
+Fixed by giving both C sites the C++ shape (non-fatal `(void)` call, no
+duplicate seeding). Pinned by
+`typed_emit_param_services_registration_is_non_fatal_both_paths`, which asserts
+non-fatality, seed-before-registration, and exactly ONE seed per param, across
+BOTH the flat and tiered emitters — the tiered site is a separate copy of the
+block, which is why the first sweep missed it.

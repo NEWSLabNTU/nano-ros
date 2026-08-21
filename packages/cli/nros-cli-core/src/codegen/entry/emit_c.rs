@@ -272,25 +272,13 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             if ti == 0 {
                 if plan.param_services {
                     out.push_str(
-                        "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+                        "    /* Phase 269 (W1) — param-services: register the runtime get/set surface\n     * (seeding: emit_declare_params, pre-construction — issue 0745). */\n",
                     );
                     out.push_str("    {\n");
                     out.push_str(
-                        "        nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);\n",
+                        "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * (e.g. cyclonedds today) registration fails — the runtime get/set RPC\n         * is unavailable, but the SEEDED store above already carries the launch\n         * initials, so boot proceeds. */\n",
                     );
-                    out.push_str(
-                        "        if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;\n",
-                    );
-                    for n in &plan.nodes {
-                        for (k, v) in &n.params {
-                            let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
-                            let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
-                            let _ = writeln!(
-                                out,
-                                "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
-                            );
-                        }
-                    }
+                    out.push_str("        (void)nros_cpp_register_parameter_services(executor);\n");
                     out.push_str("    }\n");
                 }
                 if let Some(autostart) = &plan.lifecycle {
@@ -453,23 +441,13 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
         }
         if plan.param_services {
             out.push_str(
-                "    /* Phase 269 (W1) — param-services: register + seed launch initials. */\n",
+                "    /* Phase 269 (W1) — param-services: register the runtime get/set surface\n     * (seeding: emit_declare_params, pre-construction — issue 0745). */\n",
             );
             out.push_str("    {\n");
             out.push_str(
-                "        nros_cpp_ret_t ps_ret = nros_cpp_register_parameter_services(executor);\n",
+                "        /* Non-fatal (issue 0745): on RMWs without service-server support\n         * (e.g. cyclonedds today) registration fails — the runtime get/set RPC\n         * is unavailable, but the SEEDED store above already carries the launch\n         * initials, so boot proceeds. */\n",
             );
-            out.push_str("        if (ps_ret != NROS_CPP_RET_OK) return (int32_t)ps_ret;\n");
-            for n in &plan.nodes {
-                for (k, v) in &n.params {
-                    let k_esc = k.replace('\\', "\\\\").replace('"', "\\\"");
-                    let v_esc = v.replace('\\', "\\\\").replace('"', "\\\"");
-                    let _ = writeln!(
-                        out,
-                        "        nros_cpp_declare_param(executor, \"{k_esc}\", \"{v_esc}\");"
-                    );
-                }
-            }
+            out.push_str("        (void)nros_cpp_register_parameter_services(executor);\n");
             out.push_str("    }\n");
         }
         if let Some(autostart) = &plan.lifecycle {
@@ -712,6 +690,51 @@ mod tests {
         let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
         let ret_at = src.rfind("return 0;").unwrap();
         assert!(reg_at < ret_at, "param block must precede return 0");
+    }
+
+    #[test]
+    fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
+        // Issue 0745 — registration builds six service servers and fails outright on
+        // an RMW without service-server support (cyclonedds today). Launch params are
+        // seeded pre-construction by `emit_declare_params`, so a failed registration
+        // must cost the runtime get/set RPC and nothing else. The C++ emitter moved to
+        // the non-fatal shape with 0745; BOTH C paths kept the pre-0745 block, which
+        // returned the rc and aborted boot. Covers the flat AND the tiered emitter,
+        // because the tiered site is a separate copy of the same block.
+        for (label, mut plan) in [
+            (
+                "flat",
+                fixture_plan(&[("param_talker_pkg", "param_talker")]),
+            ),
+            ("tiered", fixture_plan_with_tiers()),
+        ] {
+            plan.param_services = true;
+            plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
+            let src = emit_typed(&plan).expect("typed C emit ok");
+
+            assert!(
+                src.contains("(void)nros_cpp_register_parameter_services(executor)"),
+                "{label}: registration must be non-fatal; got:\n{src}"
+            );
+            assert!(
+                !src.contains("ps_ret"),
+                "{label}: no rc check on registration; got:\n{src}"
+            );
+
+            // Seeding precedes registration, and happens exactly once per param — the
+            // old block re-declared every param AFTER construction (0745 defect 2).
+            let seed = "nros_cpp_declare_param(executor, \"publish_period_ms\", \"250\")";
+            let seed_at = src
+                .find(seed)
+                .unwrap_or_else(|| panic!("{label}: no seed; got:\n{src}"));
+            let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
+            assert!(seed_at < reg_at, "{label}: params seed BEFORE registration");
+            assert_eq!(
+                src.matches(seed).count(),
+                1,
+                "{label}: one seed per param; got:\n{src}"
+            );
+        }
     }
 
     #[test]
