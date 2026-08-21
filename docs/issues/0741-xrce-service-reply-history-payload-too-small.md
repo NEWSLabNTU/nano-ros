@@ -306,3 +306,69 @@ sha1 on the failing host:
 ```
 
 Compare on a green host; a mismatch at equal version strings is the axis.
+
+## Proven (2026-08-21) — an agent built against the edition's OWN Fast-DDS works
+
+The skew above is removable, and the removal is cheap. Built upstream agent
+**v2.4.2** against Humble's installed Fast-DDS:
+
+```
+cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON \
+  -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON \
+  -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF -DUAGENT_SOCKETCAN_PROFILE=OFF
+
+ldd build/MicroXRCEAgent
+  libfastrtps.so.2.6 => /opt/ros/humble/lib/libfastrtps.so.2.6
+  libfastcdr.so.1    => /opt/ros/humble/lib/libfastcdr.so.1
+```
+
+Zero skew: the agent and the ROS peer are now the same libraries. Dropped it at
+`build/xrce-agent/MicroXRCEAgent` (which `xrce_agent_binary_path()` prefers over
+the SDK store, so no code change was needed to test it) and ran the whole suite:
+
+```
+9 tests run: 9 passed, 0 skipped
+```
+
+including `test_xrce_service_ros2_client`, the one this issue is about.
+
+### Why v2.4.2 and not our pinned v2.4.3
+
+The agent tag is not free to choose: its SYSTEM branch expects a particular
+Fast-CDR MAJOR.
+
+| agent | system-branch Fast-CDR | usable against |
+| --- | --- | --- |
+| v2.4.2 and earlier | 1.x | Humble (`libfastcdr.so.1`), Iron |
+| v2.4.3 (our pin) | 2.x | Jazzy |
+
+Humble ships `libfastcdr.so.1`, so **v2.4.3 cannot be built against Humble at
+all** — which is the same fact that makes its bundled 2.14.6/2.2.7 a Jazzy build.
+The edition does not merely select a Fast-DDS version, it selects an agent tag.
+
+### The shape this suggests
+
+`[system].ros_edition` already exists (humble | iron | jazzy, default humble)
+and already drives the `ros-<edition>` cargo features. The agent is the one
+host tool whose correct build depends on it, and today it does not know.
+
+* **When a ROS install is present** — the only case where interop matters — build
+  the agent from source with `UAGENT_USE_SYSTEM_FASTDDS/FASTCDR=ON` against
+  THAT install, picking the agent tag from the edition's Fast-CDR major. No
+  per-edition prebuilt tarballs to publish: the correct Fast-DDS is the one
+  already on the machine.
+* **When there is no ROS** — an embedded-only user — the current bundled
+  prebuilt stays exactly right. There is nothing to skew against.
+
+That keeps the relocatable no-ROS bundle the pin exists for, and makes the
+edition axis reach the one tool that silently ignored it. What it needs is an
+edition→agent-tag table and a "ROS present?" branch in `nros setup`; the
+`[tool.xrce-agent.source]` recipe already exists and only needs the two flags
+and a tag that varies.
+
+### Still not the trigger
+
+This does not explain why one host fails and two pass on the SAME pinned agent —
+see above. It explains why the failure is POSSIBLE at all, and removes the
+setting that makes it possible.
+
