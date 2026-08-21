@@ -148,3 +148,105 @@ And for NuttX specifically, B before C — the snapshot identity widened from
 `<arch>` to `<config>` BEFORE a second arm config exists, so the two never share
 a directory and the resolver can name what it wants. Building the fixture first
 and adding the guard after is the ordering that produced 0743.
+
+## Design (2026-08-22) — the fixture and cell arrangement, after reviewing the build system
+
+Reviewing the seams changed two decisions that looked settled. Recording the
+whole arrangement so the remaining work is transcription rather than discovery.
+
+### 1. SMP is a BOARD CONF, not a platform — and a new platform is unavailable anyway
+
+The first instinct was `PlatformId::NuttxArmSmp` with a `nuttx-arm-smp` fixture
+token. Wrong twice.
+
+**The precedent says conf.** `workspace-zephyr-c-realtime-smp` — the fixture
+that produced the only SMP placement proof in the tree — carries
+`platform = "zephyr"` and differs from its uniprocessor siblings only in
+`board = "qemu_cortex_a53/qemu_cortex_a53/smp"`. No new PlatformId, no new port
+window. That is RFC-0064's rule stated as code: a board is a conf bundle under a
+family's recipes, not a namespace of its own.
+
+**And the vocabulary has no room.** `alloc::domain_of` is
+`1 + index*21 + slot*3 + lang`; index 10 tops out at 231 and index 11 computes
+252, which `domains_valid` rejects. Indices 0–10 are all held by platforms that
+BAKE. `PlatformId::index`'s own comment already anticipated this: when the
+scheme is full it "needs narrowing, not another renumber". Adding a platform for
+an SMP conf would force that narrowing for no gain.
+
+Consequence, already applied: `build-fixtures-arm-smp` gates on
+`nros_lane_wants_platform nuttx`, not on a `nuttx-arm-smp` token that no row can
+ever spell. It was written the wrong way first and could never have fired.
+
+### 2. Where the Zephyr precedent STOPS transferring
+
+Zephyr's SMP row costs nothing structurally: west builds per board into per-board
+directories, so an extra board is an extra directory. **NuttX has one kernel
+tree holding one configuration**, so the same row costs a reconfigure.
+
+That is what issue 0750 (B) was for, and it is why B had to land first. The
+export is now named for the defconfig directory, so `nros-nuttx-export-arm-smp/`
+sits beside `-arm/`, each with its own `HEAD:sha256(defconfig)` key. A fixture
+row selects between them with `NUTTX_EXPORT_DIR`, which B also made
+authoritative for HEADERS as well as libs — before B, a row could have linked
+SMP libs against uniprocessor headers and nothing would have said so.
+
+### 3. The arrangement
+
+**Kernel provisioning** — `just nuttx build-fixtures-arm-smp` (landed). Gated on
+the nuttx family; costs one reconfigure per nuttx lane run. Must run before the
+manifest rows that consume its export.
+
+**Fixture row** — a `[[workspace_fixture]]` beside `workspace-rust-nuttx-realtime`:
+
+```toml
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-smp-realtime"
+platform = "nuttx"                 # the family token, per §1
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-rust"
+bringup = "src/smp_bringup"        # declares `core` on a SPAWNED tier
+entry = "nuttx_entry"
+target_dir = "target-fixtures/nuttx-smp"   # its OWN dir: a second cargo
+                                           # target-dir per config, never shared
+target = "armv7a-nuttx-eabihf"
+env = { NUTTX_EXPORT_DIR = "<nuttx_dir>/nros-nuttx-export-arm-smp", … }
+```
+
+`target_dir` must differ from the uniprocessor row's. Sharing one would put two
+different kernels' objects in one fingerprint namespace — the issue-0616 shape,
+one layer down.
+
+**Bringup** — `src/smp_bringup` mirroring the Zephyr one: `core = 1` on the
+`high` tier, and `high` must be a SPAWNED tier. On Zephyr that was mandatory
+(issue 0655: `cpu_mask_mod` rejects a running thread). On NuttX
+`pthread_setaffinity_np(pthread_self(), …)` migrates a running thread, so the
+boot tier would also work — but only spawned tiers report, and matching Zephyr
+keeps one shape across boards.
+
+**Runtime** — QEMU needs `-smp 2`; `QemuProcess::start_nuttx_virt` takes no CPU
+count today and needs a variant or parameter. This is the one seam with no
+existing shape to copy.
+
+**Cell** — `sched(CorePinPlacement, NuttxArm, Rust, Runtime)` in
+`matrix::CELLS`, plus an `exec_for` arm in `sched_dims_applied_e2e` resolving the
+new fixture, `boot: NuttxQemu`, `shape: AcceptOnly`, and
+`accept: CORE_PIN_OBSERVED_CPU1`. The DIM is the selector that picks the SMP
+fixture over the uniprocessor one — exactly how the Zephyr cell distinguishes
+`CorePinPlacement` from `CorePin` on one platform.
+
+**Marker** — `ZEPHYR_CORE_PIN_OBSERVED_CPU1` is renamed `CORE_PIN_OBSERVED_CPU1`
+(alias kept). The NuttX board prints the identical literal, so a board-prefixed
+name would have had a NuttX cell grepping a Zephyr constant — and the next person
+to slim the Zephyr banner would have had no way to see the second consumer.
+
+### 4. What is still unproven, and must be proven before the cell
+
+No SMP image has been observed booting. Booting the bare `$NUTTX_DIR/nuttx`
+produced no console output on 1 or 2 CPUs — but that is the wrong artifact (the
+cells boot per-example images; the bare kernel is 0743's leftover), and the
+control never ran because rebuilding arm short-circuited on B's snapshot key.
+
+**Order of work: build the SMP example image, boot it by hand, confirm the
+`running_on=1` line appears, THEN write the row and the cell.** A cell asserting
+a marker from an image nobody has seen run is a test written against a hope.

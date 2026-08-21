@@ -787,7 +787,18 @@ pub const ZEPHYR_CORE_PIN_OBSERVED_MARKER: &str = "nros: core pin observed tier=
 /// constant — including the tier name, because `smp_bringup` declares the
 /// `core` on `high` and a different tier reporting it would not be the same
 /// claim.
-pub const ZEPHYR_CORE_PIN_OBSERVED_CPU1: &str = "nros: core pin observed tier=`high` running_on=1";
+/// issue 0750 — BOARD-NEUTRAL on purpose. The NuttX board
+/// (`nros_nuttx_report_observed_cpu`) prints this identical line, so a
+/// `ZEPHYR_`-prefixed name would be drift by construction: the first NuttX cell
+/// would grep a Zephyr-named constant, and the next person to slim the Zephyr
+/// banner would have no way to know a second board depended on it. One literal,
+/// one name, both boards.
+pub const CORE_PIN_OBSERVED_CPU1: &str = "nros: core pin observed tier=`high` running_on=1";
+
+/// Deprecated alias kept so the rename lands without touching the Zephyr cell in
+/// the same commit. Remove once the NuttX cell exists and both read the
+/// board-neutral name.
+pub const ZEPHYR_CORE_PIN_OBSERVED_CPU1: &str = CORE_PIN_OBSERVED_CPU1;
 
 /// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
 /// `nros_nuttx_apply_current_affinity` — shared by the C/C++ AND Rust tier

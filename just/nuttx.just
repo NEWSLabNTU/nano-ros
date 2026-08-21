@@ -307,8 +307,26 @@ build-fixtures-arm-smp:
     source scripts/build/fixture-lane.sh
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
-    if ! nros_lane_wants_platform nuttx-arm-smp; then
-        nros_lane_skip_note nuttx "NuttX arm-smp: no nuttx-arm-smp coordinate in this run's lane — skipping"
+    # Gated on `nuttx`, NOT on a `nuttx-arm-smp` token — SMP is a BOARD CONF of
+    # this platform, not a platform of its own, so no fixtures.toml row spells
+    # such a token and a gate on one could never fire. (It was written that way
+    # first; the Zephyr SMP precedent settles it — `workspace-zephyr-c-realtime-smp`
+    # carries `platform = "zephyr"` and differs only in `board =`. RFC-0064: a
+    # board is a conf bundle under a family's recipes, not a namespace.)
+    #
+    # A new PlatformId is not merely unnecessary here, it is unavailable:
+    # `alloc::domain_of` is `1 + index*21 + slot*3 + lang`, index 10 tops out at
+    # 231 and index 11 computes 252, which `domains_valid` rejects. Indices 0-10
+    # are all held by platforms that bake. The scheme is full, and `index()`'s
+    # own comment says that when it is, it "needs narrowing, not another
+    # renumber".
+    #
+    # The cost of gating on the family is one extra kernel reconfigure whenever
+    # the nuttx lane runs. That is the honest price of one shared tree and it is
+    # bounded; the alternative is a row-level lane predicate, which does not
+    # exist and should not be invented for one fixture.
+    if ! nros_lane_wants_platform nuttx; then
+        nros_lane_skip_note nuttx "NuttX arm-smp: no nuttx coordinate in this run's lane — skipping"
         exit 0
     fi
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
