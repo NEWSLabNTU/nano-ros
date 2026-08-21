@@ -260,3 +260,49 @@ skew is the mechanism's setting, not its trigger — something else on the faili
 host (a different system Fast-DDS, a second agent on PATH, a stale fixture)
 selects it. That is what the fingerprint is there to catch.
 
+
+## Third host (the original red one), 2026-08-21 — the fingerprint does NOT separate red from green
+
+Re-ran the issue's recipe here at head (`12a3adcca`), fixtures rebuilt from
+scratch twice (CLI first, then `lane=native`, FX=0 both times — museum binary
+ruled out). Deterministic FAIL, 7.3–7.9 s real runs.
+
+The e449b0b63 fingerprint on the FAILING run:
+
+| axis | failing host | passing distrobox |
+| --- | --- | --- |
+| ROS_DISTRO | humble | humble |
+| fastrtps | 2.6.12 | 2.6.12-1jammy |
+| rmw_fastrtps_cpp | 6.2.10 | 6.2.10-1jammy |
+| agent | `build/xrce-agent/MicroXRCEAgent` (85-byte shim → `~/.nros/sdk/xrce-agent/2.4.3-nros1`) | 2.4.3-nros1 |
+| RMW_IMPLEMENTATION / ROS_DOMAIN_ID / profiles XML | unset / test-assigned / none | unset |
+
+**Every fingerprinted axis is identical, and the verdict differs.** So the
+discriminator is none of agent / Fast-DDS-version / fixture-freshness — the
+fingerprint needs a deeper axis. (The 85-byte agent path looked like the smoking
+gun; it is a shim `exec`ing the same pinned 2.4.3-nros1.)
+
+Two observations that narrow where to look next:
+
+* `…cannot be resized` means the failing reply reader runs a strict
+  PREALLOCATED history policy — `rmw_fastrtps` defaults to
+  PREALLOCATED_WITH_REALLOC, which resizes. No `FASTRTPS_DEFAULT_PROFILES_FILE`
+  / `RMW_FASTRTPS_USE_QOS_FROM_XML` is set on this host, so the policy
+  difference is baked into a BINARY, not chosen by config.
+* 28 bytes is the CORRECT reply wire size (4 encaps + 16 request/reply header +
+  8 `sum`); 15 bytes is not any AddTwoInts serialization. Consistent with the
+  Jazzy-era-bundle mechanism: the reader sized itself from a max-serialized-size
+  computed by one Fast-DDS generation and received a change framed by another.
+
+Next discriminator worth fingerprinting: the exact BUILD (snapshot date /
+sha1sum) of `libfastrtps.so` and `librmw_fastrtps_cpp.so` on both hosts — same
+version string, different rebuild dates is exactly what apt's rolling ROS
+snapshots produce, and a behavior default can move between rebuilds.
+sha1 on the failing host:
+
+```
+8e4aea5ce69605ebf24e087fda36ee52a9e80758  libfastrtps.so.2.6.12
+897971f5829ad150bf1fd0fa31edbb8df61aea24  librmw_fastrtps_cpp.so
+```
+
+Compare on a green host; a mismatch at equal version strings is the axis.
