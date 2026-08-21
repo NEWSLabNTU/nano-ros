@@ -247,15 +247,14 @@ carried the same lesson as a local comment. And #0726's gate could not have caug
 `packages/` + `tools/`, making 39 pre-existing sites across 11 files visible and ratcheted (133/74 → 172/85).
 See `archived/0732-*`. (2026-08-20)
 
-**#0748** (testing, open 2026-08-21) — `test_nuttx_kernel_boots` resolves the kernel as
-`$NUTTX_DIR/nuttx` — the SHARED tree, whose build output belongs to whichever arch configured LAST —
-and launches it under `qemu-system-arm`. With riscv configured last it loads a RISC-V ELF into an ARM
-emulator: `Couldn't load elf … image is from incompatible architecture`. Both per-arch export
-snapshots exist, so the right kernel is on disk and the resolver just does not consult it. Issue 0525's
-class one artifact over — the gate only inspects header includes, so a Rust helper joining
-`$NUTTX_DIR/nuttx` is invisible to it (0196 pattern, third instance this week). Surfaced only because
-0711 removed the print-and-pass arm; NOT a regression, do not bisect. The single genuine failure in the
-first complete tier-2 run (1492 passed / 180 lane-skips / 1 failed). See `0748-*`. (2026-08-21)
+Recently resolved (2026-08-21): **#0748** (testing) — DUPLICATE of #0743, which was already archived
+as resolved four commits earlier. `test_nuttx_kernel_boots` loaded a RISC-V kernel into qemu-system-arm
+because `nuttx_kernel_path()` resolved the SHARED tree, whose build output belongs to whichever arch
+configured last. Fixed in `a660be83f` by `nuttx_kernel_path_for(arch)`, which reads the ELF e_machine
+and refuses a mismatch with a rebuild hint; the test itself was removed in the same commit. What 0743
+does NOT cover, and is still open ground: `check-nuttx-shared-tree-headers` inspects header includes
+only, so a Rust helper joining `$NUTTX_DIR/nuttx` was invisible to it (0196 pattern). Filed from a
+tier-2 failure without searching archived/ first. See `archived/0748-*`. (2026-08-21)
 
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
 reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload

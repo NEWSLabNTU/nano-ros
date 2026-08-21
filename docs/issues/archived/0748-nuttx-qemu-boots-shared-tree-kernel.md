@@ -1,10 +1,10 @@
 ---
 id: 748
 title: "`test_nuttx_kernel_boots` runs `$NUTTX_DIR/nuttx` under qemu-system-arm, but the shared tree's kernel belongs to whichever arch configured last"
-status: open
+status: resolved
 type: bug
 area: testing
-related: [issue-0525, issue-0196, issue-0711]
+related: [issue-0743, issue-0525, issue-0196, issue-0711]
 ---
 
 # 0748 — the NuttX boot test loads a RISC-V kernel into an ARM QEMU
@@ -92,3 +92,40 @@ Without that, the next artifact to be read from `$NUTTX_DIR` repeats this.
 
 Skipping when the snapshot is absent is preferable to falling back: a boot test
 that silently emulates the wrong arch is exactly the failure mode 0711 removed.
+
+## Resolution (2026-08-21): duplicate of 0743, already fixed
+
+Filed from a tier-2 failure without first checking whether the defect was
+already known. It was: **issue 0743** covers exactly this — "nuttx kernel path
+has no arch discrimination" — and it is archived as resolved.
+
+The fix landed in `a660be83f`, the same commit that removed the test I saw fail.
+`nuttx_kernel_path()` is gone, replaced by `nuttx_kernel_path_for(arch)`, which
+reads the ELF `e_machine` and refuses a mismatch:
+
+```
+the NuttX kernel at <path> is a Riscv image, but this lane needs Arm (<board>).
+The arm and riscv configurations share that ONE filename and each `make`
+reconfigures the tree (issue 0743), so the last build wins. Reconfigure and
+rebuild: <hint>
+```
+
+Both remaining callers (`logging_smoke.rs`, `rtos_e2e.rs`) use the checked form,
+and `cargo check -p nros-tests --tests` is clean.
+
+So the analysis in this issue was right and the conclusion was redundant. Two
+things in it are still worth keeping, which is why this is resolved rather than
+deleted:
+
+* The failure I observed was real and is the one 0743 describes, now with a
+  concrete reproduction: riscv configured last, `qemu-system-arm` handed a
+  RISC-V ELF.
+* The **gate-scope** observation stands and 0743 does not cover it.
+  `check-nuttx-shared-tree-headers` inspects header includes only, so a Rust
+  helper joining `$NUTTX_DIR/nuttx` was invisible to it. The resolver is fixed;
+  the gate that would have caught it still cannot see that class. That is issue
+  0196's pattern and worth its own gate widening — filed separately if anyone
+  picks it up.
+
+Lesson for me: search `docs/issues/archived/` before filing from a test failure.
+0743 was archived four commits before I wrote this.
