@@ -285,6 +285,16 @@ case — autonomous mode could not actuate until the consumer hand-rolled an SNT
 Direction: an optional `epoch_us`/`acquire_epoch` platform-vtable slot with SNTP as the first provider
 (Zephyr in-tree client, lwIP SNTP, POSIX `CLOCK_REALTIME`), server address as a deploy fact, acquired
 between netif-up and component construction. See `0758-*`. (2026-08-22)
+**#0759** (build/testing, open 2026-08-22) — the box env's SHARED-tree mode can build but never
+REBUILD. It redirects `CARGO_TARGET_DIR` so host-built build scripts do not die on GLIBC, but the fixture
+builds use two paths that redirect does not reach: the RFC-0070 cache root `build/cargo-fixtures/` (their
+own `--target-dir`) and the leaf `examples/**/target-fixtures/` dirs (leaf-relative by contract, 0401). A
+cached unit is reused without being EXECUTED, so a box run over a host-populated tree reports every
+fixture built — and the first source edit fails on a host binary, first the build script, then the
+proc-macro `.so`, which is reported AT A SOURCE LINE and reads as a compile error. Found while
+mutation-testing #0636's FreeRTOS cells, where it made the mutation appear not to matter. `NROS_BUILD_ROOT`
+would cover the first path (not the second) but phase-334 W2.b has 236 unmigrated literals; the
+alternative is for the box env to refuse the mode loudly. See `0759-*`. (2026-08-22)
 
 **#0757** (rmw/memory, open 2026-08-22) — the C++ arena dispatch trampoline swallows every non-OK take, so
 `BUFFER_TOO_SMALL` drops samples with zero diagnostics while cyclone ACKs them at transport level — the

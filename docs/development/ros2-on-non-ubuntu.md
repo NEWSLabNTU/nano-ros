@@ -249,6 +249,24 @@ is the same checkout, so `NROS_REPO_DIR` matches the host either way.
 - **`rmw_zenoh_cpp` is an apt package on humble+** (`ros-<distro>-rmw-zenoh-cpp`;
   this note used to say humble had none). Install it like the others — there is
   no source overlay to build any more (RFC-0075, amended 2026-08-19).
+- **A box created BEFORE that note has no router, and nothing says so loudly.**
+  The setup script installs `rmw_zenoh_cpp` today; a box built earlier does not
+  gain it, and the only symptom is cells reporting `[SKIPPED] zenohd failed to
+  start … no rmw_zenoh_cpp/rmw_zenohd found` — a skip, so the run stays green
+  (2026-08-22: every router-needing sched cell skipped here, and a measurement
+  script that keys on its cell's own output line read those skips as FAILURES,
+  which is the opposite misread and the reason it was noticed at all). Check
+  with `just doctor`, fix with `sudo apt-get install ros-<distro>-rmw-zenoh-cpp`
+  inside the box.
+- **The vendored `make` and `nros-launch-resolve` are host binaries in a shared
+  tree**, exactly like the CLI. `third-party/make/make` used to link the build
+  host's guile and died here as `libguile-3.0.so.1: cannot open shared object
+  file` (fixed: the recipe configures `--without-guile`, so one binary serves
+  both sides — rebuild it once in the box with `just workspace install-make`).
+  `nros-launch-resolve` is per-environment by design (issue 0409): a stale one
+  fails `nros sync` with a TOML `unknown field` error naming a field the current
+  schema does have, which reads as a broken `system.toml` rather than a stale
+  binary. `just setup-launch-resolve` in the box.
 - **ROS's `setup.bash` dies under `set -u`** (`AMENT_TRACE_SETUP_FILES: unbound
   variable`). Any script sourcing it needs `set +u` around the source.
 - **The stale-CLI guard fires after any pull that touched CLI sources**
