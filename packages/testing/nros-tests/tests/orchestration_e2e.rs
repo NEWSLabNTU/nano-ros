@@ -17,7 +17,7 @@
 use std::{path::PathBuf, process::Command};
 
 fn fixture_dir() -> PathBuf {
-    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/orchestration_e2e")
+    nros_tests::fixtures::fixture_dir("orchestration_e2e")
 }
 
 #[test]

@@ -15,8 +15,8 @@
 //! Run with: `cargo nextest run -p nros-tests --test param_live_read_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_rust_params_entry,
-    require_zenohd, zenohd_unique,
+    ManagedProcess, ZenohRouter, build_native_workspace_rust_params_entry, require_zenohd,
+    zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -38,22 +38,6 @@ fn spawn_param_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
         .env("NROS_ENTRY_SPIN_MS", spin_ms.to_string())
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     ManagedProcess::spawn_command(cmd, "param_talker").expect("spawn param_talker entry")
-}
-
-/// Spawn an nros `/chatter` subscriber (prints `Received: <data>` per message).
-fn spawn_listener(locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client");
-    let mut proc = ManagedProcess::spawn_command(cmd, "listener").expect("spawn listener");
-    // Subscription must be live before the talker publishes.
-    proc.wait_for_output_pattern("Listener", Duration::from_secs(8))
-        .expect("listener did not become ready");
-    proc
 }
 
 /// W4c + the parameter-resolution rules, end to end on a binary that ran.
@@ -80,7 +64,7 @@ fn param_live_read_publishes_resolved_value(zenohd_unique: ZenohRouter) {
     }
     let locator = zenohd_unique.locator();
 
-    let mut listener = spawn_listener(&locator);
+    let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);
     let mut entry = spawn_param_entry(&locator, 8000);
 
     // The published value IS the live param read. Wait on the PREFIX, not on the

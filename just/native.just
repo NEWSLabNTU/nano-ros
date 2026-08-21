@@ -286,7 +286,7 @@ build-fixture-extras:
     # the manifest; the platform-wide defs (build type, the C codegen tool,
     # codegen-off, cyclone prefix) are injected here via the shared builder's
     # NROS_CMAKE_EXTRA_DEFS contract. The cpp/parameters cell (target
-    # cpp_parameters) is a manifest row too, so it builds in the same pass.
+    # parameters_roundtrip) is a manifest row too, so it builds in the same pass.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
     bash scripts/build/fixture-make-driver.sh linux-cmake-rmw
     unset NROS_CMAKE_EXTRA_DEFS
@@ -663,11 +663,11 @@ test verbose="": build-fixtures
     # The remaining explicit `binary(...)` excludes are carve-outs with
     # their own focused lane and no shared group: zephyr (native_sim
     # fixtures), esp32_emulator, large_msg (test-large-msg), and the
-    # native_api / cpp_parameters / c_xrce_api fixture lanes
+    # native_api / parameters_roundtrip / c_xrce_api fixture lanes
     # (test-native-api, test-c-xrce). Unlike root `just test`, this lane
     # keeps the QEMU RTOS e2e groups in.
     args=(-p nros-tests --no-fail-fast \
-          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(cpp_parameters) or binary(c_xrce_api))')
+          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -776,7 +776,7 @@ test-native-api verbose="":
     # `just build-test-fixtures` first for the full matrix.
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test native_api --test cpp_parameters --no-fail-fast)
+    args=(-p nros-tests --test native_api --test parameters_roundtrip --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -806,7 +806,7 @@ test-cpp verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast \
-          -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(cpp_parameters)')
+          -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(parameters_roundtrip)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

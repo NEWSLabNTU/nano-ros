@@ -316,6 +316,28 @@ impl Lang {
             Lang::Cpp => TestLang::Cpp,
         }
     }
+
+    /// The axis token — the spelling used in fixture paths, cell labels and
+    /// failure messages.
+    ///
+    /// phase-373 W3: eight tests carried a byte-identical private `lang_str`
+    /// for this. A pure mapping over an enum this crate owns belongs on the
+    /// enum, where a new variant makes the compiler ask about it once rather
+    /// than leaving eight copies to be found by hand.
+    ///
+    /// Note this is deliberately NOT `Display`: the sibling `Rmw` mapping is
+    /// genuinely ambiguous (`Cyclonedds` is spelled `"cyclone"` by the native
+    /// example consumers and `"cyclonedds"` by `zephyr.rs`), and giving one
+    /// axis a blessed `Display` while its neighbour keeps per-consumer
+    /// spellings would imply an agreement that does not exist.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Lang::Rust => "rust",
+            Lang::C => "c",
+            Lang::Cpp => "cpp",
+            Lang::Mixed => "mixed",
+        }
+    }
 }
 
 /// Workload axis — each value is a stock-ROS-demo behavior contract the

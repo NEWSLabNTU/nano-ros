@@ -55,8 +55,7 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_int32_sink,
-        build_native_workspace_c_custom_msg_listener_entry,
+        ManagedProcess, ZenohRouter, build_native_workspace_c_custom_msg_listener_entry,
         build_native_workspace_c_custom_msg_talker_entry, build_native_workspace_c_entry,
         build_native_workspace_c_lifecycle_entry, build_native_workspace_c_qos_listener_entry,
         build_native_workspace_c_qos_talker_entry, build_native_workspace_c_safety_listener_entry,
@@ -157,14 +156,6 @@ struct Exec {
     note: &'static str,
 }
 
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
 fn wl_str(w: MW) -> &'static str {
     match w {
         MW::CustomMsg => "custom_msg",
@@ -380,27 +371,6 @@ fn spawn_spinning(
     ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
-/// Spawn a native `int32-sink` observer on `topic` (prints `Received: <n>`
-/// per message) dialing `locator`; blocks until its subscription is live.
-fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client")
-        .env("NROS_SUB_TOPIC", topic);
-    let mut proc =
-        ManagedProcess::spawn_command(cmd, topic).unwrap_or_else(|e| panic!("spawn {topic}: {e}"));
-    proc.wait_for_output_pattern(
-        nros_tests::output::INT32_SINK_READY_MARKER,
-        Duration::from_secs(10),
-    )
-    .unwrap_or_else(|_| panic!("{topic} listener did not become ready"));
-    proc
-}
-
 /// Run `ros2 <subcommand>` against `locator`; return combined stdout+stderr.
 fn run_ros2(locator: &str, subcommand: &str) -> String {
     let (env, _config_guard) = ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, locator);
@@ -510,7 +480,7 @@ fn workspace_features(#[case] lang: ML, #[case] workload: MW) {
         .unwrap_or_else(|| {
             panic!(
                 "matrix regression: no WorkspaceFeatures runtime cell for {}/{}",
-                lang_str(lang),
+                lang.as_str(),
                 wl_str(workload)
             )
         });
@@ -523,7 +493,7 @@ fn workspace_features(#[case] lang: ML, #[case] workload: MW) {
 #[test]
 fn workspace_features_cases_cover_every_matrix_cell() {
     use std::collections::BTreeSet;
-    let key = |l: ML, w: MW| (lang_str(l).to_string(), wl_str(w).to_string());
+    let key = |l: ML, w: MW| (l.as_str().to_string(), wl_str(w).to_string());
     let from_matrix: BTreeSet<_> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| is_wsfeature_cell(c))
@@ -549,7 +519,7 @@ fn workspace_features_cases_cover_every_matrix_cell() {
 /// workload's contract per the cell's [`Proof`]. Panics with `[SKIPPED] …` on an
 /// unmet precondition; the caller classifies.
 fn run_cell(pcell: &MCell) {
-    let lang = lang_str(pcell.lang);
+    let lang = pcell.lang.as_str();
     let workload = wl_str(pcell.workload);
     let cell = exec_for(pcell.lang, pcell.workload);
     // Gate: lifecycle cells assert over the ros2 CLI (skip without ROS 2 +
@@ -907,7 +877,7 @@ fn run_cell(pcell: &MCell) {
         Proof::SafetyCrcCount { spin_ms, wait_secs } => {
             // /safe_ok sink first, then the listener entry (its /chatter
             // safety subscription must be up before the talker publishes).
-            let mut sub = spawn_listener("/safe_ok", &locator);
+            let mut sub = nros_tests::fixtures::spawn_int32_sink(Some("/safe_ok"), &locator);
             let peer = peer.expect("safety cells carry a listener entry");
             let mut listener =
                 spawn_spinning(&peer, "safety-listener", &locator, spin_ms, Some(10));
@@ -948,8 +918,10 @@ fn run_cell(pcell: &MCell) {
             // Both sinks first so their subscriptions are live before the
             // entry publishes: the REMAPPED topic must deliver; the
             // unremapped `~` expansion must stay silent.
-            let mut remapped = spawn_listener("/remapped_out", &locator);
-            let mut unremapped = spawn_listener("/island/remap_talker/out", &locator);
+            let mut remapped =
+                nros_tests::fixtures::spawn_int32_sink(Some("/remapped_out"), &locator);
+            let mut unremapped =
+                nros_tests::fixtures::spawn_int32_sink(Some("/island/remap_talker/out"), &locator);
             let mut entry_proc = spawn_spinning(&entry, "remap-entry", &locator, 16000, Some(10));
 
             let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;

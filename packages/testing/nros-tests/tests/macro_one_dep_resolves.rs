@@ -20,7 +20,7 @@
 use std::{fs, path::PathBuf};
 
 fn fixture_src() -> PathBuf {
-    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/one_dep_component_pkg")
+    nros_tests::fixtures::fixture_dir("one_dep_component_pkg")
 }
 
 #[test]

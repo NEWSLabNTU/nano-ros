@@ -151,14 +151,6 @@ fn plat_str(p: MP) -> &'static str {
         _ => "?",
     }
 }
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
 fn wl_str(w: MW) -> &'static str {
     match w {
         MW::EntryPubsub => "entry_pubsub",
@@ -621,7 +613,7 @@ fn entry_matrix() {
     let out_of_lane: Vec<String> = cells
         .iter()
         .filter(|c| !nros_tests::lane_scope::admits(c.platform))
-        .map(|c| nros_tests::lane_scope::skip_note(c.platform, lang_str(c.lang)))
+        .map(|c| nros_tests::lane_scope::skip_note(c.platform, c.lang.as_str()))
         .collect();
     let cells: Vec<&MCell> = cells
         .into_iter()
@@ -656,7 +648,7 @@ fn entry_matrix() {
         let label = format!(
             "{}/{}/{}",
             plat_str(c.platform),
-            lang_str(c.lang),
+            c.lang.as_str(),
             wl_str(c.workload)
         );
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
@@ -723,7 +715,7 @@ fn entry_matrix() {
 /// `[SKIPPED] …` on an unmet precondition; the caller classifies.
 fn run_cell(pcell: &MCell) {
     let platform = plat_str(pcell.platform);
-    let lang = lang_str(pcell.lang);
+    let lang = pcell.lang.as_str();
     let workload = wl_str(pcell.workload);
     let cell = exec_for(pcell.platform, pcell.lang, pcell.workload);
     require_cell_env(&cell);

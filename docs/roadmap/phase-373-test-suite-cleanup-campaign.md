@@ -1,11 +1,13 @@
 # Phase 373 — Test-suite cleanup: delete what cannot fail, consolidate what was copied
 
-**Status (2026-08-21): W0–W2 LANDED, W3–W5 OPEN.** W0 (`a660be83f`) removed 23
+**Status (2026-08-21): W0–W5 LANDED — phase COMPLETE pending archive.** W0 (`a660be83f`) removed 23
 tests that could not fail and gated both shapes that admitted them. W1 restored
 the issue-#141 resource protection that phase-329's consolidation had silently
 switched off. W2 collapsed 23 repo-root helpers into the one that already
-existed. W3–W5 remain: the duplicated cell prelude, the single-test micro-files,
-and the last runtime-compile test.
+existed. W3 shared the three helpers that were genuinely shared — and found a
+latent race doing it. W4 folded the two true duplicate pairs. W5 concluded that
+the "runtime-compile test" is a labelled exception, not a defect: my own survey
+item was wrong.
 
 **Follows:** phase-329 (test taxonomy completion, archived 2026-08-05) — this is
 the residue that pass explicitly left, plus the classes it could not see because
@@ -150,47 +152,95 @@ gate widens when that exists.
 **Acceptance:** met — one definition; zero local declarations under `tests/`;
 clippy clean; the 45 host-side tests over the rewritten files pass.
 
-### W3 — the matrix consumers re-grew a shared prelude
+### W3 — share what is actually shared (LANDED)
 
-Each consolidated consumer copied the same helpers: `lang_str` (8 files),
-`run_cell` (7), `spawn_listener` (7), `exec_for` (6), `fixture_dir`/`fixture_src`
-(6). This is phase-329's consolidation paying its cost in the other currency —
-fewer files, but the boilerplate each one needs is now duplicated per consumer.
+The survey counted helpers by NAME and over-counted. Checking the bodies first
+changed the answer, and that check is the work item:
 
-- [ ] A shared support module (`nros_tests::cells`) holding the cell-running
-      vocabulary; consumers import it.
-- [ ] Do it AFTER W2 — W2 is mechanical and will surface how much of this is
-      genuinely shared versus superficially similarly-named.
+- [x] **`lang_str` (8 files) — byte-identical.** Moved onto the type as
+      `Lang::as_str()`. Deliberately not `Display`: the sibling `Rmw` mapping is
+      genuinely ambiguous, and blessing one axis while its neighbour keeps
+      per-consumer spellings would imply an agreement that does not exist.
+- [x] **`spawn_listener` (7 files) — two behaviours, the common one RACY.**
+      Replaced by `fixtures::spawn_int32_sink(topic, locator)`. See below.
+- [x] **`fixture_dir` (13 spellings) — the NAME differs per test, but the
+      fixture ROOT is one fact this crate owns.** Replaced by
+      `fixtures::fixture_dir(name)`.
 
-**Acceptance:** each helper has one definition, or a documented reason why a
-consumer's variant differs.
+**NOT unified, with reasons — these were same-name, different-function:**
 
-### W4 — fold the single-test micro-files by family
+- **`exec_for` (6 files)** — different signature AND a different local `Exec`
+  struct in every file (`resolver`/`entry`/`robot1`/`label`…). Per-consumer
+  dispatch, correctly local.
+- **`wl_str`** — a PARTIAL per-consumer label map with `_ => "?"` catch-alls;
+  each consumer names only the workloads it runs. Not one function.
+- **`rmw_str`** — `Cyclonedds` is `"cyclone"` in the native example consumers
+  and `"cyclonedds"` in `zephyr.rs`. Each file is self-consistent (both sides of
+  its comparison use its own spelling), so this is a vocabulary difference and
+  not a bug — but unifying it blindly WOULD have been one.
 
-19 files hold one test in under 80 lines. The families are obvious:
-`cli_bringup_{esp_idf,zephyr,nuttx}`, `{nuttx,threadx_linux}_entry_build`,
-`ros_editions_{smoke,bridge}`, `{c,cpp}_parameters`.
+**The race W3 found.** Four of the seven `spawn_listener` copies waited on the
+literal `"Listener"`. The int32-sink's banner does contain that word — the source
+even says the helpers key off it — but the banner is the FIRST line it prints,
+before `nros::init`, before `Executor::open`, ~25 lines before
+`subscription(...).build(...)`. So those tests resumed as soon as the process
+emitted any log line and then published into a session that might have no
+subscriber. `param_live_read_e2e` carried the comment "Subscription must be live
+before the talker publishes" directly above the wait that did not ensure it. The
+shared helper keys on `output::INT32_SINK_READY_MARKER` (`"Waiting for Int32"`),
+which is printed after the subscription exists.
 
-- [ ] Fold each family into one parametrized file, applying phase-329's rule:
-      fold a per-cell duplicate, KEEP + LABEL a genuine one-off.
-- [ ] Coverage-proven per deletion, exactly as phase-329 W4 required: no file
-      removed until the surviving test demonstrably runs its cases.
+This is exactly what the repo rule about greping `nros_tests::output::*`
+constants protects against: a literal keeps matching the wrong line forever and
+nothing points at the mismatch.
 
-**Acceptance:** every fold names the cases it absorbed; no case lost.
+### W4 — fold the true duplicate pairs (LANDED)
 
-### W5 — the last runtime-compile test
+The survey named four "obvious families". Reading them, two were duplicates and
+two were not — the difference being whether the files assert the same thing:
 
-`cmake_platform_matrix.rs` configures and BUILDS a synthetic consumer project at
-test time, which CLAUDE.md forbids ("No compilation inside tests"). Phase 329 W5
-moved this class to the build stage and this one did not follow.
+- [x] **`{nuttx,threadx_linux}_entry_build` → `entry_build.rs`.** Same six roles,
+      same loop, same "ELF exists and is non-empty" assertion; only the
+      availability probes and the resolver differed. Folded to one `#[rstest]`
+      over the platform, keeping each platform's own skip message (they name
+      different setup commands, and a merged one would be less useful than
+      either).
+- [x] **`{c,cpp}_parameters` → `parameters_roundtrip.rs`.** Identical runner —
+      spawn prebuilt example, require exit 0, grep stdout — with the expected
+      lines as case data.
+- [x] **NOT folded: `cli_bringup_{esp_idf,zephyr,nuttx,px4}`.** Same name prefix,
+      different assertions: esp_idf asserts a prebuilt ELF exists; zephyr asserts
+      baked `system_config.{h,cmake}` AND boots native_sim AND greps a shim
+      banner. Per phase-329's rule these are one-offs to keep, not duplicates to
+      fold.
+- [x] **Consumers moved with the fold**, which is most of the risk: a
+      `test(cpp_parameters_roundtrip)` filter in `.config/nextest.toml` (which
+      would have gone SILENTLY inert — the gate cannot see `test()` names) and
+      four sites in `just/native.just`, including a `--test cpp_parameters` that
+      would have failed outright.
 
-- [ ] Either express it as a build-step fixture asserting the artifact, or record
-      why the cmake-contract shape cannot be one (a synthetic consumer project is
-      not obviously a `fixtures.toml` row) and label it as a deliberate exception.
+### W5 — the runtime-compile test is a labelled exception, not a defect (LANDED)
 
-**Correction to an earlier reading of this item:** `zpico_build_matrix.rs` looks
-like a second violation and is NOT one — it runs `cargo tree`, which is a metadata
-query, not a compile.
+**This item was based on a wrong reading of mine, and the correction is the
+finding.** `cmake_platform_matrix.rs` does not build anything: it runs
+`cmake -S -B` (configure only, seconds) and asserts the configure **FAILS** with
+`NANO_ROS_BOARD` named in the FATAL_ERROR.
+
+That cannot become a build-stage fixture. A fixture whose configure fails fails
+the BUILD — the artifact the build stage would produce is precisely the artifact
+that must not exist.
+
+The same holds for every other test that reaches a toolchain at run time here:
+`*_misuse`, `negative_diagnostic_registry`, `diagnostic_verbatim`,
+`zpico_drift_gate`. All are NEGATIVE tests asserting a diagnostic that only
+exists on the failure path.
+
+- [x] Labelled the exception and its general shape in `cmake_platform_matrix.rs`.
+      The rule's target is a test that BUILDS ITS OWN FIXTURE and then uses it;
+      these build nothing they keep.
+
+**Also corrected:** `zpico_build_matrix.rs` looked like a second violation and is
+not one — it runs `cargo tree`, a metadata query.
 
 ## Acceptance (phase)
 

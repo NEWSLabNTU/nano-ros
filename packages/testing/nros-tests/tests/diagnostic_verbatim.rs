@@ -33,9 +33,7 @@ use std::{
 };
 
 fn fixture_src(name: &str) -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures")
-        .join(name)
+    nros_tests::fixtures::fixture_dir(name)
 }
 
 /// Copy a fixture tree into a fresh tempdir so the `cargo check` /

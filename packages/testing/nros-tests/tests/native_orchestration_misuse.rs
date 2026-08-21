@@ -15,8 +15,7 @@ use std::{
 };
 
 fn fixture_src() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/orchestration_tiers_native")
+    nros_tests::fixtures::fixture_dir("orchestration_tiers_native")
 }
 
 fn stage_fixture() -> (tempfile::TempDir, PathBuf) {

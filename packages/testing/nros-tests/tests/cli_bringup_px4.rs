@@ -25,7 +25,7 @@
 use std::{path::PathBuf, process::Command};
 
 fn fixture() -> PathBuf {
-    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4")
+    nros_tests::fixtures::fixture_dir("multi_pkg_workspace_px4")
 }
 
 /// Components declared in the fixture's `demo_bringup/system.toml`.

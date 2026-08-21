@@ -29,8 +29,7 @@
 use std::{path::PathBuf, process::Command};
 
 fn fixture_dir() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/orchestration_conditionals")
+    nros_tests::fixtures::fixture_dir("orchestration_conditionals")
 }
 
 fn plan_with_record(record: &str) -> serde_json::Value {

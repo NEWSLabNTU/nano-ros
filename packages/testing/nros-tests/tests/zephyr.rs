@@ -112,15 +112,6 @@ fn count_zephyr_received(output: &str) -> usize {
         .count()
 }
 
-fn lang_str(l: Lang) -> &'static str {
-    match l {
-        Lang::Rust => "rust",
-        Lang::C => "c",
-        Lang::Cpp => "cpp",
-        Lang::Mixed => "mixed",
-    }
-}
-
 fn rmw_str(r: Rmw) -> &'static str {
     match r {
         Rmw::Zenoh => "zenoh",
@@ -152,7 +143,7 @@ fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
         nros_tests::skip!(
             "zephyr/{}/{case} {} image not prebuilt or stale \
              (run `just zephyr build-fixtures`): {e:?}",
-            lang_str(lang),
+            lang.as_str(),
             rmw_str(rmw)
         )
     })
@@ -240,7 +231,7 @@ impl Cell {
         format!(
             "{}/{}/{:?}",
             rmw_str(self.rmw),
-            lang_str(self.lang),
+            self.lang.as_str(),
             self.workload
         )
     }
@@ -776,7 +767,7 @@ fn boot_smoke(#[case] smoke: Smoke) {
     let id = format!(
         "{}/{}/{}",
         rmw_str(smoke.rmw),
-        lang_str(smoke.lang),
+        smoke.lang.as_str(),
         smoke.case
     );
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)

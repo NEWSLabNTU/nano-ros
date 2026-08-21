@@ -193,15 +193,6 @@ fn plat_str(p: MP) -> &'static str {
         _ => "native",
     }
 }
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
-
 enum Guest {
     Managed(ManagedProcess),
     Zephyr(ZephyrProcess),
@@ -278,7 +269,7 @@ fn multihost() {
     let out_of_lane: Vec<String> = cells
         .iter()
         .filter(|c| !nros_tests::lane_scope::admits(c.platform))
-        .map(|c| nros_tests::lane_scope::skip_note(c.platform, lang_str(c.lang)))
+        .map(|c| nros_tests::lane_scope::skip_note(c.platform, c.lang.as_str()))
         .collect();
     let cells: Vec<&MCell> = cells
         .into_iter()
@@ -312,7 +303,7 @@ fn multihost() {
     let mut skipped: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
-        let label = format!("{}/{}", plat_str(c.platform), lang_str(c.lang));
+        let label = format!("{}/{}", plat_str(c.platform), c.lang.as_str());
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
         if let Err(p) = res {
             let msg = p
@@ -350,7 +341,7 @@ fn multihost() {
 /// `[SKIPPED] …` (via `skip!`) on an unmet precondition; the caller classifies.
 fn run_cell(pcell: &MCell) {
     let platform = plat_str(pcell.platform);
-    let lang = lang_str(pcell.lang);
+    let lang = pcell.lang.as_str();
     let cell = exec_for(pcell.platform, pcell.lang);
     // The zephyr cell historically gates on the router START (below) rather
     // than a zenohd probe — keep that shape.

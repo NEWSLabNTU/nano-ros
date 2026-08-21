@@ -31,28 +31,11 @@
 //! Run with: `cargo nextest run -p nros-tests --test realtime_subnode_cpp_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink,
-    build_native_workspace_cpp_subnode_realtime_entry, require_zenohd, zenohd_unique,
+    ManagedProcess, ZenohRouter, build_native_workspace_cpp_subnode_realtime_entry, require_zenohd,
+    zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
-
-/// Spawn an nros subscriber on `topic` (prints `Received: <n>` per message).
-fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client")
-        .env("NROS_SUB_TOPIC", topic);
-    let mut proc =
-        ManagedProcess::spawn_command(cmd, topic).unwrap_or_else(|e| panic!("spawn {topic}: {e}"));
-    proc.wait_for_output_pattern("Listener", Duration::from_secs(8))
-        .unwrap_or_else(|_| panic!("{topic} listener did not become ready"));
-    proc
-}
 
 /// Phase 273 W4 (RFC-0047) — ONE node's two callback groups schedule on two tiers.
 ///
@@ -74,8 +57,8 @@ fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
         .unwrap_or_else(|e| nros_tests::skip!("realtime-cpp entry fixture not built: {e}"));
     let locator = zenohd_unique.locator();
 
-    let mut ctrl = spawn_listener("/ctrl", &locator);
-    let mut telem = spawn_listener("/telem", &locator);
+    let mut ctrl = nros_tests::fixtures::spawn_int32_sink(Some("/ctrl"), &locator);
+    let mut telem = nros_tests::fixtures::spawn_int32_sink(Some("/telem"), &locator);
 
     let mut cmd = Command::new(entry);
     cmd.env("RUST_LOG", "info")

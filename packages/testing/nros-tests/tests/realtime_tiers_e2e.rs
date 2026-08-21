@@ -50,8 +50,7 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_int32_sink, build_native_workspace_c_realtime_entry,
-        build_native_workspace_cpp_rclcpp_realtime_entry,
+        build_native_workspace_c_realtime_entry, build_native_workspace_cpp_rclcpp_realtime_entry,
         build_native_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
         build_nuttx_riscv_workspace_c_realtime_entry,
         build_nuttx_riscv_workspace_cpp_realtime_entry,
@@ -439,27 +438,6 @@ fn console_excerpt(console: &str) -> String {
     out.join(SEP)
 }
 
-/// Spawn a native `int32-sink` observer on `topic` (prints `Received: <n>`
-/// per message) dialing `locator`.
-fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client")
-        .env("NROS_SUB_TOPIC", topic);
-    let mut proc =
-        ManagedProcess::spawn_command(cmd, topic).unwrap_or_else(|e| panic!("spawn {topic}: {e}"));
-    proc.wait_for_output_pattern(
-        nros_tests::output::INT32_SINK_READY_MARKER,
-        Duration::from_secs(10),
-    )
-    .unwrap_or_else(|_| panic!("{topic} listener did not become ready"));
-    proc
-}
-
 /// Skip-precondition gate per boot mechanism (identical semantics to the
 /// pre-consolidation files: missing fixture / west image / qemu → skip).
 fn require_cell_env(boot: Boot) {
@@ -677,8 +655,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     }
 
     // Observer cells: subscriptions live BEFORE the guest publishes.
-    let mut ctrl = spawn_listener("/ctrl", &observer_locator);
-    let mut telem = spawn_listener("/telem", &observer_locator);
+    let mut ctrl = nros_tests::fixtures::spawn_int32_sink(Some("/ctrl"), &observer_locator);
+    let mut telem = nros_tests::fixtures::spawn_int32_sink(Some("/telem"), &observer_locator);
 
     let mut guest = match cell.boot {
         Boot::Native => {

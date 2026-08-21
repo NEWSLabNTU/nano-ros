@@ -402,15 +402,6 @@ fn plat_str(p: MP) -> &'static str {
         _ => "?",
     }
 }
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
-
 /// THE realtime-dim matrix consumer. Iterates every Runtime `SchedCell` and runs
 /// each in one process, catching per-cell skips/failures so one missing fixture
 /// never aborts the rest.
@@ -428,7 +419,7 @@ fn sched_dims_applied() {
     let mut out_of_lane: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
-        let label = format!("{:?}/{}/{}", c.dim, plat_str(c.platform), lang_str(c.lang));
+        let label = format!("{:?}/{}/{}", c.dim, plat_str(c.platform), c.lang.as_str());
         // issue 0630 — narrow by LANE here, because no name filter can reach
         // inside one test. This is issue 0571's fix at its fifth site: that
         // issue found four consolidated matrix consumers that escape both
@@ -445,7 +436,7 @@ fn sched_dims_applied() {
         if !nros_tests::lane_scope::admits(c.platform) {
             out_of_lane.push(nros_tests::lane_scope::skip_note(
                 c.platform,
-                lang_str(c.lang),
+                c.lang.as_str(),
             ));
             continue;
         }
@@ -525,7 +516,7 @@ fn report_arm(platform: &str, lang: &str, dim: SD, arm: &str) {
 /// Panics with `[SKIPPED] …` on an unmet precondition; the caller classifies.
 fn run_cell(cell: &SchedCell) {
     let platform = plat_str(cell.platform);
-    let lang = lang_str(cell.lang);
+    let lang = cell.lang.as_str();
     let ex = exec_for(cell.dim, cell.platform, cell.lang);
 
     let entry = (ex.resolver)().unwrap_or_else(|e| {

@@ -25,6 +25,23 @@
 //!   `nros-baremetal.cmake` (missing `NANO_ROS_BOARD`) via a configure-
 //!   only check; the rest of the link is board-specific and lives in
 //!   the per-board overlays under `cmake/board/`.
+//!
+//! ## Why this runs cmake at test time (phase-373 W5 — labelled exception)
+//!
+//! CLAUDE.md forbids compilation inside tests, and phase-329 W5 moved that class
+//! to the build stage. This file is the exception, deliberately:
+//!
+//! * It **configures only** (`cmake -S -B`) — no compile, no link. Seconds.
+//! * It asserts the configure **FAILS**, with `NANO_ROS_BOARD` named in the
+//!   FATAL_ERROR. A build-stage fixture cannot express that: a fixture whose
+//!   configure fails fails the BUILD, which is the opposite of the assertion.
+//!
+//! That is the general shape of every remaining run-time-toolchain test here —
+//! `*_misuse`, `negative_diagnostic_registry`, `diagnostic_verbatim`,
+//! `zpico_drift_gate`. Each asserts a diagnostic that only exists on the failure
+//! path, so the artifact the build stage would produce is precisely the artifact
+//! that must not exist. The rule's target is a test that BUILDS ITS OWN FIXTURE
+//! and then uses it; these build nothing they keep.
 
 use std::{
     fs,

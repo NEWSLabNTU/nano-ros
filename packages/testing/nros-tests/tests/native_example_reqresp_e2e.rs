@@ -119,14 +119,6 @@ fn roles(
     }
 }
 
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
 fn rmw_str(r: MR) -> &'static str {
     match r {
         MR::Zenoh => "zenoh",
@@ -214,7 +206,7 @@ fn native_example_reqresp(#[case] lang: ML, #[case] rmw: MR, #[case] workload: M
         .unwrap_or_else(|| {
             panic!(
                 "matrix regression: no Linux/Example/Runtime cell for {}/{}/{}",
-                lang_str(lang),
+                lang.as_str(),
                 rmw_str(rmw),
                 wl_str(workload)
             )
@@ -228,7 +220,7 @@ fn reqresp_cases_cover_every_matrix_cell() {
     use std::collections::BTreeSet;
     let key = |l: ML, r: MR, w: MW| {
         (
-            lang_str(l).to_string(),
+            l.as_str().to_string(),
             rmw_str(r).to_string(),
             wl_str(w).to_string(),
         )
@@ -262,9 +254,9 @@ fn run_cell(cell: &MCell) {
     let lang = cell.lang;
     let (srv_case, srv_bin, cli_case, cli_bin, ready, result) = roles(lang, cell.workload);
     let server = resolve(lang, srv_case, srv_bin, cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} server fixture not built: {e}", lang_str(lang)));
+        .unwrap_or_else(|e| nros_tests::skip!("{} server fixture not built: {e}", lang.as_str()));
     let client = resolve(lang, cli_case, cli_bin, cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} client fixture not built: {e}", lang_str(lang)));
+        .unwrap_or_else(|e| nros_tests::skip!("{} client fixture not built: {e}", lang.as_str()));
 
     let mut server_cmd = Command::new(&server);
     let mut client_cmd = Command::new(&client);
@@ -344,7 +336,7 @@ fn run_cell(cell: &MCell) {
         out.contains(result),
         "[{}/{}/{}] client never logged the server-computed result (`{result}`) — the \
          cross-process {} round-trip did not complete:\n{out}",
-        lang_str(lang),
+        lang.as_str(),
         rmw_str(cell.rmw),
         wl_str(cell.workload),
         wl_str(cell.workload),
@@ -374,7 +366,7 @@ fn run_cell(cell: &MCell) {
              `{FIBONACCI_ORDER_10_SEQUENCE}` — the goal payload did not survive the \
              round-trip. A result line proves the client DECODED something, not that \
              the server ever saw the goal (issues 0453 / 0448 / 0461):\n{out}",
-            lang_str(lang),
+            lang.as_str(),
             rmw_str(cell.rmw),
         );
     }

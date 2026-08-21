@@ -41,8 +41,8 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_int32_sink,
-        build_native_workspace_c_action_client_entry, build_native_workspace_c_action_server_entry,
+        ManagedProcess, ZenohRouter, build_native_workspace_c_action_client_entry,
+        build_native_workspace_c_action_server_entry,
         build_native_workspace_c_service_client_entry,
         build_native_workspace_c_service_server_entry,
         build_native_workspace_cpp_action_client_entry,
@@ -176,14 +176,6 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
     }
 }
 
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
 fn wl_str(w: MW) -> &'static str {
     match w {
         MW::Action => "action",
@@ -218,27 +210,6 @@ fn spawn_c_entry(entry: &PathBuf, label: &'static str, locator: &str) -> Managed
     ManagedProcess::spawn_command(cmd, label).unwrap_or_else(|e| panic!("spawn {label}: {e}"))
 }
 
-/// Spawn a native `int32-sink` observer on `topic` (prints `Received: <n>`
-/// per message) dialing `locator`; blocks until its subscription is live.
-fn spawn_listener(topic: &'static str, locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client")
-        .env("NROS_SUB_TOPIC", topic);
-    let mut proc =
-        ManagedProcess::spawn_command(cmd, topic).unwrap_or_else(|e| panic!("spawn {topic}: {e}"));
-    proc.wait_for_output_pattern(
-        nros_tests::output::INT32_SINK_READY_MARKER,
-        Duration::from_secs(10),
-    )
-    .unwrap_or_else(|_| panic!("{topic} listener did not become ready"));
-    proc
-}
-
 // =============================================================================
 // The parametrized matrix consumer
 // =============================================================================
@@ -269,7 +240,7 @@ fn roundtrip_xprocess() {
     let out_of_lane: Vec<String> = cells
         .iter()
         .filter(|c| !nros_tests::lane_scope::admits(c.platform))
-        .map(|c| nros_tests::lane_scope::skip_note(c.platform, lang_str(c.lang)))
+        .map(|c| nros_tests::lane_scope::skip_note(c.platform, c.lang.as_str()))
         .collect();
     let cells: Vec<&MCell> = cells
         .into_iter()
@@ -301,7 +272,7 @@ fn roundtrip_xprocess() {
     let mut skipped: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
-        let label = format!("{}/{}", lang_str(c.lang), wl_str(c.workload));
+        let label = format!("{}/{}", c.lang.as_str(), wl_str(c.workload));
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_cell(c)));
         if let Err(p) = res {
             let msg = p
@@ -338,7 +309,7 @@ fn roundtrip_xprocess() {
 /// server-computed values come back per the cell's [`Proof`]. Panics with
 /// `[SKIPPED] …` on an unmet precondition; the caller classifies.
 fn run_cell(pcell: &MCell) {
-    let lang = lang_str(pcell.lang);
+    let lang = pcell.lang.as_str();
     let workload = wl_str(pcell.workload);
     let cell = exec_for(pcell.lang, pcell.workload);
     if !require_zenohd() {
@@ -361,7 +332,7 @@ fn run_cell(pcell: &MCell) {
                 Proof::ListenerSums => ("/sum", 16000),
                 _ => ("/fib_result", 20000),
             };
-            let mut listener = spawn_listener(topic, &locator);
+            let mut listener = nros_tests::fixtures::spawn_int32_sink(Some(topic), &locator);
             let mut srv = spawn_rust_entry(&server, "roundtrip-server", &locator, spin_ms);
             // Give the server a moment to register its queryable/action
             // before the client calls (pre-consolidation shape).

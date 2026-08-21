@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 fn fixture_src() -> PathBuf {
-    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/o4_pkg_index_workspace")
+    nros_tests::fixtures::fixture_dir("o4_pkg_index_workspace")
 }
 
 #[test]

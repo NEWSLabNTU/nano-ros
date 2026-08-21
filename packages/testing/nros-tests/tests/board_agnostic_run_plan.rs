@@ -43,8 +43,7 @@ use std::{
 };
 
 fn fixture_src() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/n_board_agnostic_run_plan")
+    nros_tests::fixtures::fixture_dir("n_board_agnostic_run_plan")
 }
 
 fn walk(root: &Path) -> Vec<PathBuf> {

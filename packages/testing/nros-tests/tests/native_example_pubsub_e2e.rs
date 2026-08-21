@@ -85,14 +85,6 @@ fn listener_prefix(_l: ML) -> &'static str {
     LISTENER_LOG_PREFIX
 }
 
-fn lang_str(l: ML) -> &'static str {
-    match l {
-        ML::Rust => "rust",
-        ML::C => "c",
-        ML::Cpp => "cpp",
-        ML::Mixed => "mixed",
-    }
-}
 fn rmw_str(r: MR) -> &'static str {
     match r {
         MR::Zenoh => "zenoh",
@@ -161,7 +153,7 @@ fn native_example_pubsub(#[case] lang: ML, #[case] rmw: MR) {
         .unwrap_or_else(|| {
             panic!(
                 "matrix regression: no Linux/Pubsub/Example/Runtime cell for {}/{}",
-                lang_str(lang),
+                lang.as_str(),
                 rmw_str(rmw)
             )
         });
@@ -177,11 +169,11 @@ fn pubsub_cases_cover_every_matrix_cell() {
     let from_matrix: BTreeSet<(String, String)> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| is_pubsub_cell(c))
-        .map(|c| (lang_str(c.lang).to_string(), rmw_str(c.rmw).to_string()))
+        .map(|c| (c.lang.as_str().to_string(), rmw_str(c.rmw).to_string()))
         .collect();
     let declared: BTreeSet<(String, String)> = DECLARED_CASES
         .iter()
-        .map(|(l, r)| (lang_str(*l).to_string(), rmw_str(*r).to_string()))
+        .map(|(l, r)| (l.as_str().to_string(), rmw_str(*r).to_string()))
         .collect();
 
     assert!(
@@ -205,10 +197,9 @@ fn run_cell(cell: &MCell) {
     let lang = cell.lang;
     let prefix = listener_prefix(lang);
     let talker = resolve(lang, "talker", talker_bin(lang), cell.rmw)
-        .unwrap_or_else(|e| nros_tests::skip!("{} talker fixture not built: {e}", lang_str(lang)));
-    let listener = resolve(lang, "listener", listener_bin(lang), cell.rmw).unwrap_or_else(|e| {
-        nros_tests::skip!("{} listener fixture not built: {e}", lang_str(lang))
-    });
+        .unwrap_or_else(|e| nros_tests::skip!("{} talker fixture not built: {e}", lang.as_str()));
+    let listener = resolve(lang, "listener", listener_bin(lang), cell.rmw)
+        .unwrap_or_else(|e| nros_tests::skip!("{} listener fixture not built: {e}", lang.as_str()));
 
     // Per-RMW isolation + env. Keep the router/agent guard alive for the cell.
     let mut talker_cmd = Command::new(&talker);
@@ -307,7 +298,7 @@ fn run_cell(cell: &MCell) {
             panic!(
                 "[{}/{}] listener never saw {min_count} `{prefix}` deliveries — native pubsub \
                  delivery did not work",
-                lang_str(lang),
+                lang.as_str(),
                 rmw_str(cell.rmw)
             )
         });
@@ -318,7 +309,7 @@ fn run_cell(cell: &MCell) {
     assert!(
         n >= min_count,
         "[{}/{}] expected ≥{min_count} deliveries, got {n}",
-        lang_str(lang),
+        lang.as_str(),
         rmw_str(cell.rmw)
     );
 }

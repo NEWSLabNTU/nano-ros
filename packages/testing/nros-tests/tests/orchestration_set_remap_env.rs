@@ -33,8 +33,7 @@
 use std::{path::PathBuf, process::Command};
 
 fn fixture_dir() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/orchestration_set_remap_env")
+    nros_tests::fixtures::fixture_dir("orchestration_set_remap_env")
 }
 
 fn run_plan() -> serde_json::Value {

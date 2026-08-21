@@ -14,7 +14,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test cpp_c_param_live_read_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_c_params_entry,
+    ManagedProcess, ZenohRouter, build_native_workspace_c_params_entry,
     build_native_workspace_cpp_params_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -30,20 +30,6 @@ fn spawn_entry(path: PathBuf, label: &str, locator: &str, spin_ms: u32) -> Manag
     ManagedProcess::spawn_command(cmd, label).expect("spawn entry")
 }
 
-fn spawn_listener(locator: &str) -> ManagedProcess {
-    let listener = build_int32_sink()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
-    let mut cmd = Command::new(listener);
-    cmd.env("RUST_LOG", "info")
-        .env("NROS_LOCATOR", locator)
-        .env("NROS_SESSION_MODE", "client");
-    let mut proc = ManagedProcess::spawn_command(cmd, "listener").expect("spawn listener");
-    proc.wait_for_output_pattern("Listener", Duration::from_secs(8))
-        .expect("listener did not become ready");
-    proc
-}
-
 /// C component reads the launch-baked initial (250) LIVE via nros_cpp_get_param_integer.
 #[rstest]
 fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
@@ -55,7 +41,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
         .unwrap_or_else(|e| nros_tests::skip!("ws-params-c entry fixture not built: {e}"));
 
     let locator = zenohd_unique.locator();
-    let mut listener = spawn_listener(&locator);
+    let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);
     // Entry must keep publishing for at least the listener's wait window
     // (20 s below): the hosted spin self-terminates after NROS_ENTRY_SPIN_MS,
     // and under concurrent-test load the session open + subscriber discovery
@@ -98,7 +84,7 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
         .unwrap_or_else(|e| nros_tests::skip!("ws-params-cpp entry fixture not built: {e}"));
 
     let locator = zenohd_unique.locator();
-    let mut listener = spawn_listener(&locator);
+    let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);
     // Outlive the 20 s listener wait — see the C arm for why 8 s flaked
     // under concurrent load (issue 0387).
     let mut entry = spawn_entry(path, "cpp_param_talker", &locator, 25000);

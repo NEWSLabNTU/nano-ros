@@ -753,7 +753,10 @@ fail-fast = true
 # zpico-sys + nros-cpp). Default 60s terminate-after is too tight;
 # bump to 600s so cold-cache builds finish without spurious TIMEOUT.
 [[profile.default.overrides]]
-filter = "binary(cmake_add_subdirectory) or binary(cmake_platform_matrix) or test(cpp_parameters_roundtrip)"
+# phase-373 W4 — `cpp_parameters` folded into `parameters_roundtrip` (its cpp
+# CASE). The old `test(cpp_parameters_roundtrip)` would have gone silently
+# inert, which is the failure mode this file has hit before.
+filter = "binary(cmake_add_subdirectory) or binary(cmake_platform_matrix) or binary(parameters_roundtrip)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 # ── phase-318 W5.b — QEMU host-load cap (RFC-0061) ─────────────────────────────

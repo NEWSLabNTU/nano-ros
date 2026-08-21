@@ -31,8 +31,7 @@ use nros_tests::fixtures::nuttx::{is_arm_gcc_available, is_nuttx_available};
 use std::{fs, path::PathBuf, process::Command};
 
 fn fixture() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx")
+    nros_tests::fixtures::fixture_dir("multi_pkg_workspace_nuttx")
 }
 
 fn require_nuttx_setup() -> Option<()> {
