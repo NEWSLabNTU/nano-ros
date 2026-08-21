@@ -216,12 +216,14 @@ cd examples/threadx-linux/rust/talker && nros sync && cargo run --release
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9400"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# Then boot the image in QEMU (this is what `just threadx_riscv64 talker`
-# runs for the Rust talker; it builds first, then boots):
-just threadx_riscv64 talker
-# Under the hood: qemu-system-riscv64 -M virt -m 256M -bios none \
-#   -nographic -kernel <built-image> -netdev user,id=net0 \
-#   -device virtio-net-device,netdev=net0,...
+# Then boot the built image in QEMU (UART on stdio, Slirp networking):
+qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
+    -global virtio-mmio.force-legacy=false \
+    -kernel <path-to-built-talker-elf> \
+    -netdev user,id=net0 \
+    -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0
+# **Contributors (in-tree checkout):** `just threadx_riscv64 talker`
+# builds and boots this exact shape in one step.
 
 # Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
