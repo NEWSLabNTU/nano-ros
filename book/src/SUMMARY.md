@@ -56,6 +56,7 @@
 - [Workflow by Platform and Language](./user-guide/workflow-by-platform.md)
 - [Application Workflow](./user-guide/workflow.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
+- [Integrating into a Vendored Tree](./getting-started/vendored-tree.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
 - [Logging](./user-guide/logging.md)

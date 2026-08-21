@@ -78,8 +78,10 @@ Zephyr or NuttX workspace? Two-step path:
    **[How Integration Works](../getting-started/how-integration-works.md)**:
    your RTOS keeps its own build tool (west, make, idf.py, your IDE) and
    nano-ros plugs into it. One chapter per host build system follows it.
-3. **Company tree, own BSP, forked RTOS?** The out-of-tree material is
-   the Porting Guide: [Build as a CMake
+3. **Company tree, own BSP, forked RTOS?** Start at
+   [Integrating into a Vendored Tree](../getting-started/vendored-tree.md)
+   (pinning, air-gapped CI, the patch set you carry), then the
+   Porting Guide: [Build as a CMake
    subdirectory](../getting-started/build-as-subdirectory.md),
    [Custom Board Package](../porting/custom-board.md),
    [Vendor Overlay](../porting/vendor-overlay.md), and the

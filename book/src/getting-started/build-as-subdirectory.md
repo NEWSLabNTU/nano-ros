@@ -8,6 +8,9 @@ ament-shaped alternative is `find_package(nano_ros REQUIRED)` —
 `nano_ros_ROOT` (RFC-0048) — which every in-tree example now uses.
 Either way there is NO install step: phase-140 removed the install
 prefix and the old `find_package(NanoRos)` (capital) config pipeline.
+Vendoring the repo into a company tree (pinning, offline CI, upgrade
+workflow) has its own page:
+[Integrating into a Vendored Tree](vendored-tree.md).
 
 ## Layout
 
