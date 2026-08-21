@@ -50,8 +50,8 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
-        build_freertos_workspace_rust_realtime_entry,
-        build_native_workspace_c_realtime_entry, build_native_workspace_cpp_rclcpp_realtime_entry,
+        build_freertos_workspace_rust_realtime_entry, build_native_workspace_c_realtime_entry,
+        build_native_workspace_cpp_rclcpp_realtime_entry,
         build_native_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
         build_nuttx_riscv_workspace_c_realtime_entry,
         build_nuttx_riscv_workspace_cpp_realtime_entry,
