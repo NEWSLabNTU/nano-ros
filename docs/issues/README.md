@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0747** (testing/rmw, open 2026-08-21) — `check-rmw-cyclonedds` went 3 red in ~6 in-sweep `just check`
+runs and 0 red in 3 solo runs, a different test each time — issue 0703's shape, but NOT its cause. The bind
+error names it: `failed to bind to ANY:8650: address in use`, i.e. domain **5**, while 0703 was about
+domains >=102 reaching the ephemeral range. Plain collision. Cause: #0707 added probe-and-step to ONE of the
+three domain assigners `nros_test_domain.h` calls "one scheme, three languages" — the Rust one probes
+`/proc/net/udp` and steps; the C++ (`getpid() % 101 + 1`) and shell mirrors still pick blind. With 101
+buckets, a 32-way fan-out and sequential PIDs, two participants 101 PIDs apart share a bus, so a collision
+inside one sweep is the expected case rather than bad luck. Fix: give all three the same probe, in one
+commit. See `0747-*`. (2026-08-21)
+
 **#0746** (core, open 2026-08-21) — the executor timer OVER-CREDITS under subscription load: a 30 ms
 timer (0745-seeded, tier-bound) is exact standalone (31.6 ms mean, n=1265) but publishes at ~50 Hz —
 1.5x — against real traffic (8.8 KiB trajectories at 10 Hz + four more subs), sustained over 25 s, so
