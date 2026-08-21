@@ -259,17 +259,17 @@ run, so it is specific to the service reply type. Deterministic 3/3 in-sweep and
 phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstream, rebuilding fixtures and
 reproducing. See `0741-*`. (2026-08-21)
 
-**#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
-fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7
-timer(s) fired`: it IS scheduled a thousand times, and its 10 ms timer — due every ~10 spins of a 1 ms spin
-loop — fired 7. So the defect is the TIMER/CLOCK, not scheduling, and the assertion's wording points at the
-wrong layer. RULED OUT with measurements: SCHED_SPORADIC (raising the hardcoded `sched_ss_max_repl=1`
-changed nothing; compiling sporadic out left it inverted), #636's boot-tier choice, phase-359 W10 (NuttX has
-had no `std` since W7, so both clock arms are unchanged vs `121b555c9^`). Two claims in the first draft were
-WRONG and are corrected in place: it is not a museum binary, and it does not "pass in the sweep" — tier 1
-puts the nuttx rows out of lane (4 ran, 12 out of lane). Uncovered a SECOND failure: `nuttx-riscv/rust` gets
-`/ctrl` 0 with no priority applied and `sporadic FAILED rc=22`, hidden until its fixture was built. See
-`0736-*`. (2026-08-21)
+**#0736** (core/platform/testing, open 2026-08-20) — ROOT-CAUSED 2026-08-22: the fast tier's timer is not
+under-firing, it is not being DISPATCHED, and `spin_once`'s cooperative Sporadic budget check
+(`if !has_budget { continue; }`) is what skips it. Counted per executor in one 45 s run: the `low` tier,
+which declares no budget, spins 450 and dispatches 450 (1:1); the `high` tier (`budget_us=5000`,
+`period_us=10000`) spins 1250, takes **1200 budget skips**, and dispatches 3. The callback costs 2-4 ms, so
+one or two activations exhaust a 5 ms budget and it never recovers. This also retires the earlier
+SCHED_SPORADIC dead end and explains it: the same declaration is enforced TWICE, once by the NuttX kernel
+and once cooperatively by the executor, and only the second starves the tier — so removing the kernel half
+could never have helped. Three earlier readings refuted, including two of mine. Open on the FIX, which is a
+design call: an unsatisfiable budget should be reported, not absorbed into a 0.2 % dispatch rate. See
+`0736-*`. (2026-08-22)
 
 Recently resolved (2026-08-21): **#0734** — `nros-rmw-zenoh` was compiled TWICE into a C++ image
 (`libnros_c.a` and `libnros_cpp.a` each carried their own build under different `-C metadata`, so ~195 KiB

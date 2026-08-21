@@ -243,3 +243,86 @@ The first version of this probe put its `static CALLS` counter inside
 static is instantiated per `F` — one counter per tier. The "total" it printed was
 one tier's, and both sampled lines were the 100 ms timer's while the 10 ms one
 under investigation never appeared. The counter belongs in a non-generic helper.
+
+## ROOT CAUSE, measured 2026-08-22 — the executor's own Sporadic budget gate
+
+The fast tier's timer is not under-firing. It is not being DISPATCHED, and the
+thing skipping it is `spin_once`'s cooperative Sporadic budget check:
+
+```rust
+// packages/core/nros-node/src/executor/spin.rs
+if !has_budget {
+    continue;          // <- entry not dispatched at all this spin
+}
+```
+
+Counted per executor, keyed by arena address, one 45 s run:
+
+| executor | `spin_once` entries | budget SKIPS | timer dispatches |
+| --- | --- | --- | --- |
+| boot / `low` (declares no budget) | 450 | **0** — no rows at all | **450** (1:1) |
+| spawned / `high` (`budget_us=5000`, `period_us=10000`) | 1250 | **1200** | **3** |
+
+96 % of the fast tier's spins never reach its timer. The low tier, identical in
+every respect except that it declares no budget, dispatches on every single
+spin. That is the whole defect.
+
+The callback costs 2–4 ms (measured at the timer: `delta=2000..4000`, and the
+`timer-overrun-runtime timer measured=1..3` warnings say the same). Against a
+5000 µs budget, one or two activations exhaust it — and it then does not
+recover, which is what 1200 consecutive skips means. Whether that is the
+replenishment never running or the consumption being charged the whole
+inter-spin `delta_us` (10–80 ms here) rather than the callback's own runtime is
+the next question, and the code right below the gate names the suspect itself:
+*"Phase 110.E.b follow-up — per-callback runtime accounting (replaces this
+cycle-level attribution)"*.
+
+### This retires the earlier SCHED_SPORADIC dead end, and explains it
+
+An earlier pass suspected NuttX's KERNEL sporadic server, found
+`sched_ss_max_repl` hardcoded to 1, fixed it, and measured no change — then
+compiled the kernel sporadic call out entirely and still saw the inversion.
+Both results were right, and now they make sense: the same
+`[tiers.high.nuttx] budget_us/period_us` declaration is enforced TWICE, once by
+the kernel and once cooperatively by the executor, and only the second one was
+starving the tier. Removing the kernel half could never have helped.
+
+### How each earlier reading was wrong, since three of them were mine
+
+* "The tier's sense of time does not keep up with it" — backwards; the clock
+  runs 6.5-7.9x AHEAD under `-icount`.
+* "The defect is in when the executor decides a timer is DUE" — the timer
+  arithmetic is correct and every fire is accounted for by the dispatches it
+  received.
+* "Two copies of the ctrl timer, and the spawned tier's may never be
+  dispatched" — REFUTED: address-tagging shows exactly two timer entries in the
+  process, one per executor, each at its own arena's offset 0. The wiring is
+  right.
+
+### Two probe traps, both of which produced confident wrong numbers
+
+1. A `static` counter inside the generic `timer_try_process<F>` is instantiated
+   PER `F` — one counter per tier. The "total" it printed was one tier's.
+2. An executor's arena BASE address is also the address of its first entry, so
+   keying the spin-entry counter and the timer counter on the same value merged
+   the two numbers this probe existed to compare. Keying `+1` separated them.
+
+Both were caught only because the numbers disagreed with something else already
+known. A probe that is wrong in the same direction as the hypothesis would not
+have been.
+
+### Where to fix
+
+Not decided here, and the choice is a design question rather than a bug:
+
+* If the budget is meant to bound the tier's CPU share, then 5 ms per 10 ms is
+  simply not satisfiable for a callback that costs 2-4 ms on this emulated
+  target, and the DECLARATION is wrong — but a declaration being unsatisfiable
+  should be reported, not silently absorbed into a 0.2 % dispatch rate.
+* If the budget is being over-charged (cycle-level `delta_us` instead of
+  per-callback runtime), that is a straightforward accounting bug and the tier
+  is entitled to its 10 ms period.
+
+Either way, `has_budget == false` for 1200 consecutive spins with no
+diagnostic is its own defect: exactly the silent-drop shape issue 0737 gated in
+example callbacks, one layer in.
