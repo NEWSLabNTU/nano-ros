@@ -9,15 +9,17 @@ the platform vtable directly.
 
 ## Canonical reference
 
-The C vtable in
-`packages/platform/nros-platform-cffi/include/nros/platform_vtable.h`
-is the source of truth. Every function pointer's brief, parameter
-docs, ownership rules, blocking / non-blocking classification, and
-ISR-safe contract live in the Doxygen output.
+The SSoT C headers in
+`packages/platform/nros-platform-api/include/nros/` (`platform.h` +
+`platform_net.h`, `platform_timer.h`, `platform_zephyr.h`; RFC-0054 —
+Rust consumes committed bindgen output from them) are the source of
+truth. Every symbol's brief, parameter docs, ownership rules,
+blocking / non-blocking classification, and ISR-safe contract live in
+the Doxygen compiled from those headers.
 
 | Surface | Link |
 |---|---|
-| **platform-cffi Doxygen** (canonical) | [HTML](../api/platform-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/platform/nros-platform-cffi/include/nros/platform_vtable.h) |
+| **platform ABI Doxygen** (canonical) | [HTML](../api/platform-cffi/index.html) · [headers](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-api/include/nros) |
 
 To regenerate locally:
 

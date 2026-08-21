@@ -10,6 +10,7 @@ INPUT                  = include/nros/rmw_vtable.h \
                          include/nros/rmw_ret.h \
                          include/nros/rmw_entity.h \
                          include/nros/rmw_event.h \
+                         include/nros/rmw_transport.h \
                          docs/mainpage.md
 
 RECURSIVE              = NO

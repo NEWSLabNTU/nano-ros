@@ -5700,11 +5700,19 @@ doc-rmw-cffi:
     # packages/core/nros-rmw-abi. The recipe followed the crates and the
     # Doxyfile did not move with them.
     (cd packages/core/nros-rmw-abi && doxygen Doxyfile)
+    ls target/doxygen/rmw-cffi/html/*_8h.html >/dev/null 2>&1 || {
+        echo "doc-rmw-cffi: doxygen emitted NO header pages — INPUT paths stale?" >&2
+        exit 1
+    }
     echo "rmw-cffi docs generated: target/doxygen/rmw-cffi/html/index.html"
 
-# Generate Doxygen for the platform vtable (porter-facing). Triggers a
-# build of nros-platform-cffi first so the cbindgen-emitted header
-# exists.
+# Generate Doxygen for the platform ABI (porter-facing), from the SSoT C
+# headers in nros-platform-api (RFC-0054). The pre-0054 version of this
+# recipe cbindgen-built a header out of the cffi crate and pointed doxygen
+# at a path that stopped existing when the direction flipped — doxygen
+# warns-and-succeeds on missing INPUT, so the published "canonical
+# reference" was an EMPTY shell (mainpage, zero header pages) and nothing
+# went red. Hence the emitted-page assertion below, on both doc recipes.
 [private]
 doc-platform-cffi:
     #!/usr/bin/env bash
@@ -5715,13 +5723,12 @@ doc-platform-cffi:
         nros_check_skip docs-platform-cffi "doxygen not found"
         exit 0
     fi
-    header="packages/platform/nros-platform-cffi/include/nros/platform_vtable.h"
-    if [ ! -f "$header" ]; then
-        echo "Generated header not found, building nros-platform-cffi first..."
-        cargo build -p nros-platform-cffi
-    fi
     mkdir -p target/doxygen/platform-cffi
-    (cd packages/platform/nros-platform-cffi && doxygen Doxyfile)
+    (cd packages/platform/nros-platform-api && doxygen Doxyfile)
+    ls target/doxygen/platform-cffi/html/*_8h.html >/dev/null 2>&1 || {
+        echo "doc-platform-cffi: doxygen emitted NO header pages — INPUT paths stale?" >&2
+        exit 1
+    }
     echo "platform-cffi docs generated: target/doxygen/platform-cffi/html/index.html"
 
 # Generate all documentation (Rust + C + C++ + cffi vtables + book).

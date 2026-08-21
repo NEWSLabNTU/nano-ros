@@ -120,14 +120,15 @@ jobs:
           cd packages/core/nros-rmw-abi
           doxygen Doxyfile
 
-      - name: Build Doxygen — Platform vtable (porter-facing)
-        # cargo doc above already built nros-platform-cffi, which runs
-        # cbindgen and emits include/nros/platform_vtable.h. Doxygen
-        # consumes that header here.
+      - name: Build Doxygen — Platform ABI (porter-facing)
+        # RFC-0054: the SSoT C headers live in nros-platform-api (the old
+        # cbindgen direction is retired). Doxygen warns-and-succeeds on a
+        # missing INPUT, which is how the published reference shipped EMPTY
+        # for a while — hence the emitted-page assertion.
         run: |
           mkdir -p target/doxygen/platform-cffi
-          cd packages/platform/nros-platform-cffi
-          doxygen Doxyfile
+          (cd packages/platform/nros-platform-api && doxygen Doxyfile)
+          ls target/doxygen/platform-cffi/html/*_8h.html >/dev/null
 
       - name: Stage API docs into book output
         # Lay native API docs alongside the mdBook so all the
