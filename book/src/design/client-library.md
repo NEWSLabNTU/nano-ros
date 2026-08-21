@@ -69,7 +69,7 @@ loop {
 
 Convenience wrappers (`spin(count)`, `spin_blocking(opts)`, `spin_period(duration)`) exist for desktop-style use cases, but each is implemented as a `spin_once()` loop that the user could write by hand. On `no_std` targets they aren't available -- the user writes the loop.
 
-This is the reason every blocking API in nros takes `&mut Executor`. `Promise::wait`, `Stream::wait_next`, `Client::call_blocking`, the C++ `Future::wait(executor.handle(), ...)`, and the C `nros_call_service(..., timeout_ms)` all internally call `spin_once()` to keep I/O moving while waiting. They cannot rely on a background thread doing it for them, because there is none.
+This is the reason every blocking API in nros takes `&mut Executor`. `Promise::wait`, `Stream::wait_next`, `Client::call_blocking`, the C++ `Future::wait(executor.handle(), ...)`, and the C `nros_client_call(..., timeout_ms)` all internally call `spin_once()` to keep I/O moving while waiting. They cannot rely on a background thread doing it for them, because there is none.
 
 ## Executor is the session owner, not a singleton
 

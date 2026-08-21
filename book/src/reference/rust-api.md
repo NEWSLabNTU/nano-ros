@@ -19,7 +19,7 @@ plus the `nros::prelude` glob-import.
   [Two-Layer API](../concepts/two-layer-api.md) — concept page
   with the verb discipline and per-layer use cases.
 - Executor-driven app? → [`nros::Executor`](../api/rust/nros/struct.Executor.html)
-- Async/`spin_async`? → [`nros::dds_async`](../api/rust/nros/index.html) (re-exports of the async surface)
+- Async/`spin_async`? → the async surface lives on [`nros::Executor`](../api/rust/nros/struct.Executor.html) and the entity handles (`recv().await`, `call().await`) — see the crate root docs
 
 ## Generating locally
 

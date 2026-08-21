@@ -3535,6 +3535,15 @@ check-rmw-feature-matrix:
 check-support-status:
     @python3 scripts/gen-support-status.py --check
 
+# Every `nros…` identifier the book quotes must exist in the tree. The
+# 2026-08-21 persona review's dominant failure class was prose naming renamed
+# or never-existing symbols (max_callbacks_per_spin, nros_board_init_clocks,
+# try_recv_safe…) — plausible spellings nothing failed on until a reader typed
+# them. First run of this gate caught 8 more.
+[private]
+check-book-identifiers:
+    @python3 scripts/check-book-identifiers.py
+
 # Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
 # `capability`, so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.

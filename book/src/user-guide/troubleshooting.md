@@ -335,7 +335,7 @@ west --version
 bsp_zephyr: sub->callback=0x60, sub->user_data=0x4  # These should be valid addresses!
 ```
 
-**Root Cause**: The C BSP stores a pointer to the `nros_subscriber_t` struct when you call `nros_bsp_create_subscriber()`. If the Rust code moves the struct after this call (e.g., when returning it from a function), the C code's pointer becomes dangling.
+**Root Cause**: Your C glue stores a pointer to the `nros_subscription_t` struct when you hand it to a registration call. If the Rust code moves the struct after that (e.g., when returning it from a function), the C side's pointer becomes dangling.
 
 In Rust, values are moved by default:
 ```rust

@@ -3,13 +3,26 @@
 You write a ROS 2 msg package **once**. The same `src/my_msgs/` directory
 builds under both:
 
-* `colcon build` — upstream `rosidl_default_generators` produces the
-  upstream-ROS bindings.
 * a nano-ros build — `rosidl_generate_interfaces(...)` is intercepted by
-  nano-ros's wrapper and routed through nano-ros codegen.
+  nano-ros's wrapper and routed through nano-ros codegen. **No ROS 2
+  install needed** — even the `rclcpp`-shaped consumer below compiles
+  against nano-ros's source-compat layer.
+* `colcon build` — upstream `rosidl_default_generators` produces the
+  upstream-ROS bindings (this half, and only this half, needs a ROS 2
+  install; it is the optional cross-build proof at the end).
 
 Different build systems, identical source tree. No nano-ros-specific
 files in the msg package.
+
+> **Where this fits.** This chapter uses ROS 2 vocabulary
+> (`ament_cmake`, `rosidl`, `rclcpp`) because its point is that stock
+> ROS shapes work unchanged. If you came straight from
+> [First Project](first-project.md) and none of that means anything
+> yet, you can skim to "The Rust side" below or skip ahead to
+> [First Node — Rust](first-node-rust.md) and return later. The
+> standalone tree here is for clarity — in your scaffolded `my_robot`
+> workspace the same drop-in applies: put `src/my_msgs/` next to your
+> node packages.
 
 ## The msg package — stock ROS shape
 
@@ -173,7 +186,25 @@ cmake --build build -j
 ./build/src/my_app/my_app
 ```
 
-## Cross-build proof — same source under colcon
+## The Rust side
+
+The same msg package feeds a Rust node with no CMake involved: declare
+it in your node package's `package.xml` (`<depend>my_msgs</depend>`)
+and manifest (`my_msgs = { path = "../../generated/my_msgs", version =
+"0.0.0", default-features = false }` — workspace-level `generated/`,
+constant `0.0.0` version), then run `nros sync` from the workspace
+root — the package index finds `src/my_msgs/` by its `package.xml`,
+generates the `generated/my_msgs` crate, and wires the cargo patch
+table. The shipped precedent is
+`examples/workspaces/features/src/custom_msgs/` with its
+`rust_reading_listener_pkg` consumer. Full
+detail: [Message Generation](../user-guide/message-generation.md).
+
+```rust,ignore
+use my_msgs::msg::MyMsg;   // generated crate, same field names
+```
+
+## Cross-build proof — same source under colcon (optional; needs ROS 2)
 
 ```sh
 cd src && colcon build

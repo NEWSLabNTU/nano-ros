@@ -760,7 +760,8 @@ fields — but through a different seam:
       })?;
   ```
   C mirrors this with `nros_executor_register_subscription_raw_with_info`
-  (the callback receives a `nros_raw_message_info_t`).
+  (the callback receives the payload plus the attachment/metadata
+  arguments directly — there is no info struct on the C side).
 - **What's carved out.** The hot `try_recv_raw` vtable slot returns
   bytes ONLY. The metadata rides a separate `MessageInfoSlot`
   side-channel that the backend populates from its native attachment /
