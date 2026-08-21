@@ -1,8 +1,10 @@
 # Troubleshooting — First 10 Minutes
 
-The Linux starter walkthroughs assume `nros setup native --rmw zenoh`
-has run, `zenohd` is reachable, and the right Rust target is
-installed. When something goes wrong in the first ten minutes, the
+The Quick Start runs on `--rmw cyclonedds` — no router daemon exists
+on that path, so "no output" there is never a router problem; skip
+section B's router branches. The zenoh walkthroughs (First Node pages)
+additionally assume `nros setup native --rmw zenoh` has run and the
+ROS 2 zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`) is reachable. When something goes wrong in the first ten minutes, the
 error you see usually points at one of the predictable misses below.
 
 Each branch quotes the **real** stderr you can grep against — not a
@@ -178,10 +180,9 @@ thread 'main' panicked at examples/native/rust/talker/src/lib.rs:96:58:
 Failed to open session: Transport(ConnectionFailed)
 ```
 
-`zenohd` isn't running, or isn't reachable on the locator the
-talker is pointed at. Start it in another terminal (`nros setup native
---rmw zenoh` lands `zenohd` under `${NROS_HOME:-~/.nros}/sdk/zenohd/`;
-the activate file puts it on PATH):
+The zenoh router isn't running, or isn't reachable on the locator the
+talker is pointed at. The router comes from ROS 2 (nano-ros no longer
+ships one) — start it in another terminal:
 
 ```bash
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd

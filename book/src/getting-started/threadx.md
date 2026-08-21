@@ -19,21 +19,24 @@ for the per-RMW cell status.
 
 > **Prereqs.** Install the `nros` CLI once, then run
 > `nros setup <board> --rmw <rmw>` for the flavour you need (see
-> [Setup](#setup)). It provisions the cross-compiler, emulator, RMW host
-> daemon, and ThreadX/NetX sources — no hand-installed `riscv64` cross
-> toolchain, `qemu-system-riscv64`, or ROS 2 required.
+> [Setup](#setup)). It provisions the cross-compiler, emulator, and
+> ThreadX/NetX sources — no hand-installed `riscv64` cross toolchain or
+> `qemu-system-riscv64`. The zenoh path additionally needs a ROS 2
+> install for the router (`ros2 run rmw_zenoh_cpp rmw_zenohd`); xrce
+> needs only the Micro-XRCE-DDS agent, which `nros setup` installs.
 
 ## Setup
 
 `nros setup` is the single canonical command to prepare a machine to build
 nano-ros for a board. Most components are prebuilt per platform per RMW — the
-cross-compiler, emulator, RMW host daemon, and SDK sources (the ThreadX/NetX
+cross-compiler, emulator, and SDK sources (the ThreadX/NetX
 sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
-index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. You do not need ROS 2 installed.
+index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. The zenoh router is
+NOT among them — it comes from a ROS 2 install (RFC-0075); only the xrce
+agent is provisioned by `nros setup`.
 
 Packages are prebuilt where the index has a binary for your host and built from
-source otherwise — `zenohd` is the notable source build, and zenoh is the default
-`--rmw`. `--dry-run` prints the plan for your host. See
+source otherwise. `--dry-run` prints the plan for your host. See
 [Installation](installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
 
 Build the in-tree `nros` CLI (Phase 218):
@@ -51,8 +54,9 @@ nros setup qemu-riscv64-threadx --rmw zenoh   # only if you need the RISC-V64 QE
 source ./activate.sh
 ```
 
-The RMW host daemon must be **running** before any example: `zenohd` for zenoh,
-the Micro-XRCE-DDS agent for xrce. `nros setup … --rmw <rmw>` installs it.
+The RMW host daemon must be **running** before any example: for zenoh the
+ROS 2 router (`ros2 run rmw_zenoh_cpp rmw_zenohd`), for xrce the
+Micro-XRCE-DDS agent (installed by `nros setup … --rmw xrce`).
 
 ## Project layout
 
@@ -144,7 +148,18 @@ threadx-riscv64 —
 [`examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt):
 
 ```cmake
+cmake_minimum_required(VERSION 3.22)
+project(c_talker LANGUAGES C CXX)
+
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
+
+nano_ros_add_executable(c_talker src/main.c)
+ament_target_dependencies(c_talker std_msgs)
 ```
+
+The deploy coordinate lives in `package.xml`, not CMake:
+`<nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>`.
 
 Network shape (guest IP, gateway, router locator) beyond these fields
 comes from the board crate's defaults — see the
@@ -201,6 +216,13 @@ cd examples/threadx-linux/rust/talker && nros sync && cargo run --release
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9400"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
+# Then boot the image in QEMU (this is what `just threadx_riscv64 talker`
+# runs for the Rust talker; it builds first, then boots):
+just threadx_riscv64 talker
+# Under the hood: qemu-system-riscv64 -M virt -m 256M -bios none \
+#   -nographic -kernel <built-image> -netdev user,id=net0 \
+#   -device virtio-net-device,netdev=net0,...
+
 # Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
@@ -219,10 +241,12 @@ cache**; a cold first run rebuilds the Rust example (~80 s on a
 fresh checkout) before the first publish lands. threadx-riscv64
 (QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:
 
-1. Confirm `zenohd` reachable on the deploy locator
+1. Confirm the router is reachable on the deploy locator
    (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).
-2. threadx-linux: confirm the veth bridge came up via
-   `nros setup threadx-linux`.
+2. threadx-linux: if you brought up `tap-tx0` by hand, confirm it is
+   up; without it the fixtures use the loopback fallback, which is
+   fine for this tutorial (`nros setup threadx-linux` does not create
+   the interface).
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## Multi-tier scheduling (phase-297)

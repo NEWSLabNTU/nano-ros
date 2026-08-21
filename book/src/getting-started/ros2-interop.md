@@ -7,10 +7,14 @@ compatible key expressions.
 
 ## Prerequisites
 
-- [ROS 2 Humble](https://docs.ros.org/en/humble/Installation.html) installed
-- `rmw_zenoh_cpp` package (`sudo apt install ros-humble-rmw-zenoh-cpp` on
-  Ubuntu, or build from source)
-- zenohd router running
+- ROS 2 installed. For the zenoh path use
+  [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/Installation.html):
+  `sudo apt install ros-jazzy-rmw-zenoh-cpp`. **Humble and Iron ship no
+  `rmw_zenoh_cpp` apt package** — on those, either build `rmw_zenoh` from
+  source as a colcon overlay, or use the Cyclone DDS backend instead
+  (direct `rmw_cyclonedds_cpp` interop, no router at all — see
+  [Choosing an RMW](../user-guide/rmw-choosing.md))
+- The zenoh router running: `ros2 run rmw_zenoh_cpp rmw_zenohd`
 
 ## Quick Start
 
@@ -23,6 +27,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 ```bash
 # Terminal 2: Run the nano-ros talker
+nros sync                            # materialize generated/ bindings (once)
 cd examples/native/rust/talker
 RUST_LOG=info cargo run
 ```
@@ -79,8 +84,11 @@ ros2 node list         # Shows nano-ros nodes
 
 ### Domain ID
 
-Both sides must use the same ROS domain ID. nano-ros reads `ROS_DOMAIN_ID`
-from the environment (default: `0`):
+Both sides must use the same ROS domain ID. On **native/POSIX** builds
+nano-ros reads `ROS_DOMAIN_ID` from the environment (default: `0`). On
+**embedded** targets the domain ID is fixed at compile time — per-example
+`config.toml` / `package.xml` deploy metadata, or `CONFIG_NROS_DOMAIN_ID`
+on Zephyr (see [Workflow](../user-guide/workflow.md)):
 
 ```bash
 ROS_DOMAIN_ID=42 cargo run    # nano-ros side
@@ -122,11 +130,14 @@ nano-ros uses the same wire format as `rmw_zenoh_cpp`:
 - **RMW attachment**: 33-byte metadata (sequence number, timestamp, GID)
   appended via Zenoh attachment
 
-### ROS 2 Iron and Beyond
+### ROS 2 Editions
 
-Iron uses actual type hashes (`RIHS01_<sha256>`) instead of
-`TypeHashNotSupported`. nano-ros currently supports Humble only. Iron support
-is planned.
+Three editions ship as Cargo features / `--ros-edition` values (RFC-0056):
+`ros-humble` (default; `TypeHashNotSupported` key expressions, XCDR1),
+`ros-iron`, and `ros-jazzy` (both RIHS01 type hashes). Pick the edition
+matching the ROS 2 install you interop with — a Humble-edition image
+against a Jazzy bus (or vice versa) discovers nothing, because the key
+expressions differ.
 
 ## Troubleshooting
 

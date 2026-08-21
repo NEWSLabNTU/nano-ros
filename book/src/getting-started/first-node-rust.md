@@ -1,8 +1,10 @@
 # First Node — Rust (Linux)
 
 Build, run, and verify a single nano-ros publisher node on Linux in
-about ten minutes. Uses the canonical Zenoh backend; no router needs
-to be pre-installed (the repo ships `zenohd`).
+about ten minutes. Uses the canonical Zenoh backend. The zenoh router comes from ROS 2
+(`ros2 run rmw_zenoh_cpp rmw_zenohd`) — nano-ros no longer ships one.
+No ROS 2 on this machine? Use `--rmw cyclonedds` instead: it needs no
+router at all (see [Choosing an RMW](../user-guide/rmw-choosing.md)).
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 
@@ -32,8 +34,8 @@ source ./activate.sh          # bash / zsh
 source ./activate.fish        # fish
 ```
 
-Then provision the native host (installs the zenoh router `zenohd`
-into a shared store — no ROS 2 needed):
+Then provision the native host (installs the zenoh client stack into a
+shared store; the router itself comes from your ROS 2 install):
 ```sh
 nros setup native --rmw zenoh
 ```
@@ -148,8 +150,9 @@ seconds.
 Three terminals (each command below blocks; keep them open):
 
 ```bash
-# Terminal 1 — zenoh router. Blocks the shell until Ctrl-C.
-zenohd                               # installed by `nros setup native`
+# Terminal 1 — zenoh router (ROS 2's own). Blocks the shell until Ctrl-C.
+source /opt/ros/humble/setup.bash
+ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 
 # Terminal 2 — the talker. The talker logs via `log::info!`, so set
 # RUST_LOG=info — without it `env_logger` only shows errors and the
@@ -170,15 +173,10 @@ That's the nano-ros side fully working. **Optional step:** verify
 interop with stock ROS 2.
 
 ```bash
-# Terminal 3 — stock ROS 2 with rmw_zenoh_cpp. NOTE: rmw_zenoh_cpp
-# uses its OWN router daemon (`ros2 run rmw_zenoh_cpp rmw_zenohd`),
-# NOT the in-tree zenohd from terminal 1. They need to peer with
-# each other, or both clients need to point at the same router.
-# Simplest: stop terminal 1 and run only `rmw_zenohd` instead, then
-# launch the talker pointing at rmw_zenohd's port (default 7447).
+# Terminal 3 — stock ROS 2 with rmw_zenoh_cpp. It talks to the SAME
+# router already running in terminal 1 (default tcp/127.0.0.1:7447).
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 run rmw_zenoh_cpp rmw_zenohd &       # in its own subshell
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
 # RELIABLE, so the QoS-mismatched echo silently delivers nothing.
 # Force best-effort to receive:
@@ -198,7 +196,7 @@ seconds:
 1. Confirm `RUST_LOG` is set. Without `RUST_LOG=info` (or `debug`),
    `env_logger` filters out the `Publishing:` lines and the run looks
    silent even when it's working.
-2. Confirm `zenohd` is running (terminal 1). Without it, the talker
+2. Confirm the router is running (terminal 1). Without it, the talker
    blocks on `Executor::open` indefinitely.
 3. Re-run with `RUST_LOG=debug cargo run` and look for "Failed to
    open session" — usually a wrong locator or wrong port.

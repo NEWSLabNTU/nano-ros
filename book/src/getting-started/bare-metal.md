@@ -28,9 +28,10 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 nros setup qemu-arm-baremetal --rmw zenoh
 ```
 
-> Real-board variants exist too: `nros setup mps2-an385` and
-> `nros setup stm32f4` provision the same bare-metal toolchain for
-> physical hardware.
+> A board-named variant exists too: `nros setup mps2-an385` provisions
+> the same QEMU toolchain under a board-named key (nothing extra for
+> physical hardware — no probe/flash tooling). For a real STM32F4 see
+> the [out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
 
 ## Project layout
 
@@ -166,7 +167,7 @@ seconds), expect `Publishing: 'Hello World: 1'` on semihosting
 stdout — the count starts at 1, matching the official ROS 2 demo
 talker. If no `Publishing:` line:
 
-1. `zenohd` not running — talker spins on smoltcp poll until
+1. Router not running — talker spins on smoltcp poll until
    killed.
 2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
    `-nic user,model=lan9118` (or equivalent). The example's

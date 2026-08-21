@@ -93,27 +93,26 @@ When a project grows beyond one node, continue with
 | Vendor / form factor      | Chip          | RTOS / no-RTOS  | Languages | Example in repo                                   | ROS 2 interop |
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
-| ST STM32F4-Discovery      | Cortex-M4F    | bare            | Rust ²    | out-of-tree — [worked example](porting/stm32f4-out-of-tree.md) | Untested ⁵ |
+| ST STM32F4-Discovery      | Cortex-M4F    | bare            | Rust ²    | out-of-tree — [worked example](porting/stm32f4-out-of-tree.md) | Untested ⁴ |
 | Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/`                          | Ready         |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C C++ | `examples/qemu-riscv64-threadx/`                  | Verified      |
 | Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C C++ | `examples/threadx-linux/`                         | Verified      |
 | QEMU virt / Cortex-A9     | Cortex-A7 / A9 | NuttX / Zephyr | Rust C C++ | `examples/qemu-arm-nuttx/`, `examples/zephyr/`    | Verified      |
-| Pixhawk 4 / 6X            | STM32F7 / H7  | NuttX (PX4)     | C++       | `integrations/px4/module-template/`               | Ready ⁴       |
+| Pixhawk 4 / 6X            | STM32F7 / H7  | NuttX (PX4)     | C++       | `integrations/px4/module-template/`               | Ready ³       |
 | Generic Cortex-M0+/M4/M7  | ≥ 64 KB SRAM  | RTOS of choice  | Rust C C++ | Use your board's vendor BSP + integrations shells | Pattern shown |
 
-**Legend:** *Verified* = booted + tested in CI. *Ready* = builds and
-runs but no in-CI gate yet — drop into the matching `examples/<plat>/`
-to compile and try.
+**Legend:** *Verified* = booted + tested in CI. *Ready* = builds but no
+in-CI gate yet — where the row names an `examples/<plat>/` directory there
+is an app to compile and try; where it names an `integrations/` shell there
+is build glue but no worked reference app yet.
 
 Footnotes — ¹ MPS2-AN385 bare-metal is Rust-only (`nros-c` / `nros-cpp`
 need an RTOS for libc / heap). ² STM32F4 is reached through the
 customization ladder, not an in-tree crate; a FreeRTOS variant sits on the
-shared `nros-board-freertos` glue. ³ ESP32-S3 needs the `xtensa-esp32s3-none-elf`
-Rust target via the [`espup`](https://github.com/esp-rs/espup) toolchain
-installer (not `rustup` — Xtensa targets aren't in upstream rust). ⁴ PX4 path is via the
+shared `nros-board-freertos` glue. ³ PX4 path is via the
 external-module template in `integrations/px4/` — C++ only because
-PX4's uORB binding is C++-only. ⁵ *Untested* = the code path exists and the
+PX4's uORB binding is C++-only. ⁴ *Untested* = the code path exists and the
 port is documented, but no lane in this repo boots it — the hardware is not in
 the test rack and QEMU models no STM32 MAC. phase-337 W7.a moved the two
 STM32F4 board crates out of the tree for exactly that reason; keeping a row

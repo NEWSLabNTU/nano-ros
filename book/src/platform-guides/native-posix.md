@@ -17,9 +17,11 @@ embedded targets.
 
 Build the in-tree `nros` CLI (Phase 218), then provision the native
 host. For a host build there is no cross-toolchain to fetch — `nros
-setup native` installs only the RMW host daemon (`zenohd` for zenoh,
-the Micro-XRCE-DDS agent for xrce) into a shared store. ROS 2 is not
-required.
+setup native` installs the client stack (and for xrce the
+Micro-XRCE-DDS agent) into a shared store. The zenoh router is NOT
+installed: it comes from a ROS 2 install
+(`ros2 run rmw_zenoh_cpp rmw_zenohd`, RFC-0075). No ROS 2 on this
+machine? Use `--rmw cyclonedds` — it needs no daemon.
 
 ```bash
 # Build the in-tree nros CLI:

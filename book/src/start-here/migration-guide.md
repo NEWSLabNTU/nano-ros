@@ -72,10 +72,11 @@ See [Message Binding Generation](../user-guide/message-generation.md).
 
 Replace runtime `RMW_IMPLEMENTATION=...` with a compile-time selection:
 
-- `posix-zenoh` for early ROS 2 interop through `rmw_zenoh_cpp`.
-- `*-xrce` for agent-based micro-ROS-style deployments.
-- `*-dds` or `*-cyclonedds` for direct DDS/RTPS deployments where the
-  platform supports the required networking and memory model.
+- `zenoh` for ROS 2 interop through `rmw_zenoh_cpp` (default).
+- `xrce` for agent-based micro-ROS-style deployments.
+- `cyclonedds` for direct DDS/RTPS interop with `rmw_cyclonedds_cpp` —
+  no router or agent process at all — where the platform supports the
+  required networking and memory model.
 
 ## Common Porting Traps
 

@@ -31,8 +31,9 @@ source ./activate.sh          # bash / zsh
 source ./activate.fish        # fish
 ```
 
-Then provision the native host (installs the zenoh router `zenohd`
-into a shared store — no ROS 2 needed):
+Then provision the native host (installs the zenoh client stack into a
+shared store; the router itself comes from your ROS 2 install —
+`ros2 run rmw_zenoh_cpp rmw_zenohd`):
 ```sh
 nros setup native --rmw zenoh
 ```
@@ -155,8 +156,9 @@ The first configure pulls and builds nano-ros's Rust staticlibs
 Three terminals.
 
 ```bash
-# 1. Start the zenoh router:
-zenohd                               # installed by `nros setup native`
+# 1. Start the zenoh router (ROS 2's own):
+source /opt/ros/humble/setup.bash
+ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 
 # 2. Run the talker:
 cd examples/native/c/talker
@@ -182,7 +184,7 @@ open + the first 1 s timer tick), the binary should print
 the count at 1, matching the official ROS 2 demo talker. If no
 `Publishing:` line in 30 seconds:
 
-1. Confirm `zenohd` is running (terminal 1). Without it,
+1. Confirm the router is running (terminal 1). Without it,
    `nros_support_init` returns immediately with `-4`
    (`NROS_RET_NOT_FOUND` — connection refused).
 2. Wrong locator / unreachable host → same `-4` signature in stderr.

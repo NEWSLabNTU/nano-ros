@@ -48,7 +48,10 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 # 2. Provision a board + RMW (analogous to `rosdep install`):
 nros setup native --rmw zenoh
 
-# 3. Build + run an example (the nano-ros source is vendored in your project):
+# 3. Generate message bindings, then build + run an example
+#    (generated/ and .cargo/config.toml are gitignored — a fresh
+#    clone cannot build without this step):
+nros sync
 cd examples/native/rust/talker
 cargo run
 ```
@@ -115,19 +118,23 @@ Multi-RMW bridges (one binary, two or more backends) use
   The locked policy is `git clone --branch=v<X.Y.Z>` +
   in-tree build.
 - **Per-board provisioning, no `rosdep`.** `nros setup <board> --rmw <rmw>`
-  is the single setup command. It fetches toolchains (cross-gcc, emulator),
-  the RMW host daemon, and SDK sources for exactly that board+RMW into
-  `~/.nros/sdk` — no system-wide package install, no ROS distro. Most are
-  prebuilt; a few without a seeded asset are built from source, `zenohd`
-  (the default RMW's daemon) among them — `--dry-run` says which on your host.
+  is the single setup command. It fetches toolchains (cross-gcc, emulator)
+  and SDK sources for exactly that board+RMW into `~/.nros/sdk` — no
+  system-wide package install. Most are prebuilt; a few without a seeded
+  asset are built from source — `--dry-run` says which on your host. The
+  zenoh router is deliberately NOT provisioned: it comes from a ROS 2
+  install (`ros2 run rmw_zenoh_cpp rmw_zenohd`, RFC-0075), so the zenoh
+  path needs ROS 2 on the router host; xrce and cyclonedds do not.
   (The `just <module> setup` recipes call the same command for contributors.)
 - **Compile-time RMW + platform.** Embedded targets can't `dlopen`,
   so the RMW and platform combination is locked in by CMake cache
   vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at
   build time.
-- **No install prefix.** removed `just install-local` and
-  every `install(...)` rule; consumers pull nano-ros into their build
-  via `add_subdirectory(<repo-root>)`. The
+- **No install prefix.** Phase 140 removed `just install-local`; there
+  is no `cmake --install` step for nano-ros itself — consumers pull it
+  into their build via `add_subdirectory(<repo-root>)` or
+  `find_package(nano_ros)` from the checkout. (Example packages still
+  carry their own `install(TARGETS …)` for colcon compatibility.) The
   integration shells under `integrations/<rtos>/` re-export the same
   root CMake under each RTOS's native package manager.
 - **Generated bindings in-tree.** Message codegen lands under

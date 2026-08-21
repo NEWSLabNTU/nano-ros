@@ -52,7 +52,7 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 | `NANO_ROS_PLATFORM` | `posix` | `posix`, `freertos` (`freertos_armcm3`), `nuttx` (`nuttx_armv7a`), `threadx` (`threadx_linux`, `threadx_riscv64`), `zephyr`, `baremetal` |
 | `NANO_ROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `riscv64-qemu`) and `baremetal` (`mps2-an385`, `stm32f4-nucleo`, …) |
 | `NANO_ROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
-| `NANO_ROS_ROS_EDITION` | `humble` | `humble`, `iron` |
+| `NANO_ROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
 | `NANO_ROS_BUILD_CODEGEN` | `ON` | `ON` / `OFF` |
 
 Variables MUST be `set(...)` BEFORE `add_subdirectory(...)` — the

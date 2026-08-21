@@ -267,12 +267,15 @@ tests are `#[ignore]`d pending a fully non-blocking TCP read path.
 
 ### Version pinning
 
-All zenoh components must be the **same version**. A version mismatch between
-zenoh-pico and zenohd causes transport-level failures (`-100`,
-`_Z_ERR_TRANSPORT_TX_FAILED`) that look like network issues.
-
-nros pins zenohd and zenoh-pico to the **same version**. zenohd is built from
-the `scripts/zenohd/zenoh/` submodule; zenoh-pico from `zpico-sys/zenoh-pico/`.
+The zenoh router is ROS 2's own (`ros2 run rmw_zenoh_cpp rmw_zenohd`,
+RFC-0075) — nano-ros no longer vendors one, so the router version always
+matches the `rmw_zenoh_cpp` your ROS nodes use. zenoh-pico is pinned at
+`zpico-sys/zenoh-pico/` (1.7.2); its wire protocol is stable across
+zenoh 1.x, so it interoperates with a newer ROS-shipped router
+(issue 0291). A transport-level failure (`-100`,
+`_Z_ERR_TRANSPORT_TX_FAILED`) that looks like a network issue can still
+be a protocol-major mismatch — check both versions before debugging
+the network.
 
 ## ESP32-C3 (RISC-V)
 

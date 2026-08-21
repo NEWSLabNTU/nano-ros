@@ -255,7 +255,7 @@ ROS 2 environment:
 - `std_msgs` (Bool, Int32, String, Header, etc.)
 - `builtin_interfaces` (Time, Duration)
 
-These are located at `packages/codegen/interfaces/`. When a ROS 2 environment is sourced,
+These are located at `packages/cli/interfaces/`. When a ROS 2 environment is sourced,
 the ament index takes precedence over bundled files.
 
 ## Troubleshooting

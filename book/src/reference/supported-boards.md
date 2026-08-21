@@ -29,7 +29,7 @@ but no one has reported booting nano-ros on them.
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
 | Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | Tested  | `examples/qemu-esp32-baremetal/rust/`                              |
 | Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | Ready (build-only) | `integrations/nano-ros/`                                 |
-| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | ESP-IDF        | Ready (build-only) | `packages/boards/nros-board-esp32s3/`                    |
+| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | ESP-IDF        | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
 | Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | ESP-IDF        | Untested | Same ESP-IDF path as C3                                            |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
@@ -39,7 +39,7 @@ but no one has reported booting nano-ros on them.
 | QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr        | Tested   | Zephyr `-b qemu_cortex_a9`                                         |
 | QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-arm-nuttx/`                                         |
 | QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup qemu-riscv-nuttx`) |
-| NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Ready (build-only, experimental) | `packages/boards/nros-board-orin-spe/`               |
+| NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Not supported (no board crate) | Board crate removed (phase-337); FreeRTOS starter + vendor BSP is the path back |
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
 | Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |

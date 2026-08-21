@@ -16,11 +16,13 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    ```bash
 >    ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
 >    source ./activate.sh        # OR: direnv allow / source ./activate.fish
->    nros setup qemu-esp32-baremetal --rmw zenoh     # lands the RMW host daemon
->                                     # (zenohd for zenoh, the
->                                     # Micro-XRCE-DDS agent for xrce)
->                                     # in ${NROS_HOME:-~/.nros}/sdk, AND clones the
->                                     # transport submodules
+>    nros setup qemu-esp32-baremetal --rmw zenoh     # lands the toolchain
+>                                     # (and for xrce the Micro-XRCE-DDS
+>                                     # agent) in ${NROS_HOME:-~/.nros}/sdk,
+>                                     # AND clones the transport submodules.
+>                                     # The zenoh router is NOT installed —
+>                                     # it comes from ROS 2
+>                                     # (ros2 run rmw_zenoh_cpp rmw_zenohd)
 >                                     # (zenoh-pico + mbedtls for zenoh)
 >                                     # into the nano-ros checkout
 >                                     # so the IDF build can compile
@@ -66,7 +68,7 @@ After `idf.py menuconfig`:
 ```
 Component config → nano-ros
     RMW backend          (zenoh)        zenoh | xrce | cyclonedds
-    ROS 2 edition        (humble)       humble | iron
+    ROS 2 edition        (humble)       humble | iron | jazzy
 ```
 
 The nano-ros component itself exposes only those two knobs.

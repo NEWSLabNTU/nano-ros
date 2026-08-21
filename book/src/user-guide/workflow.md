@@ -89,7 +89,7 @@ targets):
 | `set(NANO_ROS_BOARD <board>)` (optional, embedded only) | `nros-board-<board>` dep |
 
 Supported pairs: `posix / freertos / nuttx / threadx / zephyr / esp32 /
-baremetal` × `zenoh / xrce / dds / cyclonedds`. Not every cell is
+baremetal` × `zenoh / xrce / cyclonedds`. Not every cell is
 implemented — see the [Coverage Matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix).
 
 Runtime configuration (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, …) works on

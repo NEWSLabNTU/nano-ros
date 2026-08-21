@@ -32,7 +32,7 @@ comparison.
 | **QoS support** | Backend-dependent matrix (Zenoh 4/7, XRCE 4/7, Cyclone DDS 7/7) | Subset of XRCE QoS |
 | **Formal verification** | 160 Kani harnesses + 102 Verus proofs (CDR, scheduling, RMW glue) | None published |
 | **E2E safety protocol** | CRC-32/ISO-HDLC + sequence tracking, EN 50159-mapped (`safety-e2e` feature) | None |
-| **ROS 2 distro coverage** | Humble (Iron deferred — type-hash work pending) | Humble, Iron, Jazzy |
+| **ROS 2 distro coverage** | Humble, Iron, Jazzy (`ros-humble`/`ros-iron`/`ros-jazzy` features, RFC-0056) | Humble, Iron, Jazzy |
 | **Build system** | Cargo + CMake + platform tools (`west`, `idf.py`, `probe-rs`) plus `just` recipes; C/C++ consume via `add_subdirectory(<repo>)` | colcon + CMake; per-RTOS meta-build (`create`/`configure`/`build`/`flash_firmware.sh`) |
 | **Deploy/config model** | Entry packages select board/RMW/deploy shape; Bringup packages own launch topology; platform tools build and flash | `colcon.meta` (hand-tuned static sizing) + `configure_firmware.sh -t <transport>` flags + hand-coded `rclc` app |
 | **Host-side broker** | none (Zenoh P2P / Cyclone DDS brokerless); Agent only for XRCE | Micro-XRCE-DDS **Agent always required** |

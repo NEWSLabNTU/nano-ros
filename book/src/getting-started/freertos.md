@@ -8,9 +8,11 @@ bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 > that prepares your machine for this board. It fetches a prebuilt
 > toolchain set into the shared store at `~/.nros/sdk` — the
 > `arm-none-eabi-gcc` cross-compiler, the patched
-> `qemu-system-arm` emulator, the FreeRTOS kernel + lwIP sources,
-> and the RMW host daemon. You do **not** hand-install a
-> cross-toolchain and you do **not** need a ROS 2 install.
+> `qemu-system-arm` emulator, and the FreeRTOS kernel + lwIP sources.
+> You do **not** hand-install a cross-toolchain. The zenoh path DOES
+> need a ROS 2 install for the router (`ros2 run rmw_zenoh_cpp
+> rmw_zenohd`); the xrce path needs only the Micro-XRCE-DDS agent,
+> which `nros setup` installs.
 
 ## Setup
 
@@ -28,9 +30,10 @@ or `cyclonedds` to match the example you intend to run):
 nros setup qemu-arm-freertos --rmw zenoh
 ```
 
-This fetches the cross-compiler, the patched `qemu-system-arm`, the
-FreeRTOS + lwIP sources, and the RMW host daemon (`zenohd` for
-zenoh, the Micro-XRCE-DDS agent for xrce) into `${NROS_HOME:-~/.nros}/sdk`.
+This fetches the cross-compiler, the patched `qemu-system-arm`, and the
+FreeRTOS + lwIP sources into `${NROS_HOME:-~/.nros}/sdk` (plus the
+Micro-XRCE-DDS agent when you pick `--rmw xrce`). The zenoh router is
+NOT installed — it comes from your ROS 2 install (RFC-0075).
 
 ## Project layout
 

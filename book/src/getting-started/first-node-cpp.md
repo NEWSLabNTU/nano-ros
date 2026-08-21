@@ -32,8 +32,9 @@ source ./activate.sh          # bash / zsh
 source ./activate.fish        # fish
 ```
 
-Then provision the native host (installs the zenoh router `zenohd`
-into a shared store — no ROS 2 needed):
+Then provision the native host (installs the zenoh client stack into a
+shared store; the router itself comes from your ROS 2 install —
+`ros2 run rmw_zenoh_cpp rmw_zenohd`):
 ```sh
 nros setup native --rmw zenoh
 ```
@@ -156,8 +157,9 @@ Re-builds finish in seconds.
 Three terminals.
 
 ```bash
-# 1. zenoh router (installed by `nros setup native`):
-zenohd
+# 1. zenoh router (ROS 2's own):
+source /opt/ros/humble/setup.bash
+ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 
 # 2. Run the talker:
 cd examples/native/cpp/talker
@@ -188,7 +190,7 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 at 1, matching the official ROS 2 demo talker. If no `Publishing:`
 line in 30 seconds:
 
-1. Confirm `zenohd` is running (terminal 1). Without it,
+1. Confirm the router is running (terminal 1). Without it,
    `nros::init` returns `-100` (TransportError) — the
    `NROS_TRY_RET` macro logs the failed call to stderr.
 2. Check stderr for `[nros] …/main.cpp:LINE nros::init(...) -> -N`

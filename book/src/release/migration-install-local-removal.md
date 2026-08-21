@@ -98,7 +98,7 @@ the C/C++ snippet above.
   target dir).
 - The `build/install/share/nano-ros/interfaces/` bundled-interface
   drop. Codegen now resolves interface files via the ament index
-  (when colcon-discovered) or directly from `packages/codegen/interfaces/`
+  (when colcon-discovered) or directly from `packages/cli/interfaces/`
   inside the nano-ros checkout.
 - The `cmake --install build` step. There is nothing nano-ros-side
   to install. Your own project ships its binary; nano-ros is a
