@@ -550,7 +550,22 @@ def main() -> int:
         # canonicalised). Consistent resolution keeps `rel` = the package-
         # relative interface path for the scratch-dir adapter copy below.
         iface_path = iface_path.resolve()
-        rel = iface_path.relative_to(args.pkg_dir.resolve())
+        try:
+            rel = iface_path.relative_to(args.pkg_dir.resolve())
+        except ValueError:
+            # Out-of-package interface file. Legitimate since explicit file
+            # lists resolve per-file through local paths AND the ament index:
+            # a consumer can override ONE message of an ament-resolved package
+            # with a local patched copy (ASI bounds Trajectory.msg's point
+            # sequence for its embedded FixedSequence capacity), and that
+            # override lives outside the package share dir `--pkg-dir` names.
+            # `rel` only shapes the scratch mirror the adapter runs in, and
+            # the adapter needs the canonical `<pkg>/msg/<Name>.msg` layout —
+            # so lay the file out by its kind directory + basename.
+            kind = {".msg": "msg", ".srv": "srv", ".action": "action"}.get(
+                iface_path.suffix, "msg"
+            )
+            rel = Path(kind) / iface_path.name
 
         if iface_path.suffix == ".action":
             # Actions are synthesized directly (rosidl ships no
