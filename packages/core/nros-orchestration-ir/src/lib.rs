@@ -790,6 +790,52 @@ mod tests {
         }
     }
 
+    /// issue 0636 — the sort direction is LOAD-BEARING for two boards, and
+    /// nothing pinned it.
+    ///
+    /// `resolve_tiers` returns highest RAW priority FIRST, and the system owner
+    /// authors numbers correct for the target RTOS's direction (v1 does not
+    /// invert). Three boards no longer care: NuttX, Linux and FreeRTOS choose
+    /// their boot tier with `nros_platform::boot_tier_index`, which computes
+    /// the least urgent tier from the priorities and the kernel's direction.
+    ///
+    /// ThreadX and Zephyr still take `tiers[0]`, and that is correct ONLY
+    /// because both are smaller-number-wins kernels and this sort is
+    /// DESCENDING — so `tiers[0]` is the numerically-largest, i.e. the least
+    /// urgent. Their chain-spawn walks `&tiers[1..]`, so making the index
+    /// computed there is a restructure rather than a one-line change; pinning
+    /// the property they depend on is the cheaper half and it is the half that
+    /// was missing.
+    ///
+    /// If this sort ever became ascending, those three boards would follow it
+    /// correctly and these two would silently boot the MOST urgent tier —
+    /// reintroducing 0636's starvation on exactly the two kernels that have no
+    /// `TierPriority` cell. That is a coincidence holding up a fix, so it is
+    /// stated here as an assertion.
+    #[test]
+    fn resolve_tiers_returns_highest_priority_first() {
+        let mut tiers = BTreeMap::new();
+        tiers.insert("low".to_string(), posix_tier(100, None, None));
+        tiers.insert("high".to_string(), posix_tier(110, None, None));
+        tiers.insert("mid".to_string(), posix_tier(105, None, None));
+        let mut cbgs = BTreeMap::new();
+        cbgs.insert(
+            "n".to_string(),
+            vec![cbg("a", "high"), cbg("b", "mid"), cbg("c", "low")],
+        );
+
+        let table = resolve_tiers(&tiers, &[], &names(&["n"]), &cbgs, "posix").unwrap();
+        let order: Vec<i64> = table.tiers.iter().map(|t| t.priority).collect();
+        assert_eq!(
+            order,
+            vec![110, 105, 100],
+            "resolve_tiers must return highest RAW priority first — ThreadX and \
+             Zephyr take tiers[0] as the boot tier and depend on it being the \
+             LEAST urgent, which on those smaller-number-wins kernels is only \
+             true while this order is descending (issue 0636)"
+        );
+    }
+
     /// Phase 256 W4 (decision A) — a `[tiers.<name>]` carrying the RTOS-agnostic
     /// real-time policy parses, and `resolve_tiers` carries those fields onto the
     /// `ResolvedTier` (the data the planner lowers to a `PlanSchedContext`).

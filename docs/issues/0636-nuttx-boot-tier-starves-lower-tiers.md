@@ -697,3 +697,70 @@ round here, and the emitted `__nros_tiers[]` is the thing to read.
 Both cells FAIL on the unfixed seam, so they are not vacuous: with
 `freertos_run_tiers.c` reverted they report `boot produced no
 'nros: tier priority set tier=' marker — the dim was silently dropped`.
+
+## Re-measured 2026-08-22 on a clean tree — converged, and the sweep is complete
+
+Fixtures rebuilt from scratch first (an earlier session left probe builds in
+place, and a museum binary would have made any rate meaningless).
+
+| measurement | result |
+| --- | --- |
+| `measure-tier-priority-cell.sh 12`, ambient (1-min load **12–18**) | **12 / 12** |
+| every `TierPriority` cell, one `sched_dims_applied_e2e` run | nuttx rust 2/2, nuttx cpp 2/2, freertos cpp 3/3, freertos c 2/2 — all ACCEPT, 0 FALLBACK |
+
+The load figure matters more than the count: every failing run in this issue's
+history shared the host with a build, and these twelve ran at 12–18. With the
+earlier 67/67 that is 79 consecutive passes across two hosts and three load
+regimes.
+
+**Option 2 is landed on every kernel**, which is what actually fixed this — the
+session owner is no longer the most urgent tier anywhere:
+
+| kernel | direction | how the boot tier is chosen |
+| --- | --- | --- |
+| NuttX | bigger wins | `boot_tier_index(BiggerIsMoreUrgent)` |
+| Linux/POSIX | bigger wins | `boot_tier_index(BiggerIsMoreUrgent)` |
+| FreeRTOS | bigger wins | `boot_tier_index(BiggerIsMoreUrgent)` |
+| ThreadX | smaller wins | `tiers[0]` — least urgent because the sort is descending |
+| Zephyr | smaller wins | `tiers[0]` — same (issue 0251 took this answer first) |
+
+**Independent confirmation from issue 0736.** That investigation instrumented
+the same NuttX image and counted the SPAWNED tier entering `spin_once` **1250
+times in 45 s** while the boot tier spun 450. Before this issue's fixes the
+spawned tier printed nothing in twelve seconds. So the tier is being scheduled,
+measured from a different direction by someone not looking for it — which is
+better evidence than this issue's own cell, since that cell only asserts a
+marker printed.
+
+(0736's remaining defect is one layer in and is NOT this: the spawned tier is
+scheduled and then its timer is skipped by the executor's cooperative Sporadic
+budget gate. Two different failures that both present as "the fast tier is
+quiet"; the earlier guess here that they might be one defect was wrong.)
+
+## The residue was a coincidence holding up the fix — now asserted
+
+ThreadX and Zephyr take `tiers[0]`, and that is correct ONLY because both are
+smaller-number-wins kernels and `resolve_tiers` sorts DESCENDING. Nothing tested
+that sort. The three boards that compute their choice would follow a direction
+change correctly; these two would silently boot the MOST urgent tier and
+reintroduce this issue's starvation — on exactly the two kernels that have no
+`TierPriority` cell.
+
+Their chain-spawn walks `&tiers[1..]`, so making the index computed there is a
+restructure rather than a one-line change. Pinning the property they depend on
+is the cheaper half, and it was the half that was missing:
+`resolve_tiers_returns_highest_priority_first` asserts the order and names both
+boards and this issue in its failure message. Falsified — flipping the
+comparator to ascending turns it red.
+
+## What remains
+
+Only **option 3** — "give the owner's spin a bounded blocking point so lower
+tiers get a scheduled gap by construction rather than by transport luck". With
+option 2 landed the owner is the least urgent tier, so it cannot starve the
+tiers it spawned, and the starvation this issue was opened for is gone. Option 3
+is now a robustness property rather than a fix: it would make the guarantee
+structural instead of resting on the priority order being right.
+
+Recommend closing on that basis and re-opening option 3 as its own item if a
+consumer needs the stronger guarantee.
