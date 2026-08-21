@@ -1877,3 +1877,69 @@ mod fingerprint_tests {
         }
     }
 }
+
+/// Who else is on the DDS bus, captured WHILE the peers are still alive.
+///
+/// Issue 0741 — the failing host and two passing hosts have now matched on every
+/// static axis, including the `libfastrtps` / `librmw_fastrtps_cpp` binaries
+/// byte for byte. If the software is identical, the remaining difference is
+/// what ELSE is on the bus, and that is not something a version comparison can
+/// reach.
+///
+/// It matters because the failure's own mechanism allows it: the reply reader
+/// sizes its history from a max-serialized-size learned AT DISCOVERY, and
+/// nothing requires the endpoint it learned from to be the one under test. A
+/// history of 15 bytes for a type whose correct wire size is 28 is what
+/// matching something else looks like.
+///
+/// Must be called BEFORE the server and agent are torn down — after `kill()`
+/// the bus is empty and the snapshot says nothing. That ordering is the whole
+/// reason this is a separate function rather than another line in
+/// [`interop_environment_fingerprint`], which runs inside the assert.
+///
+/// Total: every probe degrades to a note. This runs on an already-failing path.
+pub fn dds_bus_snapshot(distro: &str, domain_id: u8) -> String {
+    use std::fmt::Write as _;
+    let env = ros2_env_setup_dds_with_domain(distro, domain_id);
+    // The domain is stated because the test passes it per-invocation rather
+    // than exporting it, so the fingerprint's `ROS_DOMAIN_ID=<unset>` is honest
+    // about the process and says nothing about the bus this ran on.
+    let mut s = format!("--- DDS bus, domain {domain_id}, peers still alive ---\n");
+    // An EMPTY `nodes` list is the normal reading, not a failed probe: the XRCE
+    // agent creates DDS participants on behalf of its clients, and those are not
+    // ROS nodes. `services` and `topics` are where a foreign endpoint shows up —
+    // a SECOND `/add_two_ints`, or a reply topic nobody in this test created.
+    for (label, sub) in [
+        ("nodes", "node list"),
+        ("services", "service list -t"),
+        // Hidden topics included: a service's request/reply pair is hidden, and
+        // hiding them is precisely what would keep a foreign endpoint invisible.
+        ("topics", "topic list -t --include-hidden-topics"),
+    ] {
+        let out = std::process::Command::new("bash")
+            .args(["-c", &format!("{env} && timeout 10 ros2 {sub} 2>&1")])
+            .output();
+        match out {
+            Ok(o) => {
+                let body = String::from_utf8_lossy(&o.stdout);
+                let body = body.trim();
+                let _ = writeln!(
+                    s,
+                    "  [{label}]\n{}",
+                    if body.is_empty() {
+                        "    <empty>".to_string()
+                    } else {
+                        body.lines()
+                            .map(|l| format!("    {l}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                );
+            }
+            Err(e) => {
+                let _ = writeln!(s, "  [{label}] could not run: {e}");
+            }
+        }
+    }
+    s
+}

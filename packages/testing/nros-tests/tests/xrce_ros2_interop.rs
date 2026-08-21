@@ -316,14 +316,34 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
 
-    server.kill();
-
     eprintln!("ROS 2 DDS service call output:\n{}", ros2_output);
 
     // Check if service call succeeded
     let has_sum = ros2_output.contains("sum");
     let has_correct_value = ros2_output.contains("8");
 
+    // issue 0741 — snapshot the bus BEFORE teardown, and only on failure.
+    //
+    // Three hosts now agree on every static axis, down to the `libfastrtps` /
+    // `librmw_fastrtps_cpp` binaries being byte-identical, and still disagree on
+    // the verdict. If the software is the same, what differs is who else is on
+    // the bus — and the failure's mechanism allows exactly that: the reply
+    // reader sizes its history from a max-serialized-size learned AT DISCOVERY,
+    // with nothing requiring the endpoint it learned from to be ours.
+    //
+    // Ordering is the point. `server.kill()` and `drop(agent)` used to run
+    // above this; after them the bus is empty and any snapshot is worthless, so
+    // the capture moved ahead of teardown rather than into the assert.
+    //
+    // Only on failure: on the happy path this is three `ros2` invocations of
+    // pure cost, and the passing hosts do not need it.
+    let bus = if has_sum && has_correct_value {
+        String::new()
+    } else {
+        nros_tests::ros2::dds_bus_snapshot(DEFAULT_ROS_DISTRO, domain_id)
+    };
+
+    server.kill();
     drop(agent);
 
     // Phase 233.6 — this direction (real ROS 2 service client ↔ nano-ros XRCE
@@ -342,7 +362,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
          server — XRCE-DDS service interop regression (233.6).\n\
          --- server startup ---\n{server_startup}\n\
          --- ros2 client output ---\n{ros2_output}\n\
-         {env}",
+         {bus}{env}",
         env = nros_tests::ros2::interop_environment_fingerprint()
     );
     eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");

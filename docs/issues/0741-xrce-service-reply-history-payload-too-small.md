@@ -427,3 +427,51 @@ A second endpoint on the reply topic is the finding; none, and the foreign-peer
 hypothesis dies with it. Cheaper than another version comparison, and it is the
 first check that has not already been answered identically on both machines.
 
+## Armed again (2026-08-21) — the failing run now captures the bus, not just the versions
+
+Five axes have now been compared across the hosts and matched exactly, ending
+with the library binaries themselves. Asking someone to run three `ros2`
+commands at the right moment during a failing run is the remaining step, and
+that has a poor success rate across sessions — so the test does it.
+
+On failure, and only on failure, the assert now carries a bus snapshot taken
+**while the server and agent are still alive**:
+
+```
+--- DDS bus, domain 1, peers still alive ---
+  [nodes]
+    <empty>
+  [services]
+    /add_two_ints [example_interfaces/srv/AddTwoInts]
+  [topics]
+    /parameter_events [rcl_interfaces/msg/ParameterEvent]
+    /rosout [rcl_interfaces/msg/Log]
+```
+
+That is the GREEN reading, captured by forcing the failure path on a passing
+host — one `/add_two_ints`, nothing foreign. On the failing host, a second
+`/add_two_ints`, or a reply topic nobody in the test created, is the finding;
+the same shape as this one kills the foreign-peer hypothesis and sends the next
+reader somewhere else.
+
+Three details, each of which would have made it useless:
+
+* **Ordering.** `server.kill()` and `drop(agent)` ran BEFORE the assert, so a
+  snapshot taken there would show an empty bus and prove nothing. The capture
+  moved ahead of teardown rather than into the assert with the other
+  fingerprint.
+* **Hidden topics included.** A service's request/reply pair is hidden, and
+  hiding them is exactly what would keep a foreign endpoint out of the listing.
+* **An empty `[nodes]` is the normal reading, not a failed probe** — the agent
+  creates DDS participants on behalf of its clients and those are not ROS nodes.
+  Said in the helper, because a reader who mistakes it for a broken probe stops
+  there.
+
+Costs nothing when green: the snapshot is skipped entirely on success, and the
+suite is still 9/9 in 15 s.
+
+The domain is printed in the header because the test passes it per-invocation
+rather than exporting it — so the fingerprint's `ROS_DOMAIN_ID=<unset>` is
+honest about the process and says nothing about the bus. Worth reading together:
+this run was on **domain 1**, which is issue 0707's default for a filtered run.
+
