@@ -776,6 +776,16 @@ check-grep-q-error-conflation:
 check-no-silent-sample-drop:
     @python3 scripts/check-no-silent-sample-drop.py
 
+# phase-373 W1 — every `test()`/`binary()` predicate in .config/nextest.toml must
+# match at least one real test. The `binary()` half is already covered statically
+# by `check-nextest-binary-filters` on the fast line; this is the `test()` half,
+# which that gate cannot do because rstest case names appear nowhere in the
+# sources. It needs the test binaries, so it runs from `test-all` rather than
+# `just check`, which builds none.
+[private]
+check-nextest-test-filters:
+    @python3 scripts/check-nextest-test-filters.py
+
 [group("check")]
 check-no-tracked-file-find:
     @./scripts/check-no-tracked-file-find.sh
@@ -2906,6 +2916,13 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # ports and surface later as `failed to bind to ANY:8650: address in use` on
     # an unrelated test.
     cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true
+    # phase-373 W1 — a nextest filter that selects nothing is not an error and
+    # not visible: `show-config test-groups` prints the override either way, and
+    # a filter whose OTHER disjunct matches leaves the group looking populated.
+    # That is how `zephyr-qos-port` sat switched off since phase-329. The
+    # `binary()` half is gated statically on the fast line; the `test()` half
+    # needs the test list, which only this lane has.
+    just check-nextest-test-filters
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

@@ -73,7 +73,7 @@ the config, killing every nextest run in the repo), and a nextest `test()`
 so the fatal one sat behind a green `check` — which is why W1 needs its own
 verification and cannot ride on `just check` going green.
 
-### W1 — the `zephyr-qos-port` resource group is off (DEFECT, do first)
+### W1 — the `zephyr-qos-port` resource group is off (DEFECT) — **LANDED 2026-08-21**
 
 `test(zephyr_rust_qos)` matches ZERO tests: `entry_e2e` has had exactly one test,
 `entry_matrix`, since phase-329 W1 folded its 15 cells in. So this override
@@ -100,6 +100,27 @@ group too."*
 - [x] Swept every group override. Only this one was inert; no test-group is
       defined-but-unused, and every other `test()` name resolves.
 - [x] Verified by RUNNING nextest.
+
+**Second gate, `check-nextest-test-filters` (added after the fact).** The sibling
+`check-nextest-binary-filters` deliberately checks `binary()` only, and says why:
+`test()` names are rstest-generated cases that appear literally nowhere in the
+sources, so deriving them means compiling the workspace — "far too heavy for
+`just check`". Its own note calls the resulting gap real and already bitten, and
+W1 IS that gap: the inert predicate was a `test()`, not a `binary()`.
+
+So the same check runs where the cost is already paid — `test-all`, which has the
+binaries — reading `cargo nextest list --message-format json` and asserting every
+`test()`/`binary()` predicate matches at least one real test. Falsified against
+this very defect: reintroducing `test(zephyr_rust_qos)` makes it name that line.
+The two gates split by cost, not by scope: static and cheap on the fast line,
+derived and exact in the lane that compiles.
+
+Two traps inside it, recorded because each made it pass while checking nothing:
+`cargo nextest list`'s human output is a flat `<binary-name> <test-path>` per
+line, not an indented tree (parsing it as one reported all 73 predicates dead),
+and `--all-features` cannot be used on this workspace at all — `c-stub-test` and
+`posix-c-port` both define the canonical `nros_platform_*` symbols and the build
+script `compile_error!`s on the pair. It refuses to pass on an empty list.
 
 **ORDERING IS LOAD-BEARING, and the obvious fix was wrong.** Adding
 `binary(qos_zephyr_ros2_interop_e2e)` to the `matrix-consumers-serial` override
