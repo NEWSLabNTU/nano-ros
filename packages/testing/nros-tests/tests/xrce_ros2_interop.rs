@@ -343,7 +343,9 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         "ROS 2 service client did not get sum=8 from the nano-ros XRCE service \
          server — XRCE-DDS service interop regression (233.6).\n\
          --- server startup ---\n{server_startup}\n\
-         --- ros2 client output ---\n{ros2_output}"
+         --- ros2 client output ---\n{ros2_output}\n\
+         {env}",
+        env = nros_tests::ros2::interop_environment_fingerprint()
     );
     eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");
 }

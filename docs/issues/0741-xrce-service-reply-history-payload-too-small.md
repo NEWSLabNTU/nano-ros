@@ -138,3 +138,51 @@ Not closing: it fails there, and that is real. What this changes is the
 question — from "what is wrong with the service reply type registration" to
 "which of agent / Fast-DDS / fixture-freshness differs between the two hosts".
 
+## Armed (2026-08-21) — the failing run now describes its own environment
+
+Three hosts have now run the same command on the same tree: one fails
+deterministically, two pass. That is two "does not reproduce" reports, and a
+third would not settle it either — nothing in the failure output describes the
+stack underneath the two processes, so the one host that CAN answer the question
+is the one nobody can inspect.
+
+So the assert carries a fingerprint now
+(`nros_tests::ros2::interop_environment_fingerprint`). Sample, from a host where
+it passes:
+
+```
+--- interop environment ---
+  ROS_DISTRO=humble
+  RMW_IMPLEMENTATION=<unset>
+  ROS_DOMAIN_ID=<unset>
+  xrce agent: ~/.nros/sdk/xrce-agent/2.4.3-nros1/bin/MicroXRCEAgent
+  fastrtps: 2.6.12
+  rmw_fastrtps_cpp: 6.2.10
+```
+
+Those are the fields the diagnosis turns on. The agent registers the DDS type a
+ROS reader sizes its history from, so its version is the first comparison; Fast-DDS
+is the second, since a reader that refuses to resize is enforcing a rule some
+versions enforce differently.
+
+Two details worth keeping, because each was a bug in the first draft:
+
+* **Every AMENT prefix, both packages.** Stopping at the first prefix that
+  yielded anything reported `rmw_fastrtps_cpp` and left `fastrtps` permanently
+  "not found" — omitting the field the issue most needs. More than one version
+  of a package on the path is printed rather than collapsed: two of them is
+  itself an answer.
+* **Two version SHAPES.** `fastrtps` is not an ament package and ships no
+  `package.xml`; its version lives in
+  `share/fastrtps/cmake/fastrtps-config-version.cmake` as
+  `set(PACKAGE_VERSION "…")`. Probing only the ROS shape is what produced the
+  false "not found" above.
+
+The probe is total — every lookup degrades to a note rather than an error,
+because it runs on a path that is already failing and must not add a second
+failure mode. A unit test asserts that and prints the result under
+`--nocapture`.
+
+**Next step is a measurement, not a patch:** re-run the failing command on the
+host where it fails and compare those five lines against the sample above.
+

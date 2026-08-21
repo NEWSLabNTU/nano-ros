@@ -1767,3 +1767,113 @@ QoS profile:
         assert_eq!(found.len(), 2, "{found:#?}");
     }
 }
+
+/// A one-shot fingerprint of the DDS/XRCE environment, for an interop failure.
+///
+/// Issue 0741 — three hosts ran the same command on the same tree: one failed
+/// deterministically, two passed. Nobody could say what differed, because the
+/// failure printed the processes' output and nothing about the stack under
+/// them. Two more "does not reproduce" reports would not have settled it
+/// either; what settles it is the FAILING run describing its own environment.
+///
+/// Deliberately cheap and total: every probe degrades to a note rather than an
+/// error, because this runs on a path that is already failing and must not add
+/// a second failure mode of its own.
+pub fn interop_environment_fingerprint() -> String {
+    use std::fmt::Write as _;
+    let mut s = String::from("--- interop environment ---\n");
+
+    for var in [
+        "ROS_DISTRO",
+        "RMW_IMPLEMENTATION",
+        "ROS_DOMAIN_ID",
+        "ZENOH_SESSION_CONFIG_URI",
+    ] {
+        let _ = writeln!(
+            s,
+            "  {var}={}",
+            std::env::var(var).unwrap_or_else(|_| "<unset>".into())
+        );
+    }
+
+    // The agent registers the DDS type that a ROS reader sizes its history
+    // from, so its identity is the first thing to compare when a reader refuses
+    // a correctly-sized sample.
+    let agent = crate::fixtures::xrce_agent_binary_path();
+    let _ = writeln!(s, "  xrce agent: {}", agent.display());
+    if let Ok(md) = std::fs::metadata(&agent) {
+        let _ = writeln!(s, "    size={} bytes", md.len());
+    } else {
+        let _ = writeln!(s, "    (not present at that path)");
+    }
+
+    // Fast-DDS / rmw_fastrtps versions, from the ament index rather than dpkg:
+    // it works whatever installed ROS, and it names the prefix actually in use.
+    // EVERY prefix, and both packages independently. Breaking at the first
+    // prefix that yields anything under-reports: `fastrtps` and
+    // `rmw_fastrtps_cpp` can live in different prefixes, and Fast-DDS's own
+    // version is the field this issue most needs — reporting only the wrapper's
+    // would be a fingerprint that omits the fingerprint.
+    let prefixes = std::env::var("AMENT_PREFIX_PATH").unwrap_or_default();
+    for pkg in ["fastrtps", "rmw_fastrtps_cpp"] {
+        let mut seen: Vec<String> = Vec::new();
+        for prefix in prefixes.split(':').filter(|p| !p.is_empty()) {
+            let share = std::path::Path::new(prefix).join("share").join(pkg);
+            // TWO shapes, because Fast-DDS is not an ament package: ROS
+            // packages declare `<version>` in `share/<pkg>/package.xml`, while
+            // `fastrtps` ships only a cmake config
+            // (`cmake/<pkg>-config-version.cmake`, `set(PACKAGE_VERSION "…")`).
+            // Probing one shape reported the wrapper's version and a permanent
+            // "not found" for the library underneath it — which is exactly the
+            // field this issue turns on.
+            let ver = std::fs::read_to_string(share.join("package.xml"))
+                .ok()
+                .and_then(|b| {
+                    b.split("<version>")
+                        .nth(1)
+                        .and_then(|r| r.split("</version>").next())
+                        .map(str::to_string)
+                })
+                .or_else(|| {
+                    let cfg = share
+                        .join("cmake")
+                        .join(format!("{pkg}-config-version.cmake"));
+                    std::fs::read_to_string(cfg).ok().and_then(|b| {
+                        b.split("set(PACKAGE_VERSION")
+                            .nth(1)
+                            .and_then(|r| r.split('"').nth(1))
+                            .map(str::to_string)
+                    })
+                });
+            if let Some(ver) = ver {
+                if !seen.contains(&ver) {
+                    seen.push(ver);
+                }
+            }
+        }
+        let _ = match seen.len() {
+            0 => writeln!(s, "  {pkg}: not found on AMENT_PREFIX_PATH"),
+            // More than one is worth seeing rather than collapsing: two
+            // versions of the same package on the path is itself an answer.
+            _ => writeln!(s, "  {pkg}: {}", seen.join(", ")),
+        };
+    }
+    s
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    /// Issue 0741 — the fingerprint runs on an ALREADY-FAILING path, so the one
+    /// thing it must never do is add a second failure. Total, and it names the
+    /// fields a reader needs even when every probe comes up empty.
+    #[test]
+    fn the_fingerprint_is_total_and_names_its_fields() {
+        let s = super::interop_environment_fingerprint();
+        // Visible under `--nocapture`: the point of the fingerprint is to be
+        // READ, and a test that only asserts on it never shows what it says.
+        eprintln!("{s}");
+        for want in ["ROS_DISTRO", "RMW_IMPLEMENTATION", "xrce agent", "fastrtps"] {
+            assert!(s.contains(want), "fingerprint omitted {want}:\n{s}");
+        }
+    }
+}
