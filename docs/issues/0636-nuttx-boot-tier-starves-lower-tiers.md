@@ -285,6 +285,38 @@ matrix has no `sched(TierPriority, NuttxArm, Cpp, …)` cell, so this change is
 justified by the same reasoning that justified `17666723d` on the Rust side, not
 by a measurement of its own. A C/C++ TierPriority cell is the missing coverage.
 
+### FreeRTOS arm fixed 2026-08-21 — the last kernel that had it
+
+`17666723d` wired `boot_tier_index` on `nros-board-nuttx` and
+`nros-board-linux`, and recorded that "`freertos`, `zephyr`, `threadx` still
+take `tiers[0]` (the last two already get the right tier from the sort)". That
+parenthesis is right and it does not cover FreeRTOS:
+
+| kernel | direction | `tiers[0]` after the descending sort |
+| --- | --- | --- |
+| Zephyr, ThreadX | smaller is more urgent | LEAST urgent — correct owner already |
+| NuttX, POSIX, **FreeRTOS** | bigger is more urgent | MOST urgent — the starving arrangement |
+
+So FreeRTOS was the one kernel left holding the defect, in BOTH arms —
+`freertos_run_tiers.c:397` and `entry.rs`'s "finally run the highest-priority
+tier (tiers[0]) on this task". Both now take the least urgent tier.
+
+Mechanics as for the NuttX C arm, and for the same reason: these arms
+CHAIN-spawn, handing each tier a `rest` SLICE, so skipping an interior index
+would change that protocol. The least urgent tier is the LAST element of a
+descending table, which keeps the remainder contiguous. That is why they do not
+call `boot_tier_index` — same rule, different mechanics — and why the ordering
+is CHECKED rather than assumed, with a loud line and a fall back to index 0 if
+the table is not non-increasing.
+
+Verified: `just freertos build-fixtures` RC=0; the `realtime_tiers_e2e`
+freertos rows (C and C++, the multi-tier path this changes) RAN and passed;
+`entry_e2e` freertos cells 4 ran, 0 failed.
+
+**Not covered:** the matrix has `RealtimeTiers` cells for FreertosMps2 C and Cpp
+only, so the Rust multi-tier arm is COMPILED by the lane and not RUN by any
+cell. Same gap as the NuttX C arm above, one language over.
+
 ## Relationship to 0623
 
 Same family, one layer over: 0623 is a tier priority and a transport priority

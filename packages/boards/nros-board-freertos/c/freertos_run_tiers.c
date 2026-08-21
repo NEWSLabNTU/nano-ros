@@ -394,7 +394,44 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
      * order total (boot, t1, t2, …) so no two declares overlap. Spins still
      * overlap the next tier's setup, which is SAFE — a spin exchanges
      * keepalives/data, not declares. */
-    const nros_tier_spec_t* boot = &tiers[0];
+
+    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
+    /*
+     * This was `&tiers[0]`, which the emitter documents as the MOST urgent
+     * tier ("sorted highest-priority-first", nros/main.hpp), and FreeRTOS is a
+     * bigger-number-wins kernel. The boot task owns the session and spins
+     * forever, so making it outrank the tiers it spawned starves them: FreeRTOS
+     * runs the highest-priority READY task and a spin loop does not reliably
+     * stop being ready. `17666723d` removed this arrangement from the Rust
+     * NuttX/Linux arms and left `freertos` on `tiers[0]`; that is this half.
+     *
+     * The least urgent tier is the LAST element of a descending table, which
+     * also leaves the remaining tiers CONTIGUOUS — required here, because the
+     * chain-spawn hands each tier a `rest` SLICE and skipping an interior index
+     * would change that protocol. That is why this does not call
+     * `nros_platform::boot_tier_index` (the Rust NuttX/Linux arms do): same
+     * rule, different mechanics forced by the chain.
+     *
+     * The ordering is CHECKED rather than assumed. A table that is not
+     * non-increasing means the emitter's contract changed, and the failure that
+     * would otherwise follow is silent starvation on one platform seconds after
+     * boot — the thing issue 0636 spent its history chasing. Fall back to
+     * index 0, the behaviour before this change, and say so.
+     */
+    size_t boot_idx = n_tiers - 1u;
+    for (size_t i = 1u; i < n_tiers; ++i) {
+        if (tiers[i].priority > tiers[i - 1u].priority) {
+            nros_board_freertos_console_write(
+                "nros: tier table is not sorted highest-priority-first — "
+                "boot tier falls back to index 0 (issue 0636)\n");
+            boot_idx = 0u;
+            break;
+        }
+    }
+    const nros_tier_spec_t* boot = &tiers[boot_idx];
+    /* Everything except `boot`; both arrangements leave a contiguous run. */
+    const nros_tier_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
+    const size_t n_rest = n_tiers - 1u;
 
     /* Gate the boot executor to its tier's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
@@ -415,7 +452,7 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by logging + continuing to spin. */
-    int src = freertos_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u);
+    int src = freertos_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
         nros_platform_dealloc(boot_storage);

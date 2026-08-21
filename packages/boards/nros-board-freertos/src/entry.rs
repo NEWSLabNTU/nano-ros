@@ -600,7 +600,39 @@ where
     // the boot tier at all. Assume the declared priority now, before the
     // session opens. Same raw-units conversion as `spawn_next_tier`; the C
     // helper clamps to configMAX_PRIORITIES - 1.
-    let boot_prio = ctx.tiers[0].priority.clamp(0, u32::MAX as i64) as u32;
+    //
+    // issue 0636 — and it is the LEAST urgent tier, not `tiers[0]`.
+    //
+    // `resolve_tiers` orders by raw number DESCENDING without inverting per
+    // kernel, and FreeRTOS is bigger-number-wins, so `tiers[0]` was the MOST
+    // urgent tier here. An owner that outranks its peers and then spins starves
+    // them: FreeRTOS runs the highest-priority READY task, and a spin loop does
+    // not reliably stop being ready. `17666723d` fixed exactly this on the Rust
+    // NuttX/Linux arms and left `freertos` behind; this is that half.
+    //
+    // The least urgent tier is the LAST element of a descending table, which
+    // also keeps the remaining tiers CONTIGUOUS — required, because the chain
+    // hands each tier a `rest` SLICE and skipping an interior index would
+    // change that protocol. Hence not `nros_platform::boot_tier_index`, which
+    // the non-chaining arms call: same rule, different mechanics.
+    //
+    // CHECKED, not assumed: a table that is not non-increasing means the
+    // emitter's contract changed, and the alternative failure is silent
+    // starvation seconds after boot on one platform.
+    let boot_index = if ctx
+        .tiers
+        .windows(2)
+        .any(|w| w[1].priority > w[0].priority)
+    {
+        B::println(format_args!(
+            "nros: tier table is not sorted highest-priority-first — \
+             boot tier falls back to index 0 (issue 0636)"
+        ));
+        0
+    } else {
+        ctx.tiers.len() - 1
+    };
+    let boot_prio = ctx.tiers[boot_index].priority.clamp(0, u32::MAX as i64) as u32;
     unsafe { nros_freertos_set_current_task_priority(boot_prio) };
 
     // Open the one session on the boot task, then move it into its final
@@ -640,7 +672,7 @@ where
     // makes setup order total (boot, t1, t2, …) so no two declares overlap.
     // Spins still overlap the next tier's setup, which is SAFE — a spin
     // exchanges keepalives/data, not declares.
-    let boot_tier = ctx.tiers[0];
+    let boot_tier = ctx.tiers[boot_index];
     crt.executor_mut().set_active_groups(boot_tier.groups);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
@@ -653,13 +685,20 @@ where
         }
     }
 
-    // Kick off the chain: spawn tiers[1] carrying tiers[2..] as its tail;
-    // tiers[0] (highest priority) runs on this boot task. A boot-side spawn
-    // failure is fatal (exit_failure) — unlike a downstream tier's.
+    // Kick off the chain with everything except the boot tier, which runs on
+    // this task. Both arrangements leave a contiguous run (issue 0636): the
+    // boot tier is the last element, or index 0 on the unsorted fallback.
+    // A boot-side spawn failure is fatal (exit_failure) — unlike a downstream
+    // tier's.
+    let rest = if boot_index == 0 {
+        &ctx.tiers[1..]
+    } else {
+        &ctx.tiers[..ctx.tiers.len() - 1]
+    };
     let app_stack_default_words = ctx.config.app_stack_bytes / 4;
     if spawn_next_tier::<B, F, E>(
         crt.executor_mut().session_handle(),
-        &ctx.tiers[1..],
+        rest,
         app_stack_default_words,
         ctx.setup,
     )
