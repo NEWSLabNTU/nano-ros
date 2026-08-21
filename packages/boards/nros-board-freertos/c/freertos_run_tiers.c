@@ -159,6 +159,43 @@ typedef struct {
     size_t n_rest;
 } nros_freertos_tier_ctx_t;
 
+/* RFC-0052 W2/W5.11 — apply and ANNOUNCE the placement dim for one task.
+ *
+ * `core_plus1` 0 means unpinned and says nothing. Otherwise the outcome is
+ * announced LOUDLY either way — a declared `core` is NEVER silently dropped
+ * (before W5.11 the uniprocessor branch was a silent `(void)task`). The
+ * literals match `nros_tests::output::FREERTOS_CORE_PIN_MARKER` /
+ * `_FALLBACK_MARKER` — keep in lockstep.
+ *
+ * issue 0636 — a FUNCTION, called by the spawn path AND the boot path, because
+ * the boot tier is no longer `tiers[0]`. It is now the LEAST urgent tier, and
+ * in `realtime-cpp`'s bringup that is `low` — the one tier that declares
+ * `core = 0`. With the announcement living only in the spawn path, moving that
+ * tier onto the boot task made the dim vanish from the console, and the
+ * `CorePin/freertos/cpp` cell reported it as silently dropped. It was: by this
+ * file, not by the kernel.
+ *
+ * `task` may be NULL for the boot path, which pins the CALLING task — the
+ * FreeRTOS affinity API takes NULL to mean exactly that. */
+static void freertos_apply_core_pin(TaskHandle_t task, const char* name, uint32_t core_plus1) {
+    if (core_plus1 == 0u) {
+        return;
+    }
+    const char* tname = (name != NULL) ? name : "?";
+#if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
+    vTaskCoreAffinitySet(task, (UBaseType_t)1u << (core_plus1 - 1u));
+    nros_board_freertos_console_write("nros: core pin tier=`");
+    nros_board_freertos_console_write(tname);
+    nros_board_freertos_console_write("`\n");
+#else
+    nros_board_freertos_console_write("nros: core pin FAILED tier=`");
+    nros_board_freertos_console_write(tname);
+    nros_board_freertos_console_write("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
+                                      "(uniprocessor), tier runs unpinned\n");
+    (void)task;
+#endif
+}
+
 /* Forward decl — freertos_tier_task and freertos_spawn_next_tier are mutually
  * recursive (each tier's task spawns the next tier via this helper). */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
@@ -313,21 +350,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * (RFC-0052 fail-loud; before W5.11 the uniprocessor branch was a silent
      * `(void)task`). The literals match nros_tests::output::FREERTOS_CORE_PIN_
      * MARKER / _FALLBACK_MARKER — keep in lockstep. */
-    if (t->core_plus1 > 0u) {
-        const char* tname = (t->name != NULL) ? t->name : "?";
-#if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
-        vTaskCoreAffinitySet(task, (UBaseType_t)1u << (t->core_plus1 - 1u));
-        nros_board_freertos_console_write("nros: core pin tier=`");
-        nros_board_freertos_console_write(tname);
-        nros_board_freertos_console_write("`\n");
-#else
-        nros_board_freertos_console_write("nros: core pin FAILED tier=`");
-        nros_board_freertos_console_write(tname);
-        nros_board_freertos_console_write("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
-                           "(uniprocessor), tier runs unpinned\n");
-        (void)task;
-#endif
-    }
+    freertos_apply_core_pin(task, t->name, t->core_plus1);
     return 0;
 }
 
@@ -432,6 +455,16 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
     /* Everything except `boot`; both arrangements leave a contiguous run. */
     const nros_tier_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
     const size_t n_rest = n_tiers - 1u;
+
+    /* issue 0636 — announce the boot tier's placement dim too.
+     *
+     * The boot tier is now the LEAST urgent tier rather than `tiers[0]`, and in
+     * `realtime-cpp`'s bringup that is `low`, the one tier declaring `core = 0`.
+     * The spawn path announces the dim for the tiers it creates; the boot tier
+     * is created by nobody, so without this the declared pin disappears from
+     * the console and RFC-0052's fail-loud rule is broken by this file. NULL
+     * task = pin the CALLING task, which is what the boot tier runs on. */
+    freertos_apply_core_pin(NULL, boot->name, boot->core_plus1);
 
     /* Gate the boot executor to its tier's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {

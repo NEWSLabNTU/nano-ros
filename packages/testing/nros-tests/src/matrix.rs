@@ -1063,6 +1063,15 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // NuttX sporadic + tier-priority.
         sched(SporadicBudget, NuttxArm, Cpp, Runtime),
         sched(TierPriority, NuttxArm, Rust, Runtime),
+        // issue 0636 — the C/C++ arm of the same board. `nuttx_run_tiers.c`
+        // took `&tiers[0]` as its session owner long after the Rust arm stopped,
+        // and nothing noticed because no cell asserted tier priority on this
+        // arm at all: the C arm applied priorities at `pthread_create` time and
+        // printed nothing, so #579's "every declaring tier prints its marker"
+        // was enforced in one language only. Both arms now route through
+        // `nros_nuttx_apply_current_priority`, one implementation and one
+        // marker, and this cell is what keeps them from diverging again.
+        sched(TierPriority, NuttxArm, Cpp, Runtime),
         // ThreadX preempt-threshold + time-slice.
         sched(PreemptThreshold, ThreadxLinux, Rust, Runtime),
         sched(TimeSlice, ThreadxLinux, Rust, Runtime),

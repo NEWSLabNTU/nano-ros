@@ -329,6 +329,25 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             note: "per-tier SCHED_FIFO priority applied for EVERY declaring tier, \
                    boot tier included (#579)",
         },
+        (SD::TierPriority, MP::NuttxArm, ML::Cpp) => Exec {
+            // Same bringup and the same two tiers as the Rust cell above — the
+            // C/C++ arm of one board, so the expectations are identical by
+            // construction rather than by a second table. If these ever have to
+            // differ, the arms have diverged and that is the finding.
+            resolver: || build_nuttx_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
+            boot: NuttxQemu,
+            router: Router::Baked("0.0.0.0"),
+            timeout_secs: 90,
+            stem: "nros: tier priority",
+            accept: NUTTX_TIER_PRIORITY_MARKER,
+            fallback: None,
+            shape: EachTierOrFailNote {
+                tiers: &[("high", 110), ("low", 100)],
+                fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
+            },
+            note: "issue 0636 — the C arm reports per-tier priority too, boot tier \
+                   included; it applied them at pthread_create and printed nothing",
+        },
         (SD::PreemptThreshold, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
             boot: Native(NativeEnv::RustLogOnly),

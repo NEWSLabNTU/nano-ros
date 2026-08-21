@@ -360,6 +360,23 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
 static void* nuttx_tier_thread(void* arg) {
     nros_nuttx_tier_ctx_t* ctx = (nros_nuttx_tier_ctx_t*)arg;
 
+    /* issue 0636 coverage — REPORT the priority this tier was born with.
+     *
+     * `nros_nuttx_apply_current_priority` existed with the right marker and no
+     * caller: the C arm set priorities at `pthread_create` time and printed
+     * nothing, so the whole language arm was invisible to the `TierPriority`
+     * dim. Its own doc comment says the helper is "one implementation, one
+     * marker" shared with the Rust arm, and the Rust arm calls it at tier
+     * entry — so does this one now.
+     *
+     * Re-applying the priority the attribute already set is deliberate and
+     * cheap: it is the same value, so the call is a no-op in effect, and it is
+     * the only point where this thread can say what it actually got. #579's
+     * rule is that every DECLARING tier prints its own marker; a tier that was
+     * configured correctly and says so is what separates that from a tier
+     * nobody scheduled. */
+    (void)nros_nuttx_apply_current_priority(ctx->name, ctx->priority);
+
     /* phase-296 W5.9 — upgrade this tier thread to the kernel sporadic
      * server when its policy declares budget+period (else it keeps the
      * SCHED_FIFO priority set at pthread_create). */
@@ -638,12 +655,16 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
      * (the spawned tiers already got theirs at pthread_create; without this the
      * boot tier keeps the app_main-thread default and the declared tier QoS
      * would not hold for it). */
-    {
-        struct sched_param bsp;
-        memset(&bsp, 0, sizeof(bsp));
-        bsp.sched_priority = nuttx_clamp_priority(boot->priority);
-        (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &bsp);
-    }
+    /* issue 0636 coverage — through the shared helper, so the boot tier prints
+     * its marker like every other declaring tier (#579). This was an inline
+     * `pthread_setschedparam` that reported nothing, which is how the boot
+     * tier could be the ONLY tier whose priority nobody could confirm from the
+     * console — on the arm where the boot tier is also the one this issue kept
+     * finding starved. The helper clamps and reports; it no-ops on priority 0
+     * (undeclared), which is the same "keep what was inherited" the inline
+     * version produced. */
+    (void)nros_nuttx_apply_current_priority(boot->name,
+                                            (uint32_t)nuttx_clamp_priority(boot->priority));
     /* phase-296 W5.9 — boot tier upgrades to the kernel sporadic server too,
      * when declared (overrides the FIFO adopt above). */
     (void)nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
