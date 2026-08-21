@@ -34,6 +34,21 @@
 # one (a #422 summary wrapped so a continuation line began `**#448**`, making a
 # resolved issue look open). Reflow the paragraph; do not special-case it.
 #
+# TWO MORE CHECKS, and both close holes this gate had (2026-08-22)
+#
+# 1. A file in `docs/issues/` whose frontmatter says `status: resolved`.
+#    The set comparison above cannot see it: the file exists, its open row
+#    exists, the two match, green. But the issue is DONE and its row still
+#    advertises it as open. That is the same drift the header describes,
+#    stopped one step earlier — the `git mv` was skipped rather than the prose
+#    edit. Found on #0745 and #0749 in one afternoon; #0749 was caught only
+#    because it happened to have no row at all.
+#
+# 2. The same id under two `Recently resolved` rows. Two sessions resolving one
+#    issue each write one, neither sees the other, and the index carries both —
+#    observed on #0749 within an hour. A duplicate is not merely untidy: the two
+#    rows say different things, and a reader has no way to know which is current.
+#
 # Buildless: two `ls`-equivalents and a `grep`. Fast tier.
 set -uo pipefail
 
@@ -75,6 +90,41 @@ if [ -n "$missing_row" ]; then
     echo "check-issue-index: open issue file with no row in the index:" >&2
     for id in $missing_row; do
         echo "  #${id} — add a row: **#${id}** — <one-line hook>. See \`${id}-*\`. (DATE)" >&2
+    done
+fi
+
+# A file living in docs/issues/ must still be OPEN. See header note 1.
+resolved_in_open=""
+for f in $(git ls-files 'docs/issues/0*.md'); do
+    st="$(sed -n 's/^status:[[:space:]]*//p' "$f" | head -1 | tr -d '[:space:]')"
+    case "$st" in
+        open|"") ;;
+        *) resolved_in_open="${resolved_in_open}${f}|${st} " ;;
+    esac
+done
+if [ -n "$resolved_in_open" ]; then
+    status=1
+    echo "check-issue-index: file in docs/issues/ is not open:" >&2
+    for entry in $resolved_in_open; do
+        f="${entry%%|*}"; st="${entry##*|}"
+        id="$(printf '%s' "$f" | sed -E 's#.*/([0-9]{4}).*#\1#')"
+        echo "  ${f} — frontmatter says status: ${st}" >&2
+        echo "        git mv it to docs/issues/archived/ and convert its row:" >&2
+        echo "        Recently resolved (YYYY-MM-DD): **#${id}** — … See \`archived/${id}-*\`." >&2
+    done
+fi
+
+# One `Recently resolved` row per id. See header note 2.
+dup_resolved="$(grep -oE 'Recently resolved \([^)]*\): \*\*#[0-9]+\*\*' "$readme" \
+                | grep -oE '#[0-9]+' | tr -d '#' \
+                | awk '{printf "%04d\n", $1}' \
+                | sort | uniq -d)"
+if [ -n "$dup_resolved" ]; then
+    status=1
+    echo "check-issue-index: more than one 'Recently resolved' row for:" >&2
+    for id in $dup_resolved; do
+        echo "  #${id} — two sessions each wrote one. Merge them into a single row;" >&2
+        echo "        they say different things and a reader cannot tell which is current." >&2
     done
 fi
 

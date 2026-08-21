@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 **#0750** (testing, open 2026-08-21) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check-sched-dim-arms`) but have never RUN; #0260 closed on Zephyr's SMP placement proof and declined to carry this. The three are NOT equally blocked, which "three multi-core bring-ups" hid: NuttX already ships `qemu-armv7a/configs/smp` and needs only a config-keyed snapshot plus one more gated lane: phase-339 W2 already isolates consumers from the shared tree via `nros-nuttx-export-<arch>/`, whose key is HEAD+sha256(defconfig) — the gap is that the DIRECTORY stops at `<arch>`, so `arm` and `arm-smp` collide. A second tree is NOT wanted (two submodule pins for one upstream). ThreadX has a vendored `cortex_a5_smp` port but our lane is the Linux simulator, so it needs a new board. FreeRTOS is genuinely blocked: the Posix port has ZERO `configNUMBER_OF_CORES` and none of the SMP hooks, and only the RP2040 (hardware) port has them. See `0750-*`. (2026-08-21)
 
-Recently resolved (2026-08-21): **#0749** — the Zephyr lane dropped five of six executor sizing knobs, so every image built 1024-byte subscription buffers and a 32-slot param store and silently discarded oversize samples. Issue 0316 had resolved exactly ONE of nros-node's six `build.rs` knobs into the curated cargo environment; the other five never reached the Zephyr cargo builds. Found by ASI on the FVP closed-loop demo — the Zephyr island ACKed every fragment of a 13.4 KiB Autoware trajectory and threw it away, with zero diagnostics. Fixed in `d1c5b3b3b`. See `archived/0749-*`. (2026-08-21)
+Recently resolved (2026-08-21): **#0745** — launch params NEVER reached a component ctor: emitters gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction `emit_declare_params`, lazy `ensure_parameter_store` (ParamState.services now Option, registration preserves seeds, non-fatal on RMWs without service servers), ComponentNode seed-adoption gated on the NOW-WIRED `nros_lower_system_features` lowering (the fn was defined and called from no path), and a Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declared, 0.15 ran; after — 31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter, cyclone service-server gap. See `0745-*`. (2026-08-21) See `archived/0745-*`. (2026-08-21)
 
 Recently resolved (2026-08-22): **#0749** (zephyr) — the Zephyr lane's curated cargo environment dropped five
 of six executor sizing knobs (0316 fixed only `NROS_EXECUTOR_MAX_CBS`; `NROS_SUBSCRIPTION_BUFFER_SIZE`,
@@ -84,16 +84,6 @@ The suspected wall+timeout double credit does not exist. 31.6-vs-30 ms standalon
 port's usleep tick overshoot (~5.2 %, simulator-only). Lesson: prove the publisher count (`ros2 topic info
 -v` / `pgrep`) before trusting a hz reading. See `archived/0746-*`. (2026-08-21)
 
-**#0745** (codegen, resolved 2026-08-21) — launch params NEVER reached a component ctor: emitters
-gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node
-init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction
-`emit_declare_params`, lazy `ensure_parameter_store` (ParamState.services now Option, registration
-preserves seeds, non-fatal on RMWs without service servers), ComponentNode seed-adoption gated on the
-NOW-WIRED `nros_lower_system_features` lowering (the fn was defined and called from no path), and a
-Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declared, 0.15 ran; after —
-31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter,
-cyclone service-server gap. See `0745-*`. (2026-08-21)
-
 Recently resolved (2026-08-21): **#0744** (boards, wontfix) — CLOSED as misdiagnosed, superseded by #0745: the freertos-posix
 "80-140 ms tier stalls" were the timer's real period — the seeded 30 ms never reached the node, so the
 compiled 0.15 s default ran. Port-signal masking and CPU pinning both falsified as fixes. The surviving
@@ -112,15 +102,6 @@ named this hazard and guarded only the from-source path. Second fix, the one tha
 `drain_into_buffer_raw_c` treated `Err(_)` like `Ok(None)` in both arms, destroying an already-CONSUMED
 sample while `alive — … 0 error(s)` reported health — it now propagates to `subscription_errors`. Both cells
 un-`#[ignore]`d and passing. See `archived/0737-*`. (2026-08-21)
-
-Recently resolved (2026-08-21): **#0744** (boards, open 2026-08-21) — freertos-posix: a task blocking in a RAW host primitive (the
-platform shim's pthread-layout condvars, or a blocking syscall from task context) parks the WHOLE
-simulated kernel — the GCC/Posix port's tick cannot preempt a block it does not own — so RT tiers see
-~80 ms stalls that priorities cannot fix. Measured on the ASI consumer: 20 µs callback in a
-priority-7 tier, 30 ms period, ~25 Hz with 80–85 ms max intervals; pre-tiers 12 Hz/140 ms. The
-phase-370 "RTOS threads + host Cyclone" seam (0715's class) degrading into latency instead of a
-SEGV. Fix shape: executor/platform waits reached from task context go through FreeRTOS-visible
-primitives; audit platform.c wait arms × task-context reachability. See `0744-*`. (2026-08-21)
 
 Recently resolved (2026-08-21): **#0740** — the config-header mirror's file edge was Ninja-only, so a
 clean Unix Makefiles consumer died 'No rule to make target' on the cross-directory mirror path. Fixed by
@@ -2921,14 +2902,6 @@ touching a backend source and watching `c_talker` relink. Two non-fixes recorded
 link (`undefined reference to ddsrt_*` — it reorders ld's single pass out of the whole-archive group).
 See `archived/0475-*`.
 
-Recently resolved (2026-08-07): **#474** — `just format` was not behind `_require-leaf-includes`, so on a
-checkout with an unsynced leaf it died with cargo's raw manifest-parse error four frames deep, never
-naming `nros sync` — blocking the very workflow CLAUDE.md says to run before broad changes. Not a new
-bug: #0463 had established the cause and fixed the SEAM at `build-test-fixtures-leaves` and
-`rust-rtos-link-check`, the two sites where it had been observed; `format` was a third site walking the
-same leaves (issue-0196's rule that the gate must cover the new site). Fixed by `2a89b5040`, which also
-cleared the clippy red. See `archived/0474-*`.
-
 Closed as wontfix (2026-08-07): **#473** — filed claiming `nros sync` leaks `# nros-managed` patch rows
 into tracked `.cargo/config.toml`, re-dirtying the worktree. **The premise was wrong**, and asking "why
 are these tracked" gave the opposite answer. `.gitignore:92-105` states the design: a config that is PURE
@@ -2986,18 +2959,6 @@ remedies: fix the call vs rebuild. Last hop of #0465's collision. RESOLVED by ad
 `NROS_RMW_RET_INVALID_CONFIG = -19` following the `-18 CONNECTION_FAILED` precedent, plus both mapping
 directions and regenerated bindings. Verified: `Err(Transport(InvalidConfig))` end to end.
 See `archived/0468-*`.
-
-Recently resolved (2026-08-07): **#465** — phase 209's acceptance template built and linked but did not RUN
-(`Transport(ConnectionFailed)`). Root cause was NOT transport: the rclcpp shim opened TWO sessions —
-`rclcpp::init()` builds the global executor, and `rclcpp::Node` then called `Executor::create()` for its OWN.
-A non-bridge app has exactly one session; two is the bridge shape. With `ZPICO_MAX_SESSIONS` at its default 1
-the second open exhausted the pool and returned -1, wearing the same error text a real connection failure gives.
-FIXED in the shim, not the pool: `Node` now creates on the global executor (`::nros::create_node`), spins via
-the free `::nros::spin_once`, and no longer shuts the shared session down per-Node; `executor_` and
-`nros_executor()` are gone. Verified at the SHIPPED default — ONE open, and the README's expected output.
-Raising the pool would have hidden a design error behind memory spent on every embedded target. STILL OPEN:
-the templates are in no lane (0/0/0), which is why this sat unnoticed since 2026-05-30 — and a build-only row
-would not have caught it. See `archived/0465-*`.
 
 Recently resolved (2026-08-07): **#465** — phase 209's acceptance artifact
 `examples/templates/cpp-port-minimal-publisher` compiled and linked but no longer RAN
