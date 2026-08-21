@@ -211,24 +211,15 @@ puts the nuttx rows out of lane (4 ran, 12 out of lane). Uncovered a SECOND fail
 `/ctrl` 0 with no priority applied and `sporadic FAILED rc=22`, hidden until its fixture was built. See
 `0736-*`. (2026-08-21)
 
-**#0734** (rmw-zenoh, open 2026-08-20) — `nros-rmw-zenoh` is compiled TWICE into a C++ image: `libnros_c.a`
-and `libnros_cpp.a` each carry their own build, under different `-C metadata`, so the statics do not even
-collide (`Cs·ewqHElJteY4·…SUBSCRIBER_BUFFERS` at 0x20474cf1 vs `Cs·hvwoP2UscId·…` at 0x2049ccfb) and the
-linker allocates BOTH. ~195 KiB of a 320 KiB part (mr_canhubk3/S32K344), and the subscriber ring state —
-`SUBSCRIBER_BUFFERS`, `NEXT_BUFFER_INDEX`, `OVERFLOW_DROPS` — exists in two divergent copies. NOT the
-consumer's Kconfig (`NROS_C_API`/`NROS_CPP_API` are a mutually-exclusive `choice`; only CPP is on, verified
-absent from `.config`, and setting it `n` changed the overflow by zero bytes), and NOT the
-`--allow-multiple-definition` case (that reasoning is about byte-identical CODE; these names differ, so
-nothing folds). Invisible anywhere with megabytes of RAM. See `0734-*`. (2026-08-20)
+Recently resolved (2026-08-21): **#0734** — `nros-rmw-zenoh` was compiled TWICE into a C++ image
+(`libnros_c.a` and `libnros_cpp.a` each carried their own build under different `-C metadata`, so ~195 KiB
+of divergent `.bss` on a 320 KiB part). Fixed by finishing Phase 241.D3-rev on the Zephyr path — ONE Rust
+staticlib linked — and gated by the single-Rust-staticlib invariant. See `archived/0734-*`. (2026-08-21)
 
-**#0735** (cmake, open 2026-08-20) — `_nra_board_active` (`cmake/NanoRosEntry.cmake:489`) opens
-`if(DEFINED NANO_ROS_BOARD)`, making a board NAME the precondition for being a board. Exactly inverted for
-RFC-0064, where a board arriving through an integration shell contributes no files and therefore has no
-board name — so every shell-integrated entry answers FALSE and silently loses all three dependent blocks:
-the locator/domain bake, `nros_platform_link_app_deferred()` (i.e. NO platform link, no family glue), and
-the FreeRTOS `NROS_APP_CONFIG` TU. Configure and build both succeed; the image is just wrong. Affects
-ESP-IDF, NuttX and PlatformIO shells, not one board. One-line fix (drop the outer guard, keep the
-board-name test as one of the three OR arms). See `0735-*`. (2026-08-20)
+Recently resolved (2026-08-21): **#0735** — `_nra_board_active` opened `if(DEFINED NANO_ROS_BOARD)`,
+making a board NAME the precondition for being a board, so every integration-shell entry (ESP-IDF, NuttX,
+PlatformIO) silently lost the locator bake, the platform link and the FreeRTOS app-config TU. The outer
+guard is gone; the board-name test is one of the OR arms. See `archived/0735-*`. (2026-08-21)
 
 Recently resolved (2026-08-20): **#0733** — embedded Cyclone × FreeRTOS boots, and `nros_publisher_init`
 returned a bare -1 because the type-descriptor registry was EMPTY: descriptors register from
