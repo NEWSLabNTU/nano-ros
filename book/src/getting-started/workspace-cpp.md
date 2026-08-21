@@ -8,7 +8,7 @@ node + bringup + entry shape against the Rust path
 (`nros::node!(…)` + `nros::main!(launch = …)`). This chapter shows the
 **C and C++ path** through the same shape, role-for-role.
 
-Phase 219 closed the parity gap. Same launch.xml, same `package.xml`,
+The parity gap is closed. Same launch.xml, same `package.xml`,
 same `system.toml`, same workspace pkg-index — the only thing that
 changes language-side is the cmake-fn / macro surface.
 
@@ -74,7 +74,7 @@ nano_ros_workspace(
 )
 ```
 
-`nano_ros_workspace()` (Phase 219.I) does the heavy lifting in one call:
+`nano_ros_workspace()` does the heavy lifting in one call:
 
 1. Sets `NANO_ROS_PLATFORM=posix` + `NANO_ROS_RMW=zenoh`.
 2. `add_subdirectory(<nano-ros>)` **once** at root scope (so per-pkg
@@ -222,7 +222,7 @@ emits `${CMAKE_BINARY_DIR}/native_entry_nros_main_generated.cpp` (the canonical
 `int main()` body that constructs each launch node's component + calls
 `configure(node)` on the real executor via `LinuxBoard::run_components`),
 appends it to the target's sources, and auto-links every
-`<pkg>_<exec>_component` static lib the launch XML named (Phase 219.J).
+`<pkg>_<exec>_component` static lib the launch XML named.
 
 ### `BRINGUP` + `LAUNCH` — name your input (canonical)
 
@@ -317,7 +317,7 @@ live under `examples/workspaces/`.
 - [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp)
   — the canonical reference workspace (talker + listener Node pkgs +
   Bringup pkg + Entry pkg, all C++).
-- [Phase 219 roadmap](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
+- [C++ Entry-pkg roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-219-cpp-entry-pkg.md)
   — full landing order + acceptance bar.
 - [Multi-node workspace layout design](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0024-multi-node-workspace-layout.md)
   §11 — LOCKED canonical shape (`Bringup + Node + Entry`).

@@ -1,6 +1,6 @@
 # The `Board` Trait Family
 
-The `Board` trait family is the **porting surface for a new MCU or host target**. It lives in `packages/platform/nros-platform/src/board/` and pins the contract every board crate (`nros-board-<board>` or a user-authored crate in a downstream Entry pkg) implements. Phase 212.N introduces this surface; earlier prototypes used `nros-board-common::board_init::*`, and those legacy traits stay as a transition shim until Phase 212.N.7 lands.
+The `Board` trait family is the **porting surface for a new MCU or host target**. It lives in `packages/platform/nros-platform/src/board/` and pins the contract every board crate (`nros-board-<board>` or a user-authored crate in a downstream Entry pkg) implements. Earlier prototypes used `nros-board-common::board_init::*`; those legacy traits stay as a transition shim while the in-tree boards finish migrating.
 
 > **New board crates: implement `nros-platform::board`, not the legacy shim.**
 > The porting surface for new code is the `Board` family described on this
@@ -9,7 +9,7 @@ The `Board` trait family is the **porting surface for a new MCU or host target**
 > transition-legacy — kept only so not-yet-migrated in-tree boards keep
 > building — and must not be implemented in new board crates. Convergence
 > onto the single `nros-platform::board` family is tracked in issue 0243,
-> sequenced with phase-230.
+> sequenced with the RTIC/Embassy integration work.
 
 A board impl tells nano-ros four things: *how to initialize hardware*, *how to print a line of text*, *how to terminate*, and (optionally) *how to bring a transport up and gate on the network*. With those four pieces the `BoardEntry::run` driver owns the boot lifecycle, and a user Entry pkg `main.rs` is a ~30 LoC shim.
 
@@ -166,7 +166,7 @@ See the [Role reference](../user-guide/component-and-entry-pkg.md) for the Entry
 
 ## Family driver crates
 
-The family crate is where the `BoardEntry::run` *body* actually lives. Tier-1 families targeted by Phase 212.N.2:
+The family crate is where the `BoardEntry::run` *body* actually lives. The kernel families with a driver crate:
 
 - `nros-board-linux` — native host (Linux / *BSD); `init_transport`/`wait_link_up` no-ops.
 - `nros-board-freertos` — FreeRTOS-Kernel + lwIP; `run` spawns the executor task, hands DHCP to lwIP's hook.
@@ -177,10 +177,10 @@ The family crate is where the `BoardEntry::run` *body* actually lives. Tier-1 fa
 - Direct-exec (Cortex-M / RV32, no RTOS) has **no family crate**: each board
   implements `BoardEntry::run` itself with a single-thread `zp_read` loop. A
   `nros-board-bare-metal` family driver was written for this shape and no board
-  ever opted into it — 135 of its 161 lines were doc comment — so phase-337 W7.c
+  ever opted into it — 135 of its 161 lines were doc comment — so a cleanup
   deleted it. `nros-board-mps2-an385` is the worked reference.
 
-> **Current state:** as of Phase 212.N.1 the trait surface lives in `nros-platform`; the family driver crates land in N.2 and the per-board shims in N.3. Until then, see `packages/boards/nros-board-*` for the in-tree boards that still ride the legacy `nros-board-common::board_init::*` traits — same conceptual shape, different module path.
+> **Current state:** the trait surface lives in `nros-platform`; family driver crates and per-board shims are migrating onto it. Some in-tree boards under `packages/boards/nros-board-*` still ride the legacy `nros-board-common::board_init::*` traits — same conceptual shape, different module path.
 
 ## Cross-references
 

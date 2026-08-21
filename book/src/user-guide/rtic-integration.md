@@ -46,7 +46,7 @@ mod app {
 
 That pattern works, but it's ~90 lines of glue per binary, and it puts
 the burden of getting RTIC + nros + the dispatcher list right on every
-example author. Phase 216.B.5 collapses it to one line:
+example author. The macro collapses it to one line:
 
 ```rust
 // File: examples/qemu-arm-baremetal/rust/talker-rtic/src/main.rs
@@ -351,9 +351,8 @@ offending call and suggests switching to the `_static` form.
 
 ## The custom-task escape — `nros::main!(custom_tasks = ...)`
 
-> **Coming in Phase 216.B.4.** The syntax below is the locked design;
-> it lands after 216.B.3 (the RTIC routing branch of the macro) is in
-> tree.
+> This form is implemented — `nros::main!` parses `custom_tasks`
+> alongside the RTIC routing branch.
 
 Real RTIC applications don't only have nano-ros tasks. You want a
 dedicated `my_adc` task to poll an ADC into a `#[shared]` buffer, or a
@@ -404,7 +403,7 @@ Specifics will be locked when 216.B.4 lands.
 The third variant of `DispatchStrategy` is reserved for callbacks that
 fire directly from an ISR handler (e.g. a timer pulse triggering a
 publish without a scheduler hop). This is **a design slot only**;
-the implementation is deferred to Phase 216.E.1.
+the implementation is deferred.
 
 Landing it requires:
 
@@ -412,7 +411,7 @@ Landing it requires:
 - A lock-free SPSC variant tolerant of ISR-priority producers.
 - A per-Node `#[isr_safe]` proof contract.
 
-Until that work lands, `nros check` (Phase 216.D.1) rejects
+Until that work lands, `nros check` rejects
 `DispatchStrategy::FromIsr` deployments with a clear diagnostic.
 
 ## See also

@@ -12,16 +12,16 @@ total image tx throughput is capped at roughly one socket send per window —
 about 9 msg/s at the default**, regardless of how many publishers the image
 runs or how fast they publish.
 
-## Platform defaults (phase-290 / RFC-0049)
+## Platform defaults (RFC-0049)
 
-Since phase-290, per-platform defaults for these knobs live in each platform
+Per-platform defaults for these knobs live in each platform
 package's `nros-platform.toml` (`[knobs.zenoh.tx]`), resolved through the
 fixed ladder `builtin < platform < board < env/Kconfig` — an explicit
 build-time setting (including an explicit `0` / `n`) always wins.
 
 | platform | batch | split_lock | flush_ms | rationale |
 | --- | --- | --- | --- | --- |
-| **Zephyr** | **on** | **on** | 50 | the per-fd tx ceiling above; measured 15–20× streaming (phase-282). Requires the issue-0213 fork fix (declarations bypass the batch). `zephyr/Kconfig`'s `NROS_ZENOH_TX_*` defaults mirror this (drift-tested) — flip them per-app in `prj.conf` to opt out |
+| **Zephyr** | **on** | **on** | 50 | the per-fd tx ceiling above; measured 15–20× streaming. Requires the issue-0213 fork fix (declarations bypass the batch). `zephyr/Kconfig`'s `NROS_ZENOH_TX_*` defaults mirror this (drift-tested) — flip them per-app in `prj.conf` to opt out |
 | everything else | off | off | 50 | no per-fd ceiling (POSIX), no flush thread (ThreadX/bare-metal), or simply unmeasured (FreeRTOS/NuttX — flip is one line in their platform toml after a bench run) |
 
 With batching on, **non-express topics pay up to `flush_ms` of publish
@@ -52,7 +52,7 @@ Is total publish rate comfortably under ~1 msg per socket window?
 ## Measured effect (Zephyr native_sim, 64 B messages, 100 ms socket timeout)
 
 > **Provenance.** Single-run measurements on one development host,
-> phase-297 era, on `native_sim` — a host-scheduled simulator, so the
+> on `native_sim` — a host-scheduled simulator, so the
 > absolute msg/s figures move with host load; the *ratios* between
 > rows are the durable result. Re-measure on freshly rebuilt fixtures
 > on a quiet machine before citing any absolute number.
@@ -65,7 +65,7 @@ Streaming (tight-loop publisher, 5000 messages, deep-ring listener):
 | `TX_BATCH` | no | ~136 msg/s | ~15× |
 | `TX_BATCH` + `TX_SPLIT_LOCK` | **yes (27.7 s)** | **~181 msg/s** | **~20×** |
 
-Timer-paced tiers (100 Hz control + 10 Hz telemetry, one session, phase-279
+Timer-paced tiers (100 Hz control + 10 Hz telemetry, one session,
 harness): defaults 8.6 msg/s total → batch + flush thread 34.1 → + split lock
 43.2, with the 10 Hz tier at its ideal rate. Delivery integrity is validated
 in every configuration.
@@ -101,7 +101,7 @@ it runs no background tasks) flushes every `TX_BATCH_FLUSH_MS`. Batching adds
 up to one flush period of publish latency; service requests/replies always
 bypass the batch. **Do not enable for timer-paced low-rate systems** — with
 ≤1 message per flush period there is nothing to coalesce and the flush
-overhead measurably hurts (phase-279 negative result).
+overhead measurably hurts (a measured negative result).
 
 **Flush cadence** (`TX_BATCH_FLUSH_MS`): bounds the extra latency batching
 adds. Lower = fresher samples, more (smaller) sends. 50 ms is a good default
@@ -166,7 +166,7 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", nros::QoS().tx_express(true)
   low but whose *latency* matters.
 - **Don't flush from your own timers/executor threads.** The dedicated flush
   thread exists because flushing from tier threads stalls the very timers
-  that generate the puts (phase-279 measured it slower than no batching).
+  that generate the puts (measured slower than no batching).
 
 Benchmarks and procedures: `packages/testing/nros-bench/stress-zenoh-zephyr/`
 (streaming) and `packages/testing/nros-tests/tests/w1_zephyr_tx_throughput_measure.rs`

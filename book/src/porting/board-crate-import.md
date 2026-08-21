@@ -19,7 +19,7 @@ All of those are owned by the board crate. The consumer's `CMakeLists.txt` decla
 Before importing a board crate, the consumer needs:
 
 1. **A Zephyr 3.7+ workspace managed by west.** Zephyr 3.7 is the floor (the official in-tree `zephyr-lang-rust` module did not exist below it, so nothing earlier can link the nano-ros Rust staticlib); newer LTS lines work too.
-2. **All gated SDK packages for the target board.** Run `nros doctor --board <name>` to check; missing items can be installed with `nros setup <board>` (or `nros setup --tool <t>` for a single dependency). See Phase 191 / `nros setup` in the [build commands reference](../reference/build-commands.md).
+2. **All gated SDK packages for the target board.** Run `nros doctor --board <name>` to check; missing items can be installed with `nros setup <board>` (or `nros setup --tool <t>` for a single dependency). See `nros setup` in the [build commands reference](../reference/build-commands.md).
 3. **nano-ros listed as a project in your `west.yml`**, and nano-ros's Zephyr module exported on `ZEPHYR_EXTRA_MODULES` so Zephyr picks up its Kconfig + DTS roots.
 
 A minimal `west.yml` fragment:
@@ -66,7 +66,7 @@ target_sources(app PRIVATE src/main.cpp)
 
 **Call order matters.** `nano_ros_use_board()` MUST precede `find_package(Zephyr ...)`. Zephyr reads `BOARD`, `EXTRA_CONF_FILE`, and `DTC_OVERLAY_FILE` during its `find_package` call; setting them after that point has no effect. The pattern above is the canonical shape -- copy it verbatim and only fill in the board name.
 
-`nano_ros_use_board()` is shipped by the nano-ros Zephyr module (Phase 215.B). It is available the moment `ZEPHYR_EXTRA_MODULES` includes `deps/nano-ros/zephyr`; no extra `include()` is required.
+`nano_ros_use_board()` is shipped by the nano-ros Zephyr module. It is available the moment `ZEPHYR_EXTRA_MODULES` includes `deps/nano-ros/zephyr`; no extra `include()` is required.
 
 > **Out-of-tree constraint.** The lookup resolves board crates only
 > under `<nano-ros>/packages/boards/` — there is no consumer-supplied
@@ -86,7 +86,7 @@ target_sources(app PRIVATE src/main.cpp)
 | `NROS_BOARD_RUNNER` | Cached for `west fvp run` (or another runner extension command) to pick up the right simulator binary / target-launcher. |
 | `NROS_BOARD_RUST_SUPPORT_MODULE` | Appended to `ZEPHYR_EXTRA_MODULES` when the board carries a Rust support module. (Not yet in the `board.cmake` ↔ `Cargo.toml` drift-audit field list — drift here is unaudited.) |
 
-The values themselves come from a single source of truth -- the board crate's `board.cmake` -- which Phase 215.F's drift audit keeps in sync with the crate's `Cargo.toml` metadata.
+The values themselves come from a single source of truth -- the board crate's `board.cmake` -- which a drift audit (`nros board info --check-drift`) keeps in sync with the crate's `Cargo.toml` metadata.
 
 ## Per-app overrides
 
@@ -108,14 +108,14 @@ project(my_app LANGUAGES CXX)
 
 ## Running
 
-For boards whose runner is an FVP (the AEMv8-R archetype, Phase 214):
+For boards whose runner is an FVP (the AEMv8-R archetype):
 
 ```sh
 west build -d build
 west fvp run -d build
 ```
 
-`west fvp run` consults `NROS_BOARD_RUNNER` and the Phase 214.A resolver to locate the simulator binary, applies the board's launch arguments, wires UART to stdout, and exits cleanly on Ctrl-C.
+`west fvp run` consults `NROS_BOARD_RUNNER` and the FVP resolver to locate the simulator binary, applies the board's launch arguments, wires UART to stdout, and exits cleanly on Ctrl-C.
 
 For any other runner the Zephyr-native command works unchanged:
 
@@ -150,7 +150,7 @@ Things that LOOK reasonable but the one-call pattern obviates:
 - **Don't hand-list the board's `prj.conf` in `EXTRA_CONF_FILE`.** It is already there; doing it again either duplicates or fights the layering order.
 - **Don't hardcode `BOARD=<id>` in a `build.sh`.** The call sets it; hardcoding it short-circuits the `nros board info` inspection and the drift audit.
 - **Don't carry your own copy of `boards/<id>.conf` or `boards/<id>.overlay` mirroring the board crate's.** Vendor a delta only -- the base ships in the crate.
-- **Don't reimplement the FVP runner as a shell script.** `west fvp run` (Phase 214) covers `FVP_BaseR_AEMv8R` and the other supported simulators with the right CLI flags, the same way `west build` covers compilation.
+- **Don't reimplement the FVP runner as a shell script.** `west fvp run` covers `FVP_BaseR_AEMv8R` and the other supported simulators with the right CLI flags, the same way `west build` covers compilation.
 - **Don't `include()` files from `deps/nano-ros/cmake/` directly.** The public surface is `nano_ros_use_board()`; anything else is internal and may move.
 
 ## Migrating an existing hand-glued consumer
@@ -166,8 +166,8 @@ After migration, the consumer's CMake should be roughly twenty lines, with `nano
 
 ## Cross-references
 
-- [The `Board` Trait Family](board-trait.md) -- for *implementers* of a new board crate (Phase 212.N.8). This chapter is the consumer-side dual.
+- [The `Board` Trait Family](board-trait.md) -- for *implementers* of a new board crate. This chapter is the consumer-side dual.
 - [Custom Board Package](custom-board.md) -- the full board-crate authoring guide.
 - [Vendor Overlay Board Crate](vendor-overlay.md) -- the lighter "I just want to override one field" path.
-- [Build commands reference](../reference/build-commands.md) -- `nros setup`, `nros doctor`, `nros board info` (Phase 191 SDK provisioning, Phase 215.G inspector).
+- [Build commands reference](../reference/build-commands.md) -- `nros setup`, `nros doctor`, `nros board info`.
 - [RMW backends](../internals/rmw-backends.md) -- the menu of values for `-DNANO_ROS_RMW=...`.

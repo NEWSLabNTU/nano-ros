@@ -10,8 +10,8 @@ directly.
 ## Install
 
 The `nros` CLI ships from the in-tree sub-workspace at `packages/cli/`
-(Phase 218). nano-ros is a **source distribution** — there is no
-prebuilt `nros` download (phase-288 D1/D2). One front door — bootstrap
+nano-ros is a **source distribution** — there is no
+prebuilt `nros` download. One front door — bootstrap
 (builds the CLI from source; installs rustup if needed), then activate
 the workspace to put it on PATH:
 
@@ -202,7 +202,7 @@ The `nros check` command surfaces the same overlay warnings when validating
 a `system.toml`.
 
 > The legacy `nros config show/check --config <path>` reader for `config.toml`
-> was removed (phase-256): `config.toml` is retired (RFC-0004 §8) and no example
+> was removed: `config.toml` is retired (RFC-0004 §8) and no example
 > ships one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
 
 ### `nros sync`
@@ -210,7 +210,7 @@ a `system.toml`.
 Codegen all `*.msg` packages + write the `[patch.crates-io]` config to match
 the declared deps — for a **standalone package** or a **colcon-style workspace**
 (picks single-pkg vs workspace mode by layout). The patch lands in each Rust
-consumer's `.cargo/config.toml` (phase-265 W5; never edits `Cargo.toml`).
+consumer's `.cargo/config.toml` (never edits `Cargo.toml`).
 Pre-cargo step; run once after editing `*.msg` files, then `cargo build` works.
 
 ```sh

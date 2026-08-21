@@ -188,7 +188,7 @@ Pick by whether the app uses codegen: `nros::main!()` app → `deploy` metadata
 
 ## Retired files
 
-- **`nros.toml` — retired in full** (phase-256). A workspace-root `nros.toml`
+- **`nros.toml` — retired in full.** A workspace-root `nros.toml`
   is rejected by the CLI (`NrosTomlNotSupported`; migrate with the
   `nros-v0.5.0` tag's `nros migrate workspace` — the one-shot verb is retired
   on newer trees, #186); the legacy per-package overlay is a deprecated fallback that
@@ -196,7 +196,7 @@ Pick by whether the app uses codegen: `nros::main!()` app → `deploy` metadata
   ever declared one). If a doc tells you to write `nros.toml`, it predates
   the migration — the content belongs in `deploy` metadata or `system.toml`.
 - **Old `config.toml` schema** (`[network]`/`[zenoh]`/`[scheduling]`) —
-  retired (Phase 172.K.6); superseded by the `deploy` class (net) + board
+  retired; superseded by the `deploy` class (net) + board
   features / Kconfig (RT). The direct-mode `config.toml` above is the kept,
   supported shape.
 
@@ -248,7 +248,7 @@ brokered client doesn't need:
 Honest, reproducible numbers per `(platform, transport, backend, profile)` —
 built with the in-tree examples, the **release** profile is cargo's default
 (opt-3), the **size** profile is the scaffolded `[profile.size]` (opt-`s` + `lto`
-+ `strip`, see [Phase 204.3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-204-embedded-binary-size.md#2043--size-tuned-embedded-release-profile)).
++ `strip`, see the [size-tuned release profile notes](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-204-embedded-binary-size.md#2043--size-tuned-embedded-release-profile)).
 RAM = `data + bss`. All cells are after `--gc-sections` + the size knobs above
 are applied where noted; the serial cell ships with the recipe below.
 
@@ -261,16 +261,16 @@ are applied where noted; the serial cell ships with the recipe below.
 | stm32f4 (thumbv7em-eabihf, cortex-m4) ¹ | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
 | stm32f4 ¹ | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
 | qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
-| **qemu-arm-baremetal (Phase 207)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
+| **qemu-arm-baremetal (serial)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
 
 ¹ The two stm32f4 rows are **historical**: the board crates left the tree in
-phase-337 W7.a, so nothing in-tree reproduces them today. They stay because a
+a later cleanup, so nothing in-tree reproduces them today. They stay because a
 Cortex-M4F-with-its-own-stack data point is still the closest published figure
 for that class, and deleting a measurement is worse than dating it. The chip
 crate the numbers were built against (`nros-platform-stm32f4`) is still here.
 
-The XRCE row uses the Phase 207.6 tight per-session pools — set in the
+The XRCE row uses tight per-session XRCE pools — set in the
 example's `.cargo/config.toml` `[env]` and read by `nros-rmw-xrce-cffi`'s
 `build.rs`: `NROS_XRCE_STREAM_HISTORY=4`,
 `NROS_XRCE_CUSTOM_TRANSPORT_MTU=512`, `NROS_XRCE_MAX_SUBSCRIBERS=1`,
@@ -285,7 +285,7 @@ hosted / non-tight-RAM consumers — the env vars are pure opt-in.
 - **The size profile (opt-`s`) shrinks `.text` by ~10–26 %** with `.bss`/`.data`
   unchanged (opt-level doesn't touch static buffers — those are the env knobs
   above). `-Oz` is **not** used — on smoltcp examples it grows `.bss` +24 KB by
-  defeating opt-3's per-socket dead-buffer DCE (see Phase 204.3).
+  defeating opt-3's per-socket dead-buffer DCE (see the size-tuning notes above).
 - **Switching ethernet → serial sheds ~50 KB text + ~42 KB `.data`** (no smoltcp
   stack, no IP link C, tuned heap) — the structural lever.
 - **FreeRTOS + lwIP cells `.bss` is dominated by lwIP's heap + FreeRTOS task
@@ -321,7 +321,7 @@ rustflags = [
 [env]
 NROS_LINK_IP        = "0"      # 204.7 — drop zenoh-pico TCP/UDP link C
 ZPICO_NO_SMOLTCP    = "1"      # skip smoltcp glue on bare-metal
-# Heap floor: the phase-271 per-entry executor backing is a single ~75 KB
+# Heap floor: the per-entry executor backing is a single ~75 KB
 # allocation, so a `nros::main!` image needs ≥128 KB (the #176 board
 # default) — the pre-271 24 KB "zenoh-pico working set" figure OOMs at
 # boot. HEAP is `.bss` (no flash cost); shrink below the default only on

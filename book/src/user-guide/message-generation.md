@@ -32,7 +32,7 @@ The binding generator lives in the in-tree CLI sub-workspace at `packages/cli/` 
 2. **nros tool built + on PATH**
 
    The `nros` CLI is built from the in-tree sub-workspace at
-   `packages/cli/` (Phase 218) and put on PATH by the activate file:
+   `packages/cli/` and put on PATH by the activate file:
    ```bash
    # From the nano-ros repository root
    ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
@@ -296,8 +296,8 @@ argument is what makes it the C generator). It uses a bundled codegen library â€
 `nano_ros_generate_interfaces()` becomes available automatically once
 the consumer's `CMakeLists.txt` invokes `add_subdirectory(nano-ros)`.
 The codegen tool ships inside the in-tree `nros` CLI binary
-(`packages/cli/target/release/nros`, Phase 218; Phase 195.D had
-retired the `nros-codegen` submodule); cmake auto-resolves it from
+(`packages/cli/target/release/nros`; the old `nros-codegen`
+submodule is retired); cmake auto-resolves it from
 `PATH` / `packages/cli/target/release/` / the transitional
 `${NROS_HOME:-~/.nros}/bin/`. No separate build step.
 

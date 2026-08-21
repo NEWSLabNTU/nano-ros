@@ -91,7 +91,7 @@ src/robot_entry/
     └── main.rs         # one line: `nros::main!(launch = "demo_bringup");`
 ```
 
-The `nros::main!()` proc-macro (Phase 212.N.9) reads the launch file
+The `nros::main!()` proc-macro reads the launch file
 at compile time, walks the workspace pkg-index for each `<node pkg=…>`
 entry, and expands to a `fn main()` that delegates to
 `<Board as BoardEntry>::run(...)`, dispatching one
@@ -171,7 +171,7 @@ maps it to the right board crate, and emits
 through the companion `src/lib.rs` cargo auto-wires alongside the
 binary target. No `build.rs`, no launch file (one is synthesised
 in-memory), no hand-written boot glue. This is the L.7 self-entry
-planner path (Phase 212.L.7 + N.5 + N.9).
+planner path.
 
 **Limits of the convenience:**
 

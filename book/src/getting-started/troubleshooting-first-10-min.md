@@ -47,7 +47,7 @@ the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
 ```
 nros (codegen tool) not found on PATH or in packages/cli/target/release/
 or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
-(Phase 218 carries the CLI in-tree at packages/cli/). Build it with:
+(the CLI lives in-tree at packages/cli/). Build it with:
   just setup-cli                 # or: just setup
 ```
 
@@ -55,7 +55,7 @@ or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
 runs the same build without `just`.)
 
 Missing the `nros` binary on PATH **and** in the per-checkout location.
-Phase 218 builds it from the in-tree sub-workspace; build it, then
+It builds from the in-tree sub-workspace; build it, then
 activate the workspace:
 
 ```bash
@@ -121,7 +121,7 @@ undefined reference to `dds_create_participant`
 
 `rmw-cyclonedds` cannot link from cargo alone — the Cyclone backend
 is C++ + CMake, registered via `nros_rmw_cffi_register` from a
-CMake-built target. Phase 175 wired this through `CMakeLists.txt` +
+CMake-built target — wired through `CMakeLists.txt` +
 Corrosion. Use the cmake build path instead:
 
 ```bash
@@ -144,7 +144,7 @@ workspace: /…/nano-ros/Cargo.toml
 cargo walks up the directory tree looking for a workspace root and
 adopts the example into the outer nano-ros workspace. Per-example
 `Cargo.toml`s don't ship an empty `[workspace]` table yet (tracked
-as F1 in `phase-208-followups.md`).
+as a known follow-up).
 
 Hits on:
 
@@ -164,7 +164,7 @@ FREERTOS_PORT not set
 ```
 
 (The quoted message is emitted by the build script; "build via just"
-in it refers to the contributor recipes.) Phase 208.D.1 made the
+in it refers to the contributor recipes.) The
 common build sites autoresolve these from
 the in-tree checkout, so a fresh `cargo build` no longer panics on
 them in canonical examples. If your custom build site still does,

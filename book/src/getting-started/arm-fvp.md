@@ -8,10 +8,10 @@ that follow the same `hwv2` Zephyr shape; pair this chapter with
 the [Zephyr (west module)](./integration-zephyr.md) starter for
 the build half.
 
-> **Phase 217.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
-> UART 0–3 to stdout — landed as Phase 217.A on 2026-06-03.
+> **Status.** The run half — invoking `FVP_BaseR_AEMv8R` and piping
+> UART 0–3 to stdout — is landed.
 >
-> **The two standalone talker lanes were retired** (phase-350 W3, issue 0537):
+> **The two standalone talker lanes were retired** (issue 0537):
 > their runners had been deleted, so they built images nothing booted. What
 > remains is the part with consumers — the board-crate import surface and the
 > workspace Entry. FVP support is intended to grow back from those. See
@@ -24,7 +24,7 @@ the build half.
 - You're bringing up a new `hwv2` safety-island target — the FVP
   is the closest in-tree reference for board.cmake + SMP boot +
   Cyclone DDS shape.
-- You're validating Phase 117 stock-RMW interop locally before
+- You're validating stock-Cyclone-DDS RMW interop locally before
   promoting to a hardware bench.
 
 The FVP is **not** a replacement for QEMU on Cortex-M (`mps2-an385`,
@@ -60,7 +60,7 @@ export ARM_FVP_DIR=/opt/Arm/FastModels/Base_RevC_AEMv8R
 If neither is set, `FVP_BaseR_AEMv8R` is discovered via `PATH` as
 a last-ditch fallback.
 
-### Installer surface (Phase 217.B.1)
+### Installer surface
 
 After extracting the Arm FVP tarball, run the discovery script:
 
@@ -77,7 +77,7 @@ Run `scripts/installers/arm-fvp-installer.sh --print-env` later
 to re-emit the export. It never downloads anything — gated-tool
 policy.
 
-### Doctor check (Phase 217.B.2)
+### Doctor check
 
 The FVP is a license-gated tool: nano-ros checks that it resolves via
 `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, `PATH`, or the canonical
@@ -95,9 +95,9 @@ never hard-fails — when it can't.
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#arm-fvp).
 
 > Two standalone talker lanes (`build-fvp-aemv8r-cyclonedds{,-rust}`, over
-> `examples/zephyr/{cpp,rust}/talker-aemv8r`) used to live here. phase-298 W4
-> deleted the tests that ran them and phase-350 W3 retired the rest, so the
-> chapter no longer documents a lane whose output nobody consumes.
+> `examples/zephyr/{cpp,rust}/talker-aemv8r`) used to live here. Their
+> tests were deleted and the lanes later retired, so the chapter no
+> longer documents a lane whose output nobody consumes.
 
 ## Run
 
@@ -133,18 +133,17 @@ ros2 topic echo /chatter std_msgs/msg/String
 ```
 
 The same `std_msgs/String` payload (`Hello World: N`) + byte-equal
-CDR framing must appear on both sides — that's the Phase 117
-stock-RMW interop contract.
+CDR framing must appear on both sides — that's the stock-RMW
+interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
 
 ## Cross-references
 
 - [`docs/roadmap/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-217-arm-fvp-local-runtime.md)
-  — the runtime slice. Track A (run recipes) landed; B (installer
-  + doctor), C (smoke test), D (Rust example), E (this chapter)
-  ongoing.
+  — the roadmap doc for the FVP runtime slice (contributor detail
+  on what has landed vs what is ongoing).
 - [`docs/roadmap/archived/phase-117-cyclonedds-rmw.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-117-cyclonedds-rmw.md)
-  — Phase 117.13 (Zephyr FVP build smoke) + 117.14 (Cyclone DDS
-  port + cpp talker) are the build smokes the runtime exercises.
+  — the Zephyr FVP build smoke + Cyclone DDS port the runtime
+  exercises.
 - [Environment Variables — `ARM_FVP_DIR` / `ARMFVP_BIN_PATH`](../reference/environment-variables.md)
   — the discovery contract.
 - [Zephyr (west module)](./integration-zephyr.md) — the parent

@@ -3,7 +3,7 @@
 An **overlay** crate is a small Cargo crate that depends
 on a generic per-kernel board crate (`nros-board-freertos`,
 `nros-board-threadx`, `nros-board-nuttx` — there is no bare-metal
-family crate; that one was deliberately deleted in phase-337 W7.c)
+family crate; that one was deliberately deleted)
 and patches the deltas a specific vendor board / fork needs:
 
 - Vendor HAL source files (NXP `fsl_*`, STM `HAL_*`, NVIDIA FSP, …).
@@ -157,7 +157,7 @@ nros_board_freertos::run_entry::<Stm32F4, _, _>(Config::default(), None, |runtim
 
 `packages/boards/nros-board-mps2-an385-freertos/` is the canonical
 "stock kernel + custom Ethernet driver" overlay, and the ONLY in-tree
-one (the former orin-spe overlay was removed in phase-337 W7.b):
+one (the former orin-spe overlay was removed):
 
 - Re-exports `BaseConfig` + `Config` from `nros-board-freertos`.
 - Defines the `Mps2An385` marker and implements the

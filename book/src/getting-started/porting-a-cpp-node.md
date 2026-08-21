@@ -2,7 +2,7 @@
 
 Goal: take a normal ROS 2 C++ node (one that compiles + runs under
 `colcon build` against `ros-humble-*`) and run it under nano-ros — without
-rewriting the source. The Phase 209 compat layer (`nros/rclcpp_compat.hpp` +
+rewriting the source. The rclcpp source-compat layer (`nros/rclcpp_compat.hpp` +
 `cmake/compat/NrosRclcppCompat.cmake` + `nros-diagnostic-updater`) is built for
 this; the only delta is **build-script glue**.
 
@@ -13,7 +13,7 @@ against nano-ros via the three glue lines below.
 
 ## Two layers of glue
 
-### Per-package CMakeLists.txt — **zero nano-ros lines** (Phase 210)
+### Per-package CMakeLists.txt — **zero nano-ros lines**
 
 The ported pkg's `CMakeLists.txt` carries **only stock ROS 2 syntax**.
 Same file builds under both `colcon build` AND a nano-ros build:
@@ -35,11 +35,11 @@ ament_package()
 
 `find_package(rclcpp)` resolves through the rclcpp Find-stub (which
 auto-applies the `rclcpp_compat.hpp` force-include); `find_package(std_msgs)`
-resolves through the smart Find-stub (Phase 210.A.2 → walks
+resolves through the smart Find-stub (it walks
 `NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`); the
 `ament_target_dependencies` compat shim wires both link targets.
 
-### Workspace umbrella CMakeLists.txt — **one nano-ros include** (Phase 210)
+### Workspace umbrella CMakeLists.txt — **one nano-ros include**
 
 The umbrella `CMakeLists.txt` (sits at the workspace root, next to
 `src/`) is the **only** nano-ros-aware file:
@@ -81,7 +81,7 @@ ships the pattern end-to-end: two workspace msg pkgs (`local_msgs`,
 `extra_msgs`) with intra-workspace dep + a C++ consumer pulling msgs
 from BOTH the workspace AND AMENT (`std_msgs`, `geometry_msgs`,
 `sensor_msgs`) via one `find_package` shape. Cross-build proof: the
-same `src/` builds under `colcon build` (CI-gated by Phase 210.F.2).
+same `src/` builds under `colcon build` (CI-gated).
 
 ### Legacy `nros_generate_interfaces(<pkg>)` shape
 
@@ -103,12 +103,12 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `class MyNode : public rclcpp::Node` | `rclcpp::Node` shim → `nros::Executor` + `nros::Node` | Ctor takes `(name)`. |
 | `std::make_shared<MyNode>()` | inherits `enable_shared_from_this` | `shared_from_this()` works. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
-| `create_subscription<M>(topic, qos, callback)` | polling pump dispatched from `spin*` | **Capturing lambdas + `std::function` all work** (Phase 209.A.follow-up). |
+| `create_subscription<M>(topic, qos, callback)` | polling pump dispatched from `spin*` | **Capturing lambdas + `std::function` all work**. |
 | `create_wall_timer(period, callback)` | wall-timer dispatched from `spin*` | `std::chrono::duration` arg, capturing-lambda callback. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `nros::init/shutdown/ok/spin_once` | argc/argv ignored. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through `NROS_*` macros | `_THROTTLE` variants degrade to plain log. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
-| `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `nros-diagnostic-updater` shim (Phase 209.D) | Publishes `/diagnostics`. |
+| `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `nros-diagnostic-updater` shim | Publishes `/diagnostics`. |
 | `rclcpp_action::Server<A> / Client<A>` | aliases for `nros::ActionServer/Client<A>` | The action call shapes (send_goal_async etc.) match. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | Find-stubs at `cmake/compat/stubs/` | ~24 of the most-cited ROS 2 packages stubbed; add your own under `cmake/compat/stubs/Find<pkg>.cmake` for more. |
@@ -116,14 +116,14 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 ## What's documented as "needs adapt" (codegen-side, not surface-side)
 
 These are cosmetic codegen differences nano-ros's per-package codegen
-and the upstream `rosidl_default_runtime` codegen don't share. Both are
-tracked under Phase 210 (ROS-convention codegen).
+and the upstream `rosidl_default_runtime` codegen don't share; both are
+tracked as ROS-convention codegen work.
 
 - **Message string fields.** nano-ros codegen emits `nros::FixedString<N>`,
   upstream emits `std::string`. Assigning a `std::string` needs a one-token
   adapter: `message.data = s.c_str()`. The reverse `(std::string{}.c_str())`
   is what `RCLCPP_INFO` already takes.
-- **Generated message header path.** **CLOSED** (Phase 123.B.8 alias
+- **Generated message header path.** **CLOSED** (alias
   headers): nano-ros codegen emits BOTH the per-message form
   `<std_msgs/msg/string.hpp>` (upstream-shape) AND the umbrella
   `<std_msgs/std_msgs.hpp>`. Use whichever the original source picks.
@@ -150,11 +150,12 @@ tracked under Phase 210 (ROS-convention codegen).
 
 ## When the port hits a gap
 
-Open follow-ups: 209.F (yaml params bake), 209.H (LifecycleNode), 210.E.3
-(in-tree migration of legacy `nros_generate_interfaces(<pkg>)` call
-sites). If your port surfaces a *new* gap not covered by the compat
-header, file it under Phase 209 (Track-A = tree-side fix that lands in
-`cmake/compat/` or `packages/api/nros-cpp/`; Track-B = a codegen change).
+Known open follow-ups: yaml-loaded parameter baking, `LifecycleNode`
+compat, and the in-tree migration of legacy
+`nros_generate_interfaces(<pkg>)` call sites. If your port surfaces a
+*new* gap not covered by the compat header, file an issue — a fix
+lands either tree-side (in `cmake/compat/` or
+`packages/api/nros-cpp/`) or as a codegen change.
 
 In-tree regression fixtures:
 
