@@ -68,6 +68,13 @@ target_sources(app PRIVATE src/main.cpp)
 
 `nano_ros_use_board()` is shipped by the nano-ros Zephyr module (Phase 215.B). It is available the moment `ZEPHYR_EXTRA_MODULES` includes `deps/nano-ros/zephyr`; no extra `include()` is required.
 
+> **Out-of-tree constraint.** The lookup resolves board crates only
+> under `<nano-ros>/packages/boards/` — there is no consumer-supplied
+> search path today. A board crate you author outside the checkout
+> must be copied into your vendored nano-ros's `packages/boards/`
+> (accept the small upgrade-time diff, and rebase it across
+> `nros-v<X.Y.Z>` tag bumps).
+
 ## What the call layers in
 
 | Source | Effect |
@@ -77,6 +84,7 @@ target_sources(app PRIVATE src/main.cpp)
 | `DTC_OVERLAY_FILE` | The board crate's per-board DTS overlay is appended. Consumer overlays are preserved and layered after. |
 | `NANO_ROS_RMW` | Defaulted to `NROS_BOARD_DEFAULT_RMW` (from `board.cmake`) when the consumer did not pass `-DNANO_ROS_RMW=...`. |
 | `NROS_BOARD_RUNNER` | Cached for `west fvp run` (or another runner extension command) to pick up the right simulator binary / target-launcher. |
+| `NROS_BOARD_RUST_SUPPORT_MODULE` | Appended to `ZEPHYR_EXTRA_MODULES` when the board carries a Rust support module. (Not yet in the `board.cmake` ↔ `Cargo.toml` drift-audit field list — drift here is unaudited.) |
 
 The values themselves come from a single source of truth -- the board crate's `board.cmake` -- which Phase 215.F's drift audit keeps in sync with the crate's `Cargo.toml` metadata.
 
@@ -85,7 +93,7 @@ The values themselves come from a single source of truth -- the board crate's `b
 The one-call pattern still gives the consumer escape hatches:
 
 - **Pin a different Zephyr board id.** Pass `-DBOARD=<other>` on the CMake / `west build` command line; `nano_ros_use_board()` notices the user value and emits a warning rather than clobbering it.
-- **Pick a different RMW.** Pass `-DNANO_ROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [RMW backends](../internals/rmw-backends.md)). The board crate's default is used only when nothing is set.
+- **Pick a different RMW.** Pass `-DNANO_ROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [Backend Reference](../user-guide/rmw-backends.md)). The board crate's default is used only when nothing is set.
 - **Layer extra Kconfig / DTS.** Set `EXTRA_CONF_FILE` and `DTC_OVERLAY_FILE` *after* the call to `nano_ros_use_board()`. They will be applied on top of the board crate's contributions, not in place of them.
 
 ```cmake

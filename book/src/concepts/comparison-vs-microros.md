@@ -37,7 +37,7 @@ comparison.
 | **Deploy/config model** | Entry packages select board/RMW/deploy shape; Bringup packages own launch topology; platform tools build and flash | `colcon.meta` (hand-tuned static sizing) + `configure_firmware.sh -t <transport>` flags + hand-coded `rclc` app |
 | **Host-side broker** | none (Zenoh P2P / Cyclone DDS brokerless); Agent only for XRCE | Micro-XRCE-DDS **Agent always required** |
 | **Release model** | Source-only (no crates.io, no precompiled binaries) | Source-only + per-distro Debian packages |
-| **Code-size (Cortex-M XRCE talker)** | ~75 KB flash (XRCE), ~100 KB+ (Zenoh) | ~30–50 KB (XRCE + rclc) |
+| **Code-size (Cortex-M XRCE talker)** | ~75 KB flash (XRCE), ~100 KB+ (Zenoh) — order-of-magnitude, not benchmarked | ~30–50 KB (XRCE + rclc, as commonly quoted upstream — not measured here) |
 | **License** | MIT OR Apache-2.0 (dual) | Apache-2.0 |
 | **Governance** | Single-academic-lab maintainership today | ROS 2 community + corporate stewards |
 | **Commercial support** | None as of writing | Bosch + eProsima offer services |

@@ -116,7 +116,9 @@ the `nros-rmw-cffi` runtime registry before `main`.
 
 - **Dead-code elimination.** A 32 KB Flash budget cannot afford to
   link every backend's C client and pick at runtime. Linking only the
-  selected backend cuts the binary by 60–80 %.
+  selected backend cuts the binary substantially (the three backends
+  differ by an order of magnitude in linked C footprint — measure your
+  own image with `size`; no benchmarked figure exists).
 - **No plugin loader.** Most embedded targets have no `dlopen`. The
   cost of the plugin abstraction is a permanent overhead with no
   payoff there.

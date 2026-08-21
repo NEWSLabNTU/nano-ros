@@ -70,6 +70,17 @@ spell that path, take ladder rung 3 (see [The customization
 ladder](../concepts/board-integration.md)) and own the file — that is what
 rung 3 is for, and nothing else in nano-ros changes.
 
+> **Out-of-tree variant.** The worked example's `build.rs` reaches
+> sibling crates with `../../` walks
+> (`manifest.parent().join("nros-board-freertos/config")`, drivers,
+> `nros-c` includes) — those only resolve inside `packages/boards/`. An
+> out-of-tree board crate resolves the nano-ros root ONCE from an env
+> var instead (`NROS_REPO_DIR`, the same variable `nros sync` uses) and
+> derives every include from it:
+> `let root = PathBuf::from(env::var("NROS_REPO_DIR")?);`
+> `hal.include(root.join("packages/api/nros-c/include"));` — same
+> files, absolute anchor.
+
 ### `config/FreeRTOSConfig.h`
 
 Two numbers. Everything else in the 111-line shared file is generic.

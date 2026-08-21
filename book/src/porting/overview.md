@@ -1,6 +1,6 @@
 # Porting Overview
 
-nano-ros is designed for customization at three independent levels: **RMW** (transport protocol), **Platform** (OS or RTOS), and **Board** (hardware). The core crates define stable interfaces through Rust traits. You extend nano-ros by implementing those traits for your target -- you never modify the core.
+nano-ros is designed for customization at three independent levels: **RMW** (transport protocol), **Platform** (OS or RTOS), and **Board** (hardware). The core crates define stable interfaces through Rust traits; your implementation lives in your own crates. Be aware of the honest boundary: *registering* a new platform or an in-catalog board still touches a handful of files inside the nano-ros checkout (the registration steps below), so a vendored tree carries that small diff — plan a fork-with-rebase workflow against the `nros-v<X.Y.Z>` tags.
 
 ## Which chapter do I need?
 
@@ -14,8 +14,7 @@ Most porting work falls into the second or third category. Adding a new RMW back
 
 ## Quickstart — 2 crates + 2 tomls (RFC-0049)
 
-A port never edits a central file in the nano-ros tree. Scaffold the two
-packages, fill in the TODOs, done:
+Scaffold the two packages, fill in the TODOs:
 
 ```sh
 nros new platform myrtos                       # nros-platform-myrtos/ + nros-platform.toml

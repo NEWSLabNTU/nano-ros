@@ -51,6 +51,12 @@ Is total publish rate comfortably under ~1 msg per socket window?
 
 ## Measured effect (Zephyr native_sim, 64 B messages, 100 ms socket timeout)
 
+> **Provenance.** Single-run measurements on one development host,
+> phase-297 era, on `native_sim` — a host-scheduled simulator, so the
+> absolute msg/s figures move with host load; the *ratios* between
+> rows are the durable result. Re-measure on freshly rebuilt fixtures
+> on a quiet machine before citing any absolute number.
+
 Streaming (tight-loop publisher, 5000 messages, deep-ring listener):
 
 | configuration | talker completes? | throughput | vs baseline |

@@ -26,7 +26,7 @@ flexibility.
 
 The custom transport surface is the project's first **canonical-C-ABI**
 interface, designed per
-[`docs/design/0006-portable-rmw-platform-interface.md`](../../../docs/design/0006-portable-rmw-platform-interface.md):
+[`docs/design/0006-portable-rmw-platform-interface.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0006-portable-rmw-platform-interface.md):
 
 | Layer | Owns | Crates / files |
 |-------|------|----------------|
@@ -71,12 +71,12 @@ Swift (`@_cdecl`), etc.
 
 The reference implementation of "custom transport written in pure C"
 lives at
-[`packages/rmw/cffi/tests/c_stubs/c_stub_transport.c`](../../../packages/rmw/cffi/tests/c_stubs/c_stub_transport.c).
+[`packages/rmw/cffi/tests/c_stubs/c_stub_transport.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/rmw/cffi/tests/c_stubs/c_stub_transport.c).
 ~80 LOC; no Rust headers / cbindgen output / Rust types involved on
 the C side. Use it as a template for ports to other languages.
 
 The corresponding Rust integration test
-([`tests/c_stub_transport.rs`](../../../packages/rmw/cffi/tests/c_stub_transport.rs))
+([`tests/c_stub_transport.rs`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/rmw/cffi/tests/c_stub_transport.rs))
 exercises the round-trip: register the C-built struct → drive each
 fn pointer from Rust → confirm the C-side counters bumped → confirm
 abi_version mismatch is rejected. Run via:
@@ -225,8 +225,8 @@ cargo test -p nros-rmw-xrce --features platform-posix \
 
 ## See also
 
-- [`<nros/transport.h>`](../../../packages/api/nros-c/include/nros/nros_generated.h) — C header
-- [`<nros/transport.hpp>`](../../../packages/api/nros-cpp/include/nros/transport.hpp) — C++ header
-- [`nros_rmw::custom_transport`](../../../packages/core/nros-rmw/src/custom_transport.rs) — Rust source
-- [`docs/roadmap/phase-115-runtime-transport-vtable.md`](../../../docs/roadmap/archived/phase-115-runtime-transport-vtable.md) — phase doc
+- [`<nros/transport.h>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-c/include/nros/nros_generated.h) — C header
+- [`<nros/transport.hpp>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-cpp/include/nros/transport.hpp) — C++ header
+- [`nros_rmw::custom_transport`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw/src/custom_transport.rs) — Rust source
+- [`docs/roadmap/phase-115-runtime-transport-vtable.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-115-runtime-transport-vtable.md) — phase doc
 - [Custom platform](custom-platform.md) — when you need more than just transport

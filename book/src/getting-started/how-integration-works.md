@@ -72,8 +72,11 @@ two places. The split is by *what kind of fact it is*:
 your workspace with a `package.xml` and an `nros-board.toml`: the
 board's name, RTOS platform, target triple, architecture, entry shape.
 These are true of every copy of that board on every desk, so they are
-reusable and shareable. You never edit nano-ros to add a board — a board
-exists because its directory exists.
+reusable and shareable. Note the current discovery constraint: the
+CLI's board catalog scans `<nano-ros>/packages/boards/` — a descriptor
+outside the checkout is not found, so an out-of-tree board dir is
+copied (or symlinked) into your vendored checkout's `packages/boards/`
+for the tooling to see it.
 
 **2. A `[deploy.<name>]` block — facts about this checkout, this
 machine, this application.** It lives in your bringup package's

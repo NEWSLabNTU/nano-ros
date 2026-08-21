@@ -46,6 +46,9 @@ fn main() {
         .unwrap();
 
     executor.spin_blocking(SpinOptions::default()).unwrap();
+    // This is the imperative Layer-2 API; the starters use the
+    // declarative `nros::node!` / `nros::main!` form — both are
+    // first-class (see Concepts → Two-Layer API).
 }
 ```
 
