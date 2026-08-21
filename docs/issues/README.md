@@ -279,6 +279,13 @@ does NOT cover, and is still open ground: `check-nuttx-shared-tree-headers` insp
 only, so a Rust helper joining `$NUTTX_DIR/nuttx` was invisible to it (0196 pattern). Filed from a
 tier-2 failure without searching archived/ first. See `archived/0748-*`. (2026-08-21)
 
+**#0758** (core/boards, open 2026-08-22) — no platform wall-clock epoch source: embedded images stamp
+messages from their boot epoch and stamped-message peers reject them (ASI's Autoware `vehicle_cmd_gate`
+case — autonomous mode could not actuate until the consumer hand-rolled an SNTP hook + host server).
+Direction: an optional `epoch_us`/`acquire_epoch` platform-vtable slot with SNTP as the first provider
+(Zephyr in-tree client, lwIP SNTP, POSIX `CLOCK_REALTIME`), server address as a deploy fact, acquired
+between netif-up and component construction. See `0758-*`. (2026-08-22)
+
 **#0757** (rmw/memory, open 2026-08-22) — the C++ arena dispatch trampoline swallows every non-OK take, so
 `BUFFER_TOO_SMALL` drops samples with zero diagnostics while cyclone ACKs them at transport level — the
 subscription looks matched and healthy from every outside probe while the app waits forever. This is
