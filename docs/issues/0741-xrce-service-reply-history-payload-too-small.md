@@ -186,3 +186,77 @@ failure mode. A unit test asserts that and prints the result under
 **Next step is a measurement, not a patch:** re-run the failing command on the
 host where it fails and compare those five lines against the sample above.
 
+## Version skew, measured (2026-08-21) — the agent is a JAZZY-era Fast-DDS on a Humble bus
+
+The fingerprint above reports the SYSTEM Fast-DDS. The other half of the wire is
+the one bundled inside the XRCE Agent, and that is where the skew is.
+
+**Measured on disk** (`~/.nros/sdk/xrce-agent/2.4.3-nros1/lib/`):
+
+```
+libfastrtps.so.2.14.6
+libfastcdr.so.2.2.7
+```
+
+**Measured from the installed ROS** (Humble, the tree's `DEFAULT_ROS_DISTRO`):
+
+```
+fastrtps 2.6.12    rmw_fastrtps_cpp 6.2.10
+```
+
+So one DDS bus carries Fast-DDS **2.14.6** talking to **2.6.12**, and — the
+sharper difference — Fast-CDR **2.2.7** against Humble's Fast-CDR **1.x**. Fast-CDR
+2 is a different major version of the library that computes serialized sizes,
+which is precisely the quantity a reader sizes its history from. A 15-byte
+history for a type that cannot be 15 bytes is the shape that produces.
+
+### Where 2.14 comes from, and the agent-to-Fast-DDS map
+
+Not a nano-ros choice: `[tool.xrce-agent]` pins upstream `v2.4.3`, and that tag's
+`CMakeLists.txt` superbuilds its own Fast-DDS. Read from the upstream tags:
+
+| Micro-XRCE-DDS-Agent | Fast-DDS | Fast-CDR |
+| --- | --- | --- |
+| v2.2.0 | 2.4.1 | 1.0.22 |
+| v2.3.0 | 2.9.x | 1.0.26 |
+| v2.4.0 | 2.10.x | 1.0.27 |
+| v2.4.2 | 2.12.x | 1.1.1 |
+| **v2.4.3 (ours)** | **2.14.x** | **2.2.x** |
+
+Against the ROS editions (Humble measured here; Iron/Jazzy are the widely-known
+pairings and are NOT verified on this machine — verify before acting on them):
+
+| edition | Fast-DDS | nearest agent |
+| --- | --- | --- |
+| Humble | 2.6.x *(measured 2.6.12)* | none — no agent release bundles 2.6.x |
+| Iron | 2.10.x *(unverified)* | v2.4.0 |
+| Jazzy | 2.14.x *(unverified)* | **v2.4.3 — what we ship** |
+
+So the agent we pin lines up with **Jazzy**, while the tree defaults to
+**Humble**. Nobody chose that: the pin tracks an upstream agent release, and the
+Fast-DDS rides along inside it.
+
+### Why this is not obviously "just bump/downgrade the pin"
+
+* **No agent release matches Humble.** The closest below is v2.3.0 (2.9.x), which
+  at least keeps Fast-CDR on the **1.x** line — the boundary that matters more
+  than the Fast-DDS minor.
+* **The agent supports using the system libraries** —
+  `UAGENT_USE_SYSTEM_FASTDDS` / `UAGENT_USE_SYSTEM_FASTCDR`, which our
+  `[tool.xrce-agent.source].configure` does not set. Building against the target
+  edition's own Fast-DDS removes the skew BY CONSTRUCTION rather than by picking
+  a number. But it also destroys the property the bundle exists for: a
+  relocatable prefix that works on a host with NO ROS installed. That would have
+  to become a second variant, not a replacement.
+* **It is a pin with interop consequences**, the same class as the cyclonedds
+  pointer tracking the version ROS ships (CLAUDE.md now records that rule). Not
+  an agent's call to move.
+
+### What this does NOT explain
+
+Why it fails on one host and passes on two others, all of which run the same
+pinned agent. If the skew alone were sufficient, every host would fail. So the
+skew is the mechanism's setting, not its trigger — something else on the failing
+host (a different system Fast-DDS, a second agent on PATH, a stale fixture)
+selects it. That is what the fingerprint is there to catch.
+
