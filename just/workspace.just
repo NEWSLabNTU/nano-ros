@@ -750,6 +750,13 @@ rust-targets:
     # still opt into `-Zbuild-std` for `panic_abort` / build-std-features
     # tuning; that lives in the board crate's .cargo/config.toml.
     rustup target add armv7r-none-eabihf
+    # phase-372 W1 — Cortex-R52 (ARMv8-R AArch32), the NXP S32Z270 RTU profile
+    # `config/freertos/nros-platform.toml` declares as `[arch.cortex-r52]`. The
+    # `workspace-cpp-s32z270-freertos` fixture row cross-builds to it, so a host
+    # provisioned by this recipe still failed `just freertos build-fixtures` at
+    # CONFIGURE time with corrosion's "Target armv8r-none-eabihf is not
+    # installed" — a fixture row naming a target the setup recipe does not add.
+    rustup target add armv8r-none-eabihf
     rustup target add riscv32imc-unknown-none-elf
     rustup target add riscv64gc-unknown-none-elf
     rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
