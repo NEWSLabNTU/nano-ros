@@ -713,3 +713,74 @@ Corrected alongside this: CLAUDE.md's pitfall index still described the normalis
 current ("`zenoh_read_priority`/`poll_priority` are NORMALISED 0–31 mapped DOWN … the
 defaults ship that collision"). That file is loaded every session, so it was telling every
 reader a fixed collision still ships.
+
+## Independent confirmation 2026-08-21 — `nm` on a shipped image of this lane
+
+The evaluation workspace (`NEWSLabNTU/nano-ros-rt-eval`) is now cloned locally, so
+the 2026-08-16 dead-code finding above could be checked against an artefact
+rather than re-derived. It holds, by a different method than the one that
+produced it.
+
+`results/msweep-20260808-043004Z/img-baseline-7449.elf` — a FreeRTOS
+mps2-an385 image from the lane every number in this issue comes from:
+
+```
+_zp_unicast_read               0     <- the function the drain budget capped
+_zp_unicast_read_task          1     <- the live path
+_z_unicast_client_read         0     (inlined into the task)
+_zp_unicast_process_peer_event 0
+```
+
+Two consequences, both of which move things that are currently treated as
+settled:
+
+### 1. The drain-budget probe measured a constant it could not reach
+
+`results/issue506_drain_budget.md` in the evaluation workspace reports a
+four-cell table (unbounded / 16 / 4 / 1 frames) and concludes that "a frame cap
+in this rx structure is not a budget at all. It is a drop policy wearing a
+budget's clothes." The cap was `NROS_DRAIN_BUDGET_FRAMES` on
+`_zp_unicast_read`'s inner loop — and that function is not in the image.
+
+The table's own shape is consistent with this rather than with the causal story:
+cells 16 and 4 are IDENTICAL on the discriminating column (rx 10 and 10), which
+is what one binary measured twice looks like, and cell 1 is indistinguishable
+from unbounded (rx 268 vs 282, chain 13.2% vs 13.2%). This issue elsewhere
+records the harness varying rx between 10 and 238 msg/s across runs of an
+unchanged build, and each cell here is a single 30 s run.
+
+So the conclusion is unsupported — not wrong, unsupported. A frame cap may well
+be lossy in that structure; this experiment cannot say so, because it never
+compiled a difference.
+
+### 2. Issue 0567's fix does not reach this lane either
+
+0567 is closed as "zenoh-pico fork `43ddb0ec` — reset only when the buffer is
+empty", and its title is exactly the precondition the drain-budget result asks
+for: a receive buffer that survives across passes. But `43ddb0ec` fixed
+`_zp_unicast_read`, which the `nm` above shows is absent. The resumable rx is
+real and it is not linked here.
+
+That matters for RFC-0074: its device-side half rests on bounding a drain loop
+made non-lossy by 0567, and on the platform that produced all of this issue's
+evidence there is no such loop and no such fix in the image. The live path takes
+one frame per iteration of its own task already.
+
+### What this leaves standing
+
+* **Router-side pacing is still the only mechanism measured to fix both harms**
+  (`issue506_pacing.md`), and nothing here touches it. It also does not depend
+  on the device's rx structure, which is now the more robust half of the design.
+* **The band that preempts the tiers is still `zpico_read` at 72-81 % CPU** —
+  that came from a Tonbandgeraet trace, not from the cap experiment.
+* **The device-side half needs re-aiming**, at the task the trace names rather
+  than the loop the source reading suggested: the read task's priority and CPU
+  share per period. That is a scheduling instrument, and this issue already has
+  one — `report_tiers_above_transport` compares the two in one vocabulary.
+
+### Method
+
+This is the fourth pass of this issue where reading source produced a
+conclusion that an artefact then contradicted, and the issue's own note predicted
+it: "`nm` is four seconds." It was. The cost of the previous three was two
+recorded results and one closed issue aimed at dead code.
