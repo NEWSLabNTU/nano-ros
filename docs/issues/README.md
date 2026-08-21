@@ -51,7 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-21): **#0740** — the config-header mirror's file edge was Ninja-only, so a
+Recently resolved (2026-08-21): **#0744** (boards, open 2026-08-21) — freertos-posix: a task blocking in a RAW host primitive (the
+platform shim's pthread-layout condvars, or a blocking syscall from task context) parks the WHOLE
+simulated kernel — the GCC/Posix port's tick cannot preempt a block it does not own — so RT tiers see
+~80 ms stalls that priorities cannot fix. Measured on the ASI consumer: 20 µs callback in a
+priority-7 tier, 30 ms period, ~25 Hz with 80–85 ms max intervals; pre-tiers 12 Hz/140 ms. The
+phase-370 "RTOS threads + host Cyclone" seam (0715's class) degrading into latency instead of a
+SEGV. Fix shape: executor/platform waits reached from task context go through FreeRTOS-visible
+primitives; audit platform.c wait arms × task-context reachability. See `0744-*`. (2026-08-21)
+
+**#0740** — the config-header mirror's file edge was Ninja-only, so a
 clean Unix Makefiles consumer died 'No rule to make target' on the cross-directory mirror path. Fixed by
 `_nros_config_header_stamp`: a LOCAL stamp rule per consumer directory, going stale exactly when the
 mirror does in both generators; applied at all six OBJECT_DEPENDS sites. Verified single-shot clean on
