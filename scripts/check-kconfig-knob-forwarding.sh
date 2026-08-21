@@ -45,6 +45,12 @@ READERS=(
 DERIVED_READERS=(
     packages/core/nros-node/build.rs
     packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs
+    # The five parameter-store knobs (NROS_MAX_PARAMETERS,
+    # NROS_MAX_PARAM_NAME_LEN, ...). Added when #0749 taught the cmake side to
+    # forward NROS_MAX_PARAMETERS and this gate found its only reader still on
+    # a plain env::var — which on a Zephyr Rust image reads the crate default
+    # whatever Kconfig says (issue 0460).
+    packages/core/nros-params/build.rs
 )
 
 # Knobs the cmake side exports that no Rust build script reads. Each needs a

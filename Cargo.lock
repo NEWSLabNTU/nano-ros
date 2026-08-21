@@ -1866,6 +1866,7 @@ version = "0.5.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-ghost-types",
+ "nros-zephyr-build",
 ]
 
 [[package]]

@@ -40,10 +40,21 @@ fn main() {
 }
 
 /// Read a usize from an environment variable, falling back to a default.
+/// Resolve a sizing knob the way every other nros build script does.
+///
+/// Issue 0460 — a Zephyr RUST image inherits NONE of cmake's `set(ENV{...})`
+/// knob exports: that call only touches the configure-time process, the C lane
+/// re-bakes them into its own command, and zephyr-lang-rust's
+/// `rust_cargo_application` builds a fresh one that inherits nothing. So a plain
+/// `env::var` here reads the crate DEFAULT on Zephyr no matter what Kconfig
+/// says, and the two lanes then disagree about a compile-time constant — an
+/// 0135-class ABI split, silently.
+///
+/// `knob_usize` reads `$DOTCONFIG` for `CONFIG_<name>` and falls back to the
+/// environment, which is what `nros-node`'s identical helper does. Gated by
+/// `check-kconfig-knob-forwarding`, which went red when #0749 taught
+/// `zephyr/cmake/nros_cargo_build.cmake` to forward `NROS_MAX_PARAMETERS` while
+/// this crate — its only reader — still used the env-only form.
 fn env_usize(name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
-    env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), default)
 }

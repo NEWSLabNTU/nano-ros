@@ -32,3 +32,6 @@ nros-ghost-types = { path = "../../verification/nros-ghost-types" }
 
 [lints]
 workspace = true
+
+[build-dependencies]
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
