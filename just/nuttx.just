@@ -287,6 +287,42 @@ build-fixtures-arm:
 # module able to PRODUCE every coordinate `lane-coords` attributes to it, which
 # is what `every_fixture_token_is_producible_by_the_module_that_owns_it` gates.
 #
+# issue 0750 (C) — build the arm SMP NuttX kernel export, if the lane wants it.
+#
+# Same shape as the riscv lane below, and for the same reason: it reconfigures
+# the ONE shared kernel tree, so it is its own serial step, and it is gated so a
+# lane naming no `nuttx-arm-smp` coordinate pays nothing.
+#
+# What makes a SECOND ARM config safe is issue 0750 (B): `build-nuttx.sh` names
+# the export for the DEFCONFIG DIRECTORY, not `CONFIG_ARCH`, so this lands in
+# `nros-nuttx-export-arm-smp/` beside `-arm/` instead of overwriting it. Both
+# survive, each with its own `HEAD:sha256(defconfig)` key. Consumers must pass
+# `NUTTX_EXPORT_DIR` to select it — a target triple cannot distinguish two
+# configs of one arch, which is exactly what `nuttx_kernel_path_for()`'s
+# `e_machine` check (issue 0743) cannot see either.
+[group("full-matrix")]
+build-fixtures-arm-smp:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/fixture-lane.sh
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    if ! nros_lane_wants_platform nuttx-arm-smp; then
+        nros_lane_skip_note nuttx "NuttX arm-smp: no nuttx-arm-smp coordinate in this run's lane — skipping"
+        exit 0
+    fi
+    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
+        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    fi
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    smp_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/arm-smp/defconfig"
+    # Provision the arm-smp export (reconfigures the shared tree if it held
+    # another config). The board Make.defs is the SAME qemu-armv7a one the
+    # uniprocessor arm lane uses — this is one board with two configurations,
+    # not a second board.
+    NUTTX_DEFCONFIG="$smp_defconfig" bash scripts/nuttx/build-nuttx.sh
+    echo "→ NuttX arm-smp export: $nuttx_dir/nros-nuttx-export-arm-smp"
+
 # Build the riscv (QEMU rv-virt) NuttX test fixtures, if the lane wants them.
 [group("full-matrix")]
 build-fixtures-riscv:

@@ -316,6 +316,37 @@ int nros_nuttx_apply_current_affinity(const char* name, uint32_t core_plus1) {
     return 0;
 }
 
+/* issue 0750 — report where the tier ACTUALLY runs, not just that the kernel
+ * took the mask.
+ *
+ * The pin markers above say `pthread_setaffinity_np` returned 0. On a
+ * uniprocessor image that is true and uninformative: cpu 0 is the only CPU the
+ * thread could be on, so an accept there proves the call is well-formed and
+ * nothing about placement. This is the line that distinguishes "the kernel
+ * accepted the request" from "the kernel honoured it" — a kernel that takes the
+ * mask and then schedules elsewhere fails here and passes there.
+ *
+ * Mirrors `nros-board-zephyr`'s `nros: core pin observed` (both the C and Rust
+ * arms). The wording and shape are deliberately identical so one test marker
+ * serves both boards and the two cannot drift.
+ *
+ * Guarded on CONFIG_SMP for the same reason Zephyr's is: `sched_getcpu()` is
+ * declared in the non-SMP export too and would answer a constant 0 there, which
+ * is a fabricated placement report. Silent beats invented — the cell that reads
+ * this treats "absent" as failure rather than tolerating a second arm. */
+void nros_nuttx_report_observed_cpu(const char* name);
+void nros_nuttx_report_observed_cpu(const char* name) {
+#ifdef CONFIG_SMP
+    int observed = sched_getcpu();
+    if (observed >= 0) {
+        printf("nros: core pin observed tier=`%s` running_on=%d\n", (name != NULL) ? name : "?",
+               observed);
+    }
+#else
+    (void)name;
+#endif
+}
+
 /* phase-302 W3 (issue 0263) — adopt the tier's declared SCHED_FIFO priority
  * on the CALLING thread. The C arm applies priority at pthread_create time;
  * the Rust arm spawns via std::thread (no priority attr) and self-applies
@@ -384,6 +415,11 @@ static void* nuttx_tier_thread(void* arg) {
                                             ctx->period_us, ctx->priority);
     /* phase-296 W5.11 — placement dim: pin to the declared core (fail-loud). */
     (void)nros_nuttx_apply_current_affinity(ctx->name, ctx->core_plus1);
+    /* issue 0750 — and say where it LANDED, after the pin and before any work.
+     * Only the spawned tiers report: the boot tier is already running when the
+     * mask is applied, so its placement says more about when it was asked than
+     * about whether the pin worked. */
+    nros_nuttx_report_observed_cpu(ctx->name);
 
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot thread) must outlive this thread — the boot spin loop runs
