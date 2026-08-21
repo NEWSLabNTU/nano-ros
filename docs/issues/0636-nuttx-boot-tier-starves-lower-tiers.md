@@ -390,3 +390,63 @@ done
 
 Read the `log:` block in the panic — a failing run's console stops at
 `tier 'high' entering spin`.
+
+## Measured 2026-08-21 — the coverage landed, and it says the C/C++ arm is NOT fixed
+
+Both gaps this issue named are now closed as CELLS:
+
+* `sched(TierPriority, NuttxArm, Cpp, Runtime)` — added by `91b623e57`.
+* `cell(FreertosMps2, Rust, Zenoh, RealtimeTiers, Workspace, Runtime)` — "issue
+  0636 gap 2 … This cell measures it."
+
+Verified they RUN rather than exist, which is the distinction this issue exists
+to enforce. In the ROS distrobox (the only environment here with both QEMU and a
+router):
+
+* **FreeRTOS Rust** — runs. `realtime_tiers` reports 16 ran / 9 skipped and
+  `freertos/rust` is not among the skips. Gap 2 is genuinely covered.
+* **NuttX C++ TierPriority** — runs, and **fails**:
+
+```
+TierPriority/nuttx/cpp: [nuttx cpp TierPriority] 1 of 2 declaring tiers produced
+NEITHER `nros: tier priority set tier=` NOR `nros: tier priority FAILED tier=`
+with their own declared priority: `low` prio=100 — accepted and dropped
+```
+
+**Rate: 8 pass / 4 fail over 12 consecutive runs (67 %).**
+
+That is this issue's original signature — the `low` tier printing nothing —
+one language over, and it is not a flake: 4 failures in 12 is the same order as
+the Rust arm's history (1/5 → 3/5 → 4/6 → 23/32) before its fixes converged.
+
+### What that means for the "Fixed 2026-08-21" section above
+
+That section is candid that it could not measure itself: "this change is
+justified by the same reasoning that justified `17666723d`, not by a measurement
+of its own. A C/C++ TierPriority cell is the missing coverage." The cell arrived,
+and the reasoning did not hold. Choosing the least urgent tier as session owner
+was necessary on the C arm and is not sufficient.
+
+So the Rust and C/C++ arms are now in different states, which is worth saying
+plainly because the issue currently reads as though both are done:
+
+| arm | state |
+| --- | --- |
+| NuttX Rust | 67/67, including 1.4x oversubscription |
+| NuttX C/C++ | **8/12** |
+
+### Note on reading the failure
+
+The cell's message only appears with `--success-output immediate` on a PASSING
+run; on a failing run it is in the normal output. Worth knowing before
+concluding from a green summary that the cell did nothing — `sched_dims_applied`
+is one test over many cells, the absorbing-verdict shape issue 0445 describes.
+
+### Not diagnosed here
+
+Why `low` still misses its marker on the C arm when the boot-tier choice is
+fixed. The Rust arm needed THREE changes to converge (spawn-attribute priority,
+the post-spawn yield, and the boot-tier choice); the C arm has had one of the
+three. The other two are the obvious next candidates, and neither has been
+checked on this arm.
+
