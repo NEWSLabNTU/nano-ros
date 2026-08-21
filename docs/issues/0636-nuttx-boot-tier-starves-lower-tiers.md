@@ -450,3 +450,100 @@ the post-spawn yield, and the boot-tier choice); the C arm has had one of the
 three. The other two are the obvious next candidates, and neither has been
 checked on this arm.
 
+
+## Diagnosed and fixed 2026-08-21 — the boot tier's marker sat behind its own spawn
+
+The section above was right that "choosing the least urgent tier as session
+owner was necessary and is not sufficient", and right to leave the cause open.
+The cause is an ORDERING bug in `nuttx_run_tiers.c`, not a scheduling-policy
+one, and it is visible from the emitted tier table.
+
+The NuttX projection of the realtime-cpp bringup has TWO tiers, not three —
+`mid` declares no `[tiers.mid.nuttx]`, so it is dropped:
+
+```c
+{ "high", …, 110LL, …, &__nros_entry_setup_tier_0, … },
+{ "low",  …, 100LL, …, &__nros_entry_setup_tier_1, … },
+… NuttxBoard::run_tiers(…, __nros_tiers, 2u);
+```
+
+With `boot_idx = n_tiers - 1`, **`low` IS the boot thread.** It is not a
+spawned tier that failed to start — it is the caller. And the boot path ran in
+this order:
+
+1. boot's node setup (declares),
+2. `nuttx_spawn_next_tier(...)` → creates `high` at `SCHED_FIFO` 110 with
+   `PTHREAD_EXPLICIT_SCHED`,
+3. `nros_nuttx_apply_current_priority(boot->name, …)` — the #579 marker.
+
+Step 2 creates a thread that outranks the caller, which is still at the default
+`app_main` priority. On this uniprocessor guest `high` preempts the boot thread
+the instant `pthread_create` returns, so step 3 runs only once `high` first
+blocks in `spin_once`. When that lands after the cell's deadline, `low` has
+printed NEITHER marker and the cell reports it "accepted and dropped" — the
+exact observed message. It is intermittent because *when* `high` first blocks
+depends on the zenoh handshake and the transport threads' interleaving, which
+is why it reads as a flake and is not one.
+
+`high` was never starving `low` of the CPU, and `low` was never missing: the
+tier was configured correctly and could not say so, which is precisely the
+failure mode #579's marker rule exists to expose. My earlier
+"Fixed 2026-08-21" claim was reasoning without a measurement, and the cell that
+this issue asked for is what refuted it.
+
+### The fix
+
+Apply the boot tier's declared dims (priority + sporadic + affinity, the block
+carrying the marker) BEFORE the spawn. Nothing in that block needs the children
+to exist, and at that point no other tier thread exists to be starved by a
+self-demotion, so the thread still owns the CPU. #144's ordering is untouched —
+boot's DECLARES already ran above it.
+
+The Rust arm does the MIRROR of this and is green for the mirror reason: it
+spawns every tier from the boot thread in a loop, so it must keep its inherited
+priority ACROSS that loop or it never gets the CPU back to finish spawning.
+This arm chain-spawns — exactly one create here, and tier N brings up tier
+N+1 — so there is no later spawn to protect. Same rule ("where the owner
+applies its own priority is load-bearing"), opposite half, because the spawn
+topologies differ.
+
+### Measured — A/B on one host, same fixture, clean builds both sides
+
+`workspace-cpp-nuttx-realtime` rebuilt from `rm -rf` on each side (an
+incremental rebuild does NOT pick up `nuttx_run_tiers.c`, which is how a
+previous verification on this issue went vacuous):
+
+| build | `[nuttx cpp TierPriority]` |
+| --- | --- |
+| baseline (HEAD) | **10 pass / 2 fail in 12** — `low` prio=100 dropped, both times |
+| with the fix | **30 pass / 0 fail in 30** |
+
+The baseline reproduces the reported defect on a second host (they measured
+8/12; 10/12 here), so this is the same defect and not a local artifact. Under
+the baseline failure rate the fixed run is ~0.4 % likely by chance.
+
+No regression on the arms sharing the file: `[nuttx cpp SporadicBudget] ACCEPT`
+still holds, and `realtime_tiers_e2e` runs 17 rows / 0 failed with `nuttx-arm/c`
+and `nuttx-arm/cpp` both among the rows that ran.
+
+### Arm table, updated
+
+| arm | state |
+| --- | --- |
+| NuttX Rust | 67/67, including 1.4x oversubscription |
+| NuttX C/C++ | **30/30** (was 8/12) |
+
+### Still open — the FreeRTOS C boot tier adopts no priority at all
+
+Found while sweeping the sibling chain-spawn arms, NOT fixed here because
+nothing measures it yet. `freertos_run_tiers.c`'s boot path applies the boot
+tier's core pin (`freertos_apply_core_pin(NULL, …)`, correctly placed before
+the spawn) but never its PRIORITY: `nros_freertos_set_current_task_priority` is
+called only from the Rust arm (`nros-board-freertos/src/entry.rs`). So the
+FreeRTOS C boot tier keeps whatever priority `app_task` was created at, and its
+declared `[tiers.*.freertos] priority` does not hold for it. Whether that
+currently starves anything depends on where `app_task` sits relative to the
+spawned tiers and the 0623 transport band — which is exactly the "both
+orderings are legitimate; choosing by accident is not" case. Wants a
+`TierPriority`/freertos/c cell before a fix, for the reason this issue just
+demonstrated twice.

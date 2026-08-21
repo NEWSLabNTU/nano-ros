@@ -639,22 +639,30 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
         }
     }
 
-    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
-    /* A boot-side spawn failure is fatal: tear down boot_storage (which the
-     * helper never touches) and return error. Downstream tier threads handle
-     * their own spawn failures by parking + continuing to spin. */
-    int src = nuttx_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
-    if (src != 0) {
-        nros_cpp_fini(boot_storage);
-        nros_platform_dealloc(boot_storage);
-        return -1;
-    }
-
     /* The boot thread runs its chosen tier itself — adopt that tier's declared
      * RAW priority
      * (the spawned tiers already got theirs at pthread_create; without this the
      * boot tier keeps the app_main-thread default and the declared tier QoS
-     * would not hold for it). */
+     * would not hold for it).
+     *
+     * issue 0636 — this runs BEFORE the spawn below, and the order is the
+     * whole fix. `boot` is the LEAST urgent tier, so every tier this thread
+     * spawns outranks it: on the realtime-cpp table (`high` 110, `low` 100,
+     * `low` == boot) the child is created at SCHED_FIFO 110 and preempts this
+     * thread the instant `pthread_create` returns, at the default app_main
+     * priority. Anything sitting after the spawn therefore runs only once the
+     * child first blocks — which for the marker print below meant `low`
+     * reported NEITHER outcome and the cell read it as "accepted and dropped"
+     * (8 pass / 4 fail over 12 runs). Nothing here needs the children to
+     * exist, and no other tier thread exists yet to be starved by a
+     * self-demotion, so the dims are applied while this thread still owns the
+     * CPU. #144's ordering is untouched: boot's DECLARES already ran above.
+     *
+     * The Rust arm does the mirror of this and is green (67/67) for the mirror
+     * reason: it spawns EVERY tier from this thread in a loop, so it must keep
+     * its inherited priority across the whole loop or it never gets the CPU
+     * back to finish spawning. This arm chain-spawns — exactly one create, and
+     * tier N brings up tier N+1 — so there is no later spawn to protect. */
     /* issue 0636 coverage — through the shared helper, so the boot tier prints
      * its marker like every other declaring tier (#579). This was an inline
      * `pthread_setschedparam` that reported nothing, which is how the boot
@@ -671,6 +679,18 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
                                             boot->period_us, boot->priority);
     /* phase-296 W5.11 — placement dim: pin the boot tier too (fail-loud). */
     (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
+
+    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
+    /* A boot-side spawn failure is fatal: tear down boot_storage (which the
+     * helper never touches) and return error. Downstream tier threads handle
+     * their own spawn failures by parking + continuing to spin. */
+    int src = nuttx_spawn_next_tier(session_handle, domain_id, rest_first, n_rest);
+    if (src != 0) {
+        nros_cpp_fini(boot_storage);
+        nros_platform_dealloc(boot_storage);
+        return -1;
+    }
+
 
     /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin
