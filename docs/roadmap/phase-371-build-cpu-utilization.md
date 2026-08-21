@@ -249,3 +249,68 @@ Concretely: of ~36 processes, how many are supervisors? A deep
 make -> sh -> cargo -> rustc chain accounts for many. If nearly all 36 are
 supervisors and the leaf worker count is ~1, the build is a SERIAL PIPELINE and
 the fix is pipeline depth, not parallelism.
+
+## wchan breakdown: the idle time is gate scripts blocked on the filesystem
+
+`scripts/build/sample-build-wchan.sh` — same lineage walk, plus each process's
+`wchan` and, critically, **whether it has children**. That last column is the
+whole point: a `make` or `sh` in `do_wait` WITH children is a supervisor,
+correctly blocked on work it already dispatched, and counting it as "stalled"
+double-counts the thing it is waiting for. A LEAF blocked in futex/pipe/IO is
+work that genuinely cannot proceed. The withdrawn earlier attempt conflated the
+two and matched by name; this one separates them and is lineage-scoped.
+Validated on a known tree first (two `sleep` children reported as leaves in S).
+
+`lane=tier2`, 5774 process-samples over 791 s:
+
+| | |
+| --- | --- |
+| supervisors (have children) | **74%** |
+| leaves (cannot proceed) | 26% |
+| leaves in **D** (uninterruptible disk I/O) | **64%** |
+| leaves in S | 35% |
+| leaves **running** | **1%** |
+
+Leaf blockers, by count:
+
+```
+468  python3   __wait_on_buffer          disk
+245  awk       pipe_read
+245  sort      pipe_read
+243  grep      folio_wait_bit_common     page cache / disk
+171  python3   d_alloc_parallel          dentry alloc — PATH LOOKUP contention
+ 20  cargo     locks_lock_inode_wait
+```
+
+**The leaves are `python3`, `awk`, `sort` and `grep` — gate scripts, not
+compilers — and 64% of them are in uninterruptible disk wait.**
+
+### Scope caveat, which is the most important line here
+
+This run was 791 s with fixtures already warm, so there was very little to
+compile. **The sample therefore characterises the GATE PHASE, not the compile
+phase.** A cold-tree run would shift the mix substantially and this table should
+not be quoted as "the build is I/O bound". It says the gates are.
+
+Given how many figures in this phase have already been retracted for exactly
+this kind of over-reach, the caveat is recorded before the conclusion rather
+than after it.
+
+### What it does establish
+
+`d_alloc_parallel` and `folio_wait_bit_common` appearing in `grep`/`python3`
+leaves is the signature of **directory traversal**. The gate fan-out (now the
+default) turns those walks into 32-way concurrent path lookups, which is why the
+dentry allocator shows up at all. The gate phase is fast in wall-clock (7 s) but
+it saturates the filesystem rather than the CPU.
+
+That raises the value of issue 0721's **86 unconverted walk sites** above what
+this phase previously assigned them. Their SERIAL cost is small — that is why
+they were left — but under the fan-out each one becomes concurrent path-lookup
+pressure. The ranking there was made when the gates ran serially and should be
+revisited now that they do not.
+
+Also worth noting: `cargo locks_lock_inode_wait` appears, but at 20 samples
+against 468 for disk waits. Cargo's package-cache lock (issue 0648) is present
+and is NOT the bottleneck, which is the second time this phase has measured that
+and found it small.
