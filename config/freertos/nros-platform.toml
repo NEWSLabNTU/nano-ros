@@ -82,6 +82,15 @@ target_match = "thumbv7m"
 target_exclude = "thumbv7em"
 cflags = ["-mcpu=cortex-m3", "-mthumb"]
 
+# phase-372 W1 — Cortex-R52 (ARMv8-R AArch32), the NXP S32Z270 RTU profile.
+# Flags are the ASI consumer's hardware-proven set (VFP/NEON hard float).
+# `armv8r` admits `armv8r-none-eabihf` (rustup-shipped); a toolchain without
+# it can use `armv7r-none-eabihf` — v7-R code runs unmodified on the R52 —
+# by adding a sibling profile or FREERTOS_CFLAGS.
+[arch.cortex-r52]
+target_match = "armv8r"
+cflags = ["-mcpu=cortex-r52", "-mfpu=neon-fp-armv8", "-mfloat-abi=hard"]
+
 # RFC-0062 — Cortex-M7, hard float (`thumbv7em-none-eabihf`). Added for the
 # NXP S32K344 / MR-CANHUBK3 bring-up; before it, this platform had exactly one
 # arch profile and it vetoed thumbv7em.

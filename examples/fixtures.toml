@@ -605,6 +605,23 @@ entry = "freertos_entry"
 build_subdir = "build-workspace-fixtures-freertos"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
 
+# phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
+# emulator models this SoC, so the cell's whole promise is "a C++ cyclonedds
+# workspace entry cross-links for ARMv8-R from a clean checkout" (kernel =
+# in-tree GCC/ARM_CRx_No_GIC default; hardware runs the NXP-provisioned
+# GCC/ARM_CR52_GIC port consumer-side). Runtime evidence is the ASI
+# reference consumer's board (ASI phase-4 W5.b).
+[[workspace_fixture]]
+id = "workspace-cpp-s32z270-freertos"
+platform = "freertos"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/demo_bringup"
+entry = "freertos_entry"
+build_subdir = "build-workspace-fixtures-s32z270"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "s32z270-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
+
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
 # 10.0.2.2; the baked NROS_ENTRY_LOCATOR is ferried into the cc-rs entry-TU compile via the

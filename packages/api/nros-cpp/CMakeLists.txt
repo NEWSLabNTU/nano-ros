@@ -67,6 +67,8 @@ corrosion_import_crate(
 nros_cargo_profile_env(nros_cpp-static)
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_cpp-static)
+# phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
+nros_armv8r_cflags_env(nros_cpp-static)
 
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)

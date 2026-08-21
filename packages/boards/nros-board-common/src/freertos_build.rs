@@ -74,7 +74,14 @@ fn resolve_cflags() -> String {
         return v;
     }
     let target = env::var("TARGET").unwrap_or_default();
-    if !target.starts_with("thumb") {
+    // phase-372 W1 — `arm*` cross targets (Cortex-R52: `armv8r-none-eabihf`)
+    // resolve through the [arch.*] profiles exactly like `thumb*` ones. The
+    // old guard returned the M3 legacy default for ANYTHING non-thumb, which
+    // would silently compile R-profile boards with `-mcpu=cortex-m3 -mthumb`
+    // — the wrong-CPU outcome the panic below exists to prevent. Host builds
+    // (x86_64…) still take the legacy default; they never reach a real
+    // embedded compile (skip_cross_build guards the board build scripts).
+    if !target.starts_with("thumb") && !target.starts_with("arm") {
         return "-mcpu=cortex-m3 -mthumb".to_string();
     }
     let config_root = arch_flags::config_root().unwrap_or_else(|| {

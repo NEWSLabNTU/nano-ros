@@ -11,8 +11,14 @@
  *   endpoint = { struct addrinfo *iptcp; }   — 1 pointer
  *   socket   = { int fd; }                   — 4 bytes
  *
- * UDP multicast is stubbed (returns -1 / (size_t) -1); a full
- * IP_ADD_MEMBERSHIP path lands as a follow-up.
+ * UDP multicast is IMPLEMENTED (open/listen/read/close below, with
+ * IP_ADD_MEMBERSHIP on the default interface). This header said
+ * "stubbed" long after the implementation landed, and the stale line
+ * was load-bearing enough to mis-scope a phase (372 budgeted a
+ * "finish the multicast stub" work item against it) — phase-372's
+ * S32Z270 exploration re-verified the whole path. The `iface`
+ * parameter stays advisory: lwIP has no getifaddrs, so membership
+ * binds INADDR_ANY (single-homed embedded).
  */
 
 #include <nros/platform_net.h>

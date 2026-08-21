@@ -71,6 +71,19 @@ link_check_example = "examples/qemu-arm-freertos/rust/talker"
 tier = 1
 maintainers = []
 
+# phase-372 W2 — hardware-only board: no emulator models the S32Z270 RTU, so
+# CI evidence is limited to the cross link-completeness the workspace lane
+# proves; runtime evidence is the ASI reference consumer's board (the same
+# real-downstream rationale as the Fvp row above). The NXP-licensed pieces
+# (kernel GIC port, RTD NETC driver, PBcfg) are consumer-provisioned seams —
+# see the bundle's nros-board.toml.
+[[board]]
+crate = "nros-board-s32z270-freertos"
+matrix_platform = "FreertosMps2"
+tier = 3
+maintainers = []
+notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). matrix_platform reuses FreertosMps2 (same freertos family lane) until a hardware witness exists; link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
+
 # phase-337 W3.d — ONE crate, TWO witnesses, TWO tiers. This row and the
 # `NuttxRiscv` row below are the reason W1.c re-keyed the registry by
 # (crate, matrix_platform): tier is a per-witness promise ("`just ci` exercises

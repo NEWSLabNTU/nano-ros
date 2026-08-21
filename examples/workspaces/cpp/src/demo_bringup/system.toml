@@ -58,6 +58,12 @@ kind = "self"
 kind = "embedded"
 board = "mps2-an385-freertos"
 
+# phase-372 W2 — the S32Z270 cross cell (Cortex-R52); same entry leaf, one
+# board per configure.
+[deploy.s32z270]
+kind = "embedded"
+board = "s32z270-freertos"
+
 [deploy.threadx-linux]
 kind = "embedded"
 board = "threadx-linux"

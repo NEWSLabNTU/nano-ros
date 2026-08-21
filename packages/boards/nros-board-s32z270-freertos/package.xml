@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_s32z270_freertos</name>
+  <version>0.1.0</version>
+  <description>NXP S32Z270 RTU (Cortex-R52) board crate for nros on FreeRTOS + lwIP</description>
+  <maintainer email="dev@newslabntu.org">NEWSLab NTU</maintainer>
+  <license>MIT OR Apache-2.0</license>
+</package>

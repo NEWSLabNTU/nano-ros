@@ -395,6 +395,13 @@ exclude = [
     # host workspace walk; its two FFI subcrates carry their own `[workspace]`.
     "packages/boards/nros-board-nuttx-qemu",
     "packages/boards/nros-board-mps2-an385-freertos",
+    # phase-372 W2 — NXP S32Z270 RTU (Cortex-R52) FreeRTOS board bundle;
+    # cross-only (armv8r-none-eabihf) like its mps2 sibling above, so it
+    # stays out of the host workspace walk and carries its own Cargo.lock.
+    # The licensed pieces (NXP kernel GIC port, RTD NETC driver, PBcfg) stay
+    # consumer-side via env/strong-symbol seams; see the bundle's
+    # nros-board.toml header.
+    "packages/boards/nros-board-s32z270-freertos",
     # Phase 212.N.7 step-4 — the `freertos-qemu-mps2-an385-bsp` baker
     # crate is retired. Its `bake_system_main_rs` + `__nros_component_*`
     # symbol-walking is gone (no in-tree consumers after step-5

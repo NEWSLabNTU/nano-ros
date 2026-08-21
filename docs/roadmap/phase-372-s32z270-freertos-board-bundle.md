@@ -1,10 +1,54 @@
 # Phase 372 — S32Z270 FreeRTOS board bundle (Cortex-R52, NETC/lwIP, Cyclone)
 
-**Status (2026-08-21).** OPEN — filed from the ASI reference-consumer side
-(ASI phase-4 W5.b is the consuming half). Successor to phase-370: the
-freertos-posix board and the first embedded Cyclone×FreeRTOS cell (QEMU
-MPS2, W4) are landed; this phase brings the same lane to ASI's second
-hardware target so the last vendored-CycloneDDS consumer retires.
+**Status (2026-08-22).** W1-W4 LANDED (link-completeness acceptance met);
+W5 open (hardware-gated, ASI phase-4 W5.b). Filed from the ASI
+reference-consumer side. Successor to phase-370.
+
+**Landed 2026-08-22:**
+* **W1** — `cmake/toolchain/arm-freertos-armcr52.cmake`, the
+  `[arch.cortex-r52]` profile in `config/freertos/nros-platform.toml`
+  (with the `freertos_build` guard fixed: `arm*` targets resolve profiles
+  instead of silently taking the M3 legacy default), Rust target
+  `armv8r-none-eabihf` (rustup-shipped rust-std, verified), and
+  `nros_armv8r_cflags_env()` (issue 0657's class on a second arch: cc-rs
+  builds inside cargo crates derive `-mfloat-abi=hard` from the triple with
+  no `-mfpu` — gcc refuses; per-target `CFLAGS_<triple>` via corrosion env,
+  wired at the nros-c / nros-cpp / runtime-crate import sites).
+* **W2** — `packages/boards/nros-board-s32z270-freertos` (descriptor,
+  configs seeded from the ASI hardware-proven set, first-cut public-map
+  linker script with the non-cacheable NETC-BD section, weak fail-loud
+  netif + tick hooks in `c/board_s32z270.c`) +
+  `cmake/board/nano-ros-board-s32z270-freertos.cmake` (env-provisioned
+  kernel; default `GCC/ARM_CRx_No_GIC` — whose `portASM.S` the generic
+  kernel builder never compiled (M-only assumption) and which needs
+  `enable_language(ASM)` or CMake DROPS the .S silently) + workspace
+  board→toolchain maps + `[deploy.s32z270]` in the demo bringup + the
+  emitter allowlist arm (`s32z270-freertos` → `FreertosBoard`, else the
+  generated entry emits a second `main`). ACCEPTANCE MET: the C++
+  cyclonedds workspace cell cross-links for ARMv8-R (`Tag_CPU_name: 8-R`,
+  VFP hard-float) from a clean checkout; witness row
+  `workspace-cpp-s32z270-freertos` in fixtures.toml. MPS2 sibling cell
+  re-verified green (builds, boots, SPDP egress) with all shared-code
+  changes.
+* **W3** — confirmed reuse: the strong-symbol netif seam pre-existed; the
+  bundle ships weak fail-loud defaults, ASI's `ethif_shim.c` becomes the
+  strong override. Nothing new to design.
+* **W4 findings** — the premise was STALE: `LWIP_IGMP=1` has been on
+  family-wide since phase-97, the lan9118 driver passes all multicast
+  (MCPAS), the cyclone generic `ip_mreq` join path is present, and the
+  platform `net.c` multicast "stub" comment described code that was fully
+  implemented (comment fixed). The QEMU cyclone cell transmits SPDP
+  multicast (observed as slirp refusals — slirp cannot route 239.x).
+  Full RX-side multicast interop is unreachable under slirp; it lands
+  with a tap/socket-netdev lane or on hardware (W5). Heap: the QEMU cell
+  budgets 3 MiB (`NROS_FREERTOS_HEAP_KB`), consistent with the 7 MiB
+  Zephyr lesson; the 40-participant test also waits for W5.
+* **Wall worth keeping**: a long-lived dev tree can produce
+  deterministically-faulting images for this family's QEMU cells while a
+  fresh worktree at the SAME commit builds bootable ones (byte-identical
+  code, benign layout deltas, hardfault at boot) — the museum-binary
+  class one level deeper than issue 0268. Verdicts about these cells come
+  from a clean worktree or CI, never from a lived-in tree.
 
 ## Why
 
