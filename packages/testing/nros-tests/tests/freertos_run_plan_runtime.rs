@@ -266,27 +266,23 @@ fn freertos_board_run_executes_run_plan() {
     boot_and_connect("talker", "talker");
 }
 
-#[test]
-fn freertos_listener_entry_boots_and_connects() {
-    boot_and_connect("listener", "listener");
-}
-
-#[test]
-fn freertos_service_server_entry_boots_and_connects() {
-    boot_and_connect("service-server", "service-server");
-}
-
-#[test]
-fn freertos_service_client_entry_boots_and_connects() {
-    boot_and_connect("service-client", "service-client");
-}
-
-#[test]
-fn freertos_action_server_entry_boots_and_connects() {
-    boot_and_connect("action-server", "action-server");
-}
-
-#[test]
-fn freertos_action_client_entry_boots_and_connects() {
-    boot_and_connect("action-client", "action-client");
-}
+// The five sibling roles — `listener`, `service-{server,client}` and
+// `action-{server,client}` — each had their own `_entry_boots_and_connects`
+// test here. All five were removed: six QEMU boots asserting one board's
+// banner.
+//
+// What they proved is strictly weaker than what already runs. The binaries are
+// not merely similar to the ones `rtos_e2e`'s `Freertos × Rust` pubsub/service/
+// action cells boot, they are the SAME FILES — `fixtures::freertos`'s
+// `build_rust_example` discards its own `binary_name` argument (`let _ =
+// binary_name;`) and resolves purely by role, so `require_entry_binary("talker")`
+// and `build_freertos_talker()` return one path. Those cells then assert
+// DELIVERY, which cannot occur unless the image booted and joined the session —
+// so "boots and connects" is a precondition the cells re-prove six times.
+//
+// The one thing no cell asserts is the `run_entry` banner sequence below, and
+// that is a property of the FreeRTOS family driver, not of the role: the six
+// entries differ only in the user closure `run_entry` hands control to, and the
+// banner is printed BEFORE that closure runs. One boot proves it. `talker`
+// keeps the proof; the other five boots bought nothing and cost QEMU time on
+// every sweep.

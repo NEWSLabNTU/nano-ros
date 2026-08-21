@@ -56,8 +56,7 @@ use nros_tests::{
     output, platform,
     zephyr::{
         ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example,
-        get_prebuilt_zephyr_workspace_entry, is_zephyr_available, require_zephyr,
-        zephyr_workspace_path,
+        get_prebuilt_zephyr_workspace_entry, require_zephyr,
     },
 };
 use rstest::rstest;
@@ -820,14 +819,13 @@ fn boot_smoke(#[case] smoke: Smoke) {
 // Availability probe (bespoke — informational)
 // =============================================================================
 
-/// Test that Zephyr availability checks work
-#[test]
-fn test_zephyr_availability_checks() {
-    eprintln!("Zephyr workspace path: {:?}", zephyr_workspace_path());
-    eprintln!("Zephyr available: {}", is_zephyr_available());
-
-    // These are informational - don't fail if Zephyr isn't set up
-}
+// `test_zephyr_availability_checks` removed. Its own last line said what was
+// wrong with it — "These are informational - don't fail if Zephyr isn't set
+// up" — which is a description of something that is not a test: it printed the
+// workspace path and one boolean and asserted nothing, so it reported PASS with
+// Zephyr entirely absent. `zephyr_workspace_path()` / `is_zephyr_available()`
+// stay load-bearing as the `skip!` guards on the real Zephyr tests, where a
+// `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
 // Bespoke: Zephyr ↔ native cross-platform pubsub (rust) — NOT

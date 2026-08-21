@@ -111,6 +111,20 @@ that FAILED rather than the shared state, and the destructive one stayed unguard
 the whole block, which is nearly free here because cargo already serializes that check on its own
 build-directory lock. Verified 0 failures against 2/2 before. See `archived/0742-*`. (2026-08-21)
 
+Recently resolved (2026-08-21): **#0743** — `nuttx_kernel_path()` resolved `$NUTTX_DIR/nuttx` by
+`.exists()` and nothing else, but that ONE filename is written by BOTH the arm (`qemu-armv7a`) and the
+riscv (`rv-virt`) configurations, so an arm consumer could be handed a RISC-V kernel that satisfied the
+predicate — a sweep died with "The image is from incompatible architecture" on a five-day-old riscv ELF.
+Resolved #0405 named the mechanism (the shared tree holds one board config; each `make` reconfigures) and
+fixed its cost to the BUILD lanes; the consumer side stayed blind. Now `nuttx_kernel_path_for(NuttxArch)`
+reads `e_machine` out of the ELF header (honouring `EI_DATA`) and refuses the wrong architecture, so the
+failure is an unmet PRECONDITION naming the rebuild in 0.1 s rather than a 10 s QEMU death; the bare
+spelling is gone. Per-arch FILENAMES deliberately not done — with the check in place, staging changes no
+verdict, only the rebuild count. Fallout: two `.config/nextest.toml` overrides filtered on
+`binary(nuttx_qemu)`/`binary(threadx_linux)`, and a `binary()` naming a deleted target is a PARSE error,
+not a no-op — every nextest run in the repo failed until they were narrowed (`just check` never runs
+nextest, so it stayed green). See `archived/0743-*`. (2026-08-21)
+
 Recently resolved (2026-08-21): **#0404** — the WCET declaration schema is implemented and the issue
 outlived it. Its own last note said "RFC only, by scope — the Rust type and its validator are deliberately
 a separate work item"; that work item landed as `7ccfd38c9`. All four questions answered in code: keyed on

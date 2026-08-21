@@ -417,7 +417,12 @@ retries = 1
 # that spans every platform at once.
 
 [[profile.default.overrides]]
-filter = "binary(nuttx_qemu) or (binary(rtos_e2e) and test(Platform__Nuttx))"
+# The `nuttx_qemu` binary is gone (2026-08-21) — it held one boot micro-test the
+# `rtos_e2e` Nuttx cells subsume and one test that only printed booleans. Note
+# that a `binary()` naming a deleted target is NOT inert the way the deleted
+# `test()` names above were: nextest fails to PARSE the config, so every run in
+# the repo errors out until the name is removed.
+filter = "binary(rtos_e2e) and test(Platform__Nuttx)"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
@@ -450,7 +455,10 @@ retries = 2
 # realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
 # host-load throttle.
 [[profile.default.overrides]]
-filter = "binary(threadx_linux) or (binary(rtos_e2e) and test(Platform__ThreadxLinux))"
+# The `threadx_linux` binary is gone (2026-08-21) — its one test printed three
+# `is_*_available()` booleans and asserted nothing. See the nuttx override above
+# for why a stale `binary()` is a parse error rather than a no-op.
+filter = "binary(rtos_e2e) and test(Platform__ThreadxLinux)"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2

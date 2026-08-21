@@ -225,6 +225,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   then promote. Temp files in `$project/tmp/` (gitignored), not `/tmp`; use Write/Edit not heredoc.
 - **Tests must fail on unmet preconditions** (`assert!`/`bail!`/`nros_tests::skip!`). Bare
   `eprintln!`+`return` reports PASS — never. Same for runtime: panic, not silent early-return.
+  Gate: `check-no-vacuous-tests` — a test body whose only effects are PRINTS. 17 of these
+  existed (10 files, 2 literal cross-file duplicates), each reading `is_*_available()` probes
+  and printing them, so each passed on the very host it was meant to warn about; one said so
+  itself ("These are informational - don't fail if Zephyr isn't set up"). The same probes were
+  already load-bearing three lines away as the `skip!` guards, so the call read as coverage in
+  one place and as a precondition in the other. The gate keys on "prints only", NOT on "has no
+  `assert!`" — ~40 correct tests delegate to an asserting helper, and a bare call statement is
+  exactly the shape whose assertion is one frame down.
   **A target behind `required-features` that no recipe enables is the same lie one level up** —
   cargo skips it SILENTLY (not reported as filtered, simply never built) so it reads as coverage.
   Gate: `check-required-features-reachable`; lane: `just check-required-features-tests`. When the
@@ -293,6 +301,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `matrix_fixture_coverage.rs` G1–G4; each interop test carries an `interop::assert_test_bound`
   coordinate tripwire. Don't add an interop test that hand-picks a fixture without a matching
   `interop::CELLS` row. `ros_editions_e2e` is the docker edition axis (#0327), not a cell.
+- **Deleting a test target strands its `.config/nextest.toml` override, and a stale `binary()`
+  is a PARSE ERROR, not a no-op** (issue 0743) — "operator didn't match any binary names" kills
+  EVERY nextest run in the repo, not just that lane, and `just check` never notices because it
+  runs no nextest. Gate: `check-nextest-binary-filters`. A stale `test()` degrades the other
+  way — silently inert, dropping its timeout/retries/test-group (five did, phase-329 W1) — and
+  is NOT statically checkable: those are rstest-generated case names (`Platform__Nuttx`) that
+  appear nowhere in the sources. Delete the override with the target, or keep the note in a
+  COMMENT.
 - **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES** — only `just test-all`'s
   junit rewrite makes them skips. Read the panic text before filing a bare-run red as a regression.
   And full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3 in-sweep, passed

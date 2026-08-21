@@ -119,8 +119,10 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
     if !nuttx::is_arm_gcc_available() {
         panic!("[SKIPPED] arm-none-eabi-gcc not on PATH");
     }
-    if nuttx::nuttx_kernel_path().is_none() {
-        panic!("[SKIPPED] NuttX kernel not built ($NUTTX_DIR/nuttx)");
+    // Issue 0743 — this is the `_nuttx_qemu_arm` lane, so ask for the ARM
+    // kernel. The old `.is_none()` check was satisfied by a riscv image.
+    if let Err(why) = nuttx::nuttx_kernel_path_for(nuttx::NuttxArch::Arm) {
+        panic!("[SKIPPED] {why}");
     }
 
     let binary = build_logging_smoke_nuttx_qemu_arm()

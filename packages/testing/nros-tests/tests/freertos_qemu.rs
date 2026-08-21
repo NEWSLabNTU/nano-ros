@@ -27,7 +27,7 @@
 use nros_tests::fixtures::{
     QemuProcess, Rmw, build_freertos_rust_example_rmw,
     freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
-    is_qemu_available, is_zenohd_available,
+    is_qemu_available,
 };
 use std::time::Duration;
 
@@ -59,19 +59,11 @@ fn require_freertos() -> bool {
 // Prerequisite detection tests (always run)
 // =============================================================================
 
-#[test]
-fn test_freertos_detection() {
-    let freertos = is_freertos_available();
-    let lwip = is_lwip_available();
-    let arm_gcc = is_arm_gcc_available();
-    let qemu = is_qemu_available();
-    let zenohd = is_zenohd_available();
-    eprintln!("FreeRTOS available: {}", freertos);
-    eprintln!("lwIP available: {}", lwip);
-    eprintln!("arm-none-eabi-gcc available: {}", arm_gcc);
-    eprintln!("QEMU available: {}", qemu);
-    eprintln!("zenohd available: {}", zenohd);
-}
+// `test_freertos_detection` removed: it read five `is_*_available()` booleans
+// and printed them, asserting nothing, so it reported PASS on a host with no
+// FreeRTOS, no lwIP, no arm-none-eabi-gcc, no QEMU and no zenohd. All five
+// probes stay load-bearing as the `skip!` guards on the real tests, where a
+// `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
 // (Phase 182.3) `test_freertos_all_examples_build` removed — it rebuilt every

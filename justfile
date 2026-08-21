@@ -475,7 +475,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-image-panic-policy check-cmake-image-policy check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2091,12 +2091,21 @@ _nextest-tolerant +nextest_args:
     just _check-skip-budget "$junit"
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
-_nextest-platform test_name verbose="" feature_args="":
+_nextest-platform test_name verbose="" feature_args="" filter="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test {{test_name}} --no-fail-fast)
+    # `filter` is a nextest `-E` expression, for a lane whose tests live in a
+    # SHARED target rather than a per-platform one. The NuttX lane needs it: its
+    # own suite was one boot micro-test that `rtos_e2e`'s `Platform::Nuttx` cells
+    # already subsumed, so the lane now selects those cells out of `rtos_e2e`
+    # instead of running a target of its own. Without this the choice is running
+    # every platform's cells or losing the [SKIPPED] junit rewrite.
+    if [ -n "{{filter}}" ]; then
+        args+=(-E '{{filter}}')
+    fi
     # A target behind `required-features` is skipped SILENTLY by cargo — not
     # reported as filtered, not counted anywhere — so a caller needing one must
     # ask for its feature. The caller passes the WHOLE FLAG (`--features rmw`),
@@ -3409,6 +3418,27 @@ check-feature-contract:
 [group("ci")]
 check-no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
+
+# A test whose body only PRINTS cannot fail, so it reports PASS on exactly the
+# host it was supposed to warn about. The 2026-08-21 cleanup removed 17 of these
+# (10 files, 2 of them literal cross-file duplicates); this keeps the shape from
+# growing back. Self-testing: `--self-test` covers the delegating-helper and
+# multi-line-print cases that a naive "has no assert!" rule gets wrong.
+[group("ci")]
+check-no-vacuous-tests:
+    @python3 scripts/check-no-vacuous-tests.py --self-test
+    @python3 scripts/check-no-vacuous-tests.py
+
+# Issue 0743 fallout — a `binary()` in .config/nextest.toml naming a deleted test
+# target makes nextest refuse to PARSE the config, which kills every nextest run
+# in the repo, not just that lane. It went unnoticed behind a green `just check`
+# because `just check` does not run nextest; this gate is that missing coverage.
+# `test()` names are deliberately NOT checked — they are rstest-generated case
+# names that appear nowhere in the sources (see the script's header).
+[group("ci")]
+check-nextest-binary-filters:
+    @python3 scripts/check-nextest-binary-filters.py --self-test
+    @python3 scripts/check-nextest-binary-filters.py
 
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #

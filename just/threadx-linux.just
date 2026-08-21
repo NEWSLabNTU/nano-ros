@@ -175,7 +175,12 @@ test verbose="": build-fixtures
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just threadx-linux setup"
         exit 1
     fi
-    just _nextest-platform threadx_linux '{{verbose}}'
+    # The `threadx_linux` target is gone (2026-08-21): its only test read three
+    # `is_*_available()` booleans and printed them, asserting nothing, so the
+    # lane reported PASS with no ThreadX, no NetX Duo and no router. The file's
+    # own header already said the substance lived in `rtos_e2e` — this selects
+    # those cells, which is what the lane was always meant to run.
+    just _nextest-platform rtos_e2e '{{verbose}}' '' 'test(ThreadxLinux)'
 
 # Run all ThreadX Linux tests including networked E2E
 [group("full-matrix")]
@@ -184,11 +189,9 @@ test-all verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test threadx_linux --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    # The `threadx_linux` target is gone (2026-08-21) — its one test printed
+    # three `is_*_available()` booleans and asserted nothing. The e2e run below
+    # was always the substance of this lane.
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)

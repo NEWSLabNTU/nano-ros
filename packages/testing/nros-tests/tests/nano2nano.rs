@@ -11,8 +11,8 @@
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, listener_tls_binary,
-        require_zenohd, talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
+        ManagedProcess, ZenohRouter, listener_binary, listener_tls_binary, require_zenohd,
+        talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
     },
     output,
 };
@@ -692,8 +692,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
 // Detection Tests
 // =============================================================================
 
-#[test]
-fn test_zenohd_detection() {
-    let available = is_zenohd_available();
-    eprintln!("zenohd available: {}", available);
-}
+// `test_zenohd_detection` removed: it read `is_zenohd_available()` and printed
+// it, asserting nothing, so it reported PASS on a host with no router at all.
+// The probe stays load-bearing as the `skip!` guard on the real tests, where a
+// `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.

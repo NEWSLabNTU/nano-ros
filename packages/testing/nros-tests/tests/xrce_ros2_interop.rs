@@ -25,10 +25,10 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, is_rmw_fastrtps_available,
-        is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_action_client_binary,
-        xrce_action_server_binary, xrce_action_server_concurrent_binary, xrce_listener_binary,
-        xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
+        DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, require_ros2_dds,
+        require_xrce_agent, xrce_action_client_binary, xrce_action_server_binary,
+        xrce_action_server_concurrent_binary, xrce_listener_binary, xrce_service_client_binary,
+        xrce_service_server_binary, xrce_talker_binary,
     },
     unique_ros_domain_id,
 };
@@ -39,13 +39,11 @@ use std::{path::PathBuf, time::Duration};
 // Detection Tests
 // =============================================================================
 
-#[test]
-fn test_ros2_dds_detection() {
-    let ros2 = is_ros2_available();
-    let fastrtps = is_rmw_fastrtps_available();
-    eprintln!("ROS 2 available: {}", ros2);
-    eprintln!("rmw_fastrtps_cpp available: {}", fastrtps);
-}
+// `test_ros2_dds_detection` removed: it read two `is_*_available()` booleans
+// and printed them, asserting nothing, so it reported PASS on a host with no
+// ROS 2 and no rmw_fastrtps_cpp. Both probes stay load-bearing as the `skip!`
+// guards on the real interop tests, where a `false` stops the run. Forbidden
+// repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
 // XRCE → ROS 2 Pub/Sub

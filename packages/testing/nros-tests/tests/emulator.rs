@@ -263,20 +263,14 @@ fn test_qemu_lan9118_driver() {
 // =============================================================================
 // QEMU Availability Tests
 // =============================================================================
-
-#[test]
-fn test_qemu_detection() {
-    let available = is_qemu_available();
-    eprintln!("QEMU available: {}", available);
-    // This test just verifies the detection works, doesn't require QEMU
-}
-
-#[test]
-fn test_arm_toolchain_detection() {
-    let available = is_arm_toolchain_available();
-    eprintln!("ARM toolchain available: {}", available);
-    // This test just verifies the detection works
-}
+//
+// `test_qemu_detection` / `test_arm_toolchain_detection` removed: each read one
+// `is_*_available()` boolean and printed it, asserting nothing, so both passed
+// on a host with neither installed ("this test just verifies the detection
+// works" — but a detection that returns `false` also "works"). The identical
+// `test_arm_toolchain_detection` lived in `platform.rs` too. Both probes stay
+// where they can actually fail: the `skip!` guards on the real QEMU tests
+// above. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
 // QEMU BSP Tests (Phase 17.7)

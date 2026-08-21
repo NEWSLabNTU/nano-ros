@@ -212,8 +212,11 @@ impl Platform {
                     );
                     return false;
                 }
-                if nuttx::nuttx_kernel_path().is_none() {
-                    eprintln!("Skipping test: NuttX kernel not built ($NUTTX_DIR/nuttx)");
+                // Issue 0743 — ask for the ARM kernel specifically. The old
+                // `.is_none()` check passed on a riscv image, because the two
+                // configurations share the one filename.
+                if let Err(why) = nuttx::nuttx_kernel_path_for(nuttx::NuttxArch::Arm) {
+                    eprintln!("Skipping test: {why}");
                     return false;
                 }
                 if !is_qemu_available() {

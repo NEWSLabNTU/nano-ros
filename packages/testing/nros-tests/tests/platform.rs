@@ -3,92 +3,24 @@
 //! Tests for Zephyr, embedded targets, and platform-specific functionality.
 
 use nros_tests::fixtures::{is_arm_toolchain_available, is_qemu_available};
-use std::{
-    path::PathBuf,
-    process::{Command, Stdio},
-};
-
-// =============================================================================
-// Zephyr Environment Detection
-// =============================================================================
-
-/// Check if Zephyr environment is available
-fn is_zephyr_available() -> bool {
-    // Check for ZEPHYR_BASE environment variable
-    std::env::var("ZEPHYR_BASE").is_ok()
-}
-
-/// Check if west is available
-fn is_west_available() -> bool {
-    Command::new("west")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Get Zephyr workspace path (if available)
-fn zephyr_workspace() -> Option<PathBuf> {
-    // Look for ~/nano-ros-workspace or configured path
-    let home = std::env::var("HOME").ok()?;
-    let workspace = PathBuf::from(home).join("nano-ros-workspace");
-    if workspace.exists() {
-        Some(workspace)
-    } else {
-        None
-    }
-}
-
-// =============================================================================
-// Environment Detection Tests
-// =============================================================================
-
-#[test]
-fn test_arm_toolchain_detection() {
-    let available = is_arm_toolchain_available();
-    eprintln!(
-        "ARM toolchain (thumbv7m-none-eabi) available: {}",
-        available
-    );
-}
-
-#[test]
-fn test_qemu_arm_detection() {
-    let available = is_qemu_available();
-    eprintln!("QEMU ARM available: {}", available);
-}
-
-#[test]
-fn test_zephyr_environment_detection() {
-    let available = is_zephyr_available();
-    eprintln!("Zephyr environment available: {}", available);
-
-    if let Ok(base) = std::env::var("ZEPHYR_BASE") {
-        eprintln!("ZEPHYR_BASE: {}", base);
-    }
-}
-
-#[test]
-fn test_west_detection() {
-    let available = is_west_available();
-    eprintln!("west available: {}", available);
-}
-
-#[test]
-fn test_zephyr_workspace_detection() {
-    match zephyr_workspace() {
-        Some(path) => eprintln!("Zephyr workspace found: {}", path.display()),
-        None => eprintln!("Zephyr workspace not found at ~/nano-ros-workspace"),
-    }
-}
+use std::process::Command;
 
 // (Phase 182.3) `test_zephyr_{talker,listener}_build` removed — they only
 // checked the Zephyr example dir + env existed (no build; and used the bare
 // `eprintln!`+`return` skip that falsely reports PASS, contra CLAUDE.md).
 // Zephyr example presence/build is covered by `just zephyr build-fixtures` +
 // the zephyr.rs e2e tests.
+//
+// Same rule, applied to the rest of the file: `test_arm_toolchain_detection`,
+// `test_qemu_arm_detection`, `test_zephyr_environment_detection`,
+// `test_west_detection` and `test_zephyr_workspace_detection` were removed
+// because they asserted NOTHING — each read one `is_*_available()` boolean and
+// printed it, so all five reported PASS on a host with no toolchain, no QEMU
+// and no Zephyr. A probe that cannot fail is not coverage; the same probes are
+// load-bearing where they belong, as the `skip!` guards on the real tests
+// below. `check-no-vacuous-tests` now forbids the shape repo-wide.
+// (`test_arm_toolchain_detection` also existed verbatim in `emulator.rs` —
+// two copies of a test that could not fail.)
 
 // =============================================================================
 // QEMU Emulation Tests (require QEMU)

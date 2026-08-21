@@ -27,7 +27,7 @@
 use std::time::Duration;
 
 use nros_tests::fixtures::{
-    QemuProcess, is_qemu_riscv64_available, is_zenohd_available, qemu_riscv64_supports_dgram_unix,
+    QemuProcess, is_qemu_riscv64_available, qemu_riscv64_supports_dgram_unix,
     threadx_riscv64::{is_netx_available, is_riscv_gcc_available, is_threadx_available},
 };
 
@@ -59,19 +59,11 @@ fn require_threadx_riscv64() -> bool {
 // Prerequisite detection tests (always run)
 // =============================================================================
 
-#[test]
-fn test_threadx_riscv64_detection() {
-    let threadx = is_threadx_available();
-    let netx = is_netx_available();
-    let riscv_gcc = is_riscv_gcc_available();
-    let qemu_rv64 = is_qemu_riscv64_available();
-    let zenohd = is_zenohd_available();
-    eprintln!("ThreadX available: {}", threadx);
-    eprintln!("NetX Duo available: {}", netx);
-    eprintln!("riscv64-unknown-elf-gcc available: {}", riscv_gcc);
-    eprintln!("QEMU RISC-V 64 available: {}", qemu_rv64);
-    eprintln!("zenohd available: {}", zenohd);
-}
+// `test_threadx_riscv64_detection` removed: it read five `is_*_available()`
+// booleans and printed them, asserting nothing, so it reported PASS on a host
+// with no ThreadX, no NetX Duo, no riscv64 gcc, no QEMU and no zenohd. All five
+// probes stay load-bearing as the `skip!` guards on the real tests, where a
+// `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
 // (Phase 182.3) `test_threadx_riscv64_all_examples_build` removed — it rebuilt

@@ -439,7 +439,7 @@ test verbose="": build-fixtures-arm
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just nuttx setup"
         exit 1
     fi
-    just _nextest-platform nuttx_qemu '{{verbose}}'
+    just _nextest-platform rtos_e2e '{{verbose}}' '' 'test(Nuttx)'
 
 # Run all NuttX tests including networked E2E
 [group("full-matrix")]
@@ -448,11 +448,12 @@ test-all verbose="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test nuttx_qemu --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    # The `nuttx_qemu` target is gone (2026-08-21). It held one boot micro-test
+    # that every `rtos_e2e` `Platform::Nuttx` cell subsumed — those boot a real
+    # nros kernel and assert delivery, which cannot happen unless it booted —
+    # plus a `test_nuttx_detection` that printed seven booleans and asserted
+    # nothing. The e2e run below was always the substance of this lane; see
+    # issue 0743 for the wrong-arch kernel the boot test was really reporting.
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Nuttx)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)

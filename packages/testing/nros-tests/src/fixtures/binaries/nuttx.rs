@@ -50,12 +50,113 @@ pub fn is_nuttx_toolchain_available() -> bool {
     true
 }
 
-/// Path to a pre-built NuttX kernel image, if it exists.
-pub fn nuttx_kernel_path() -> Option<PathBuf> {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("nuttx"))
-        .filter(|p| p.exists())
+/// The board configuration a NuttX kernel was built for.
+///
+/// Issue 0743. `$NUTTX_DIR/nuttx` is ONE filename written by BOTH the arm
+/// (`qemu-armv7a`) and the riscv (`rv-virt`) configurations — the shared kernel
+/// tree holds one board config at a time and each `make` reconfigures it (see
+/// resolved issue 0405, which fixed what that costs the build LANES). So the
+/// file's presence says nothing about which architecture is in it, and a caller
+/// that only asks `.exists()` will happily hand an arm test a RISC-V image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NuttxArch {
+    Arm,
+    RiscV,
+}
+
+impl NuttxArch {
+    /// `e_machine` for this architecture: `EM_ARM` / `EM_RISCV`.
+    fn elf_machine(self) -> u16 {
+        match self {
+            NuttxArch::Arm => 0x28,
+            NuttxArch::RiscV => 0xF3,
+        }
+    }
+
+    fn board(self) -> &'static str {
+        match self {
+            NuttxArch::Arm => "qemu-armv7a",
+            NuttxArch::RiscV => "rv-virt",
+        }
+    }
+
+    fn rebuild_hint(self) -> &'static str {
+        match self {
+            NuttxArch::Arm => "just nuttx build-fixtures-arm",
+            NuttxArch::RiscV => "just nuttx build-fixtures-riscv",
+        }
+    }
+
+    fn from_elf_machine(m: u16) -> Option<Self> {
+        match m {
+            0x28 => Some(NuttxArch::Arm),
+            0xF3 => Some(NuttxArch::RiscV),
+            _ => None,
+        }
+    }
+}
+
+/// `e_machine` out of an ELF header, or `None` if this is not an ELF.
+///
+/// Bytes 0..4 are the magic, byte 5 is `EI_DATA` (endianness) and 16..18 is
+/// `e_type`; `e_machine` is the `u16` at 18. Both NuttX targets are
+/// little-endian, but read `EI_DATA` rather than assuming — the whole point of
+/// this function is that it asks the file instead of trusting a name.
+fn elf_machine(path: &Path) -> Option<u16> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.len() < 20 || &bytes[0..4] != b"\x7fELF" {
+        return None;
+    }
+    let (a, b) = (bytes[18], bytes[19]);
+    Some(match bytes[5] {
+        2 => u16::from_be_bytes([a, b]), // ELFDATA2MSB
+        _ => u16::from_le_bytes([a, b]), // ELFDATA2LSB
+    })
+}
+
+/// Path to a pre-built NuttX kernel image **for `arch`**.
+///
+/// Issue 0743. The predicate is "is there a kernel, and is it the architecture
+/// you asked for" — never bare `.exists()`. On 2026-08-21 a sweep died with
+/// "qemu-system-arm: … The image is from incompatible architecture" because the
+/// old resolver answered the first question and not the second: the tree had
+/// been reconfigured for riscv five days earlier, and every arm consumer was
+/// still being handed that image.
+///
+/// The `Err` is a ready-to-print reason naming the rebuild, because "no kernel"
+/// and "the wrong kernel" want different actions from whoever reads it.
+pub fn nuttx_kernel_path_for(arch: NuttxArch) -> Result<PathBuf, String> {
+    let dir = std::env::var("NUTTX_DIR").map_err(|_| "NUTTX_DIR not set".to_string())?;
+    let kernel = Path::new(&dir).join("nuttx");
+    if !kernel.exists() {
+        return Err(format!(
+            "NuttX kernel not built ({}) — run: {}",
+            kernel.display(),
+            arch.rebuild_hint()
+        ));
+    }
+    match elf_machine(&kernel) {
+        Some(m) if m == arch.elf_machine() => Ok(kernel),
+        Some(m) => {
+            let found = match NuttxArch::from_elf_machine(m) {
+                Some(a) => format!("a {a:?} image"),
+                None => format!("an unknown image (e_machine {m:#x})"),
+            };
+            Err(format!(
+                "the NuttX kernel at {} is {found}, but this lane needs {:?} ({}). The arm and \
+                 riscv configurations share that ONE filename and each `make` reconfigures the \
+                 tree (issue 0743), so the last build wins. Reconfigure and rebuild: {}",
+                kernel.display(),
+                arch,
+                arch.board(),
+                arch.rebuild_hint(),
+            ))
+        }
+        None => Err(format!(
+            "{} is not an ELF file — the NuttX build did not produce a kernel",
+            kernel.display()
+        )),
+    }
 }
 
 /// `cmake` in PATH (for C / C++ examples).
@@ -325,4 +426,71 @@ pub fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
     NUTTX_C_ACTION_CLIENT_BINARY
         .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
         .map(|p| p.as_path())
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal ELF header: magic, `EI_DATA`, and `e_machine` at offset 18.
+    fn elf_header(data: u8, machine: u16) -> Vec<u8> {
+        let mut v = vec![0u8; 20];
+        v[0..4].copy_from_slice(b"\x7fELF");
+        v[5] = data;
+        let m = if data == 2 {
+            machine.to_be_bytes()
+        } else {
+            machine.to_le_bytes()
+        };
+        v[18..20].copy_from_slice(&m);
+        v
+    }
+
+    fn write(name: &str, bytes: &[u8]) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("nros-nuttx-arch-{name}"));
+        std::fs::write(&p, bytes).expect("write fixture");
+        p
+    }
+
+    /// Issue 0743 — the resolver's whole job is telling these two apart, so
+    /// prove BOTH directions. Only the riscv half is reproducible against a real
+    /// tree (the arm kernel needs a reconfigure), which is exactly why the
+    /// positive case is pinned here rather than left to a lane.
+    #[test]
+    fn elf_machine_distinguishes_arm_from_riscv() {
+        let arm = write("arm", &elf_header(1, 0x28));
+        let riscv = write("riscv", &elf_header(1, 0xF3));
+        assert_eq!(elf_machine(&arm), Some(NuttxArch::Arm.elf_machine()));
+        assert_eq!(elf_machine(&riscv), Some(NuttxArch::RiscV.elf_machine()));
+        assert_eq!(NuttxArch::from_elf_machine(0x28), Some(NuttxArch::Arm));
+        assert_eq!(NuttxArch::from_elf_machine(0xF3), Some(NuttxArch::RiscV));
+        assert_eq!(NuttxArch::from_elf_machine(0x3E), None);
+    }
+
+    #[test]
+    fn elf_machine_reads_big_endian_headers() {
+        let be = write("be", &elf_header(2, 0x28));
+        assert_eq!(
+            elf_machine(&be),
+            Some(0x28),
+            "EI_DATA=2 is ELFDATA2MSB — reading e_machine little-endian there \
+             yields 0x2800 and would call an arm kernel unknown"
+        );
+    }
+
+    #[test]
+    fn a_non_elf_is_not_a_kernel() {
+        let junk = write("junk", b"#!/bin/sh\necho not a kernel\n");
+        assert_eq!(elf_machine(&junk), None);
+        let short = write("short", b"\x7fELF");
+        assert_eq!(
+            elf_machine(&short),
+            None,
+            "truncated header must not index past the end"
+        );
+    }
 }

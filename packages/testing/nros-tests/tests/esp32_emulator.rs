@@ -585,26 +585,13 @@ fn test_esp32_workspace_entry_e2e() {
 }
 
 // =============================================================================
-// Detection Tests (always run)
+// Detection Tests (removed)
 // =============================================================================
-
-#[test]
-fn test_esp32_qemu_riscv32_detection() {
-    let available = is_qemu_riscv32_available();
-    eprintln!("qemu-system-riscv32 available: {}", available);
-}
-
-#[test]
-fn test_esp32_riscv32_target_detection() {
-    let available = is_riscv32_target_available();
-    eprintln!(
-        "riscv32imc-unknown-none-elf target available: {}",
-        available
-    );
-}
-
-#[test]
-fn test_esp32_espflash_detection() {
-    let available = is_espflash_available();
-    eprintln!("espflash available: {}", available);
-}
+//
+// `test_esp32_{qemu_riscv32,riscv32_target,espflash}_detection` each read one
+// `is_*_available()` boolean and printed it. They asserted nothing, so all
+// three reported PASS on a host with no qemu-system-riscv32, no riscv32 target
+// and no espflash — the precise "always run" that CLAUDE.md forbids ("Tests
+// must fail on unmet preconditions"). The probes remain load-bearing as the
+// `skip!` guards on the real ESP32 tests above, where a `false` stops the run
+// instead of decorating it. Forbidden repo-wide by `check-no-vacuous-tests`.
