@@ -275,8 +275,34 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
         "cargo:rerun-if-changed={}",
         shared.join("nuttx/config.h").display()
     );
-    // The snapshot is named for the ARCH being compiled for, which is the only
-    // thing that distinguishes the two trees.
+    // issue 0750 (B) — `$NUTTX_EXPORT_DIR` FIRST, matching
+    // `nros_board_common::nuttx_export::snapshot_root`'s resolution order.
+    //
+    // These two functions answer halves of one question: that one picks the
+    // `libs/` a kernel image links, this one picks the `include/` its code
+    // compiles against. `snapshot_root` honoured the override and this did not,
+    // so a caller that pointed at one snapshot for libs still compiled headers
+    // from whichever snapshot the TARGET ARCH named — and with two configs of
+    // one arch (`arm` and `arm-smp`) that is a silent headers-from-A,
+    // libs-from-B split. That is the 0135/0460 class: a config-dependent
+    // struct layout differing across two TUs of one image, which does not fail
+    // to link, it fails at runtime with garbage.
+    //
+    // Watched by CONTENT, not fingerprinted as a string (issue 0491): it is a
+    // PATH, and cargo compares env values textually.
+    if let Some(explicit) = env_path("NUTTX_EXPORT_DIR") {
+        let inc = explicit.join("include");
+        println!(
+            "cargo:rerun-if-changed={}",
+            inc.join("nuttx/config.h").display()
+        );
+        if inc.join("nuttx/config.h").is_file() {
+            return inc;
+        }
+    }
+    // Otherwise the snapshot is named for the ARCH being compiled for, which is
+    // all a target triple can tell us. A second config of the same arch must
+    // therefore pass `NUTTX_EXPORT_DIR` — the triple cannot distinguish them.
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let snapshot_arch = match arch.as_str() {
         "arm" => Some("arm"),

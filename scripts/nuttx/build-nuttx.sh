@@ -188,10 +188,28 @@ fi
 NUTTX_ARCH="${NUTTX_ARCH//-/}"
 # The per-arch snapshot consumers link against (phase-339 W2). Its own key file
 # records what produced it, so freshness never depends on the shared tree.
-NUTTX_SNAPSHOT="nros-nuttx-export-${NUTTX_ARCH}"
+# issue 0750 (B) — the snapshot is named for the CONFIG, not the arch.
+#
+# Two configurations of ONE arch are a real case (`arm` and a future `arm-smp`:
+# same CONFIG_ARCH, same e_machine, different kernels), and naming the snapshot
+# `-${NUTTX_ARCH}` would land both in one directory. The key file inside would
+# still catch it — it is HEAD:sha256(defconfig) — but only as a rebuild thrash
+# on every lane switch, and `nuttx_kernel_path_for()`'s `e_machine` check cannot
+# tell the two apart at all (that check exists for arm-vs-riscv, issue 0743).
+#
+# The id is DERIVED from the defconfig's own directory
+# (`nuttx-config/<id>/defconfig`), never a hand-maintained list. The existing
+# dirs are `arm` and `riscv`, which are exactly the strings the arch produced,
+# so this renames nothing today and gives `arm-smp` for free tomorrow.
+NUTTX_CONFIG_ID=$(basename "$(dirname "$DEFCONFIG")")
+if [ -z "$NUTTX_CONFIG_ID" ] || [ "$NUTTX_CONFIG_ID" = "." ]; then
+    echo "build-nuttx.sh: cannot derive a config id from '$DEFCONFIG' — expected .../<id>/defconfig" >&2
+    exit 1
+fi
+NUTTX_SNAPSHOT="nros-nuttx-export-${NUTTX_CONFIG_ID}"
 NUTTX_SNAPSHOT_KEY="${NUTTX_SNAPSHOT}/.nros-export-key"
 
-MARKER=".nros-nuttx-build-head-${NUTTX_ARCH}"
+MARKER=".nros-nuttx-build-head-${NUTTX_CONFIG_ID}"
 CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 # 194.5: key the marker on the NuttX HEAD *and* this board's defconfig (content
 # hash) so a board/config switch — not just a submodule-HEAD change — forces a

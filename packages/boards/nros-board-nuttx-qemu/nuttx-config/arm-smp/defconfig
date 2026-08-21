@@ -1,0 +1,186 @@
+#
+# NuttX defconfig for QEMU ARM virt (Cortex-A7) with networking
+#
+# Base: boards/arm/qemu/qemu-armv7a/configs/nsh/defconfig
+# Additions: networking (TCP/UDP/BSD sockets), virtio-net, POSIX threading,
+#            /dev/urandom, larger stacks for zenoh-pico.
+#
+# Usage:
+#   cp defconfig $NUTTX_DIR/.config
+#   cd $NUTTX_DIR && make olddefconfig
+#   make
+#
+
+# --- OpenAMP ---
+# Upstream NuttX 2026-04 has a version skew between openamp/open-amp.defs
+# (references open-amp/lib/utils/utilities.c) and OPENAMP_VERSION=2025.10.0
+# (no utils/ subdirectory upstream), causing build failures. We don't need
+# OpenAMP for the QEMU ARM virt tests (it's for heterogeneous multi-core
+# rpmsg), so disable it explicitly to avoid the broken transitive default.
+# CONFIG_OPENAMP is not set
+
+# --- Architecture ---
+CONFIG_ARCH="arm"
+CONFIG_ARCH_BOARD="qemu-armv7a"
+CONFIG_ARCH_BOARD_QEMU_ARMV7A=y
+CONFIG_ARCH_CHIP="qemu"
+CONFIG_ARCH_CHIP_QEMU_ARM=y
+CONFIG_ARCH_CHIP_QEMU_CORTEXA7=y
+CONFIG_ARCH_INTERRUPTSTACK=2048
+CONFIG_ARCH_LOWVECTORS=y
+
+# --- Memory layout (QEMU virt) ---
+CONFIG_RAM_SIZE=132120576
+CONFIG_RAM_START=0x40200000
+CONFIG_RAM_VSTART=0x40200000
+CONFIG_FLASH_SIZE=127926272
+CONFIG_FLASH_START=0x00600000
+CONFIG_FLASH_VSTART=0x00600000
+
+# --- UART (PL011 serial console) ---
+CONFIG_SMP=y
+CONFIG_SMP_NCPUS=2
+CONFIG_TLS_ALIGNED=y
+CONFIG_UART_PL011=y
+CONFIG_UART1_PL011=y
+CONFIG_UART1_BASE=0x9000000
+CONFIG_UART1_IRQ=33
+CONFIG_UART1_SERIAL_CONSOLE=y
+
+# --- Toolchain ---
+CONFIG_ARM_TOOLCHAIN_GNU_EABI=y
+
+# --- Apps directory (relative to NUTTX_DIR, matches just setup-nuttx layout) ---
+CONFIG_APPS_DIR="../nuttx-apps"
+
+# --- Build options ---
+CONFIG_DEBUG_FULLOPT=y
+CONFIG_DEBUG_SYMBOLS=y
+CONFIG_SIG_DEFAULT=y
+CONFIG_RAW_BINARY=y
+CONFIG_INTELHEX_BINARY=y
+CONFIG_EXPERIMENTAL=y
+
+# --- Scheduling ---
+CONFIG_RR_INTERVAL=200
+CONFIG_DEFAULT_TASK_STACKSIZE=8192
+CONFIG_IDLETHREAD_STACKSIZE=4096
+CONFIG_SCHED_HPWORK=y
+CONFIG_SCHED_HPWORKPRIORITY=192
+CONFIG_SCHED_LPWORK=y
+CONFIG_SCHED_LPNTHREADS=2
+CONFIG_SCHED_WAITPID=y
+CONFIG_USEC_PER_TICK=1000
+
+# --- Timers ---
+CONFIG_ALARM_ARCH=y
+CONFIG_ONESHOT=y
+
+# --- 64-bit time_t (required: Rust libc crate assumes time_t = i64) ---
+CONFIG_SYSTEM_TIME64=y
+CONFIG_PREALLOC_TIMERS=4
+
+# --- I/O buffers (required by virtio-net for packet buffers) ---
+CONFIG_IOB_ALIGNMENT=16
+CONFIG_IOB_BUFSIZE=1534
+CONFIG_IOB_NBUFFERS=64
+CONFIG_IOB_THROTTLE=8
+
+# --- Networking (BSD sockets, TCP/UDP) ---
+CONFIG_NET=y
+CONFIG_NET_TCP=y
+CONFIG_NET_TCP_NODELAY=y
+CONFIG_NET_TCPBACKLOG=y
+CONFIG_NET_UDP=y
+CONFIG_NET_BROADCAST=y
+# Phase 97.4.nuttx — RTPS SPDP multicast (239.255.0.1:7400+).
+CONFIG_NET_IGMP=y
+CONFIG_NET_IGMPv2=y
+CONFIG_NET_ICMP_SOCKET=y
+CONFIG_NET_SOCKOPTS=y
+CONFIG_NET_ETH_PKTSIZE=1514
+CONFIG_NET_LL_GUARDSIZE=32
+CONFIG_NET_RECV_BUFSIZE=32768
+CONFIG_NET_MAX_LISTENPORTS=8
+CONFIG_NET_STATISTICS=y
+CONFIG_NET_ROUTE=y
+CONFIG_NETDEV_WORK_THREAD=y
+CONFIG_NETDEV_WORK_THREAD_POLLING_PERIOD=10000
+CONFIG_NETDEV_IFINDEX=y
+
+# --- Network initialization (QEMU slirp subnet: 10.0.2.0/24) ---
+CONFIG_NETUTILS_NETINIT=y
+CONFIG_NSH_NETINIT=y
+CONFIG_NETINIT_IPADDR=0x0a00021e
+CONFIG_NETINIT_DRIPADDR=0x0a000202
+CONFIG_NETINIT_NETMASK=0xffffff00
+# CONFIG_NETINIT_NOMAC is not set
+# Phase 127.B.5 — virtio-net derives its MAC from the QEMU
+# `-device virtio-net-device,mac=…` argument via VIRTIO_NET_F_MAC, so
+# the per-instance MAC chosen by the test harness propagates correctly.
+# With NETINIT_NOMAC=y the netinit stage overwrites that with
+# CONFIG_NETINIT_MACADDR_{1,2} defaults (`00:e0:de:ad:be:ef`), giving
+# every NuttX QEMU instance the same MAC — QEMU's `-netdev socket,mcast=`
+# tunnel then filters out frames whose source MAC matches our own,
+# silently dropping every peer's RTPS SPDP/data.
+
+# --- Virtio drivers (virtio-net for QEMU networking) ---
+CONFIG_DRIVERS_VIRTIO=y
+CONFIG_DRIVERS_VIRTIO_MMIO=y
+CONFIG_DRIVERS_VIRTIO_NET=y
+CONFIG_DEV_SIMPLE_ADDRENV=y
+CONFIG_NET_LL_GUARDSIZE=28
+
+# --- Device tree (virtio device discovery) ---
+CONFIG_DEVICE_TREE=y
+
+# --- POSIX threading (required by zenoh-pico + Rust std TLS) ---
+CONFIG_PTHREAD_MUTEX_TYPES=y
+CONFIG_PTHREAD_MUTEX_BOTH=y
+CONFIG_PTHREAD_STACK_DEFAULT=65536
+CONFIG_TLS_NELEM=64
+
+# --- Random device (required by zenoh-pico RNG) ---
+CONFIG_DEV_URANDOM=y
+CONFIG_CRYPTO=y
+CONFIG_CRYPTO_RANDOM_POOL=y
+
+# --- Filesystem ---
+CONFIG_DEV_ZERO=y
+CONFIG_FS_PROCFS=y
+CONFIG_FS_ROMFS=y
+CONFIG_PIPES=y
+
+# --- DNS / network database (for getaddrinfo) ---
+CONFIG_LIBC_NETDB=y
+
+# --- C++ support (for NuttX apps framework) ---
+CONFIG_HAVE_CXX=y
+CONFIG_HAVE_CXXINITIALIZE=y
+
+# --- NSH shell (interactive debugging) ---
+CONFIG_BUILTIN=y
+CONFIG_INIT_ENTRYPOINT="nsh_main"
+CONFIG_INIT_STACKSIZE=524288
+CONFIG_NSH_ARCHINIT=y
+CONFIG_NSH_BUILTIN_APPS=y
+CONFIG_NSH_FILEIOSIZE=512
+CONFIG_NSH_READLINE=y
+CONFIG_READLINE_CMD_HISTORY=y
+CONFIG_SYSTEM_NSH=y
+CONFIG_SYSTEM_PING=y
+CONFIG_NETUTILS_NETCAT=y
+CONFIG_NETUTILS_WEBCLIENT=y
+
+# --- Misc ---
+CONFIG_LIBC_EXECFUNCS=y
+CONFIG_RAMLOG=y
+CONFIG_STACK_COLORATION=y
+CONFIG_SYMTAB_ORDEREDBYNAME=y
+
+CONFIG_STACK_USAGE_WARNING=0
+
+# phase-296 W5.9 - POSIX sporadic server: the budget dim's kernel-native
+# realization (nros_nuttx_apply_current_sporadic; RFC-0052).
+CONFIG_SCHED_SPORADIC=y
+CONFIG_SCHED_SPORADIC_MAXREPL=3
