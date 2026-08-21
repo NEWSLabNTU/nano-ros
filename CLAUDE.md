@@ -358,15 +358,19 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **FreeRTOS:** `APP_TASK_STACK` 64 KB (inline executor arena on stack) → "Invalid mbox" otherwise;
   IP-seeded `srand()`; poll-task priority ≥ 4; manual action server needs
   `try_handle_get_result()`. → platform-implementation-notes.md.
-- **A tier priority and a transport priority are quoted in DIFFERENT UNITS and land in the
-  same scheduler (issue 0623)** — `[tiers.*.freertos] priority` is RAW FreeRTOS (0–7, used
-  verbatim); `zenoh_read_priority`/`poll_priority` are NORMALISED 0–31 mapped DOWN
-  (`16 → 4`). So a tier written as 5 sits ABOVE a transport band that reads "16", and the
-  defaults ship that collision. Do NOT "just lower the read task below the tiers": that is
-  the config that starved the RX drain and froze `rt-eval`'s island 1–3 s on lwIP
-  retransmission. Both orderings are legitimate; choosing by accident is not. Boot prints
-  `report_tiers_above_transport` when a tier meets the band. Same defect phase-364 W5 fixed
-  one layer down in the platform ABI.
+- **Tier and transport priorities land in ONE scheduler — they now share ONE vocabulary,
+  RAW FreeRTOS (issue 0623, FIXED).** `FreertosScheduling`'s `zenoh_read_priority` /
+  `zenoh_lease_priority` / `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
+  units `[tiers.*.freertos] priority` is written in. Shipped defaults: app **3**,
+  transport band **4/4/4** — transport above the app, no collision. The normalised 0–31
+  scale WAS the defect (a tier written as 5 against a transport reading "16" was above it,
+  not below); `to_freertos_priority` survives as THE single conversion for anyone still
+  supplying normalised values, and nothing in the default path calls it. Do NOT "just
+  lower the read task below the tiers": that is the config that starved the RX drain and
+  froze `rt-eval`'s island 1–3 s on lwIP retransmission. Both orderings are legitimate;
+  choosing by accident is not. Boot prints `report_tiers_above_transport` when a tier meets
+  the band floor (`min(read, lease, poll)`). Same defect phase-364 W5 fixed one layer down
+  in the platform ABI.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
   with -80). → platform-implementation-notes.md.
 - **Zephyr's pthread mutex/cond pools are per-OBJECT, so a mutex-per-entity library makes them a

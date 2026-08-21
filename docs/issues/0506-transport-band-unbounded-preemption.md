@@ -671,3 +671,45 @@ blocker was called cleared "by construction" (it was not, for this lane), and
 the task-path port was recorded as the fix (it is dead code here). The thing
 that settled it each time was building the image and looking at it. `nm` is
 four seconds.
+
+## Premise re-checked 2026-08-21 — the ordering holds, and the units defect behind it is FIXED
+
+This issue opens on "the recommended FreeRTOS layout puts the transport band above every
+application tier". Since the last entry that premise picked up a complication worth
+resolving explicitly, because issue 0623 was about the two numbers being incomparable.
+
+Read from the source of truth rather than a diff — `FreertosScheduling` in
+`packages/boards/nros-board-common/src/freertos_config.rs`:
+
+* the priorities are **RAW FreeRTOS**, `0..configMAX_PRIORITIES-1`, and the type says so:
+  "the same units a `[tiers.<name>.freertos] priority` is written in (issue 0623)";
+* the file records the fix in its own words — "They **were** on a normalized 0–31 scale,
+  and **that was the defect**";
+* shipped `impl Default`: `app_priority: 3`, `zenoh_read_priority: 4`,
+  `zenoh_lease_priority: 4`, `poll_priority: 4`.
+
+So the band floor is 4 and the app sits at 3: **transport above the tiers, as this issue
+assumes, and now expressed in one vocabulary** so the comparison needs no arithmetic. The
+0–31 conversion survives as `to_freertos_priority`, explicitly "the one place the mapping
+exists", and no default path calls it.
+
+That matters here in two ways:
+
+1. **This issue's premise is confirmed, not weakened.** The starvation it measures is a
+   consequence of a deliberate and correct ordering, not of a unit confusion — so the
+   remaining design work (token bucket: class + budget) is still the right target.
+2. **A reading hazard is gone.** `report_tiers_above_transport` compares two numbers in the
+   same units and prints both, so anyone repeating these experiments with custom tier
+   priorities gets told when they have inverted the band rather than discovering it as
+   unexplained latency.
+
+Scope note: this is a source-level verification of the defaults and the reporter's
+predicate (offender iff `tier.priority >= min(read, lease, poll)`), **not** a runtime
+observation — no image was booted for it. The issue's own method note is right that builds
+settle things that diffs do not; nothing here contradicts a measurement, and the numbers
+above are compile-time constants rather than inferred behaviour.
+
+Corrected alongside this: CLAUDE.md's pitfall index still described the normalised scale as
+current ("`zenoh_read_priority`/`poll_priority` are NORMALISED 0–31 mapped DOWN … the
+defaults ship that collision"). That file is loaded every session, so it was telling every
+reader a fixed collision still ships.
