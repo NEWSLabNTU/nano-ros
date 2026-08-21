@@ -51,14 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0744** (boards, open 2026-08-21) — freertos-posix: a task blocking in a RAW host primitive (the platform
-shim's pthread-layout condvars, or a blocking syscall from task context) parks the WHOLE simulated kernel —
-the GCC/Posix port's tick cannot preempt a block it does not own — so RT tiers see ~80 ms stalls that
-priorities cannot fix. Measured on the ASI consumer: a 20 µs callback in a priority-7 tier at a 30 ms period
-runs ~25 Hz with 80–85 ms max intervals (pre-tiers: 12 Hz / 140 ms). The phase-370 "RTOS threads + host
-Cyclone" seam (0715's class) degrading into latency rather than a SEGV. Fix shape: executor/platform waits
-reached from task context go through FreeRTOS-visible primitives; audit `platform.c`'s wait arms against
-task-context reachability. See `0744-*`. (2026-08-21)
+**#0745** (codegen, resolved 2026-08-21) — launch params NEVER reached a component ctor: emitters
+gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node
+init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction
+`emit_declare_params`, lazy `ensure_parameter_store` (ParamState.services now Option, registration
+preserves seeds, non-fatal on RMWs without service servers), ComponentNode seed-adoption gated on the
+NOW-WIRED `nros_lower_system_features` lowering (the fn was defined and called from no path), and a
+Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declared, 0.15 ran; after —
+31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter,
+cyclone service-server gap. See `0745-*`. (2026-08-21)
+
+**#0744** (boards, wontfix 2026-08-21) — CLOSED as misdiagnosed, superseded by #0745: the freertos-posix
+"80-140 ms tier stalls" were the timer's real period — the seeded 30 ms never reached the node, so the
+compiled 0.15 s default ran. Port-signal masking and CPU pinning both falsified as fixes. The surviving
+kernel: the load-time timer over-credit, tracked under 0745. See `archived/0744-*`. (2026-08-21)
 
 Recently resolved (2026-08-21): **#0737** — both `freertos-posix` cells published and received nothing. Two
 defects. (1) No recipe built their fixtures (#405's shape) — fixed by `just freertos build-fixtures-posix`.

@@ -1,13 +1,25 @@
 ---
 id: 744
 title: "freertos-posix: blocking waits in raw pthread primitives park the whole simulated kernel — RT tiers see ~80 ms stalls that priorities cannot fix"
-status: open
+status: wontfix
 type: bug
 area: boards
 related: [issue-0715, issue-0623]
 ---
 
 # 0744 — freertos-posix: raw blocking waits starve the tiers
+
+**CLOSED (2026-08-21) — misdiagnosed; superseded by issue 0745.** The
+measured "stalls" were the CONTROL PERIOD itself: the launch-declared 30 ms
+never reached the node (0745's four-defect seeding chain), so the timer ran
+at its compiled 0.15 s default — the 80-140 ms max intervals were real ticks
+of a ~150-160 ms timer, not starvation. Two falsifications on the way:
+blocking the port signals around Cyclone thread spawn changed nothing, and
+CPU pinning changed nothing. With 0745 landed the same tier ticks at
+31.6 ms mean (max 32.5) standalone. What SURVIVES of this issue is the
+load-time timer over-credit (a 30 ms timer publishing at ~50 Hz under
+subscription traffic) — tracked in 0745's "left open" list as its own
+follow-up, not a port-blocking story.
 
 Measured on the ASI reference consumer (phase-4, controller workspace on
 `nros-board-freertos-posix`, cyclonedds RMW, host closed loop against a
