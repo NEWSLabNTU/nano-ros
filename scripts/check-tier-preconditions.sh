@@ -105,6 +105,36 @@ fi
 # shellcheck source=scripts/build/fixture-lane.sh
 source scripts/build/fixture-lane.sh
 _fixture_build_lane="$(nros_lane_build_lane "${NROS_FIXTURE_LANE:-all}" 2>/dev/null || echo "${NROS_FIXTURE_LANE:-all}")"
+
+# 1b. An UNINITIALIZED submodule a lane's fixtures need. Distinct from 1: that
+#     probe catches a checkout BEHIND the pin (issue 0550); this catches one that
+#     was never checked out at all, which is legitimate for most of them and
+#     fatal for a few.
+#
+#     Measured 2026-08-21. `px4_bridge_ffi` is a compile-check fixture, built
+#     module-level, and its builder skips cleanly when PX4-Autopilot is absent:
+#
+#         px4: PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot)
+#              — skipping (recorded in the summary)
+#
+#     The RUN does not skip. `px4_bridge_compile` treats the coordinate as
+#     in-lane and fails "MISSING for an in-lane coordinate … a broken promise,
+#     not an environment skip" — deliberately, per its own docstring, because
+#     issue 0738 was about that path being silently unexercised. Both halves are
+#     right; what was missing is that nothing said so BEFORE the sweep. Tier 2
+#     surfaced it ~90 minutes in; tier 1 never does, because its scope filter
+#     excludes the test.
+#
+#     Named rather than derived: there is no lane -> submodule mapping in the
+#     tree, and inventing one would flag every optional SDK. One known
+#     prerequisite for one lane is the honest size of this fact.
+case "${NROS_FIXTURE_LANE:-all}" in
+    tier2 | tier2-nightly | all)
+        probe "the PX4-Autopilot submodule is not checked out (tier 2+ runs \`px4_bridge_compile\`)" \
+            "git submodule update --init --depth 1 third-party/px4/PX4-Autopilot   (~406 MB)" \
+            test -f third-party/px4/PX4-Autopilot/msg/DebugKeyValue.msg
+        ;;
+esac
 probe "test fixtures not ready for this lane (missing, or stale under the stamp)" \
     "just build-test-fixtures lane=${_fixture_build_lane}   (bypass: NROS_SKIP_FIXTURE_CHECK=1)" \
     just _require-fixtures-ready
