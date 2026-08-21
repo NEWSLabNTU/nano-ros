@@ -1,7 +1,7 @@
 ---
 id: 200
 title: "fixture-build timing campaign — blocked on a big-disk CI runner (phase-226 validation residue)"
-status: open
+status: resolved
 type: task
 area: build
 related: [phase-226, phase-340, phase-343]
@@ -300,3 +300,47 @@ survive load; absolute durations and cross-run comparisons do not.
 Left in this issue, on ANY host: measurements 1 and 2 only, and they need a
 quiet dedicated runner rather than merely a large one. Measurement 3 belongs to
 0726/phase-371. Nothing further is extractable from this host's existing data.
+
+## Closed 2026-08-21 — restated, narrowed, and out of engineering's hands
+
+Closed against phase-353 W3's acceptance, which is explicit that a runner is not
+the only exit: *"Either a runner exists and the campaign runs, or #200 is
+restated against post-340/343 disk figures so a future runner is sized
+correctly."* The restatement is done, and today's pass corrected it further —
+the 2026-08-16 version still treated disk as the constraint.
+
+**Say plainly what did not happen: the three measurements were never taken.**
+No clean-vs-warm per-platform timing, no jobserver-vs-fallback comparison, no
+utilisation figure this issue can stand behind. Closing does not make those
+numbers exist. It records that nothing further is obtainable from an engineering
+change, because what remains is a procurement decision and a run on a machine
+that does not exist here.
+
+What the issue leaves behind, all of it measured:
+
+* **The requirement was mis-stated.** ">=200 GiB scratch" buys the ability to
+  COMPLETE a clean build, not a number worth recording. The binding constraint is
+  a QUIET, DEDICATED machine that also has the disk — issue 0509 (7 no-op runs of
+  identical work, 50 s…695 s) and phase-371 (figures withdrawn because another
+  tenant's container build was counted) reach that from independent directions.
+  Anyone procuring from the original heading buys the wrong machine.
+* **The joblog shortcut does not exist.** 257 files, 650 rows, all `linux` /
+  `native`, widest joblog 4 rows. No full-matrix run was ever captured, so
+  nothing is minable retrospectively.
+* **Measurement 3 continues as issue 0726 / phase-371**, actively owned, and is
+  currently finding the same instrument problem this issue hit.
+* **There is a way to measure on a loaded host**, demonstrated rather than
+  proposed: a per-operation profiler with its own clock. CMake's tracer produced
+  a real structural result here — one leaf's configure dominated by
+  `nros_resolve_corrosion`, 20 s of 33 s, serial across 29 `execute_process`
+  calls. Within-run ratios survive load; absolute durations and cross-run
+  comparisons do not.
+* **The 120 GB of pre-340 residue is gone** and
+  `check-example-leaf-target-dirs` covers the class (verified by creating one,
+  not by reading the gate).
+
+**If a quiet dedicated runner appears, file a fresh issue.** Measurements 1 and
+2 are a clean, well-specified half-day on the right hardware; what made this
+issue long is five restatements of a blocker, and none of that belongs in the
+task someone would actually run. This one is closed so it stops being read as
+pending engineering work.

@@ -60,6 +60,18 @@ the mirror present. Consumers must depend on the `nros_c_config_header` TARGET, 
 sweep 0090's OBJECT_DEPENDS sites for the class. Found by the ASI phase-4 freertos-posix switch, which
 pre-builds the target as a workaround. See `0740-*`. (2026-08-21)
 
+Recently resolved (2026-08-21): **#0200** — the fixture-build timing campaign is closed on phase-353 W3's
+SECOND acceptance arm ("or #200 is restated … so a future runner is sized correctly"). Stated plainly: the
+three measurements were never taken and are not obtainable here; what remains is procurement, not
+engineering. The restatement corrected itself — ">=200 GiB scratch" buys the ability to COMPLETE a clean
+build, not a number worth recording, because the binding constraint is a QUIET, DEDICATED machine (#0509:
+7 no-op runs of identical work, 50 s…695 s; phase-371: figures withdrawn after another tenant's container
+build was counted). The joblog shortcut does not exist — 257 files, 650 rows, all native/linux, no
+full-matrix run ever captured. Measurement 3 continues as #0726/phase-371. And there IS a way to measure on
+a loaded host, demonstrated not proposed: a per-operation profiler with its own clock (CMake's tracer found
+`nros_resolve_corrosion` at 20 s of a 33 s configure). If a quiet dedicated runner appears, measurements
+1-2 want a FRESH issue. See `archived/0200-*`. (2026-08-21)
+
 Recently resolved (2026-08-21): **#0742** — `just build-test-fixtures` exited 2 on main. The script runs
 once per compile-check unit IN PARALLEL (36 on `lane=native`) and every invocation drove the
 `px4_bridge_ffi` block against one shared `build/px4-msgs-codegen/bridge-cpp`. #0520 had already answered
@@ -3165,23 +3177,6 @@ pass. Root-caused and worked around, NOT structurally fixed — a per-arch tree 
 freshness signature is larger and belongs with the NuttX board owner. See `archived/0433-*`.
 
 
-**#200** — fixture-build timing campaign blocked on a big-disk CI runner (phase-226 validation
-residue). **Re-derived 2026-08-21:** its recommendation is satisfied — the 120 GB of pre-340
-`examples/**/target/` residue is GONE (0 plain leaf dirs remain, 15 coordinate-keyed group dirs), and the
-note that `check-example-leaf-target-dirs` passed over the class is stale (verified by creating one: the
-gate FAILS). Tree is 880 GB, not 994, and the composition argues against sizing a runner from it —
-`zephyr-workspace/` alone is 228 GB of PROVISIONING for one Zephyr line (the same number #0651 hit from the
-other side), not matrix cost; `target/` rose 95→159 GB unattributed. Still blocked for the original reason:
-the three measurements need a CLEAN full-matrix build on a host where wall-clock means something, and
-#0509 showed it does not here (7 no-op runs of identical work: 50 s…695 s). **2026-08-21, what is left:**
-the "read the joblog" shortcut does not exist — 257 joblogs, 650 rows, ALL native/linux, no full-matrix run
-ever captured, so nothing is minable retrospectively. Measurement 3 is subsumed by #0726/phase-371, which
-withdrew figures after finding two broken samplers (one matched its own command line; one swept in another
-tenant's container build). **The stated requirement is wrong and expensively so:** ≥200 GiB of scratch buys
-the ability to COMPLETE a clean build, not a number worth recording — the binding constraint is a QUIET,
-DEDICATED machine. What CAN be measured here is what phase-371 did: a per-operation profiler with its own
-clock (CMake's tracer found `nros_resolve_corrosion` at 20 s of a 33 s configure), plus within-run ratios;
-absolute durations and cross-run comparisons do not survive this host. See `0200-*`.
 
 Recently resolved (2026-08-06): **#435** — filed as "CMake fixtures do not depend on generated RMW
 headers"; SUPERSEDED by **#442**, whose diagnosis is the correct one. Not a missing dependency:

@@ -1,6 +1,6 @@
 # Phase 353 — Build and fixture cost: what the lanes actually pay
 
-**Status (2026-08-15). W1, W2 and W4 COMPLETE; W3 BLOCKED.** Opened to give four standing cost issues one owner instead of four.
+**Status (2026-08-21). COMPLETE — W1, W2, W4 done; W3 closed on its restatement arm.** Opened to give four standing cost issues one owner instead of four; all four (#446, #509→#604, #562, #200) are now closed. W3 never produced the timing numbers and says so — #200 is closed because what remains is a procurement decision, not engineering, and because the requirement it stated was wrong: disk buys a completed build, not a trustworthy number.
 
 * **W1** — #562 verified and RESOLVED (its fix had landed, status never
   flipped); #446 re-measured and restated.
@@ -22,10 +22,15 @@
   as **#604**, filed as a MEASUREMENT (how many leaves a pull genuinely
   invalidates versus merely re-stamps) rather than as a defect. #604 already
   credits this phase's W2 for the content-aware staleness half.
-* **W3** — #200 is blocked on a big-disk CI runner and is not actionable
-  locally.
+* **W3** — DONE 2026-08-21 via this item's SECOND acceptance arm: #200 is
+  restated and CLOSED. The campaign's three measurements were never taken and
+  are not obtainable here; what remains is a procurement decision, not
+  engineering.
 
-**Remaining:** only W3 — #200's timing campaign, which needs a big-disk CI
+**Remaining: nothing.** W3 closed on its restatement arm — and the restatement
+corrected itself: the 2026-08-16 pass still treated DISK as the constraint,
+where #0509 and phase-371 independently show the binding requirement is a QUIET,
+DEDICATED machine. Someone sizing from ">=200 GiB scratch" buys the wrong
 runner. Everything actionable on a dev host is done.
 
 Carried OUT of this phase rather than left implied: **#604** continues #509's
@@ -257,6 +262,16 @@ Note W1's re-measurements may reduce what this campaign needs to cover — phase
 
 **Acceptance.** Either a runner exists and the campaign runs, or #200 is
 restated against post-340/343 disk figures so a future runner is sized correctly.
+
+**MET 2026-08-21 on the second arm; #200 is closed.** Beyond the 2026-08-16
+restatement below, the sizing GUIDANCE itself was corrected: disk buys the
+ability to complete a clean build, not a number worth recording. Also measured
+then: the "read the joblog" shortcut does not exist (257 files, 650 rows, all
+native/linux — no full-matrix run was ever captured), and measurement 3
+continues as #0726/phase-371, which is finding the same instrument problem. If a
+quiet dedicated runner appears, measurements 1-2 want a FRESH issue — they are a
+well-specified half-day, and none of #200's five restatements of a blocker
+belongs in that task.
 
 **Status (2026-08-16): the RESTATEMENT half is DONE.** Phase-340 completed
 2026-08-12, which cleared this issue's own "run after item 5" precondition, so
