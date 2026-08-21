@@ -109,7 +109,42 @@ install-make:
     curl -fSL "https://ftp.gnu.org/gnu/make/make-$want.tar.gz" -o "$tmp/make.tar.gz"
     tar xzf "$tmp/make.tar.gz" -C "$tmp"
     echo "[make] building (./configure && ./build.sh)..."
-    ( cd "$tmp/make-$want" && ./configure >/dev/null 2>&1 && ./build.sh >/dev/null 2>&1 )
+    # --without-guile: make's configure AUTODETECTS a host guile and links it,
+    # which is how this binary became unportable across the ROS distrobox. The
+    # tree is shared with the box (same paths, different distro), so an Arch
+    # build landed a `libguile-3.0.so.1` dependency that Ubuntu 22.04 cannot
+    # satisfy, and every box-side `just <plat> build-fixtures` died as
+    # `make: error while loading shared libraries` — the same one-path-two-worlds
+    # collision the box CLI has (ros2-box-env.sh `nros_box_publish`), for the
+    # same reason. Guile only powers make's `$(guile …)` function, which nothing
+    # in this repo calls; dropping it makes ONE binary serve both sides.
+    # Bootstrap with a make that is NOT the one we are replacing. `activate.sh`
+    # puts `third-party/make` first on PATH, and make's own configure needs a
+    # working make to bootstrap its depfile fragments — so when the installed
+    # binary is broken (the guile case above, or any half-written copy) the
+    # recipe that FIXES it fails first, on an error that names dependency
+    # tracking and never mentions PATH. Drop our own dir for the build only.
+    _boot_path=""
+    for _d in ${PATH//:/ }; do
+        case "$_d" in
+          */third-party/make|*/third-party/make/) ;;
+          *) _boot_path="${_boot_path:+$_boot_path:}$_d" ;;
+        esac
+    done
+    # Log rather than discard: a silenced build reports only "exit code 1", and
+    # this recipe runs in two different distros over one tree.
+    if ! ( cd "$tmp/make-$want" && export PATH="$_boot_path" \
+             && ./configure --without-guile > cfg.log 2>&1 \
+             && ./build.sh > build.log 2>&1 ); then
+        echo "[make] build failed; last lines:" >&2
+        tail -20 "$tmp/make-$want/build.log" "$tmp/make-$want/cfg.log" 2>/dev/null >&2 || true
+        exit 1
+    fi
+    if ldd "$tmp/make-$want/make" 2>/dev/null | grep -q guile; then
+        echo "[make] refusing to install: built make still links guile — a host-only" >&2
+        echo "       binary breaks the distrobox (see the --without-guile note above)." >&2
+        exit 1
+    fi
     cp "$tmp/make-$want/make" "$bin"
     chmod +x "$bin"
     # Some sub-builds (cmake generators, RTOS kernel makefiles) invoke
