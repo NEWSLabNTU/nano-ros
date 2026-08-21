@@ -56,34 +56,59 @@ function(nano_ros_use_board NAME)
     # whole reason the lookup widened instead of the callers moving.
     #
     # The CLI's `locate_board_crate` (nros-cli-core/src/cmd/board.rs) implements
-    # the SAME two-step order for `nros board info` / `nros setup board`. Two
-    # languages, so no shared code is possible — but they must not diverge, and
-    # `board_import_fvp` (tests/fvp_smoke.rs) exercises this path.
-    set(_board_dir "${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}")
-    set(_board_cmake "${_board_dir}/board.cmake")
-    if(NOT EXISTS "${_board_cmake}")
-        file(GLOB _bundle_candidates
-            "${NROS_REPO_DIR}/packages/boards/*/boards/${NAME}/board.cmake")
-        list(LENGTH _bundle_candidates _bundle_count)
-        if(_bundle_count GREATER 1)
-            message(FATAL_ERROR
-                "nano_ros_use_board(${NAME}): ambiguous — ${NAME} is a conf "
-                "bundle under more than one family crate:\n"
-                "  ${_bundle_candidates}\n"
-                "Board keys are global; rename one.")
-        elseif(_bundle_count EQUAL 1)
-            list(GET _bundle_candidates 0 _board_cmake)
-            get_filename_component(_board_dir "${_board_cmake}" DIRECTORY)
-        endif()
+    # the SAME lookup — in-tree roots plus `NROS_EXTRA_BOARD_PATH` — for
+    # `nros board info` / `nros setup board`. Two languages, so no shared code
+    # is possible — but they must not diverge, and `board_import_fvp`
+    # (tests/fvp_smoke.rs) exercises this path.
+    #
+    # Search roots: the in-tree boards dir, then every entry of
+    # NROS_EXTRA_BOARD_PATH (cache var wins; else the environment —
+    # PATH-style ':' separated). This is the out-of-tree escape hatch: a
+    # consumer board no longer has to be copied into the checkout. Board keys
+    # stay GLOBAL — a name found under more than one root is a fatal
+    # ambiguity, never shadowed by search order.
+    set(_board_roots "${NROS_REPO_DIR}/packages/boards")
+    set(_extra_raw "${NROS_EXTRA_BOARD_PATH}")
+    if(_extra_raw STREQUAL "" AND DEFINED ENV{NROS_EXTRA_BOARD_PATH})
+        set(_extra_raw "$ENV{NROS_EXTRA_BOARD_PATH}")
     endif()
-    if(NOT EXISTS "${_board_cmake}")
+    if(NOT _extra_raw STREQUAL "")
+        string(REPLACE ":" ";" _extra_list "${_extra_raw}")
+        foreach(_extra IN LISTS _extra_list)
+            if(NOT _extra STREQUAL "" AND IS_DIRECTORY "${_extra}")
+                list(APPEND _board_roots "${_extra}")
+            endif()
+        endforeach()
+    endif()
+
+    set(_board_candidates "")
+    foreach(_root IN LISTS _board_roots)
+        if(EXISTS "${_root}/nros-board-${NAME}/board.cmake")
+            list(APPEND _board_candidates "${_root}/nros-board-${NAME}/board.cmake")
+        endif()
+        file(GLOB _bundle_candidates "${_root}/*/boards/${NAME}/board.cmake")
+        list(APPEND _board_candidates ${_bundle_candidates})
+    endforeach()
+    list(LENGTH _board_candidates _board_count)
+    if(_board_count GREATER 1)
+        message(FATAL_ERROR
+            "nano_ros_use_board(${NAME}): ambiguous — ${NAME} resolves under "
+            "more than one board search root (packages/boards + "
+            "NROS_EXTRA_BOARD_PATH):\n"
+            "  ${_board_candidates}\n"
+            "Board keys are global; rename one.")
+    elseif(_board_count EQUAL 1)
+        list(GET _board_candidates 0 _board_cmake)
+        get_filename_component(_board_dir "${_board_cmake}" DIRECTORY)
+    else()
         message(FATAL_ERROR
             "nano_ros_use_board(${NAME}): no board.cmake for board ${NAME}.\n"
-            "Looked for a board crate at\n"
-            "  ${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}/board.cmake\n"
-            "and for a conf bundle at\n"
-            "  ${NROS_REPO_DIR}/packages/boards/*/boards/${NAME}/board.cmake\n"
-            "Check the board name, or run `nros board info ${NAME}` "
+            "Looked in these roots for a board crate "
+            "`nros-board-${NAME}/board.cmake` and a conf bundle "
+            "`*/boards/${NAME}/board.cmake`:\n"
+            "  ${_board_roots}\n"
+            "Check the board name (or set NROS_EXTRA_BOARD_PATH for an "
+            "out-of-tree board), or run `nros board info ${NAME}` "
             "to validate the manifest.")
     endif()
     include("${_board_cmake}")

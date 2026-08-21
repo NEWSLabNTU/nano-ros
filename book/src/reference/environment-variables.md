@@ -45,6 +45,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico`        |
 | `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
 | `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
+| `NROS_EXTRA_BOARD_PATH` | Extra board-search roots (PATH-style `:` separated). Each entry is a directory shaped like `packages/boards/` — subdirs carrying `nros-board.toml` crates or `*/boards/<name>/board.cmake` bundles. Read by the `nros` CLI's board catalog AND `nano_ros_use_board()` (also settable as a CMake cache var there). Board keys stay global: a name found under two roots is an error, never shadowed. | (unset) |
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
 

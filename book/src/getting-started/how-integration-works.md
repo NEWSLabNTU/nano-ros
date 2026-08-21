@@ -72,11 +72,11 @@ two places. The split is by *what kind of fact it is*:
 your workspace with a `package.xml` and an `nros-board.toml`: the
 board's name, RTOS platform, target triple, architecture, entry shape.
 These are true of every copy of that board on every desk, so they are
-reusable and shareable. Note the current discovery constraint: the
-CLI's board catalog scans `<nano-ros>/packages/boards/` — a descriptor
-outside the checkout is not found, so an out-of-tree board dir is
-copied (or symlinked) into your vendored checkout's `packages/boards/`
-for the tooling to see it.
+reusable and shareable. Discovery: the CLI's board catalog scans
+`<nano-ros>/packages/boards/` plus every root named by
+`NROS_EXTRA_BOARD_PATH` (PATH-style list of directories shaped like
+`packages/boards/`), so an out-of-tree board dir is seen without
+copying it into the checkout.
 
 **2. A `[deploy.<name>]` block — facts about this checkout, this
 machine, this application.** It lives in your bringup package's

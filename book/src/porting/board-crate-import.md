@@ -68,12 +68,13 @@ target_sources(app PRIVATE src/main.cpp)
 
 `nano_ros_use_board()` is shipped by the nano-ros Zephyr module. It is available the moment `ZEPHYR_EXTRA_MODULES` includes `deps/nano-ros/zephyr`; no extra `include()` is required.
 
-> **Out-of-tree constraint.** The lookup resolves board crates only
-> under `<nano-ros>/packages/boards/` — there is no consumer-supplied
-> search path today. A board crate you author outside the checkout
-> must be copied into your vendored nano-ros's `packages/boards/`
-> (accept the small upgrade-time diff, and rebase it across
-> `nros-v<X.Y.Z>` tag bumps).
+> **Out-of-tree boards.** The lookup searches
+> `<nano-ros>/packages/boards/` plus every root named by
+> `NROS_EXTRA_BOARD_PATH` (environment, or a CMake cache var) — so a
+> board crate in YOUR tree is found without copying it into the
+> checkout. Each root has the same layout as `packages/boards/`.
+> Board keys are global: a name resolving under more than one root is
+> a fatal ambiguity, never shadowed by search order.
 
 ## What the call layers in
 

@@ -153,7 +153,7 @@ tree carries a small local diff and rebases it across tag bumps:
 | You add… | Files inside the checkout |
 | --- | --- |
 | A **platform** (your RTOS) | `packages/platform/nros-platform/Cargo.toml` (feature + optional dep), `nros-platform/src/resolve.rs` (type alias), `cmake/platform/nano-ros-<name>.cmake` |
-| A **board** the tooling can see | your board directory copied (or symlinked) into `packages/boards/` — the board catalog and `nano_ros_use_board()` scan only there |
+| A **board** the tooling can see | **none needed since `NROS_EXTRA_BOARD_PATH`**: point it (env, or CMake cache var for `nano_ros_use_board()`) at a directory of board crates in YOUR tree — same layout as `packages/boards/`. Board keys stay global (a name under two roots errors). Copying into `packages/boards/` remains the fallback |
 | A **mirrored SDK index** | `nros-sdk-index.toml` URL edits |
 
 An application, a message package, a board *overlay crate*, and a

@@ -17,7 +17,7 @@
 //! `${workspace}` placeholder; the CLI substitutes the workspace root it
 //! discovered at render time, so the binary stays workspace-agnostic.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -386,15 +386,74 @@ pub struct BoardCatalog {
     descriptors: Vec<BoardDescriptor>,
 }
 
+/// Extra board-search roots from `$NROS_EXTRA_BOARD_PATH` (PATH-style
+/// separator). Each entry is a directory shaped like `packages/boards/` —
+/// immediate subdirectories carrying `nros-board.toml` (or a
+/// `boards/<name>/board.cmake` bundle). This is the out-of-tree escape
+/// hatch the vendored-tree workflow needs: without it, a consumer board
+/// had to be copied INTO the checkout for the catalog to see it.
+///
+/// Missing entries are skipped silently — the variable rides shell
+/// profiles, and a path that only exists on the CI host must not break a
+/// laptop run.
+pub fn extra_board_roots() -> Vec<PathBuf> {
+    match std::env::var_os("NROS_EXTRA_BOARD_PATH") {
+        Some(v) => std::env::split_paths(&v)
+            .filter(|p| !p.as_os_str().is_empty() && p.is_dir())
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
 impl BoardCatalog {
-    /// Load every `packages/boards/*/nros-board.toml` under `workspace`.
+    /// Load every `packages/boards/*/nros-board.toml` under `workspace`,
+    /// plus every root named by `$NROS_EXTRA_BOARD_PATH`.
     pub fn load(workspace: &Path) -> Result<Self, BoardLoadError> {
+        Self::load_with_extra(workspace, &extra_board_roots())
+    }
+
+    /// [`Self::load`] with the extra roots passed explicitly (tests; env
+    /// mutation is process-global and racy under a parallel test runner).
+    pub fn load_with_extra(
+        workspace: &Path,
+        extra_roots: &[PathBuf],
+    ) -> Result<Self, BoardLoadError> {
         let boards_dir = workspace.join("packages/boards");
         let mut descriptors = Vec::new();
-        let entries = std::fs::read_dir(&boards_dir)
-            .map_err(|e| BoardLoadError::Io(boards_dir.clone(), e))?;
+        Self::load_root(&boards_dir, Some(workspace), &mut descriptors)?;
+        for root in extra_roots {
+            // Extra-root descriptors keep an ABSOLUTE `source`: the
+            // workspace-relative invariant exists so IN-TREE paths in
+            // committed artifacts don't drift per host, and an out-of-tree
+            // board is by definition not in a committed nano-ros artifact.
+            // `nano_ros_root.join(abs)` resolves to the absolute path, so
+            // `NROS_BOARD_TOML` consumers keep working unchanged.
+            Self::load_root(root, None, &mut descriptors)?;
+        }
+        let mut catalog = Self { descriptors };
+        catalog.attach_bundle_aliases(&boards_dir);
+        for root in extra_roots {
+            catalog.attach_bundle_aliases(root);
+        }
+        Ok(catalog)
+    }
+
+    /// Append every `<root>/*/nros-board.toml` to `descriptors`.
+    /// `rel_base = Some(ws)` records workspace-relative sources (in-tree);
+    /// `None` records absolute ones (extra roots).
+    fn load_root(
+        root: &Path,
+        rel_base: Option<&Path>,
+        descriptors: &mut Vec<BoardDescriptor>,
+    ) -> Result<(), BoardLoadError> {
+        let entries = match std::fs::read_dir(root) {
+            Ok(e) => e,
+            // The in-tree dir must exist; an extra root was existence-checked
+            // by `extra_board_roots`, so a race here is still an error.
+            Err(e) => return Err(BoardLoadError::Io(root.to_path_buf(), e)),
+        };
         for entry in entries {
-            let entry = entry.map_err(|e| BoardLoadError::Io(boards_dir.clone(), e))?;
+            let entry = entry.map_err(|e| BoardLoadError::Io(root.to_path_buf(), e))?;
             let descriptor_path = entry.path().join("nros-board.toml");
             if !descriptor_path.is_file() {
                 continue;
@@ -405,22 +464,24 @@ impl BoardCatalog {
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
             // Workspace-relative, forward slashes — it goes into a COMMITTED
             // generated header, so an absolute host path would be drift the
-            // moment anyone else regenerates it.
-            let rel = descriptor_path
-                .strip_prefix(workspace)
-                .unwrap_or(&descriptor_path)
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/");
+            // moment anyone else regenerates it. (Extra roots: absolute, see
+            // `load_with_extra`.)
+            let rel = match rel_base {
+                Some(ws) => descriptor_path
+                    .strip_prefix(ws)
+                    .unwrap_or(&descriptor_path)
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+                None => descriptor_path.display().to_string(),
+            };
             descriptors.extend(file.boards.into_iter().map(|mut b| {
                 b.source = Some(rel.clone());
                 b
             }));
         }
-        let mut catalog = Self { descriptors };
-        catalog.attach_bundle_aliases(&boards_dir);
-        Ok(catalog)
+        Ok(())
     }
 
     /// issue 0729 — conf-bundle boards join the catalog as ALIASES of their
@@ -742,6 +803,59 @@ mod tests {
             );
         }
         assert!(checked > 0, "no shipped board declares a netstack");
+    }
+
+    // ── NROS_EXTRA_BOARD_PATH — out-of-tree board roots ──────────────────
+
+    fn repo_root_for_tests() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// A descriptor in an extra root joins the catalog, resolves by name,
+    /// and carries an ABSOLUTE source (out-of-tree paths are consumer-local,
+    /// never committed nano-ros artifacts — see `load_with_extra`).
+    #[test]
+    fn an_extra_root_descriptor_joins_the_catalog_with_absolute_source() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let crate_dir = tmp.path().join("nros-board-vendorx");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(
+            crate_dir.join("nros-board.toml"),
+            STM32_TOML.replace("stm32f4\"", "vendorx\""),
+        )
+        .unwrap();
+
+        let cat =
+            BoardCatalog::load_with_extra(&repo_root_for_tests(), &[tmp.path().to_path_buf()])
+                .expect("load with extra root");
+        let d = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == "vendorx"))
+            .expect("extra-root board resolves by name");
+        let src = d.source.as_deref().expect("source recorded");
+        assert!(
+            std::path::Path::new(src).is_absolute(),
+            "extra-root source must be absolute, got {src}"
+        );
+    }
+
+    /// An empty / unset extra list is exactly the old behavior.
+    #[test]
+    fn no_extra_roots_is_the_plain_in_tree_catalog() {
+        let root = repo_root_for_tests();
+        let plain = BoardCatalog::load_with_extra(&root, &[]).expect("load");
+        assert!(
+            plain
+                .descriptors()
+                .iter()
+                .all(|d| !d.source.as_deref().unwrap_or("").starts_with('/')),
+            "in-tree sources stay workspace-relative"
+        );
     }
 
     const STM32_TOML: &str = r##"
