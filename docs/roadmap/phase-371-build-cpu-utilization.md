@@ -139,12 +139,40 @@ accumulates Corrosion versions and prefixes are enumerated newest-first).
 
 ## Next
 
-1. **Cache or short-circuit `nros_resolve_corrosion`.** 20 s x every leaf
-   configure is the largest known lever by an order of magnitude. Establish
-   first whether it re-resolves per leaf or per build dir.
-2. Re-measure occupancy with a **lineage-scoped** sampler on a quiet box, to
-   confirm or retire the `alive 51 / runnable 8` reading.
-3. Decide whether `check-fast` switches to the fan-out now that W2 is fixed.
+Re-ranked 2026-08-21. The old item 1 named `nros_resolve_corrosion`; that finding
+is RETRACTED (see the cold-cache correction above) and must not be picked up.
+
+1. **Lineage-scoped occupancy measurement.** Walk the process tree from the build
+   PID and count only descendants. This is the only thing that turns this
+   phase's central claim — "blocked, not scheduler-capped", `alive 51 /
+   runnable 8` — from provisional into established. Both previous samplers were
+   contaminated (one self-matched via `pgrep -f`, one counted a concurrent
+   Autoware container build), so items 2 and 4 below are guesswork until this
+   lands. Needs a quiet box: check for foreign builds FIRST.
+
+2. **Cold A/B: static 4x8 vs pooled.** The pooled launcher's STRUCTURAL win is
+   already proven from the joblog — all 7 non-zephyr stages start at the same
+   instant, mean 3.29 in flight, against a hard cap of 4. What has never been
+   valid is a wall-clock comparison: every one so far was warm-tree, where
+   stages do wildly different amounts of work run to run. Two cold runs, same
+   lane, same starting state.
+
+3. **Duplicate build identities** — the one audit item never checked. 0616 (a
+   `--target-dir` serves exactly ONE workspace root), 0500 (Corrosion sharing
+   `cargo/build`), phase-340's target-dir groups. `cargo tree` cannot see this
+   class; it needs fingerprint-directory comparison.
+
+4. **The `threadx_riscv64` tail.** 1302 s, 1.6x the next slowest stage, and it
+   bounds the build under ANY scheduler. Worth asking why on its own terms
+   rather than as part of the launcher question.
+
+5. **CI cold-cache configure.** The 33 s first-configure is paid once per
+   runner, where caches start empty. Irrelevant locally, real in CI.
+
+Not on this list, deliberately: sccache (verified working — a 0-request stat
+line means the server idled out, not that the integration is dead) and the
+gate phase (landed: fan-out is the default, 45 s -> 7 s).
+
 4. ~~Attribute the esp32 (rc=101) and native (rc=2) failures from the last pooled
    run~~ — DONE (2026-08-21): two pooled `lane=tier2` reruns; esp32 and native
    passed BOTH, so those failures were transient (the cold-cache class this
@@ -157,129 +185,3 @@ accumulates Corrosion versions and prefixes are enumerated newest-first).
    re-verified green, then a full pooled lane ran 8/8 stages green. NOTE: no
    timing from these runs is evidence — a CarlaUE4 + Autoware sim owned the box
    throughout (standing rule).
-5. Cold A/B of static vs pooled. Every wall-clock comparison so far has been
-   warm-tree and is therefore not evidence.
-
-
-## CORRECTION: the 33 s configure was cold-cache, not per-leaf
-
-The profile above is real but describes a path taken ONCE. Timed immediately
-afterwards, into brand-new build directories:
-
-```
-fresh build dir #3:  2045 ms
-fresh build dir #4:   977 ms
-```
-
-Same leaf, same generator, cmake cache empty each time. So the 20 s
-`nros_resolve_corrosion` and the 31.9 s of `execute_process` were the cost of
-populating the SDK-store / cargo caches on first use, not something every leaf
-pays. A `--trace-format=json-v1` run taken after that warm-up shows its most
-expensive single command at 0.18 s (`git submodule status`).
-
-That retires "CMake configure dominates" as the campaign's explanation. What
-remains true and useful:
-
-* `execute_process` really is where configure time goes when there IS time to
-  go — 97% of exclusive self time, 29 calls. Configure is fork-bound, so it is
-  latency-bound and single-threaded by nature.
-* At 1-2 s warm and hundreds of leaves, configure is a real but second-order
-  cost, not the reason 24 cores sit idle.
-* The cold path is worth knowing about for CI, where caches start empty and
-  that 33 s IS paid — once per runner, not once per leaf.
-
-**Four explanations have now died on measurement** (static split, serial
-jobserver, gate phase, cmake configure), and two instruments had to be repaired
-before they could kill anything. The honest state is that the cause of low
-occupancy is UNKNOWN, and the next step is the lineage-scoped sampler on a quiet
-box rather than another guess.
-
-## The fan-out "regression" was cold cargo caches (2026-08-20, later)
-
-Reported the fan-out as broken — 8 s earlier, >200 s later — and reverted it off
-the fixture-build path. That was the right call with the information available
-and the wrong diagnosis.
-
-The four gates left hanging (`check-core-only-predicate`,
-`check-deploy-board-resolves`, `check-example-leaf-target-dirs`,
-`check-site-config`) were slow **solo**, not only under fan-out:
-`check-deploy-board-resolves` exceeded 200 s alone against 6.7 s that morning,
-`check-core-only-predicate` 53 s against 8.3 s. So the fan-out was not the
-variable.
-
-They invoke cargo, and their caches had been invalidated by my own sccache probe
-and the overlapping runs before it. Re-timed once warm: **5 s**, with sccache
-enabled or disabled — identical. The fan-out then completed in **21 s**.
-
-**Third time cold-versus-warm has produced a false conclusion today**, after the
-481 s gate phase and the 33 s cmake configure. The pattern is always the same: a
-single measurement taken right after disturbing the tree, read as steady state.
-Any timing in this phase that was not taken twice should be treated as unproven.
-
-### sccache: false alarm, it works
-
-`RUSTC_WRAPPER` is exported at `justfile:13` and resolves to the store sccache.
-`sccache --show-stats` reporting 0 requests is not evidence of a dead
-integration — the server idles out and resets its counters. A direct probe drove
-requests 0 -> 5 with 1 hit and 1 miss. There is nothing to enable, and
-"enabling" it would have been a change that did nothing while appearing to help.
-
-### Three real reds on main, surfaced by the fan-out
-
-`check-board-cargo-config-applied`, `check-provider-index` and
-`check-workspace-order` fail — and fail SOLO, so they are genuine, not
-concurrency artifacts. `just check-fast` was green at 42 s earlier the same day,
-so they arrived with intervening pulls.
-
-Serial `check-fast` stops at the first red and would have reported one of them.
-The fan-out reports all three, which is the property it was built for and an
-argument for adopting it independent of speed.
-
-### Status of the fan-out
-
-Opt-in, working, 21 s warm against ~90 s serial. NOT on the fixture-build path:
-the swap was reverted and has not been re-attempted. Re-attempting it should wait
-until the three reds above are fixed, so that a real failure is not mistaken for
-fan-out fallout a second time.
-
-
-## Corrections (2026-08-20, end of session)
-
-Two claims in this doc were wrong and are retracted here rather than edited away.
-
-**"90 s -> 8 s"** overstated the win by comparing a cold serial run against a
-warm fan-out. On a consistent tree it is **45-46 s -> 7-8 s**. Still worth
-having — ~5x, and it is the difference between a gate phase you notice and one
-you do not — but not 11x.
-
-**"Three real reds on main"** (`check-board-cargo-config-applied`,
-`check-provider-index`, `check-workspace-order`) were not reds. All three were
-the **stale in-tree CLI**, re-armed by a `git pull`. `just setup-cli` cleared
-them. A fourth, `check-submodule-pinned-locks`, was the `play_launch` pointer
-having moved.
-
-The reasoning error is worth keeping: I checked that they failed SOLO and
-concluded they were genuine. Failing solo distinguishes a concurrency artifact
-from a real failure — it does NOT distinguish a real failure from an unmet
-PRECONDITION. `just check-tier-preconditions` reports every one of those at once
-and exists for exactly this; running it first would have cost seconds.
-
-Note also the ordering trap that followed: rebuilding the CLI and THEN syncing a
-submodule leaves the CLI stale again, because a submodule checkout rewrites
-source mtimes. The documented order — submodules, then CLI, then fixtures — is
-load-bearing, and I violated it while fixing the very problem it prevents.
-
-That is four false conclusions in one session (481 s gate phase, 33 s cmake
-configure, the fan-out "regression", and these preconditions), all of the same
-family: **one measurement in a disturbed tree, read as a property of the code.**
-
-## Fan-out is now the default gate phase
-
-`build-test-fixtures` depends on `check-fast-parallel` rather than `check-fast`.
-Landed after three consecutive clean runs (8 s, 7 s, 7 s — 113/113 each) plus a
-serial baseline of 45 s on the same tree, and one run as an actual dependency
-(8 s).
-
-`check-fast` itself is unchanged and still serial: it remains the source of
-truth for WHICH gates exist, since the runner derives its list from that
-dependency line. Removing it would break the derivation.
