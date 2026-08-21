@@ -1,6 +1,24 @@
 # Phase 373 — Test-suite cleanup: delete what cannot fail, consolidate what was copied
 
-**Status (2026-08-21): W0–W5 LANDED — phase COMPLETE pending archive.** W0 (`a660be83f`) removed 23
+**Status: COMPLETE (archived 2026-08-21).** W0–W5 all landed. Acceptance verified
+by measurement, not by reading the work items back:
+
+| criterion | result |
+| --- | --- |
+| no live nextest `test()` filter matches zero tests (W1) | 0 |
+| one repo-root helper (W2) | 0 local declarations under `tests/` |
+| `check-no-vacuous-tests` + `check-nextest-binary-filters` green and self-testing | 10 + 5 self-test cases OK |
+| no test whose body only prints | OK across 262 test files |
+
+One caveat on that last row worth carrying forward: a naive `grep` for
+`fn workspace_root()` still returns a hit, and it is the GATE'S OWN doc comment
+quoting the pattern it forbids. The gate trims and matches `fn …` at line start,
+so it is right and the grep is wrong. That same comment-vs-code confusion
+produced three false findings during this phase — the `dds_api` "dead" nextest
+filters, the `nuttx_riscv`/`zephyr_rust_lifecycle` "inert" ones, and this. Any
+audit of this tree should parse or anchor, never grep bare.
+
+**Summary.** W0 (`a660be83f`) removed 23
 tests that could not fail and gated both shapes that admitted them. W1 restored
 the issue-#141 resource protection that phase-329's consolidation had silently
 switched off. W2 collapsed 23 repo-root helpers into the one that already

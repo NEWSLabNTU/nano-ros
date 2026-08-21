@@ -4678,8 +4678,15 @@ check-archive-lang-items:
 # invisible today.
 #
 # A green here is NOT an arm being observed ACCEPTING at runtime: that needs a
-# real SMP board and is phase-356's separate, larger item. FreeRTOS is covered;
-# nuttx and threadx are not yet, and the script says so in its own output.
+# real SMP board and is phase-356's separate, larger item.
+#
+# All THREE arms are covered — freertos (`vTaskCoreAffinitySet`), nuttx
+# (`pthread_setaffinity_np`) and threadx (`tx_thread_smp_core_exclude`) — each
+# against its own vendored headers. This comment previously said nuttx and
+# threadx "are not yet" covered and pointed at the script's output for the
+# truth; the script has covered all three since it landed, so the comment was
+# describing a state that never shipped. Read the script, not this line, when
+# they disagree: it prints one section per arm.
 check-sched-dim-arms:
     @bash scripts/check-sched-dim-arms-compile.sh
 
