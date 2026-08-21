@@ -131,9 +131,12 @@ verification status, and trade-offs before committing.
   architecture and footprint;
   [Support Status](../reference/support-status.md) for versions,
   pins, and CI tiers.
-- **[Scheduling Models](../internals/scheduling-models.md)** — the RT
-  scheduling story ([Real-Time Analysis](../internals/realtime-analysis.md)
-  is the lint/tooling catalogue behind it).
+- **[Scheduling Wiring Matrix](../reference/sched-matrix.md)** —
+  generated per-platform truth: which classes and kernel capabilities
+  are wired where. [Scheduling Models](../internals/scheduling-models.md)
+  is the narrative behind it ([Real-Time
+  Analysis](../internals/realtime-analysis.md) the lint/tooling
+  catalogue).
 - **[Static Pool Inventory](../reference/static-pool-inventory.md)** +
   **[Opaque Storage Sizing](../internals/opaque-storage-sizing.md)** —
   memory footprint knobs and their single source of truth.

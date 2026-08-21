@@ -156,8 +156,11 @@ harder to implement (priority changes every scheduling decision). Overload
 behavior is also less predictable — under FPP, low-priority tasks miss
 deadlines first; under EDF, deadline misses can cascade unpredictably.
 
-**Used by**: Zephyr (`CONFIG_SCHED_DEADLINE` + `k_thread_deadline_set()`).
-Not currently used by nano-ros.
+**Used by**: Zephyr (`CONFIG_SCHED_DEADLINE` + `k_thread_deadline_set()`)
+as the kernel-native capability, and the portable executor's
+`SchedClass::Edf` ready-set inside dispatch. Which platform gets which
+is decided by the realizer — see the generated
+[Scheduling Wiring Matrix](../reference/sched-matrix.md).
 
 ## Platform Scheduling Comparison
 

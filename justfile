@@ -3544,6 +3544,14 @@ check-support-status:
 check-book-identifiers:
     @python3 scripts/check-book-identifiers.py
 
+# Scheduling wiring matrix — parsed from sched_caps_for() (the function the
+# realizer executes) + SchedClass dispatch sites in spin.rs. Prose versions of
+# this drifted three ways at once (scheduling-models said EDF unused while
+# spin.rs dispatches it). Same reasoning as check-rmw-feature-matrix.
+[private]
+check-sched-matrix:
+    @python3 scripts/gen-sched-matrix.py --check
+
 # Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
 # `capability`, so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.
