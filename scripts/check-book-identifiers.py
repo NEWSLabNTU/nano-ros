@@ -31,6 +31,12 @@ import re
 import subprocess
 import sys
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOOK = os.path.join(ROOT, "book", "src")
 
@@ -52,10 +58,10 @@ CMAKE_CALL = re.compile(r"^(nros_[a-z0-9_]+|nano_ros_[a-z0-9_]+)\(")
 
 
 def book_files():
-    for dirpath, _dirs, files in os.walk(BOOK):
-        for f in sorted(files):
-            if f.endswith(".md"):
-                yield os.path.join(dirpath, f)
+    # The book's pages are all tracked, so the index answers this — a walk here
+    # descends whatever `just book` left in book/ (issue 0721).
+    for path in sorted(tracked(BOOK, suffix=".md")):
+        yield str(path)
 
 
 def git_grep_word(ident, pathspecs):

@@ -28,6 +28,12 @@ import os
 import re
 import sys
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "book", "src", "reference", "rmw-feature-matrix.md")
 
@@ -120,12 +126,11 @@ def parse_positional(text):
 
 
 def zenoh_has(pattern):
+    # Tracked crate sources — index lookup, not a walk (issue 0721).
     rx = re.compile(pattern)
-    for dirpath, _dirs, files in os.walk(os.path.join(ROOT, ZENOH_SRC_DIR)):
-        for f in files:
-            if f.endswith(".rs"):
-                if rx.search(open(os.path.join(dirpath, f), encoding="utf8").read()):
-                    return True
+    for path in tracked(os.path.join(ROOT, ZENOH_SRC_DIR), suffix=".rs"):
+        if rx.search(path.read_text(encoding="utf8")):
+            return True
     return False
 
 
