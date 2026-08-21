@@ -3519,6 +3519,22 @@ check-cli-source-dirs:
 check-pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
 
+# The per-RMW capability page is derived from the two C vtables + the zenoh
+# shim's trait overrides. Prose versions of this table drifted in BOTH
+# directions (cyclone services documented unsupported after service.cpp landed;
+# zenoh liveliness documented as a no-op while wired) — generated, not
+# transcribed, same reasoning as check-pool-inventory.
+[private]
+check-rmw-feature-matrix:
+    @python3 scripts/gen-rmw-feature-matrix.py --check
+
+# Support-status page (tiers, RTOS/RMW/toolchain pins, editions) — version
+# strings parsed from nros-sdk-index.toml + rust-toolchain.toml so a pin bump
+# moves the page in the same commit.
+[private]
+check-support-status:
+    @python3 scripts/gen-support-status.py --check
+
 # Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
 # `capability`, so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.

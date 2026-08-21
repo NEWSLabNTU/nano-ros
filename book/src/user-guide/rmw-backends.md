@@ -1,5 +1,10 @@
 # RMW Backends: Zenoh, XRCE-DDS, Cyclone DDS
 
+> Capability truth (services / events / QoS per backend) is the
+> generated [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md);
+> version pins live on [Support Status](../reference/support-status.md).
+> This page is the architectural narrative.
+
 nano-ros supports three RMW (ROS Middleware) backends for connecting
 embedded devices to a ROS 2 network. Each backend targets different
 deployment scenarios and resource constraints. Each Node picks its

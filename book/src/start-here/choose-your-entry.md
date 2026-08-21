@@ -125,9 +125,12 @@ verification status, and trade-offs before committing.
   three-layer model.
 - **[Execution Model and Two-Layer API](../concepts/two-layer-api.md)**
   — poll vs callback discipline.
-- **[Backend Reference](../user-guide/rmw-backends.md)** — per-backend
-  characteristics; the per-policy QoS table is in
-  [RMW vs upstream §7](../design/rmw-vs-upstream.md).
+- **[Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md)** —
+  generated from the backend sources: services, events, QoS per
+  backend. [Backend Reference](../user-guide/rmw-backends.md) for
+  architecture and footprint;
+  [Support Status](../reference/support-status.md) for versions,
+  pins, and CI tiers.
 - **[Scheduling Models](../internals/scheduling-models.md)** — the RT
   scheduling story ([Real-Time Analysis](../internals/realtime-analysis.md)
   is the lint/tooling catalogue behind it).

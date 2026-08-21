@@ -1,5 +1,10 @@
 # Platform Differences
 
+
+> This page covers **OS-port** differences (clock, allocator,
+> threading, sockets). For per-RMW *feature* coverage — services,
+> events, QoS — see the [Per-RMW Feature Matrix](rmw-feature-matrix.md).
+
 Per-platform behaviour comparison. The [Doxygen reference](../api/platform-cffi/index.html) defines what each vtable entry **must** do; this page covers **how** each shipped platform crate fulfils that contract and which optional capabilities each platform exposes.
 
 ## At a glance

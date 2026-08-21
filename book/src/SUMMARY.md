@@ -145,6 +145,8 @@
 - [RMW API](./reference/rmw-api.md)
 - [Platform API](./reference/platform-api.md)
 - [Platform Differences](./reference/platform-differences.md)
+- [Support Status](./reference/support-status.md)
+- [Per-RMW Feature Matrix](./reference/rmw-feature-matrix.md)
 - [Supported Boards](./reference/supported-boards.md)
 - [Board Support Tiers](./reference/board-support-tiers.md)
 - [Environment Variables](./reference/environment-variables.md)
