@@ -51,15 +51,17 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0747** (testing/rmw, open 2026-08-21) — `check-rmw-cyclonedds` went 3 red in ~6 in-sweep `just check`
-runs and 0 red in 3 solo runs, a different test each time — issue 0703's shape, but NOT its cause. The bind
-error names it: `failed to bind to ANY:8650: address in use`, i.e. domain **5**, while 0703 was about
-domains >=102 reaching the ephemeral range. Plain collision. Cause: #0707 added probe-and-step to ONE of the
-three domain assigners `nros_test_domain.h` calls "one scheme, three languages" — the Rust one probes
-`/proc/net/udp` and steps; the C++ (`getpid() % 101 + 1`) and shell mirrors still pick blind. With 101
-buckets, a 32-way fan-out and sequential PIDs, two participants 101 PIDs apart share a bus, so a collision
-inside one sweep is the expected case rather than bad luck. Fix: give all three the same probe, in one
-commit. See `0747-*`. (2026-08-21)
+Recently resolved (2026-08-21): **#0747** — `check-rmw-cyclonedds` went 3 red in ~6 in-sweep `just check`
+runs and 0 red in 3 solo, a different test each time, once printing `failed to bind to ANY:8650: address in
+use` (domain 5) — not #0703's ephemeral-range cause but a plain collision. #0707 had taught only the RUST
+assigner to probe `/proc/net/udp` and step past an occupied domain, while `nros_test_domain.h` kept claiming
+"one scheme, three languages"; the C++ (`getpid() % 101 + 1`) and shell mirrors picked blind, and with 101
+buckets over a 32-way fan-out on sequential PIDs a collision inside one sweep is the expected case. All
+three probe again. Falsified both directions in both languages by binding the first candidate's SPDP port
+(C++ stepped 71->72 and 72->75; shell 31->32). The shell probe's first cut used `strtonum`, a gawk
+extension — under Ubuntu's default mawk it is a fatal error, so every domain would have read as free on
+exactly the hosts CI runs; it compares uppercase hex text now, verified under mawk. See `archived/0747-*`.
+(2026-08-21)
 
 Recently resolved (2026-08-21): **#0746** (core, wontfix) — CLOSED, executor exonerated: the "50 Hz from a
 30 ms timer under load" was `ros2 topic hz` aggregating MULTIPLE stale island processes publishing the same

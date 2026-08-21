@@ -2,7 +2,8 @@
 id: 747
 title: "#0707's probe-and-step landed in ONE of the three domain assigners —
   the C++ and shell mirrors still collide, and `check-rmw-cyclonedds` pays for it"
-status: open
+status: resolved
+resolved: 2026-08-21
 type: bug
 area: testing, rmw
 related: [issue-0580, issue-0703, issue-0707, issue-0659]
@@ -80,3 +81,59 @@ Run `just check` on a busy host and watch `check-rmw-cyclonedds`; it went 3 red
 in ~6 in-sweep runs and 0 red in 3 solo runs on 2026-08-21. The bind error names
 the domain, so a red that prints `failed to bind to ANY:<port>` is this issue and
 a red that does not is something else.
+
+## RESOLVED 2026-08-21 — all three assigners probe again
+
+Both blind pickers gained the Rust one's probe-and-step: read `/proc/net/udp`
+(+`udp6`) for `7400 + 250*D`, advance to the next free domain, bounded, and fall
+back to the first candidate when nothing is free — issue 0707's contract, in its
+own words, because a caller with no domain has nowhere to go.
+
+Determinism is kept where it was still free: with nothing squatting the answer is
+bit-identical to the old scheme, so a reproduction by hand lands where it used
+to. An explicit `ROS_DOMAIN_ID` is never stepped away from — pinning one is how
+you get ON a particular bus, and the interop scripts export it so their helper
+meets the `ros2` CLI there.
+
+The FIRST candidate still differs between the three (Rust partitions slots into
+blocks of 4; C++ and shell fold a slot-or-pid), and that is left alone. What was
+load-bearing and missing is "do not take a bus somebody is already on".
+
+### Falsified in both directions, in both languages
+
+Not asserted from reading. A harness binds the first candidate's SPDP port and
+checks the picker moves, and separately checks it does NOT move when nothing is
+bound:
+
+```
+C++   : OK: 71 busy -> stepped to 72
+C++   : OK: 72 busy -> stepped to 75
+shell : OK: 31 busy -> stepped to 32
+```
+
+The second C++ line is worth keeping: it stepped *past two more* occupied
+domains, and a third run skipped its own precondition because domain 73 was
+already taken. On a host quiet enough to be running only this, three of ~101
+domains were in use — which is the collision premise measured rather than argued.
+
+### The portability trap, and why it would have been silent
+
+The shell probe first compared ports with `strtonum("0x" ...)`. That is a **gawk
+extension**, and Ubuntu's default awk is mawk:
+
+```
+$ echo "0: 00000000:21CA" | mawk '... strtonum("0x" a[2]) ...'
+mawk: line 2: function strtonum never defined
+```
+
+awk then exits non-zero, `nros_domain_busy` answers "not busy", and every domain
+reads as free — the probe would have been dead on exactly the hosts CI runs,
+while passing here because this box has gawk. It compares the port as uppercase
+hex TEXT instead, which /proc emits in fixed 4-digit form, and that is verified
+under mawk directly:
+
+```
+mawk: sees busy 41 OK
+```
+
+`check-rmw-cyclonedds` 17/17.
