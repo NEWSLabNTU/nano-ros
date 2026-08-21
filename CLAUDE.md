@@ -130,6 +130,26 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   exfiltration guard): the agent commits + rebases locally and leaves the branch ready; the
   maintainer pushes. The agent may push only when a scoped `Bash(git -C <submodule-path> push:*)`
   allow-rule exists — never a blanket `git push:*`.
+- **Two kinds of submodule, and the difference decides whether a lag is a BUG.** A `git status`
+  showing a submodule dirty is not uniformly "stale, update it":
+  - **Vendored third-party (`third-party/dds/cyclonedds`, `third-party/threadx/kernel`,
+    netxduo, zenoh-pico, nuttx, …) = a chosen upstream release PLUS our commits.** The pin is a
+    DECISION, not a lag — cyclonedds tracks the version ROS ships, so bumping it off that is how
+    you stop interoperating (the class issue 0609 measured for the zenoh router). Never
+    "update to latest" on these; move them only with a reason, and re-read `nros-sdk-index.toml`
+    /the RMW pin notes first.
+  - **Ours (`packages/cli/third-party/play_launch`) = we author it, so it TRACKS ITS LATEST
+    `main`.** A lag here is just a lag. Advance it with
+    `git -C packages/cli/third-party/play_launch fetch origin && … checkout origin/main`, then
+    `just setup-launch-resolve` (issue 0409 — a resolver from a different layer-2 checkout writes
+    models that are MISSING DATA rather than failing) and `just check-submodule-pinned-locks`.
+    Still forward-only, and still non-recursive (layer-3 `src/vendor/*`, container, msgs are never
+    built here, so `src/play_launch_container` showing modified is expected, not dirt to fix).
+
+  What both share: when `check-tier-preconditions` says a submodule is BEHIND the recorded pointer,
+  that is the superproject's pin disagreeing with your checkout, and the fix is
+  `git submodule update <path>` regardless of kind. Three of them sat behind for a whole session
+  because a dirty-looking `git status` line was read as someone else's mess.
 - **Codegen + orchestration CLI lives in-tree at `packages/cli/`** (a sub-workspace, own
   `Cargo.toml`/`Cargo.lock`). Edits to codegen / `colcon_nano_ros` / orchestration land there; build
   via `just setup-cli`. The retired `packages/codegen` submodule is fully gone (no stray leftover).
