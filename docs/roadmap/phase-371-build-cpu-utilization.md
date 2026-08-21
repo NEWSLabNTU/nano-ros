@@ -314,3 +314,80 @@ Also worth noting: `cargo locks_lock_inode_wait` appears, but at 20 samples
 against 468 for disk waits. Cargo's package-cache lock (issue 0648) is present
 and is NOT the bottleneck, which is the second time this phase has measured that
 and found it small.
+
+## Revision plan (2026-08-21)
+
+What the campaign licenses changing, in the order the evidence supports. Every
+item names the measurement it rests on, because five conclusions in this phase
+were retracted for resting on none.
+
+### 1. Close the scheduling question — do not optimise it further
+
+*Rests on: lineage sampler, 1327 samples — build's own processes 92.6% idle,
+runnable mean 0.1.*
+
+Permission to run was never the constraint. The pooled launcher,
+`NROS_INHERIT_JOBSERVER`, static-vs-pooled — all of it allocates permission, and
+a build that is 92.6% idle by its own processes cannot be helped by being allowed
+to run more of them.
+
+KEEP what landed: the pooled launcher is correct and its stage-overlap win is
+real (7 non-zephyr stages start together against a hard cap of 4). It stays
+opt-in. Item 2's cold A/B is worth running only to CLOSE the question, and its
+result should not gate anything.
+
+### 2. Take the cold-tree measurement — PREREQUISITE for 3 and 4
+
+*Rests on: the scope caveat above — every measurement to date is warm-tree and
+gate-dominated.*
+
+Nothing is known about the COMPILE phase. The wchan breakdown characterises
+gates because the run had warm fixtures and almost nothing to compile. Doing 3
+or 4 first means optimising on a sample that may not describe the phase being
+optimised.
+
+Needs: a quiet box (check for foreign builds — an Autoware container
+contaminated an entire earlier set), a cold tree, and the lineage sampler.
+
+### 3. Treat the FILESYSTEM as the contended resource
+
+*Rests on: wchan breakdown — 64% of leaves in D state; `d_alloc_parallel` and
+`folio_wait_bit_common` in grep/python3 leaves.*
+
+This reframes issue 0721's **86 unconverted walk sites**. They were
+deprioritised because their SERIAL cost is small — correct at the time, and no
+longer the situation: the gate fan-out is now the default, so each walk becomes
+32-way concurrent path lookup, and `d_alloc_parallel` (dentry allocation
+contention) is the kernel saying so.
+
+Convert them to `git ls-files` as 0721 describes. The ranking in that issue was
+made under serial gates and should be redone.
+
+### 4. Reduce process SPAWNING in gates, not only their walks
+
+*Rests on: wchan breakdown — `awk pipe_read` and `sort pipe_read` at 245 samples
+each; 36 processes alive, 74% supervisors.*
+
+Gates are shell pipelines forking a process per stage, under deep
+`make -> sh -> tool` chains. Fewer, single-pass scripts cut fork overhead and
+filesystem pressure together — the same change serves both, which is why this is
+one item and not two.
+
+### 5. Fix the CI cold path, not the local warm one
+
+*Rests on: the configure correction — 33 s cold, 2.0 s then 1.0 s into fresh
+build dirs.*
+
+The 33 s first-configure is paid once per runner where caches start empty.
+Locally it is ~1 s and irrelevant. This is cache provisioning for CI, not a
+build change, and it should not be pursued as a local optimisation.
+
+### Explicitly NOT on this plan
+
+* **sccache** — verified working; a 0-request stat line means the server idled
+  out and reset, not that the integration is dead.
+* **cargo's package-cache lock (0648)** — measured twice, small both times
+  (20 samples against 468 for disk waits). It is real and it is not the
+  bottleneck.
+* **the gate phase's wall clock** — done: fan-out is the default, 45 s -> 7 s.
+* **`nros_resolve_corrosion`** — retracted, cold-cache one-off.
