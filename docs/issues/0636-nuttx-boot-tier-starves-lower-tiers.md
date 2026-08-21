@@ -806,3 +806,45 @@ host — `just freertos build-fixtures` does not complete in this container, so
 those cells SKIP rather than report. Someone with a working FreeRTOS lane should
 confirm them; nothing here contradicts them.
 
+## The FreeRTOS half, independently confirmed — 40/40, and non-vacuous here (2026-08-22)
+
+`ce152db1f`'s FreeRTOS cells could not run on the host that measured the NuttX
+arm: three unrelated blockers, all now fixed rather than worked around.
+
+| blocker | what it was |
+| --- | --- |
+| box `make` unrunnable | `third-party/make/make` linked the build host's guile; Ubuntu 22.04 cannot load it. `install-make` now configures `--without-guile`, so one binary serves both sides |
+| configure could not bootstrap | that broken make is FIRST on PATH, and make's own configure needs a working make — the recipe that fixes it failed first, on an error naming dependency tracking |
+| `armv8r-none-eabihf` not installed | `workspace-cpp-s32z270-freertos` cross-builds to it and `just workspace rust-targets` never added it |
+
+Plus the box lacked `ros-humble-rmw-zenoh-cpp`, so every router-needing cell was
+reporting `[SKIPPED]` — green, silently (0445's shape again).
+
+With those cleared, both cells, in the box's own tree:
+
+| cell | ambient | + 32 spinners (load ~33) |
+| --- | --- | --- |
+| `[freertos cpp TierPriority]` (3 tiers) | **12/12** | **8/8** |
+| `[freertos c TierPriority]` (2 tiers) | **12/12** | **8/8** |
+
+**Non-vacuity re-established locally, not taken on faith.** Commenting out both
+`freertos_apply_tier_priority` calls and rebuilding turns the cpp cell red with
+the intended message:
+
+    boot produced no `nros: tier priority set tier=` marker — the dim was
+    silently dropped (RFC-0052 fail-loud)
+
+That mutation took three attempts to perform HONESTLY, which is worth recording:
+the first two rebuilt nothing (issue 0759 — a shared host/box tree reuses cached
+cargo units without executing them) and the unchanged binary PASSED. A mutation
+test that cannot rebuild reports exactly the same thing as a vacuous assert.
+
+Measuring tool: `measure-tier-priority-cell.sh` now takes the cell label as its
+third argument instead of hardcoding `nuttx rust`, and parses `A/B tiers ACCEPT`
+rather than matching a fixed count — B is the BRINGUP's tier count (3 for
+realtime-cpp, 2 for realtime-c and both nuttx arms), and a partial `2/3` must
+not score as a pass.
+
+So both arms of this issue are now confirmed on a second host, C/C++ and
+FreeRTOS alike. Nothing here contradicts `ce152db1f`'s own 8/8 measurements.
+
