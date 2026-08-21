@@ -811,9 +811,31 @@ pub const NUTTX_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
 /// out from under a test.
 pub const NUTTX_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
 
-/// Render the per-tier form of either NuttX tier-priority marker, so a test can
-/// assert that a SPECIFIC tier adopted a SPECIFIC declared priority rather than
-/// that some tier adopted something.
+/// issue 0636 — the FreeRTOS seam's tier-priority markers
+/// (`freertos_apply_tier_priority`, freertos_run_tiers.c). The literals are the
+/// SAME strings the NuttX seam prints; kept board-scoped here for lockstep
+/// clarity, exactly as the two core-pin markers are.
+///
+/// These exist because until 0636 FreeRTOS printed no tier-priority marker in
+/// EITHER language, so #579's "every declaring tier adopts or says why" was
+/// enforced on NuttX alone — and a boot task that adopted nothing at all had no
+/// cell that could see it.
+pub const FREERTOS_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
+
+/// The loud-failure sibling of [`FREERTOS_TIER_PRIORITY_MARKER`]: printed when
+/// a tier DECLARED a priority this build cannot express (>= `configMAX_PRIORITIES`).
+/// `xTaskCreate` would clamp such a value SILENTLY, which makes a mis-authored
+/// table read as honored. MIRRORS the `FAILED` literal in
+/// `freertos_run_tiers.c` — keep in lockstep.
+pub const FREERTOS_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
+
+/// Render the per-tier form of a tier-priority marker, so a test can assert
+/// that a SPECIFIC tier adopted a SPECIFIC declared priority rather than that
+/// some tier adopted something.
+///
+/// Board-neutral on purpose: the NuttX and FreeRTOS seams print the identical
+/// line, so they share ONE renderer. A second per-kernel spelling of this is
+/// exactly how the two seams came to differ in the first place (0636).
 ///
 /// issue 0579 / phase-358 W4 — the reason this exists. The tier-priority cell
 /// asserted `log.contains(NUTTX_TIER_PRIORITY_MARKER)`, which one spawned tier
@@ -821,7 +843,7 @@ pub const NUTTX_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED 
 /// for the life of the bug with that assert green. The rule is "every DECLARING
 /// tier adopts or says why", so the gate has to name the tiers (the issue-0196
 /// class: gate coverage narrower than the rule it enforces).
-pub fn nuttx_tier_priority_line(marker: &str, tier: &str, priority: u32) -> String {
+pub fn tier_priority_line(marker: &str, tier: &str, priority: u32) -> String {
     format!("{marker}`{tier}` prio={priority}")
 }
 

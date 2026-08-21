@@ -157,6 +157,11 @@ typedef struct {
      * setup returns, so no two setups overlap on the shared session. */
     const nros_tier_spec_t* rest;
     size_t n_rest;
+    /* issue 0636 — the tier's identity and declared priority, so the task can
+     * ANNOUNCE what it got (#579). The task already holds the priority from
+     * `xTaskCreate`; what was missing was any way to say so. */
+    const char* name;
+    uint32_t priority;
 } nros_freertos_tier_ctx_t;
 
 /* RFC-0052 W2/W5.11 — apply and ANNOUNCE the placement dim for one task.
@@ -196,6 +201,86 @@ static void freertos_apply_core_pin(TaskHandle_t task, const char* name, uint32_
 #endif
 }
 
+/* Render an unsigned decimal into `buf` and return a pointer to the first
+ * digit. This TU has no stdio ON PURPOSE — the console is a semihosting string
+ * writer, not a printf — so the tier-priority marker below formats its own
+ * number instead of pulling newlib's formatting into every FreeRTOS image.
+ * `buf` must hold at least 11 bytes (10 digits + NUL). */
+static const char* freertos_u32_dec(uint32_t v, char* buf, size_t len) {
+    size_t i = len - 1u;
+    buf[i] = '\0';
+    do {
+        buf[--i] = (char)('0' + (char)(v % 10u));
+        v /= 10u;
+    } while (v != 0u && i > 0u);
+    return &buf[i];
+}
+
+/* issue 0636 / #579 — adopt the tier's declared priority on the CALLING task
+ * and ANNOUNCE the outcome, for the SPAWN path and the BOOT path alike.
+ *
+ * Until this existed, FreeRTOS printed no tier-priority marker in either
+ * language, so #579's rule ("every DECLARING tier adopts its priority or says
+ * why") was enforced on NuttX only and this kernel was silently exempt. That is
+ * how the boot task came to adopt no priority at all: spawned tiers get theirs
+ * from `xTaskCreate`, the boot tier got nothing, and with nothing printing
+ * there was no cell that could notice. The literals match
+ * `nros_tests::output::FREERTOS_TIER_PRIORITY_MARKER` / `_FAILED_MARKER` and
+ * are the same strings the NuttX seam prints — keep all three in lockstep.
+ *
+ * Re-applying on a spawned task is deliberate and mirrors the NuttX arm: the
+ * task already holds this priority from `xTaskCreate`, and the point is that
+ * ONE helper both applies and reports, so the two paths cannot drift.
+ *
+ * A caller passing 0 is treated as "undeclared, keep what was inherited", the
+ * same convention the NuttX helper uses. NOTE that unlike SCHED_FIFO, 0 is a
+ * LEGAL FreeRTOS priority (the idle band), so a tier that genuinely declares
+ * `priority = 0` is indistinguishable from one that declared nothing. Both
+ * arms share the hole; it is recorded rather than given a second convention
+ * here, because a per-kernel spelling of "declared" is how these two seams
+ * drifted in the first place. */
+static int freertos_apply_tier_priority(const char* name, uint32_t priority) {
+    const char* tname = (name != NULL) ? name : "?";
+    if (priority == 0u) {
+        return 0; /* undeclared — keep inherited priority */
+    }
+    char numbuf[12];
+    const char* pstr = freertos_u32_dec(priority, numbuf, sizeof(numbuf));
+    if (priority >= (uint32_t)configMAX_PRIORITIES) {
+        /* Fail-loud (RFC-0052): the tier DECLARED a priority this build cannot
+         * express. vTaskPrioritySet would clamp it silently, which makes a
+         * mis-authored table look honored. */
+        nros_board_freertos_console_write("nros: tier priority FAILED tier=`");
+        nros_board_freertos_console_write(tname);
+        nros_board_freertos_console_write("` prio=");
+        nros_board_freertos_console_write(pstr);
+        nros_board_freertos_console_write(" — exceeds configMAX_PRIORITIES, tier does NOT "
+                                          "hold its declared priority\n");
+        return 0;
+    }
+    vTaskPrioritySet(NULL, (UBaseType_t)priority);
+    nros_board_freertos_console_write("nros: tier priority set tier=`");
+    nros_board_freertos_console_write(tname);
+    nros_board_freertos_console_write("` prio=");
+    nros_board_freertos_console_write(pstr);
+    nros_board_freertos_console_write("\n");
+    return 1;
+}
+
+/* issue 0636 — a tier that never STARTS is the same silent drop as a tier that
+ * never adopts its priority, and the chain hid it: `freertos_tier_task` ignores
+ * the downstream spawn's return on purpose (a failed child must not stop this
+ * tier spinning its own work), so an out-of-heap `xTaskCreate` lost a whole
+ * tier without a word. Continuing to spin stays correct; being quiet about it
+ * does not. Announced through the same fail-loud channel as the dims. */
+static void freertos_announce_spawn_failure(const char* name, const char* why) {
+    nros_board_freertos_console_write("nros: tier spawn FAILED tier=`");
+    nros_board_freertos_console_write((name != NULL) ? name : "?");
+    nros_board_freertos_console_write("` — ");
+    nros_board_freertos_console_write(why);
+    nros_board_freertos_console_write(", tier does NOT start\n");
+}
+
 /* Forward decl — freertos_tier_task and freertos_spawn_next_tier are mutually
  * recursive (each tier's task spawns the next tier via this helper). */
 static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
@@ -212,6 +297,11 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
  * boot task is the session owner and must outlive all borrowed executors). */
 static void freertos_tier_task(void* arg) {
     nros_freertos_tier_ctx_t* ctx = (nros_freertos_tier_ctx_t*)arg;
+
+    /* issue 0636 / #579 — this tier already holds its declared priority from
+     * `xTaskCreate`; re-applying through the shared helper is what makes it
+     * SAY so, on the same line the boot tier uses. */
+    (void)freertos_apply_tier_priority(ctx->name, ctx->priority);
 
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot task) must outlive this task — the startup sequence
@@ -293,6 +383,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Allocate executor storage for this tier. */
     void* tier_exec = nros_platform_alloc(NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
     if (tier_exec == NULL) {
+        freertos_announce_spawn_failure(t->name, "executor storage allocation failed");
         return -1;
     }
     memset(tier_exec, 0, NROS_FREERTOS_EXECUTOR_STORAGE_BYTES);
@@ -301,6 +392,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     nros_freertos_tier_ctx_t* ctx =
         (nros_freertos_tier_ctx_t*)nros_platform_alloc(sizeof(nros_freertos_tier_ctx_t));
     if (ctx == NULL) {
+        freertos_announce_spawn_failure(t->name, "tier context allocation failed");
         nros_platform_dealloc(tier_exec);
         return -1;
     }
@@ -315,6 +407,8 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     /* Chain tail: this task will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
+    ctx->name = t->name;
+    ctx->priority = (uint32_t)((t->priority < 0) ? 0 : t->priority);
 
     /* Stack size: use the tier spec's stack_bytes if set; else 256 KiB
      * (issue #126 defect A — VERIFIED). A spawned tier task opens a borrowed
@@ -339,6 +433,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
     BaseType_t ret = xTaskCreate(freertos_tier_task, (t->name != NULL) ? t->name : "nros_tier",
                                  stack_words, ctx, prio, &task);
     if (ret != pdPASS) {
+        freertos_announce_spawn_failure(t->name, "xTaskCreate failed (FreeRTOS heap)");
         nros_platform_dealloc(ctx);
         nros_platform_dealloc(tier_exec);
         return -1;
@@ -480,6 +575,26 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
             return (int32_t)rc;
         }
     }
+
+    /* issue 0636 — the boot tier adopts its OWN declared priority, and does it
+     * BEFORE the spawn below. Two separate defects meet here:
+     *
+     *   1. It adopted nothing at all. `nros_freertos_set_current_task_priority`
+     *      was called only from the Rust arm, so a C or C++ boot tier kept
+     *      whatever priority `app_task` was created at and its declared
+     *      `[tiers.*.freertos] priority` did not hold for the tier the boot
+     *      task actually runs.
+     *   2. The ORDER. `boot` is the LEAST urgent tier, so every tier spawned
+     *      below outranks it; FreeRTOS is preemptive, so the first
+     *      `xTaskCreate` takes the CPU away at once and anything sitting after
+     *      it runs only once that task first blocks. That is exactly how the
+     *      NuttX arm lost this marker (8 pass / 4 fail over 12 runs) — the tier
+     *      was configured correctly and could not say so.
+     *
+     * Nothing here needs the children to exist and no other tier task exists
+     * yet to be starved by a self-demotion, so this runs while the boot task
+     * still owns the CPU. #144 is untouched: boot's DECLARES already ran. */
+    (void)freertos_apply_tier_priority(boot->name, (uint32_t)((boot->priority < 0) ? 0 : boot->priority));
 
     /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the

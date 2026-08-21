@@ -1098,6 +1098,13 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // `nros_nuttx_apply_current_priority`, one implementation and one
         // marker, and this cell is what keeps them from diverging again.
         sched(TierPriority, NuttxArm, Cpp, Runtime),
+        // issue 0636 — the FreeRTOS arm of the same rule. Added with the seam
+        // that made it assertable: this kernel printed no tier-priority marker
+        // in either language, so #579 was enforced on NuttX alone and a boot
+        // task adopting NO priority at all had no cell that could see it. Both
+        // languages, because one seam TU serves both entries.
+        sched(TierPriority, FreertosMps2, Cpp, Runtime),
+        sched(TierPriority, FreertosMps2, C, Runtime),
         // ThreadX preempt-threshold + time-slice.
         sched(PreemptThreshold, ThreadxLinux, Rust, Runtime),
         sched(TimeSlice, ThreadxLinux, Rust, Runtime),

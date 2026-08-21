@@ -598,3 +598,102 @@ followed by the cell name — not a grep over the run. Recorded because this is
 the third time in this issue's history that a rate was collected from runs whose
 verdict came from somewhere other than the cell under test.
 
+
+## The residue was the TEST READER, not the seam — 2026-08-21
+
+The re-measurement above is right that `330c8abfe` did not converge the cell,
+and right that the useful signal is that the missing tier MOVED rather than
+disappeared. The cause is one level out from where both of us were looking.
+
+`sched_dims_applied_e2e` booted every QEMU cell with:
+
+```rust
+let l = q.wait_for_output_pattern(ex.stem, timeout);
+q.kill();
+```
+
+`wait_for_output_pattern` returns as soon as the pattern appears, and the next
+line kills QEMU. The stem is `"nros: tier priority"` — the prefix EVERY tier's
+marker shares. So the reader returned at the FIRST tier to report and shot the
+image; any later tier's line survived only if it happened to be in the same
+buffer flush. **Whichever tier printed SECOND is the one that read as
+"accepted and dropped".**
+
+That is exactly the observed swap. Before `330c8abfe` the spawned `high`
+printed first and `low` was cut; after it `low` prints first and `high` is cut.
+The one-line log quoted in the section above says so directly — a whole boot
+that produced a single line of output. Both hosts were measuring the reader,
+and the rate moved with host load because buffer timing does.
+
+### Measured
+
+`wait_for_output_each(&[Vec<String>], timeout)` (new, `qemu.rs`) waits until
+EVERY required marker has appeared, taking per-tier alternatives so a loud
+failure still counts as "the tier reported". The cell derives its wait from its
+own assert shape instead of from the stem — if the rule is "each declaring tier
+reports", that is also the thing to wait for.
+
+| build | `[nuttx cpp TierPriority]` |
+| --- | --- |
+| seam ordering reverted, wait fixed | **12 / 12** |
+| seam ordering kept, wait fixed | **8 / 8** |
+
+So the seam ordering in `330c8abfe` was **not** load-bearing for this cell, and
+that commit's "10/12 → 30/30" credited it with a convergence it did not cause —
+the 30/30 was a host whose buffering usually carried both lines. Corrected here
+and in the code comment, which claimed the order was "the whole fix". The block
+stays before the spawn: the preemption window it closes is real, and a dim
+applied behind a spawn that outranks you is only correct by luck. It is
+robustness, not the fix.
+
+Same short read explains the freertos/cpp `mid` flake found while adding the
+FreeRTOS arm below (2 of 8 → 8/8 with the wait repaired), and it was latent in
+every multi-marker QEMU cell, so it is fixed in the shared helper rather than
+per cell.
+
+## FreeRTOS arm added 2026-08-21 — it printed no tier-priority marker at all
+
+The "Still open" note above turned out to understate it. FreeRTOS emitted
+NEITHER marker in EITHER language, so #579's "every declaring tier adopts its
+priority or says why" was enforced on NuttX alone and this kernel was silently
+exempt. With nothing printing, there was no cell that could be written, which is
+why the boot task adopting NO priority at all had gone unnoticed:
+`nros_freertos_set_current_task_priority` was called only from the Rust arm, so
+a C or C++ boot tier kept whatever `app_task` was created at and its declared
+`[tiers.*.freertos] priority` did not hold for it.
+
+Added, mirroring the NuttX seam:
+
+* `freertos_apply_tier_priority(name, priority)` — adopts on the CALLING task
+  and announces, called from the spawn path AND the boot path, so the two
+  cannot drift. Loud when a declared priority is `>= configMAX_PRIORITIES`,
+  which `xTaskCreate` would otherwise clamp SILENTLY.
+* The boot path adopts before its spawn, for the same window as NuttX.
+* `freertos_announce_spawn_failure` — a downstream tier that never STARTS is
+  the same silent drop. `freertos_tier_task` ignores the spawn's return by
+  design (a failed child must not stop this tier spinning), so an out-of-heap
+  `xTaskCreate` lost a whole tier without a word. It still continues; it no
+  longer does so quietly. This is also what PROVED `mid` was healthy rather
+  than unspawned.
+* Cells `sched(TierPriority, FreertosMps2, Cpp|C, Runtime)`.
+* `tier_priority_line` — the NuttX-named renderer became board-neutral, since
+  both seams print the identical line and a second per-kernel spelling is how
+  these two drifted to begin with.
+
+Note the two bringups differ and the tier list follows the BRINGUP, not the
+seam: `realtime-cpp` declares `high`/`mid`/`low` (5/3/2), `realtime-c` declares
+only `high`/`low` (5/2) — there is no `[tiers.mid]` there. Asserting three tiers
+on the C cell fails on a `mid` that was never emitted; that cost a debugging
+round here, and the emitted `__nros_tiers[]` is the thing to read.
+
+**Measured, 8 consecutive runs each, after the wait fix:**
+
+| cell | result |
+| --- | --- |
+| `[freertos cpp TierPriority]` | **8/8** — 3/3 tiers ACCEPT |
+| `[freertos c TierPriority]` | **8/8** — 2/2 tiers ACCEPT |
+| `[nuttx cpp TierPriority]` | **8/8** — 2/2 tiers ACCEPT |
+
+Both cells FAIL on the unfixed seam, so they are not vacuous: with
+`freertos_run_tiers.c` reverted they report `boot produced no
+'nros: tier priority set tier=' marker — the dim was silently dropped`.

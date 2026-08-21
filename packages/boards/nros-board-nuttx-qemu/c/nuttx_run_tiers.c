@@ -645,15 +645,20 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
      * boot tier keeps the app_main-thread default and the declared tier QoS
      * would not hold for it).
      *
-     * issue 0636 — this runs BEFORE the spawn below, and the order is the
-     * whole fix. `boot` is the LEAST urgent tier, so every tier this thread
+     * issue 0636 — this runs BEFORE the spawn below. NOT because it fixes the
+     * cell: with the harness short read repaired (`wait_for_output_each`, which
+     * is what actually failed here) the cell is 12/12 with this block back
+     * AFTER the spawn. It stays here because the window it closes is real, and
+     * because a dim applied behind a spawn that preempts you is only ever
+     * correct by luck. `boot` is the LEAST urgent tier, so every tier this thread
      * spawns outranks it: on the realtime-cpp table (`high` 110, `low` 100,
      * `low` == boot) the child is created at SCHED_FIFO 110 and preempts this
      * thread the instant `pthread_create` returns, at the default app_main
      * priority. Anything sitting after the spawn therefore runs only once the
-     * child first blocks — which for the marker print below meant `low`
-     * reported NEITHER outcome and the cell read it as "accepted and dropped"
-     * (8 pass / 4 fail over 12 runs). Nothing here needs the children to
+     * child first blocks. That is a real window; it was NOT the reported
+     * failure, which was the test reader returning at the first marker and
+     * killing QEMU (so whichever tier printed SECOND read as dropped, and
+     * moving this block merely swapped which one that was). Nothing here needs the children to
      * exist, and no other tier thread exists yet to be starved by a
      * self-demotion, so the dims are applied while this thread still owns the
      * CPU. #144's ordering is untouched: boot's DECLARES already ran above.

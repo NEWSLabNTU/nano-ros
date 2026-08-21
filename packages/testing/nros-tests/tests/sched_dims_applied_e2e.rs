@@ -40,11 +40,11 @@ use nros_tests::{
     alloc::port_of,
     fixtures::{
         ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
-        build_freertos_workspace_cpp_realtime_entry, build_native_workspace_rust_realtime_entry,
-        build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
-        build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_c_realtime_entry_smp, build_zephyr_workspace_cpp_realtime_entry,
-        build_zephyr_workspace_rust_realtime_entry,
+        build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
+        build_native_workspace_rust_realtime_entry, build_nuttx_workspace_cpp_realtime_entry,
+        build_nuttx_workspace_rust_realtime_entry, build_threadx_workspace_rust_realtime_entry,
+        build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_c_realtime_entry_smp,
+        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
     },
     matrix::{
         Lang as ML, PlatformId as MP, SchedCell, SchedDim as SD, Workload as MW,
@@ -52,6 +52,7 @@ use nros_tests::{
     },
     output::{
         FREERTOS_CORE_PIN_FALLBACK_MARKER, FREERTOS_CORE_PIN_MARKER,
+        FREERTOS_TIER_PRIORITY_FAILED_MARKER, FREERTOS_TIER_PRIORITY_MARKER,
         NUTTX_CORE_PIN_FALLBACK_MARKER, NUTTX_CORE_PIN_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER,
         NUTTX_SPORADIC_MARKER, NUTTX_TIER_PRIORITY_FAILED_MARKER, NUTTX_TIER_PRIORITY_MARKER,
         POSIX_CORE_PIN_FALLBACK_MARKER, POSIX_CORE_PIN_MARKER, THREADX_CORE_PIN_FALLBACK_MARKER,
@@ -348,6 +349,51 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             note: "issue 0636 — the C arm reports per-tier priority too, boot tier \
                    included; it applied them at pthread_create and printed nothing",
         },
+        // issue 0636 — the FreeRTOS arm of the same rule, added WITH the seam
+        // that made it assertable. Until then this kernel printed no
+        // tier-priority marker in either language, so #579 was enforced on
+        // NuttX alone and the boot task's missing adopt had nothing watching
+        // it. Three tiers here, not two: `mid` declares a
+        // `[tiers.mid.freertos] priority` where it declares no NuttX one, so
+        // the FreeRTOS projection keeps all three.
+        (SD::TierPriority, MP::FreertosMps2, ML::Cpp) => Exec {
+            resolver: || build_freertos_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
+            boot: FreertosQemu,
+            router: Router::Baked("0.0.0.0"),
+            timeout_secs: 90,
+            stem: "nros: tier priority",
+            accept: FREERTOS_TIER_PRIORITY_MARKER,
+            fallback: None,
+            shape: EachTierOrFailNote {
+                tiers: &[("high", 5), ("mid", 3), ("low", 2)],
+                fail_marker: FREERTOS_TIER_PRIORITY_FAILED_MARKER,
+            },
+            note: "issue 0636 — every declaring tier reports its RAW FreeRTOS priority, \
+                   boot tier included; the boot task adopted none at all before this",
+        },
+        (SD::TierPriority, MP::FreertosMps2, ML::C) => Exec {
+            // Same seam TU (freertos_run_tiers.c serves the C and C++ entries
+            // alike) but a DIFFERENT bringup, and the tier list follows the
+            // bringup, not the seam: `realtime-c/src/demo_bringup` declares
+            // only `high` and `low` — there is no `[tiers.mid]` there at all,
+            // where `realtime-cpp` has one. Asserting the C++ cell's three
+            // tiers here fails on a `mid` that was never emitted, which is a
+            // broken expectation and not a dropped dim. Read the emitted
+            // `__nros_tiers[]` before changing either list.
+            resolver: || build_freertos_workspace_c_realtime_entry().map(|p| p.to_path_buf()),
+            boot: FreertosQemu,
+            router: Router::Baked("0.0.0.0"),
+            timeout_secs: 90,
+            stem: "nros: tier priority",
+            accept: FREERTOS_TIER_PRIORITY_MARKER,
+            fallback: None,
+            shape: EachTierOrFailNote {
+                tiers: &[("high", 5), ("low", 2)],
+                fail_marker: FREERTOS_TIER_PRIORITY_FAILED_MARKER,
+            },
+            note: "issue 0636 — the C entry shares the C++ entry's seam TU; its bringup \
+                   declares two tiers, so two is the whole rule here",
+        },
         (SD::PreemptThreshold, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
             boot: Native(NativeEnv::RustLogOnly),
@@ -554,6 +600,28 @@ fn run_cell(cell: &SchedCell) {
     };
 
     // Boot the guest and collect the log up to the wait target (`ex.stem`).
+    // issue 0636 — what this cell must WAIT for is its assert shape, not the
+    // stem. `wait_for_output_pattern` returns at the FIRST match and the arms
+    // below then kill QEMU, so a per-tier rule ("each declaring tier reports")
+    // was reading a log cut right after tier one; later tiers appeared only
+    // when they happened to land in the same buffer flush. Measured on the
+    // freertos/cpp cell: `mid` missing in 2 of 8 runs with the tier itself
+    // perfectly healthy. A short read that reads as a dropped dim is the most
+    // expensive kind of wrong, so the wait now names every marker it needs —
+    // either arm per tier, since a loud failure IS a report.
+    let wait_groups: Vec<Vec<String>> = match ex.shape {
+        Shape::EachTierOrFailNote { tiers, fail_marker } => tiers
+            .iter()
+            .map(|(tier, prio)| {
+                vec![
+                    nros_tests::output::tier_priority_line(ex.accept, tier, *prio),
+                    nros_tests::output::tier_priority_line(fail_marker, tier, *prio),
+                ]
+            })
+            .collect(),
+        _ => vec![vec![ex.stem.to_string()]],
+    };
+
     let log: String = match ex.boot {
         Boot::ZephyrQemuA53Smp => {
             let mut z = ZephyrProcess::start(&entry, ZephyrPlatform::QemuCortexA53Smp)
@@ -592,14 +660,14 @@ fn run_cell(cell: &SchedCell) {
         Boot::NuttxQemu => {
             let mut q = QemuProcess::start_nuttx_virt(&entry, true)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot NuttX QEMU: {e}"));
-            let l = q.wait_for_output_pattern(ex.stem, timeout);
+            let l = q.wait_for_output_each(&wait_groups, timeout);
             q.kill();
             l.unwrap_or_else(|_| panic!("{}", fail_loud()))
         }
         Boot::FreertosQemu => {
             let mut q = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot FreeRTOS QEMU: {e}"));
-            let l = q.wait_for_output_pattern(ex.stem, timeout);
+            let l = q.wait_for_output_each(&wait_groups, timeout);
             q.kill();
             l.unwrap_or_else(|_| panic!("{}", fail_loud()))
         }
@@ -691,9 +759,8 @@ fn run_cell(cell: &SchedCell) {
             let missing: Vec<String> = tiers
                 .iter()
                 .filter(|(tier, prio)| {
-                    let ok = nros_tests::output::nuttx_tier_priority_line(ex.accept, tier, *prio);
-                    let loud =
-                        nros_tests::output::nuttx_tier_priority_line(fail_marker, tier, *prio);
+                    let ok = nros_tests::output::tier_priority_line(ex.accept, tier, *prio);
+                    let loud = nros_tests::output::tier_priority_line(fail_marker, tier, *prio);
                     !log.contains(&ok) && !log.contains(&loud)
                 })
                 .map(|(tier, prio)| format!("`{tier}` prio={prio}"))
@@ -718,7 +785,7 @@ fn run_cell(cell: &SchedCell) {
             let honored = tiers
                 .iter()
                 .filter(|(tier, prio)| {
-                    log.contains(&nros_tests::output::nuttx_tier_priority_line(
+                    log.contains(&nros_tests::output::tier_priority_line(
                         ex.accept, tier, *prio,
                     ))
                 })

@@ -520,6 +520,42 @@ impl QemuProcess {
         }
     }
 
+    /// Wait until EVERY pattern in `patterns` has appeared, then return the
+    /// accumulated output. Errors naming the ones still missing at the
+    /// deadline.
+    ///
+    /// issue 0636 — the wait to use when the rule is "each of these must
+    /// report". [`Self::wait_for_output_pattern`] returns at the first match,
+    /// which for a per-tier rule means the assertion runs against a log that
+    /// was cut mid-boot; the failure then reads as a dropped dim rather than as
+    /// a short read, which is the most expensive kind of wrong.
+    /// Each GROUP must be satisfied by ANY of its alternatives — the shape a
+    /// per-tier rule actually has, where a tier may report either its accept
+    /// marker or its loud-failure marker and both count as "it reported".
+    /// A single-element group degenerates to "this must appear".
+    pub fn wait_for_output_each(
+        &mut self,
+        groups: &[Vec<String>],
+        timeout: Duration,
+    ) -> TestResult<String> {
+        let satisfied = |o: &str, g: &Vec<String>| g.iter().any(|p| o.contains(p.as_str()));
+        let out = self.collect_until_pred(|o| groups.iter().all(|g| satisfied(o, g)), timeout)?;
+        let missing: Vec<String> = groups
+            .iter()
+            .filter(|g| !satisfied(&out, g))
+            .map(|g| g.join(" | "))
+            .collect();
+        if missing.is_empty() {
+            Ok(out)
+        } else {
+            Err(TestError::ProcessFailed(format!(
+                "qemu did not print {} within {timeout:?}: {}. Output:\n{out}",
+                if missing.len() == 1 { "this" } else { "these" },
+                missing.join(", ")
+            )))
+        }
+    }
+
     /// Collect output, stopping early once `pattern` appears — the LENIENT wait.
     ///
     /// Returns whatever QEMU printed, pattern or not. Correct for readiness
@@ -540,6 +576,24 @@ impl QemuProcess {
     }
 
     fn collect_until_inner(&mut self, pattern: &str, timeout: Duration) -> TestResult<String> {
+        self.collect_until_pred(|out| out.contains(pattern), timeout)
+    }
+
+    /// The general form: collect until `done` accepts the accumulated output,
+    /// or the deadline passes.
+    ///
+    /// issue 0636 — [`Self::wait_for_output_pattern`] stops at the FIRST match
+    /// and then the caller kills QEMU, so a test whose rule needs SEVERAL
+    /// distinct markers only sees the later ones if they happened to land in
+    /// the same buffer flush. That is a coin flip, not a wait: the multi-tier
+    /// sched-dim cells assert one marker PER TIER, and the third tier's line
+    /// went missing in 2 of 8 runs purely because the reader had already
+    /// returned. Waiting on a predicate lets the caller say "all of them".
+    fn collect_until_pred(
+        &mut self,
+        done: impl Fn(&str) -> bool,
+        timeout: Duration,
+    ) -> TestResult<String> {
         let start = Instant::now();
         let mut output = String::new();
 
@@ -582,7 +636,7 @@ impl QemuProcess {
                     if let Some(ref mut s) = stderr {
                         progressed |= drain_into(s, &mut buffer, &mut output);
                     }
-                    if output.contains(pattern) {
+                    if done(&output) {
                         // Put streams back so follow-up `wait_for_output`
                         // / `kill` calls see them.
                         self.handle.stdout = Some(stdout);
