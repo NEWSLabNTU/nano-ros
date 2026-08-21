@@ -60,14 +60,6 @@ const KNOWN_DIVERGENT: &[&str] = &[
     // cannot quietly become an exemption.
 ];
 
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root from packages/testing/nros-tests")
-        .to_path_buf()
-}
-
 /// The role an example directory plays, from its NAME — the same vocabulary
 /// `examples/README.md` uses. `None` means "no readiness contract here": clients,
 /// bringup dirs, and the feature demos whose readiness is workload-specific.
@@ -98,7 +90,7 @@ fn lang_of(parts: &[&str]) -> Option<Lang> {
 fn tracked_sources() -> Vec<PathBuf> {
     let out = std::process::Command::new("git")
         .arg("-C")
-        .arg(project_root())
+        .arg(nros_tests::project_root())
         .args(["ls-files", "--", "examples"])
         .output()
         .expect("git ls-files -- examples");
@@ -130,7 +122,7 @@ fn tracked_sources() -> Vec<PathBuf> {
 /// Which `(dir, role, lang)` triples this gate is responsible for, and whether
 /// any source under that dir prints the role's marker.
 fn survey() -> Vec<(String, DemoRole, Lang, bool)> {
-    let root = project_root();
+    let root = nros_tests::project_root();
     // Keyed by DIR alone: one example dir has one role and one language, so the
     // dir is the identity. (Also avoids requiring `Ord` on the enums, which
     // belongs to them for their own reasons, not for this gate's convenience.)

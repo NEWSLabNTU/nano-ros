@@ -57,10 +57,6 @@ use std::{
 // Discovery
 // ---------------------------------------------------------------------------
 
-fn project_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
 /// Paths git TRACKS under `examples/`, relative to the project root.
 ///
 /// An index lookup, never a walk (the repo rule `check-no-tracked-file-find`
@@ -71,7 +67,7 @@ fn project_root() -> PathBuf {
 fn tracked_example_paths() -> std::collections::HashSet<PathBuf> {
     let out = std::process::Command::new("git")
         .arg("-C")
-        .arg(project_root())
+        .arg(nros_tests::project_root())
         .args(["ls-files", "--", "examples"])
         .output()
         .expect("git ls-files -- examples");
@@ -95,7 +91,7 @@ fn tracked_example_paths() -> std::collections::HashSet<PathBuf> {
 }
 
 fn examples_dir() -> PathBuf {
-    project_root().join("examples")
+    nros_tests::project_root().join("examples")
 }
 
 /// Recursively walk a directory skipping common build artefact dirs.
@@ -258,7 +254,7 @@ fn is_migrated(rel: &Path) -> bool {
 }
 
 fn rel_to_project(p: &Path) -> PathBuf {
-    p.strip_prefix(project_root())
+    p.strip_prefix(nros_tests::project_root())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|_| p.to_path_buf())
 }
@@ -797,7 +793,7 @@ fn pre_212_files_forbidden_in_migrated_examples() {
 fn unmigrated_trees_status_surface() {
     let mut found_any = false;
     for (prefix, reason) in UNMIGRATED_PREFIXES {
-        let dir = project_root().join(prefix);
+        let dir = nros_tests::project_root().join(prefix);
         if dir.exists() {
             found_any = true;
             println!("[STATUS] {} skipped: {}", prefix, reason);
@@ -988,7 +984,7 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
 // from a broken query.
 #[test]
 fn no_committed_metadata_json_artifacts() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let out = match std::process::Command::new("git")
         .arg("-C")
         .arg(&root)

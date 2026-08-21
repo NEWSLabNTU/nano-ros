@@ -4,7 +4,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 #[derive(Debug)]
@@ -16,7 +16,7 @@ struct BoardCrate {
 
 #[test]
 fn board_overlays_do_not_reemit_transitive_static_archives() {
-    let repo = repo_root();
+    let repo = nros_tests::project_root();
     let boards_dir = repo.join("packages/boards");
     let crates = discover_board_crates(&boards_dir);
 
@@ -48,13 +48,6 @@ fn board_overlays_do_not_reemit_transitive_static_archives() {
         "board build.rs static archive re-emission would duplicate bundled objects:\n{}",
         failures.join("\n")
     );
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("canonical repo root")
 }
 
 fn discover_board_crates(boards_dir: &Path) -> BTreeMap<String, BoardCrate> {

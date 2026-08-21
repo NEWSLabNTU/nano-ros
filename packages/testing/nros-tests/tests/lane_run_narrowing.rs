@@ -29,17 +29,9 @@ use nros_tests::fixtures::{
     lane::{self, Coord, Row},
 };
 
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
-
 fn tmpdir() -> PathBuf {
     // `$project/tmp/` (gitignored), not /tmp — CLAUDE.md.
-    let d = project_root()
+    let d = nros_tests::project_root()
         .join("tmp")
         .join(format!("lane-run-narrowing-{}", std::process::id()));
     std::fs::create_dir_all(&d).expect("create tmp dir");
@@ -47,14 +39,14 @@ fn tmpdir() -> PathBuf {
 }
 
 fn manifest_py() -> PathBuf {
-    project_root().join("scripts/build/fixtures-manifest.py")
+    nros_tests::project_root().join("scripts/build/fixtures-manifest.py")
 }
 
 /// Run `fixtures-manifest.py <subcommand> --coords-from <file>` and return the
 /// FIRST field of each record — the `dir` for `[[fixture]]` rows (both the cargo
 /// and the cmake record shapes start with it) and the `id` for workspace rows.
 fn build_side_selection(subcommand: &str, coord_file: &std::path::Path) -> Vec<String> {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let out = Command::new("python3")
         .arg(manifest_py())
         .arg(subcommand)
@@ -191,7 +183,7 @@ fn build_and_run_select_the_same_workspace_rows() {
 /// row whose omission the run would be unable to notice".
 #[test]
 fn every_omittable_row_is_attributable_from_its_artifacts() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let mut blind = Vec::new();
     for row in lane::manifest_rows() {
         match row.kind.as_str() {
@@ -324,7 +316,7 @@ fn an_unattributable_artifact_is_never_skipped() {
         let path = if p.starts_with('/') {
             PathBuf::from(p)
         } else {
-            project_root().join(p)
+            nros_tests::project_root().join(p)
         };
         assert!(
             lane::attribute_path(&path).is_none(),
@@ -361,7 +353,7 @@ fn an_unattributable_artifact_is_never_skipped() {
 /// side — a one-sided test is how issue 0442's per-arm subsets happened.
 #[test]
 fn the_skip_decision_fires_only_outside_the_lane() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     // A lane holding one coordinate of EACH row kind, so all four arms below are
     // populated. Derived rather than written down — the first version used the
     // manifest's first coordinate, which no `[[fixture]]` row occupies, and the

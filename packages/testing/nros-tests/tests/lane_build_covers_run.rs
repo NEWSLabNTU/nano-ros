@@ -29,14 +29,6 @@
 
 use std::{collections::BTreeSet, path::PathBuf, process::Command};
 
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
-
 /// Run a snippet with `fixture-lane.sh` sourced. Returns (exit code, stdout+stderr).
 fn lane_sh(snippet: &str, stamp: Option<&str>) -> (i32, String) {
     lane_sh_env(snippet, stamp, &[])
@@ -48,7 +40,7 @@ fn lane_sh(snippet: &str, stamp: Option<&str>) -> (i32, String) {
 /// have to supply it — and the tests that exercise the PAIRING requirement
 /// deliberately do not.
 fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32, String) {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let mut cmd = Command::new("bash");
     cmd.arg("-c")
         .arg(format!(
@@ -95,7 +87,7 @@ fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32
 /// this consumes it and skips (loudly, with the remedy) when it is absent,
 /// rather than building it here.
 fn lane_coords_bin() -> PathBuf {
-    let target = project_root().join("target");
+    let target = nros_tests::project_root().join("target");
     // NEWEST, not a preferred profile. Picking `nros-fast-release` first looked
     // tidy and selected an ELEVEN-DAY-OLD artifact that answered `tier2` with 12
     // coordinates where the current sources say 13 — a museum binary, and the
@@ -132,7 +124,7 @@ fn lane_coords_bin() -> PathBuf {
 fn lane_coords_file(lane: &str) -> String {
     let out = Command::new(lane_coords_bin())
         .arg(lane)
-        .current_dir(project_root())
+        .current_dir(nros_tests::project_root())
         .output()
         .expect("run prebuilt lane-coords");
     assert!(
@@ -166,7 +158,7 @@ fn write_stamp(dir: &std::path::Path, lane: &str, coords: &[&str]) -> PathBuf {
 
 fn tmpdir() -> PathBuf {
     // `$project/tmp/` (gitignored), not /tmp — CLAUDE.md.
-    let d = project_root()
+    let d = nros_tests::project_root()
         .join("tmp")
         .join(format!("lane-build-covers-run-{}", std::process::id()));
     std::fs::create_dir_all(&d).expect("create tmp dir");
@@ -371,7 +363,7 @@ fn a_native_build_satisfies_the_tier1_run() {
 /// only shape this defect has.
 #[test]
 fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let manifest = root.join("scripts/build/fixtures-manifest.py");
 
     let coords_out = Command::new("python3")

@@ -29,18 +29,7 @@
 //! mode (1) points the user at `just build-test-fixtures`; failure
 //! mode (2) is the actual Phase 134 regression class.
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
+use std::{env, fs, path::PathBuf};
 
 /// Phase 150.E rev2 — deterministic + overridable.
 fn resolve_header_path() -> Result<PathBuf, String> {
@@ -55,7 +44,7 @@ fn resolve_header_path() -> Result<PathBuf, String> {
         ));
     }
 
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     // Fixture is built with `--release` so the host-native subdir is
     // `release/`. Allowing `debug/` as a secondary pick keeps the
     // contract honest for a future caller that drops `--release`;

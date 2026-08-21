@@ -11,18 +11,9 @@
 
 use std::{path::PathBuf, process::Command};
 
-fn workspace_root() -> PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
-
 #[test]
 fn px4_integration_template_smoke() {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let template = root.join("integrations/px4/module-template");
 
     // Shape gates — these always run, even without PX4 installed.

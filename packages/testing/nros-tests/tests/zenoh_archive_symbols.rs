@@ -39,17 +39,6 @@ use std::{
 
 const SCRIPT: &str = "scripts/check-zenoh-archive-symbols.sh";
 
-fn workspace_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR for nros-tests is .../packages/testing/nros-tests.
-    // Walk up three components to the workspace root.
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
-
 /// Phase 150.E rev3 — deterministic + overridable archive path.
 fn resolve_archive_path(root: &Path) -> Result<PathBuf, String> {
     if let Some(explicit) = env::var_os("NROS_TESTS_ZENOH_ARCHIVE") {
@@ -82,7 +71,7 @@ fn resolve_archive_path(root: &Path) -> Result<PathBuf, String> {
 
 #[test]
 fn zenoh_archive_wrapper_impl_parity() {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let script = root.join(SCRIPT);
     // Issue #34 — the zenoh-posix fixture archive is built by
     // `just build-zenoh-posix-fixture` / `build-test-fixtures`, not by the light

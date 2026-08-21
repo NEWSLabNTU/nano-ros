@@ -38,14 +38,6 @@ const RETIRED_NEEDLES: &[(&str, &str)] = &[
     ("::ACTION_HASH", "constant retired — use \"\" literal"),
 ];
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root from manifest dir")
-        .to_path_buf()
-}
-
 fn walk_cpp(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -66,7 +58,7 @@ fn walk_cpp(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn examples_cpp_have_no_retired_symbols() {
-    let examples = repo_root().join("examples");
+    let examples = nros_tests::project_root().join("examples");
     assert!(
         examples.is_dir(),
         "examples/ missing at {}",
@@ -93,7 +85,9 @@ fn examples_cpp_have_no_retired_symbols() {
                 if line.contains(needle) {
                     violations.push(format!(
                         "{}:{}: contains retired symbol `{}` — {}",
-                        file.strip_prefix(repo_root()).unwrap_or(file).display(),
+                        file.strip_prefix(nros_tests::project_root())
+                            .unwrap_or(file)
+                            .display(),
                         lineno + 1,
                         needle,
                         hint,

@@ -26,18 +26,11 @@ use nros_tests::{
 };
 use std::{fs, path::PathBuf};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("repo root")
-}
-
 /// A built `zephyr.exe` plus the leaf it came from. Returns `None` when the west
 /// lane has not run here, which is the normal state on a host that never built
 /// Zephyr fixtures.
 fn built_leaf(build_dir: &str, leaf: &str) -> Option<(PathBuf, PathBuf)> {
-    let root = repo_root();
+    let root = nros_tests::project_root();
     let exe = root.join(format!("zephyr-workspace/{build_dir}/zephyr/zephyr.exe"));
     let src = root.join(leaf);
     (exe.is_file() && src.is_dir()).then_some((exe, src))
@@ -96,7 +89,7 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
 /// the entry TU left every Zephyr image reporting fresh.
 #[test]
 fn a_shared_cmake_input_marks_the_image_stale() {
-    let root = repo_root();
+    let root = nros_tests::project_root();
     let exe = root.join("zephyr-workspace/build-c-talker-cyclonedds/zephyr/zephyr.exe");
     if !exe.is_file() {
         skip!("build-c-talker-cyclonedds not built here — nothing to probe");

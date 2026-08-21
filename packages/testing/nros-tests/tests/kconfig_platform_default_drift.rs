@@ -6,16 +6,6 @@
 //! `[knobs.zenoh.tx]` values or the cmake-TU side and the cargo side
 //! drift apart (the issue-0135 ABI class). This test asserts the mirror.
 
-use std::path::PathBuf;
-
-fn workspace_root() -> PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
-
 /// Extract the `default <v>` line of one Kconfig `config <name>` block.
 fn kconfig_default(kconfig: &str, name: &str) -> String {
     let mut in_block = false;
@@ -34,7 +24,7 @@ fn kconfig_default(kconfig: &str, name: &str) -> String {
 
 #[test]
 fn zephyr_kconfig_mirrors_platform_toml_tx_defaults() {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let kconfig = std::fs::read_to_string(root.join("zephyr/Kconfig")).expect("read Kconfig");
     let toml_text = std::fs::read_to_string(root.join("config/zephyr/nros-platform.toml"))
         .expect("read zephyr nros-platform.toml");

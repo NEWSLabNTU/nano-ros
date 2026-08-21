@@ -30,12 +30,9 @@
 use nros_tests::fixtures::nuttx::{is_arm_gcc_available, is_nuttx_available};
 use std::{fs, path::PathBuf, process::Command};
 
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
 fn fixture() -> PathBuf {
-    workspace_root().join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx")
+    nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx")
 }
 
 fn require_nuttx_setup() -> Option<()> {
@@ -55,7 +52,7 @@ fn require_nuttx_setup() -> Option<()> {
 
 #[test]
 fn template_files_exist_and_loc_under_budget() {
-    let template = workspace_root().join("integrations/nuttx/apps-external-template");
+    let template = nros_tests::project_root().join("integrations/nuttx/apps-external-template");
     for f in ["Make.defs", "Makefile", "Kconfig", "README.md"] {
         let p = template.join(f);
         assert!(p.is_file(), "missing template file: {}", p.display());
@@ -101,7 +98,7 @@ fn nuttx_qemu_arm_2_component_bringup_builds() {
         bringup.display()
     );
 
-    let staging = workspace_root().join("scripts/nuttx/stage-external-apps.sh");
+    let staging = nros_tests::project_root().join("scripts/nuttx/stage-external-apps.sh");
     let out = Command::new("bash")
         .arg(&staging)
         .arg(&apps)

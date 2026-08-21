@@ -69,14 +69,6 @@ fn platform_headers_compile_per_capability() -> TestResult<()> {
     Ok(())
 }
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf()
-}
-
 /// A C++ TU forcing the heap containers' allocator calls: `HeapString` instantiates
 /// its dtor (`nros_platform_free`), `HeapSequence<int>::reserve/push_back`
 /// references `nros_platform_malloc`. Absent the canonical malloc/free it fails to
@@ -130,7 +122,7 @@ fn baremetal_heap_without_malloc_must_not_compile() {
         Command::new("g++").arg("--version").output().is_ok(),
         "g++ not found — the platform-header negative gate cannot run"
     );
-    let root = repo_root();
+    let root = nros_tests::project_root();
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("probe.cpp");
     std::fs::write(&src, HEAP_PROBE).unwrap();

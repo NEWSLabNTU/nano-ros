@@ -32,12 +32,8 @@ use std::{
     process::Command,
 };
 
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
 fn fixture_src(name: &str) -> PathBuf {
-    workspace_root()
+    nros_tests::project_root()
         .join("packages/testing/nros-tests/fixtures")
         .join(name)
 }

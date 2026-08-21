@@ -1,9 +1,11 @@
 # Phase 373 — Test-suite cleanup: delete what cannot fail, consolidate what was copied
 
-**Status (2026-08-21): W0 LANDED (`a660be83f`), W1–W5 OPEN.** W0 removed 23 tests
-that could not fail and gated both shapes that admitted them. The remaining items
-come from the survey W0's fallout prompted; **W1 is a live defect, not a cleanup**,
-and should land first.
+**Status (2026-08-21): W0–W2 LANDED, W3–W5 OPEN.** W0 (`a660be83f`) removed 23
+tests that could not fail and gated both shapes that admitted them. W1 restored
+the issue-#141 resource protection that phase-329's consolidation had silently
+switched off. W2 collapsed 23 repo-root helpers into the one that already
+existed. W3–W5 remain: the duplicated cell prelude, the single-test micro-files,
+and the last runtime-compile test.
 
 **Follows:** phase-329 (test taxonomy completion, archived 2026-08-05) — this is
 the residue that pass explicitly left, plus the classes it could not see because
@@ -91,15 +93,29 @@ It cannot be repaired in place: nextest allows ONE group per test, so
 this situation — *"If it flakes that way, move the per-platform partner into this
 group too."*
 
-- [ ] Move `qos_zephyr_ros2_interop_e2e` into `matrix-consumers-serial`; retire
+- [x] Moved `qos_zephyr_ros2_interop_e2e` into `matrix-consumers-serial`; retired
       `zephyr-qos-port` and its now-single-use override.
-- [ ] Re-check the sibling `native-qos-discovery` and the phase-296 W5.5 group for
-      the same shape — a per-cell `test()` naming a folded cell.
-- [ ] Verify by RUNNING nextest, not by `just check` (which runs none): confirm
-      the two land in one group and cannot overlap.
+- [x] Swept every group override. Only this one was inert; no test-group is
+      defined-but-unused, and every other `test()` name resolves.
+- [x] Verified by RUNNING nextest.
 
-**Acceptance:** no live `test()` filter matches zero tests, and the two port
-sharers are mutually exclusive.
+**ORDERING IS LOAD-BEARING, and the obvious fix was wrong.** Adding
+`binary(qos_zephyr_ros2_interop_e2e)` to the `matrix-consumers-serial` override
+where that group is defined did NOTHING: nextest applies the FIRST matching
+override per setting, and `binary(~zephyr)` — a SUBSTRING match, ~30 entries
+earlier — claims it for `qemu-emulated` first. The retired override had been
+winning only by sitting near the top of the file. So the replacement override
+must stay at that position, and the fix is only visible with
+
+    cargo nextest show-config test-groups
+
+which prints RESOLVED membership. The config parsing cleanly is not evidence
+that a group applies — the broken version parsed fine for months. Verified: both
+`entry_e2e::entry_matrix` and `qos_zephyr_ros2_interop_e2e`'s two tests now
+resolve into `matrix-consumers-serial` (max threads = 1).
+
+**Acceptance:** met — no live `test()` filter matches zero tests, and the two
+port sharers are in one max-threads=1 group by resolved membership.
 
 ### W2 — one repo-root helper, not 23
 
@@ -112,14 +128,27 @@ declarations under three names (`workspace_root` ×11, `repo_root` ×6,
 - 2 `canonicalize()` variants — **not equivalent**: they resolve symlinks, so they
   disagree with the other 21 under a symlinked checkout
 
-- [ ] Delete all 23; call `nros_tests::project_root()` directly.
-- [ ] Decide the symlink question explicitly rather than by accident — if any test
-      NEEDS a canonical path, that belongs in the lib helper for everyone.
-- [ ] Gate it, or the count grows back: a `fn` in `tests/` that only re-exports a
-      lib helper is the same "second spelling" CLAUDE.md's class rule forbids.
+- [x] All 23 deleted; call sites point at `nros_tests::project_root()`.
+- [x] The symlink question is settled by deletion — both `canonicalize()` variants
+      are gone, so no test resolves symlinks and none disagrees. Neither had
+      CHOSEN to: canonicalising fell out of spelling the path `../../..`, which
+      has to be normalised to be usable. If a test ever genuinely needs a
+      canonical root, that belongs in the lib helper for everyone, not in one file.
+- [x] Gated by `tests/repo_root_is_unified.rs`, which is negative-tested: a
+      violating helper makes it FAIL naming file and line, and it passes again on
+      revert. (A first attempt at that proof was itself invalid — an UNUSED local
+      helper is a dead-code compile error under `-D warnings` before the gate can
+      run, so the violation has to be one that compiles.)
 
-**Acceptance:** one definition; `git grep -c 'fn workspace_root\|fn repo_root'`
-over `tests/` returns 0.
+**Scope, stated rather than papered over:** this covers
+`packages/testing/nros-tests/tests/` only. Four sibling helpers live in
+`nros-cli-core`, `rosidl-codegen` and `nros-rmw-cyclonedds`, which do not depend
+on `nros-tests` and should not grow a dependency on a heavy test-support crate to
+reach one path function. A shared helper for them belongs in a smaller crate; the
+gate widens when that exists.
+
+**Acceptance:** met — one definition; zero local declarations under `tests/`;
+clippy clean; the 45 host-side tests over the rewritten files pass.
 
 ### W3 — the matrix consumers re-grew a shared prelude
 

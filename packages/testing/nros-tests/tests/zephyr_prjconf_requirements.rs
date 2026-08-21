@@ -22,14 +22,6 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf()
-}
-
 /// One Kconfig requirement for a backend's Zephyr `prj-<rmw>.conf`.
 enum Req {
     /// `CONFIG_<sym>=y`.
@@ -125,7 +117,7 @@ fn collect_overlays(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn zephyr_prjconf_meets_backend_requirements() {
-    let root = repo_root();
+    let root = nros_tests::project_root();
     let mut overlays = Vec::new();
     for base in [
         "examples/zephyr",

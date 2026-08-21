@@ -56,12 +56,22 @@ max-threads = 1
 [test-groups.qemu-baremetal]
 max-threads = 3
 
-# issue #141 — RESOURCE: one baked image serves two tests. The qos zephyr
-# entry image + its baked router port (allocator 7460) are shared by the
-# sink-based capability e2e (entry_e2e::zephyr_rust_qos) and the ros2-echo
-# interop e2e; serialize them so the routers never collide.
-[test-groups.zephyr-qos-port]
-max-threads = 1
+# issue #141 — RESOURCE: one baked image serves two tests. The qos zephyr entry
+# image + its baked router port (allocator 7460) are shared by the sink-based
+# capability e2e (the `zephyr_rust_qos` cell, now a case inside
+# `entry_e2e::entry_matrix`) and the ros2-echo interop e2e; serialize them so the
+# routers never collide.
+#
+# [test-groups.zephyr-qos-port] RETIRED (phase-373 W1). It could no longer hold
+# both sharers, and a group holding one of them protects nothing. phase-329 W1
+# folded entry_e2e's 15 per-cell tests into the single `entry_matrix`, which
+# deleted the NAME the override selected on (`test(zephyr_rust_qos)`) — leaving
+# it silently inert, `entry_e2e` in `matrix-consumers-serial`, the interop e2e
+# alone in this group, and the two free to run concurrently. nextest allows ONE
+# group per test, so `entry_matrix` cannot be in both; the partner moves to
+# `matrix-consumers-serial` instead, which is what this file already prescribed
+# for the case ("If it flakes that way, move the per-platform partner into this
+# group too").
 
 # phase-296 W5.5 (final-review finding 1) — issue-#141-style RESOURCE: one
 # baked image serves two tests. The ws-realtime-rust Zephyr native_sim entry
@@ -323,13 +333,37 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 filter = "binary(native_example_pubsub_e2e) or binary(native_example_reqresp_e2e)"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# issue #141 — see [test-groups.zephyr-qos-port]. phase-295 W3.b —
-# qos_zephyr_entry_e2e consolidated into binary(entry_e2e); the baked-port
-# (17849) sharer is now the `zephyr_rust_qos` cell.
+# issue #141 / phase-373 W1 — this override used to be
+#
+#   filter = "(binary(entry_e2e) and test(zephyr_rust_qos)) or binary(qos_zephyr_ros2_interop_e2e)"
+#   test-group = "zephyr-qos-port"
+#
+# and its first disjunct had matched NOTHING since phase-329 W1: `entry_e2e` has
+# exactly one test, `entry_matrix`, so `test(zephyr_rust_qos)` names a cell, not
+# a test. The two baked-port sharers therefore sat in different groups — and
+# different groups do not serialize against each other — so #141's protection was
+# off. `qos_zephyr_ros2_interop_e2e` now joins `entry_e2e` in
+# `matrix-consumers-serial` (below), which is the only shape nextest can express
+# for a consolidated consumer.
+#
+# Its timeout moves with it, from 60s x 3 to that group's 180s x 3. That is
+# strictly more headroom for a QEMU zephyr test, and the group is max-threads=1,
+# so the extra window cannot be spent contending with the partner it now waits
+# for.
+#
+# THIS OVERRIDE MUST STAY HERE, ahead of the `binary(~zephyr)` one. nextest
+# applies the FIRST matching override per setting, and `~zephyr` is a SUBSTRING
+# match that also matches `qos_zephyr_ros2_interop_e2e` — so adding this binary
+# to the `matrix-consumers-serial` override far below did nothing at all: the
+# earlier `qemu-emulated` override claimed it first, and the two sharers were
+# still in different groups. The retired override had been winning only by
+# sitting at this position. Verified with `cargo nextest show-config
+# test-groups`, which prints resolved membership — the filter parsing cleanly is
+# NOT evidence that the group applies.
 [[profile.default.overrides]]
-filter = "(binary(entry_e2e) and test(zephyr_rust_qos)) or binary(qos_zephyr_ros2_interop_e2e)"
-test-group = "zephyr-qos-port"
-slow-timeout = { period = "60s", terminate-after = 3 }
+filter = "binary(qos_zephyr_ros2_interop_e2e)"
+test-group = "matrix-consumers-serial"
+slow-timeout = { period = "180s", terminate-after = 3 }
 
 # Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
 # to build a generated crate or workspace, so a COLD build legitimately exceeds
@@ -801,6 +835,10 @@ retries = 2
 # kill meant the later cells were never run at all. Two genuine NuttX Rust
 # failures had been sitting behind it unseen (issue 0565).
 [[profile.default.overrides]]
+# phase-373 W1 — `qos_zephyr_ros2_interop_e2e` is in this group too, but it is
+# assigned by its own override far ABOVE, not from here: `binary(~zephyr)` sits
+# between this block and the top of the file and would claim it first. Naming it
+# here as well would be a second spelling that never takes effect.
 filter = "binary(realtime_tiers_e2e) or binary(entry_e2e) or binary(multihost_e2e) or binary(roundtrip_xprocess_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }

@@ -20,18 +20,9 @@
 //! coverage.
 
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
 };
-
-fn workspace_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
 
 /// E2E.7 — assert `cmake = "0.1"` is gone from `zpico-sys`'s dep
 /// graph. `cargo tree --invert cmake -p zpico-sys` is the cleanest
@@ -40,7 +31,7 @@ fn workspace_root() -> PathBuf {
 /// directly on failure (instead of just "cmake appears in tree").
 #[test]
 fn zpico_sys_has_no_cmake_dep() {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let output = Command::new("cargo")
         .args(["tree", "-p", "zpico-sys", "--prefix=none", "--no-dedupe"])
         .current_dir(&root)

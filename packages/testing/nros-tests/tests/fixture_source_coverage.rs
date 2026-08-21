@@ -20,7 +20,7 @@
 //! true fails too, so the list cannot rot into a false negative (which is
 //! exactly how `fixture-inventory.py` decayed, issue 0538).
 
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use std::{collections::BTreeSet, fs};
 
 /// Crates under `packages/testing/nros-tests/bins/` deliberately built outside
 /// `examples/fixtures.toml`, each with the reason and the lane that owns it.
@@ -34,14 +34,6 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[(
      PER-RUN global (NROS_ROS_EDITION), not a fixture coordinate. Deliberately \
      gated out of `just ci` (needs docker + a built image).",
 )];
-
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
 
 /// Every `dir = "..."` value in the manifest, of every row kind.
 fn manifest_dirs(root: &std::path::Path) -> BTreeSet<String> {
@@ -71,7 +63,7 @@ fn manifest_dirs(root: &std::path::Path) -> BTreeSet<String> {
 /// tracked exception — the hole issue 0540 fell through.
 #[test]
 fn every_test_bin_is_a_row_or_a_tracked_exception() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let bins = root.join("packages/testing/nros-tests/bins");
     if !bins.is_dir() {
         nros_tests::skip!("bins dir missing at {}", bins.display());
@@ -191,7 +183,7 @@ const NON_MANIFEST_BUILD_ROOTS: &[(&str, &str)] = &[
 /// recipe leaves this list describing a world that is gone.
 #[test]
 fn declared_non_manifest_build_roots_still_exist() {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let missing: Vec<&str> = NON_MANIFEST_BUILD_ROOTS
         .iter()
         .map(|(p, _)| *p)

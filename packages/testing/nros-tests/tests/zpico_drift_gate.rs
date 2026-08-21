@@ -35,17 +35,8 @@ use std::{
     process::{Command, Stdio},
 };
 
-fn workspace_root() -> PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
-
 fn canonical_platforms_root() -> PathBuf {
-    workspace_root().join("config")
+    nros_tests::project_root().join("config")
 }
 
 /// Copy every `<root>/*/nros-platform.toml` into `dst` preserving the
@@ -70,7 +61,7 @@ fn copy_tree(src: &Path, dst: &Path) {
 /// Dedicated `target-zpico-drift-gate/` dir so it doesn't poison other
 /// concurrent builds.
 fn run_build(platforms_dir: &Path) -> (String, std::process::ExitStatus) {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let target_dir = root.join("target-zpico-drift-gate");
 
     let output = Command::new("cargo")
@@ -104,7 +95,7 @@ fn run_build(platforms_dir: &Path) -> (String, std::process::ExitStatus) {
 
 #[test]
 fn zpico_drift_gate_fires_on_corrupted_include() {
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let canonical_root = canonical_platforms_root();
     let posix_toml = canonical_root.join("posix/nros-platform.toml");
     if !posix_toml.exists() {

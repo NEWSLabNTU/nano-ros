@@ -20,19 +20,15 @@ use std::{
     process::Command,
 };
 
-fn workspace_root() -> PathBuf {
-    nros_tests::project_root()
-}
-
 fn fixture_src() -> PathBuf {
-    workspace_root().join("packages/testing/nros-tests/fixtures/n9_workspace")
+    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/n9_workspace")
 }
 
 fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
     let src = fixture_src();
     let dst = tempfile::tempdir().expect("tempdir");
     copy_tree(&src, dst.path()).expect("copy fixture");
-    let root_str = workspace_root()
+    let root_str = nros_tests::project_root()
         .to_str()
         .expect("workspace root utf-8")
         .to_string();

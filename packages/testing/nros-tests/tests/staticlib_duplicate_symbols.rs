@@ -37,14 +37,6 @@
 
 use std::{path::PathBuf, process::Command};
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root from packages/testing/nros-tests")
-        .to_path_buf()
-}
-
 /// Resolve an available `nm` (prefer `llvm-nm`, fall back to GNU `nm`). The
 /// symbol checks below match C symbols by exact name, so either tool works.
 fn nm_tool() -> Option<String> {
@@ -76,7 +68,7 @@ fn link_proof_exe(root: &std::path::Path) -> Option<PathBuf> {
 /// `REGISTRY`, so the host binary links with NO `--allow-multiple-definition`.
 #[test]
 fn single_archive_links_via_u_force_without_allow_multiple_definition() {
-    let root = repo_root();
+    let root = nros_tests::project_root();
     let Some(exe) = link_proof_exe(&root) else {
         nros_tests::skip!(
             "no single-runtime link proof (build/link-determinism/lkproof) — run \

@@ -15,20 +15,12 @@
 //! Sibling of `examples_fixture_coverage.rs` (which checks example DIRS
 //! have fixture rows); this file checks the MATRIX against the rows.
 
-use std::{collections::BTreeSet, path::PathBuf};
+use std::collections::BTreeSet;
 
 use nros_tests::{
     interop::{self, NO_TEST},
     matrix::{CELLS, Kind, Lang, PlatformId, Rmw, TestCell, Tier},
 };
-
-fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("workspace root")
-        .to_path_buf()
-}
 
 /// fixtures.toml `platform` strings → matrix platform.
 ///
@@ -88,7 +80,7 @@ type Coord = (u16, u16, u16, bool);
 /// cannot satisfy `every_runtime_cell_has_a_fixture_row`, which claims the cell
 /// is BUILT. (There are none today; the semantics matter for the next one.)
 fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
-    let root = project_root();
+    let root = nros_tests::project_root();
     let out = std::process::Command::new("python3")
         .arg(root.join("scripts/build/fixtures-manifest.py"))
         .arg("coords")
@@ -247,7 +239,7 @@ fn fixture_token_mapping_round_trips() {
 /// than as the matrix having drifted.
 #[test]
 fn every_just_module_is_declared_by_the_justfile() {
-    let Ok(justfile) = std::fs::read_to_string(project_root().join("justfile")) else {
+    let Ok(justfile) = std::fs::read_to_string(nros_tests::project_root().join("justfile")) else {
         return; // packaged crate — not a failure
     };
     for &p in PlatformId::ALL {
@@ -377,7 +369,7 @@ fn producible_tokens(module: &str, file: &std::path::Path) -> BTreeSet<String> {
 
 #[test]
 fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
-    let Ok(justfile) = std::fs::read_to_string(project_root().join("justfile")) else {
+    let Ok(justfile) = std::fs::read_to_string(nros_tests::project_root().join("justfile")) else {
         return; // packaged crate — not a failure
     };
     // module -> just/<file>, read from the `mod` lines rather than hardcoded, so
@@ -419,7 +411,7 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
             ));
             continue;
         };
-        let produced = producible_tokens(module, &project_root().join(file));
+        let produced = producible_tokens(module, &nros_tests::project_root().join(file));
         for &token in p.fixture_tokens() {
             if !produced.contains(token) {
                 missing.push(format!(
@@ -457,7 +449,7 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
 /// does not exist, fails here.
 #[test]
 fn interop_bindings_g1_every_runtime_cell_names_a_real_test() {
-    let tests_dir = project_root().join("packages/testing/nros-tests/tests");
+    let tests_dir = nros_tests::project_root().join("packages/testing/nros-tests/tests");
     let mut bad = Vec::new();
     for c in interop::CELLS {
         match c.cell.tier {

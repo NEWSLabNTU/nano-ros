@@ -6,16 +6,7 @@
 //! toolchain is missing, this test skips cleanly via
 //! `nros_tests::skip!`.
 
-use std::{path::PathBuf, process::Command};
-
-fn workspace_root() -> PathBuf {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
+use std::process::Command;
 
 fn have(cmd: &str) -> bool {
     Command::new("which")
@@ -40,7 +31,7 @@ fn nuttx_integration_shell_smoke() {
         );
     }
 
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let shell = root.join("integrations/nuttx");
     for f in &["Make.defs", "Makefile", "Kconfig", "CMakeLists.txt"] {
         let p = shell.join(f);

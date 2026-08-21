@@ -32,15 +32,6 @@ use std::{
     process::Command,
 };
 
-fn workspace_root() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above CARGO_MANIFEST_DIR")
-        .to_path_buf()
-}
-
 /// Phase 195.D — skip the matrix when the host `nros` build tool isn't
 /// installed. Phase 218 brought the CLI in-tree (`packages/cli/`, built
 /// by `just setup-cli`); the root CMakeLists resolves it from `$NROS_CLI`
@@ -124,7 +115,7 @@ fn cmake_platform_threadx_requires_board() {
     // Verifies: `NANO_ROS_PLATFORM=threadx` without `NANO_ROS_BOARD`
     // FATAL_ERRORs at configure time and the error message mentions
     // NANO_ROS_BOARD.
-    let root = workspace_root();
+    let root = nros_tests::project_root();
     let tmp = root.join("tmp").join("phase-150-smoke-threadx-noboard");
     if tmp.exists() {
         fs::remove_dir_all(&tmp).expect("clear previous tmp dir");
