@@ -169,3 +169,77 @@ qemu-system-arm -M virt -cpu cortex-a7 -nographic -icount shift=auto \
   -netdev user,id=net0 -device virtio-net-device,netdev=net0
 ```
 
+
+## Measured 2026-08-21 (second pass) — the timer arithmetic is fine; it is barely DISPATCHED
+
+The previous pass concluded "the defect is in when the executor decides a timer
+is DUE ... the next measurement is inside `spin_once_counted`". That pointer was
+one layer too deep. `spin_once_counted` is three lines
+(`self.executor.spin_once(timeout); self.run_ticks();`), and the decision it
+forwards to is `timer_try_process`, which was probed directly instead.
+
+Probe placed BEFORE the `cancelled` early return — deliberately, since a probe
+after it cannot tell "no longer dispatched" from "dispatched and refused there" —
+printing `delta_us`, `elapsed_us`, `period_us`, `cancelled`, `oneshot&&fired`,
+filtered to the FAST tier's timer (`period <= 10 ms`):
+
+```
+[T] calls=1  delta=3000 elapsed=0    period=10000 cancelled=0 done=0
+[T] calls=2  delta=2000 elapsed=3000 period=10000 cancelled=0 done=0
+[T] calls=3  delta=3000 elapsed=5000 period=10000 cancelled=0 done=0
+[T] calls=4  delta=3000 elapsed=8000 period=10000 cancelled=0 done=0
+[T] calls=5  delta=3000 elapsed=1000 period=10000 cancelled=0 done=0   <- fired, remainder kept
+...
+[T] calls=21 delta=4000 elapsed=9000 period=10000 cancelled=0 done=0
+```
+
+and then **nothing** — 21 calls in a 45 s run whose heartbeat reports
+`tier high alive — 1000 spin(s), 8 timer(s) fired`.
+
+### What that settles
+
+* **The timer arithmetic is correct.** `elapsed_us` accumulates, crosses
+  `period_us`, fires, and keeps the remainder on the phase grid, exactly as
+  written. Every fire the tier managed is accounted for by these calls. Nothing
+  to fix in `timer_try_process`.
+* **It is not cancellation.** `cancelled=0` and `done=0` on every sample, and the
+  probe sits ahead of that branch, so a cancelled timer would still print.
+* **The defect is dispatch FREQUENCY.** ~21 dispatches against 1000+ spins. A
+  timer is registered `InvocationMode::Always` with `has_data: always_ready`, and
+  BOTH `spin_once` paths tick timers — the `!trigger_passes` branch loops every
+  `EntryKind::Timer` before returning, and the main path drains
+  `FifoReadySet(bits | always_mask)`. So "every spin dispatches every timer" is
+  what the code says, and the measurement says otherwise.
+* **`delta_us` is also wrong at those dispatches**: 2–4 ms, while the same
+  tier's heartbeat has its clock advancing ~26 ms per spin. `delta_us` is
+  `now - last_spin_end_us`, so on a tier spinning 1000 times in 26 s it cannot
+  be 3 ms. Whatever accounts for the missing dispatches likely accounts for this
+  too — the calls that DO arrive look like they came from a loop running at ~3 ms
+  per iteration, not the one the heartbeat is counting.
+
+### The next probe, and why the obvious one is not enough
+
+There are TWO copies of the `ctrl` timer. The guest console prints
+`Control::register on a tier admitting group 'ctrl'` **twice** — once on the boot
+executor and once on the spawned tier's — so both executors carry the node's
+timers. The probe above cannot tell which copy it sampled, and "21 calls" may be
+one copy's total while the other is never dispatched at all.
+
+So the next probe must TAG the entry — the `TimerEntry` address is enough — and
+report calls per copy. That distinguishes the two live hypotheses:
+
+1. high's executor dispatches its timer ~21 times in 1000 spins (a dispatch bug), or
+2. high's executor never dispatches its copy, and all 21 belong to the boot
+   executor's copy (a wiring bug — the tier spins an executor whose timer is not
+   the one its node registered).
+
+Hypothesis 2 also explains the 3 ms `delta_us`, which is much closer to the boot
+tier's early cadence than to the fast tier's measured 26 ms.
+
+### A measurement trap worth not repeating
+
+The first version of this probe put its `static CALLS` counter inside
+`timer_try_process<F>`. That function is GENERIC over the callback type, so the
+static is instantiated per `F` — one counter per tier. The "total" it printed was
+one tier's, and both sampled lines were the 100 ms timer's while the 10 ms one
+under investigation never appeared. The counter belongs in a non-generic helper.
