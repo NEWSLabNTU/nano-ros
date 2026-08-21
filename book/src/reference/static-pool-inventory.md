@@ -32,6 +32,7 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 
 | knob | default | read by |
 | --- | ---: | --- |
+| `NROS_EXECUTOR_ARENA_SIZE` | computed — see `packages/core/nros-node/build.rs:107` | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_CBS` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_NODES` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SC` | 8 | `packages/core/nros-node` |
@@ -47,8 +48,15 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_RMW_MESSAGE_INFO_SLOTS` | 64 | `packages/rmw/cffi` |
 | `NROS_RMW_SUBSCRIBER_SLOTS` | 8 | `packages/rmw/cffi` |
 | `NROS_SERVICE_TIMEOUT_MS` | 30000 | `packages/rmw/zenoh/nros-rmw-zenoh` |
+| `NROS_SMOLTCP_BUFFER_SIZE` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:31` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:36` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SMOLTCP_MAX_SOCKETS` | 1 | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:26` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:41` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
+| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:80` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:79` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:78` | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_GET_POLL_INTERVAL_MS` | 10 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_LEASE_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
@@ -56,6 +64,7 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `ZPICO_MAX_LIVELINESS` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_PENDING_GETS` | 4 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_PUBLISHERS` | 8 | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_MAX_QUERYABLES` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:47` | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_SESSIONS` | 1 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_SUBSCRIBERS` | 8 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_READ_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |

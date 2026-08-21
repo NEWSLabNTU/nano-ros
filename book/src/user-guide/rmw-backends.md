@@ -112,8 +112,8 @@ On a tier without the toolchain, the embedded-Cyclone tests are filtered out of
 
 | Aspect               | Zenoh (`rmw-zenoh`)            | XRCE-DDS (`rmw-xrce`)          | Cyclone DDS (`rmw-cyclonedds`) |
 |-----------------------|--------------------------------|---------------------------------|---------------------------------|
-| **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         |
-| **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
+| **Client RAM** ¹      | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         |
+| **Client Flash** ¹    | ~100 KB+                       | ~75 KB                          | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
 | **Bridge process**    | `rmw_zenohd` (ROS 2's zenoh router)      | Agent (protocol translator)     | None — RTPS multicast directly  |
 | **Peer-to-peer**      | Not as shipped — multicast/scouting compiled out (issue 0682) | No (agent always required)      | Yes (RTPS native)               |
 | **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast or static peer list |
@@ -124,6 +124,12 @@ On a tier without the toolchain, the embedded-Cyclone tests are filtered out of
 | **ROS 2 interop**     | Via `rmw_zenoh_cpp` + router   | Via Agent + any DDS RMW         | Direct against `rmw_cyclonedds_cpp` (same upstream version) |
 | **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving |
 | **C source files**    | ~100+                          | 28                              | Upstream Cyclone (~600+ files, vendored unchanged via submodule) |
+
+¹ Footprint figures are order-of-magnitude planning numbers, not
+measurements — they vary with features, message set, and opt level.
+Size your own image with `arm-none-eabi-size` on your build; the RAM
+knobs are enumerated in the
+[Static Pool Inventory](../reference/static-pool-inventory.md).
 
 ## Multi-backend binaries (bridges)
 

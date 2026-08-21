@@ -336,9 +336,14 @@ cargo clippy -- \
     -W clippy::cognitive_complexity
 ```
 
-## WCET Baselines
+## WCET Benchmark Harness (no measurements yet)
 
-Worst-Case Execution Time (WCET) measurements for nros core operations, collected via DWT cycle counting on Cortex-M3.
+A Worst-Case Execution Time (WCET) benchmark harness for nros core
+operations, built around DWT cycle counting on Cortex-M3. **It has
+produced no numbers to date** — every in-tree run is under QEMU, where
+DWT reads zero (see the limitation below), so the tables in this
+section list the benchmark *categories*, not results. Producing real
+baselines needs physical hardware (e.g. STM32F4 @ 168 MHz).
 
 ### Measurement Platform
 
@@ -384,7 +389,7 @@ Worst-Case Execution Time (WCET) measurements for nros core operations, collecte
 
 ### Sanity Bound
 
-All functions are expected to complete within **100,000 cycles** for typical payloads on a Cortex-M3 at any clock rate. This is a conservative upper bound; actual WCET should be well below this:
+The harness asserts a **100,000-cycle** ceiling per function for typical payloads — a design assertion baked into the benchmark, not a measured bound (no measured WCET exists yet; see above). Extract the harness's artifact with `just qemu wcet-artifact`:
 
 - CRC-32 is O(n) in payload size with a single table lookup per byte
 - `SafetyValidator::validate()` is O(1) -- a few comparisons and an increment

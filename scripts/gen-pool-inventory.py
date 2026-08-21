@@ -77,6 +77,14 @@ def crate_of(rel):
     return os.path.dirname(rel)
 
 
+# Any env_usize read at all, literal default or not. The delta between this
+# and the literal patterns is exactly the set of computed-default knobs —
+# the ones issue-0271's failure mode hides (executor arena, zpico batch/frag
+# buffers: the LARGEST consumers). They must appear in the table, not be
+# silently dropped by a literal-only regex.
+KNOB_ANY = re.compile(r'\benv_usize(?:_compat)?\(\s*"([A-Z0-9_]+)"')
+
+
 def scan(files=None):
     """(knobs, pools) — knobs: name -> (default, file, line); pools: list."""
     knobs, pools = {}, []
@@ -98,6 +106,13 @@ def scan(files=None):
                     knobs[name] = (knobs[name][0], knobs[name][1], knobs[name][2], True)
                     continue
                 knobs.setdefault(name, (default, rel, line, False))
+        for m in KNOB_ANY.finditer(text):
+            name = m.group(1)
+            if name not in knobs:
+                line = text[: m.start()].count("\n") + 1
+                # None default = computed expression; render says so rather
+                # than dropping the row.
+                knobs.setdefault(name, (None, rel, line, False))
         for m in POOL_ANNOT.finditer(text):
             expr = m.group(2).replace("\\", " ").strip()
             pools.append((m.group(1), expr, rel, text[: m.start()].count("\n") + 1))
@@ -114,6 +129,8 @@ def pool_bytes(expr, knobs):
         if t.isdigit():
             total *= int(t)
         elif t in knobs:
+            if knobs[t][0] is None:
+                return None, f"knob `{t}` has a computed default"
             total *= knobs[t][0]
         else:
             return None, f"unknown knob `{t}`"
@@ -172,7 +189,8 @@ def render(knobs, pools):
     for name in sorted(knobs):
         default, rel, line, conflict = knobs[name]
         note = " **(conflicting defaults — see below)**" if conflict else ""
-        lines.append(f"| `{name}` | {default} | `{crate_of(rel)}`{note} |")
+        shown = default if default is not None else f"computed — see `{rel}:{line}`"
+        lines.append(f"| `{name}` | {shown} | `{crate_of(rel)}`{note} |")
 
     conflicts = [n for n, v in knobs.items() if v[3]]
     if conflicts:

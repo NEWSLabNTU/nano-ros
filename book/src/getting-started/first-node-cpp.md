@@ -58,44 +58,34 @@ POSIX talkers read the locator + domain from arguments passed to
 `examples/<plat>/cpp/talker/` bake theirs from the
 package.xml `<nano_ros deploy=…/>` tuple.
 
-CMake preamble matches the canonical example at
-[`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt) —
-five `set(...)` lines + per-target link. **`LANGUAGES C CXX`** (not
-`CXX` alone): the per-target register stub the nano-ros add_subdirectory
-emits is a C translation unit, so C must be enabled in this directory
-scope or the link fails.
+The CMakeLists is the **ament shape you already know** — this is the
+complete canonical file at
+[`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt),
+verbatim (RFC-0048: `nano_rosConfig.cmake` at the checkout root makes
+`find_package(nano_ros)` resolve source-side, and the message-package
+Find-stubs make `find_package(std_msgs)` generate bindings on the fly):
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-project(my_talker LANGUAGES C CXX)
+project(cpp_talker LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# `NROS_RMW` is the user-facing cache var (overridable via
-# `-DNROS_RMW=<rmw>`); the example forwards it to `NANO_ROS_RMW`,
-# the var the nano-ros add_subdirectory reads.
-set(NANO_ROS_PLATFORM posix)
-set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into my_talker.")
-set(NANO_ROS_RMW "${NROS_RMW}")
-add_subdirectory(<rel-path-to-nano-ros> nano_ros)
+find_package(nano_ros REQUIRED)
+find_package(std_msgs REQUIRED)
 
-# Generate C++ bindings (LANGUAGE CPP — separate from the C variant).
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces
-                                  LANGUAGE CPP SKIP_INSTALL)
+nano_ros_add_executable(cpp_talker src/main.cpp)
+ament_target_dependencies(cpp_talker std_msgs)
 
-add_executable(my_talker src/main.cpp)
-target_link_libraries(my_talker PRIVATE
-    std_msgs__nano_ros_cpp
-    NanoRos::NanoRosCpp)
-nros_platform_link_app(my_talker)
+install(TARGETS cpp_talker DESTINATION lib/${PROJECT_NAME})
+ament_package()
 ```
 
-`nros_platform_link_app(my_talker)` transitively registers the
-selected RMW backend — on POSIX you do **not** call
-`nano_ros_link_rmw()` explicitly.
+**`LANGUAGES C CXX`** (not `CXX` alone): the per-target register stub
+is a C translation unit, so C must be enabled in this directory scope
+or the link fails. Backend selection is a configure-line cache var
+(`-DNROS_RMW=zenoh|xrce|cyclonedds`), not CMake code.
 
 The C++ entry point is **`int nros_app_main(int argc, char** argv)`**
 (same as C); `<nros/app_main.h>` provides the OS-side `main` stub.
@@ -145,7 +135,9 @@ same `nros::init` call — see the GitHub source for the full pattern.
 
 ```bash
 cd examples/native/cpp/talker
-cmake -B build
+cmake -B build          # with ./activate.sh sourced, nano_ros_ROOT is
+                        # exported; a copy-out passes
+                        # -Dnano_ros_ROOT=<path-to-nano-ros> explicitly
 cmake --build build
 ```
 

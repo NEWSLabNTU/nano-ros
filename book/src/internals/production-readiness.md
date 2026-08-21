@@ -14,9 +14,10 @@ shipping.
 
 ## 1. Real-time metrics (hardware-validated)
 
-The book's quoted poll-WCET / P99-latency numbers come from QEMU.
-DWT cycle counters are best-effort under emulation. **For
-production claims, re-measure on your actual silicon.**
+The book intentionally quotes almost no latency numbers, because the
+in-tree harnesses run under QEMU, where DWT cycle counters read zero
+and wall-clock percentiles track host load. **For production claims,
+measure on your actual silicon.**
 
 - [ ] **End-to-end P99 latency** (publisher → executor callback)
       on your target MCU at its production clock + load. Target:
@@ -190,15 +191,17 @@ explicit mitigations to your project plan rather than treating
 For each section above, count `[x]` boxes as your readiness score.
 Suggested gates:
 
+Sections carry 4–6 boxes each (45 total):
+
 | Score per section | Status |
 |---|---|
-| 8/8 | Production-ready for that axis |
-| 5–7/8 | Pilot deployment OK; close gaps before scale |
-| 3–4/8 | Lab / prototype only |
-| < 3/8 | Block on these items first |
+| All boxes | Production-ready for that axis |
+| Missing one | Pilot deployment OK; close the gap before scale |
+| Missing two | Lab / prototype only |
+| Missing three+ | Block on these items first |
 
-Sum across all 9 sections (§1–9). Below ~50 / 70 you have
-foundational work to do; above ~62 / 70 you're at production
+Sum across all 9 sections (§1–9). Below ~32 / 45 you have
+foundational work to do; above ~40 / 45 you're at production
 quality on every axis where nano-ros can be validated externally.
 
 ## See also
