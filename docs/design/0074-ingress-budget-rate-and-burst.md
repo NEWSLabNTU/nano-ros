@@ -3,7 +3,7 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-08-21
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
@@ -23,8 +23,9 @@ configuration can prevent that.
 This RFC proposes an **ingress declaration** on subscriptions, expressed
 as a **token bucket (rate + burst)** rather than a rate cap, compiling to
 two enforcement points: a **router-side pacing rule** (which is what
-actually saves the device CPU) and a **device-side drain budget** (which
-is what the device can enforce without trusting its deployment).
+actually saves the device CPU) and a **device-side budget on the rx read
+task** (which is what the device can enforce without trusting its
+deployment). Both are measured; neither is blocked.
 
 ## Motivation
 
@@ -127,21 +128,66 @@ Two consequences worth stating plainly:
   of the capped 50-2000. Per-publisher separation needs either publisher
   identity in the rule or per-criticality topics.
 
-## Enforcement point 2 — the device-side drain budget (blocked)
+## Enforcement point 2 — a budget on the read TASK (measured, unblocked)
 
-The device half bounds `_zp_unicast_read`'s inner drain loop, so the read
-task returns and the tiers regain the CPU at a known granularity.
+The device half bounds the **read task's loop** — `_zp_unicast_read_task`,
+which is the loop the image actually executes — pausing after N frames so
+the tiers regain the CPU at a known granularity.
 
-**This cannot be implemented today**, and the reason is recorded as
-issue [#0567](../issues/0567-zpico-rx-cannot-resume-partial-buffer.md):
-that function resets its receive buffer on every call, so a budget that
-returns early *discards* the frames it declined to read. Measured, a cap
-of 4 or 16 frames does improve cadence (stalls 10 → 4/5, missed periods
-1.79% → 0.59/0.85%) while inbound delivery collapses 282 → 10 msg/s and
-chain delivery halves. That is a drop policy, not a budget.
+```c
+if (++frames >= NROS_RX_TASK_BUDGET_FRAMES) { frames = 0; z_sleep_us(rest); }
+```
 
-The prerequisite is a resumable rx path. Until then the device-side half
-is specified but not shippable, and the RFC does not pretend otherwise.
+Two structural properties make this a budget rather than a drop policy,
+and both were checked against the source before it was built:
+
+- **`_z_zbuf_reset` is called once, ABOVE the loop**, not per iteration.
+  Pausing between frames therefore *defers*: the bytes stay in the socket
+  and TCP backpressures the sender.
+- **`_mutex_rx` is held for the task's whole life with no other locker**,
+  so sleeping while holding it blocks nothing in steady state.
+
+Measured on the FreeRTOS mps2-an385 lane, ~2 kHz flood, **six runs per
+cell, interleaved** (`results/issue506_task_budget.md`, eval workspace):
+
+| cell | n | stalls/run | worst | chain % | chain p50 | chain p95 |
+|---|---|---|---|---|---|---|
+| unbounded | 6 | 9.0 | 610 ms | 10.2 | 38 ms | 842 ms |
+| budget 8 | 6 | **0.0** | **21 ms** | 11.6 | 95 ms | 911 ms |
+| budget 32 | 6 | **0.0** | **38 ms** | 12.4 | 38 ms | 892 ms |
+
+12/12 budgeted runs have zero stalls against 6/6 unbounded runs with
+2–13; worst gap separates by an order of magnitude with no overlap and is
+dose-responsive (8 < 32). Chain delivery is flat-to-better, so this is
+not the drop policy; chain p95 is flat across cells, so it is not
+`TCP_WND` either.
+
+**Not claimed:** throughput (per-run rx spans 10–1047 msg/s inside one
+cell) and chain p50 (38/95/38, non-monotonic). Tuning — frames and rest
+interval — is unexplored; the cells above use 1000 µs.
+
+### Correction: the previous blocker was aimed at dead code
+
+Earlier drafts said this half was blocked on issue
+[#0567](../issues/archived/0567-zpico-rx-cannot-resume-partial-buffer.md),
+a resumable rx path, on the strength of a probe that capped
+`_zp_unicast_read`'s inner loop and measured delivery collapsing
+282 → 10 msg/s.
+
+`nm` on an image from that same lane shows `_zp_unicast_read` is **not
+linked** (`_zp_unicast_read_task` is), so the probe capped a function the
+image does not contain, and #0567's fix (`43ddb0ec`) lands in the same
+absent function. The old cells are consistent with that rather than with
+their causal story: caps 16 and 4 were identical on the discriminating
+column, and cap 1 was indistinguishable from unbounded — one binary
+measured three times. That probe's conclusion is therefore unsupported
+rather than wrong, and the blocker it produced never applied to this lane.
+
+Chain/flood **separation** was likewise proposed as a precondition, on
+the expectation that deferring the drain would relocate the harm into
+head-of-line delay. At this load it did not (chain p95 flat). Separation
+is not refuted — the p50 figure that would settle it is unresolved — but
+it is not blocking.
 
 ## Interaction with message priority
 
@@ -188,8 +234,25 @@ left to a follow-up; an env-gated A/B moved chain delivery 13-17% →
 4. **Failure mode.** Reject at resolve time when declared ingress
    exceeds a known capacity, or admit and shed with a counter? Whatever
    sheds must count; silent shedding is how this class of problem hides.
+5. **How the declaration compiles to the task budget.** The measured
+   cells fix frames (8, 32) and rest (1000 µs) by hand. `rate_hz` and
+   `burst` have to map onto that pair against a per-platform drain
+   figure, which is open question 2 by another route.
+6. **Does the budget cost chain latency?** Chain p95 was flat across all
+   three cells, but p50 read 38 / 95 / 38 ms — non-monotonic, so either
+   noise or an effect the current design cannot separate from it. This
+   is the figure that would decide whether chain/flood separation is
+   needed alongside the budget.
 
 ## Changelog
 
 - 2026-08 — initial draft, from the #0506 investigation (trace
   attribution, router pacing probe, drain budget probe).
+- 2026-08-21 — enforcement point 2 rewritten. Its mechanism changes from
+  `_zp_unicast_read`'s inner drain loop to a budget on the read TASK, and
+  it is no longer blocked: `nm` shows the old target is not linked on the
+  lane every measurement came from, so both stated prerequisites (#0567's
+  resumable rx, and chain/flood separation) were derived from mechanisms
+  that were not the one running. The replacement is measured over six
+  interleaved runs per cell — zero stalls in 12/12 budgeted runs,
+  dose-responsive, with chain delivery and p95 intact.
