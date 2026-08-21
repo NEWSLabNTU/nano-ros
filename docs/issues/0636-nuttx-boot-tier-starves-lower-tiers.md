@@ -764,3 +764,45 @@ structural instead of resting on the priority order being right.
 
 Recommend closing on that basis and re-opening option 3 as its own item if a
 consumer needs the stronger guarantee.
+## Second, independent confirmation — 25/25 with a 16x load arm (2026-08-22)
+
+Separate session, separate box from the clean-tree re-measurement above, and
+deliberately the host that PRODUCED the residue rates (8/12, then 9/15) — a
+convergence measured only where it already passed would prove little.
+
+`ce152db1f` diagnoses the C/C++ residue as a harness SHORT READ — the cell
+waited on `nros: tier priority`, the prefix every tier's marker shares, so it
+returned at the first tier to report and killed QEMU. That predicts my
+re-measurement above exactly: whichever tier printed SECOND read as dropped, and
+which one that was flipped when `cd1c0c47d` changed the print order.
+
+Re-measured on the same host and box that produced 8/12 and then 9/15, NuttX
+fixtures rebuilt on the current tree:
+
+| arm | runs | pass | 1-min load |
+| --- | --- | --- | --- |
+| ambient | 15 | **15** | ~2 |
+| + 32 spinners | 10 | **10** | 33.0 |
+| **total** | **25** | **25** | |
+
+Against this host's own last rate (9/15 = 60 %), `P(25/25 | p=0.6) = 2.8e-6`.
+
+The loaded arm is the one that matters, and not as padding: a short read is a
+BUFFERING race, so load is the stressor that should expose it. This host's rate
+moved with load in both previous measurements — which the diagnosis explains and
+which was previously read as evidence of scheduler starvation. 25/25 across a
+16x load range is a different thing from a quiet-host pass.
+
+**So the reader was the residue, and my "the marker MOVED from low to high"
+entry above is better read as its symptom than as a finding.** The swap was real
+and it was the print ORDER changing under a reader that only ever kept the first
+line — not a tier losing its marker. Worth leaving both entries: the swap is
+what made the short read visible, and a reader looking at this later should see
+why an ordering explanation fitted the data and was still wrong.
+
+Not covered here: the FreeRTOS half of `ce152db1f`. Its new
+`sched(TierPriority, FreertosMps2, Cpp|C, Runtime)` cells could not run on this
+host — `just freertos build-fixtures` does not complete in this container, so
+those cells SKIP rather than report. Someone with a working FreeRTOS lane should
+confirm them; nothing here contradicts them.
+
