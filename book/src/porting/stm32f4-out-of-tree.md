@@ -93,15 +93,22 @@ that matter for a bare-metal Cortex-M board with its own stack:
 
 ```toml
 [[board]]
-names            = ["my-stm32f4"]
-platform         = "stm32"
-toolchain        = "stable"
-platform_feature = "platform-bare-metal"
-link_kind        = "none"
-entry_kind       = "board-run"
-net_stack        = "nanoros-owned"
-chip             = "stm32f429"
-board_crate      = "my-stm32f4-board"
+names               = ["my-stm32f4"]
+platform            = "stm32"
+toolchain           = "stable"
+platform_feature    = "platform-bare-metal"
+link_kind           = "none"
+entry_kind          = "board-run"
+supported_netstacks = ["smoltcp"]
+chip                = "stm32f429"
+board_crate         = "my-stm32f4-board"
+
+# entry_kind = "board-run" needs the matching [board.entry] block —
+# copy the one from packages/boards/nros-board-mps2-an385/nros-board.toml
+# and swap the crate name.
+[board.entry]
+crate_name = "my_stm32f4_board"
+signature  = "#[my_stm32f4_board::entry]\nfn main() -> !"
 
 cargo_config = '''
 [build]
@@ -112,8 +119,10 @@ rustflags = ["-C", "link-arg=-Tlink.x"]
 '''
 ```
 
-`net_stack = "nanoros-owned"` is a statement about cost, not a switch: it tells
-the tooling that nothing outside your crate will bring up the link.
+`supported_netstacks` names who brings up the link (here your crate's
+smoltcp glue — nothing outside it). Beware unknown keys: the descriptor
+parser ignores what it does not know rather than erroring, so a typo'd
+key silently does nothing.
 
 ## What you take on
 

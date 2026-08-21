@@ -221,13 +221,17 @@ supported NuttX make path since phase-212 M-F.16 retired the per-example
 `build-fixtures-make` recipe. If you wire a NuttX workspace by hand,
 reproduce the same three steps:
 
-1. **Swap in the nano-ros board defconfig.** Stock NuttX
+1. **Bring the required symbols into your config.** Stock NuttX
    `qemu-armv7a/nsh` ships without `CONFIG_NET=y`, virtio-net, or
-   `TLS_NELEM`. The board defconfig
+   `TLS_NELEM`. If you have **no config of your own**, copy the board
+   defconfig
    `packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`
-   already carries the full networking + TLS stack zenoh-pico
-   needs; copy it to `$NUTTX_DIR/.config` and run
-   `make olddefconfig`.
+   to `$NUTTX_DIR/.config` and run `make olddefconfig`. If you already
+   maintain a vendor defconfig, do NOT clobber it — merge the nano-ros
+   requirements into it instead (`CONFIG_NET=y`, the virtio-net /
+   netdev options, `CONFIG_TLS_NELEM=8`, `CONFIG_LIBCXXTOOLCHAIN=y`,
+   `CONFIG_ALLSYMS=n`; diff the board defconfig against `nsh` for the
+   authoritative list) and re-run `make olddefconfig`.
 2. **Stage the integration shell.** Run
    `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"` to symlink
    `integrations/nuttx/` into `$NUTTX_APPS_DIR/external/` (add

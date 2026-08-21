@@ -12,6 +12,12 @@ ethernet). For the ESP-IDF component path (C / C++ apps), see
 > (`nros setup --tool esp32-qemu`, source-built) and — for zenoh — a
 > ROS 2 install to provide the router.
 
+> **Time budget.** This chapter is the longest embedded setup in the
+> book (~a dozen steps, two source builds, a nightly toolchain): plan
+> an afternoon, not ten minutes. If you have not had a first win yet,
+> take the [First Project](first-project.md) host flow first — it is
+> the ten-minute one — and come back.
+
 ## Setup
 
 Build the in-tree `nros` CLI (Phase 218):

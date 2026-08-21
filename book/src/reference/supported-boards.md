@@ -2,11 +2,16 @@
 
 Procurement-grade compatibility matrix. Each row lists a real
 vendor + board model and reports nano-ros's status on it. Rows
-marked **Tested** boot in CI; **Ready** rows compile and run but
-have no in-CI gate yet; **Build-only** rows compile but cannot be
-booted by any CI lane (hardware or a license-gated model is
-required); **Untested** rows compile per the architecture support
-but no one has reported booting nano-ros on them.
+marked **Tested** boot in *a* CI lane — note this maps to the tier
+registry's tier 1 (in `just ci`) **or** tier 2 (nightly/matrix lanes
+only): MPS2-AN385, the RISC-V64 ThreadX `virt` machine, and ESP32-C3
+QEMU are tier 2, so "Tested" there means the nightly matrix, not every
+push. **Ready** rows compile and run but have no in-CI gate yet;
+**Build-only** rows compile but cannot be booted by any CI lane
+(hardware or a license-gated model is required); **Untested** rows
+compile per the architecture support but no one has reported booting
+nano-ros on them. Per-crate tier truth is the generated
+[Board Support Tiers](board-support-tiers.md).
 
 > **For in-tree board packages, see the generated
 > [Board Support Tiers](board-support-tiers.md)** — it is checked against the test

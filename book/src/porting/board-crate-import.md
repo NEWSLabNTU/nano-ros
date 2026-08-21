@@ -32,7 +32,9 @@ manifest:
   projects:
     - name: nano-ros
       remote: newslab
-      revision: main
+      revision: nros-v0.5.0    # pin a release tag — a moving branch
+                                 # unships your tested pairing (see
+                                 # installation.md "Pinning a version")
       path: deps/nano-ros
       import: false
   self:

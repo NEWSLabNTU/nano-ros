@@ -127,9 +127,12 @@ tracked under Phase 210 (ROS-convention codegen).
 
 ## What's out of scope (will need code adapt or a follow-up phase)
 
-- **`rclcpp_lifecycle::LifecycleNode`** — Phase 209.H (deferred). Until that
-  lands, replace `LifecycleNode` with `Node` + manual configure/activate
-  bookkeeping.
+- **`rclcpp_lifecycle::LifecycleNode`** — the compat shim does not map it.
+  But nano-ros ships its own REP-2002 lifecycle surface (`nros/lifecycle.h`
+  in C, `lifecycle-services` feature, state machine + lifecycle services —
+  see the [C API reference](../reference/c-api.md) and
+  `examples/native/rust/lifecycle-node/`), so port to that rather than
+  hand-rolling configure/activate bookkeeping on a plain `Node`.
 - **Yaml-loaded parameters.** `declare_parameter<T>("name", default)` reads
   from a launch yaml in stock ROS 2. nano-ros has no runtime yaml loader —
   parameter *initials* are compile-baked from the launch XML's

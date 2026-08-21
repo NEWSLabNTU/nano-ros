@@ -92,6 +92,7 @@ Zephyr deployment uses `west`:
 
 ```bash
 nros setup zephyr --rmw zenoh
+just zephyr setup                   # creates zephyr-workspace/ (west init + SDK)
 source zephyr-workspace/env.sh      # in-tree workspace layout
 west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 ./build/zephyr/zephyr.exe
@@ -109,7 +110,9 @@ ESP32 deployment uses the Espressif toolchain and flash tool.
 > **Contributors:** the in-tree ESP32 build/run lanes are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#esp32).
 
-For physical boards, use the platform guide's `espflash` path.
+For physical boards: `espflash flash --monitor <elf>` (the QEMU
+chapter's `espflash save-image` packs an emulator image instead —
+real-hardware bring-up is not yet a documented end-to-end flow).
 
 ## Verify
 

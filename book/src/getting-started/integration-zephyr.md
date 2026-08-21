@@ -223,9 +223,11 @@ manifest:
       import: true               # pulls Zephyr's own modules
     - name: nano-ros
       remote: nano-ros
-      revision: main             # required — repo's default branch is
-                                 # `main`; west defaults to `master`
-                                 # otherwise and the fetch fails.
+      revision: nros-v0.5.0      # pin a release tag (west needs SOME
+                                 # revision — its default `master` does
+                                 # not exist here). `main` works for
+                                 # tracking tip, but a tag keeps your
+                                 # build reproducible.
       path: modules/nano-ros
       import:
         file: zephyr/west.yml    # pulls nano-ros's transport deps

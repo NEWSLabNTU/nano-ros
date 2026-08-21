@@ -32,8 +32,8 @@ set(NANO_ROS_PLATFORM "posix" CACHE STRING
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
     posix freertos nuttx threadx esp_idf
     freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
-set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble or iron")
-set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron)
+set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble, iron, or jazzy")
+set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron jazzy)
 
 # phase-261 W5 — declared capability axes, the C/C++ projection of `system.toml`
 # `[system].features = [...]` (RFC-0004). A user sets this BEFORE pulling nano-ros
