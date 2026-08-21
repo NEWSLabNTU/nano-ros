@@ -185,17 +185,16 @@ phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstre
 reproducing. See `0741-*`. (2026-08-21)
 
 **#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing.
-Defect 1 (no recipe built their fixtures — #405's shape) is FIXED. Defect 2 reproduces on one host and not
-another, and the LAYER is now pinned: Cyclone's `rhc,trace` shows the sample written, stored, condition-
-updated and TAKEN (`take: returning 1`), then polled empty — every DDS layer works. A probe compiled into
-the listener's callback never prints while the talker's timer callback in the SAME executor prints
-throughout, so the window is between `dds_take` returning 1 and the arena trampoline. Two earlier readings
-withdrawn: it is not the #0623/#0636 family (the entry is `run_components`, ONE task, two callbacks) and the
-app does NOT fail to take. **The cross-host cost was not the environment** (OS, ROS, cyclonedds 0.10.5,
-libddsc path, `ROS_LOCALHOST_ONLY`, interface, domain occupancy and build state all ruled out by
-measurement) **but a callback that dropped samples silently** — indistinguishable from a message that never
-arrived, so every layer below had to be cleared by hand first. Gated now: `check-no-silent-sample-drop`,
-which found 5 more sites the same day. See `0737-*`. (2026-08-21)
+Defect 1 (no recipe built their fixtures — #405's shape) FIXED. Defect 2 reproduces on one host, not another,
+and is now instrumented on both sides with sink-independent probes: in 8 s the executor enters
+`sub_buffered_raw_c_try_process` **759** times, Cyclone's take path hands back a **valid** sample once per
+publish into a 1024-byte buffer (no `BUFFER_TOO_SMALL`, no invalid-sample reject), and execution reaches the
+`match &entry.buffer` on the NEXT line **0** times — on a single compilation. The duplicate-`nros-node`
+reading (#0734/#0616 shape) was the strongest explanation and is REFUTED: one crate disambiguator,
+`Cs14FYpzIjoeU_9nros_node`. Earlier readings also withdrawn: not the #0623/#0636 family (the entry is
+`run_components`, one task) and the app does not fail to take. Next probe named in the issue. The cross-host
+cost came from a callback that dropped samples silently — now gated by `check-no-silent-sample-drop`, which
+found 5 more sites. See `0737-*`. (2026-08-21)
 
 **#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
 fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7

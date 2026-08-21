@@ -308,3 +308,79 @@ The rule it enforces is not "handle the error" — dropping is often right. It i
 *say so*. These are EXAMPLES, which makes it worse twice: users copy them, and
 tests grep them. A silent arm in code a test reads for its verdict is the same
 defect as a test reporting PASS on an unmet precondition, one level out.
+
+## 2026-08-21, instrumented pass — the executor enters dispatch 759 times and never reaches its own match
+
+Probes compiled into both sides, written with `write(2, …)` and
+`std::fprintf(stderr, …)` so nothing depends on a log sink being installed
+(`nros_log` records raised before `init` go to the early ring — a first attempt
+with `nros_error!` printed nothing and proved nothing). Streams captured
+separately to files, no pipe:
+
+| probe | site | count in 8 s |
+| --- | --- | --- |
+| `try_process ENTER` | first line of `sub_buffered_raw_c_try_process` | **759** |
+| `took 1 valid sample(s), buf_len=1024` | `subscription_try_recv_raw`, after `dds_take` | **7** |
+| `drain TRIPLE` / `triple publish` / `drained` | inside `drain_into_buffer_raw_c` | **0** |
+| `triple acquire OK` / `triple acquire NONE` | the `match &entry.buffer` after the drain | **0** |
+| `Received:` | the listener callback | **0** |
+
+So, in order:
+
+* the executor DOES dispatch this subscription — 759 times, ~100/s, exactly
+  what a 10 ms spin gives;
+* Cyclone's take path IS reached and hands back a **valid** sample once per
+  publish, into a 1024-byte buffer, with no `BUFFER_TOO_SMALL` and no
+  invalid-sample rejection;
+* and between those two facts, the ONLY statement in `try_process` —
+  `drain_into_buffer_raw_c(entry)` — runs without any of its probes firing, and
+  execution never reaches the `match` on the next line, which would print on
+  BOTH arms.
+
+That last row is the one to explain. `try_process` cannot enter 759 times, call
+into the drain (7 takes prove the drain body runs), and never reach the
+statement after it.
+
+**Hypothesis, not a conclusion: two compilations of `nros-node` in one image.**
+`strings` on the binary carries the `try_process ENTER` and `triple acquire
+OK/NONE` literals but NOT any of the literals added inside
+`drain_into_buffer_raw_c`, while `nm -C` shows exactly one
+`sub_buffered_raw_c_try_process` symbol and no symbol for the drain (inlined).
+A single compilation cannot produce that set. Issue #0734 records this exact
+shape one crate over — `nros-rmw-zenoh` compiled TWICE into a C++ image under
+different `-C metadata`, with the linker allocating both — and issue #0616
+records the two-workspace-roots version of the same trap. If the executor
+running here comes from one unit and the entry's dispatch table from another,
+every observation above is consistent at once, including host-dependence: which
+copy wins is a link-order property, not a source property.
+
+**Killed in one step, same session.** Dumped every mangled `nros_node` symbol
+in the image and counted crate disambiguators:
+
+```
+$ nm <entry> | grep -oE "Cs[A-Za-z0-9]+_9nros_node" | sort -u
+Cs14FYpzIjoeU_9nros_node          # exactly one
+$ nm -C <entry> | grep -c "nros_node::executor::arena"
+64
+```
+
+One disambiguator, one `sub_buffered_raw_c_try_process`
+(`_RNvNtNtCs14FYpzIjoeU_9nros_node8executor5arena30sub_buffered_raw_c_try_process`).
+There is a single `nros-node` in this image, so the duplicate-compilation
+reading is wrong. Recorded because it was the strongest available explanation
+and it cost one command to refute — the #0734/#0616 shape is common enough here
+that the next reader would have proposed it too.
+
+**So the contradiction stands and is the whole remaining question.** 759 entries
+into `try_process`, 7 takes through the drain it calls, and zero arrivals at the
+`match` on the line after — with a single compilation of the function.
+
+**Next probe, and it must not be inlinable.** Mark the drain `#[inline(never)]`
+and print the `entry.buffer` discriminant plus the address of `entry` at both
+ENTER and after the drain returns. The literals added inside the drain did not
+survive into `strings` at all while `try_process`'s own did, which is either
+dead-code elimination inside an inlined callee or evidence that `entry` is not
+the record the registration wrote — and those two are distinguishable by the
+address alone.
+
+**Reverted:** all probes. Nothing from this pass is committed as code.
