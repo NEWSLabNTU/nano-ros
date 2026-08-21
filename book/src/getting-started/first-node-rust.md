@@ -49,11 +49,12 @@ via a path dependency. Three files matter:
 
 ```text
 examples/native/rust/talker/
-├── Cargo.toml          # path dep on `nros` + `nros-rmw-zenoh`
+├── Cargo.toml          # registry-style deps + `nros sync` patch table
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
 ├── generated/          # auto-generated message bindings (gitignored)
 └── src/
-    └── main.rs         # 60-line talker
+    ├── main.rs         # one line: nros::main!(spin = "forever")
+    └── lib.rs          # the ~65-line talker node body
 ```
 
 POSIX talkers read the locator / domain from environment variables
@@ -91,13 +92,14 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
 
 [dependencies]
 nros = { version = "*", default-features = false,
-         features = ["std", "rmw-cffi", "ros-humble"] }
+         features = ["std", "alloc", "env", "rmw-cffi", "macros"] }
 nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 nros-board-linux = { version = "*", default-features = false }
 nros-rmw-zenoh = { version = "*", default-features = false,
                    features = ["std", "platform-posix", "ros-humble"],
                    optional = true }
-std_msgs = { version = "*", default-features = false }
+# The ONE non-registry dep: your own generated message crate, by path.
+std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"
 env_logger = "0.11"
 
@@ -160,10 +162,6 @@ ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 cd examples/native/rust/talker
 RUST_LOG=info cargo run
 # Expected output (on stderr):
-#   [INFO  talker] nros Native Talker
-#   [INFO  talker] =========================================
-#   [INFO  talker] Node created: talker
-#   [INFO  talker] Publisher created for topic: /chatter
 #   [INFO  talker] Publishing: 'Hello World: 1'
 #   [INFO  talker] Publishing: 'Hello World: 2'
 #   …
@@ -198,8 +196,8 @@ seconds:
    silent even when it's working.
 2. Confirm the router is running (terminal 1). Without it, the talker
    blocks on `Executor::open` indefinitely.
-3. Re-run with `RUST_LOG=debug cargo run` and look for "Failed to
-   open session" — usually a wrong locator or wrong port.
+3. Re-run with `RUST_LOG=debug cargo run` and look for "RMW session
+   open failed" — usually a wrong locator or wrong port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source

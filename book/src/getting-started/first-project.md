@@ -49,12 +49,16 @@ from the nano-ros checkout, `-DNANO_ROS_ROOT` can be omitted — the
 
 ```text
 Published: 0
+Received: 0
 Published: 1
+Received: 1
 Published: 2
+Received: 2
 ```
 
 One process, two nodes: the talker publishes `std_msgs/Int32` on
-`/chatter` every 500 ms and the listener receives it, exactly as a ROS 2
+`/chatter` every 500 ms and the listener prints each one it receives —
+the interleaved `Received:` lines are your proof of delivery — exactly as a ROS 2
 composition container would run two composable nodes. `Ctrl-C` stops it.
 
 Why nothing else needed to be running: the default RMW is
@@ -70,14 +74,18 @@ one-word edit — [Switching RMW in Config](../user-guide/rmw-switching.md).
 nros new my_rust_robot --workspace --lang rust
 cd my_rust_robot
 NROS_REPO_DIR=<path-to-nano-ros> nros sync   # Rust-side codegen; once per checkout location
-cargo run
+RUST_LOG=info cargo run -p robot_entry
 ```
 
 ```text
-[INFO] nros: session open
-[INFO] Publishing: 0
-[INFO] I heard: 0
+[INFO  talker_pkg] Publishing: 0
+[INFO  listener_pkg] I heard: 0
+[INFO  talker_pkg] Publishing: 1
 ```
+
+(The workspace root is a virtual manifest — `cargo run` alone has no
+default binary, so name the entry package with `-p robot_entry`. The
+Rust talker ticks at 1 s.)
 
 Same workspace shape, same `system.toml`, same launch file — only the
 node implementations and the build tool differ. The extra `nros sync`

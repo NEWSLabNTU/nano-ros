@@ -99,6 +99,8 @@ inside CMake.
 
 ## Next
 
+- The Quick Start continues: [Your own message
+  package](your-own-msg-package.md)
 - Add a second talker or your own node: [Node packages](workspace-node-pkgs.md)
 - Point it at real hardware: [How Integration Works](how-integration-works.md)
 - The full role reference: [Bringup packages](workspace-bringup.md) ·

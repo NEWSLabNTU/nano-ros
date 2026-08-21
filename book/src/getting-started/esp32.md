@@ -55,7 +55,8 @@ Each example is a standalone Cargo package targeting
 ```text
 examples/qemu-esp32-baremetal/rust/talker/
 ├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-esp32-baremetal]
-├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
+├── .cargo/                    # config.toml + nros-board.toml
+│                              # (target = riscv32imc-unknown-none-elf lives in nros-board.toml)
 ├── package.xml
 ├── generated/                 # codegen output — build.rs runs
 │                              #   `nros generate-rust` on first
@@ -155,8 +156,8 @@ If no `Publishing:` line:
 
 1. Wrong locator → talker logs `zenoh open failed` and retries.
    Confirm the router is reachable on the host IP (`10.0.2.2:9800`).
-2. Confirm `.cargo/config.toml` target is
-   `riscv32imc-unknown-none-elf` (ESP32-C3). The tutorial does not
+2. Confirm `.cargo/nros-board.toml` sets `target =
+   "riscv32imc-unknown-none-elf"` (ESP32-C3). The tutorial does not
    support ESP32-S3 (Xtensa) yet.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 

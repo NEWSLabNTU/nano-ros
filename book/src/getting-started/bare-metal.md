@@ -38,8 +38,9 @@ nros setup qemu-arm-baremetal --rmw zenoh
 ```text
 examples/qemu-arm-baremetal/rust/talker/
 ├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-mps2-an385]
-├── .cargo/config.toml         # target = thumbv7m-none-eabi
-│                              # runner = qemu-system-arm ... -kernel
+├── .cargo/                    # config.toml + nros-board.toml
+│                              # (nros-board.toml carries target = thumbv7m-none-eabi
+│                              #  and the qemu-system-arm ... -kernel runner)
 ├── package.xml
 ├── generated/                 # codegen output — build.rs runs
 │                              #   `nros generate-rust` on first

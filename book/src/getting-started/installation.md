@@ -25,19 +25,31 @@ sudo apt-get install -y git curl ca-certificates build-essential \
 
 ```sh probe=10 distro=fedora
 sudo dnf install -y git curl ca-certificates gcc gcc-c++ make \
-    cmake pkgconf-pkg-config python3 python3-devel zstd
+    cmake pkgconf-pkg-config python3 python3-devel python3-pip zstd
+```
+
+```sh
+# Fedora ships no rosidl packages — install the codegen Python deps via pip:
+pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 ```
 
 **Arch:**
 
 ```sh probe=10 distro=arch
-sudo pacman -S --needed git curl base-devel cmake python zstd
+sudo pacman -S --needed git curl base-devel cmake python python-pip zstd
+```
+
+```sh
+# Arch ships no rosidl packages — install the codegen Python deps
+# (use a venv or pipx if your Python is externally managed):
+pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 ```
 
 (`base-devel` is a package *group*, and it covers `pkg-config`;
 `ca-certificates` ships with the base system.)
 
-**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd`.
+**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd`,
+then `pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML`.
 
 (`cmake` builds the C/C++ quick start and every workspace root; `zstd`
 unpacks the prebuilt SDK assets `nros setup` fetches; `python3-dev` is
@@ -315,8 +327,11 @@ source ./activate.fish        # fish, one-shot per shell
 ```
 
 The activate file also sources `/opt/ros/humble/setup.bash` if
-present (required by `nros generate-rust` + cyclonedds codegen +
-rmw_zenoh interop tests) and exports `NROS_REPO_DIR`.
+present (used by the rmw_zenoh interop tests, and it lets codegen
+resolve message packages from the ament index; building with any RMW —
+Cyclone included — does NOT require ROS 2, only the pip-installable
+`rosidl_adapter` Python packages from the prerequisites) and exports
+`NROS_REPO_DIR`.
 
 ### 3. Provision a board (+ RMW)
 
@@ -496,6 +511,8 @@ for the one-page rewrite.
 
 ## Next Steps
 
+- [First Project](./first-project.md) — the Quick Start continues here:
+  scaffold a two-node workspace and run it (no ROS 2 needed)
 - [First Node — Rust](./first-node-rust.md) — build + run a Rust talker on Linux
 - [First Node — C](./first-node-c.md) — build + run a C talker on Linux
 - [First Node — C++](./first-node-cpp.md) — build + run a C++ talker on Linux

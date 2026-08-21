@@ -173,11 +173,10 @@ run `direnv allow` once after clone, or set the env explicitly
 
 ## B. Binary runs but no output
 
-### B1. Rust: `Failed to open session: Transport(ConnectionFailed)`
+### B1. Rust: `RMW session open failed — Transport(ConnectionFailed)`
 
 ```
-thread 'main' panicked at examples/native/rust/talker/src/lib.rs:96:58:
-Failed to open session: Transport(ConnectionFailed)
+[ERROR nros] RMW session open failed — Transport(ConnectionFailed)
 ```
 
 The zenoh router isn't running, or isn't reachable on the locator the
@@ -326,14 +325,13 @@ A correctly-running Rust Linux talker
 stderr (with `RUST_LOG=info`):
 
 ```text
-[INFO  talker] nros Native Talker
-[INFO  talker] =========================================
-[INFO  talker] Node created: talker
-[INFO  talker] Publisher created for topic: /chatter
 [INFO  talker] Publishing: 'Hello World: 1'
 [INFO  talker] Publishing: 'Hello World: 2'
 [INFO  talker] Publishing: 'Hello World: 3'
 ```
+
+(That is the full expected output — the talker logs one line per
+publish, nothing else.)
 
 A correctly-running C talker (`examples/native/c/talker`) prints
 on stdout:

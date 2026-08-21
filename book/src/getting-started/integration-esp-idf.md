@@ -67,17 +67,29 @@ After `idf.py menuconfig`:
 
 ```
 Component config → nano-ros
-    RMW backend          (zenoh)        zenoh | xrce | cyclonedds
+    Bringup package name (demo_bringup)
+    ROS domain ID        (0)
+    RMW backend          (xrce)         xrce | zenoh
     ROS 2 edition        (humble)       humble | iron | jazzy
 ```
 
-The nano-ros component itself exposes only those two knobs.
+Four knobs. The default RMW is **XRCE** (CycloneDDS is intentionally
+absent on ESP — the Kconfig says so). `NROS_BRINGUP_NAME` drives the
+configure-time `nros codegen-system` step, so it must name a bringup
+package that exists in your workspace — a first build with the default
+`demo_bringup` fails if you have none.
 **Wi-Fi credentials + zenoh locator are NOT in this Kconfig** —
 provide them via your app's own `Kconfig.projbuild` (Espressif's
 standard pattern) or via environment variables, then pass them to
 `nros::init(locator, domain_id)` at startup.
 
 ## Build
+
+> **Honesty note:** a complete reference app (Wi-Fi + locator wiring on
+> top of the component) is not in-tree yet — the component shell builds
+> and boots, but you author the app glue. For a worked end-to-end flow
+> today, start with the [QEMU esp-hal chapter](./esp32.md) and come back
+> here to embed into your IDF project.
 
 ```bash
 cd my_idf_app
@@ -108,8 +120,9 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 **Contributors (in-tree checkout):** for the QEMU ESP32 testing path
-see the `just esp_idf` recipes — they boot the IDF binary in
-`qemu-system-xtensa` via Espressif's patched QEMU.
+see `just esp_idf test-c-port` — it boots the `tests/esp-idf-smoke`
+C-port project on `qemu-system-riscv32` (esp32c3 default) via
+Espressif's patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by
@@ -117,13 +130,13 @@ see the `just esp_idf` recipes — they boot the IDF binary in
 — Rust + C + C++ talkers all start the count at 1, matching the
 official ROS 2 demo talker. If no `Publishing:` line:
 
-1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
-   must carry SSID + password.
-2. Wrong locator — confirm host running `zenohd` is on the same
-   Wi-Fi subnet (or routable to it). NAT will block discovery.
+1. Wi-Fi creds — your app's own Kconfig (nano-ros's submenu does not
+   carry them; see Configure above).
+2. Wrong locator — confirm the host running the router/agent is on the
+   same Wi-Fi subnet (or routable to it). NAT will block discovery.
 3. `idf.py menuconfig` shows the `Component config → nano-ros` submenu
    (the component is wired) and `CONFIG_NROS_RMW` is set to a backend
-   name (`zenoh`/`xrce`/`cyclonedds`). There is no separate
+   name (`xrce`/`zenoh`). There is no separate
    `CONFIG_NROS_ENABLED` toggle on ESP-IDF; the component's presence
    in `main/idf_component.yml` is the on-switch.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).

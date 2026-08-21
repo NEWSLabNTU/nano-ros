@@ -11,6 +11,9 @@
 [workspace]
 resolver = "2"
 members = ["src/talker_pkg", "src/listener_pkg", "src/robot_entry"]
+# Lets a bare `cargo run` / `cargo build` act on the entry binary — the
+# root is a virtual manifest, so without this cargo has no default target.
+default-members = ["src/robot_entry"]
 # `demo_bringup` is declarative (no Cargo.toml) and is NOT a member.
 # The pkg-index walks `package.xml` anywhere under the workspace root.
 

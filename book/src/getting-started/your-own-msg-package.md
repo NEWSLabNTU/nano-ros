@@ -193,7 +193,7 @@ Find-stub forwarding `find_package(my_msgs)` → `my_msgs::my_msgs`.
 |---|---|---|
 | 1 | `NROS_INTERFACE_SEARCH_PATH` | Colon/semicolon-separated colcon-`src/`-style roots; immediate subdirs with `package.xml` are candidates. |
 | 2 | `AMENT_PREFIX_PATH` | The standard ROS install-prefix layout (`<prefix>/share/<pkg>/{msg,srv,action}/`). |
-| 3 | Bundled | `<nano-ros>/packages/interfaces/<pkg>/` + `<nano-ros>/share/nano-ros/interfaces/<pkg>/`. |
+| 3 | Bundled | `<nano-ros>/packages/cli/interfaces/<pkg>/` (in-tree bundled definitions). |
 
 Shadowing — a workspace `my_msgs` and an AMENT `my_msgs` resolve to the
 workspace one, with a `message(STATUS ...)` line noting the shadow.
@@ -247,7 +247,7 @@ The canonical smoke proof for the Layer 1 > Layer 2 case ships at
 a workspace `std_msgs` carrying a `Marker.msg` shadows the
 AMENT-installed `std_msgs`. The fixture's `README.md` walks through
 the `cmake` + `nm` verification. A regression test
-(`packages/testing/nros-tests/tests/phase210_f4_shadowing.rs`)
+(`packages/testing/nros-tests/tests/workspace_shadowing.rs`)
 re-runs the same proof in CI when AMENT is sourced.
 
 ## Reference fixture
@@ -255,3 +255,10 @@ re-runs the same proof in CI when AMENT is sourced.
 [`examples/templates/local-msg-package/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/local-msg-package)
 ships the exact pattern above end-to-end (two workspace msg pkgs with a
 dep between them, plus a consumer node). Use it as a copy-out template.
+
+## Next
+
+- Something broke on the way here? [Troubleshooting — First 10
+  Minutes](./troubleshooting-first-10-min.md).
+- Single-node deep dive: [First Node — Rust](./first-node-rust.md).
+- Grow the workspace: [Node packages](workspace-node-pkgs.md).
