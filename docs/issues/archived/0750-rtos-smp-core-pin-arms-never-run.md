@@ -1,7 +1,7 @@
 ---
 id: 750
 title: "the NuttX / FreeRTOS / ThreadX core-pin arms compile but have never RUN — each blocked on a different thing, and only one is close"
-status: open
+status: wontfix
 type: limitation
 area: testing
 related: [issue-0260, issue-0743, issue-0655, phase-356, phase-296]
@@ -250,3 +250,85 @@ control never ran because rebuilding arm short-circuited on B's snapshot key.
 **Order of work: build the SMP example image, boot it by hand, confirm the
 `running_on=1` line appears, THEN write the row and the cell.** A cell asserting
 a marker from an image nobody has seen run is a test written against a hope.
+
+## Closed by DEMAND, not by effort (2026-08-22)
+
+The design above is sound and I am not going to build it. The question that
+settles it is one nobody asked while the plan was being drawn: **which shipped
+device needs this?**
+
+### The census
+
+197 Runtime cells in `matrix::CELLS`:
+
+| platform | Runtime cells | what it actually is |
+| --- | --- | --- |
+| Linux | 73 | host |
+| ZephyrNativeSim | 44 | host simulator |
+| ThreadxLinux | 21 | host simulator — not a device |
+| FreertosMps2 | 19 | QEMU Cortex-M3, single core |
+| NuttxArm | 18 | QEMU Cortex-A7 |
+| ThreadxRiscv64 | 10 | QEMU |
+| NuttxRiscv | 4 | QEMU |
+| ZephyrQemuCortexM | 3 | QEMU |
+| FreertosPosix / Esp32Qemu / QemuBaremetal | 2 / 2 / 1 | |
+| **Fvp** | **0** | **Cortex-R52 SMP — the board the reference consumer names** |
+| Px4 | 0 | CarveOut |
+
+The inversion is the finding. `just/zephyr-setup.just` says phase-292 exists to
+prove "the ASI reference consumer's exact shape in-tree —
+`nano_ros_use_board(fvp-aemv8r-smp)`". That is an SMP Cortex-R52 board, the
+architecture `nros-board-s32z270-freertos` targets in real silicon. It carries
+ZERO Runtime cells. A host simulator carries 21.
+
+### Why NuttX SMP is the wrong place to spend
+
+There is no multi-core NuttX device in this tree or in the consumer.
+`nros-board-nuttx-qemu` is a Cortex-A7 under QEMU, so an SMP cell there asserts
+multi-core placement on a kernel nobody deploys multi-core, via `-smp 2` on an
+emulator.
+
+And the cost recurs. The CI tiers are COMPUTED covers, not hand-assigned lists:
+tier 2 is 1-wise so every platform appears in it, and tier-2-nightly runs the
+realtime-dim set in full. A NuttX SMP cell therefore buys a kernel reconfigure
+on every nuttx lane run plus a QEMU boot every nightly, permanently — to prove a
+property already proven once, on Zephyr a53, in a cell that runs today.
+
+Coverage is not free and it is not neutral. Every cell is a claim someone
+maintains, reruns, and debugs when it flakes; a cell that no device demands is
+a standing tax with no payer.
+
+### Disposition, per RTOS
+
+The Acceptance above asked for either a placement-asserting cell on a genuinely
+multi-core image, or a recorded specific reason there cannot be one. All three
+now have the second:
+
+* **NuttX** — WONTFIX by demand. No multi-core NuttX target exists here. If one
+  ever ships, the design section above is the plan and B has already landed the
+  part that makes it safe.
+* **FreeRTOS** — blocked by port availability. `ThirdParty/GCC/Posix/port.c` has
+  zero `configNUMBER_OF_CORES` and none of the SMP hooks; only the RP2040
+  (hardware) port has them. Not an oversight, an absence.
+* **ThreadX** — needs a Cortex-A5/A9 SMP board bring-up, and no multi-core
+  ThreadX device is in scope either. Same demand answer as NuttX.
+
+### What stays, and why
+
+* **B (`22e511442`) stays.** It is a correctness fix in its own right: it closed
+  a silent split where `snapshot_root()` honoured `$NUTTX_EXPORT_DIR` and
+  `nuttx_include_root()` did not, so one image could link SMP libs against
+  uniprocessor headers. Any second NuttX config needs it, SMP or not.
+* **The `arm-smp` defconfig and `build-fixtures-arm-smp` stay**, opt-in. Nothing
+  chains them — `build-fixtures` calls arm and riscv only — so they cost nothing
+  standing, and they are how B was demonstrated: three snapshots coexisting with
+  distinct keys is a claim someone can re-run.
+* **The board-neutral `CORE_PIN_OBSERVED_CPU1`** stays: the rename is right
+  regardless, since two boards print that literal.
+
+### If SMP coverage should grow, it grows toward R52
+
+Not NuttX. The demand is `fvp-aemv8r-smp` / S32Z270, and the obstacle there is
+that FVP is licence-gated, which is why it bakes nothing. That is a CI-runner
+and procurement question, not a test-design one, and no amount of cell authoring
+substitutes for it.
