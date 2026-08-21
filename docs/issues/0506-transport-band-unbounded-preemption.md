@@ -878,3 +878,74 @@ The experiment that would settle B is also now well-posed, which it was not
 before: run the task-level budget with the chain and the flood on separate
 sessions, and compare chain p50/p95 against the 1xMSS cell. That needs an image
 plus the eval workspace's 3-phase harness, not a new instrument.
+
+## Option B MEASURED 2026-08-21 — it works, and my own recommendation above was wrong
+
+The design options section recommended "D now, B+C as follow-up", on the
+reasoning that B without C would relocate the harm into head-of-line delay.
+**Measured, that does not happen**, and B alone removes the harm this issue was
+filed about.
+
+Full write-up and raw numbers: `results/issue506_task_budget.md` in the
+evaluation workspace (`15e7f2a`). Method: FreeRTOS mps2-an385 QEMU icount,
+3-phase demo, ~2 kHz flood, **six runs per cell, interleaved A/B/C** so host
+drift cannot masquerade as a cell effect; metrics computed with
+`analyze_506.py`'s own `cell_stats`, so they are comparable to every other cell
+recorded here.
+
+| cell | n | stalls/run | worst | rx/s med | chain % | chain p50 | chain p95 |
+|---|---|---|---|---|---|---|---|
+| unbounded | 6 | 9.0 | 610 ms | 249 | 10.2 | 38 ms | 842 ms |
+| budget 8 | 6 | **0.0** | **21 ms** | 899 | 11.6 | 95 ms | 911 ms |
+| budget 32 | 6 | **0.0** | **38 ms** | 386 | 12.4 | 38 ms | 892 ms |
+
+```
+unbounded  stalls [10, 8, 11, 13, 2, 10]  worst [411, 346, 330, 610, 308, 511]
+budget 8   stalls [ 0, 0,  0,  0, 0,  0]  worst [ 16,  19,  20,  16,  16,  21]
+budget 32  stalls [ 0, 0,  0,  0, 0,  0]  worst [ 34,  26,  26,  38,  29,  38]
+```
+
+### What the numbers support
+
+* **The starvation is gone.** 12/12 budgeted runs have zero stalls against 6/6
+  unbounded runs with 2-13. No overlap, and worst-gap is tight WITHIN each cell
+  (16-21, 26-38) unlike every throughput figure this harness produces.
+* **Dose-response.** budget 8 < budget 32 on worst gap. The failed inner-loop
+  probe could not produce this, because its caps all folded to one binary.
+* **Not the drop policy.** Chain delivery flat-to-better (10.2 -> 11.6/12.4 %),
+  against the inner-loop cap's halving (13.2 -> 5.7 %). That follows from the
+  structural fact checked before building: `_z_zbuf_reset` runs ONCE above the
+  loop, so a pause defers rather than discards, and TCP backpressures the sender.
+* **Not TCP_WND either.** Chain p95 is flat across cells (842/911/892 ms);
+  1xMSS bought its cadence at chain p50 446 ms.
+
+### What is NOT claimed
+
+Throughput — per-run rx has spanned 10-1047 msg/s inside a single cell, so the
+favourable medians mean nothing at this sample size. And chain p50 (38 / 95 /
+38) is non-monotonic: budget 8's 95 ms is either noise or an effect this design
+cannot separate from it. **That is precisely the number that would justify
+session separation**, so C is not refuted — it is unmeasured, and no longer
+blocking.
+
+### Consequence for RFC-0074
+
+Enforcement point 2 has now had two prerequisites removed by measurement rather
+than by argument:
+
+1. **Not #0567.** Its fix (`43ddb0ec`) is in `_zp_unicast_read`, absent from the
+   image; the RFC's stated blocker never applied to this lane.
+2. **Not separation (C), on this evidence.** The head-of-line cost that made C a
+   precondition did not appear at ~2 kHz on a shared session.
+
+So the device-side half is implementable as a bound on the READ TASK, and the
+RFC's mechanism should change from the inner drain loop to that. What remains
+open is tuning (frames and rest are fixed at 8/32 and 1000 us, untuned) and the
+chain p50 question above.
+
+### Scope
+
+One lane, one load, one run shape, fixed rest interval. A stricter chain
+deadline, a higher load or another platform could change it. Also: this is a
+probe patch in the vendored zenoh-pico, not a shipped change — the patch is in
+the results doc so it is reproducible, and nothing was pushed to the fork.
