@@ -15,6 +15,56 @@ it's worth playing with.
   paragraph for the maturity signal.
 - If you stay interested, jump to one of the starters below.
 
+## 🌱 I've never used ROS
+
+New to ROS entirely? Two ideas carry the whole book: a **node** is a
+process-like unit that computes; nodes talk through named **topics**
+(publish/subscribe), plus request/reply **services**. ROS 2 is the
+ecosystem standardizing those; an **RMW** ("ROS MiddleWare") backend
+is the transport that moves the bytes. nano-ros is a small
+implementation of that model for microcontrollers. That's enough to
+start:
+
+1. **[Install](../getting-started/installation.md)** — host toolchain,
+   no ROS 2 required.
+2. **[First Project](../getting-started/first-project.md)** — scaffold
+   a two-node workspace and watch one node hear the other.
+3. **[Anatomy](../getting-started/anatomy.md)** explains what you
+   built, in nano-ros's own terms.
+
+## 🔧 I want it running on the board in my hand tonight
+
+Honest expectations first: the fastest real win is on your **Linux
+host** (~10 minutes, no ROS 2, no daemon — `--rmw cyclonedds`), and
+every embedded chapter has a QEMU flow that works without hardware.
+Real-hardware flashing is currently documented only for out-of-tree
+boards ([STM32F4 worked example](../porting/stm32f4-out-of-tree.md));
+the ESP-IDF component builds but ships no reference app yet. The
+zenoh embedded flows need a ROS 2 install on the host for the router.
+
+1. Check your board's row in **[Supported
+   Boards](../reference/supported-boards.md)**.
+2. Take the host win: [First Project](../getting-started/first-project.md).
+3. Then your platform's chapter under **Bring Your Own RTOS**
+   (FreeRTOS / Zephyr / NuttX / ThreadX / ESP32 / bare-metal).
+
+## 🤖 I have rclcpp/rclpy nodes and a colcon workspace
+
+Experienced ROS 2 developer porting existing nodes to an MCU:
+
+1. **[Setup Compared to Standard ROS 2](./setup-compared-to-ros2.md)**
+   — what stays familiar (package.xml, launch XML, `find_package`)
+   and what changes (no install prefix, compile-time RMW).
+2. **[Porting a ROS 2 C++ node](../getting-started/porting-a-cpp-node.md)**
+   — the rclcpp-compat shim and its limits.
+3. **[C / C++ multi-node workspaces](../getting-started/workspace-cpp.md)**
+   — the colcon-shaped workspace flow.
+4. **[ROS 2 Interoperability](../getting-started/ros2-interop.md)** —
+   wire your MCU node into your existing graph. Zenoh needs
+   `ros-jazzy-rmw-zenoh-cpp` (Humble ships no apt package);
+   Cyclone DDS interops with `rmw_cyclonedds_cpp` directly, no router.
+5. **[Migration Guide](./migration-guide.md)** — concept-to-concept map.
+
 ## 🔌 I have a board (or a vendored SDK tree) on my desk
 
 Already have hardware — an ESP32, an STM32Cube or MCUXpresso project, a
@@ -28,14 +78,25 @@ Zephyr or NuttX workspace? Two-step path:
    **[How Integration Works](../getting-started/how-integration-works.md)**:
    your RTOS keeps its own build tool (west, make, idf.py, your IDE) and
    nano-ros plugs into it. One chapter per host build system follows it.
+3. **Company tree, own BSP, forked RTOS?** The out-of-tree material is
+   the Porting Guide: [Build as a CMake
+   subdirectory](../getting-started/build-as-subdirectory.md),
+   [Custom Board Package](../porting/custom-board.md),
+   [Vendor Overlay](../porting/vendor-overlay.md), and the
+   [STM32F4 out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
+   Know up front: adding a *platform* (new RTOS) or an in-catalog
+   *board* still means carrying a small patch set inside your vendored
+   nano-ros checkout — plan for a fork-with-rebase workflow against
+   the `nros-v<X.Y.Z>` tags.
 
 ## 🚀 I want to get started shipping something
 
 You've decided to use nano-ros and want a working system on Linux
 first, then move it to your target.
 
-1. **[Install](../getting-started/installation.md)** — two commands:
-   `./scripts/bootstrap.sh`, then `nros setup native --rmw cyclonedds`.
+1. **[Install](../getting-started/installation.md)** — three commands:
+   `./scripts/bootstrap.sh`, `source ./activate.sh` (every new shell),
+   then `nros setup native --rmw cyclonedds`.
 2. **[First Project](../getting-started/first-project.md)** — one
    scaffolded workspace, C++ and CMake, publishing with nothing else
    running. Rust variant on the same page.
@@ -48,7 +109,8 @@ first, then move it to your target.
    [Rust, C, and Mixed](../getting-started/workspace-languages.md).
 5. **[Troubleshooting — First 10 Minutes](../getting-started/troubleshooting-first-10-min.md)**
    if anything goes sideways.
-6. Talking to a ROS 2 system needs the zenoh backend —
+6. Talking to a ROS 2 system — zenoh (router-based) or Cyclone DDS
+   (direct, routerless) both interop:
    [Choosing an RMW](../user-guide/rmw-choosing.md).
 
 ## 🔬 I'm evaluating capabilities
@@ -61,12 +123,18 @@ verification status, and trade-offs before committing.
   three-layer model.
 - **[Execution Model and Two-Layer API](../concepts/two-layer-api.md)**
   — poll vs callback discipline.
-- **[Choosing an RMW Backend](../user-guide/rmw-backends.md)** —
-  capability matrix per backend, including QoS coverage and
-  multi-backend bridges.
-- **[Real-Time Analysis](../internals/realtime-analysis.md)** +
-  **[Scheduling Models](../internals/scheduling-models.md)** —
-  RT scheduling story.
+- **[Backend Reference](../user-guide/rmw-backends.md)** — per-backend
+  characteristics; the per-policy QoS table is in
+  [RMW vs upstream §7](../design/rmw-vs-upstream.md).
+- **[Scheduling Models](../internals/scheduling-models.md)** — the RT
+  scheduling story ([Real-Time Analysis](../internals/realtime-analysis.md)
+  is the lint/tooling catalogue behind it).
+- **[Static Pool Inventory](../reference/static-pool-inventory.md)** +
+  **[Opaque Storage Sizing](../internals/opaque-storage-sizing.md)** —
+  memory footprint knobs and their single source of truth.
+- **[`no_std`, `alloc`, and `std`](../concepts/no-std.md)** +
+  **[Dispatch Strategy](../internals/dispatch-strategy.md)** — the
+  execution/allocation constraints.
 - **[Formal Verification](../internals/verification.md)** — Kani
   + Verus harness coverage.
 - **[Safety Protocol](../internals/safety.md)** — E2E CRC,
