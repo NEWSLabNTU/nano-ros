@@ -315,7 +315,24 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # intermittently misses one pair's SUBSCRIPTION when they run concurrently), and
 # the other fourteen schedule freely.
 [[profile.default.overrides]]
-filter = "binary(workspace_features_e2e) and test(qos)"
+#
+# phase-373 W1 follow-up (issue 0747's sweep) — `qos_override_e2e` joins, and it
+# is the only other test in the tree that stands up a stock `ros2 topic info`
+# peer and reads an ENDPOINT's advertised profile out of it. Grepping for that
+# peer finds exactly two files; this group had one of them.
+#
+# It failed in-sweep on 2026-08-21 at
+# `qos_override_e2e.rs:166` — "ros2 did not discover the nros publisher" — and
+# passed solo immediately after. That is issue 0312's symptom verbatim, one
+# binary over: the peer intermittently misses an endpoint inside the settle
+# window when pairs run concurrently. Same resource, same answer.
+#
+# No earlier override matches this binary (checked: line ~782's `binary(~...)`
+# disjuncts are platform names), so the group applies from here. Verified with
+# `cargo nextest show-config test-groups` rather than by reading the filter —
+# W1's lesson is that a filter parsing cleanly is not evidence that its group
+# applies.
+filter = "(binary(workspace_features_e2e) and test(qos)) or binary(qos_override_e2e)"
 test-group = "native-qos-discovery"
 slow-timeout = { period = "120s", terminate-after = 3 }
 

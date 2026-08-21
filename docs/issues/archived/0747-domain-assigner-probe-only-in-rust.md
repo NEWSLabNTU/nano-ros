@@ -137,3 +137,29 @@ mawk: sees busy 41 OK
 ```
 
 `check-rmw-cyclonedds` 17/17.
+
+## The sweep the fix prompted — a second, unrelated ungrouped racer
+
+Re-running tier 1 after the assigner fix surfaced a different in-sweep-only
+failure, and it is worth separating rather than filing as more of the same:
+
+```
+nros-tests::qos_override_e2e a_ros2_peer_sees_the_overridden_publisher_profile
+  qos_override_e2e.rs:166: ros2 did not discover the nros publisher on <topic>
+```
+
+Passes solo. NOT this issue's class — that test is Rust, so it already had
+0707's probe, and no domain collided. It is issue **0312**'s symptom one binary
+over: a stock `ros2 topic info` peer intermittently missing an endpoint inside
+the settle window when pairs run concurrently, which is exactly what the
+`native-qos-discovery` group (`max-threads = 1`) exists to prevent.
+
+Grepping for that peer finds exactly two files in the tree —
+`workspace_features_e2e` and `qos_override_e2e` — and the group had one of them.
+So the class is two members with one protected, the same shape as phase-373 W1:
+a test racing on a resource, sitting outside the group that exists for it.
+
+`qos_override_e2e` now joins, by extending the group's existing override rather
+than adding a second spelling. Verified with `show-config test-groups` (W1's
+lesson: a filter parsing cleanly is not evidence its group applies), and no
+earlier override matches the binary.
