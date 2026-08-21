@@ -6,7 +6,7 @@
 //! inside one of its consumers.
 //!
 //! Two executor-owned workers need a thread: the per-OS-priority pool
-//! ([`super::os_priority`]) and the signalfd forwarder in `spin.rs`. Both were
+//! (`os_priority` in `nros-node`'s executor) and the signalfd forwarder in `spin.rs`. Both were
 //! `std::thread`; both are platform tasks now, so the allocate-spawn-join
 //! sequence lives here rather than being written twice.
 //!

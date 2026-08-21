@@ -5730,8 +5730,12 @@ book:
     # change could not be previewed at all. The gate in `nros/src/lib.rs` is
     # `#[cfg(feature = "rmw-cffi")]` today; the old comment's
     # `rmw-xrce / rmw-dds` are gone with it.
+    # std,env,macros joined the list when phase-359/361 made them optional:
+    # without them rustdoc drops ExecutorConfigEnvExt::from_env, the alloc-
+    # gated ExecutorNodeRuntime::spin and `nros::node!` — and every doc
+    # comment linking those fails the build (2026-08-21 book red).
     cargo doc --no-deps \
-        --features rmw-cffi,platform-posix,ros-humble,safety-e2e \
+        --features rmw-cffi,platform-posix,ros-humble,safety-e2e,std,env,macros \
         -p nros \
         -p nros-rmw \
         -p nros-rmw-cffi \

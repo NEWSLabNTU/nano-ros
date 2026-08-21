@@ -2,7 +2,7 @@
 //!
 //! ## Runtime environment variables
 //!
-//! [`ExecutorConfig::from_env()`](crate::ExecutorConfig::from_env) reads these at startup:
+//! [`ExecutorConfig::from_env()`](crate::env::ExecutorConfigEnvExt::from_env) reads these at startup:
 //!
 //! | Variable | Description | Default |
 //! |----------|-------------|---------|

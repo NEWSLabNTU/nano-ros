@@ -2,7 +2,7 @@
 //!
 //! issue 0687 / phase-359 W10. Every env var nano-ros honours is read HERE and
 //! nowhere else. The core (`nros-node`) takes values — `ExecutorConfig::
-//! resolve_with` accepts an [`EnvRung`] of already-resolved fields — so it
+//! resolve_with` accepts an [`EnvRung`](nros_node::EnvRung) of already-resolved fields — so it
 //! needs no `std`, no `env` capability, and no stub on the five ports that have
 //! no environment to read.
 //!
@@ -17,7 +17,7 @@
 //! * [`ExecutorConfigEnvExt::from_env`] — the constructor that used to be an
 //!   inherent method on `ExecutorConfig`. Bring the trait into scope (the
 //!   prelude has it) and the call site spelling is unchanged.
-//! * [`resolve_hosted`] / [`try_resolve_hosted`] — RFC-0045 precedence model A
+//! * [`resolve_hosted`](crate::env::resolve_hosted) / [`try_resolve_hosted`](crate::env::try_resolve_hosted) — RFC-0045 precedence model A
 //!   with the environment rung on top. These replace the old
 //!   `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a
 //!   compile-time constant at every call site in the tree: `true` at exactly
@@ -140,7 +140,7 @@ fn env_cache() -> &'static EnvCache {
 ///   (`rmw_cyclonedds_cpp`). Feeding a ROS name to `resolve_backend` yields
 ///   `Unknown` — an ERROR — where today it is ignored and the unique-backend
 ///   path runs. Unifying them without a mapping would convert "ignored" into
-///   "fails to start". [`crate::init`] keeps its fallback for the `Context.rmw`
+///   "fails to start". [`crate::init`](fn@crate::init) keeps its fallback for the `Context.rmw`
 ///   HINT, which is a different quantity.
 /// * **Empty or non-UTF-8 means unset.** A name that is not UTF-8 cannot match
 ///   a registry entry, so treating it as absent is what the caller wants; the

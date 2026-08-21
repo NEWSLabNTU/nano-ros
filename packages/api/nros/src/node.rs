@@ -29,7 +29,7 @@ use crate::{
 // path calls `<pkg>::register(runtime)` through the path API, so this
 // helper has no live callers.
 
-/// Clear diagnostic for packages missing [`nros::node!`](crate::node!).
+/// Clear diagnostic for packages missing [`nros::node!`](macro@crate::node).
 pub const MISSING_NODE_EXPORT_ERROR: &str = "package has no exported nros component";
 
 /// Result type for component declarations.
