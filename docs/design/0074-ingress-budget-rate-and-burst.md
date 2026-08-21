@@ -209,7 +209,11 @@ left to a follow-up; an env-gated A/B moved chain delivery 13-17% →
 - **Receive-window shaping (`TCP_WND`).** Bounds the stalls perfectly
   (0 vs 12 per run) by starving the drain, but queues rather than sheds
   and drives chain latency to 446 ms p50. Confirms the mechanism,
-  unusable as the fix.
+  unusable as the fix. (Caveat added 2026-08-21: that p50 is two runs of
+  a statistic later shown to vary ~8x run-to-run on an unchanged
+  configuration — see open question 6. 446 ms is outside the range
+  observed since, so the result is probably real, but it is weaker
+  evidence than it reads.)
 - **Demoting the transport band below the tiers.** This is the
   configuration d708d8c5b fixed; it starves the RX drain into
   multi-second RTO freezes.
@@ -277,14 +281,34 @@ become regular moderate ones. The knob is only useful when
    knob mean the same thing is an argument for this mechanism. The remaining
    step is question 2's per-frame cost, which turns a deadline slack into a
    frame count.
-6. **Does the budget cost chain latency?** Unresolved, and now better bounded.
-   Chain p95 is flat across every cell (850 / 903 / 892 / 854 ms), so there is
-   no tail catastrophe — nothing resembling `TCP_WND 1xMSS`. But p50 over 12
-   runs reads 39 (unbounded) vs 85 (budget 8), while budget 32 reads 38 and
-   budget 128 reads 56. A deferral effect should be monotonic in the budget and
-   this is not, so it is either noise or something this harness cannot separate
-   from noise. It remains the figure that would decide whether chain/flood
-   separation is needed alongside the budget.
+6. ~~**Does the budget cost chain latency?**~~ **Answered: no detectable
+   cost**, and the p50 figures that suggested one were an artifact of the
+   statistic.
+
+   The chain-latency distribution is **bimodal** — p25 is ~24 ms and p75 ~400 ms
+   in every cell, with little between — so p50 lands in the valley and reports
+   the MIX RATIO rather than a latency. p10 and p25 are identical across cells,
+   meaning the fast path is untouched, which a queueing delay could not leave
+   alone.
+
+   Measured by mode proportion instead (fraction under 100 ms, per run):
+   unbounded 57.5 %, budget 8 50.6 % (Welch t +1.36), budget 32 61.3 % (-0.76),
+   budget 128 53.2 % (+0.60). All |t| < 2, per-run ranges overlap almost
+   entirely, and the signs disagree — budget 32 is nominally better than
+   unbounded. At 12 runs per cell with a per-run SD of 8-16 points, there is no
+   effect to see.
+
+   **Consequence: chain/flood separation is not required alongside the budget**
+   on this evidence. It stays a legitimate design for the ORDERING harm
+   (priority reorders the link), but it is not a precondition for the device
+   half.
+
+   Two caveats belong with any future chain-latency claim here, and neither is
+   about the budget: `chain_lat` is **censored at 1 s** by the analyzer's
+   matching window (which is why p99 is ~974 ms in every cell), and p50 is
+   unstable by construction on this distribution — cells reported with 1-2 runs,
+   including `TCP_WND 1xMSS`'s 446 ms, carry less weight than their tables
+   imply.
 
 ## Changelog
 
