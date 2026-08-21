@@ -547,3 +547,54 @@ spawned tiers and the 0623 transport band — which is exactly the "both
 orderings are legitimate; choosing by accident is not" case. Wants a
 `TierPriority`/freertos/c cell before a fix, for the reason this issue just
 demonstrated twice.
+
+## Re-measured on `330c8abfe` (2026-08-21) — better, not converged: the marker MOVED
+
+`330c8abfe` ("the boot tier's marker sat behind its own spawn — 10/12 → 30/30")
+improves the cell here and does not converge it. On the current tree, NuttX
+fixtures rebuilt, in the ROS distrobox:
+
+**9 pass / 6 fail over 15 consecutive runs.** Every failure is
+`TierPriority/nuttx/cpp`, and the tier it names has changed:
+
+```
+before 330c8abfe:  `low`  prio=100 — accepted and dropped
+after  330c8abfe:  `high` prio=110 — accepted and dropped
+log: nros: tier priority set tier=`low` prio=100
+```
+
+So the fix did what it says — `low` prints now — and the boot tier `high` has
+taken its place as the one that never reports. One marker is still missing per
+failing run; which one moved.
+
+That the missing tier swapped rather than disappeared is the useful part: it
+argues the residue is not a printing bug in either tier's path but the ordering
+between them, which is what this issue has been about from the start.
+
+The 30/30 in that commit does not reproduce on this host. Both numbers can be
+honest — this issue's own history records the rate moving with host load, and
+CLAUDE.md records QEMU lanes flaking under load — but 6 failures in 15 is not a
+tail, and the arms remain in different states: Rust 67/67 including 1.4x
+oversubscription, C/C++ 9/15.
+
+### Correcting my own previous entry
+
+The section above this one reported "8 pass / 4 fail" and attributed it to the
+C++ TierPriority cell. The count was real; the attribution was reached by
+grepping run output, and that method is wrong here in two ways I then hit in
+both directions:
+
+* `sched_dims_applied` is ONE test over 23 cells, so a pass/fail tally counts
+  the TEST, not the cell. Any cell failing produces the same red.
+* My filter dropped lines containing `ACCEPT`, which removed the actual
+  `N of 14 cell(s) FAILED` line and left an informational
+  `[nuttx rust CorePin] FALLBACK` — leading me to report a CorePin regression
+  that does not exist. `AcceptOrFallback` is that cell's declared shape:
+  arm-virt is single-core with no `CONFIG_SMP`, so FALLBACK is a PASS there
+  (#260 says so in the cell's own comment).
+
+The reliable read is the panic body — `sched_dims: N of 14 cell(s) FAILED:`
+followed by the cell name — not a grep over the run. Recorded because this is
+the third time in this issue's history that a rate was collected from runs whose
+verdict came from somewhere other than the cell under test.
+
