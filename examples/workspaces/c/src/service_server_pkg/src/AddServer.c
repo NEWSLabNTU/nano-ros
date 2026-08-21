@@ -33,6 +33,10 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
 
     example_interfaces_srv_add_two_ints_request req;
     if (example_interfaces_srv_add_two_ints_request_deserialize(&req, req_data, req_len) != 0) {
+        /* issue 0737 — say why. A silent reject is indistinguishable from
+         * a request that never arrived. */
+        fprintf(stderr, "[service_server_pkg] request DROPPED — deserialize failed, %zu byte(s)\n",
+                req_len);
         return false;
     }
 

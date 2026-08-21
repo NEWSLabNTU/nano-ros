@@ -185,16 +185,17 @@ phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstre
 reproducing. See `0741-*`. (2026-08-21)
 
 **#0737** (testing/platform/rmw, open 2026-08-20) — both `freertos-posix` cells publish and receive nothing.
-Defect 1 (no recipe built their fixtures — the rows matched nothing and the lane finished green having built
-neither, issue #405's shape) is FIXED: `just freertos build-fixtures-posix`. Defect 2 does not reproduce on a
-second host but DOES on the first, through that host's exact wiped-and-rebuilt sequence — and the layer is
-now known: with Cyclone `discovery,trace`, the writer and reader match LOCALLY in one participant
-(`reader_add_local_connection` / `writer_add_local_connection`) and every `write_sample` lands in the
-reader's history. The sample arrives and the APPLICATION never takes it. Transport, domain, interface,
-`CYCLONEDDS_URI` and `ROS_LOCALHOST_ONLY` are all ruled out by measurement. The talker task runs throughout
-while the listener prints `Waiting for messages` once — one task scheduled, its sibling not, which is the
-#0623/#0636 family rather than a delivery bug, and explains a host-dependent repro. Parked `#[ignore]`.
-See `0737-*`. (2026-08-21)
+Defect 1 (no recipe built their fixtures — #405's shape) is FIXED. Defect 2 reproduces on one host and not
+another, and the LAYER is now pinned: Cyclone's `rhc,trace` shows the sample written, stored, condition-
+updated and TAKEN (`take: returning 1`), then polled empty — every DDS layer works. A probe compiled into
+the listener's callback never prints while the talker's timer callback in the SAME executor prints
+throughout, so the window is between `dds_take` returning 1 and the arena trampoline. Two earlier readings
+withdrawn: it is not the #0623/#0636 family (the entry is `run_components`, ONE task, two callbacks) and the
+app does NOT fail to take. **The cross-host cost was not the environment** (OS, ROS, cyclonedds 0.10.5,
+libddsc path, `ROS_LOCALHOST_ONLY`, interface, domain occupancy and build state all ruled out by
+measurement) **but a callback that dropped samples silently** — indistinguishable from a message that never
+arrived, so every layer below had to be cleared by hand first. Gated now: `check-no-silent-sample-drop`,
+which found 5 more sites the same day. See `0737-*`. (2026-08-21)
 
 **#0736** (core/platform/testing, open 2026-08-20) — `realtime_tiers` nuttx-arm/rust: the FAST tier delivers
 fewer messages than the SLOW one, inverted ~70x. The tier reports on itself as `alive — 1000 spin(s), 7

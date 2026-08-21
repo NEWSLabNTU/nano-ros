@@ -595,6 +595,7 @@ check-build: \
     check-pool-inventory \
     check-lane-skip-class \
     check-grep-q-error-conflation \
+    check-no-silent-sample-drop \
     check-sched-dim-arms \
     check-image-paths-apply-policy \
     native::check
@@ -767,6 +768,13 @@ check-feature-set-ssot:
 [private]
 check-grep-q-error-conflation:
     @python3 scripts/check-grep-q-error-conflation.py
+
+# Issue 0737 — an example's message callback may not drop a sample silently.
+# From outside the process a silent `return` and a message that never arrived
+# are the SAME observation; that ambiguity cost two hosts an investigation each.
+[private]
+check-no-silent-sample-drop:
+    @python3 scripts/check-no-silent-sample-drop.py
 
 [group("check")]
 check-no-tracked-file-find:

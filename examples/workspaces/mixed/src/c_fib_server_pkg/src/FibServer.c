@@ -42,6 +42,10 @@ static int32_t fib_server_on_goal(const uint8_t goal_id[16], const uint8_t* data
 
     example_interfaces_action_fibonacci_goal goal;
     if (example_interfaces_action_fibonacci_goal_deserialize(&goal, data, len) != 0) {
+        /* issue 0737 — say why. A silent reject is indistinguishable from
+         * a request that never arrived. */
+        fprintf(stderr, "[c_fib_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n",
+                len);
         return NROS_C_GOAL_REJECT;
     }
     if (goal.order < 0 || goal.order >= 64) {

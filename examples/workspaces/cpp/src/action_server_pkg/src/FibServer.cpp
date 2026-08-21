@@ -13,6 +13,10 @@ namespace action_server_pkg {
 int32_t FibServer::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
     Action::Goal goal;
     if (Action::Goal::ffi_deserialize(data, len, &goal) != 0) {
+        /* issue 0737 — say why. A silent reject is indistinguishable from
+         * a request that never arrived. */
+        std::fprintf(stderr,
+                     "[action_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n", len);
         return static_cast<int32_t>(::nros::GoalResponse::Reject);
     }
     if (goal.order < 0 || goal.order >= 64) {

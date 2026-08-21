@@ -233,3 +233,78 @@ priorities.
 
 Stated from the board side because that is what this host can contribute: it
 cannot reproduce the failure, but it can say exactly what shape the image is.
+
+## 2026-08-21, third host-side pass — the layer again, one step further in
+
+The board-side correction above is right and my "#0623/#0636 family" reading was
+wrong: `run_components`, one executor on one FreeRTOS task, two callbacks. There
+is no second task to starve. Withdrawn.
+
+**And my other claim was wrong too, in the more useful direction.** I wrote "the
+sample reaches the reader and the application never takes it". It DOES take it.
+With `<Category>rhc,trace</Category>`:
+
+```
+write_sample …:203 #1: ST0 rt/chatter/std_msgs::msg::dds_::Int32_:{0}
+rhc_store d7d46a33…,d09b2498… si 0 has_data 1: new instance
+update_conditions_locked(…) - inst 1 nonempty 1 … new 1 samples 1 read 0
+take_w_qminv(…) - inst 1 nonempty 1 … new 1 samples 1+0 read 0+0
+take: returning 1
+take_w_qminv(…) - inst 1 nonempty 0 … samples 0+0
+take: returning 0
+```
+
+Written, stored, condition updated, **taken**. Then polled empty every 10 ms
+thereafter. Every DDS layer does its job.
+
+**So the callback is the suspect, and it is never called.** Patching the
+listener's `on_raw` to print unconditionally on entry and rebuilding through the
+lane recipe: the probe string is in the binary (`strings | grep -c` = 2) and
+never prints, while the talker's timer callback in the SAME executor prints
+throughout. One executor dispatches its timer and not its subscription, on a
+subscription whose `nros_cpp_subscription_register` returned 0 (the entry prints
+`Waiting for messages`, which is gated on `rc == 0`).
+
+That is the whole remaining window: between `dds_take` returning 1 and
+`add_arena_subscription_c_callback`'s trampoline.
+
+## Reasons this stayed inconsistent between hosts — and the fix for the class
+
+The environment axis was never found, and the search was not cheap. Ruled out by
+measurement on the failing host: OS and ROS (both hosts Ubuntu 22.04 / Humble),
+`ros-humble-cyclonedds 0.10.5-2jammy`, the resolved `libddsc.so.0`,
+`ROS_LOCALHOST_ONLY`, interface selection (forcing `lo` changes nothing), domain
+occupancy (the neighbouring Autoware graph has since exited — zero sockets on
+74xx — and it still fails), and build state (wiped and rebuilt through the lane
+recipe).
+
+**The reason it cost so much is not the environment. It is that the failure had
+no voice.** The listener's callback was:
+
+```c
+if (std_msgs_msg_int32_deserialize(&msg, data, len) != 0) {
+    return;
+}
+```
+
+From outside the process, a silent `return` there and a message that never
+arrived are the SAME observation: no `Received:` line. So every layer underneath
+had to be cleared by hand — discovery, matching, QoS, the RHC, the domain, the
+interface, the library, the build — before the callback itself could even become
+a suspect. Two hosts each did a version of that. One line of output would have
+skipped all of it, and would have made both hosts' runs directly comparable
+instead of merely contradictory.
+
+That is the avoidable part, so it is now gated:
+
+* All four example listeners say what they dropped and how many bytes it was.
+* The gate `check-no-silent-sample-drop` (fast line) found **five more** sites
+  the same day — two C action servers, two C service servers and a C++ action
+  server, all returning a reject with no output. Fixed together, per the
+  fix-the-CLASS rule.
+* Falsified: deleting the print from one site turns the gate red at that line.
+
+The rule it enforces is not "handle the error" — dropping is often right. It is
+*say so*. These are EXAMPLES, which makes it worse twice: users copy them, and
+tests grep them. A silent arm in code a test reads for its verdict is the same
+defect as a test reporting PASS on an unmet precondition, one level out.

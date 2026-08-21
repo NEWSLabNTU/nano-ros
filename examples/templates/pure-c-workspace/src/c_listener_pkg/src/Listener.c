@@ -20,7 +20,14 @@ typedef struct {
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     listener_t* self = (listener_t*)ctx;
     std_msgs_msg_int32 msg;
+    /* issue 0737 — say why, never just `return`. A silent drop here is
+     * indistinguishable from "the message never arrived", and that ambiguity
+     * cost two hosts a full investigation each: the sample was matched, stored
+     * and taken (Cyclone's own trace said `take: returning 1`) while the only
+     * observable was an absence of output. Whatever is wrong, the reader is
+     * entitled to know a message reached this callback and was rejected. */
     if (std_msgs_msg_int32_deserialize(&msg, data, len) != 0) {
+        fprintf(stderr, "listener: DROPPED a sample — deserialize failed, %zu byte(s)\n", len);
         return;
     }
     printf("Received: %d\n", (int)msg.data);
