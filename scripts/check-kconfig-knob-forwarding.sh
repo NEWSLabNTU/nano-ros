@@ -75,7 +75,26 @@ for knob in $knobs; do
     found=0
     for f in "${READERS[@]}" "${DERIVED_READERS[@]}"; do
         [ -f "$f" ] || continue
-        if grep -qF "\"$knob\"" "$f"; then found=1; break; fi
+        if grep -qF "\"$knob\"" "$f"; then
+            found=1
+            # issue 0751 — the name APPEARING is not the name being resolved
+            # through `$DOTCONFIG`. A forwarded knob read with a bare
+            # `env::var("<KNOB>")` yields the crate DEFAULT on a Zephyr Rust
+            # image: issue 0460 itself, wearing the shape that satisfies this
+            # gate's own test.
+            #
+            # Not hypothetical. That is what `nros-params/build.rs` did before
+            # #0749's follow-up, and it was caught only because the file was not
+            # yet listed as a reader — once listed, this arm passed over it.
+            if grep -qF "env::var(\"$knob\")" "$f"; then
+                echo "[FAIL] $f reads forwarded knob $knob with a bare env::var" >&2
+                echo "       On a Zephyr Rust image that yields the crate default" >&2
+                echo "       whatever Kconfig says (issue 0460). Resolve it with" >&2
+                echo "       nros_zephyr_build::knob_usize() instead." >&2
+                fail=1
+            fi
+            break
+        fi
     done
     if [ "$found" = 0 ]; then
         for allowed in "${NO_RUST_READER[@]}"; do
@@ -97,6 +116,20 @@ for f in "${READERS[@]}"; do
     }
     grep -qE 'nros_zephyr_build::(knob_usize|dotconfig_usize)' "$f" || {
         echo "[FAIL] $f never calls the shared \`nros_zephyr_build\` fallback" >&2; fail=1
+    }
+done
+
+# Derived readers must route through the shared helper too. The tabulating
+# readers above are already held to this; the derived arm was not, which is the
+# asymmetry issue 0751 records — its whole check is "the name appears", and a
+# file can satisfy that while resolving nothing from `$DOTCONFIG`.
+for f in "${DERIVED_READERS[@]}"; do
+    [ -f "$f" ] || continue
+    grep -qE 'nros_zephyr_build::(knob_usize|dotconfig_usize)' "$f" || {
+        echo "[FAIL] $f is listed as a derived reader but never calls the" >&2
+        echo "       shared nros_zephyr_build fallback — so nothing it names" >&2
+        echo "       is actually resolved from \$DOTCONFIG (issue 0751)." >&2
+        fail=1
     }
 done
 

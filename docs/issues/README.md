@@ -53,6 +53,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 Recently resolved (2026-08-22): **#0750** (testing, WONTFIX by demand) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check-sched-dim-arms`) but have never RUN. Closed on the question nobody asked while the plan was being drawn: which shipped device needs it? Census of `matrix::CELLS` — 197 Runtime cells, and the platform the reference consumer actually names (`nano_ros_use_board(fvp-aemv8r-smp)`, Cortex-R52 SMP, the architecture `nros-board-s32z270-freertos` targets in silicon) has ZERO, while a host simulator (ThreadxLinux) has 21. No multi-core NuttX or ThreadX target exists here, and FreeRTOS's Posix port has no SMP hooks at all — only RP2040 (hardware) does. CI tiers are COMPUTED covers, so a cell on a rarely-demanded platform taxes tier 2 and nightly forever to re-prove what the Zephyr a53 cell proves today. What stays: B (`22e511442`, a real fix — `snapshot_root` honoured `$NUTTX_EXPORT_DIR` and `nuttx_include_root` did not, so an image could link SMP libs against uniprocessor headers), the opt-in `arm-smp` defconfig/lane that demonstrate it, and the board-neutral `CORE_PIN_OBSERVED_CPU1`. If SMP coverage grows it grows toward R52/FVP, whose obstacle is licensing, not test design. See `archived/0750-*`. (2026-08-22)
 
+Recently resolved (2026-08-22): **#0751** — `check-kconfig-knob-forwarding` held its two reader classes to
+different standards. Tabulating READERS must have a `KCONFIG_KNOBS` table AND call
+`nros_zephyr_build::knob_usize` (both checked, "a table nobody consults is the same silence with extra
+steps"); DERIVED_READERS got neither — their whole test was the env name APPEARING in the file, which a
+bare `env::var("<KNOB>")` satisfies while reading the crate default on a Zephyr Rust image. That is issue
+0460, the failure the gate exists to prevent. Not hypothetical: `nros-params/build.rs` was exactly that
+before #0749's follow-up, caught only because the file was not yet listed — and the fix had to list it,
+after which the same defect would pass. Issue 0196's shape, where registering a file removes it from
+scrutiny. Measured first: the hole was latent, not occupied (the two bare reads in
+`nros-rmw-xrce-cffi/build.rs` name knobs cmake does not forward). Fixed with two arms — a forwarded knob
+may not be read via bare `env::var`, and a derived reader must call the shared helper — both falsified
+against the real gate. See `archived/0751-*`. (2026-08-22)
+
 Recently resolved (2026-08-21): **#0745** — launch params NEVER reached a component ctor: emitters gated seeding on param_services AND emitted it post-construction; the executor store needed pre-node init; ComponentNode read its own per-node store. Fixed as a chain: unconditional pre-construction `emit_declare_params`, lazy `ensure_parameter_store` (ParamState.services now Option, registration preserves seeds, non-fatal on RMWs without service servers), ComponentNode seed-adoption gated on the NOW-WIRED `nros_lower_system_features` lowering (the fn was defined and called from no path), and a Zephyr-lane `-DNANO_ROS_FEATURES` mirror. Found by ASI: ctrl_period 0.03 declared, 0.15 ran; after — 31.6 ms mean ticks. Left open: load-time timer over-credit (~1.5x rate under traffic), no bool getter, cyclone service-server gap. See `0745-*`. (2026-08-21) See `archived/0745-*`. (2026-08-21)
 
 Recently resolved (2026-08-22): **#0749** (zephyr) — the Zephyr lane's curated cargo environment dropped five
