@@ -52,14 +52,14 @@ KNOB_PATTERNS = [
     re.compile(
         r'std::env::var\(\s*"([A-Z0-9_]+)"\s*\)[\s\S]{0,120}?unwrap_or_else\(\s*\|_\|\s*"([0-9_]+)"'
     ),
-    # A local string wrapper over `knob_usize` — `knob_str("NAME", "8")`.
-    # `packages/rmw/cffi/build.rs` takes this shape because each of its knobs
-    # keeps its own range diagnostic around the parse. Added when moving that
-    # file off a bare `env::var` (issue 0752 follow-up) dropped three knobs and
-    # one pool's byte figure out of this table — the inventory went from "8,192"
-    # to "unknown knob", which is precisely the enumeration failure issue 0271
-    # cost ~145 KB to.
-    re.compile(r'\bknob_str\(\s*"([A-Z0-9_]+)"\s*,\s*"([0-9_]+)"\s*\)'),
+    # A crate-local wrapper over `knob_usize` — `knob("NAME", 8)`, the shape
+    # `packages/rmw/cffi/build.rs` took when it moved off a bare `env::var`
+    # (issue 0752 follow-up). That move dropped three knobs and one pool's byte
+    # figure out of this table: `SLOTS` went from "8,192" to "unknown knob",
+    # which is exactly the enumeration failure issue 0271 cost ~145 KB to. A
+    # wrapper is the natural thing to write when several knobs share a
+    # resolution rule, so match the shape rather than asking each crate not to.
+    re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*\)'),
 ]
 
 # `// nros-pool: NAME = KNOB * KNOB * 4` — products of knobs and integers only.
@@ -90,7 +90,7 @@ def crate_of(rel):
 # the ones issue-0271's failure mode hides (executor arena, zpico batch/frag
 # buffers: the LARGEST consumers). They must appear in the table, not be
 # silently dropped by a literal-only regex.
-KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat)?|knob_str)\(\s*"([A-Z0-9_]+)"')
+KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat)?|knob)\(\s*"([A-Z0-9_]+)"')
 
 
 def scan(files=None):
