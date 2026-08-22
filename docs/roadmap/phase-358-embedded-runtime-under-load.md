@@ -1,6 +1,6 @@
 # Phase 358 — Embedded runtime under load: footprint, overrun, overload
 
-**Status (2026-08-21). THREE of five DONE; W1 RESTATED (its premise refuted, #271 closed), W3 open.** This header
+**Status (2026-08-21). FOUR of five DONE; W1 RESTATED (its premise refuted, #271 closed); W3 DONE — its acceptance met by a read-task budget, and one of its own conclusions refuted in the process.** This header
 said "PLANNING — nothing implemented" while ELEVEN commits named the phase — my
 error, corrected here.
 
@@ -290,6 +290,44 @@ remains is a design choice, not a measurement:
   makes a frame cap defer rather than drop.
 
 Either is a fresh work item with its own acceptance. Detail in #506.
+
+**DONE 2026-08-21 — option 1 taken, and this item's acceptance is MET.**
+
+The acceptance above asks for "a budget that bounds preemption WITHOUT reducing
+steady-state delivery", reported in the same columns. Measured on this lane, six
+to twelve runs per cell, interleaved:
+
+| cell | n | stalls/run | worst | rx/s med | chain % | chain p50 |
+|---|---|---|---|---|---|---|
+| unbounded | 12 | 9.1 | 610 ms | 249 | 10.2 | 39 ms |
+| budget 8 | 12 | **0.0** | **21 ms** | 899 | 11.6 | 85 ms |
+| budget 32 | 6 | **0.0** | **38 ms** | 386 | 12.4 | 38 ms |
+| budget 128 | 6 | 12.5 | 132 ms | 386 | 8.8 | 56 ms |
+
+Preemption bounded (12/12 budgeted runs at zero stalls against 6/6 unbounded
+with 2-13, no overlap), delivery not reduced (chain flat-to-better; rx too noisy
+on this harness to claim either way), and no chain-latency cost — that last one
+checked separately and answered NO, the apparent p50 difference being an artifact
+of a bimodal distribution whose p50 sits in the valley.
+
+**One sentence above is refuted by that result and is left standing as the
+lesson.** "A budget is the wrong instrument for that" — for a scheduling
+property — is wrong. A frame budget ON THE TASK is a budget, and it is the right
+instrument: the mechanism is not rate limiting but bounding the task's
+CONTIGUOUS run, which is exactly the scheduling property the trace attributed.
+The sweep gives it a closed form, `worst_gap = 0.94 x FRAMES + 11 ms`, which
+predicts the observed pass/fail boundary and makes 128 frames worse than
+unbounded on stall COUNT.
+
+What that leaves for #506 is implementation, not investigation: the `ingress`
+declaration, the router-rule emitter, the budget landed in the vendored fork
+behind a Kconfig knob, and the counters. RFC-0074 carries the compile relation
+and the two resolve-time constraints; its remaining open questions are 1 and 3,
+both answered, and 2/4/5, all now closed by the per-frame cost `c`.
+
+Option 2 (polled-path cells on a `Z_FEATURE_MULTI_THREAD=0` image) stays
+available but is lower value: no shipped configuration on this lane links that
+path.
 
 ## W4 — NuttX boot tier drops its declared priority (#579)
 
