@@ -637,10 +637,19 @@ fn spin_forever<B: BoardPrint>(
     tier: &TierSpec<'_>,
 ) {
     let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
+    // issue 0636 option 3 — every iteration reaches a scheduling point. The
+    // executor's own wait is SKIPPED whenever a wake already fired, so under
+    // sustained traffic this loop would otherwise never block. On a host under
+    // SCHED_OTHER the kernel preempts anyway; under the SCHED_FIFO this board
+    // asks for when it can get it, a thread that never blocks never lets a
+    // lower-priority tier run. Costs nothing while the spins do block.
+    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
+        let iter = gap.mark();
         if let Err(e) = crt.spin_once(period) {
             B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));
         }
+        gap.after_spin(iter);
     }
 }
 

@@ -61,6 +61,19 @@ extern int nros_cpp_executor_set_active_groups(void* executor, const char* const
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
+/* issue 0636 option 3 — the tier spin loop's scheduled gap.
+ *
+ * ONE implementation, shared with the Rust tier runners
+ * (`nros_platform::board::tier`): a second spelling per language is how the
+ * tier-priority marker drifted, which is most of what this issue was. Pass 0
+ * on the first call and keep the returned value; the sleep, when the rule
+ * calls for one, happens inside. State is an opaque u64 rather than a struct
+ * so there is no hand-mirrored FFI layout to drift (three prior incidents). */
+extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, uint64_t now_ns,
+                                        uint32_t spin_period_us);
+extern uint64_t nros_platform_clock_ns(void);
+
+
 /* nros_board_network_wait: weak no-op in main.hpp; strong override on boards
  * that must block for link-up. On the canonical NuttX path the board FFI `main`
  * already brought up eth0 before app_main (phase-280), so this is a no-op — the
@@ -471,8 +484,17 @@ static void* nuttx_tier_thread(void* arg) {
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
+     * executor's own wait is skipped whenever a wake already fired, so under
+     * sustained traffic this loop would otherwise never block, and under
+     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
+     * run. The gap costs nothing while the spins do block. */
+    uint64_t gap_state = 0;
     for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
         nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            ctx->spin_period_us);
     }
 
     /* Unreachable — the spin loop never exits; satisfies the non-void return. */
@@ -741,8 +763,17 @@ int32_t nros_board_nuttx_run_tiers(const char* locator, uint8_t domain_id, const
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
+     * executor's own wait is skipped whenever a wake already fired, so under
+     * sustained traffic this loop would otherwise never block, and under
+     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
+     * run. The gap costs nothing while the spins do block. */
+    uint64_t gap_state = 0;
     for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
         nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            boot->spin_period_us);
     }
 
     /* Unreachable — satisfies the compiler. */

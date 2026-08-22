@@ -39,8 +39,8 @@ pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
     DeployOverlay, DispatchStrategy, EmbassyBoardEntry, NetworkWait, NodeDispatchRuntime,
     NullNodeRuntime, PriorityDirection, RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback,
-    TierSpec, TransportBringup, boot_tier_index, freertos_priority_for, posix_nice_for,
-    threadx_priority_for,
+    TierSpec, TierSpinGap, TransportBringup, boot_tier_index, freertos_priority_for,
+    posix_nice_for, threadx_priority_for,
 };
 // Phase 313 W1 (issue #0243) — the deprecated `NodeRuntime` crate-root alias is
 // removed; consumers use `NodeDispatchRuntime`.

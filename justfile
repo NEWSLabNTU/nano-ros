@@ -475,7 +475,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3484,6 +3484,11 @@ check-image-panic-policy:
 # into an executable must apply an ending, directly or through the entry verbs.
 check-cmake-image-policy:
     @python3 scripts/check-cmake-image-policy.py
+
+# Issue 0636 option 3 — every tier spin loop reaches a scheduling point.
+[group("check")]
+check-tier-spin-gap:
+    @python3 scripts/check-tier-spin-gap.py
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and

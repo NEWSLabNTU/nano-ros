@@ -549,7 +549,14 @@ where
         ));
     }
     let period_ms = (ctx.tier.spin_period_us / 1000).max(1) as u32;
+    // issue 0636 option 3 — every iteration reaches a scheduling point. The
+    // executor's own wait is SKIPPED whenever a wake already fired, so under
+    // sustained traffic this loop would otherwise never block, and a task that
+    // never blocks never lets a lower-priority tier run. Costs nothing while
+    // the spins do block.
+    let mut gap = ::nros_platform::TierSpinGap::new(ctx.tier.spin_period_us);
     loop {
+        let iter = gap.mark();
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
             unsafe {
                 nros_trace_trigger_and_dump();
@@ -560,6 +567,7 @@ where
             ));
             B::exit_failure();
         }
+        gap.after_spin(iter);
     }
 }
 
@@ -712,7 +720,14 @@ where
         "Multi-tier setup complete — entering boot-tier spin loop."
     ));
     let period_ms = (boot_tier.spin_period_us / 1000).max(1) as u32;
+    // issue 0636 option 3 — every iteration reaches a scheduling point. The
+    // executor's own wait is SKIPPED whenever a wake already fired, so under
+    // sustained traffic this loop would otherwise never block, and a task that
+    // never blocks never lets a lower-priority tier run. Costs nothing while
+    // the spins do block.
+    let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
     loop {
+        let iter = gap.mark();
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
             unsafe {
                 nros_trace_trigger_and_dump();
@@ -720,6 +735,7 @@ where
             B::println(format_args!("spin_once error: {:?}", err));
             B::exit_failure();
         }
+        gap.after_spin(iter);
     }
 }
 

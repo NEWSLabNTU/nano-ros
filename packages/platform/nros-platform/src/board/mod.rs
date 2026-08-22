@@ -73,8 +73,8 @@ pub use runtime::{
     NodeDispatchRuntime, NullNodeRuntime, RuntimeCtx, RuntimeError, SignaledCallback,
 };
 pub use tier::{
-    PriorityDirection, TierSpec, boot_tier_index, freertos_priority_for, posix_nice_for,
-    threadx_priority_for,
+    PriorityDirection, TierSpec, TierSpinGap, boot_tier_index, freertos_priority_for,
+    posix_nice_for, threadx_priority_for,
 };
 
 // Phase 313 W1 (issue #0243) — the phase-214.K.1 `NodeRuntime` →

@@ -321,13 +321,21 @@ where
         );
     }
     let period_ms = ((ctx.tier.spin_period_us / 1000).max(1)) as u32;
+    // issue 0636 option 3 — every iteration reaches a scheduling point. The
+    // executor's own wait is SKIPPED whenever a wake already fired, so under
+    // sustained traffic this loop would otherwise never block, and a thread
+    // that never blocks never lets a lower-priority tier run. Costs nothing
+    // while the spins do block.
+    let mut gap = ::nros_platform::TierSpinGap::new(ctx.tier.spin_period_us);
     loop {
+        let iter = gap.mark();
         if let Err(err) = NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
             ::log::error!("nros: tier `{}` spin error: {:?}", ctx.tier.name, err);
             loop {
                 crate::zephyr_msleep(1000);
             }
         }
+        gap.after_spin(iter);
     }
 }
 
@@ -416,11 +424,17 @@ impl ZephyrBoard {
             boot_tier.name
         );
         let period_ms = ((boot_tier.spin_period_us / 1000).max(1)) as u32;
+        // issue 0636 option 3 — see the per-tier loop above; the boot tier owns
+        // the shared session, so it is the one whose spin was most likely to
+        // free-run under load.
+        let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
         loop {
+            let iter = gap.mark();
             if let Err(err) = NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
                 ::log::error!("nros: boot tier `{}` spin error: {:?}", boot_tier.name, err);
                 return Err(RuntimeError::Spin);
             }
+            gap.after_spin(iter);
         }
     }
 }

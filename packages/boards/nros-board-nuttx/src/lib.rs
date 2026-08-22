@@ -1356,7 +1356,18 @@ fn nuttx_spin_tier_forever(
     let mut iters: u64 = 0;
     let (mut timers, mut subs, mut errs) = (0usize, 0usize, 0usize);
     let mut announced_first = false;
+    // issue 0636 option 3 — every iteration reaches a scheduling point. The
+    // executor's own wait is SKIPPED whenever a wake already fired
+    // (`spin_once` drives I/O with a ZERO timeout on that arm), so under
+    // sustained traffic this loop would otherwise never block — and under
+    // SCHED_FIFO, which this guest runs, a thread that never blocks never lets
+    // a lower-priority tier run at all. `boot_tier_index` made the owner
+    // outrank nothing, which is what fixed this issue; the gap is what makes
+    // the guarantee hold without depending on that ordering being right.
+    // Costs nothing while the spins do block.
+    let mut gap = nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
+        let iter = gap.mark();
         match crt.spin_once_counted(core::time::Duration::from_millis(period_ms as u64)) {
             Ok(r) => {
                 timers += r.timers_fired;
@@ -1368,6 +1379,7 @@ fn nuttx_spin_tier_forever(
                 println!("nros: tier `{}` spin error: {:?}", tier.name, err);
             }
         }
+        gap.after_spin(iter);
         iters += 1;
         if iters == 1 {
             // The loop is ALIVE. Distinguishes "spinning but never dispatching"
@@ -1393,8 +1405,8 @@ fn nuttx_spin_tier_forever(
             let asked_us = iters.saturating_mul(tier.spin_period_us as u64);
             println!(
                 "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), \
-                 {} error(s), clock {} us vs asked {} us",
-                tier.name, iters, timers, subs, errs, clock_us, asked_us
+                 {} error(s), {} gap(s), clock {} us vs asked {} us",
+                tier.name, iters, timers, subs, errs, gap.gaps(), clock_us, asked_us
             );
         }
     }

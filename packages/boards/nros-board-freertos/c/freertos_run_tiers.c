@@ -40,6 +40,19 @@ extern int nros_cpp_executor_set_active_groups(void* executor, const char* const
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
+/* issue 0636 option 3 — the tier spin loop's scheduled gap.
+ *
+ * ONE implementation, shared with the Rust tier runners
+ * (`nros_platform::board::tier`): a second spelling per language is how the
+ * tier-priority marker drifted, which is most of what this issue was. Pass 0
+ * on the first call and keep the returned value; the sleep, when the rule
+ * calls for one, happens inside. State is an opaque u64 rather than a struct
+ * so there is no hand-mirrored FFI layout to drift (three prior incidents). */
+extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, uint64_t now_ns,
+                                        uint32_t spin_period_us);
+extern uint64_t nros_platform_clock_ns(void);
+
+
 /* nros_board_network_wait: weak no-op in main.hpp; strong override on boards that
  * need an extra poll-wait after network bring-up. On MPS2-AN385 the startup.c
  * already waits 2 s and polls lwIP, so this is usually a no-op. */
@@ -356,9 +369,22 @@ static void freertos_tier_task(void* arg) {
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
+     * executor's own wait is skipped whenever a wake already fired, so under
+     * sustained traffic this loop would otherwise never block, and a task that
+     * never blocks never lets a lower-priority tier run.
+     *
+     * This REPLACES an unconditional `vTaskDelay(1)`, which was the same
+     * guarantee hand-rolled for one kernel: it paid a tick on EVERY iteration,
+     * including the ones whose spin already blocked, and the three other
+     * kernels running the identical loop had nothing. Same rule, one
+     * implementation, and cost only on the path that needs it. */
+    uint64_t gap_state = 0;
     for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
         nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
-        vTaskDelay(1);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            (uint32_t)ctx->spin_period_us);
     }
 }
 
@@ -615,9 +641,22 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
+     * executor's own wait is skipped whenever a wake already fired, so under
+     * sustained traffic this loop would otherwise never block, and a task that
+     * never blocks never lets a lower-priority tier run.
+     *
+     * This REPLACES an unconditional `vTaskDelay(1)`, which was the same
+     * guarantee hand-rolled for one kernel: it paid a tick on EVERY iteration,
+     * including the ones whose spin already blocked, and the three other
+     * kernels running the identical loop had nothing. Same rule, one
+     * implementation, and cost only on the path that needs it. */
+    uint64_t gap_state = 0;
     for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
         nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
-        vTaskDelay(1);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            (uint32_t)boot->spin_period_us);
     }
 
     /* Unreachable — satisfies the compiler. */
