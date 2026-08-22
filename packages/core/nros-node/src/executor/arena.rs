@@ -350,25 +350,81 @@ pub(crate) struct SubBufferedEntry<M, F> {
 ///
 /// # Safety
 /// `entry` must be a valid mutable reference to a `SubBufferedEntry`.
-unsafe fn drain_into_buffer<M, F>(entry: &mut SubBufferedEntry<M, F>) {
+/// Issue 0757 — how many takes this process has dropped, for throttling.
+///
+/// A COUNTER, not a per-entry field, and deliberately: the arena's entry
+/// structs are sized by knob at build time (`EXECUTOR_OPAQUE_U64S`), so adding
+/// a field here would move every image's executor footprint to buy a log line.
+/// The cost is that the report cannot name the topic — see `report_dropped_take`.
+static DROPPED_TAKES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+
+/// Say that a take was thrown away, on the first one and every 64th after.
+///
+/// Issue 0757, RFC-0052 fail-loud. `try_recv_raw` returns `BufferTooSmall` when
+/// a reassembled sample exceeds the subscription buffer, and this path used to
+/// discard EVERY non-OK take. At transport level cyclone has already completed
+/// and ACKed the sample by then, so the subscription looks matched and healthy
+/// from every outside probe (`ros2 topic info -v`, tshark ACKNACK analysis)
+/// while the application waits forever. That is how 13.4 KiB Autoware
+/// trajectories were silently dropped by every Zephyr image for the whole life
+/// of the lane: small degenerate samples fit the 1 KiB default, so every green
+/// marker stayed green, and attribution needed a consumer-side tshark session.
+///
+/// **What this can and cannot say.** The buffer capacity is known here and is
+/// the actionable half — it names the knob to raise
+/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`, or `ZPICO_SUBSCRIBER_BUFFER_SIZE` /
+/// `ZPICO_SUBSCRIBER_LARGE_SIZE` on zenoh). The SAMPLE size is not: the C ABI
+/// contract is "non-negative = bytes produced, negative = error code"
+/// (`rmw_vtable.h`), with no required-length out-param, so the backend cannot
+/// report how big the sample was. The topic is not either: `SubBufferedEntry`
+/// carries no name and adding one changes arena sizing. Both are ABI/struct
+/// changes worth doing on their own merits, not smuggled in behind a log line.
+///
+/// `nros_log`, never stdio: this site is reached on `no_std` targets and inside
+/// Zephyr `native_sim`, where a Rust `std` stdio call is FATAL (issue 0589).
+#[cold]
+fn report_dropped_take(err: &TransportError, buf_len: usize) {
+    let n = DROPPED_TAKES.fetch_add(1, portable_atomic::Ordering::Relaxed);
+    // First, then every 64th. A 40-participant graph must not turn one
+    // misconfigured subscription into a log flood (issue 0371's shape).
+    if n != 0 && !n.is_multiple_of(64) {
+        return;
+    }
+    nros_log::nros_error!(
+        nros_log::get_logger("nros"),
+        "subscription take DROPPED ({err:?}); buffer is {buf_len} bytes. The \
+         sample was received and ACKed, then discarded — raise the subscription \
+         buffer knob if this is BufferTooSmall. Dropped {} so far (issue 0757)",
+        n + 1
+    );
+}
+
+unsafe fn drain_into_buffer<M, F>(
+    entry: &mut SubBufferedEntry<M, F>,
+) -> Result<(), TransportError> {
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+            let cap = slot.len();
+            if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                report_dropped_take(e, cap);
+            })? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
-            // Drain all pending messages into ring slots
             while let Some(slot) = ring.try_push() {
-                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
-                    ring.commit_push(len);
-                } else {
-                    break; // no more data
+                let cap = slot.len();
+                match entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                    report_dropped_take(e, cap);
+                })? {
+                    Some(len) => ring.commit_push(len),
+                    None => break,
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Monomorphized dispatch for buffered subscriptions.
@@ -389,7 +445,10 @@ where
     let entry = unsafe { &mut *(ptr as *mut SubBufferedEntry<M, F>) };
 
     // Phase 1: drain RMW subscriber → buffer strategy
-    unsafe { drain_into_buffer(entry) };
+    // Issue 0757 — let a transport error OUT, exactly as issue 0737 does for
+    // the C copy below. Anything already buffered from an earlier spin is still
+    // dispatched on the next call.
+    unsafe { drain_into_buffer(entry)? };
 
     // Phase 2: dispatch from buffer → user callback
     match &entry.buffer {
@@ -531,24 +590,37 @@ pub(crate) struct SubBufferedRawEntry<F> {
 }
 
 /// Drain helper for raw buffered entries.
-unsafe fn drain_into_buffer_raw<F>(entry: &mut SubBufferedRawEntry<F>) {
+///
+/// Issue 0757 — the THIRD copy of this drain, and it had the same swallow as
+/// the typed one above. Fixed the way issue 0737 fixed the C copy
+/// (`drain_into_buffer_raw_c`): let the error OUT so `spin_once` counts it,
+/// rather than inventing a second remedy for one defect.
+unsafe fn drain_into_buffer_raw<F>(
+    entry: &mut SubBufferedRawEntry<F>,
+) -> Result<(), TransportError> {
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+            let cap = slot.len();
+            if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                report_dropped_take(e, cap);
+            })? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
-                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
-                    ring.commit_push(len);
-                } else {
-                    break;
+                let cap = slot.len();
+                match entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                    report_dropped_take(e, cap);
+                })? {
+                    Some(len) => ring.commit_push(len),
+                    None => break,
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Dispatch for zero-copy raw buffered subscriptions.
@@ -567,7 +639,9 @@ where
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawEntry<F>) };
 
-    unsafe { drain_into_buffer_raw(entry) };
+    // Issue 0757 — see `drain_into_buffer`; the error reaches `spin_once`'s
+    // `subscription_errors` instead of vanishing.
+    unsafe { drain_into_buffer_raw(entry)? };
 
     match &entry.buffer {
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
@@ -650,9 +724,16 @@ where
     };
 
     // Phase 1: drain RMW subscriber → triple buffer write slot.
+    //
+    // Issue 0757 — the FOURTH copy of this drain (the borrowed/zero-copy path)
+    // and it swallowed non-OK takes like the others. Same remedy as issue 0737's
+    // C copy: report the actionable size, then let the error out.
     {
         let slot = tb.write_slot();
-        if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+        let cap = slot.len();
+        if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+            report_dropped_take(e, cap);
+        })? {
             tb.writer_publish(len);
         }
     }

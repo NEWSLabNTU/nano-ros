@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-22): **#0757** — the C++/typed arena dispatch swallowed every non-OK take, so a
+`BufferTooSmall` sample was received, ACKed by cyclone, then discarded while the subscription looked healthy
+from every outside probe. The audit the issue mandated found the remedy ALREADY in the same file one copy
+over (`drain_into_buffer_raw_c`, issue 0737: "a transport ERROR is not 'no data'"), so the fix propagates to
+`spin_once`'s `subscription_errors` rather than only logging — a log-only fix would have been a second
+spelling. FOUR copies of the drain had the swallow (typed, raw, borrowed/zero-copy, and 0737's C one); the
+Ring arms were worse, making a dropped sample indistinguishable from an empty queue. The throttled report
+carries the buffer capacity (the knob to raise) and deliberately NOT the sample size or topic — the C ABI
+has no required-length out-param and the arena entry is knob-sized, both ABI changes not worth smuggling
+behind a log line. Eight action/client sites share the shape and are audited-and-left: they return
+`WouldBlock` as a NORMAL condition, so propagating there needs a lossy-variant filter, which is its own
+change. See `archived/0757-*`. (2026-08-22)
+
 Recently resolved (2026-08-22): **#0753** (cmake/zephyr, resolved on arrival) — filed to verify the
 consumer-side belief that the Zephyr module's `nros_generate_interfaces()` misparses `SKIP_INSTALL` as a
 message path; it does not, and has not since Phase 210.E.3.c (the option is parsed and deliberately
@@ -296,14 +309,6 @@ mutation-testing #0636's FreeRTOS cells, where it made the mutation appear not t
 would cover the first path (not the second) but phase-334 W2.b has 236 unmigrated literals; the
 alternative is for the box env to refuse the mode loudly. See `0759-*`. (2026-08-22)
 
-**#0757** (rmw/memory, open 2026-08-22) — the C++ arena dispatch trampoline swallows every non-OK take, so
-`BUFFER_TOO_SMALL` drops samples with zero diagnostics while cyclone ACKs them at transport level — the
-subscription looks matched and healthy from every outside probe while the app waits forever. This is
-#0749's open half, previously tracked only as a sentence in the archived issue; it cost a consumer-side
-tshark session to attribute 13.4 KiB trajectories silently discarded by every Zephyr image. Direction:
-throttled fail-loud `nros_log` at the drop site (RFC-0052) naming sample size vs buffer size, plus a sweep
-of the sibling take sites (C dispatch, service/action, param service). See `0757-*`. (2026-08-22)
-
 **#0756** (zephyr/memory, RESOLVED 2026-08-22) — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
 `dds_create_participant`: no fault, no panic, no output. Root cause measured at frame level, confirming the
 filed suspicion. `ParameterValue` is sized by its `StringArray(Vec<String<256>, 32>)` variant, so EVERY slot
@@ -316,6 +321,9 @@ larger task stacks, hence unaffected. Fixed by `ParameterServer::init_in_place` 
 (`Executor::new_param_state`): largest temporary is now 68 B. Residual left open deliberately — the fix
 addresses the stack, not the store, so 256 slots is still a 2.2 MB heap allocation; the durable fix is the
 8.5 KiB-per-slot enum that every `bool` parameter pays for. See `0756-*`. (2026-08-22)
+
+
+
 
 **#0755** (cmake, open 2026-08-22) — `NanoRosBoardFacts.cmake` never forwards the entry's DEPLOY even
 though `nano_ros_add_executable` knows it and the verb accepts `--deploy`; when a bringup's system.toml
