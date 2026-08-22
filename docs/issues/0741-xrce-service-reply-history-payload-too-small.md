@@ -475,3 +475,61 @@ rather than exporting it — so the fingerprint's `ROS_DOMAIN_ID=<unset>` is
 honest about the process and says nothing about the bus. Worth reading together:
 this run was on **domain 1**, which is issue 0707's default for a filtered run.
 
+
+## Third green host (2026-08-22) — and the "fixture freshness" exclusion is not safe
+
+Ran the suite on the second green host again, current tree: **8/8, 15.8 s**,
+`test_xrce_service_ros2_client` among them. Another green adds little on its
+own; what getting there cost is the part worth recording.
+
+**The documented repro does not necessarily rebuild the fixture it names.**
+`just build-test-fixtures lane=native` exited 0, and immediately afterwards
+every XRCE-feature native fixture read STALE:
+
+```
+x2  0m  build/cargo-fixtures/linux-3000917972/nros-relwithdebinfo/service-server
+x1  0m  .../talker   .../service-client   .../listener
+x1  0m  .../action-server   .../action-server-concurrent   .../action-client
+```
+
+```
+binary:          20:12:48
+generated/action_msgs/src/msg/goal_info.rs:  20:45:09
+```
+
+The lane runs `nros sync` first, which REWRITES the leaf's `generated/` tree.
+The regenerated files are byte-identical, so cargo's content fingerprint says
+"nothing to do" and never relinks — while the staleness probe is mtime-based
+and sees a source newer than the binary. Green build, stale fixture, and the
+build says nothing. Deleting the seven binaries and rebuilding produced a real
+link (`16:17:40` against `16:16:53`) and the tests then ran.
+
+Why that matters HERE: the standing tally above excludes **fixture freshness**
+on the grounds that the failing host "rebuilt twice". A rebuild that reports
+success can leave the previous binary in place, exactly as observed on this
+host — so "rebuilt twice" is evidence about the COMMAND, not about the binary.
+That axis should be re-closed with the mtimes, not with the exit code:
+
+```
+ls -la --time-style=+%H:%M:%S <fixture-binary> <leaf>/generated/**/*.rs | sort -k6
+```
+
+If the binary is older than anything under `generated/`, the failing runs were
+made by a museum binary and every conclusion drawn from them is about an older
+build. This does not predict which way it resolves — it says the axis was
+closed by an argument that does not hold.
+
+Note the shape is NOT the same as issue 0445's absorbing STALE verdict: here
+the probe was right and the BUILD was wrong. `just fixture-staleness` cleared
+to zero for this group once a genuine link happened, so nothing needs
+suspecting in the probe.
+
+Unrelated but visible in the same listing, and quiet for days:
+
+```
+x6  5d  .../qemu-arm-baremetal/thumbv7m-none-eabi/nros-relwithdebinfo/qemu-bsp-large-msg-test
+x3  6d  .../qemu-arm-baremetal/thumbv7m-none-eabi/nros-relwithdebinfo/qemu-baremetal-main-e2e
+```
+
+Two coordinates that have produced no runtime result in 5–6 days — the 0445
+shape, in a lane nobody in this issue is watching.
