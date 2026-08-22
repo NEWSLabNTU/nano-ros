@@ -6138,12 +6138,9 @@ impl<'s> Executor<'s> {
         match &mut self.params {
             Some(params) => params.services = Some(services_box),
             None => {
-                self.params = Some(alloc::boxed::Box::new(
-                    crate::parameter_services::ParamState {
-                        server: nros_params::ParameterServer::new(),
-                        services: Some(services_box),
-                    },
-                ));
+                // Issue 0756 — see new_param_state: never build a ParamState
+                // by value, it does not fit an embedded thread stack.
+                self.params = Some(Self::new_param_state(Some(services_box)));
             }
         }
 
@@ -6357,12 +6354,38 @@ impl<'s> Executor<'s> {
     /// which preserves this store.
     fn ensure_parameter_store(&mut self) {
         if self.params.is_none() {
-            self.params = Some(alloc::boxed::Box::new(
-                crate::parameter_services::ParamState {
-                    server: nros_params::ParameterServer::new(),
-                    services: None,
-                },
-            ));
+            self.params = Some(Self::new_param_state(None));
+        }
+    }
+
+    /// Allocate a `ParamState` without building one on the stack first.
+    ///
+    /// Issue 0756 — `ParamState` is dominated by `ParameterServer`, which is
+    /// 285,192 bytes at the default `MAX_PARAMETERS=32` and 2,281,480 at 256
+    /// (`ParameterValue` is sized by its `StringArray` variant, so every slot
+    /// costs ~8.5 KiB regardless of what it holds). `Box::new(ParamState {..})`
+    /// materialises all of that on the caller's stack before copying it into
+    /// the allocation, because Rust has no placement-new. On the Zephyr lane
+    /// that silently overran the thread stack: an image built with 256 slots
+    /// boots to `dds_create_participant` and hangs with no fault and no
+    /// output, while 32 — which fits the 512 KiB main stack the cyclonedds
+    /// snippet asks for — runs clean.
+    ///
+    /// Initialising through the allocation bounds the largest stack temporary
+    /// at one `Option<ParameterEntry>`, so the knob no longer decides whether
+    /// boot survives.
+    fn new_param_state(
+        services: Option<alloc::boxed::Box<dyn crate::parameter_services::ParamServiceProcessor>>,
+    ) -> alloc::boxed::Box<crate::parameter_services::ParamState> {
+        let mut uninit = alloc::boxed::Box::<crate::parameter_services::ParamState>::new_uninit();
+        // Safety: `new_uninit` gives a correctly-sized, correctly-aligned
+        // allocation for exactly this type; every field is written exactly once
+        // below before `assume_init`.
+        unsafe {
+            let state = uninit.as_mut_ptr();
+            nros_params::ParameterServer::init_in_place(core::ptr::addr_of_mut!((*state).server));
+            core::ptr::addr_of_mut!((*state).services).write(services);
+            uninit.assume_init()
         }
     }
 

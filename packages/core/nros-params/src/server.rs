@@ -68,6 +68,39 @@ impl ParameterServer {
         }
     }
 
+    /// Initialise a `ParameterServer` directly into `dst`, without ever
+    /// materialising one by value.
+    ///
+    /// Issue 0756 — this type is enormous and scales with `MAX_PARAMETERS`:
+    /// `ParameterValue` is sized by its largest variant
+    /// (`StringArray(Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>)`), so
+    /// every slot costs ~8.5 KiB whatever it actually holds. Measured: 285,192
+    /// bytes at the default 32 slots, 2,281,480 at 256.
+    ///
+    /// `Box::new(ParameterServer::new())` therefore builds a multi-hundred-KiB
+    /// value on the STACK before copying it into the allocation — Rust has no
+    /// placement-new — which silently overruns a thread stack sized for
+    /// anything smaller. Constructing through this instead bounds the largest
+    /// temporary at one `Option<ParameterEntry>`.
+    ///
+    /// # Safety
+    ///
+    /// `dst` must be non-null, correctly aligned, and valid for writes of
+    /// `size_of::<ParameterServer>()` bytes. The pointee may be uninitialised
+    /// on entry; it is fully initialised on return.
+    pub unsafe fn init_in_place(dst: *mut Self) {
+        // addr_of_mut! throughout: `(*dst).entries` as a place expression would
+        // require the pointee to already be initialised.
+        // Safety: delegated to this function's own contract on `dst`.
+        unsafe {
+            let entries = core::ptr::addr_of_mut!((*dst).entries).cast::<Option<ParameterEntry>>();
+            for i in 0..MAX_PARAMETERS {
+                entries.add(i).write(None);
+            }
+            core::ptr::addr_of_mut!((*dst).count).write(0);
+        }
+    }
+
     /// Get the number of parameters stored
     pub fn len(&self) -> usize {
         self.count

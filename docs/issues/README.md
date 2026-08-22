@@ -304,12 +304,18 @@ tshark session to attribute 13.4 KiB trajectories silently discarded by every Ze
 throttled fail-loud `nros_log` at the drop site (RFC-0052) naming sample size vs buffer size, plus a sweep
 of the sibling take sites (C dispatch, service/action, param service). See `0757-*`. (2026-08-22)
 
-**#0756** (zephyr/memory, open 2026-08-22) — `NROS_MAX_PARAMETERS=256` hangs Zephyr boot right after
-`dds_create_participant`: no fault, no panic, no output. Bisected knob-level on the ASI FVP image
-(2026-08-22); 32 boots clean and runs the full driving loop, FreeRTOS lanes run 256 fine. Reachable only
-since `d1c5b3b3b` made the sizing knobs act on the Zephyr Rust lane (#0749/#0752). Suspected
-knob-scaled stack temporary on the boot path. Consumer pins the lane to 32 until fixed; boot should also
-fail loud when a sizing knob makes a stack unviable. See `0756-*`. (2026-08-22)
+**#0756** (zephyr/memory, RESOLVED 2026-08-22) — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
+`dds_create_participant`: no fault, no panic, no output. Root cause measured at frame level, confirming the
+filed suspicion. `ParameterValue` is sized by its `StringArray(Vec<String<256>, 32>)` variant, so EVERY slot
+costs ~8.5 KiB whatever it holds and the store is 285,192 B at 32 / 2,281,480 B at 256. Rust has no
+placement-new, so `Box::new(ParamState{..})` built that on the CALLER'S STACK: measured on thumbv7em at
+opt-level 2, 280,596 B at 32 and 2,244,628 B at 256, against the cyclonedds snippet's
+`CONFIG_MAIN_STACK_SIZE=524288`. 32 fits with 46% spare, 256 overruns 4.3x — the whole bisect, and a silent
+clobber rather than a fault because it walks off a stack with no guard below it. FreeRTOS lanes run far
+larger task stacks, hence unaffected. Fixed by `ParameterServer::init_in_place` + `Box::new_uninit`
+(`Executor::new_param_state`): largest temporary is now 68 B. Residual left open deliberately — the fix
+addresses the stack, not the store, so 256 slots is still a 2.2 MB heap allocation; the durable fix is the
+8.5 KiB-per-slot enum that every `bool` parameter pays for. See `0756-*`. (2026-08-22)
 
 **#0755** (cmake, open 2026-08-22) — `NanoRosBoardFacts.cmake` never forwards the entry's DEPLOY even
 though `nano_ros_add_executable` knows it and the verb accepts `--deploy`; when a bringup's system.toml
