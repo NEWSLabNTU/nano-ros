@@ -5404,12 +5404,16 @@ impl<'s> Executor<'s> {
         // does — identical to today's behaviour in that case.
         if let Some(now_us) = now_us_this_spin {
             let now_ms = now_us / 1000;
-            // Use the cycle's `delta_us` as the per-SC consumption
-            // estimate — worst-case attribution. Per-callback
-            // measurement lands with a higher-precision clock hook.
-            let delta_us_u32 = u32::try_from(delta_us).unwrap_or(u32::MAX);
+            // issue 0736 — REFILL only. This used to also charge the cycle's
+            // `delta_us` as the per-SC consumption estimate ("worst-case
+            // attribution", pending a higher-precision clock hook). That hook
+            // landed, and the attribution was not merely coarse: `delta_us` is
+            // the wall-clock gap between spins, not CPU the callbacks spent, so
+            // wherever the gap exceeds the budget the SC is exhausted on every
+            // spin regardless of what it ran. Consumption is charged from
+            // measured callback runtime in `consume_dispatch_runtime_us`.
             for slot in self.sporadic_states.iter_mut().flatten() {
-                let _ = slot.tick(now_ms, delta_us_u32);
+                let _ = slot.refill(now_ms);
             }
         }
 
@@ -5458,6 +5462,26 @@ impl<'s> Executor<'s> {
                         .unwrap_or(true),
                 };
                 if !has_budget {
+                    // issue 0736 — a budget skip used to be a bare `continue`,
+                    // which is the silent-drop shape 0737 gated one layer out:
+                    // the entry is simply not dispatched and nothing anywhere
+                    // says so, so a permanently starved tier is
+                    // indistinguishable from an idle one. It took a hand-run
+                    // 45 s image and a per-executor probe to learn that this
+                    // line was skipping 96 % of one tier's spins.
+                    if let Some(streak) = self
+                        .sporadic_states
+                        .get_mut(sc_idx)
+                        .and_then(|st| st.as_mut())
+                        .and_then(|st| st.note_budget_skip())
+                    {
+                        nros_log::nros_warn!(
+                            nros_log::get_logger("nros"),
+                            "sporadic budget exhausted for {} consecutive spins (sched context {}): its callbacks are not being dispatched. Either the callback runtime exceeds the declared budget_us per period_us, or the declaration is unsatisfiable on this target.",
+                            streak,
+                            sc_idx
+                        );
+                    }
                     continue;
                 }
                 // Phase 110.E.b follow-up — per-callback runtime
@@ -5639,6 +5663,7 @@ impl<'s> Executor<'s> {
              elapsed_us: u32,
              sched_context_bindings: &[super::sched_context::SchedContextId],
              sched_contexts: &[Option<super::sched_context::SchedContext>],
+             sporadic_states: &mut [Option<super::sched_context::SporadicState>],
              #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
                 portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
                 OpaqueTimerHandle,
@@ -5670,9 +5695,16 @@ impl<'s> Executor<'s> {
                         state.record_overrun(elapsed_us - state.budget_capacity_us);
                     }
                 }
-                #[cfg(not(feature = "alloc"))]
-                {
-                    let _ = (sc_idx, elapsed_us);
+                // issue 0736 — the POLLED state is charged unconditionally,
+                // and it is the one that matters: `has_budget` prefers the
+                // atomic state only when a refill timer was registered, which
+                // no board or entry does. Before this, the alloc arm charged a
+                // state nothing populated and the no_std arm discarded the
+                // measurement outright (`let _ = (sc_idx, elapsed_us)`), so no
+                // shipped image recorded per-callback runtime anywhere — while
+                // the comment above claimed it did.
+                if let Some(state) = sporadic_states.get_mut(sc_idx).and_then(|s| s.as_mut()) {
+                    state.consume(elapsed_us);
                 }
             };
 
@@ -5745,6 +5777,7 @@ impl<'s> Executor<'s> {
                             elapsed_us,
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
+                            &mut self.sporadic_states[..],
                             #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );
@@ -5784,6 +5817,7 @@ impl<'s> Executor<'s> {
                             elapsed_us,
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
+                            &mut self.sporadic_states[..],
                             #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );

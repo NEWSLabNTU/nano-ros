@@ -689,12 +689,21 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
         .node_mut(nid)
         .create_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // issue 0736 — the callback must COST something, because callback
+            // runtime is now the only thing that consumes budget. This test
+            // used to exhaust the budget by sleeping BETWEEN spins, which
+            // worked only because the executor charged the inter-spin
+            // wall-clock gap to every sporadic SC whether or not it had run.
+            // That was the defect; a test that relies on it is asserting the
+            // bug. Sleeping HERE is the same test of the same rule — "an SC
+            // that has spent its budget is not dispatched again" — expressed
+            // in the quantity the budget actually bounds.
+            std::thread::sleep(std::time::Duration::from_millis(2));
         })
         .unwrap();
 
-    // 1 us budget per 60 s period — first cycle's `delta_ms` saturates
-    // and exhausts the budget immediately, so the second cycle's
-    // dispatch is suppressed.
+    // 1 us budget per 60 s period: one dispatch costs ~2 ms of measured
+    // runtime, which exhausts it for the rest of the period.
     let sc_id = executor
         .create_sched_context(SchedContext {
             class: SchedClass::Sporadic,
@@ -708,16 +717,16 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     let off = executor.entries[0].as_ref().unwrap().offset;
 
-    // Cycle 1 — the first `tick` pass refills the budget to 1 us,
-    // then deducts the `delta_us` since the executor was constructed
-    // (probably 0 us on a fast machine, leaving 1 us). Either way
-    // the callback fires and the budget is consumed.
+    // Cycle 1 — refill puts 1 us in the budget, the callback fires and spends
+    // ~2 ms of it. The period is 60 s, so nothing refills before cycle 2.
     let (d, n) = encode_test_msg(1);
     unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
-    // Sleep to push elapsed time past 1 us so cycle 2's tick
-    // exhausts whatever residual budget remained.
-    std::thread::sleep(std::time::Duration::from_millis(2));
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "cycle 1 must dispatch — otherwise cycle 2 proves nothing"
+    );
 
     // Cycle 2 — budget is 0; dispatch must be suppressed.
     let initial = count.load(std::sync::atomic::Ordering::SeqCst);

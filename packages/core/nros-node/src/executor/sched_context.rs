@@ -355,6 +355,11 @@ pub struct SporadicState {
     pub budget_capacity_us: u32,
     pub period_us: u32,
     pub last_refill_ms: u64,
+    /// issue 0736 — consecutive spins in which this SC was skipped for want of
+    /// budget. A skip is invisible by construction: `spin_once` `continue`s
+    /// past the entry, so a starved tier looks exactly like an idle one. This
+    /// counter is what lets it say so. Reset on any dispatch.
+    pub consecutive_budget_skips: u32,
 }
 
 impl SporadicState {
@@ -364,19 +369,62 @@ impl SporadicState {
             budget_capacity_us: budget_us,
             period_us,
             last_refill_ms: 0,
+            consecutive_budget_skips: 0,
         }
     }
 
-    /// Apply elapsed-time accounting since the previous spin. Returns
-    /// `true` if the SC has remaining budget after the refill check.
-    pub fn tick(&mut self, now_ms: u64, delta_us: u32) -> bool {
+    /// Replenish the budget at period boundaries. Returns `true` if the SC has
+    /// budget remaining afterwards.
+    ///
+    /// issue 0736 — this used to be `tick(now_ms, delta_us)`, which refilled
+    /// AND then charged the whole inter-spin `delta_us` as consumption. A
+    /// budget bounds the CPU the SC's callbacks consume; the wall-clock gap
+    /// between two spins is not that, and on any target where the gap exceeds
+    /// the budget it exhausts the SC on every single spin no matter what the
+    /// callbacks did. Measured on nuttx-arm/rust: `delta_us` 10_000..80_000
+    /// against a 5_000 us budget, giving 1200 budget skips against 3 dispatches
+    /// while the sibling tier — identical but declaring no budget — dispatched
+    /// on all 450 of its spins.
+    ///
+    /// The `delta_us` charge was documented as a "worst-case attribution"
+    /// standing in for per-callback measurement. That measurement now exists
+    /// and runs on every flavour, so consumption belongs to
+    /// [`Self::consume`], called with what the callback actually cost.
+    pub fn refill(&mut self, now_ms: u64) -> bool {
         // Refill at period boundaries — coarse but correct.
         if now_ms.saturating_sub(self.last_refill_ms) >= self.period_us as u64 / 1000 {
             self.budget_remaining_us = self.budget_capacity_us;
             self.last_refill_ms = now_ms;
         }
-        self.budget_remaining_us = self.budget_remaining_us.saturating_sub(delta_us);
         self.budget_remaining_us > 0
+    }
+
+    /// Charge measured callback runtime against the remaining budget.
+    ///
+    /// The polled-state twin of `AtomicSporadicState::consume`. Both exist
+    /// because the atomic one is only present when a caller has registered a
+    /// refill timer via `Executor::register_sporadic_timer` — which, outside
+    /// this crate's own tests, nothing does. Every shipped image runs THIS
+    /// path, so it is the one that has to be right (issue 0736).
+    pub fn consume(&mut self, us: u32) {
+        self.budget_remaining_us = self.budget_remaining_us.saturating_sub(us);
+        self.consecutive_budget_skips = 0;
+    }
+
+    /// Record one budget-skipped dispatch. Returns `Some(n)` when the streak
+    /// has reached a length worth reporting — at 100, then each power of ten —
+    /// so a starved SC is loud once and does not then flood the console.
+    pub fn note_budget_skip(&mut self) -> Option<u32> {
+        self.consecutive_budget_skips = self.consecutive_budget_skips.saturating_add(1);
+        let n = self.consecutive_budget_skips;
+        // Once when the streak is clearly not noise, then sparsely: a starved
+        // SC must be loud, and must not then drown the console it is reporting
+        // on. (The measured case ran 1200 consecutive skips.)
+        if n == 100 || (n > 100 && n.is_multiple_of(1000)) {
+            Some(n)
+        } else {
+            None
+        }
     }
 }
 

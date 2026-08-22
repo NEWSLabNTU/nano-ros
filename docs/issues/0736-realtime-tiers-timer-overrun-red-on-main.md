@@ -326,3 +326,85 @@ Not decided here, and the choice is a design question rather than a bug:
 Either way, `has_budget == false` for 1200 consecutive spins with no
 diagnostic is its own defect: exactly the silent-drop shape issue 0737 gated in
 example callbacks, one layer in.
+
+## Fixed the root cause, measured 2026-08-22 — and it exposes a different limiter
+
+The budget gate above is fed by an accounting that charges the wrong quantity,
+and the per-callback path that was supposed to replace it never ran anywhere.
+
+```rust
+// spin.rs, once per spin, for EVERY sporadic SC:
+let delta_us_u32 = u32::try_from(delta_us).unwrap_or(u32::MAX);
+for slot in self.sporadic_states.iter_mut().flatten() {
+    let _ = slot.tick(now_ms, delta_us_u32);   // refill, then SUBTRACT delta_us
+}
+```
+
+`delta_us` is the wall-clock gap between two spins — 10 000..80 000 µs here —
+not CPU the callbacks spent. Against a 5 000 µs budget it saturates the SC to
+zero on every spin no matter what ran, which is exactly the 1200-skips /
+3-dispatches ratio, and exactly why the sibling tier (identical but declaring
+no budget) dispatched 450/450.
+
+**The per-callback replacement existed and was dead.** `consume_dispatch_runtime_us`
+charges only `sporadic_atomic_states`, which is populated solely by
+`Executor::register_sporadic_timer` — and the only callers of that in the whole
+tree are two unit tests in `executor/tests.rs`. No board, no entry, no
+`run_tiers` registers one. So on every shipped image the alloc arm charged a
+state nothing populated and the `no_std` arm discarded the measurement outright
+(`let _ = (sc_idx, elapsed_us);`), while the comment above it stated that "the
+atomic path now records actual wall-clock per-callback runtime". It records it
+under test. This is the codebase's own recurring shape: a capability behind a
+path nobody enables reads as coverage.
+
+### The change
+
+* `SporadicState::tick(now_ms, delta_us)` → `refill(now_ms)` + `consume(us)`.
+  Refill stays time-based; consumption is charged from measured callback
+  runtime, the quantity a budget actually bounds.
+* `consume_dispatch_runtime_us` charges the POLLED state unconditionally — the
+  one every image runs — in addition to the atomic state when registered.
+* The skip is no longer silent. `has_budget == false` was a bare `continue`;
+  it now counts consecutive skips per SC and warns at 100, then every 1000:
+  *"sporadic budget exhausted for N consecutive spins (sched context I): its
+  callbacks are not being dispatched."* This was the part of the diagnosis that
+  was not a design question, and it is what would have made the original
+  investigation minutes instead of days.
+
+### Measured
+
+`workspace-rust-nuttx-realtime` rebuilt clean, `realtime_tiers_e2e`:
+
+| | `/ctrl` (10 ms tier) | `/telem` (100 ms tier) | ratio |
+| --- | --- | --- | --- |
+| before | 2 | 21 | **0.1x** (inverted) |
+| after, run 1 | 66 | 25 | 2.6x |
+| after, run 2 | 61 | 25 | 2.4x |
+
+The inversion is gone and the fast tier outruns the slow one — a ~30x move in
+the quantity this issue is about. The new budget-skip warning never fires on
+these runs, so the SC's skip streak stays under 100: the starvation this issue
+diagnosed is not there any more.
+
+### Still red, for a different reason — publishes are failing
+
+The assertion wants >=3x (75) and gets 61-66, and the run is full of:
+
+```
+[ERROR] on_ctrl:  publish to /ctrl  FAILED: Runtime
+[ERROR] on_telem: publish to /telem FAILED: Runtime
+```
+
+on BOTH tiers. The timer now fires and the callback now runs; the publish
+inside it fails, so the delivered counter undercounts what was dispatched.
+That error path is not new — it dates to #572's diagnostics work — it was
+simply not the limiter while the tier was reaching its callback 0.2 % of the
+time.
+
+So this issue's diagnosis is resolved and its cell is still red. Whoever takes
+the residue should start at the transport, not the scheduler: the question is
+why a ~100 Hz publish on this image returns `Runtime`, and whether the 25 the
+SLOW tier delivers is also short of its own declared rate (100 ms over the same
+window should be more than 25 if the window is the ~2.5 s the counts imply).
+Filing that as its own issue would be reasonable; it is not the defect this
+one describes.
