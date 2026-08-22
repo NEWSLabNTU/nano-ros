@@ -848,3 +848,99 @@ not score as a pass.
 So both arms of this issue are now confirmed on a second host, C/C++ and
 FreeRTOS alike. Nothing here contradicts `ce152db1f`'s own 8/8 measurements.
 
+## Option 3 implemented (2026-08-22)
+
+The last open item. Option 2 (the owner is the tier that outranks nothing) is
+what removed the starvation; option 3 makes the guarantee hold without depending
+on that ordering being right.
+
+### What the loop actually lacked
+
+Whether a spin BLOCKS is a property of the transport, not of the tier.
+`Executor::spin_once` (`packages/core/nros-node/src/executor/spin.rs`):
+
+```
+if !was_woken && has_async_wake && node_wake => wake.wait_ms(timeout)   // blocks
+else                                        => drive_io(timeout_ms)     // 0 when woken
+```
+
+The `was_woken` arm drives I/O with a ZERO timeout — deliberately, since a wake
+means there is data to drain. So under sustained arrival EVERY iteration takes
+the non-blocking arm and the loop has no scheduling point exactly when the
+system is busiest. Under SCHED_FIFO a thread yields only by blocking, so a tier
+that outranks another and free-runs holds a uniprocessor indefinitely. That is
+the "transport luck" the option names.
+
+### The rule
+
+**A tier loop may not run longer than `max(spin_period_us, 10 ms)` without
+either blocking in its own spin or taking a 1 ms gap.** Everything is derived
+from what the author already declared, so there is no new knob:
+
+| choice | why this and not something else |
+| --- | --- |
+| interval floor 10 ms | the gap costs 1 ms, so the floor is what caps worst-case overhead at 10 %. A longer declared period pays proportionally less |
+| "it blocked" = iteration ≥ half the period | a spin that waited its timeout lands near the period; a free-running one is orders of magnitude below. Half is the midpoint, not a tuned constant |
+| gap = `sleep_ms(1)` | `sleep_us`'s own ABI contract says it may SPIN where there is no sub-millisecond timer, and a spin is not a scheduling point — it would satisfy the code and not the requirement |
+| state is one opaque `u64` | C and Rust runners share ONE implementation; a shared struct would be a hand-mirrored FFI layout, which this repo has been bitten by three times. Bit 0 = window open, bit 1 = something blocked, rest = window start (2 ns of resolution given up) |
+
+Cost on the healthy path is zero: a loop whose spins block never opens a window
+without a block in it, so it never sleeps here.
+
+### What it landed on, and what the gate found
+
+Ten loops across five kernels and two languages — `TierSpinGap` (Rust) and
+`nros_tier_spin_gap_step` (C, the same code). Writing the gate first would have
+been better: `check-tier-spin-gap` immediately found **a Zephyr Rust tier loop I
+had missed by hand**, which is the whole argument for having it.
+
+It also found that this problem had already been solved TWICE, per-kernel, and
+nowhere else:
+
+- **FreeRTOS** ended every iteration with `vTaskDelay(1)` — the same guarantee,
+  hand-rolled, paying a tick on iterations whose spin already blocked, while the
+  three other kernels running the identical loop had nothing. Now routed through
+  the shared rule.
+- **Native** (`nros_board_native_run_tiers`) sleeps its FULL declared period
+  every iteration. That is stronger than the gap and is also what keeps a hosted
+  target from burning a core, so converting it would have removed pacing rather
+  than added a guarantee — it is exempt in the gate WITH that reason.
+
+So the pattern this issue keeps producing held once more: the rule existed in
+one kernel's dialect, and the kernels that lacked it were not visibly different
+from the ones that had it.
+
+### Measured
+
+Neither of the failure modes this could introduce is theoretical, so both were
+measured rather than argued: a gap that fires too often costs throughput, and
+replacing FreeRTOS's unconditional delay could regress a platform that passes
+today.
+
+Measured in the ROS distrobox, fixtures rebuilt on the change, 8 consecutive
+runs per cell:
+
+| cell | with the gap |
+| --- | --- |
+| `[nuttx rust TierPriority]` | 8/8 |
+| `[nuttx cpp TierPriority]` | 8/8 |
+| `[freertos cpp TierPriority]` | 8/8 — the arm whose `vTaskDelay(1)` this replaces |
+| `[freertos c TierPriority]` | 8/8 |
+
+The decision function is pure and unit-tested (14 cases). One test earned its
+keep before it ever reached a target: with the timestamp alone as the state, a
+port whose clock epoch is 0 re-read "not started yet" on every iteration and the
+gap silently did not exist there — hence the explicit window-open bit.
+
+**Not claimed: that a gap has been observed FIRING on target.** These cells are
+not traffic-saturated, and saturation is the condition that makes the loop
+free-run. The firing path is covered by the unit tests; the NuttX tier heartbeat
+now carries the gap count, so a busy image can answer it directly rather than by
+inference.
+
+### Status
+
+With option 3 landed, every option in this issue is either implemented or
+deliberately declined, and both arms — NuttX C/C++ and FreeRTOS — are confirmed
+on a second host. Recommend closing.
+

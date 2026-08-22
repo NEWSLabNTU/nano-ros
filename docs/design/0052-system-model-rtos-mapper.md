@@ -89,6 +89,25 @@ FFI-mirror lesson applied).
 | `preempt_threshold` | reject (validate-time error) | reject | reject | `tx_thread_preemption_change` | reject |
 | `spin_period_us` | tier spin loop (exists) | exists | exists | exists | exists |
 
+`spin_period_us` is an UPPER bound on one spin's wait, never a rate: a spin
+returns as soon as it has something to do. Issue 0636 option 3 adds the missing
+lower half — **a tier loop may not run for longer than
+`max(spin_period_us, 10 ms)` without either blocking in its own spin or taking a
+1 ms scheduled gap.** Both halves are derived from the declared period, so there
+is no knob; the gap costs nothing on a loop whose spins block, and its 1 ms
+against a 10 ms floor is what caps the worst case at 10 %.
+
+Why it is a mapper concern rather than an executor one: whether a spin blocks is
+a property of the TRANSPORT. `Executor::spin_once` drives I/O with a zero
+timeout whenever a wake already fired, so under sustained arrival the loop never
+blocks — precisely when the system is busiest — and on a uniprocessor under
+fixed-priority preemption a thread that never blocks never lets a lower-priority
+tier run. Choosing the least urgent tier as session owner (`boot_tier_index`)
+removes the starvation; the gap is what makes the guarantee independent of that
+ordering being right. One implementation,
+`nros_platform::board::tier::TierSpinGap` / `nros_tier_spin_gap_step`, for the
+Rust and C tier runners alike; gate: `check-tier-spin-gap`.
+
 Rejection semantics: a platform-inapplicable field in the SELECTED
 target's sub-table is a **bake-time error** (same philosophy as
 play_launch 43.3's missing-sub-table hard error): the integrator wrote a
