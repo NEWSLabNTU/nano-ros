@@ -140,7 +140,12 @@ install-make:
         tail -20 "$tmp/make-$want/build.log" "$tmp/make-$want/cfg.log" 2>/dev/null >&2 || true
         exit 1
     fi
-    if ldd "$tmp/make-$want/make" 2>/dev/null | grep -q guile; then
+    # issue 0726 — `nros_grep_q` rather than a bare `grep -q`: in an `if`, a
+    # grep that fails to START reads as "no guile", which is the answer that
+    # lets the bad binary install. It exits 2 instead.
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    if ldd "$tmp/make-$want/make" 2>/dev/null | nros_grep_q guile; then
         echo "[make] refusing to install: built make still links guile — a host-only" >&2
         echo "       binary breaks the distrobox (see the --without-guile note above)." >&2
         exit 1

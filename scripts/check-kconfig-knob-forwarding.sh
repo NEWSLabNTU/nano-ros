@@ -34,6 +34,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — the three reader-shape checks below are the `if ! grep -q` shape,
+# whose failure mode is a grep that could not START being reported as "$f has no
+# KCONFIG_KNOBS table": a confident, specific, false claim, and only under load.
+# `nros_grep_q` exits 2 on a tool failure instead of returning "no match".
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 CMAKE=zephyr/cmake/nros_cargo_build.cmake
 READERS=(
     packages/rmw/zenoh/nros-zpico-build/src/runner.rs
@@ -115,10 +122,10 @@ done
 # table nobody consults is the same silence with extra steps.
 for f in "${READERS[@]}"; do
     [ -f "$f" ] || continue
-    grep -qF 'KCONFIG_KNOBS' "$f" || {
+    nros_grep_q 'KCONFIG_KNOBS' "$f" || {
         echo "[FAIL] $f has no KCONFIG_KNOBS table" >&2; fail=1; continue
     }
-    grep -qE 'nros_zephyr_build::(knob_usize|dotconfig_usize)' "$f" || {
+    nros_grep_q 'nros_zephyr_build::\(knob_usize\|dotconfig_usize\)' "$f" || {
         echo "[FAIL] $f never calls the shared \`nros_zephyr_build\` fallback" >&2; fail=1
     }
 done
@@ -129,7 +136,7 @@ done
 # file can satisfy that while resolving nothing from `$DOTCONFIG`.
 for f in "${DERIVED_READERS[@]}"; do
     [ -f "$f" ] || continue
-    grep -qE 'nros_zephyr_build::(knob_usize|dotconfig_usize)' "$f" || {
+    nros_grep_q 'nros_zephyr_build::\(knob_usize\|dotconfig_usize\)' "$f" || {
         echo "[FAIL] $f is listed as a derived reader but never calls the" >&2
         echo "       shared nros_zephyr_build fallback — so nothing it names" >&2
         echo "       is actually resolved from \$DOTCONFIG (issue 0751)." >&2
