@@ -778,6 +778,16 @@ pub const CELLS: &[Cell] = &[
     // of its own and the board carries no Rust board crate.
     cell(FreertosPosix, C,   Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(FreertosPosix, Cpp, Cyclonedds, EntryPubsub, Workspace, Runtime),
+    // phase-372 — the S32Z270 Cortex-R52 bundle's workspace row
+    // (`workspace-cpp-s32z270-freertos`). It borrows the `freertos` platform
+    // token for the family lane; MPS2 owns that platform's Runtime cells, and
+    // this board has no witness of its own, so it is BuildOnly rather than a
+    // promise CI runs. The string is what unlocks it.
+    cell(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Workspace,
+         BuildOnly("phase-372 — S32Z270 is link-complete only: the NXP GIC port, \
+                    RTD NETC driver and PBcfg are consumer-provisioned seams \
+                    (autoware-safety-island), so no in-tree runner can boot it. \
+                    Unlocks when a hardware or simulator witness exists")),
     cell(NuttxArm, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     // Corrected during the phase-295 W3.b entry consolidation: the seed
     // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub

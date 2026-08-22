@@ -3,8 +3,8 @@ rfc: 0064
 title: "Board support organization: nano-ros as an embeddable library, not a board framework"
 status: Draft (LIVE — under active exploration)
 since: 2026-07
-last-reviewed: 2026-08-04
-implements-tracked-by: [phase-337]  # R3's matrix, one board family per wave
+last-reviewed: 2026-08-22
+implements-tracked-by: [phase-337, phase-375]  # R3's matrix; 375 = tier policy + onboarding cost
 supersedes: []
 superseded-by: null
 ---
@@ -1476,3 +1476,116 @@ per-board file. Until it exists, quote 205.
 The one cost no template removes is the MAC driver: `lan9118_lwip.c` is ~507
 lines, and a board whose vendor SDK ships no lwIP netif pays that between its
 silicon and lwIP.
+
+## Revision 4 (2026-08-22) — the tier is a PROMISE with an OWNER, and onboarding is the real cost
+
+Written after the S32Z270 bundle landed and the question "more boards keep
+arriving; how do we balance platforms per tier" was asked directly. The answer
+this RFC gave in revision 3 — a matrix of cells with tiers — is right and is
+kept. What it lacked is an entry POLICY, and the evidence says the policy should
+govern owners and onboarding, not test counts.
+
+### The measurement that reframes it
+
+| | |
+| --- | --- |
+| `matrix::CELLS` | **191** — 181 Runtime, 5 BuildOnly, 5 CarveOut |
+| `fixtures.toml` rows | **422**, of which `linux` is **195 (46 %)** |
+| lane coordinates | tier 1 **10**, tier 2 **14**, nightly **37**, tier 3 **51** |
+| board registry | 5 tier-1, 6 tier-2, 2 tier-3, 9 infra — **0 with a maintainer** |
+
+(Revision 3 quoted 202 cells / 174 / 17 / 11 from 2026-08-04. BuildOnly has since
+fallen 17 -> 5, mostly by promotion. Re-measure before quoting; an early pass of
+this revision counted 181 cells and "all Runtime" because its regex matched only
+bare-identifier tiers and silently dropped `BuildOnly("reason")`.)
+
+**A new platform costs +1 coordinate in tier 1, tier 2 AND nightly**, because
+1-wise and pairwise both absorb a new axis VALUE cheaply, and +2 in tier 3. That
+is not where bloat comes from. Measured cost of the last two boards:
+
+* `freertos-posix` (phase-370): +2 cells, +1 coordinate per lane — and two RED
+  gates (a recipe graph that could not produce its token, the lane table).
+* `s32z270` (phase-372): 0 Runtime cells, +1 tier-3 coordinate — and **five** red
+  gates: weak symbols, board tiers, leaf lock, provider announcements, matrix
+  orphan.
+
+**So the marginal cost of a board is not its tests. It is the onboarding
+gauntlet, paid by whoever notices main is red.**
+
+### What the ecosystem does
+
+**Rust's target tier policy** makes ownership the gate: tier 3 requires >=1
+named maintainer, tier 2 >=2, tier 1 >=3, with automatic demotion when the
+requirement lapses. Two clauses transfer directly:
+
+> Tier 2 targets **must not impose burden on the authors of pull requests** … do
+> not post comments that derail or suggest a block on the PR based on tests
+> failing for the target.
+
+> Cannot substantially slow CI.
+
+Under that policy S32Z270 — a *tier 3* board — reddening main for everyone is
+the disqualifying condition, not a nuisance. And `board-support.toml` carries
+`maintainers = []` on all 22 rows, with `check-board-tiers` printing "not
+enforced yet (phase-320 W3.b)". The valve exists and is not turned.
+
+**Zephyr's Twister** separates two things this tree fuses: `platform_allow` says
+where a test CAN run, `integration_platforms` says where CI runs it BY DEFAULT,
+and the docs warn against using the capability list for CI scoping. It also
+tiers by test PURPOSE (`levels:` — smoke, unit, integration, acceptance, system,
+regression), orthogonal to platform.
+
+**But Zephyr's own issue #57595 argues FOR this tree's design**: their scope
+rules are trial-and-error and untested, so "there is no warranty that the
+behavior won't suddenly change". nano-ros's computed 1-wise/pairwise cover
+cannot drift and is gated (`documented_lane_table_is_live`). **Keep it.** An
+earlier draft of this revision proposed replacing it with declared per-test
+platform lists; that is rejected on Zephyr's evidence.
+
+**Zephyr on vendor boards:** "for product work, out-of-tree is the right call, as
+it keeps your definition independent of Zephyr version updates and lives in your
+own repo."
+
+### The policy
+
+1. **A tier is a promise with an owner.** Tier 1 >=3 maintainers, tier 2 >=2,
+   tier 3 >=1. A board whose owner lapses demotes rather than rots. This makes
+   the board count self-limiting without anyone arbitrating worth, and it is
+   phase-320 W3.b's own intent.
+
+2. **A board below tier 2 must not be able to redden a shared lane.** Onboarding
+   is complete at merge or the board does not merge — which makes a scaffold
+   (`just board-new`) an entry requirement rather than a convenience.
+
+3. **Witness-less boards are `Tier::BuildOnly`, and the vocabulary already
+   exists.** A consumer-required board with no runner takes a BuildOnly cell
+   whose string says what unlocks it, plus a borrowed platform token. It
+   contributes zero Runtime cells and ~2 fixture rows. This is what S32Z270 got
+   (2026-08-22) and it is the shape every future vendor board should take.
+
+4. **A smoke floor, a witness-gated ceiling.** Every supported platform earns
+   exactly ONE Runtime cell (boots, delivers one message) to sit in tier 2; full
+   cells in nightly require a witness. Today's distribution — Linux 72 cells,
+   QemuBaremetal 1 — is defensible but undeclared, and a floor plus a ceiling
+   makes it intentional. This is Zephyr's `levels:` idea applied to the axis
+   this tree actually tiers on.
+
+5. **A product board belongs in the product repo.** The out-of-tree seam is
+   built (RFC-0064's own target state; phase-346 COMPLETE 2026-08-12). S32Z270
+   exists for `autoware-safety-island`; it is a candidate to live there, with
+   nano-ros keeping a link check and the consumer running it in its own CI. The
+   trade is visibility for size, and it is the only durable answer to "more and
+   more boards appear".
+
+### The one honest tension
+
+(5) trades away in-tree evidence that a board still links. If a board stays
+in-tree instead, (1) and (3) contain its cost — but then it needs a named
+maintainer under (1). Choosing per board is fine; choosing by default is what
+this revision asks for.
+
+Sources: [Rust target tier
+policy](https://doc.rust-lang.org/nightly/rustc/target-tier-policy.html);
+[Zephyr Twister](https://docs.zephyrproject.org/latest/develop/twister/index.html);
+[twister scope rules #57595](https://github.com/zephyrproject-rtos/zephyr/issues/57595);
+[Zephyr board porting](https://docs.zephyrproject.org/latest/hardware/porting/board_porting.html).
