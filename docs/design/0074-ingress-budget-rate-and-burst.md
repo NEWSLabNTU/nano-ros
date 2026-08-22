@@ -247,6 +247,65 @@ bounds occupancy, but not below the 50 ms stall threshold, so rare huge bursts
 become regular moderate ones. The knob is only useful when
 `frames x per_frame_cost` fits inside the tightest tier's slack.
 
+## Compiling the declaration — `(rate_hz, burst)` to `(FRAMES, REST)`
+
+Measured 2026-08-21 by a frames sweep; this closes questions 2, 4 and 5 with one
+relation.
+
+The mechanism takes FRAMES messages back-to-back, then idles REST. So over one
+cycle:
+
+    max contiguous occupancy = FRAMES x c
+    sustained rate           = FRAMES / (FRAMES x c + REST)
+
+where `c` is the **per-frame processing cost**, the one number a platform has to
+record. On the FreeRTOS mps2-an385 lane, worst observed tier gap against the
+frame budget fits
+
+    worst_gap(ms) = 0.940 x FRAMES + 11.0        (measured 21 / 38 / 132 at
+                                                  FRAMES = 8 / 32 / 128;
+                                                  fitted 19 / 41 / 131)
+
+so `c` = 0.94 ms there. Two independent checks support it: the fit predicts the
+observed pass/fail boundary (32 frames -> 41 ms, no stalls; 128 -> 131 ms,
+stalls, worse than unbounded on stall COUNT), and `1/c` = ~1060 msg/s brackets
+the 740-752 msg/s this same island sustained under router pacing — a different
+experiment.
+
+### The mapping
+
+- **`burst` -> FRAMES**, directly. `burst` is defined as the messages that may
+  arrive back-to-back before pacing applies, and FRAMES is exactly how many are
+  taken before the task yields.
+- **`rate_hz` -> REST**, by solving the rate equation:
+
+      REST = burst x (10^6 / rate_hz - c_us)
+
+### What validates a declaration (question 2)
+
+Both constraints fall out of the same two lines, and both are per-platform via
+`c`:
+
+1. **Feasible at all.** `REST >= 0` requires `rate_hz <= 1/c` — about 1060 msg/s
+   on this lane. A larger `rate_hz` is not a policy the device declines, it is
+   arithmetic the device cannot satisfy.
+2. **Does not itself miss a deadline.** `c x burst + floor <= slack` of the
+   tightest tier sharing the core. This is the constraint FRAMES = 128 violates:
+   it bounds occupancy (131 ms vs 610 ms unbounded) but not below the 50 ms
+   threshold, so rare huge bursts become regular moderate ones.
+
+Both are resolve-time checks against numbers the contract already carries —
+tier periods and deadlines — plus `c`.
+
+### Caveats
+
+`c` and the 11 ms floor are from ONE lane, ONE payload size, and three budget
+points. The floor is unexplained (plausibly the tier's own work plus scheduler
+latency) and is carried as an empirical term rather than modelled. Message size
+almost certainly enters `c` — a larger payload costs more to decode — so `c` may
+need to be per (platform, type) rather than per platform; nothing here measures
+that, and a design that assumes one `c` per board should say so.
+
 ## Open questions
 
 1. ~~**Per-subscription declaration, per-session enforcement.**~~ **Largely
@@ -256,11 +315,12 @@ become regular moderate ones. The knob is only useful when
    because that is what a user can state, and the resolver aggregates. What
    remains open is only whether SHEDDING wants per-endpoint attribution, and
    shedding lives at the router (enforcement point 1).
-2. **What validates `rate_hz` at resolve time?** Still open, but the figure to
-   record is now identified: **per-frame processing cost** (~0.8-1.0 ms on this
-   lane), not a msg/s envelope. That is a stabler quantity — issue 0506 showed
-   ~750 msg/s described burstiness, whereas per-frame cost is a property of the
-   decode path. Nothing records it yet.
+2. ~~**What validates `rate_hz` at resolve time?**~~ **Answered — two
+   constraints, both from one per-platform number.** See "Compiling the
+   declaration" below. The number to record is the **per-frame processing cost
+   `c`** (0.94 ms on this lane), and a platform records exactly one of it.
+   Remaining work is mechanical: measure `c` per platform and store it beside
+   the other board facts. Nothing does yet.
 3. ~~**Does BEST_EFFORT already express part of this?**~~ **Answered: no.**
    Checked in zenoh-pico: `reliability` is a PUBLISHER-side field
    (`publisher->reliability`, stamped per message on the tx path), and
@@ -269,18 +329,17 @@ become regular moderate ones. The knob is only useful when
    only an entity id and a session handle. A subscriber therefore cannot signal
    "shed for me"; there is no field on the declare to carry it. BEST_EFFORT is
    not a partial answer to this RFC.
-4. **Failure mode — and the two points differ.** The device budget sheds
-   NOTHING: it defers, and TCP backpressures the sender (`_z_zbuf_reset` is
-   above the loop). So "whatever sheds must count" applies to the router rule,
-   whose observable is a drop counter. The device half's observable is
-   different — deferral time or occupancy — and the RFC should not ask one
+4. ~~**Failure mode.**~~ **Answered, and the two points differ.** Reject at
+   resolve time is now possible rather than aspirational, because question 2
+   supplies a bound: a declaration failing either constraint below is
+   arithmetically unsatisfiable, not merely ambitious, so it is a hard error.
+   Admitted declarations then differ by enforcement point — the router rule
+   SHEDS and needs a drop counter; the device budget sheds NOTHING (it defers,
+   and TCP backpressures the sender, because `_z_zbuf_reset` is above the loop),
+   so its observable is occupancy or deferral time. The RFC should not ask one
    question of both.
-5. **How the declaration compiles to the task budget.** With occupancy as the
-   mechanism, `burst` maps onto FRAMES (the contiguous run a device will
-   tolerate) and `rate_hz` onto the duty cycle. That the contract term and the
-   knob mean the same thing is an argument for this mechanism. The remaining
-   step is question 2's per-frame cost, which turns a deadline slack into a
-   frame count.
+5. ~~**How the declaration compiles to the task budget.**~~ **Answered.** See
+   "Compiling the declaration" below — it is arithmetic, once `c` is known.
 6. ~~**Does the budget cost chain latency?**~~ **Answered: no detectable
    cost**, and the p50 figures that suggested one were an artifact of the
    statistic.
