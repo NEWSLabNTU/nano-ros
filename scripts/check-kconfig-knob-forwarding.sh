@@ -51,6 +51,10 @@ DERIVED_READERS=(
     # a plain env::var — which on a Zephyr Rust image reads the crate default
     # whatever Kconfig says (issue 0460).
     packages/core/nros-params/build.rs
+    # The three RMW sizing knobs (NROS_RMW_MAX_BACKENDS,
+    # NROS_RMW_SUBSCRIBER_SLOTS, NROS_RMW_MESSAGE_INFO_SLOTS). Added when
+    # #0752 forwarded SUBSCRIBER_SLOTS and this file was still env-only.
+    packages/rmw/cffi/build.rs
 )
 
 # Knobs the cmake side exports that no Rust build script reads. Each needs a

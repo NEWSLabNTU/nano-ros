@@ -21,16 +21,25 @@ fn main() {
     maybe_build_c_stub();
 }
 
-fn emit_max_backends() {
-    println!("cargo:rerun-if-env-changed=NROS_RMW_MAX_BACKENDS");
+/// Resolve a sizing knob the way every Zephyr-aware build script here does.
+///
+/// A plain `env::var` reads the crate DEFAULT on a Zephyr RUST image whatever
+/// Kconfig says: that lane inherits none of cmake's `set(ENV{...})` exports,
+/// while the C lane re-bakes them into its own command — so the two halves
+/// disagree about a compile-time constant, silently (issues 0460, 0135).
+/// `knob_usize` reads `$DOTCONFIG` for `CONFIG_<name>` and lets explicit env
+/// win, which is what `nros-node` and `nros-params` already do.
+///
+/// Note this drops the previous "not a valid usize" panic: `knob_usize` treats
+/// an unparseable value as absent and falls through to the default. The RANGE
+/// checks below are kept, since they are the ones that catch a plausible-looking
+/// wrong number.
+fn knob(name: &str, default: usize) -> usize {
+    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), default)
+}
 
-    let raw = std::env::var("NROS_RMW_MAX_BACKENDS").unwrap_or_else(|_| "8".to_string());
-    let parsed: usize = raw.trim().parse().unwrap_or_else(|err| {
-        panic!(
-            "NROS_RMW_MAX_BACKENDS=\"{raw}\" is not a valid usize: {err}. \
-             Set a positive integer (default 8)."
-        )
-    });
+fn emit_max_backends() {
+    let parsed = knob("NROS_RMW_MAX_BACKENDS", 8);
 
     if !(1..=64).contains(&parsed) {
         panic!(
@@ -49,15 +58,7 @@ fn emit_max_backends() {
 /// the fifth `create_subscription` returned BAD_ALLOC, which the
 /// executor then surfaced as an opaque `SubscriberCreationFailed`.
 fn emit_subscriber_slots() {
-    println!("cargo:rerun-if-env-changed=NROS_RMW_SUBSCRIBER_SLOTS");
-
-    let raw = std::env::var("NROS_RMW_SUBSCRIBER_SLOTS").unwrap_or_else(|_| "8".to_string());
-    let parsed: usize = raw.trim().parse().unwrap_or_else(|err| {
-        panic!(
-            "NROS_RMW_SUBSCRIBER_SLOTS=\"{raw}\" is not a valid usize: {err}. \
-             Set a positive integer (default 8)."
-        )
-    });
+    let parsed = knob("NROS_RMW_SUBSCRIBER_SLOTS", 8);
 
     if !(1..=128).contains(&parsed) {
         panic!(
@@ -78,15 +79,7 @@ fn emit_subscriber_slots() {
 /// subscribers. The table is keyed by backend handle, so the useful bound is
 /// the session's subscription count, not a fixed 64.
 fn emit_message_info_slots() {
-    println!("cargo:rerun-if-env-changed=NROS_RMW_MESSAGE_INFO_SLOTS");
-
-    let raw = std::env::var("NROS_RMW_MESSAGE_INFO_SLOTS").unwrap_or_else(|_| "64".to_string());
-    let parsed: usize = raw.trim().parse().unwrap_or_else(|err| {
-        panic!(
-            "NROS_RMW_MESSAGE_INFO_SLOTS=\"{raw}\" is not a valid usize: {err}. \
-             Set a positive integer (default 64)."
-        )
-    });
+    let parsed = knob("NROS_RMW_MESSAGE_INFO_SLOTS", 64);
 
     if !(1..=256).contains(&parsed) {
         panic!(

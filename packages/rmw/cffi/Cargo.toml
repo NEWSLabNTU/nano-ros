@@ -31,6 +31,10 @@ nros-rmw = { workspace = true, default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
 [build-dependencies]
+# issue 0460 — the sizing knobs must resolve from `$DOTCONFIG`, not from
+# an env a Zephyr Rust image never receives. Same helper `nros-node` and
+# `nros-params` use; gated by `check-kconfig-knob-forwarding`.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in
 # `tests/c_stubs/*.c` into a small static lib that the integration
 # tests link against. Only used during `cargo build`/`cargo test`;

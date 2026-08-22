@@ -1987,6 +1987,7 @@ dependencies = [
  "nros-cc-flags",
  "nros-log",
  "nros-rmw",
+ "nros-zephyr-build",
  "portable-atomic",
 ]
 
