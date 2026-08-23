@@ -4114,3 +4114,91 @@ fn executor_stays_small_enough_to_construct_on_a_stack() {
          instead of holding it inline."
     );
 }
+
+/// Issue 0757 — a take that FAILS must be counted, not swallowed.
+///
+/// The drain loop had four copies (typed, raw, borrowed/zero-copy, and the C
+/// one), and three of them treated any non-`Ok` take as "the queue is empty":
+/// `else { break }`. That made a dropped sample indistinguishable from an idle
+/// subscription — the executor reported a clean spin, the message was gone, and
+/// nothing anywhere counted it.
+///
+/// The unit suite could not have caught it: `MockSubscriber` held a queue of
+/// canned MESSAGES, so no test could express a failing take at all. Injecting
+/// the failure is the other half of the fix.
+///
+/// The assertion is `subscription_errors`, deliberately, rather than the log
+/// line: issue 0737 had already fixed the C copy by PROPAGATING to
+/// `spin_once`, so the remedy for this class already existed one function over,
+/// and a log-only fix would have been a second spelling of it.
+#[test]
+fn failed_subscription_take_is_counted_not_swallowed() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let nid = executor
+        .node_builder("failed_take_is_counted")
+        .build()
+        .unwrap();
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_cb = count.clone();
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/lossy", move |_msg: &TestMsg| {
+            count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }
+        .load_error(nros_rmw::TransportError::MessageTooLarge);
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(
+        result.subscription_errors, 1,
+        "a failing take must reach subscription_errors — the pre-0757 drain \
+         loop broke out of the loop on any non-Ok take, so this read as an \
+         empty queue and the spin reported clean"
+    );
+    assert!(
+        result.any_errors(),
+        "a spin that dropped a sample is not a clean spin"
+    );
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "no callback can run for a message that never arrived"
+    );
+}
+
+/// Issue 0757, the other direction — an EMPTY subscription is still not an
+/// error.
+///
+/// Negative control for the test above. The failure mode being fixed is
+/// conflating "take failed" with "nothing to take", and a fix that counted both
+/// would be the same conflation with the sign flipped: every idle spin on every
+/// board would report errors, which is how a counter stops being read.
+#[test]
+fn empty_subscription_is_not_an_error() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let nid = executor
+        .node_builder("empty_is_not_an_error")
+        .build()
+        .unwrap();
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/idle", move |_msg: &TestMsg| {})
+        .unwrap();
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(
+        result.subscription_errors, 0,
+        "an idle subscription must not count as an error"
+    );
+    assert!(!result.any_errors(), "an idle spin is a clean spin");
+}

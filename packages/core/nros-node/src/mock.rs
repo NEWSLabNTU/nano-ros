@@ -18,7 +18,12 @@ use nros_rmw::{
 /// arriving before a `try_recv_raw`/spin — to exercise the QoS-depth ring
 /// (Phase 239.5/7). `load` pushes; `try_recv_raw` pops in FIFO order.
 pub struct MockSubscriber {
-    queue: RefCell<heapless::Deque<([u8; 256], usize), 8>>,
+    /// FIFO of canned OUTCOMES, not canned messages. A queue of `Ok` only
+    /// cannot express the case issue 0757 is about — a take that FAILS — so
+    /// every test written against it necessarily exercised the happy path, and
+    /// the four copies of the drain loop that swallowed a non-`Ok` take were
+    /// unreachable by the unit suite for as long as they existed.
+    queue: RefCell<heapless::Deque<Result<([u8; 256], usize), TransportError>, 8>>,
 }
 
 impl MockSubscriber {
@@ -30,7 +35,15 @@ impl MockSubscriber {
 
     /// Enqueue one canned message (FIFO). Silently drops if the queue is full.
     pub fn load(&self, data: [u8; 256], len: usize) {
-        let _ = self.queue.borrow_mut().push_back((data, len));
+        let _ = self.queue.borrow_mut().push_back(Ok((data, len)));
+    }
+
+    /// Enqueue one canned FAILURE (FIFO), so a test can drive the drain loop's
+    /// error arm — issue 0757. `has_data` still reports true for it: that is
+    /// exactly the state the bug lived in, a subscription the executor believes
+    /// is ready whose take then fails.
+    pub fn load_error(&self, err: TransportError) {
+        let _ = self.queue.borrow_mut().push_back(Err(err));
     }
 }
 
@@ -43,10 +56,11 @@ impl Subscription for MockSubscriber {
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         match self.queue.borrow_mut().pop_front() {
-            Some((data, len)) => {
+            Some(Ok((data, len))) => {
                 buf[..len].copy_from_slice(&data[..len]);
                 Ok(Some(len))
             }
+            Some(Err(err)) => Err(err),
             None => Ok(None),
         }
     }
