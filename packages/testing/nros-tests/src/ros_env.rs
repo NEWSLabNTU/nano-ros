@@ -381,8 +381,12 @@ impl DockerRosEnv {
         format!("nano-ros-ros:{}", self.distro)
     }
 
-    /// The bash snippet sourcing ROS + exporting middleware INSIDE the container
-    /// (the pinned zenoh overlay is baked at `/opt/nros-overlay`).
+    /// The bash snippet sourcing ROS + exporting middleware INSIDE the container.
+    ///
+    /// It used to claim "the pinned zenoh overlay is baked at
+    /// `/opt/nros-overlay`". Nothing bakes it — the Dockerfile does not mention
+    /// the path — so the claim described an intention (phase-311 W2) as if it
+    /// were a fact about the image.
     fn env_snippet(&self) -> String {
         let distro = &self.distro;
         match &self.mw {
@@ -426,10 +430,30 @@ impl DockerRosEnv {
                      implement in-container config generation — see the comment above. \
                      Refusing loudly beats the silent drop this used to do (issue 0763)."
                 );
+                // The overlay hook is OPTIONAL and currently builds nowhere —
+                // `docker/ros-editions/Dockerfile` never creates
+                // `/opt/nros-overlay`, so this is a no-op today. Kept rather
+                // than deleted because phase-311 W2 still plans an overlay
+                // (its from-source half was reversed 2026-08-19, its apt half
+                // was not), and silently dropping a planned hook is worse than
+                // carrying an inert one that says so.
+                //
+                // It used to end in `;`, and that was the bug: under
+                // `{snippet} && {inner}` a `;` makes the DISTRO source
+                // non-fatal, because the `&&` chain short-circuits into it and
+                // the exports run regardless. A bad distro then ran `inner`
+                // against an unsourced ROS — `ros2` not found, or worse, a
+                // different ROS on PATH — instead of failing where the mistake
+                // is. The FastRtps and Cyclonedds arms are pure `&&` chains and
+                // abort correctly; this one silently did not.
+                //
+                // The braces keep the overlay optional WITHOUT that cost: the
+                // group always succeeds, so a missing overlay is fine, while
+                // everything outside it stays in one `&&` chain.
                 format!(
                     "source /opt/ros/{distro}/setup.bash && \
-                     [ -f /opt/nros-overlay/install/setup.bash ] && \
-                     source /opt/nros-overlay/install/setup.bash; \
+                     {{ [ -f /opt/nros-overlay/install/setup.bash ] && \
+                        source /opt/nros-overlay/install/setup.bash || true; }} && \
                      export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
                      export ROS_DOMAIN_ID={domain_id} && \
                      export ZENOH_ROUTER_CONFIG_URI= && \
@@ -1148,6 +1172,39 @@ mod tests {
         assert_eq!(env.edition(), "no_such_distro_xyz");
         // available() is false (no image built) — the skip contract, not a panic.
         assert!(!env.available());
+    }
+
+    /// A bad distro must ABORT the snippet, not fall through to the exports.
+    ///
+    /// The docker Zenoh arm used to end its optional-overlay clause with `;`,
+    /// which under `{snippet} && {inner}` made the DISTRO source non-fatal: the
+    /// `&&` chain short-circuited into the `;`, the exports ran anyway, and
+    /// `inner` executed against an unsourced ROS. The failure surfaced wherever
+    /// `inner` happened to break, not where the mistake was.
+    ///
+    /// Executed rather than pattern-matched: the property is "this shell text
+    /// exits non-zero", and asserting on the presence of `&&` would pass for
+    /// any number of arrangements that still fall through.
+    #[test]
+    fn a_bad_distro_aborts_the_env_snippet_in_every_arm() {
+        for mw in [
+            Middleware::zenoh_default(),
+            Middleware::FastRtps { domain_id: 0 },
+            Middleware::Cyclonedds { domain_id: 0 },
+        ] {
+            let snippet = DockerRosEnv::new("no_such_distro_xyz", mw.clone()).env_snippet();
+            let out = std::process::Command::new("bash")
+                .args(["-c", &format!("{snippet} && echo NROS_REACHED_INNER")])
+                .output()
+                .expect("spawn bash");
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                !text.contains("NROS_REACHED_INNER"),
+                "{mw:?}: a missing distro let the snippet fall through to the inner \
+                 command — the container would run it against an unsourced ROS. \
+                 Snippet:\n{snippet}"
+            );
+        }
     }
 
     /// `available()` must answer "can this env run the cell", not "is there a
