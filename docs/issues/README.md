@@ -83,6 +83,16 @@ solved it privately while three other kernels had nothing. Confirmed on a second
 measured on two kernels of five (`just ci-matrix` closes that), and no gap has been observed FIRING on
 target — these cells are not traffic-saturated. See `archived/0636-*`. (2026-08-23)
 
+Recently resolved (2026-08-23): **#0762** — killing a build launcher orphaned its whole subtree: `make`,
+`cmake` and `cargo` kept building for ten minutes against sources that had already moved, and a restarted
+build raced the survivors in the same trees. A signal reaches a PID; reaching a tree needs the process
+GROUP, and no launcher established one. Fixed by ONE guard at the outermost launcher — a process group is
+inherited, so per-site traps were never needed — plus a lock that lets the next build reap what a SIGKILL
+left behind (refuse if the LAUNCHER is alive, reap if it is not; keying that on the payload's leader instead
+refuses forever). Cost a misattributed red first: the interrupted build wrote no fixture stamp, so
+`check-artifact-identity-budget` lost its `started_at` bound and reported an accumulated tree as a
+duplicate-compilation regression. See `archived/0762-*`. (2026-08-23)
+
 Recently resolved (2026-08-22): **#0756** — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
 `dds_create_participant`; the param store was built on the STACK rather than in the box, so raising the knob
 overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolved the issue but left the file

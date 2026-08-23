@@ -100,7 +100,11 @@ nros_pool_run() {
 
     echo "$label: $n unit(s), jobserver pool=$pool_jobs (fifo)"
     local rc=0
-    env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
+    # issue 0762 — one process group for the pool, so a killed launcher does not
+    # leave the units running. Passthrough when already inside a guarded tree.
+    source "$repo_root/scripts/build/subtree-guard.sh"
+    nros_guard_exec "jobserver-pool" \
+        env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
         "$repo_root/third-party/make/make" -j"$pool_jobs" --jobserver-style=fifo \
         -f "$makefile" || rc=$?
     rm -f "$makefile"

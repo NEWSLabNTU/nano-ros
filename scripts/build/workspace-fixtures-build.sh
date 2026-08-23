@@ -548,5 +548,11 @@ done
 } > "$makefile"
 
 echo "workspace-fixtures-build: ${#live_records[@]} row(s) in ${#group_dirs[@]} workspace group(s), pool=$pool_jobs (fifo)"
-env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo -f "$makefile"
+# issue 0762 — THIS is the make that outlived its launcher on 2026-08-23,
+# still building for ten minutes after the top-level `just` was killed. Under
+# the guard it shares the outermost launcher's process group (passthrough), and
+# when invoked directly it becomes that group itself.
+source "$repo_root/scripts/build/subtree-guard.sh"
+nros_guard_exec workspace-fixtures \
+    env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo -f "$makefile"
 rm -f "$makefile" "$work_root/ws-$platform-$stamp"-group-*.records

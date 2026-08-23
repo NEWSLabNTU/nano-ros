@@ -466,6 +466,7 @@ check-fast: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
+    check-subtree-guard \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
@@ -2648,7 +2649,11 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
                 "$platform" "$NROS_STAGE_ENV" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
-    make -j "$make_jobs" -f "$makefile"
+    # issue 0762 — run the fan-out under ONE process group, so killing this
+    # launcher takes the whole make/just/cmake/cargo tree with it instead of
+    # orphaning it. Nested launchers see NROS_SUBTREE_GUARD and pass through.
+    source scripts/build/subtree-guard.sh
+    nros_guard_exec fixtures make -j "$make_jobs" -f "$makefile"
     echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both
@@ -4816,6 +4821,14 @@ check-provider-index:
 [private]
 check-package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh
+
+# issue 0762 — a killed build launcher must take its whole subtree with it.
+# Drives real process trees and asserts on `ps`: the orphan bug is silent by
+# construction (the terminal comes back while the build keeps running), so
+# nothing short of watching the processes can catch a regression.
+[private]
+check-subtree-guard:
+    @bash packages/testing/nros-tests/tests/subtree_guard.sh
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.

@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Issue 0762 — a killed build launcher must take its whole subtree with it.
+#
+# The bug this guards against is silent by construction: the launcher exits, the
+# terminal comes back, and the build keeps running underneath against sources
+# that have since moved. Nothing reports it. So the test drives real process
+# trees and asserts on `ps`, not on the guard's own log lines.
+#
+# Three paths, because they have three different correct answers:
+#
+#   trap    SIGTERM to the launcher -> the whole subtree dies
+#   refuse  a live launcher -> a second build refuses rather than racing it
+#   reap    a dead launcher with a live subtree -> the orphans are collected
+#
+# The last two are one decision keyed on whether the LAUNCHER is alive, and
+# getting that discriminator backwards is the interesting failure: keying on the
+# payload's leader instead makes the guard report "already running" forever
+# after a SIGKILL, refusing to start while the orphans it should have reaped
+# keep burning the machine. That case is asserted explicitly below.
+
+set -uo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+guard="$repo_root/scripts/build/subtree-guard.sh"
+
+[ -f "$guard" ] || {
+    echo "FAIL: $guard not found" >&2
+    exit 1
+}
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"; pkill -f "nros-guard-test-payload" 2>/dev/null || true' EXIT
+
+export NROS_GUARD_LOCK_DIR="$work/guards"
+
+# A payload with real depth: the orphans that motivated this were four levels
+# below the launcher, and a one-level test would pass against a guard that only
+# killed its direct child.
+cat > "$work/payload.sh" <<'PAYLOAD'
+#!/usr/bin/env bash
+exec -a nros-guard-test-payload bash -c 'bash -c "sleep 240 & sleep 240 & wait" & wait'
+PAYLOAD
+chmod +x "$work/payload.sh"
+
+cat > "$work/launcher.sh" <<LAUNCHER
+#!/usr/bin/env bash
+set -eu
+source "$guard"
+nros_guard_exec guardtest bash "$work/payload.sh"
+LAUNCHER
+chmod +x "$work/launcher.sh"
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+payload_pgid() {
+    awk '{print $2}' "$NROS_GUARD_LOCK_DIR/guardtest.pgid" 2>/dev/null
+}
+
+launcher_pid() {
+    awk '{print $1}' "$NROS_GUARD_LOCK_DIR/guardtest.pgid" 2>/dev/null
+}
+
+group_size() {
+    local pgid="$1"
+    [ -n "$pgid" ] || { echo 0; return; }
+    ps -eo pgid= 2>/dev/null | tr -d ' ' | grep -cx "$pgid" || true
+}
+
+wait_until() {
+    # $1 = seconds, rest = predicate
+    local deadline=$(( SECONDS + $1 )); shift
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if "$@"; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+start_launcher() {
+    "$work/launcher.sh" > "$work/launcher.log" 2>&1 &
+    wait_until 15 test -s "$NROS_GUARD_LOCK_DIR/guardtest.pgid" \
+        || fail "launcher never wrote its lock file"
+    # The lock is written before the tree is fully up; wait for real depth.
+    wait_until 15 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "$(awk "{print \$2}" "$0")")" -ge 3 ]' \
+        "$NROS_GUARD_LOCK_DIR/guardtest.pgid" || true
+}
+
+# --- path 1: trap -----------------------------------------------------------
+start_launcher
+pgid="$(payload_pgid)"
+lpid="$(launcher_pid)"
+[ -n "$pgid" ] || fail "no payload pgid recorded"
+[ "$(group_size "$pgid")" -ge 3 ] || fail "payload tree never reached depth (got $(group_size "$pgid"))"
+
+kill -TERM "$lpid" 2>/dev/null || fail "could not signal launcher $lpid"
+wait_until 20 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "'"$pgid"'")" -eq 0 ]' \
+    || fail "subtree survived SIGTERM to its launcher — $(group_size "$pgid") process(es) still in pgid $pgid. This is the orphan bug."
+# The guard removes the lock just AFTER the group drains, so wait for it rather
+# than sampling the instant the last process exits.
+wait_until 10 bash -c '! [ -f "$NROS_GUARD_LOCK_DIR/guardtest.pgid" ]' \
+    || fail "lock file outlived a clean shutdown"
+echo "  ok: SIGTERM to the launcher killed the whole subtree"
+
+# --- path 2: refuse while a launcher is alive -------------------------------
+start_launcher
+pgid="$(payload_pgid)"
+lpid="$(launcher_pid)"
+out="$("$work/launcher.sh" 2>&1)" && fail "a second build started while the first was running"
+grep -q "already running" <<<"$out" \
+    || fail "expected a refusal naming the running build, got: $out"
+grep -q "kill -TERM -$pgid" <<<"$out" \
+    || fail "the refusal must tell the operator how to stop the build it found"
+echo "  ok: a second build refuses while a launcher is alive"
+
+# --- path 3: reap after an untrappable kill ---------------------------------
+# SIGKILL is the case a trap cannot cover, so the lock is what makes the promise
+# honest. The orphans must SURVIVE this kill (proving the situation is real)
+# and then be collected by the next run.
+kill -KILL "$lpid" 2>/dev/null || fail "could not SIGKILL launcher $lpid"
+wait_until 10 bash -c "! kill -0 $lpid 2>/dev/null" || fail "launcher survived SIGKILL"
+[ "$(group_size "$pgid")" -ge 3 ] \
+    || fail "the payload did NOT outlive a SIGKILLed launcher, so this test is no longer exercising the orphan case"
+
+# A FRESH log: reading the previous run's file would let path 2's output
+# satisfy the announcement assertion below, which is the kind of pass that
+# looks like coverage and is not.
+"$work/launcher.sh" > "$work/reap.log" 2>&1 &
+wait_until 30 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "'"$pgid"'")" -eq 0 ]' \
+    || fail "orphans from a SIGKILLed launcher were NOT reaped — $(group_size "$pgid") still alive in pgid $pgid. A guard that refuses instead of reaping here leaves them running forever (the discriminator must be the launcher, not the payload leader)."
+grep -q "reaping" "$work/reap.log" \
+    || fail "orphans were collected but not ANNOUNCED; a build that silently kills processes it did not start is indistinguishable from one that hangs. Log was: $(cat "$work/reap.log")"
+echo "  ok: orphans from a SIGKILLed launcher are reaped and announced"
+
+pkill -f nros-guard-test-payload 2>/dev/null || true
+echo "subtree-guard: all 3 paths OK (trap, refuse, reap)"
