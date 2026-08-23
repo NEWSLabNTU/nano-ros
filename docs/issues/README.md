@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0760** (orchestration/rmw, open 2026-08-23) — RFC-0074's `ingress = { rate_hz, burst }` declaration is a
+**ros-launch-manifest** schema change, not a nano-ros one: `[[subscription]]` and its field set are defined
+by that repo, consumed here as a TAG-pinned dep (`v0.1.8`), so deciding it unilaterally in an nano-ros RFC
+produces a field nothing else understands — what RFC-0060's two-repository amendment exists to avoid.
+Parked pending that discussion. NOT blocked by it: the whole enforcement half, which is measured and does
+not depend on the spelling — the router rule, the read-task budget taking `(FRAMES, REST)`, and the two
+resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the five points the discussion
+has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
+who validates). See `0760-*`. (2026-08-23)
+
 Recently resolved (2026-08-22): **#0756** — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
 `dds_create_participant`; the param store was built on the STACK rather than in the box, so raising the knob
 overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolved the issue but left the file

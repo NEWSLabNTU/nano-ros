@@ -949,3 +949,23 @@ One lane, one load, one run shape, fixed rest interval. A stricter chain
 deadline, a higher load or another platform could change it. Also: this is a
 probe patch in the vendored zenoh-pico, not a shipped change — the patch is in
 the results doc so it is reproducible, and nothing was pushed to the fork.
+
+## Scope split 2026-08-23 — the declaration is parked, the enforcement is not
+
+The remaining work on this issue divides along a repository boundary, and only
+one half is nano-ros's to finish.
+
+* **The `ingress` declaration** (`[[subscription]] ingress = { rate_hz, burst }`)
+  is a `ros-launch-manifest` schema change — that repo defines `[[subscription]]`
+  and nano-ros consumes it TAG-pinned. Parked as **issue 0760** pending that
+  discussion, at the maintainer's direction. RFC-0074's declaration section now
+  says so at the point of use rather than reading as settled.
+* **Everything measured stands.** The router rule, the read-task budget, the
+  occupancy model (`worst_gap = 0.94 x FRAMES + 11 ms`) and the two resolve-time
+  constraints are independent of how the term is spelled. The budget takes
+  `(FRAMES, REST)`; any source of a rate and a burst compiles to them.
+
+So this issue is no longer blocked on a design question. It is blocked on
+implementation, and the implementable part is the enforcement half — which could
+proceed against an out-of-band source of the two numbers if that is ever wanted
+before the schema lands.

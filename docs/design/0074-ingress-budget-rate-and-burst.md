@@ -3,7 +3,7 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08-21
+last-reviewed: 2026-08-23
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
@@ -76,7 +76,22 @@ It also demotes the "~750 msg/s drain envelope" recorded in earlier work:
 paced, the same island sustains 740-752 msg/s with zero stalls. That
 figure describes bursty traffic and cannot validate a msg/s budget.
 
-## The declaration
+## The declaration — PROPOSED, and not nano-ros's to settle alone (issue 0760)
+
+**Status of this section: a proposal awaiting a cross-repo discussion.** The
+rest of the RFC — both enforcement points, the occupancy model and the compile
+relation — is measured and stands on its own; this half does not.
+
+`[[subscription]]` and its field set are defined by **`ros-launch-manifest`**, a
+separate repository consumed here as a TAG-pinned dependency
+(`ros-launch-manifest-model` / `-sched`, currently `v0.1.8`). nano-ros reads
+`SystemModel` from it and does not own the schema. Adding `ingress` is therefore
+a decision for that repo, and settling it unilaterally here would mint a field
+nano-ros writes and nothing else understands — the shape RFC-0060's
+two-repository amendment exists to avoid.
+
+Issue 0760 carries the topic and the five points the discussion has to settle.
+What follows is this RFC's *position* going into it, not a decided schema.
 
 On a subscription, alongside the existing QoS and contract fields:
 
@@ -96,6 +111,13 @@ ingress = { rate_hz = 200, burst = 4 }
 Both are properties of what the device can *absorb*, so they belong with
 the subscription rather than in the tier table: two subscriptions on one
 tier can have very different ingress costs.
+
+**Nothing downstream waits on this.** The enforcement half takes a rate and a
+burst, however they arrive: the router rule is emitted from what the resolver
+already knows, and the device budget takes `(FRAMES, REST)` via the relation
+below. A prototype can carry the two numbers out-of-band — an env knob or a
+board fact — and lose only ergonomics. The resolve-time constraints are
+arithmetic on the per-frame cost `c`, not on the schema.
 
 ## Enforcement point 1 — the router rule (saves the CPU)
 
@@ -373,6 +395,11 @@ that, and a design that assumes one `c` per board should say so.
 
 - 2026-08 — initial draft, from the #0506 investigation (trace
   attribution, router pacing probe, drain budget probe).
+- 2026-08-23 — the DECLARATION is marked a proposal pending a
+  `ros-launch-manifest` discussion (issue 0760): that repo owns
+  `[[subscription]]`, so the field set is not nano-ros's to decide. The
+  enforcement half, the occupancy model and the compile relation are unaffected
+  and remain measured.
 - 2026-08-21 — enforcement point 2 rewritten. Its mechanism changes from
   `_zp_unicast_read`'s inner drain loop to a budget on the read TASK, and
   it is no longer blocked: `nm` shows the old target is not linked on the
