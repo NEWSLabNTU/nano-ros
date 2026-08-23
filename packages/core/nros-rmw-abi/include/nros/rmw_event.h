@@ -102,4 +102,11 @@ typedef void (*rmw_status_event_callback_t)(
     const rmw_event_payload_t  *payload,
     void                            *user_context);
 
+
+/** Upstream `rmw_event_callback_t` — the callback the `set_on_new_*` slots
+ *  install. Distinct from `rmw_status_event_callback_t` above, which is the DDS
+ *  STATUS-event callback; upstream binds this name to this shape and we now
+ *  match it. */
+typedef void (*rmw_event_callback_t)(const void *user_data, size_t number_of_events);
+
 #endif /* NROS_RMW_EVENT_H */

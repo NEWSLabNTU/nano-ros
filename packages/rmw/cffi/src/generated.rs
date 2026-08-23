@@ -8,12 +8,43 @@
 
 #[doc = " Status code. Zero on success.\n\n  Phase 376 W3.d step B — the VALUES are upstream rmw's. `RMW_RET_OK` was\n  already 0 on both sides; everything else moved from a negative code to\n  upstream's positive one, so a status means the same number on both sides of\n  the seam: OK 0, ERROR 1, TIMEOUT 2, UNSUPPORTED 3, BAD_ALLOC 10,\n  INVALID_ARGUMENT 11, INCORRECT_RMW_IMPLEMENTATION 12,\n  NODE_NAME_NON_EXISTENT 203.\n\n  (Written as prose, not an indented block: bindgen copies this comment into\n  `generated.rs` verbatim, and rustdoc reads an indented block there as a Rust\n  DOCTEST — which then fails to compile. Caught by `cargo test`.)\n\n  This is why step A had to come first. Eleven slots used to return a COUNT\n  or a FLAG as a non-negative value and a status as a negative one; with\n  `ERROR` at 1, a return of `1` would have meant both \"one message\" and\n  \"failed\". Every one of those slots now reports through an out-parameter, so\n  the sign carries nothing and the numbers are free to move.\n\n  Codes upstream does not define live in the EXTENSION RANGE at 1000+, so a\n  future upstream addition can never collide with one of ours. That range is\n  the one place we knowingly add to upstream's namespace.\n\n  Signedness is kept (`int32_t`, not an unsigned type) to match upstream's\n  `rmw_ret_t` exactly. Nothing returns a negative value any more."]
 pub type rmw_ret_t = i32;
+#[doc = " Nanoseconds since a clock's epoch — upstream's `rmw_time_point_value_t`."]
+pub type rmw_time_point_value_t = i64;
 pub type rmw_status_event_callback_t = ::core::option::Option<
     unsafe extern "C" fn(
         kind: rmw_event_type_t::Type,
         payload: *const rmw_event_payload_t,
         user_context: *mut core::ffi::c_void,
     ),
+>;
+#[doc = " Upstream `rmw_event_callback_t` — the callback the `set_on_new_*` slots\n  install. Distinct from `rmw_status_event_callback_t` above, which is the DDS\n  STATUS-event callback; upstream binds this name to this shape and we now\n  match it."]
+pub type rmw_event_callback_t = ::core::option::Option<
+    unsafe extern "C" fn(user_data: *const core::ffi::c_void, number_of_events: usize),
+>;
+#[doc = " Visit one node. `enclave` is NULL where the backend does not track one —\n  which is what lets a single slot answer both `rmw_get_node_names` and\n  `rmw_get_node_names_with_enclaves`. Return `false` to stop."]
+pub type rmw_node_visit_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        node_name: *const core::ffi::c_char,
+        node_namespace: *const core::ffi::c_char,
+        enclave: *const core::ffi::c_char,
+    ) -> bool,
+>;
+#[doc = " Visit one name and the types on it. `types_count` may legitimately be 0 on a\n  partially discovered graph — reporting the name without a type beats\n  dropping it. Return `false` to stop."]
+pub type rmw_names_and_types_visit_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        name: *const core::ffi::c_char,
+        types: *const *const core::ffi::c_char,
+        types_count: usize,
+    ) -> bool,
+>;
+#[doc = " Visit one discovered endpoint. Return `false` to stop."]
+pub type rmw_topic_endpoint_info_visit_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        info: *const rmw_topic_endpoint_info_t,
+    ) -> bool,
 >;
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
@@ -25,6 +56,23 @@ pub struct rmw_gid_t {
     pub implementation_identifier: *const core::ffi::c_char,
     #[doc = " The identifier bytes, zero-padded to the full width."]
     pub data: [u8; 24usize],
+}
+#[doc = " Per-sample metadata — upstream `rmw_message_info_t`, field for field.\n\n  Phase 376 W4. Today this metadata reaches Rust callers through\n  `MESSAGE_INFO_TABLE`, a side table in `nros-rmw-cffi` keyed on the\n  subscription's `backend_data` ADDRESS. That table is a workaround, not a\n  design, and it never crosses the seam it exists for: only the Rust\n  trampoline writes it, so a C or C++ backend has no symbol to call and\n  message info is permanently absent for them. It also claims a pool slot per\n  subscription and never releases it, so a reused handle address inherits the\n  previous subscription's metadata.\n\n  Passing the struct by pointer on the take call — which is what upstream does\n  — removes all of that: the caller owns the storage, it lives exactly as long\n  as the call, and every backend can fill it.\n\n  Retiring the side table is NOT part of this change; the `take_with_info`\n  slots are the mechanism that makes retiring it possible."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_message_info_t {
+    #[doc = " Publisher's clock at publication, ns. 0 = no source timestamp."]
+    pub source_timestamp: rmw_time_point_value_t,
+    #[doc = " Subscriber's clock at reception, ns. 0 = receptions are not stamped."]
+    pub received_timestamp: rmw_time_point_value_t,
+    #[doc = " Publisher-side sequence, or\n  `RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED`. Whether this is real is\n  what `feature_supported` answers."]
+    pub publication_sequence_number: u64,
+    #[doc = " Subscriber-side reception count, or the same sentinel."]
+    pub reception_sequence_number: u64,
+    #[doc = " Which publisher sent it. All-zero `data` = unknown."]
+    pub publisher_gid: rmw_gid_t,
+    #[doc = " True when the sample never left the image (Zephyr's\n  `Z_FEATURE_LOCAL_SUBSCRIBER`, DDS intra-process)."]
+    pub from_intra_process: bool,
 }
 #[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `rmw_publisher_options_t` / `rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
 #[repr(C)]
@@ -51,6 +99,23 @@ pub struct rmw_qos_profile_t {
     pub avoid_ros_namespace_conventions: u8,
     #[doc = "< Reserved; must be zero."]
     pub _reserved1: [u8; 3usize],
+}
+#[doc = " One discovered endpoint — upstream `rmw_topic_endpoint_info_t`.\n\n  Every string is BORROWED for the duration of the visit that hands this out;\n  a caller that needs one past the callback copies it. That is what lets the\n  graph slots stream without an allocator."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_topic_endpoint_info_t {
+    #[doc = " Node that owns the endpoint."]
+    pub node_name: *const core::ffi::c_char,
+    #[doc = " That node's namespace."]
+    pub node_namespace: *const core::ffi::c_char,
+    #[doc = " Fully-qualified type on the wire, e.g. `\"std_msgs/msg/Int32\"`."]
+    pub topic_type: *const core::ffi::c_char,
+    #[doc = " Publisher or subscription."]
+    pub endpoint_type: rmw_endpoint_type_t::Type,
+    #[doc = " The endpoint's identity; `data` all-zero when the backend has none."]
+    pub endpoint_gid: rmw_gid_t,
+    #[doc = " The GRANTED profile, not the requested one — which is the whole reason a\n  consumer asks. A backend that cannot read back a remote's granted QoS\n  reports what it MATCHED on, and must not substitute the local entity's\n  requested profile."]
+    pub qos_profile: rmw_qos_profile_t,
 }
 #[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults."]
 #[repr(C)]
@@ -159,7 +224,6 @@ pub struct rmw_count_status_t {
     pub total_count: u32,
     pub total_count_change: u32,
 }
-#[doc = " @file rmw_vtable.h\n @brief C function table for plugging third-party RMW backends into nros.\n\n Implement the functions in nros_rmw_vtable_t and call\n nros_rmw_cffi_register() before creating any nros sessions.\n\n **Storage ownership.** The runtime owns the entity-struct storage\n (`rmw_session_t`, `rmw_publisher_t`, `rmw_subscription_t`,\n `rmw_service_t`, `rmw_client_t`). Each\n `create_*` call receives a runtime-allocated, zero-initialised struct\n via the `out` pointer; the backend writes its `backend_data` (and\n `can_loan_messages` for pub/sub) into it. The runtime fills the metadata\n fields (`topic_name`, `type_name`, `qos`) before calling\n `create_*`; the backend reads them through the same struct.\n\n `destroy_*` releases the backend's `backend_data` only. The struct\n shell stays valid until the runtime drops its owner.\n\n **Return-value conventions.**\n  - `create_session` / `destroy_session` / `drive_io` / `create_*` / `publish_raw` /\n    `send_reply`: `NROS_RMW_RET_OK` on success, negative\n    `rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).\n  - `try_recv_raw` / `try_recv_request` / `try_recv_reply_raw`: non-negative =\n    bytes produced, negative = `rmw_ret_t` error.\n  - `has_data` / `has_request`: 1 = yes, 0 = no.\n  - `destroy_*`: void (best-effort cleanup)."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
@@ -454,6 +518,203 @@ pub struct nros_rmw_vtable_t {
             publisher_count: *mut usize,
         ) -> rmw_ret_t,
     >,
+    #[doc = " Upstream `rmw_publisher_get_actual_qos`. Exact parity.\n\n  We bake the REQUESTED profile and, until now, never read back the\n  GRANTED one. On DDS the two differ whenever a writer and reader\n  negotiate, and the difference is exactly what answers \"why is nothing\n  arriving\" — so a consumer that cannot ask has to guess.\n\n  ALL-OR-NOTHING on purpose: a backend that can determine four policies\n  and not the fifth returns `NROS_RMW_RET_UNSUPPORTED` and writes\n  NOTHING, rather than filling what it knows. Our `rmw_qos_profile_t` has\n  no `UNKNOWN`/`SYSTEM_DEFAULT` encoding, so a partial answer would be\n  indistinguishable from a confident one. Adding those sentinels is an\n  `rmw_entity.h` change and is booked for W5, not done here.\n\n  Six upstream entry points, six slots, deliberately: the name rule is\n  mechanical so that no alias table has to be authored and kept true.\n  Backends share ONE helper and write six one-line thunks — sharing an\n  implementation is free, sharing an ABI slot is not."]
+    pub publisher_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(
+            publisher: *const rmw_publisher_t,
+            qos: *mut rmw_qos_profile_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_subscription_get_actual_qos`. Exact parity."]
+    pub subscription_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            qos: *mut rmw_qos_profile_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_client_request_publisher_get_actual_qos`. Exact parity.\n\n  The four service/client read-backs carry information available NOWHERE\n  else: `rmw_client_t` and `rmw_service_t` have no `qos` field, and\n  `create_client` / `create_service` take ONE profile for both\n  directions, so the granted per-direction profile is otherwise\n  unobservable."]
+    pub client_request_publisher_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(client: *const rmw_client_t, qos: *mut rmw_qos_profile_t) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_client_response_subscription_get_actual_qos`."]
+    pub client_response_subscription_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(client: *const rmw_client_t, qos: *mut rmw_qos_profile_t) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_service_request_subscription_get_actual_qos`."]
+    pub service_request_subscription_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(
+            service: *const rmw_service_t,
+            qos: *mut rmw_qos_profile_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_service_response_publisher_get_actual_qos`."]
+    pub service_response_publisher_get_actual_qos: ::core::option::Option<
+        unsafe extern "C" fn(
+            service: *const rmw_service_t,
+            qos: *mut rmw_qos_profile_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_publisher_wait_for_all_acked`.\n\n  Blocks until every sample this publisher sent has been acknowledged, or\n  the timeout elapses. Without it an image that publishes and then halts\n  cannot know whether anything left the box.\n\n  Deviation from upstream, declared: `uint32_t timeout_ms` for upstream's\n  by-value `rmw_time_t`. Every duration in this ABI is u32 milliseconds\n  (issue 0241) — one width, one unit, no per-call struct.\n\n  Best-effort backends (zenoh best-effort, XRCE) leave this NULL."]
+    pub publisher_wait_for_all_acked: ::core::option::Option<
+        unsafe extern "C" fn(publisher: *const rmw_publisher_t, timeout_ms: u32) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_take_with_info`.\n\n  `take` plus the sample's metadata, written to caller-owned storage. See\n  `rmw_message_info_t` for why this is a pointer parameter rather than the\n  side table the runtime uses today.\n\n  Deviations from upstream, declared: the same two `take` declares —\n  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because\n  there is no typesupport on target; and no allocation argument, because\n  pools are baked.\n\n  NULL slot: the runtime falls back to `take`, and the caller gets no\n  metadata — which is exactly today's behaviour for every C backend."]
+    pub take_with_info: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *mut rmw_subscription_t,
+            buf: *mut u8,
+            buf_len: usize,
+            out_len: *mut usize,
+            taken: *mut bool,
+            message_info: *mut rmw_message_info_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_take_loaned_message_with_info`.\n\n  `take_loaned_message` plus metadata; same deviations as that slot (a\n  byte view and an opaque release token rather than a typed loan)."]
+    pub take_loaned_message_with_info: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *mut rmw_subscription_t,
+            out_buf: *mut *const u8,
+            out_len: *mut usize,
+            out_token: *mut *mut core::ffi::c_void,
+            taken: *mut bool,
+            message_info: *mut rmw_message_info_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_service_set_on_new_request_callback`. Exact parity.\n\n  Wake the executor when a request arrives, from the transport's own\n  thread or an ISR. `set_wake_callback` is the SESSION-level sibling and\n  does not cover this: it is installed once at open and says nothing about\n  which entity woke. Without a per-entity callback a service-heavy image\n  polls where a subscription-heavy one sleeps.\n\n  The callback is upstream's `rmw_event_callback_t` shape — which is why\n  our DDS status-event callback had to give the name back\n  (`rmw_status_event_callback_t`)."]
+    pub service_set_on_new_request_callback: ::core::option::Option<
+        unsafe extern "C" fn(
+            service: *mut rmw_service_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_client_set_on_new_response_callback`. Exact parity."]
+    pub client_set_on_new_response_callback: ::core::option::Option<
+        unsafe extern "C" fn(
+            client: *mut rmw_client_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.\n\n  The third of the family, added with the other two rather than left\n  recorded as \"covered by `set_wake_callback`\" — it never was: that slot\n  is session-scoped and serves subscriptions, services and clients\n  identically."]
+    pub subscription_set_on_new_message_callback: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *mut rmw_subscription_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.\n\n  One slot, two upstream names: upstream split them only because appending\n  to a fixed out-parameter list would have broken its ABI. A visitor has\n  no such list, so the enclave is simply a fourth argument, NULL where\n  untracked. Recorded in the checker's grouping table."]
+    pub get_node_names: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            visit: rmw_node_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_topic_names_and_types`."]
+    pub get_topic_names_and_types: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            no_demangle: bool,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_service_names_and_types`."]
+    pub get_service_names_and_types: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_publisher_names_and_types_by_node`."]
+    pub get_publisher_names_and_types_by_node: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            node_name: *const core::ffi::c_char,
+            node_namespace: *const core::ffi::c_char,
+            no_demangle: bool,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_subscriber_names_and_types_by_node`."]
+    pub get_subscriber_names_and_types_by_node: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            node_name: *const core::ffi::c_char,
+            node_namespace: *const core::ffi::c_char,
+            no_demangle: bool,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_service_names_and_types_by_node`."]
+    pub get_service_names_and_types_by_node: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            node_name: *const core::ffi::c_char,
+            node_namespace: *const core::ffi::c_char,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_client_names_and_types_by_node`."]
+    pub get_client_names_and_types_by_node: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            node_name: *const core::ffi::c_char,
+            node_namespace: *const core::ffi::c_char,
+            visit: rmw_names_and_types_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_publishers_info_by_topic`."]
+    pub get_publishers_info_by_topic: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            topic_name: *const core::ffi::c_char,
+            no_mangle: bool,
+            visit: rmw_topic_endpoint_info_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_subscriptions_info_by_topic`."]
+    pub get_subscriptions_info_by_topic: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            topic_name: *const core::ffi::c_char,
+            no_mangle: bool,
+            visit: rmw_topic_endpoint_info_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_count_publishers`."]
+    pub count_publishers: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            topic_name: *const core::ffi::c_char,
+            count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_count_subscribers`."]
+    pub count_subscribers: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            topic_name: *const core::ffi::c_char,
+            count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_node_get_graph_guard_condition`.\n\n  Registers a callback fired when the graph CHANGES. Upstream returns a\n  guard condition the caller adds to a wait set; we have no wait set to\n  add it to, and guard conditions are an executor concept here, so this is\n  the `set_wake_callback` shape instead — the one guard condition whose\n  trigger is genuinely backend knowledge.\n\n  The callback is an EDGE, carrying no payload: delivering WHAT changed\n  would mean buffering it, which is the graph cache a small target cannot\n  afford.\n\n  Named after upstream mechanically, per the campaign's rule, but the\n  honest name for this shape is `set_on_graph_change_callback` — flagged\n  for W5 rather than decided quietly here."]
+    pub node_get_graph_guard_condition: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *mut rmw_session_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -542,6 +803,13 @@ pub mod rmw_liveliness_kind_t {
     pub const NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC: Type = 2;
     #[doc = " Application calls `assert_liveliness()` at the node level."]
     pub const NROS_RMW_LIVELINESS_MANUAL_BY_NODE: Type = 3;
+}
+pub mod rmw_endpoint_type_t {
+    #[doc = " Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_ENDPOINT_INVALID: Type = 0;
+    pub const RMW_ENDPOINT_PUBLISHER: Type = 1;
+    pub const RMW_ENDPOINT_SUBSCRIPTION: Type = 2;
 }
 pub mod rmw_event_type_t {
     #[doc = " Tier-1 event kinds. Stable integer values; future kinds (Tier-2)\n  extend the enum at end."]

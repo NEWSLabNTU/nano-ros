@@ -59,6 +59,13 @@ typedef enum rmw_feature_t {
     RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER   = 1,
 } rmw_feature_t;
 
+/** Nanoseconds since a clock's epoch — upstream's `rmw_time_point_value_t`. */
+typedef int64_t rmw_time_point_value_t;
+
+/** Sentinel for a sequence number the backend does not populate. Upstream's
+ *  `RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED`. */
+#define RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED UINT64_MAX
+
 /** Storage size of a GID, in bytes. Upstream's `RMW_GID_STORAGE_SIZE`. */
 #define RMW_GID_STORAGE_SIZE 24u
 
@@ -88,6 +95,42 @@ typedef struct rmw_gid_t {
     /** The identifier bytes, zero-padded to the full width. */
     uint8_t data[RMW_GID_STORAGE_SIZE];
 } rmw_gid_t;
+
+
+/** Per-sample metadata — upstream `rmw_message_info_t`, field for field.
+ *
+ *  Phase 376 W4. Today this metadata reaches Rust callers through
+ *  `MESSAGE_INFO_TABLE`, a side table in `nros-rmw-cffi` keyed on the
+ *  subscription's `backend_data` ADDRESS. That table is a workaround, not a
+ *  design, and it never crosses the seam it exists for: only the Rust
+ *  trampoline writes it, so a C or C++ backend has no symbol to call and
+ *  message info is permanently absent for them. It also claims a pool slot per
+ *  subscription and never releases it, so a reused handle address inherits the
+ *  previous subscription's metadata.
+ *
+ *  Passing the struct by pointer on the take call — which is what upstream does
+ *  — removes all of that: the caller owns the storage, it lives exactly as long
+ *  as the call, and every backend can fill it.
+ *
+ *  Retiring the side table is NOT part of this change; the `take_with_info`
+ *  slots are the mechanism that makes retiring it possible. */
+typedef struct rmw_message_info_t {
+    /** Publisher's clock at publication, ns. 0 = no source timestamp. */
+    rmw_time_point_value_t source_timestamp;
+    /** Subscriber's clock at reception, ns. 0 = receptions are not stamped. */
+    rmw_time_point_value_t received_timestamp;
+    /** Publisher-side sequence, or
+     *  `RMW_MESSAGE_INFO_SEQUENCE_NUMBER_UNSUPPORTED`. Whether this is real is
+     *  what `feature_supported` answers. */
+    uint64_t publication_sequence_number;
+    /** Subscriber-side reception count, or the same sentinel. */
+    uint64_t reception_sequence_number;
+    /** Which publisher sent it. All-zero `data` = unknown. */
+    rmw_gid_t publisher_gid;
+    /** True when the sample never left the image (Zephyr's
+     *  `Z_FEATURE_LOCAL_SUBSCRIBER`, DDS intra-process). */
+    bool from_intra_process;
+} rmw_message_info_t;
 
 /** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`. */
 typedef enum rmw_liveliness_kind_t {
@@ -174,7 +217,38 @@ typedef struct rmw_qos_profile_t {
      *  toolchains.) */
     uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
-} rmw_qos_profile_t;             /* 24 bytes */
+} rmw_qos_profile_t;
+
+/** Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`. */
+typedef enum rmw_endpoint_type_t {
+    RMW_ENDPOINT_INVALID      = 0,
+    RMW_ENDPOINT_PUBLISHER    = 1,
+    RMW_ENDPOINT_SUBSCRIPTION = 2,
+} rmw_endpoint_type_t;
+
+/** One discovered endpoint — upstream `rmw_topic_endpoint_info_t`.
+ *
+ *  Every string is BORROWED for the duration of the visit that hands this out;
+ *  a caller that needs one past the callback copies it. That is what lets the
+ *  graph slots stream without an allocator. */
+typedef struct rmw_topic_endpoint_info_t {
+    /** Node that owns the endpoint. */
+    const char *node_name;
+    /** That node's namespace. */
+    const char *node_namespace;
+    /** Fully-qualified type on the wire, e.g. `"std_msgs/msg/Int32"`. */
+    const char *topic_type;
+    /** Publisher or subscription. */
+    rmw_endpoint_type_t endpoint_type;
+    /** The endpoint's identity; `data` all-zero when the backend has none. */
+    rmw_gid_t endpoint_gid;
+    /** The GRANTED profile, not the requested one — which is the whole reason a
+     *  consumer asks. A backend that cannot read back a remote's granted QoS
+     *  reports what it MATCHED on, and must not substitute the local entity's
+     *  requested profile. */
+    rmw_qos_profile_t qos_profile;
+} rmw_topic_endpoint_info_t;
+             /* 24 bytes */
 
 /** Explicit infinite spelling for the u32-ms duration fields
  *  (phase-301, issue 0241). Semantically identical to 0 (no check) but

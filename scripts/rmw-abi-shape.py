@@ -108,6 +108,10 @@ RET_DEVIATIONS = {
     # OUT parameter. Same decision as their ARG_DEVIATIONS entry — no runtime
     # allocation, so the caller owns the storage — and returning a status is
     # strictly more informative than NULL.
+    "node_get_graph_guard_condition": (
+        "registers a callback and returns a status, where upstream returns the guard "
+        "condition itself — see the ARG_DEVIATIONS entry"
+    ),
     "create_publisher": "entity is an OUT parameter; the return carries the status (no runtime allocation)",
     "create_subscription": "as create_publisher",
     "create_service": "as create_publisher",
@@ -176,6 +180,46 @@ ARG_DEVIATIONS = {
     # ---- Events ----
     "publisher_event_init": ("upstream fills an `rmw_event_t` the caller then polls with `rmw_take_event`; ours registers a CALLBACK directly, because an RTOS executor has no wait-set to poll an event handle from. The extra `uint32_t` is the QoS-policy filter and `void *` the callback context"),
     "subscription_event_init": ("as publisher_event_init"),
+    "get_node_names": (
+        "visitor instead of an allocating `rcutils_string_array_t` pair; session "
+        "not node; and the `enclave` argument is what lets ONE slot answer both "
+        "`rmw_get_node_names` and `rmw_get_node_names_with_enclaves` — upstream "
+        "split those only because appending to a fixed out-parameter list would "
+        "have broken its ABI, which a visitor has no equivalent of"
+    ),
+    "get_topic_names_and_types": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_service_names_and_types": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_publisher_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_subscriber_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_service_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_client_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_publishers_info_by_topic": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_subscriptions_info_by_topic": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "count_publishers": (
+        "session, not node — an image has no node object to count through"
+    ),
+    "count_subscribers": ("as count_publishers"),
+    "node_get_graph_guard_condition": (
+        "upstream RETURNS a guard condition for the caller to add to a wait set; we "
+        "have no wait set and guard conditions are an executor concept here, so this "
+        "registers a callback instead — the `set_wake_callback` shape. The callback "
+        "is an EDGE with no payload: saying WHAT changed means buffering it, which "
+        "is the graph cache a small target cannot afford"
+    ),
+    "take_with_info": (
+        "the same two deviations `take` declares — bytes rather than a typed "
+        "`void *ros_message` because there is no typesupport on target, and no "
+        "allocation argument because pools are baked"
+    ),
+    "take_loaned_message_with_info": (
+        "the same deviations `take_loaned_message` declares — a byte view plus an "
+        "opaque release token instead of a typed loan"
+    ),
+    "publisher_wait_for_all_acked": (
+        "`uint32_t timeout_ms` for upstream's by-value `rmw_time_t`: every duration "
+        "in this ABI is u32 milliseconds (issue 0241), one width and one unit, so a "
+        "per-call time struct would be the only one of its kind"
+    ),
     "send_request": (
         "bytes rather than a typed `const void *`, and no `int64_t *sequence_id` "
         "OUT parameter: upstream hands the caller the sequence it assigned, while "
@@ -224,6 +268,13 @@ def vtable_slots():
     src = open(VTABLE, encoding="utf-8").read()
     body = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
     body = re.sub(r"(?m)//.*$", " ", body)
+
+    # Only the vtable STRUCT's members are slots. Phase 376 W4 added
+    # file-scope visitor typedefs (`rmw_node_visit_fn` and friends) which match
+    # the same `(*name)(` shape, and scanning the whole file reported all three
+    # as undeclared extra slots — a tool defect that reads as a finding.
+    body = body[body.index("typedef struct nros_rmw_vtable_t {"):]
+    body = body[: body.index("} nros_rmw_vtable_t;")]
 
     slots = {}
     rets = {}

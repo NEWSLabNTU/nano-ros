@@ -59,6 +59,40 @@ extern "C" {
  *  - `destroy_*`: void (best-effort cleanup).
  */
 
+
+/* ---- Phase 376 W4 — graph enumeration visitors ----
+ *
+ * Upstream returns `rcutils_string_array_t` and `rmw_names_and_types_t`, which
+ * ALLOCATE — two levels deep for names-and-types. There is no allocator at this
+ * seam, and a caller-provides-the-buffer shape is worse than it looks: the ROS
+ * graph has no bound the CALLER can know, so a 128 KiB image would have to
+ * reserve permanently for the worst graph it might ever meet, and the backend
+ * would still have to materialise the whole list to fill the buffer.
+ *
+ * So enumeration is a VISITOR. Peak extra RAM is one entry, the backend streams
+ * from state it already holds, and a caller with a bound stops early by
+ * returning `false` — a normal outcome, not a truncation error. Same shape as
+ * `process_raw_in_place` and `publish_streamed` already use here.
+ *
+ * Every string handed to a visitor is BORROWED for that call only.
+ */
+
+/** Visit one node. `enclave` is NULL where the backend does not track one —
+ *  which is what lets a single slot answer both `rmw_get_node_names` and
+ *  `rmw_get_node_names_with_enclaves`. Return `false` to stop. */
+typedef bool (*rmw_node_visit_fn)(void *ctx, const char *node_name,
+    const char *node_namespace, const char *enclave);
+
+/** Visit one name and the types on it. `types_count` may legitimately be 0 on a
+ *  partially discovered graph — reporting the name without a type beats
+ *  dropping it. Return `false` to stop. */
+typedef bool (*rmw_names_and_types_visit_fn)(void *ctx, const char *name,
+    const char *const *types, size_t types_count);
+
+/** Visit one discovered endpoint. Return `false` to stop. */
+typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
+    const rmw_topic_endpoint_info_t *info);
+
 typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
     /** Create a session (phase-301: renamed from `open` to the table's
@@ -588,6 +622,210 @@ typedef struct nros_rmw_vtable_t {
     /** Upstream `rmw_subscription_count_matched_publishers`. Exact parity. */
     rmw_ret_t (*subscription_count_matched_publishers)(
         const rmw_subscription_t *subscription, size_t *publisher_count);
+
+    /* ---- Phase 376 W4 — QoS read-back + clean shutdown (all optional) ---- */
+
+    /** Upstream `rmw_publisher_get_actual_qos`. Exact parity.
+     *
+     *  We bake the REQUESTED profile and, until now, never read back the
+     *  GRANTED one. On DDS the two differ whenever a writer and reader
+     *  negotiate, and the difference is exactly what answers "why is nothing
+     *  arriving" — so a consumer that cannot ask has to guess.
+     *
+     *  ALL-OR-NOTHING on purpose: a backend that can determine four policies
+     *  and not the fifth returns `NROS_RMW_RET_UNSUPPORTED` and writes
+     *  NOTHING, rather than filling what it knows. Our `rmw_qos_profile_t` has
+     *  no `UNKNOWN`/`SYSTEM_DEFAULT` encoding, so a partial answer would be
+     *  indistinguishable from a confident one. Adding those sentinels is an
+     *  `rmw_entity.h` change and is booked for W5, not done here.
+     *
+     *  Six upstream entry points, six slots, deliberately: the name rule is
+     *  mechanical so that no alias table has to be authored and kept true.
+     *  Backends share ONE helper and write six one-line thunks — sharing an
+     *  implementation is free, sharing an ABI slot is not. */
+    rmw_ret_t (*publisher_get_actual_qos)(const rmw_publisher_t *publisher,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_subscription_get_actual_qos`. Exact parity. */
+    rmw_ret_t (*subscription_get_actual_qos)(const rmw_subscription_t *subscription,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_client_request_publisher_get_actual_qos`. Exact parity.
+     *
+     *  The four service/client read-backs carry information available NOWHERE
+     *  else: `rmw_client_t` and `rmw_service_t` have no `qos` field, and
+     *  `create_client` / `create_service` take ONE profile for both
+     *  directions, so the granted per-direction profile is otherwise
+     *  unobservable. */
+    rmw_ret_t (*client_request_publisher_get_actual_qos)(const rmw_client_t *client,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_client_response_subscription_get_actual_qos`. */
+    rmw_ret_t (*client_response_subscription_get_actual_qos)(const rmw_client_t *client,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_service_request_subscription_get_actual_qos`. */
+    rmw_ret_t (*service_request_subscription_get_actual_qos)(const rmw_service_t *service,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_service_response_publisher_get_actual_qos`. */
+    rmw_ret_t (*service_response_publisher_get_actual_qos)(const rmw_service_t *service,
+        rmw_qos_profile_t *qos);
+
+    /** Upstream `rmw_publisher_wait_for_all_acked`.
+     *
+     *  Blocks until every sample this publisher sent has been acknowledged, or
+     *  the timeout elapses. Without it an image that publishes and then halts
+     *  cannot know whether anything left the box.
+     *
+     *  Deviation from upstream, declared: `uint32_t timeout_ms` for upstream's
+     *  by-value `rmw_time_t`. Every duration in this ABI is u32 milliseconds
+     *  (issue 0241) — one width, one unit, no per-call struct.
+     *
+     *  Best-effort backends (zenoh best-effort, XRCE) leave this NULL. */
+    rmw_ret_t (*publisher_wait_for_all_acked)(const rmw_publisher_t *publisher,
+        uint32_t timeout_ms);
+
+    /* ---- Phase 376 W4 — with-info takes + entity callbacks (optional) ---- */
+
+    /** Upstream `rmw_take_with_info`.
+     *
+     *  `take` plus the sample's metadata, written to caller-owned storage. See
+     *  `rmw_message_info_t` for why this is a pointer parameter rather than the
+     *  side table the runtime uses today.
+     *
+     *  Deviations from upstream, declared: the same two `take` declares —
+     *  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because
+     *  there is no typesupport on target; and no allocation argument, because
+     *  pools are baked.
+     *
+     *  NULL slot: the runtime falls back to `take`, and the caller gets no
+     *  metadata — which is exactly today's behaviour for every C backend. */
+    rmw_ret_t (*take_with_info)(rmw_subscription_t *subscription,
+        uint8_t *buf, size_t buf_len,
+        size_t *out_len, bool *taken, rmw_message_info_t *message_info);
+
+    /** Upstream `rmw_take_loaned_message_with_info`.
+     *
+     *  `take_loaned_message` plus metadata; same deviations as that slot (a
+     *  byte view and an opaque release token rather than a typed loan). */
+    rmw_ret_t (*take_loaned_message_with_info)(rmw_subscription_t *subscription,
+        const uint8_t **out_buf, size_t *out_len, void **out_token,
+        bool *taken, rmw_message_info_t *message_info);
+
+    /** Upstream `rmw_service_set_on_new_request_callback`. Exact parity.
+     *
+     *  Wake the executor when a request arrives, from the transport's own
+     *  thread or an ISR. `set_wake_callback` is the SESSION-level sibling and
+     *  does not cover this: it is installed once at open and says nothing about
+     *  which entity woke. Without a per-entity callback a service-heavy image
+     *  polls where a subscription-heavy one sleeps.
+     *
+     *  The callback is upstream's `rmw_event_callback_t` shape — which is why
+     *  our DDS status-event callback had to give the name back
+     *  (`rmw_status_event_callback_t`). */
+    rmw_ret_t (*service_set_on_new_request_callback)(rmw_service_t *service,
+        rmw_event_callback_t callback, const void *user_data);
+
+    /** Upstream `rmw_client_set_on_new_response_callback`. Exact parity. */
+    rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
+        rmw_event_callback_t callback, const void *user_data);
+
+    /** Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.
+     *
+     *  The third of the family, added with the other two rather than left
+     *  recorded as "covered by `set_wake_callback`" — it never was: that slot
+     *  is session-scoped and serves subscriptions, services and clients
+     *  identically. */
+    rmw_ret_t (*subscription_set_on_new_message_callback)(
+        rmw_subscription_t *subscription,
+        rmw_event_callback_t callback, const void *user_data);
+
+    /* ---- Phase 376 W4 — graph introspection (all optional) ----
+     *
+     * NONE of these may block on the wire, and none takes a timeout: this
+     * vtable's premise is that no background transport thread is assumed, so a
+     * query-based backend keeps a `drive_io`-fed cache or leaves the slot NULL
+     * rather than stalling the executor's only thread inside an introspection
+     * call.
+     *
+     * A 128 KiB target cannot hold a graph cache, and NULL is the expected
+     * answer there — the runtime surfaces UNSUPPORTED. XRCE cannot enumerate
+     * participants at all.
+     */
+
+    /** Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.
+     *
+     *  One slot, two upstream names: upstream split them only because appending
+     *  to a fixed out-parameter list would have broken its ABI. A visitor has
+     *  no such list, so the enclave is simply a fourth argument, NULL where
+     *  untracked. Recorded in the checker's grouping table. */
+    rmw_ret_t (*get_node_names)(const rmw_session_t *session,
+        rmw_node_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_topic_names_and_types`. */
+    rmw_ret_t (*get_topic_names_and_types)(const rmw_session_t *session,
+        bool no_demangle, rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_service_names_and_types`. */
+    rmw_ret_t (*get_service_names_and_types)(const rmw_session_t *session,
+        rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_publisher_names_and_types_by_node`. */
+    rmw_ret_t (*get_publisher_names_and_types_by_node)(const rmw_session_t *session,
+        const char *node_name, const char *node_namespace, bool no_demangle,
+        rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_subscriber_names_and_types_by_node`. */
+    rmw_ret_t (*get_subscriber_names_and_types_by_node)(const rmw_session_t *session,
+        const char *node_name, const char *node_namespace, bool no_demangle,
+        rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_service_names_and_types_by_node`. */
+    rmw_ret_t (*get_service_names_and_types_by_node)(const rmw_session_t *session,
+        const char *node_name, const char *node_namespace,
+        rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_client_names_and_types_by_node`. */
+    rmw_ret_t (*get_client_names_and_types_by_node)(const rmw_session_t *session,
+        const char *node_name, const char *node_namespace,
+        rmw_names_and_types_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_publishers_info_by_topic`. */
+    rmw_ret_t (*get_publishers_info_by_topic)(const rmw_session_t *session,
+        const char *topic_name, bool no_mangle,
+        rmw_topic_endpoint_info_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_get_subscriptions_info_by_topic`. */
+    rmw_ret_t (*get_subscriptions_info_by_topic)(const rmw_session_t *session,
+        const char *topic_name, bool no_mangle,
+        rmw_topic_endpoint_info_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_count_publishers`. */
+    rmw_ret_t (*count_publishers)(const rmw_session_t *session,
+        const char *topic_name, size_t *count);
+
+    /** Upstream `rmw_count_subscribers`. */
+    rmw_ret_t (*count_subscribers)(const rmw_session_t *session,
+        const char *topic_name, size_t *count);
+
+    /** Upstream `rmw_node_get_graph_guard_condition`.
+     *
+     *  Registers a callback fired when the graph CHANGES. Upstream returns a
+     *  guard condition the caller adds to a wait set; we have no wait set to
+     *  add it to, and guard conditions are an executor concept here, so this is
+     *  the `set_wake_callback` shape instead — the one guard condition whose
+     *  trigger is genuinely backend knowledge.
+     *
+     *  The callback is an EDGE, carrying no payload: delivering WHAT changed
+     *  would mean buffering it, which is the graph cache a small target cannot
+     *  afford.
+     *
+     *  Named after upstream mechanically, per the campaign's rule, but the
+     *  honest name for this shape is `set_on_graph_change_callback` — flagged
+     *  for W5 rather than decided quietly here. */
+    rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
+        rmw_event_callback_t callback, const void *user_data);
 
 } nros_rmw_vtable_t;
 
