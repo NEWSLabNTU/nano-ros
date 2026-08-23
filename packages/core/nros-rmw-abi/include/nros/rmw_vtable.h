@@ -426,8 +426,11 @@ typedef struct nros_rmw_vtable_t {
      *  Returns 1 if yes, 0 if no. The runtime consults this at subscription
      *  registration to choose in-place dispatch over the buffered (copying)
      *  path. NULL function pointer = treated as unsupported (buffered path). */
-    int32_t (*subscription_supports_in_place)(
-        nros_rmw_subscription_t *subscription);
+    /** Phase 376 W3.d step A — capability out, status returned.
+     *  `*out_supports` is written only on `NROS_RMW_RET_OK`. */
+    nros_rmw_ret_t (*subscription_supports_in_place)(
+        nros_rmw_subscription_t *subscription,
+        bool *out_supports);
 
     /** Borrow one ready message in place: hand its raw CDR bytes to `cb` (with
      *  the opaque `ctx`) for the duration of the call, then release the slot —
@@ -435,10 +438,21 @@ typedef struct nros_rmw_vtable_t {
      *  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.
      *  `cb` MUST NOT re-enter this subscription's receive. NULL function
      *  pointer = unsupported (the runtime uses the buffered path). */
-    int32_t (*process_raw_in_place)(
+    /** Phase 376 W3.d step A — "did it process one" moves to an
+     *  out-parameter and the return is a plain status.
+     *
+     *  This retires `NROS_RMW_RET_NO_DATA` from this slot: an empty
+     *  subscription is `*out_processed = false` with
+     *  `NROS_RMW_RET_OK`, which is upstream's `taken = false`
+     *  semantics. A sentinel that means "fine, but nothing" is
+     *  exactly the shape that makes a status enum ambiguous.
+     *
+     *  `*out_processed` is written only on OK. */
+    nros_rmw_ret_t (*process_raw_in_place)(
         nros_rmw_subscription_t *subscription,
         void                  *ctx,
-        void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len));
+        void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len),
+        bool                  *out_processed);
 } nros_rmw_vtable_t;
 
 /**

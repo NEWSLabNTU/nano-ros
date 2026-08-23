@@ -173,22 +173,36 @@ unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmw
 }
 // ---- the slots under test ----
 
-unsafe extern "C" fn scripted_supports(_: *mut NrosRmwSubscription) -> i32 {
-    SUPPORTS.load(Ordering::SeqCst)
+unsafe extern "C" fn scripted_supports(
+    _: *mut NrosRmwSubscription,
+    out_supports: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — capability out, status returned. `SUPPORTS` is
+    // still an i32 so a NEGATIVE value can script the ERROR path, which the old
+    // shape could not distinguish from "does not support in place".
+    let scripted = SUPPORTS.load(Ordering::SeqCst);
+    if scripted < 0 {
+        return scripted;
+    }
+    unsafe { *out_supports = scripted != 0 };
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn scripted_process(
     _: *mut NrosRmwSubscription,
     ctx: *mut c_void,
     cb: Option<unsafe extern "C" fn(ctx: *mut c_void, ptr: *const u8, len: usize)>,
-) -> i32 {
+    out_processed: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — "processed one" out, status returned. The empty
+    // case is OK with false, not the NO_DATA sentinel.
     let cb = cb.expect("vtable slot");
-    if TAKE_REMAINING.fetch_sub(1, Ordering::SeqCst) > 0 {
+    let processed = TAKE_REMAINING.fetch_sub(1, Ordering::SeqCst) > 0;
+    if processed {
         unsafe { cb(ctx, CANNED.as_ptr(), CANNED.len()) };
-        1
-    } else {
-        NROS_RMW_RET_NO_DATA
     }
+    unsafe { *out_processed = processed };
+    NROS_RMW_RET_OK
 }
 
 fn base_vtable() -> NrosRmwVtable {

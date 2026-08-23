@@ -1517,7 +1517,12 @@ impl Session for CffiSession {
         sub_state.supports_in_place = match sub_state.vtable.subscription_supports_in_place {
             Some(f) => {
                 let mut v = sub_state.make_view();
-                unsafe { f(&mut v) == 1 }
+                // Phase 376 W3.d step A — a backend that FAILS the probe is not
+                // one that supports in-place: both answer false, but only one of
+                // them is an error, and the status now says which.
+                let mut supports = false;
+                let rc = unsafe { f(&mut v, &mut supports) };
+                rc == NROS_RMW_RET_OK && supports
             }
             None => false,
         };
@@ -2248,20 +2253,22 @@ impl CffiSubscription {
         }
         let mut cell: Option<G> = Some(f);
         let mut view = self.make_view();
+        // Phase 376 W3.d step A — "processed one" arrives in the out-parameter.
+        // The NO_DATA arm is gone: an empty subscription is now OK with
+        // `processed = false`, which is what upstream's `taken = false` means.
+        let mut processed = false;
         let rc = unsafe {
             slot(
                 &mut view,
                 &mut cell as *mut Option<G> as *mut c_void,
                 Some(cb_tramp::<G>),
+                &mut processed,
             )
         };
-        if rc == NROS_RMW_RET_NO_DATA {
-            Ok(false)
-        } else if rc < 0 {
-            Err(error_from_ret(rc))
-        } else {
-            Ok(rc > 0)
+        if rc != NROS_RMW_RET_OK {
+            return Err(error_from_ret(rc));
         }
+        Ok(processed)
     }
 
     pub fn topic_name(&self) -> &str {

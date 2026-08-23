@@ -638,22 +638,31 @@ unsafe extern "C" fn has_data_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn subscription_supports_in_place_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
-) -> i32 {
+    out_supports: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — capability out, status returned.
+    if out_supports.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(s) = (unsafe { subscription_ref::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if Subscription::supports_process_in_place(s) {
-        1
-    } else {
-        0
-    }
+    // SAFETY: checked non-null above.
+    unsafe { *out_supports = Subscription::supports_process_in_place(s) };
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     ctx: *mut core::ffi::c_void,
     cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize)>,
-) -> i32 {
+    out_processed: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — "did it process one" is the out-parameter, and
+    // `Ok(false)` is no longer reported as the NO_DATA sentinel.
+    if out_processed.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -661,8 +670,11 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     match Subscription::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
-        Ok(true) => 1,
-        Ok(false) => NROS_RMW_RET_NO_DATA,
+        Ok(processed) => {
+            // SAFETY: checked non-null above.
+            unsafe { *out_processed = processed };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }

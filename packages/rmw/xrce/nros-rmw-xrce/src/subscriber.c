@@ -268,26 +268,38 @@ nros_rmw_ret_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber,
 /* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a
  * static ring entry (`entry->data`), so it can hand the bytes to the callback
  * in place instead of copying into a caller buffer (copy #1 removed). */
-int32_t xrce_subscription_supports_in_place(nros_rmw_subscription_t *subscriber) {
+nros_rmw_ret_t xrce_subscription_supports_in_place(nros_rmw_subscription_t *subscriber,
+                                                   bool *out_supports) {
+    /* Phase 376 W3.d step A — capability out, status returned. */
     (void)subscriber;
-    return 1;
+    if (out_supports == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    *out_supports = true;
+    return NROS_RMW_RET_OK;
 }
 
-int32_t xrce_subscription_process_raw_in_place(
+nros_rmw_ret_t xrce_subscription_process_raw_in_place(
     nros_rmw_subscription_t *subscriber, void *ctx,
-    void (*cb)(void *ctx, const uint8_t *ptr, size_t len)) {
+    void (*cb)(void *ctx, const uint8_t *ptr, size_t len), bool *out_processed) {
+    /* Phase 376 W3.d step A — "processed one" out, status returned. An empty
+     * subscription is OK with false rather than the NO_DATA sentinel. */
+    if (out_processed == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
     xrce_subscriber_slot *slot = ss->slot;
     if (slot == NULL || slot->count == 0) {
-        return NROS_RMW_RET_NO_DATA;
+        *out_processed = false;
+        return NROS_RMW_RET_OK;
     }
     xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
     /* Always consume the head slot (overflow + success both advance) so a single
      * bad entry can't wedge the queue — mirrors try_recv_raw. */
-    int32_t ret;
+    nros_rmw_ret_t ret;
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
     } else {
@@ -298,7 +310,8 @@ int32_t xrce_subscription_process_raw_in_place(
             cb(ctx, entry->data, entry->len);
         }
         slot->locked = false;
-        ret = 1; /* one message processed */
+        *out_processed = true; /* one message processed */
+        ret = NROS_RMW_RET_OK;
     }
     entry->len = 0;
     entry->overflow = false;

@@ -399,11 +399,14 @@ pub struct nros_rmw_vtable_t {
     pub ping_session: ::core::option::Option<
         unsafe extern "C" fn(session: *mut nros_rmw_session_t, timeout_ms: i32) -> nros_rmw_ret_t,
     >,
-    #[doc = " Capability query: does this subscription support process_raw_in_place()?\n  Returns 1 if yes, 0 if no. The runtime consults this at subscription\n  registration to choose in-place dispatch over the buffered (copying)\n  path. NULL function pointer = treated as unsupported (buffered path)."]
+    #[doc = " Capability query: does this subscription support process_raw_in_place()?\n  Returns 1 if yes, 0 if no. The runtime consults this at subscription\n  registration to choose in-place dispatch over the buffered (copying)\n  path. NULL function pointer = treated as unsupported (buffered path). */\n/** Phase 376 W3.d step A — capability out, status returned.\n  `*out_supports` is written only on `NROS_RMW_RET_OK`."]
     pub subscription_supports_in_place: ::core::option::Option<
-        unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t) -> i32,
+        unsafe extern "C" fn(
+            subscription: *mut nros_rmw_subscription_t,
+            out_supports: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
-    #[doc = " Borrow one ready message in place: hand its raw CDR bytes to `cb` (with\n  the opaque `ctx`) for the duration of the call, then release the slot —\n  no copy into a caller buffer. Returns 1 if a message was processed (`cb`\n  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.\n  `cb` MUST NOT re-enter this subscription's receive. NULL function\n  pointer = unsupported (the runtime uses the buffered path)."]
+    #[doc = " Borrow one ready message in place: hand its raw CDR bytes to `cb` (with\n  the opaque `ctx`) for the duration of the call, then release the slot —\n  no copy into a caller buffer. Returns 1 if a message was processed (`cb`\n  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.\n  `cb` MUST NOT re-enter this subscription's receive. NULL function\n  pointer = unsupported (the runtime uses the buffered path). */\n/** Phase 376 W3.d step A — \"did it process one\" moves to an\n  out-parameter and the return is a plain status.\n\n  This retires `NROS_RMW_RET_NO_DATA` from this slot: an empty\n  subscription is `*out_processed = false` with\n  `NROS_RMW_RET_OK`, which is upstream's `taken = false`\n  semantics. A sentinel that means \"fine, but nothing\" is\n  exactly the shape that makes a status enum ambiguous.\n\n  `*out_processed` is written only on OK."]
     pub process_raw_in_place: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut nros_rmw_subscription_t,
@@ -411,7 +414,8 @@ pub struct nros_rmw_vtable_t {
             cb: ::core::option::Option<
                 unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
             >,
-        ) -> i32,
+            out_processed: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
