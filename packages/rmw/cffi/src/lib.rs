@@ -196,6 +196,59 @@ pub type NrosRmwSession = rmw_session_t;
 pub type NrosRmwPublisher = rmw_publisher_t;
 /// Compat alias for the generated `rmw_subscription_t`.
 pub type NrosRmwSubscription = rmw_subscription_t;
+
+/// A vtable with every slot NULL — the base for struct-update syntax.
+///
+/// Phase 376 W4 — a vtable literal must name EVERY field, and this crate's
+/// tests build 26 of them. Adding a slot therefore meant adding one `None,`
+/// line to each, twenty-six times: tedious, and a place to miss one. The
+/// compiler catches a miss, but only after the diff has grown by the slot count
+/// times twenty-six. With this, a test names the slots it actually scripts and
+/// ends with `..EMPTY_VTABLE`, so a new slot costs one line in the header and
+/// nothing here.
+///
+/// Deliberately a `const` and not a `Default` impl: `Default` would make an
+/// all-NULL vtable constructible by accident, and an all-NULL vtable is exactly
+/// what `nros_rmw_cffi_register` must REFUSE (issue 0349). A const used
+/// explicitly as a literal's base cannot be reached that way.
+pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
+    create_session: None,
+    destroy_session: None,
+    drive_io: None,
+    create_publisher: None,
+    destroy_publisher: None,
+    publish: None,
+    create_subscription: None,
+    destroy_subscription: None,
+    take: None,
+    has_data: None,
+    create_service: None,
+    destroy_service: None,
+    take_request: None,
+    has_request: None,
+    send_response: None,
+    create_client: None,
+    destroy_client: None,
+    send_request: None,
+    take_response: None,
+    subscription_event_init: None,
+    publisher_event_init: None,
+    publisher_assert_liveliness: None,
+    next_deadline_ms: None,
+    set_wake_callback: None,
+    borrow_loaned_message: None,
+    publish_loaned_message: None,
+    return_loaned_message_from_publisher: None,
+    take_loaned_message: None,
+    return_loaned_message_from_subscription: None,
+    service_server_is_available: None,
+    take_sequence: None,
+    publish_streamed: None,
+    ping_session: None,
+    subscription_supports_in_place: None,
+    process_raw_in_place: None,
+};
+
 /// Compat alias for the generated `rmw_service_t`.
 pub type NrosRmwService = rmw_service_t;
 /// Compat alias for the generated `rmw_client_t`.
@@ -3142,24 +3195,10 @@ mod tests {
         send_response: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
-        send_request: None,
-        take_response: None,
         subscription_event_init: Some(stub_register_subscription_event),
         publisher_event_init: Some(stub_register_publisher_event),
         publisher_assert_liveliness: Some(stub_assert_publisher_liveliness),
-        next_deadline_ms: None,
-        set_wake_callback: None,
-        borrow_loaned_message: None,
-        publish_loaned_message: None,
-        return_loaned_message_from_publisher: None,
-        take_loaned_message: None,
-        return_loaned_message_from_subscription: None,
-        service_server_is_available: None,
-        take_sequence: None,
-        publish_streamed: None,
-        ping_session: None,
-        subscription_supports_in_place: None,
-        process_raw_in_place: None,
+        ..EMPTY_VTABLE
     };
 
     // Phase-301 (issue 0241) — boundary semantics of the QoS lowering.

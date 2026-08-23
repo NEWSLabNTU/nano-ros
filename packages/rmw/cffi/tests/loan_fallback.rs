@@ -14,9 +14,10 @@ use core::{
 
 use nros_rmw::{QosSettings, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
-    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
-    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
+    CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
+    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    nros_rmw_cffi_register_named,
 };
 
 static PUBLISH_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -199,25 +200,11 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     send_response: Some(noop_reply),
     create_client: Some(noop_ccli),
     destroy_client: Some(noop_dcli),
-    send_request: None,
-    take_response: None,
     subscription_event_init: Some(noop_regsubev),
     publisher_event_init: Some(noop_regpubev),
     publisher_assert_liveliness: Some(noop_alv),
-    next_deadline_ms: None,
-    set_wake_callback: None,
     // Phase 124.A.3 — NULL pub_loan: runtime falls back to arena.
-    borrow_loaned_message: None,
-    publish_loaned_message: None,
-    return_loaned_message_from_publisher: None,
-    take_loaned_message: None,
-    return_loaned_message_from_subscription: None,
-    service_server_is_available: None,
-    take_sequence: None,
-    publish_streamed: None,
-    ping_session: None,
-    subscription_supports_in_place: None,
-    process_raw_in_place: None,
+    ..EMPTY_VTABLE
 };
 
 #[test]

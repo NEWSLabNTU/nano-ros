@@ -129,6 +129,15 @@ overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolve
 in `docs/issues/`, which `check-issue-index` reads as an open issue whose frontmatter says resolved — main
 was red on it. See `archived/0756-*`. (2026-08-22)
 
+**#0767** (testing, open 2026-08-23) — `publish_streamed`'s two tests share three process globals
+(`NATIVE_CALLS`, `FALLBACK_CALLS`, `NATIVE_RECORD`) and `cargo test` runs a binary's tests on parallel
+THREADS, so the native test's `assert_eq!(FALLBACK_CALLS, 0)` races the fallback test: measured ok/ok/ok/
+FAILED/ok and FAILED/ok/FAILED/ok/ok, roughly 1 in 3. Invisible to `just check` because nextest gives each
+test its own PROCESS — a test that depends on process-global state is correct under nextest and wrong
+under cargo, and the gate everybody runs is the one that cannot see it. Found during phase-376 W4; first
+read as a regression from that work because a single stashed run passed, which was luck. Fix: give each
+test its own counters — the stub already receives a `void *ctx` to hang them on. See `0767-*`. (2026-08-23)
+
 Recently resolved (2026-08-23): **#0759** (build/testing) — host and distrobox shared build artifacts
 while having distinct compilers and libc, with nothing checking the two toolchains are compatible.
 `ros2-box-env.sh` redirected `CARGO_TARGET_DIR` but the fixture builds pass their own `--target-dir`

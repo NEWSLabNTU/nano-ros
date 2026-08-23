@@ -47,10 +47,10 @@ use nros_rmw::{
 };
 
 use crate::{
-    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c,
-    ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
+    EMPTY_VTABLE, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
+    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    event_kind_from_c, ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -321,17 +321,13 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // generic adapter; per-backend opt-in via dedicated trampolines
         // (see `nros-rmw-zenoh` for the first implementation in 124.A.4).
         // Runtime falls back to the arena path when these are NULL.
-        borrow_loaned_message: None,
-        publish_loaned_message: None,
-        return_loaned_message_from_publisher: None,
-        take_loaned_message: None,
-        return_loaned_message_from_subscription: None,
         service_server_is_available: Some(service_server_is_available_trampoline::<R>),
         take_sequence: Some(take_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
         ping_session: Some(ping_session_trampoline::<R>),
         subscription_supports_in_place: Some(subscription_supports_in_place_trampoline::<R>),
         process_raw_in_place: Some(process_raw_in_place_trampoline::<R>),
+        ..EMPTY_VTABLE
     };
 
     /// Install the per-`R` vtable into the cffi registry under the
