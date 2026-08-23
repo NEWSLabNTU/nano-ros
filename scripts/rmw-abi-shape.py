@@ -49,6 +49,41 @@ CONTRACT = os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.
 # and needs a reason that is about the TARGET, not about our convenience.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The vtable is a GENERIC RMW ABI, so its signatures carry no vendor name.
+# `nros_rmw_publisher_t` says who wrote the header, which is the one thing a
+# backend author does not need to know: the whole point of the seam is that a
+# backend implements RMW, not nano-ros. The struct TAGS may stay ours — the
+# typedef names are the surface.
+#
+# Target spelling for each type currently in a slot signature. A type with an
+# upstream counterpart takes upstream's name; the RTOS-only ones take the same
+# shape without a vendor prefix.
+TYPE_TARGET = {
+    "nros_rmw_ret_t": "rmw_ret_t",
+    "nros_rmw_publisher_t": "rmw_publisher_t",
+    "nros_rmw_subscription_t": "rmw_subscription_t",
+    "nros_rmw_service_t": "rmw_service_t",
+    "nros_rmw_client_t": "rmw_client_t",
+    "nros_rmw_qos_t": "rmw_qos_profile_t",
+    "nros_rmw_event_kind_t": "rmw_event_type_t",
+    "nros_rmw_event_callback_t": "rmw_event_callback_t",
+    "nros_rmw_publisher_options_t": "rmw_publisher_options_t",
+    "nros_rmw_subscription_options_t": "rmw_subscription_options_t",
+    # RTOS-only: no upstream counterpart, so the generic name is simply the
+    # unprefixed one. `session` is the concept upstream splits into context and
+    # node, which an image that opens exactly one of them does not need split.
+    "nros_rmw_session_t": "rmw_session_t",
+}
+
+# Including our header and upstream's `rmw/rmw.h` in ONE translation unit would
+# then be a redefinition. No TU in this repo does — a target image never links
+# real rmw, and every host-side consumer reaches the backend through Rust — but
+# it is the hazard the rename creates and it should fail loudly rather than
+# produce two types of the same name. See the phase doc for the `#error` guard.
+VENDOR_PREFIX = "nros_"
+
+
 # Slots we add that upstream has no equivalent for.
 ADDED = {
     "create_session": "upstream splits context/init/node; an RTOS image has ONE session and opens it once",
@@ -162,7 +197,17 @@ def compare():
 
     expected = {n[len("rmw_"):] for n in up} | set(ADDED)
     undeclared_extra = sorted(s for s in slots if s not in expected)
+
+    # Vendor-named types in the signatures — the "generic flavour" rule.
+    vendor_types = {}
+    for slot, params in slots.items():
+        for p in params:
+            for tok in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", p):
+                if tok.startswith(VENDOR_PREFIX):
+                    vendor_types.setdefault(tok, set()).add(slot)
+
     return {
+        "vendor_types": vendor_types,
         "slots": slots,
         "upstream": up,
         "missing": missing,
@@ -184,6 +229,11 @@ def self_test():
     names = re.findall(r"\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(", probe)
     if names != ["real"]:
         bad.append(f"a slot named only in a COMMENT must not count: {names}")
+    r = compare()
+    if r is not None:
+        for tname in r["vendor_types"]:
+            if tname not in TYPE_TARGET:
+                bad.append(f"{tname}: in a signature with no target spelling in TYPE_TARGET")
     if not ADDED:
         bad.append("ADDED is empty — every RTOS-only slot must carry its reason")
     for slot, why in ADDED.items():
@@ -223,7 +273,17 @@ def main(argv):
     print(f"  no slot at all             : {len(r['missing'])}")
     print(f"  declared RTOS additions    : {len(ADDED)}")
     print(f"  UNDECLARED extra slots     : {len(r['undeclared_extra'])}")
+    print(f"  vendor-named types in sigs : {len(r['vendor_types'])}")
     print()
+
+    if r["vendor_types"]:
+        print(f"## vendor-named types in slot signatures ({len(r['vendor_types'])})")
+        print("   the vtable is a generic RMW ABI; a backend implements RMW, not nano-ros")
+        for tname in sorted(r["vendor_types"]):
+            target = TYPE_TARGET.get(tname, "?? no target spelling recorded")
+            uses = len(r["vendor_types"][tname])
+            print(f"  {tname:34s} -> {target:30s} ({uses} slot(s))")
+        print()
 
     if r["arg_diff"]:
         print(f"## args differ ({len(r['arg_diff'])})")
@@ -246,12 +306,15 @@ def main(argv):
         print()
 
     rc = 0
-    if args.check and (r["missing"] or r["arg_diff"] or r["undeclared_extra"]):
+    if args.check and (
+        r["missing"] or r["arg_diff"] or r["undeclared_extra"] or r["vendor_types"]
+    ):
         sys.stderr.write(
             "rmw-abi-shape: the vtable does not mirror upstream.\n"
             "  Every contract symbol needs a slot named after it, with matching\n"
             "  args — or an entry in ARG_DEVIATIONS / ADDED / the parity table's\n"
             "  `declined` bucket, carrying the RTOS reason for the difference.\n"
+            "  Signatures must also be vendor-free: see TYPE_TARGET.\n"
         )
         rc = 1
     return rc

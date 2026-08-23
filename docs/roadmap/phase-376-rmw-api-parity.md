@@ -1,243 +1,233 @@
-# Phase 376 — RMW API parity: measure the gap to upstream, then close it
+# Phase 376 — the RMW ABI campaign: generic naming, feature completeness, RTOS correctness
 
-**Status (2026-08-23). W1 landed (the contract is derived and capability parity
-is automated). W2 landed as MEASUREMENT ONLY: `scripts/rmw-abi-shape.py` compares
-our vtable to upstream slot-by-slot and arg-by-arg. It reports **0 of 79** slots
-matching name and args today. W3+ (the migration) is not started.**
+**Status (2026-08-23). W1 and W2 landed as MEASUREMENT: the contract is derived
+from real implementations, and three automated checks report how far the vtable
+is from mirroring it. Today: 0 of 79 slots match name and args, 10 vendor-named
+types in signatures, 71 contract symbols with no slot. W3+ (the migration) is
+not started.**
 
-Goal, from the campaign brief: feature completeness against official RMW, where
-every remaining difference is traceable to an RTOS design consideration and
-nothing else.
+## The campaign, in one rule
 
-## W1 — what the contract actually is (landed)
+> Our vtable ABI is a **generic RMW ABI**. It looks like upstream's — same
+> names, same arguments, no vendor prefix — and every difference exists because
+> an RTOS target requires it, is written down where the difference is, and is
+> checked automatically.
 
-### The obvious comparison is wrong twice over
+Three properties follow, and they are what the waves below deliver:
 
-Comparing `rmw.h` against `nros/rmw_vtable.h` overstates the gap in one
-direction and understates our coverage in the other.
+1. **Naming** — a backend author implements RMW, not nano-ros. The slot is
+   `take`, not `try_recv_raw`; the parameter is `rmw_subscription_t *`, not
+   `nros_rmw_subscription_t *`.
+2. **Feature completeness** — every function upstream requires of an
+   implementation is a slot, generic over all backends.
+3. **RTOS correctness** — a deviation is a *decision*: it is declared, it names
+   the target constraint that forces it, and nothing else deviates.
 
-**Upstream's headers overstate the contract.** The `rmw` package declares **177**
-`RMW_PUBLIC` functions across 40 headers. Most are utilities rmw itself DEFINES
-— allocators, error handling, `names_and_types` init/fini, qos string
-conversions, `validate_*`. An implementation links those; it does not supply
-them. Comparing against 177 manufactures ~90 phantom gaps.
+None of this is a matter of taste, which is why all three are checkable.
 
-**Our header understates ours.** `rmw_vtable.h` is the BACKEND seam — what a
-zenoh or Cyclone backend plugs into. Much of what upstream calls rmw lives one
-layer up (`Executor::spin_once` *is* `rmw_wait`), one layer down (Cyclone's
-`graph.cpp`), or in codegen (serialize/deserialize). Comparing only the vtable
-manufactures gaps for things we ship.
+## What "the contract" is, and why it is not the header
 
-### So take it empirically
+Comparing `rmw.h` to `rmw_vtable.h` is wrong in both directions.
 
-The contract is the set of `rmw_*` symbols a real implementation **defines**:
+**Upstream's headers overstate it.** The `rmw` package declares **177**
+`RMW_PUBLIC` functions across 40 headers; ~89 are utilities rmw itself DEFINES —
+allocators, error handling, `names_and_types` init/fini, qos string conversions,
+`validate_*`. An implementation links those. Comparing against 177 manufactures
+~89 phantom gaps.
 
-| library | `rmw_*` symbols defined |
+**Our header understates ours.** `rmw_vtable.h` is the backend seam, while
+`rmw_wait` is `Executor::spin_once` one layer up, graph queries live in the
+Cyclone backend one layer down, and serialize/deserialize is codegen.
+
+So the contract is taken empirically — the `rmw_*` symbols a real implementation
+DEFINES:
+
+| library | defined |
 | --- | ---: |
 | `librmw_cyclonedds_cpp.so` | 88 |
 | `librmw_fastrtps_cpp.so` | 88 |
 | `librmw_zenoh_cpp.so` | 88 |
 | **intersection** | **88** |
 
-Three independent implementations, three different transports, **the same 88
-symbols and not one private extra**. That is a far better definition of "what an
-rmw must provide" than any reading of the headers, and it is re-derivable rather
-than asserted: `scripts/rmw-api-parity.py --contract`. Recorded at
-`docs/reference/rmw-implementation-contract.txt` so the comparison runs on a host
-with no ROS.
+Three implementations, three transports, the same 88, not one private extra.
+Recorded at `docs/reference/rmw-implementation-{contract,signatures}.txt` so the
+comparison runs on a host with no ROS; regenerate in the distrobox.
 
-### Where we answer them
+**Scope note.** The 89 non-implementation utilities are deliberately out of
+scope as *vtable slots* — they are pure functions and library helpers, and a
+dispatch slot for something that cannot vary by backend is a null decision. If
+feature completeness is later wanted for them too, they belong as plain C
+functions in the ABI headers, tracked by the same tooling.
 
-| bucket | count | meaning |
-| --- | ---: | --- |
-| `vtable` | 29 | a slot in `nros/rmw_vtable.h` |
-| `layer` | 23 | we answer it, elsewhere (each one names where) |
-| `declined` | 9 | deliberately absent, RTOS reason recorded |
-| `gap` | **27** | missing, and not for a defensible reason |
+## The three checks (landed, W1-W2)
 
-**61 of 88 covered.** The mapping is authored, not inferred — the tool's job is
-to make an *unclassified* symbol impossible to ignore when upstream grows one or
-a distro bump moves the set, so the parity claim cannot quietly stop being true.
-
-## The 27 gaps, grouped by what closing them needs
-
-### A. Graph / introspection — 13 symbols, one missing vtable capability
-
-`rmw_get_node_names`, `_with_enclaves`, `rmw_get_topic_names_and_types`,
-`rmw_get_service_names_and_types`, the four `*_by_node` variants,
-`rmw_get_publishers_info_by_topic`, `_subscriptions_info_by_topic`,
-`rmw_count_publishers`, `rmw_count_subscribers`,
-`rmw_node_get_graph_guard_condition`.
-
-This is one gap wearing thirteen names: **the vtable has no graph query at all.**
-`service_server_available` is the single graph-derived answer we expose, and its
-own doc comment shows every backend already tracks the underlying state — zenoh
-via matched queryables, Cyclone via built-in topic readers, XRCE not at all.
-Cyclone even has `nros-rmw-cyclonedds/src/graph.cpp` with node names and GIDs;
-there is simply no portable seam to reach it.
-
-RTOS consideration is real but **partial**: a full graph cache costs RAM that a
-128 KiB target does not have, and XRCE genuinely cannot enumerate participants.
-That argues for the answer being optional per backend — which the vtable already
-expresses as a NULL slot meaning `UNSUPPORTED` — not for the capability being
-absent from the ABI.
-
-### B. QoS introspection — 7 symbols, one design decision
-
-The six `*_get_actual_qos` and `rmw_qos_profile_check_compatible`.
-
-We bake the REQUESTED profile and never read back the GRANTED one. On DDS these
-differ whenever a writer and reader negotiate, and the difference is exactly what
-a consumer needs to diagnose "why is nothing arriving". `rmw_qos_profile_check_compatible`
-is a **pure function over two profiles** — no transport, no allocation, no
-discovery — so it is hard to see an RTOS argument for its absence at all.
-
-### C. Matched counts — 2 symbols
-
-`rmw_publisher_count_matched_subscriptions`,
-`rmw_subscription_count_matched_publishers`. Same family as A; every backend
-tracks this to implement liveliness events.
-
-### D. Callbacks for services and clients — 2 symbols
-
-`rmw_service_set_on_new_request_callback`,
-`rmw_client_set_on_new_response_callback`. We have `set_wake_callback` for
-subscriptions only, so a service-heavy image polls where a subscription-heavy one
-sleeps. No RTOS reason — the same primitive, two more call sites.
-
-### E. GIDs — 2 symbols
-
-`rmw_get_gid_for_publisher`, `rmw_compare_gids_equal`. Cyclone's `graph.cpp`
-already has GIDs. The second is a pure comparison.
-
-### F. Clean shutdown — 1 symbol
-
-`rmw_publisher_wait_for_all_acked`. A reliable backend knows its unacked count;
-without this, an embedded image that publishes and immediately halts cannot know
-whether anything left the box.
-
-## The 9 declined, and whether each reason holds
-
-| symbol(s) | reason | holds? |
+| command | question | today |
 | --- | --- | --- |
-| `rmw_{init,fini}_{publisher,subscription}_allocation` (4) | no runtime allocation to pre-size — pools are baked at build time | **yes**, this is the design |
-| `rmw_{publisher,subscription}_get_network_flow_endpoints` (2) | enumerates OS-level flows (DSCP, multicast egress); zenoh-pico and XRCE have no such notion | **yes** |
-| `rmw_subscription_{set,get}_content_filter` (2) | a DDS-only expression evaluator; would bloat every non-DDS backend | **yes**, though a NULL slot returning `UNSUPPORTED` would cost nothing and let a DDS backend answer |
-| `rmw_set_log_severity` (1) | log level is a build-time constant; a runtime setter implies a mutable global | **defensible**, but it is a policy choice rather than a constraint |
+| `just check-rmw-api-parity` | is every contract symbol *classified* — a slot, another layer, or declined with a reason? | **passes**; fails the moment upstream grows an unclassified symbol |
+| `just rmw-abi-shape` | does each one have a slot with upstream's **name** and **args**, and are the signatures vendor-free? | **0/79 name+args**, 10 vendor types |
+| `scripts/rmw-api-inventory.py` | what does upstream actually declare (177), and with what signatures? | input to the two above |
 
-## W2+ — not started
+`rmw-abi-shape --check` is deliberately NOT on the `just check` line yet: it
+fails by construction until the migration lands, and a gate that cannot pass is
+a gate people learn to skip. It joins `check` at the end of W5.
 
-Proposed order, cheapest-and-most-useful first:
+## W3 — naming: the vtable becomes a generic RMW ABI
 
-1. **D and the pure functions** (`qos_profile_check_compatible`,
-   `compare_gids_equal`) — no ABI growth for the pure ones; D is one existing
-   primitive at two more call sites.
-2. **B** — a `get_actual_qos` slot. One slot, six upstream entry points.
-3. **A + C + E** — the graph slot. The big one: needs a shape that a
-   128 KiB target can decline and a Cyclone target can answer, which the NULL-slot
-   convention already supports.
-4. **F** — an unacked-count slot.
+### W3.a — types lose the vendor prefix (10 types, 45 uses)
 
-Each wave should move symbols from `gap` to `vtable`/`layer` in
-`scripts/rmw-api-parity.py`, so the count in this doc's Status line is a
-measurement rather than a claim.
+| ours | becomes | uses |
+| --- | --- | ---: |
+| `nros_rmw_session_t` | `rmw_session_t` | 10 |
+| `nros_rmw_subscription_t` | `rmw_subscription_t` | 10 |
+| `nros_rmw_publisher_t` | `rmw_publisher_t` | 9 |
+| `nros_rmw_service_t` | `rmw_service_t` | 5 |
+| `nros_rmw_client_t` | `rmw_client_t` | 5 |
+| `nros_rmw_qos_t` | `rmw_qos_profile_t` | 4 |
+| `nros_rmw_event_kind_t` | `rmw_event_type_t` | 2 |
+| `nros_rmw_event_callback_t` | `rmw_event_callback_t` | 2 |
+| `nros_rmw_publisher_options_t` | `rmw_publisher_options_t` | 1 |
+| `nros_rmw_subscription_options_t` | `rmw_subscription_options_t` | 1 |
+| `nros_rmw_ret_t` | `rmw_ret_t` | every slot |
+
+Struct **tags** may stay ours; the typedef names are the surface a backend sees.
+
+**The hazard this creates, and the answer.** A translation unit including both
+our header and upstream `rmw/rmw.h` would then define each name twice. No TU in
+this repo does — a target image never links real rmw, and every host-side
+consumer reaches the backend through Rust — but "nobody does it today" is not a
+guarantee, and the failure mode without a guard is two types of one name whose
+layouts differ. So the header gets:
+
+```c
+#if defined(RMW_RMW_H_)
+#  error "nros/rmw_vtable.h defines the generic RMW ABI and cannot share a \
+translation unit with upstream <rmw/rmw.h>. Include one or the other."
+#endif
+```
+
+An `#error` because the alternative — silently winning the redefinition race —
+is the class of bug this repo has paid for three times in FFI struct mirrors.
+
+### W3.b — slots take upstream names (16 renames)
+
+`try_recv_raw` -> `take`, `publish_raw` -> `publish`, `pub_loan` ->
+`borrow_loaned_message`, `sub_borrow` -> `take_loaned_message`, `send_reply` ->
+`send_response`, `send_request_raw` -> `send_request`, `try_recv_request` ->
+`take_request`, `try_recv_reply_raw` -> `take_response`, `try_recv_sequence` ->
+`take_sequence`, `service_server_available` -> `service_server_is_available`,
+`assert_publisher_liveliness` -> `publisher_assert_liveliness`,
+`register_{publisher,subscription}_event` -> `{publisher,subscription}_event_init`,
+`pub_commit` -> `publish_loaned_message`, `pub_discard` ->
+`return_loaned_message_from_publisher`, `sub_release` ->
+`return_loaned_message_from_subscription`.
+
+The rule is mechanical — upstream's name minus its `rmw_` prefix — so the check
+needs no authored name mapping. An 88-entry mapping is a place for a mistake to
+hide.
+
+Both halves of W3 touch every backend and the committed bindgen output
+(RFC-0054: the header is the SSoT, `scripts/gen-abi-bindings.sh` regenerates,
+`check-abi-bindings` gates staleness).
+
+### W3.c — the argument deviations get declared
+
+The differences are systematic rather than incidental, and each is a real target
+constraint. They stay; they get written down per slot in `ARG_DEVIATIONS`:
+
+| upstream | ours | the constraint |
+| --- | --- | --- |
+| `const rmw_node_t *` | `rmw_session_t *` | an image opens ONE session; upstream's context/node split has no target-side meaning |
+| `const rosidl_message_type_support_t *` | `const char *` pkg + `const char *` type | no typesupport indirection on target — codegen bakes the type |
+| returns `rmw_publisher_t *` | returns `rmw_ret_t`, entity is an OUT param | no runtime allocation: the caller owns the storage |
+| `rmw_publisher_allocation_t *` | absent | pools are baked; nothing to pre-size |
+
+### W3.d — the return-code question, narrower AND sharper than it looked
+
+`RMW_RET_OK` and ours are both `0`, so the common path already agrees.
+Everything else differs in sign and value: upstream `ERROR 1 / TIMEOUT 2 /
+UNSUPPORTED 3 / BAD_ALLOC 10 / INVALID_ARGUMENT 11`, ours `-1 / -2 / -5 / -3 /
+-4`. We also carry 12 codes upstream has no name for (`NO_DATA`, `WOULD_BLOCK`,
+`BUFFER_TOO_SMALL`, `MESSAGE_TOO_LARGE`, `INCOMPATIBLE_ABI`, `NO_BACKEND`,
+`CONNECTION_FAILED`, ...), and upstream carries `INCORRECT_RMW_IMPLEMENTATION`,
+which cannot arise in a single-backend image.
+
+**The sign is load-bearing, and that is the finding.** Several slots return
+`int32_t` where a NON-NEGATIVE value is a count and a negative one is a status:
+`take` returns bytes taken, `take_sequence` returns messages drained, `has_data`
+returns 0/1. Adopting upstream's positive codes makes `1` ambiguous between "one
+message" and `RMW_RET_ERROR`. So this is not a free rename; it is a choice:
+
+* **(a) keep the negative codes**, declared as an RTOS deviation whose reason is
+  the count-returning slots — cheap and honest, but a caller who knows upstream
+  reads `-1` where they expect `1`;
+* **(b) adopt upstream's values and split count from status**, making every
+  count an OUT parameter — more churn, but then a value means the same thing on
+  both sides of the seam.
+
+Recommend **(b)**, decided BEFORE W3.b: doing it afterwards touches the same
+call sites twice.
+
+## W4 — feature completeness (71 symbols with no slot)
+
+Ordered cheapest-and-most-useful first. Each wave moves the counter, so the
+Status line above stays a measurement rather than a claim.
+
+1. **The two pure functions** — `qos_profile_check_compatible`,
+   `compare_gids_equal`. No transport, no allocation, no discovery; there is no
+   RTOS argument for their absence.
+2. **Service/client wake callbacks** (2) — `service_set_on_new_request_callback`,
+   `client_set_on_new_response_callback`. We have the primitive for
+   subscriptions only, so a service-heavy image polls where a
+   subscription-heavy one sleeps.
+3. **QoS read-back** (6 `*_get_actual_qos`) — one slot serving six upstream
+   entry points. We bake the REQUESTED profile and never read back the GRANTED
+   one, which on DDS is exactly what a consumer needs to answer "why is nothing
+   arriving".
+4. **The `layer` set moves into the vtable** (~23) — `wait`, guard conditions,
+   serialize/deserialize, node create/destroy, init/shutdown. Needs a decision
+   per item about what "generic over all backends" means for something
+   currently answered above the seam; `wait` in particular, since
+   `Executor::spin_once` IS our wait and a vtable `wait` would sit under it.
+5. **Graph and matched counts** (15) — the big one. Every backend already tracks
+   the state (`service_server_available`'s own doc comment says so: zenoh via
+   matched queryables, Cyclone via built-in topic readers, XRCE not at all), and
+   Cyclone's `graph.cpp` already holds node names and GIDs with no portable seam
+   to reach them. A full graph cache costs RAM a 128 KiB target does not have —
+   which argues for a NULL slot meaning `UNSUPPORTED`, the convention the vtable
+   already has, not for absence from the ABI.
+6. **`publisher_wait_for_all_acked`** (1) — an image that publishes and halts
+   cannot currently know whether anything left the box.
+
+## W5 — RTOS correctness: audit the declarations
+
+Feature completeness makes the deviations the only thing left, so the last wave
+is about them being *true*, not merely present. For each declared deviation:
+
+* Does the stated constraint still hold? (`init_publisher_allocation` is
+  declined because pools are baked — is that still true of every backend?)
+* Is it declared at the narrowest scope? A deviation that applies to one backend
+  should be a NULL slot on that backend, not an ABI-wide difference.
+* Is the reason about the TARGET, or about our convenience? Only the first is a
+  reason.
+
+Two are already suspect and should be re-decided rather than inherited:
+
+* **`set_log_severity`** — declined because the log level is a build-time
+  constant. That is a policy choice, not a constraint; a runtime setter is
+  possible and the reason as written does not carry.
+* **`subscription_{set,get}_content_filter`** — declined as DDS-only. True, but
+  a NULL slot returning `UNSUPPORTED` costs one pointer and lets a DDS backend
+  answer, which is strictly better than absence from the ABI.
+
+At the end of W5, `rmw-abi-shape --check` joins the `just check` line and the
+claim "feature complete against RMW, modulo declared RTOS deviations" becomes
+something CI re-proves on every commit rather than a sentence in a README.
 
 ## Running it
 
 ```
-scripts/rmw-api-parity.py            # the report above
-scripts/rmw-api-parity.py --check    # non-zero if anything is unclassified
-scripts/rmw-api-parity.py --contract # re-derive from an installed ROS (in the box)
-scripts/rmw-api-inventory.py         # the raw 177-function header inventory
+just check-rmw-api-parity                  # classification (gates today)
+just rmw-abi-shape                         # name / args / vendor-prefix report
+scripts/rmw-abi-shape.py --check           # the future gate
+scripts/rmw-api-inventory.py --signatures  # regenerate the recorded upstream data (in the box)
 ```
-
----
-
-# W2 — the target is the ABI's SHAPE, not just the capability (landed as measurement)
-
-The brief sharpened after W1:
-
-> Our ABI should look mostly identical to the official ABI except the RTOS
-> revision. The revision can be done by adding or removing items, or fixing
-> args. All RMW functions should go into the C vtable, generic over all
-> backends.
-
-That is a stricter target than W1 measured, and it invalidates two of W1's
-buckets as end states:
-
-* **`layer` (23) is no longer an answer.** "We answer it in `nros-node`" was
-  acceptable for capability parity; it is not acceptable when every RMW function
-  must be a vtable slot. Those 23 move from *covered* to *to be moved into the
-  vtable*.
-* **capability parity is not name parity.** `try_recv_raw` covers `rmw_take`
-  perfectly well and shares nothing with it — not the name, not the argument
-  list.
-
-## The rule, made mechanical
-
-Every contract symbol gets a vtable slot named exactly the upstream name minus
-its `rmw_` prefix (`rmw_take` -> `take`), with upstream's parameters, unless the
-difference is DECLARED with an RTOS reason. Deliberately mechanical: it needs no
-authored name mapping, and a mapping with 88 entries is a place for a mistake to
-hide. The slots live inside `nros_rmw_vtable_t`, so the type carries the
-namespace and a `rmw_` on each member would stutter.
-
-`scripts/rmw-abi-shape.py` checks exactly that.
-
-## Where we are
-
-| | |
-| --- | ---: |
-| contract symbols to mirror (88 less 9 declined) | 79 |
-| slots matching name **and** args | **0** |
-| slots present, args differ | 8 |
-| no slot at all | 71 |
-| declared RTOS additions | 11 |
-| extra slots not yet declared (these are the renames) | 16 |
-
-Zero is the honest starting number, and it is not as bad as it sounds: the 8
-"args differ" and the 16 "extra" are the same slots seen from two directions —
-they do the upstream job under a different name and a different signature.
-
-## The argument differences are the interesting part
-
-They are systematic, not incidental, and each is a real RTOS revision that
-should be declared per slot rather than smoothed away:
-
-| upstream | ours | why |
-| --- | --- | --- |
-| `const rmw_node_t *` | `nros_rmw_session_t *` | an image has ONE session opened once; upstream's context/node split has no target-side meaning |
-| `const rosidl_message_type_support_t *` | `const char *` pkg + `const char *` type | no typesupport indirection on target — the type is baked by codegen |
-| returns `rmw_publisher_t *` | returns `nros_rmw_ret_t`, entity is an OUT parameter | no runtime allocation: the caller owns the storage |
-| `rmw_publisher_allocation_t *` | absent | pools are baked; there is nothing to pre-size |
-
-## Migration plan (W3+)
-
-Each wave keeps the tree green and moves the shape counter, so progress is
-measured rather than asserted:
-
-1. **Rename the 16.** `try_recv_raw` -> `take`, `publish_raw` -> `publish`,
-   `pub_loan` -> `borrow_loaned_message`, and so on. Mechanical, but it touches
-   every backend and both bindgen'd mirrors (RFC-0054: the header is the SSoT,
-   `scripts/gen-abi-bindings.sh` regenerates, `check-abi-bindings` gates
-   staleness). Declares the arg deviations above at the same time. Expected:
-   0 -> 16 matching, 16 -> 0 undeclared extras.
-2. **Move the `layer` set into the vtable** (~23 slots): `wait`, the guard
-   conditions, serialize/deserialize, node create/destroy, init/shutdown. Each
-   needs a decision about what "generic over all backends" means for something
-   currently answered above the seam — `wait` in particular, since
-   `Executor::spin_once` IS our wait and a vtable `wait` would sit under it.
-3. **The graph slot** (13 symbols) and **QoS read-back** (7) — the W1 gaps, now
-   with upstream names and signatures fixed in advance.
-4. **Turn `--check` into a gate** on the `just check` line. Deliberately NOT
-   wired today: it fails by construction until the migration lands, and a gate
-   that cannot pass is a gate people learn to skip.
-
-## Open question for W3, worth settling before the renames
-
-Whether `nros_rmw_ret_t` should become value-identical to `rmw_ret_t`. Upstream
-uses `RMW_RET_OK = 0`, `RMW_RET_ERROR = 1`, `RMW_RET_TIMEOUT = 2`; ours are
-negative constants. "Mostly identical" argues for adopting upstream's values,
-which is a one-time break of every backend and every caller — cheaper now than
-after the renames land.
-
