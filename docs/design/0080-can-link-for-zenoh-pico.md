@@ -46,7 +46,7 @@ zenoh-pico links declare themselves:
 
 ```c
 zl->_type             = _Z_LINK_TYPE_CAN;
-zl->_cap._transport   = Z_LINK_CAP_TRANSPORT_UNICAST;
+zl->_cap._transport   = Z_LINK_CAP_TRANSPORT_MULTICAST;  /* see the RESOLVED section */
 zl->_cap._flow        = Z_LINK_CAP_FLOW_DATAGRAM;
 zl->_cap._is_reliable = false;
 zl->_mtu              = <see §4.1>;
@@ -234,7 +234,7 @@ needs an estimated 0.5–1 Mbit/s. That fits, without much margin, and the
 estimate should be replaced by a measurement on the tier-1 harness before anyone
 commits hardware.
 
-## [OPEN] 2026-08-23 — UNICAST cannot complete a two-peer handshake
+## [RESOLVED 2026-08-23] UNICAST cannot complete a two-peer handshake
 
 Found by implementing it. The link works: `tests/z_can_link_test` passes every
 boundary on `vcan0` (CAN FD negotiated, MTU 63, both directions, DLC steps,
@@ -289,6 +289,24 @@ Concretely this changes:
 
 Section 4.2 already said the grammar must not foreclose multi-peer. This is that
 bill arriving earlier than expected.
+
+### Resolved
+
+Implemented and verified on `vcan0`. Each peer owns one identifier, transmits on
+it, accepts every frame the mask admits, drops its own, and reports the sender's
+identifier as a 4-byte address. The endpoint is now
+
+```
+can/<device>#bitrate=500000;dbitrate=2000000;id=0x100;match=0;mask=0
+```
+
+The link lives in `src/link/multicast/` and registers in `_z_listen_link` only,
+beside UDP multicast — multicast peers all listen, so there is no connect side.
+
+Two zenoh-pico peers exchange pub/sub across the bus with a **189-byte payload
+over a 63-byte MTU**, so the transport's own fragmentation is driving the link,
+and `candump` shows traffic on both identifiers. The `_flow = DATAGRAM` choice
+was right all along; only `_transport` was wrong.
 
 ## Exploration log
 

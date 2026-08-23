@@ -1,7 +1,14 @@
 # Phase 377 — A CAN link for zenoh-pico
 
-**Status (2026-08-23). W0-W2 and W4 DONE; W3 BLOCKED on a transport-capability
-choice.** The link is implemented, compiles for both platforms, and passes its
+**Status (2026-08-23). W0-W4 DONE. The link works end to end on a virtual bus.**
+
+Two zenoh-pico peers exchange pub/sub over `vcan0` with a 189-byte payload
+across a 63-byte MTU, so zenoh's own fragmentation is driving the link. 24/24
+zenoh-pico tests pass; the ASI Zephyr image is unchanged with the link off.
+Remaining: W5 (measurement) and W6 (hardware).
+
+**Superseded status.** W0-W2 and W4 DONE; W3 BLOCKED on a transport-capability
+choice. The link is implemented, compiles for both platforms, and passes its
 link-level test on `vcan0` — CAN FD negotiated, MTU 63, every DLC boundary, both
 directions, over-MTU refusal. A zenoh *session* does not come up: the RFC's
 `Z_LINK_CAP_TRANSPORT_UNICAST` obliges the listen side through
@@ -48,8 +55,8 @@ Ordered so that each wave is provable by the one before it, and so that the
 | **W1** | `can.h` contract + `link/config/can.c` + `link/unicast/can.c`. | the generic half compiles and declares itself correctly | **done** |
 | **W2** | `src/system/unix/network.c` SocketCAN binding. | a Linux zenoh-pico peer opens a CAN link | **done** |
 | **W2.5** | `tests/z_can_link_test.c` against `vcan0`. | the frame codec is right — DLC steps, MTU, both directions | **done, passes** |
-| **W3** | **Tier-1 harness**: two zenoh-pico peers, pub/sub across `vcan0`, `candump` capture. | the wire format works, fragmentation works, end to end | **BLOCKED** — needs the MULTICAST rework below |
-| **W3.a** | Change `_cap._transport` to `MULTICAST`: `read` returns the sender identifier, the rx filter widens to a peer mask, the endpoint grammar becomes own-id + mask. | a datagram link can host a session at all | next |
+| **W3.a** | Change `_cap._transport` to `MULTICAST`: `read` returns the sender identifier, the rx filter widens to a peer mask, the endpoint grammar becomes own-id + mask. | a datagram link can host a session at all | **done** |
+| **W3** | **Tier-1 harness**: two zenoh-pico peers, pub/sub across `vcan0`, `candump` capture. | the wire format works, fragmentation works, end to end | **done, passes** |
 | **W4** | `src/system/zephyr/network.c` binding + `NROS_ZENOH_LINK_CAN` Kconfig + the full Kconfig→cargo→define chain. | the Zephyr port compiles; island unchanged with it off | **done** |
 | **W5** | Bandwidth + latency measurement on the tier-1 harness at real island message rates. | the estimate in RFC §8 is replaced by a number | |
 | **W6** | Hardware: MR-CANHUBK344 CAN ↔ USB-CAN dongle ↔ Linux peer. | real bit rates, real errors, real timing | |
