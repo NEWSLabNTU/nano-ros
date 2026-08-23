@@ -52,3 +52,63 @@ tooling or stay consumer-side.
 Full time sync (PTP, continuous discipline). One epoch acquisition at
 boot is what stamped-message interop needs; drift handling can layer
 later.
+
+## Mechanism correction (2026-08-23) — the platform ABI has no vtable to add a slot to
+
+The Direction says the hook goes "in the platform vtable — optional slot,
+`Option<fn>` like the rest (RFC-0054 rules; bindgen regen)". That describes the
+RMW ABI, not the platform one, and the difference changes the first work item.
+
+Measured in `packages/platform/nros-platform-cffi/src/generated.rs`:
+
+* **94** `pub fn nros_platform_*` declarations — link-time free functions;
+* **2** `Option<unsafe extern "C" fn>` types, and both are CALLBACK typedefs
+  (`nros_platform_log_flush_fn_t`, the timer callback), not dispatch slots.
+
+`platform.h`'s own preamble states the rule: "links exactly one platform
+implementation; resolution is at link time — **no runtime registration**". So
+there is no table to append to and nothing to make `Option<fn>`.
+
+### What the shape actually is
+
+A free function in the SSoT header, per RFC-0054 — header first, then
+`scripts/gen-abi-bindings.sh`, then commit both, with `check-abi-bindings`
+gating staleness:
+
+```c
+/* nros_platform_epoch_us — wall-clock microseconds since the Unix epoch, or 0
+ * when this platform has no epoch source. */
+uint64_t nros_platform_epoch_us(void);
+```
+
+Optionality is expressed the way this header ALREADY expresses it for clocks,
+which is why no new convention is needed — `platform.h` line 34:
+
+> `clock_*` / `time_*` returns are absolute / monotonic counters and never
+> error. If the platform has no clock, return `0`.
+
+A returns-0 sentinel also fits the consumer: a caller that gets 0 knows the
+image has no wall clock and can keep stamping boot-relative time rather than
+publishing a wrong absolute one.
+
+### Why this is not merely pedantic
+
+The existing clock is `nros_platform_clock_ns`, documented at line 150 as
+"monotonic nanoseconds since a platform-defined epoch (boot, program …)" and
+introduced by RFC-0073 to REPLACE the `clock_ms`/`clock_us` pair. Adding an
+`epoch_us` beside a monotonic `clock_ns` puts two clocks in one ABI whose names
+differ by one word and whose meanings differ by "is it comparable with a peer's
+timestamp". Whatever it is called, the doc comment has to say which one a caller
+wants, or the next stamped-message bug is someone reaching for the wrong one.
+
+### Revised first work item
+
+1. `nros_platform_epoch_us()` in `platform.h`, returns-0 sentinel, doc comment
+   contrasting it with `clock_ns`;
+2. `scripts/gen-abi-bindings.sh` + commit `generated.rs`;
+3. POSIX port implements it from `CLOCK_REALTIME` (the one port where it is
+   free), every other port returns 0;
+4. only then the SNTP provider, its config rung and the boot ordering.
+
+Steps 1–3 are small, land green on their own, and give ASI something to call
+before any SNTP code exists. The rest of the Direction stands unchanged.
