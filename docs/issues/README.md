@@ -391,6 +391,17 @@ does NOT cover, and is still open ground: `check-nuttx-shared-tree-headers` insp
 only, so a Rust helper joining `$NUTTX_DIR/nuttx` was invisible to it (0196 pattern). Filed from a
 tier-2 failure without searching archived/ first. See `archived/0748-*`. (2026-08-21)
 
+Recently resolved (2026-08-23): **#0768** (zephyr/core/build) — every Zephyr image built with the
+default got a ZERO-BYTE executor arena. `0` is the documented Kconfig sentinel for "derive", and
+`nros_cargo_build.cmake` knows it and deliberately does not forward a literal 0 — but that guard
+works by ABSENCE, and issue 0460 taught `knob_usize` to read `$DOTCONFIG` directly so knobs could
+reach the Rust lane at all. build.rs found `CONFIG_NROS_EXECUTOR_ARENA_SIZE=0` itself and took it
+literally. First node registers, second fails `BufferTooSmall`, image panics — reported by the test
+as "the low tier was not scheduled", the wrong layer again. Fixed by honouring the sentinel at the
+CONSUMER (`0 => derived_arena`): a guard that depends on a variable being absent cannot survive a
+reader that goes and finds it. ARENA_SIZE 0 → 74240; `zephyr/rust` runs and passes over four suite
+runs. See `archived/0768-*`. (2026-08-23)
+
 **#0765** (boards/orchestration, open 2026-08-23) — `[tiers.*.posix] priority` is ADVISORY: 11 pins
 across the bringups reach no kernel at all (`nros-board-linux` prints "advisory (not applied
 natively)" and calls no `sched_setscheduler`; `zpico_set_task_config` discards priority on

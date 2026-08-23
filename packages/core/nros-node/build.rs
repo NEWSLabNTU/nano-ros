@@ -104,7 +104,25 @@ fn main() {
         + ACTION_CLIENT_FEEDBACK_SUBS * rx_buf_size
         + ACTION_CLIENT_SUB_OVERHEAD;
     let derived_arena = (max_cbs * per_entry + ARENA_BASE_OVERHEAD).max(ARENA_FLOOR);
-    let arena_size = env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena);
+    // `0` is the Kconfig SENTINEL for "derive it" (zephyr/Kconfig:
+    // NROS_EXECUTOR_ARENA_SIZE, "0 = derive"), and it has to be honoured HERE,
+    // where the value is consumed.
+    //
+    // `nros_cargo_build.cmake` already knows the sentinel and deliberately does
+    // not forward a literal 0 — "forwarding a literal 0 would hand it a
+    // zero-byte arena rather than the derivation". That guard became INERT when
+    // issue 0460 made `knob_usize` read `$DOTCONFIG` directly so knobs could
+    // reach the Rust lane at all: build.rs now finds `CONFIG_..._ARENA_SIZE=0`
+    // in `.config` whether or not cmake exported it, and took it literally.
+    //
+    // The result was a zero-byte arena on every Zephyr image built with the
+    // default: the FIRST node registers, the second fails
+    // `NodeError::BufferTooSmall`, and the entry panics. Kconfig's own help
+    // predicted the shape — "too small fails at runtime, not at link".
+    let arena_size = match env_usize("NROS_EXECUTOR_ARENA_SIZE", derived_arena) {
+        0 => derived_arena,
+        n => n,
+    };
 
     let contents = format!(
         "/// Maximum number of executor callback slots \
