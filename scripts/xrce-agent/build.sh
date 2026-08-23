@@ -32,6 +32,68 @@ if [ "$1" = "--clean" ]; then
     exit 0
 fi
 
+# Issue 0741 — when a ROS install is PRESENT (the only case where DDS interop
+# matters), the agent must be built against THAT install's Fast-DDS: the
+# bundled prebuilt carries a Jazzy-era Fast-DDS (2.14.x/Fast-CDR 2.x), and a
+# Humble bus (2.6.x/Fast-CDR 1.x) talking to it is exactly the skew behind
+# the 28-byte-reply-into-15-byte-history refusal. The agent TAG is not free:
+# its system branch expects a specific Fast-CDR MAJOR — derived here from the
+# installed library itself (libfastcdr.so.1 → v2.4.2; .so.2 → v2.4.3), never
+# from a distro-name table that would rot.
+#
+# Detection follows the RFC-0075 router doctrine: only what the user NAMED —
+# a sourced environment (AMENT_PREFIX_PATH). No /opt/ros glob, no PATH walk.
+nros_ros_fastdds_prefix() {
+    local IFS=':'
+    for p in ${AMENT_PREFIX_PATH:-}; do
+        if [ -n "$p" ] && ls "$p"/lib/libfastcdr.so.* >/dev/null 2>&1                        && ls "$p"/lib/libfastrtps.so.* >/dev/null 2>&1; then
+            printf '%s\n' "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ros_prefix="$(nros_ros_fastdds_prefix)"; then
+    if ls "$ros_prefix"/lib/libfastcdr.so.2* >/dev/null 2>&1; then
+        agent_ref="v2.4.3"
+    else
+        agent_ref="v2.4.2"
+    fi
+    PAIRED_DIR="$BUILD_DIR/ros-paired"
+    stamp="$PAIRED_DIR/.stamp"
+    want="$agent_ref $ros_prefix"
+    if [ -x "$BUILD_DIR/MicroXRCEAgent" ] && [ -f "$stamp" ]         && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
+        echo "ROS-paired Micro-XRCE-DDS Agent up to date ($agent_ref against $ros_prefix)"
+        exit 0
+    fi
+    echo "Building ROS-paired Micro-XRCE-DDS Agent $agent_ref against $ros_prefix ..."
+    mkdir -p "$PAIRED_DIR"
+    src="$PAIRED_DIR/src"
+    if [ ! -f "$src/CMakeLists.txt" ]; then
+        # The in-tree submodule is PINNED (v2.4.3) and pins move forward only,
+        # so a v2.4.2 build cannot come from it — shallow-clone the tag.
+        git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
+    elif ! git -C "$src" describe --tags 2>/dev/null | grep -q "$agent_ref"; then
+        rm -rf "$src"
+        git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
+    fi
+    if [ -n "$src" ] && [ -f "$src/CMakeLists.txt" ]; then
+        cmake -S "$src" -B "$PAIRED_DIR/build" -DCMAKE_BUILD_TYPE=Release             -DUAGENT_BUILD_EXECUTABLE=ON             -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON             -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF             -DUAGENT_SOCKETCAN_PROFILE=OFF >/dev/null
+        cmake --build "$PAIRED_DIR/build" --parallel "$(nproc 2>/dev/null || echo 4)"
+        # Wrapper (not a copy): the binary links the ROS install's libs; keep
+        # them reachable even when the caller forgot to source the env.
+        tmp="$BUILD_DIR/MicroXRCEAgent.$$"
+        printf '#!/bin/sh\nLD_LIBRARY_PATH="%s/lib:$LD_LIBRARY_PATH" exec "%s" "$@"\n' \
+            "$ros_prefix" "$PAIRED_DIR/build/MicroXRCEAgent" > "$tmp"
+        chmod 0755 "$tmp"
+        mv -f "$tmp" "$BUILD_DIR/MicroXRCEAgent"
+        printf '%s' "$want" > "$stamp"
+        echo "Published ROS-paired agent: $BUILD_DIR/MicroXRCEAgent ($agent_ref, zero Fast-DDS skew)"
+        exit 0
+    fi
+fi
+
 # Prefer the prebuilt MicroXRCEAgent from the nros SDK store (provisioned by
 # `nros setup … --rmw xrce`) — no source build, no submodule, no cmake/g++
 # needed. Publish it at build/xrce-agent/MicroXRCEAgent where tests + recipes

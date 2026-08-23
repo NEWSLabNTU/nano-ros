@@ -560,6 +560,34 @@ So the tally is **two hosts reproduce, two environments do not** (the other host
 and the ROS distrobox). Whatever explains the split has to account for both
 sides; a fix should not be accepted until it does.
 
+## Mitigation landed (2026-08-24) — the harness always runs a zero-skew agent
+
+`scripts/xrce-agent/build.sh` (the single publish point behind
+`xrce_agent_binary_path()`'s highest-priority slot) now builds the agent
+against the PRESENT ROS install's own Fast-DDS whenever a sourced
+environment provides one: prefix taken from `AMENT_PREFIX_PATH` (the
+RFC-0075 only-what-the-user-named rule), agent tag derived from the
+installed Fast-CDR MAJOR itself (`libfastcdr.so.1` → v2.4.2, `.so.2` →
+v2.4.3 — a library fact, not a distro-name table), built with
+`UAGENT_USE_SYSTEM_FASTDDS/FASTCDR=ON`, published as a wrapper that
+pins `LD_LIBRARY_PATH` at the paired prefix. Stamped idempotent;
+offline clone failure falls back to the bundled prebuilt; the no-ROS
+path is untouched (nothing to skew against).
+
+Verified on THIS host — the originally red one: `ldd` shows both
+libraries resolving from `/opt/ros/humble`, and
+`cargo nextest run --test xrce_ros2_interop --retries 0` is **8/8,
+twice** (plus the issue's own test solo, 2.7 s). The deterministic
+`28-into-15` refusal does not occur under zero skew.
+
+Still open per this issue's own bar: the two-hosts-red / two-envs-green
+split under the PINNED agent remains unexplained, and the bus capture
+armed above is still the instrument for it. The mitigation removes the
+skew that makes the failure possible; it does not yet name the trigger.
+The `nros setup` integration (edition-aware provisioning in the CLI
+proper, per "The shape this suggests") is follow-up work — the harness
+funnel was the smallest surface that closes the lane.
+
 ## Investigation state — NOT fixed
 
 Ruled out so far, by reading:
