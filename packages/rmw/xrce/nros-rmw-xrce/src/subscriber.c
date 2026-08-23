@@ -85,14 +85,14 @@ void xrce_topic_callback(uxrSession *session,
      * for diagnostics when the slot pool is full. */
 }
 
-nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t *session,
+rmw_ret_t xrce_subscription_create(rmw_session_t *session,
                                       const char *topic_name,
                                       const char *type_name,
                                       const char *type_hash,
                                       uint32_t domain_id,
-                                      const nros_rmw_qos_t *qos,
-                                      const nros_rmw_subscription_options_t *options,
-                                      nros_rmw_subscription_t *out) {
+                                      const rmw_qos_profile_t *qos,
+                                      const rmw_subscription_options_t *options,
+                                      rmw_subscription_t *out) {
     (void)type_hash;
     (void)domain_id;
     (void)options;
@@ -156,7 +156,7 @@ nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t *session,
 
     uint16_t requests[3] = { req_topic, req_sub, req_dr };
     uint8_t  statuses[3] = { 0, 0, 0 };
-    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
     if (cret != NROS_RMW_RET_OK) {
         free(ss);
         return cret;
@@ -191,7 +191,7 @@ nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_subscription_destroy(nros_rmw_subscription_t *subscriber) {
+void xrce_subscription_destroy(rmw_subscription_t *subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return;
     }
@@ -212,7 +212,7 @@ void xrce_subscription_destroy(nros_rmw_subscription_t *subscriber) {
     subscriber->backend_data = NULL;
 }
 
-nros_rmw_ret_t xrce_subscription_take(nros_rmw_subscription_t *subscriber, uint8_t *buf,
+rmw_ret_t xrce_subscription_take(rmw_subscription_t *subscriber, uint8_t *buf,
                                       size_t buf_len, size_t *out_len, bool *taken) {
     /* Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. */
     if (subscriber == NULL || subscriber->backend_data == NULL || out_len == NULL ||
@@ -230,7 +230,7 @@ nros_rmw_ret_t xrce_subscription_take(nros_rmw_subscription_t *subscriber, uint8
     /* Always consume the head slot regardless of outcome — overflow,
      * buffer-too-small, and successful read all advance the ring so a
      * single bad entry can't wedge the queue. */
-    nros_rmw_ret_t ret;
+    rmw_ret_t ret;
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
     } else if (entry->len > buf_len) {
@@ -252,7 +252,7 @@ nros_rmw_ret_t xrce_subscription_take(nros_rmw_subscription_t *subscriber, uint8
     return ret;
 }
 
-nros_rmw_ret_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber,
+rmw_ret_t xrce_subscription_has_data(rmw_subscription_t *subscriber,
                                           bool *out_has_data) {
     /* Phase 376 W3.d step A — flag out, status returned. */
     if (out_has_data == NULL) {
@@ -274,7 +274,7 @@ nros_rmw_ret_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber,
 /* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a
  * static ring entry (`entry->data`), so it can hand the bytes to the callback
  * in place instead of copying into a caller buffer (copy #1 removed). */
-nros_rmw_ret_t xrce_subscription_supports_in_place(nros_rmw_subscription_t *subscriber,
+rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t *subscriber,
                                                    bool *out_supports) {
     /* Phase 376 W3.d step A — capability out, status returned. */
     (void)subscriber;
@@ -285,8 +285,8 @@ nros_rmw_ret_t xrce_subscription_supports_in_place(nros_rmw_subscription_t *subs
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_subscription_process_raw_in_place(
-    nros_rmw_subscription_t *subscriber, void *ctx,
+rmw_ret_t xrce_subscription_process_raw_in_place(
+    rmw_subscription_t *subscriber, void *ctx,
     void (*cb)(void *ctx, const uint8_t *ptr, size_t len), bool *out_processed) {
     /* Phase 376 W3.d step A — "processed one" out, status returned. An empty
      * subscription is OK with false rather than the NO_DATA sentinel. */
@@ -305,7 +305,7 @@ nros_rmw_ret_t xrce_subscription_process_raw_in_place(
     xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
     /* Always consume the head slot (overflow + success both advance) so a single
      * bad entry can't wedge the queue — mirrors try_recv_raw. */
-    nros_rmw_ret_t ret;
+    rmw_ret_t ret;
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
     } else {

@@ -21,7 +21,7 @@
 
 static const nros_rmw_vtable_t *g_received_vtable = NULL;
 
-nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
+rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
     g_received_vtable = vtable;
     return NROS_RMW_RET_OK;
 }
@@ -29,7 +29,7 @@ nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
 int main(void) {
     g_received_vtable = NULL;
 
-    nros_rmw_ret_t r = nros_rmw_xrce_register();
+    rmw_ret_t r = nros_rmw_xrce_register();
     if (r != NROS_RMW_RET_OK) {
         fprintf(stderr, "FAIL: nros_rmw_xrce_register returned %d, expected NROS_RMW_RET_OK\n",
                 (int)r);
@@ -61,7 +61,7 @@ int main(void) {
      *
      * Use port 1 to make the "no agent" case deterministic — it's
      * reserved + nothing is listening. */
-    nros_rmw_session_t session = {0};
+    rmw_session_t session = {0};
     r = g_received_vtable->create_session("127.0.0.1:1", 0, 0, "smoke", &session);
     if (r == NROS_RMW_RET_UNSUPPORTED) {
         fprintf(stderr,
@@ -76,7 +76,7 @@ int main(void) {
     /* Phase 115.K.2.2 — publish_raw on a NULL backend_data publisher
      * must reach the backend (no longer the K.2.0 UNSUPPORTED stub)
      * and return INVALID_ARGUMENT. */
-    nros_rmw_publisher_t pub = {0};
+    rmw_publisher_t pub = {0};
     r = g_received_vtable->publish_raw(&pub, NULL, 0);
     if (r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
@@ -87,10 +87,10 @@ int main(void) {
 
     /* Phase 115.K.2.2 — take / has_data on a fresh subscriber
      * shell with NULL backend_data must reach the backend. */
-    nros_rmw_subscription_t sub = {0};
+    rmw_subscription_t sub = {0};
     size_t rr_len = 0;
     bool rr_took = false;
-    nros_rmw_ret_t rr = g_received_vtable->take(&sub, NULL, 0, &rr_len, &rr_took);
+    rmw_ret_t rr = g_received_vtable->take(&sub, NULL, 0, &rr_len, &rr_took);
     if (rr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr, "FAIL: take on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)rr);
@@ -102,7 +102,7 @@ int main(void) {
        caller could poll a broken handle forever and read it as quiet. The flag
        must also be left untouched on that path. */
     bool hd = true;
-    nros_rmw_ret_t hd_rc = g_received_vtable->has_data(&sub, &hd);
+    rmw_ret_t hd_rc = g_received_vtable->has_data(&sub, &hd);
     if (hd_rc != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr, "FAIL: has_data on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)hd_rc);
@@ -116,8 +116,8 @@ int main(void) {
     /* Phase 115.K.2.3 — service paths must reach the backend. With a
      * NULL session, create_service returns INVALID_ARGUMENT
      * (no longer UNSUPPORTED stub). */
-    nros_rmw_service_t srv = {0};
-    nros_rmw_ret_t srv_r = g_received_vtable->create_service(
+    rmw_service_t srv = {0};
+    rmw_ret_t srv_r = g_received_vtable->create_service(
         NULL, "/foo", "Foo_", NULL, 0, NULL, &srv);
     if (srv_r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
@@ -131,7 +131,7 @@ int main(void) {
     int64_t seq = 0;
     size_t tr_len = 0;
     bool tr_took = false;
-    nros_rmw_ret_t tr =
+    rmw_ret_t tr =
         g_received_vtable->take_request(&srv, NULL, 0, &seq, &tr_len, &tr_took);
     if (tr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
@@ -140,7 +140,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    nros_rmw_client_t cli = {0};
+    rmw_client_t cli = {0};
     int32_t cr = g_received_vtable->send_request_raw(&cli, NULL, 0);
     if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
@@ -159,7 +159,7 @@ int main(void) {
      *      open path tries to use it and fails at the agent level
      *      (write returns 0 because read returns 0 — OK / -1, anything
      *      non-OK is acceptable, just not UNSUPPORTED). */
-    nros_rmw_ret_t r4 = nros_rmw_xrce_init_custom_transport(0);
+    rmw_ret_t r4 = nros_rmw_xrce_init_custom_transport(0);
     if (r4 != NROS_RMW_RET_UNSUPPORTED) {
         fprintf(stderr,
                 "FAIL: nros_rmw_xrce_init_custom_transport returned %d, "
@@ -168,7 +168,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    nros_rmw_ret_t r4_null = nros_rmw_xrce_set_custom_transport_ops(NULL, 0);
+    rmw_ret_t r4_null = nros_rmw_xrce_set_custom_transport_ops(NULL, 0);
     if (r4_null != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: set_custom_transport_ops(NULL) returned %d, expected INVALID_ARGUMENT\n",
@@ -176,8 +176,8 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    nros_rmw_session_t cust_session = {0};
-    nros_rmw_ret_t cret = g_received_vtable->create_session(
+    rmw_session_t cust_session = {0};
+    rmw_ret_t cret = g_received_vtable->create_session(
         "custom://noop", 0, 0, "smoke-custom", &cust_session);
     if (cret != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,

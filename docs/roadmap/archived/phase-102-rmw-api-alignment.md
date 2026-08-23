@@ -2,7 +2,7 @@
 
 **Goal:** bring the nano-ros RMW C surface closer to upstream
 `rmw.h`'s shape where the divergence costs more than it saves —
-specifically, named `nros_rmw_ret_t` constants instead of bare
+specifically, named `rmw_ret_t` constants instead of bare
 "negative int = error", and visible entity-struct fields
 (`topic_name`, `qos`, lending caps) instead of fully opaque
 `nros_rmw_handle_t = void *`. Improves diagnosability and
@@ -15,7 +15,7 @@ consumer recompiles. Version bump (102.7) skipped because
 `nros-rmw-cffi` is not yet published.
 
 **Landed commits:**
-* 102.1 — `2aab57fa` (named `nros_rmw_ret_t` + two-way mapping +
+* 102.1 — `2aab57fa` (named `rmw_ret_t` + two-way mapping +
   8 new `TransportError` variants)
 * 102.2 — `4911fecd` (sweep 22 `InvalidConfig` sites to specific
   variants: 10 → `Unsupported`, 6 → `TopicNameInvalid`, 6 →
@@ -25,7 +25,7 @@ consumer recompiles. Version bump (102.7) skipped because
   / `NrosRmwPublisher` / `NrosRmwSubscriber` / `NrosRmwServiceServer`
   / `NrosRmwServiceClient`)
 * 102.4 — `44200faf` (vtable signatures use typed entity structs +
-  `nros_rmw_ret_t`; `CffiSession` / `CffiPublisher` / `CffiSubscriber`
+  `rmw_ret_t`; `CffiSession` / `CffiPublisher` / `CffiSubscriber`
   / `CffiServiceServer` / `CffiServiceClient` rewritten with inline
   name buffers + `make_view()` move-safe FFI dispatch)
 * 102.5 — `60fbb3e2` (Rust accessors `topic_name()` / `type_name()` /
@@ -62,10 +62,10 @@ breaks.
 
 ## Design
 
-### Named return codes (`nros_rmw_ret_t`)
+### Named return codes (`rmw_ret_t`)
 
 ```c
-typedef int32_t nros_rmw_ret_t;
+typedef int32_t rmw_ret_t;
 #define NROS_RMW_RET_OK                       0
 #define NROS_RMW_RET_ERROR                   -1
 #define NROS_RMW_RET_TIMEOUT                 -2
@@ -85,8 +85,8 @@ real:
 | Returns | Success | Failure |
 |---------|---------|---------|
 | Pointer (`open`, `create_publisher`, …) | non-NULL | `NULL` |
-| `nros_rmw_ret_t` (`close`, `publish_raw`, `commit_slot`, …) | `NROS_RMW_RET_OK` | negative constant |
-| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, …) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
+| `rmw_ret_t` (`close`, `publish_raw`, `commit_slot`, …) | `NROS_RMW_RET_OK` | negative constant |
+| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, …) | `>= 0` (bytes received) | negative `rmw_ret_t` |
 
 **Drop `rmw_set_error_string`-equivalent.** No thread-local error
 buffer. Backends log diagnostic strings at the failure site through
@@ -95,7 +95,7 @@ thread-local heap storage.
 
 **Rust side.** `nros_rmw::TransportError` already enum-shaped; add the
 missing variants (`IncompatibleQos`, `TopicNameInvalid`, …) and the
-mapping table to / from `nros_rmw_ret_t`.
+mapping table to / from `rmw_ret_t`.
 
 ### Visible entity-struct fields
 
@@ -104,14 +104,14 @@ runtime actually reads, plus an opaque `void * backend_data` for
 backend-private state:
 
 ```c
-typedef struct nros_rmw_qos_t {
+typedef struct rmw_qos_profile_t {
     uint8_t  reliability;   /* RELIABLE | BEST_EFFORT */
     uint8_t  durability;    /* VOLATILE | TRANSIENT_LOCAL */
     uint8_t  history;       /* KEEP_LAST | KEEP_ALL */
     uint8_t  _pad;
     uint16_t depth;
     uint16_t _pad2;
-} nros_rmw_qos_t;
+} rmw_qos_profile_t;
 
 /* Phase 103 was cancelled; the lending capability collapsed to a
  * single bool matching upstream's `rmw_publisher_t::can_loan_messages`.
@@ -120,17 +120,17 @@ typedef struct nros_rmw_qos_t {
  * ever needed and (b) C-bitfield ordering is implementation-defined.
  * Final shape uses upstream's idiomatic `bool can_loan_messages`. */
 
-typedef struct nros_rmw_publisher_t {
+typedef struct rmw_publisher_t {
     const char    *topic_name;          /* not owned; caller storage */
     const char    *type_name;           /* not owned */
-    nros_rmw_qos_t qos;
+    rmw_qos_profile_t qos;
     bool           can_loan_messages;
     uint8_t        _reserved[7];        /* forward-compat; must be zero */
     void          *backend_data;        /* opaque */
-} nros_rmw_publisher_t;
+} rmw_publisher_t;
 
 /* Same shape for nros_rmw_subscriber_t / nros_rmw_service_*_t /
- * nros_rmw_session_t. */
+ * rmw_session_t. */
 ```
 
 **Rules.**
@@ -159,13 +159,13 @@ Net: skip.
 
 ## Work Items
 
-- [x] **102.1 — Define `nros_rmw_ret_t` + named constants.**
+- [x] **102.1 — Define `rmw_ret_t` + named constants.**
       Header file `<nros/rmw_ret.h>` (new). Constants laid out above.
       `<nros/rmw_vtable.h>` includes it. Rust side: extend
       `nros_rmw::TransportError` with the missing variants
       (`IncompatibleQos`, `TopicNameInvalid`,
       `NodeNameNonExistent`, `LoanNotSupported`, `NoData`) and add
-      `From<TransportError> for nros_rmw_ret_t` plus the inverse for
+      `From<TransportError> for rmw_ret_t` plus the inverse for
       the cffi shim.
       **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_ret.h`
       (new), `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
@@ -184,9 +184,9 @@ Net: skip.
       `packages/px4/nros-rmw-uorb/src/`.
 
 - [x] **102.3 — Define visible entity structs.**
-      Headers for `nros_rmw_publisher_t`, `nros_rmw_subscriber_t`,
+      Headers for `rmw_publisher_t`, `nros_rmw_subscriber_t`,
       `nros_rmw_service_server_t`, `nros_rmw_service_client_t`,
-      `nros_rmw_session_t`. Each carries the metadata fields above
+      `rmw_session_t`. Each carries the metadata fields above
       plus a `void *backend_data` slot. cbindgen config updated to
       emit the typed structs (drop `nros_rmw_handle_t = void *` for
       these).
@@ -199,9 +199,9 @@ Net: skip.
       Every `create_*` function pointer changes from
       `nros_rmw_handle_t (*create_publisher)(session, topic_name,
       type_name, type_hash, qos)` to
-      `nros_rmw_ret_t (*create_publisher)(session, topic_name,
-      type_name, type_hash, qos, nros_rmw_publisher_t *out)`. The
-      runtime owns the `nros_rmw_publisher_t` storage; the vtable
+      `rmw_ret_t (*create_publisher)(session, topic_name,
+      type_name, type_hash, qos, rmw_publisher_t *out)`. The
+      runtime owns the `rmw_publisher_t` storage; the vtable
       fills it. Same for subscriber / service-server /
       service-client.
       **Files:** `packages/core/nros-rmw-cffi/include/nros/rmw_vtable.h`,
@@ -236,7 +236,7 @@ Net: skip.
       roundtrip test 1/1 green).
 - [x] `nros_rmw_handle_t` is gone from the public vtable signatures;
       typedef retained only for `backend_data` round-tripping. Every
-      `create_*` returns `nros_rmw_ret_t` with a typed-entity
+      `create_*` returns `rmw_ret_t` with a typed-entity
       out-parameter.
 - [x] `cargo build -p nros-rmw-cffi` clean — every vtable function
       pointer takes a typed-entity pointer; only `backend_data`

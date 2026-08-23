@@ -23,9 +23,9 @@ your backend stays in C.
 
    /* Backend writes its own session pointer into out->backend_data.
     * The runtime has already filled out->node_name + out->namespace_. */
-   static nros_rmw_ret_t my_open(const char* locator, uint8_t mode,
+   static rmw_ret_t my_open(const char* locator, uint8_t mode,
                                  uint32_t domain_id, const char* node_name,
-                                 nros_rmw_session_t* out) {
+                                 rmw_session_t* out) {
        out->backend_data = /* my_session_t pointer */;
        return NROS_RMW_RET_OK;
    }
@@ -73,7 +73,7 @@ The vtable is a struct of function pointers grouped by entity (see
 
 ## Return-value conventions
 
-Status is reported as `nros_rmw_ret_t` — a signed 32-bit integer whose VALUES
+Status is reported as `rmw_ret_t` — a signed 32-bit integer whose VALUES
 are upstream rmw's (phase 376 W3.d step B): `OK 0`, `ERROR 1`, `TIMEOUT 2`,
 `UNSUPPORTED 3`, `BAD_ALLOC 10`, `INVALID_ARGUMENT 11`,
 `NODE_NAME_NON_EXISTENT 203`. Codes upstream does not define live in the

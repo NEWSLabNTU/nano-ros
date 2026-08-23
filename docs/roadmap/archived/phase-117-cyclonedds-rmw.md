@@ -11,7 +11,7 @@
 **Priority:** High — unblocks Autoware safety-island integration AND general ROS 2 ecosystem interop on Cortex-R/A safety MCUs.
 
 **Depends on:**
-- Phase 102 (`nros-rmw-cffi` C vtable, typed entity structs, `nros_rmw_ret_t`) — Complete
+- Phase 102 (`nros-rmw-cffi` C vtable, typed entity structs, `rmw_ret_t`) — Complete
 - Phase 79 (unified platform abstraction) — Complete
 - Phase 87 (`nros-cpp` compile-time storage sizes) — Complete
 
@@ -36,13 +36,13 @@
 
 ```c
 typedef struct nros_rmw_vtable_t {
-    nros_rmw_ret_t (*open)(...);
-    nros_rmw_ret_t (*create_publisher)(...);
-    nros_rmw_ret_t (*publish_raw)(...);
+    rmw_ret_t (*open)(...);
+    rmw_ret_t (*create_publisher)(...);
+    rmw_ret_t (*publish_raw)(...);
     /* ... ~20 fn pointers ... */
 } nros_rmw_vtable_t;
 
-nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
+rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
 ```
 
 Phase 102 closed this surface. A pure-C++ backend implementing the vtable + calling `nros_rmw_cffi_register` at init satisfies the runtime — no Rust shim, no bindgen, no FFI layering on top of FFI. Mirrors Autoware's existing `common/dds/*.hpp` style verbatim, lowering review cost for downstream contributors.
@@ -102,7 +102,7 @@ packages/dds/nros-rmw-cyclonedds/
 │   ├── subscriber.cpp                     # create / destroy / try_recv_raw / has_data
 │   ├── service.cpp                        # server + client
 │   ├── descriptors.{cpp,hpp}              # type_name → dds_topic_descriptor_t
-│   ├── qos.{cpp,hpp}                      # nros_rmw_qos_t → dds_qos_t
+│   ├── qos.{cpp,hpp}                      # rmw_qos_profile_t → dds_qos_t
 │   └── config.hpp                         # raw ddsi_config (mirrors Autoware)
 ├── tests/
 │   ├── CMakeLists.txt                     # CTest harness
@@ -204,7 +204,7 @@ Mutual exclusion with existing `rmw-{zenoh,xrce,dds,uorb,cffi}` enforced via `co
 - [x] **117.3 — `nros-rmw-cyclonedds` standalone CMake project.** Created at `packages/dds/nros-rmw-cyclonedds/`. **No Cargo.toml — pure CMake.** Top-level `CMakeLists.txt` builds `libnros_rmw_cyclonedds.a` linked against `CycloneDDS::ddsc`, installs CMake config + headers. Skeleton vtable: all 18 mandatory fn pointers wired to stub functions returning `NROS_RMW_RET_UNSUPPORTED` (or 0 for `has_data` / `has_request`); 3 Phase 108 event hooks left NULL. `nros_rmw_cyclonedds_register()` calls `nros_rmw_cffi_register(&kVtable)`. CTest smoke (`register_smoke.cpp`) stubs `nros_rmw_cffi_register`, captures the vtable, asserts no mandatory slot is NULL — passes. Downstream `find_package(NrosRmwCyclonedds)` resolves with transitive `find_dependency(CycloneDDS)`. Side effect: added `packages/core/nros-rmw-cffi/CMakeLists.txt` + `add_subdirectory` entry in top-level `CMakeLists.txt` so the four rmw-cffi public headers (`rmw_{ret,entity,event,vtable}.h`) get installed alongside everything else under `build/install/include/nros/`. Added `extern "C"` guard around the `nros_rmw_cffi_register` declaration in `rmw_vtable.h` (was missing — caused C++ linkage mismatch).
   - **Files:** `packages/dds/nros-rmw-cyclonedds/{CMakeLists.txt,cmake/NrosRmwCycloneddsConfig.cmake.in,include/nros_rmw_cyclonedds.h,src/{vtable,session,publisher,subscriber,service,qos,descriptors,internal.hpp}.cpp,tests/{CMakeLists.txt,register_smoke.cpp},.gitignore,README.md}`, `packages/core/nros-rmw-cffi/{CMakeLists.txt,include/nros/rmw_vtable.h}`, top-level `CMakeLists.txt`.
 
-- [x] **117.4 — Session lifecycle.** `session_open` calls `dds_create_participant(domain_id, NULL, NULL)` (default Cyclone config — raw `ddsi_config` hook deferred to 117.6 once pub/sub needs network tuning). State stashed in `nros_rmw_session_t::backend_data` via heap-allocated `SessionState` struct. `session_close` calls `dds_delete(participant)` (cascades to children). `drive_io` is a no-op (Cyclone owns RX threads). Helper `session_participant()` exposed in `internal.hpp` for 117.6/117.7. `session_smoke` CTest exercises full open → drive_io → close round trip on domain 42; passes.
+- [x] **117.4 — Session lifecycle.** `session_open` calls `dds_create_participant(domain_id, NULL, NULL)` (default Cyclone config — raw `ddsi_config` hook deferred to 117.6 once pub/sub needs network tuning). State stashed in `rmw_session_t::backend_data` via heap-allocated `SessionState` struct. `session_close` calls `dds_delete(participant)` (cascades to children). `drive_io` is a no-op (Cyclone owns RX threads). Helper `session_participant()` exposed in `internal.hpp` for 117.6/117.7. `session_smoke` CTest exercises full open → drive_io → close round trip on domain 42; passes.
   - **Files:** `src/session.cpp`, `src/internal.hpp`, `tests/{session_smoke.cpp,CMakeLists.txt}`.
 
 - [x] **117.5 — Type registry.** `descriptors.{cpp,hpp}`: linear-scan registry over a 64-slot fixed array of `(type_name, descriptor*)` pairs. Public C entry points `nros_rmw_cyclonedds_register_descriptor` (called from auto-generated `<stem>_register.c` constructors) + `nros_rmw_cyclonedds_find_descriptor`. C++ wrappers in `nros_rmw_cyclonedds::register_descriptor` / `find_descriptor` / `registered_descriptor_count`. Idempotent registration (repeat name = no-op). 64-slot cap drops silent on overflow — runtime sees missing types as `NROS_RMW_RET_UNSUPPORTED` from `publisher_create`. No `std::map`, no heap; works on all targets Cyclone itself supports. Smoke test (`codegen_smoke`) verifies the full IDL → idlc → static-init → registry → `dds_create_topic` path round-trips against a real Cyclone participant.

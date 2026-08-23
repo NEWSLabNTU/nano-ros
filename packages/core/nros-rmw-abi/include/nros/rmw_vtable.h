@@ -1,6 +1,23 @@
 #ifndef NROS_RMW_VTABLE_H
 #define NROS_RMW_VTABLE_H
 
+/* Phase 376 W3.a — this header defines the GENERIC RMW ABI: its types are
+ * `rmw_publisher_t`, `rmw_ret_t`, and so on, with no vendor prefix, because a
+ * backend author implements RMW rather than nano-ros.
+ *
+ * That makes it impossible to share a translation unit with upstream's
+ * `<rmw/rmw.h>`, which defines the same names differently. Refuse LOUDLY rather
+ * than let one definition silently win a redefinition race — two types of one
+ * name whose layouts disagree is the class this repo has already paid for three
+ * times in hand-mirrored FFI structs.
+ *
+ * A target image never links real rmw, and host-side consumers reach the
+ * backend through Rust, so nothing in this repo trips this today. It exists for
+ * the day something does. */
+#if defined(RMW_RMW_H_) || defined(RMW__RMW_H_)
+#error "nros/rmw_vtable.h defines the generic RMW ABI and cannot share a translation unit with upstream <rmw/rmw.h>. Include one or the other."
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -21,8 +38,8 @@ extern "C" {
  * nros_rmw_cffi_register() before creating any nros sessions.
  *
  * **Storage ownership.** The runtime owns the entity-struct storage
- * (`nros_rmw_session_t`, `nros_rmw_publisher_t`, `nros_rmw_subscription_t`,
- * `nros_rmw_service_t`, `nros_rmw_client_t`). Each
+ * (`rmw_session_t`, `rmw_publisher_t`, `rmw_subscription_t`,
+ * `rmw_service_t`, `rmw_client_t`). Each
  * `create_*` call receives a runtime-allocated, zero-initialised struct
  * via the `out` pointer; the backend writes its `backend_data` (and
  * `can_loan_messages` for pub/sub) into it. The runtime fills the metadata
@@ -35,9 +52,9 @@ extern "C" {
  * **Return-value conventions.**
  *  - `create_session` / `destroy_session` / `drive_io` / `create_*` / `publish_raw` /
  *    `send_reply`: `NROS_RMW_RET_OK` on success, negative
- *    `nros_rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).
+ *    `rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).
  *  - `try_recv_raw` / `try_recv_request` / `try_recv_reply_raw`: non-negative =
- *    bytes produced, negative = `nros_rmw_ret_t` error.
+ *    bytes produced, negative = `rmw_ret_t` error.
  *  - `has_data` / `has_request`: 1 = yes, 0 = no.
  *  - `destroy_*`: void (best-effort cleanup).
  */
@@ -46,7 +63,7 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
     /** Create a session (phase-301: renamed from `open` to the table's
      *  own `create_*` convention). The runtime supplies a
-     *  zero-initialised `nros_rmw_session_t` via @p out with
+     *  zero-initialised `rmw_session_t` via @p out with
      *  `node_name` / `namespace_` already filled. The backend writes
      *  `out->backend_data`.
      *
@@ -54,11 +71,11 @@ typedef struct nros_rmw_vtable_t {
      *              rather than the enum to keep the slot's width fixed
      *              across compilers. A backend with no peer/client
      *              distinction must IGNORE it, not reject it. */
-    nros_rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
+    rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
                            uint32_t domain_id, const char *node_name,
-                           nros_rmw_session_t *out);
-    nros_rmw_ret_t (*destroy_session)(nros_rmw_session_t *session);
-    nros_rmw_ret_t (*drive_io)(nros_rmw_session_t *session, int32_t timeout_ms);
+                           rmw_session_t *out);
+    rmw_ret_t (*destroy_session)(rmw_session_t *session);
+    rmw_ret_t (*drive_io)(rmw_session_t *session, int32_t timeout_ms);
 
     /* ---- Publisher ---- */
     /** Create a publisher. The runtime fills `out->topic_name`,
@@ -66,24 +83,24 @@ typedef struct nros_rmw_vtable_t {
      *  writes `out->backend_data` and `out->can_loan_messages`.
      *  `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
-    nros_rmw_ret_t (*create_publisher)(nros_rmw_session_t *session,
+    rmw_ret_t (*create_publisher)(rmw_session_t *session,
         const char *topic_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        const nros_rmw_publisher_options_t *options,
-        nros_rmw_publisher_t *out);
-    void (*destroy_publisher)(nros_rmw_publisher_t *publisher);
-    nros_rmw_ret_t (*publish_raw)(nros_rmw_publisher_t *publisher,
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        const rmw_publisher_options_t *options,
+        rmw_publisher_t *out);
+    void (*destroy_publisher)(rmw_publisher_t *publisher);
+    rmw_ret_t (*publish_raw)(rmw_publisher_t *publisher,
         const uint8_t *data, size_t len);
 
     /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
     /** `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
-    nros_rmw_ret_t (*create_subscription)(nros_rmw_session_t *session,
+    rmw_ret_t (*create_subscription)(rmw_session_t *session,
         const char *topic_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        const nros_rmw_subscription_options_t *options,
-        nros_rmw_subscription_t *out);
-    void (*destroy_subscription)(nros_rmw_subscription_t *subscription);
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        const rmw_subscription_options_t *options,
+        rmw_subscription_t *out);
+    void (*destroy_subscription)(rmw_subscription_t *subscription);
     /** Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.
      *
      *  `*taken` says whether a message was copied; `*out_len` is
@@ -103,7 +120,7 @@ typedef struct nros_rmw_vtable_t {
      *    there is nothing to pre-size (the matching
      *    `rmw_init_subscription_allocation` is declined for the
      *    same reason). */
-    nros_rmw_ret_t (*take)(nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*take)(rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len,
         size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the
@@ -116,17 +133,17 @@ typedef struct nros_rmw_vtable_t {
      *
      *  A backend must not mutate subscription state here — the
      *  probe is logically read-only. */
-    nros_rmw_ret_t (*has_data)(nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*has_data)(rmw_subscription_t *subscription,
         bool *out_has_data);
 
     /* ---- Service (phase-301: rmw's term; was `service_server`) ---- */
     /* Phase 193.1b — `qos` applies to both the request + reply endpoints
        (one profile per service, mirrors create_publisher/subscription). */
-    nros_rmw_ret_t (*create_service)(nros_rmw_session_t *session,
+    rmw_ret_t (*create_service)(rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_service_t *out);
-    void (*destroy_service)(nros_rmw_service_t *server);
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        rmw_service_t *out);
+    void (*destroy_service)(rmw_service_t *server);
     /** Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.
      *
      *  `*taken` says whether a request was copied, `*out_len` how
@@ -138,22 +155,22 @@ typedef struct nros_rmw_vtable_t {
      *  `void *ros_request`, and `*seq_out` stands in for
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
      *  and nothing else in that struct. */
-    nros_rmw_ret_t (*take_request)(nros_rmw_service_t *server,
+    rmw_ret_t (*take_request)(rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out,
         size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of
      *  `has_data`; same contract, same reason. */
-    nros_rmw_ret_t (*has_request)(nros_rmw_service_t *server,
+    rmw_ret_t (*has_request)(rmw_service_t *server,
         bool *out_has_request);
-    nros_rmw_ret_t (*send_reply)(nros_rmw_service_t *server,
+    rmw_ret_t (*send_reply)(rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len);
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
-    nros_rmw_ret_t (*create_client)(nros_rmw_session_t *session,
+    rmw_ret_t (*create_client)(rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_client_t *out);
-    void (*destroy_client)(nros_rmw_client_t *client);
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        rmw_client_t *out);
+    void (*destroy_client)(rmw_client_t *client);
 
     /** Phase 130.4 — non-blocking send_request_raw. Phase-301: the
      *  deprecated blocking `call_raw` slot is DELETED (rmw has no
@@ -163,7 +180,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Sends the request to the backend without blocking for a
      *  reply. Returns immediately. */
-    nros_rmw_ret_t (*send_request_raw)(nros_rmw_client_t *client,
+    rmw_ret_t (*send_request_raw)(rmw_client_t *client,
         const uint8_t *request, size_t req_len);
 
     /** Phase 130.4 — non-blocking try_recv_reply_raw.
@@ -174,7 +191,7 @@ typedef struct nros_rmw_vtable_t {
      *  `send_request_raw` — backends implement both or neither. */
     /** Upstream `rmw_take_response`. Same shape and the same
      *  declared deviations as `take_request`. */
-    nros_rmw_ret_t (*take_response)(nros_rmw_client_t *client,
+    rmw_ret_t (*take_response)(rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len,
         size_t *out_len, bool *taken);
 
@@ -185,21 +202,21 @@ typedef struct nros_rmw_vtable_t {
      *  events = `NROS_RMW_RET_UNSUPPORTED` return.
      *  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`
      *  only; ignored otherwise. */
-    nros_rmw_ret_t (*register_subscription_event)(
-        nros_rmw_subscription_t *subscription,
-        nros_rmw_event_kind_t  kind,
+    rmw_ret_t (*register_subscription_event)(
+        rmw_subscription_t *subscription,
+        rmw_event_type_t  kind,
         uint32_t               deadline_ms,
-        nros_rmw_event_callback_t cb,
+        rmw_event_callback_t cb,
         void                  *user_context);
 
     /** Register a callback for a publisher-side event. Same NULL /
      *  unsupported-kind conventions as `register_subscription_event`.
      *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
-    nros_rmw_ret_t (*register_publisher_event)(
-        nros_rmw_publisher_t  *publisher,
-        nros_rmw_event_kind_t  kind,
+    rmw_ret_t (*register_publisher_event)(
+        rmw_publisher_t  *publisher,
+        rmw_event_type_t  kind,
         uint32_t               deadline_ms,
-        nros_rmw_event_callback_t cb,
+        rmw_event_callback_t cb,
         void                  *user_context);
 
     /** Phase 108.B — manually assert this publisher's liveliness.
@@ -208,8 +225,8 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't support manual
      *  liveliness; runtime returns `NROS_RMW_RET_OK` for AUTOMATIC /
      *  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*. */
-    nros_rmw_ret_t (*assert_publisher_liveliness)(
-        nros_rmw_publisher_t *publisher);
+    rmw_ret_t (*assert_publisher_liveliness)(
+        rmw_publisher_t *publisher);
 
     /** Phase 110.0 — backend's next internal-event deadline in
      *  milliseconds from now (lease keepalive, heartbeat, reader
@@ -234,7 +251,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL function pointer is permitted — the runtime treats it
      *  the same as `*has_deadline = false`. */
-    nros_rmw_ret_t (*next_deadline_ms)(const nros_rmw_session_t *session,
+    rmw_ret_t (*next_deadline_ms)(const rmw_session_t *session,
         uint32_t *out_ms, bool *has_deadline);
 
     /** Phase 124.B.1 — executor wake callback.
@@ -255,7 +272,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot = backend has no asynchronous wake path (purely
      *  poll-driven: XRCE, bare-metal). The runtime still drains the
      *  session on its deadline-bound cv-wait boundary. */
-    nros_rmw_ret_t (*set_wake_callback)(nros_rmw_session_t *session,
+    rmw_ret_t (*set_wake_callback)(rmw_session_t *session,
                                          void (*cb)(void *ctx),
                                          void *ctx);
 
@@ -276,7 +293,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't natively lend; the
      *  runtime falls back to a per-publisher staging arena and emits
      *  a single memcpy on commit. */
-    nros_rmw_ret_t (*pub_loan)(nros_rmw_publisher_t *publisher,
+    rmw_ret_t (*pub_loan)(rmw_publisher_t *publisher,
                                 size_t                requested_len,
                                 uint8_t             **out_buf,
                                 size_t               *out_cap,
@@ -290,7 +307,7 @@ typedef struct nros_rmw_vtable_t {
      *  wire send.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    nros_rmw_ret_t (*pub_commit)(nros_rmw_publisher_t *publisher,
+    rmw_ret_t (*pub_commit)(rmw_publisher_t *publisher,
                                   void                 *token,
                                   size_t                actual_len);
 
@@ -300,7 +317,7 @@ typedef struct nros_rmw_vtable_t {
      *  returned from a prior `pub_loan` on the same publisher.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    void (*pub_discard)(nros_rmw_publisher_t *publisher, void *token);
+    void (*pub_discard)(rmw_publisher_t *publisher, void *token);
 
     /** Phase 124.A — zero-copy subscription borrow.
      *
@@ -308,7 +325,7 @@ typedef struct nros_rmw_vtable_t {
      *  place, without copying into a caller buffer. Returns:
      *    * `>= 0` — message length; writes `*out_buf` / `*out_token`.
      *    * `0` — no message ready (subscription empty).
-     *    * `< 0` — error (see `nros_rmw_ret_t` codes negated).
+     *    * `< 0` — error (see `rmw_ret_t` codes negated).
      *
      *  The view is valid until the matching `sub_release` runs.
      *  Only one borrow may be outstanding per subscription at a time —
@@ -332,7 +349,7 @@ typedef struct nros_rmw_vtable_t {
      *  `void **loaned_message`; ours is a byte view plus an opaque
      *  token to release, because there is no typesupport on target
      *  and the backend owns the buffer until `sub_release`. */
-    nros_rmw_ret_t (*take_loaned_message)(nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*take_loaned_message)(rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
                            void                 **out_token,
@@ -345,12 +362,12 @@ typedef struct nros_rmw_vtable_t {
      *  the buffer.
      *
      *  NULL = paired NULL with `sub_borrow`. */
-    void (*sub_release)(nros_rmw_subscription_t *subscription, void *token);
+    void (*sub_release)(rmw_subscription_t *subscription, void *token);
 
     /** Phase 124.C.1 — service-server availability probe.
      *
      *  Returns `1` if ≥ 1 matching server has been discovered on the
-     *  RMW graph, `0` if none yet, or a negative `nros_rmw_ret_t`
+     *  RMW graph, `0` if none yet, or a negative `rmw_ret_t`
      *  constant on backend error. The runtime exposes this to user
      *  code as `nros_client_server_available()` /
      *  `Client<S>::server_available()` — clients use it to gate the
@@ -386,8 +403,8 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_service_server_is_available` takes both a node and a
      *  client; an image has no node object to pass — the client
      *  reaches its session directly. */
-    nros_rmw_ret_t (*service_server_is_available)(
-        nros_rmw_client_t *client,
+    rmw_ret_t (*service_server_is_available)(
+        rmw_client_t *client,
         bool *out_available);
 
     /** Phase 124.D.1 — burst-take.
@@ -405,7 +422,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Returns:
      *    * `>= 0` — count of messages taken (0..=max_msgs).
-     *    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST
+     *    * `< 0` — `rmw_ret_t` error code; partial drains MUST
      *      use the count form, not error-out.
      *
      *  NULL function pointer = backend doesn't natively batch; the
@@ -418,7 +435,7 @@ typedef struct nros_rmw_vtable_t {
      *  `size_t *taken`, and the return carries only a status.
      *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
      *  drain reports what it got rather than erroring. */
-    nros_rmw_ret_t (*take_sequence)(nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*take_sequence)(rmw_subscription_t *subscription,
                                   uint8_t              *buf,
                                   size_t                per_msg_cap,
                                   size_t                max_msgs,
@@ -455,8 +472,8 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't stream; the runtime
      *  falls back to a one-shot staging buffer (capped at the
      *  configured `NROS_MAX_STREAM_CHUNK`) + `publish_raw`. */
-    nros_rmw_ret_t (*publish_streamed)(
-        nros_rmw_publisher_t *publisher,
+    rmw_ret_t (*publish_streamed)(
+        rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
         void (*chunk_cb)(uint8_t *out_buf, size_t cap,
                          size_t *out_written, void *user_ctx),
@@ -486,8 +503,8 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL function pointer = runtime surfaces
      *  `NROS_RMW_RET_UNSUPPORTED` to the caller. */
-    nros_rmw_ret_t (*ping_session)(
-        nros_rmw_session_t *session,
+    rmw_ret_t (*ping_session)(
+        rmw_session_t *session,
         int32_t             timeout_ms);
 
     /* ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ---- */
@@ -498,8 +515,8 @@ typedef struct nros_rmw_vtable_t {
      *  path. NULL function pointer = treated as unsupported (buffered path). */
     /** Phase 376 W3.d step A — capability out, status returned.
      *  `*out_supports` is written only on `NROS_RMW_RET_OK`. */
-    nros_rmw_ret_t (*subscription_supports_in_place)(
-        nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*subscription_supports_in_place)(
+        rmw_subscription_t *subscription,
         bool *out_supports);
 
     /** Borrow one ready message in place: hand its raw CDR bytes to `cb` (with
@@ -518,8 +535,8 @@ typedef struct nros_rmw_vtable_t {
      *  exactly the shape that makes a status enum ambiguous.
      *
      *  `*out_processed` is written only on OK. */
-    nros_rmw_ret_t (*process_raw_in_place)(
-        nros_rmw_subscription_t *subscription,
+    rmw_ret_t (*process_raw_in_place)(
+        rmw_subscription_t *subscription,
         void                  *ctx,
         void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len),
         bool                  *out_processed);
@@ -555,7 +572,7 @@ typedef enum nros_rmw_session_mode_t {
  *  `nros_rmw_cffi_register_named` with its canonical name. The
  *  unnamed shim will be removed in a follow-up phase.
  *  Returns NROS_RMW_RET_OK. */
-nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
+rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
 
 /** Phase 104.B.2 — register a backend under a stable name. Multiple
  *  backends can coexist (bridge nodes); consumers select via
@@ -575,7 +592,7 @@ nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
  *      the name is empty, or exceeds 31 bytes.
  *    * NROS_RMW_RET_ERROR if the registry is full
  *      (NROS_RMW_MAX_BACKENDS reached). */
-nros_rmw_ret_t nros_rmw_cffi_register_named(const char *name,
+rmw_ret_t nros_rmw_cffi_register_named(const char *name,
                                             const nros_rmw_vtable_t *vtable);
 
 /** Look up a backend's vtable by name. Returns NULL if no backend is

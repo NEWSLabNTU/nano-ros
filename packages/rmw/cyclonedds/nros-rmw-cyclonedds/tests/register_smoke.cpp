@@ -22,14 +22,14 @@ const nros_rmw_vtable_t *g_captured = nullptr;
 
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vtable) {
     g_captured = vtable;
     return NROS_RMW_RET_OK;
 }
 
 int main() {
-    nros_rmw_ret_t r = nros_rmw_cyclonedds_register();
+    rmw_ret_t r = nros_rmw_cyclonedds_register();
     if (r != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "register returned %d, expected 0\n", static_cast<int>(r));
         return 1;

@@ -35,7 +35,7 @@ pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
 ) -> NrosRmwRet
 ```
 
-while the header declares `nros_rmw_ret_t
+while the header declares `rmw_ret_t
 nros_rmw_cffi_set_custom_transport(const nros_transport_ops_t *ops)`
 (`rmw_transport.h:153`). Under RFC-0054 the header is the ABI SSoT and Rust is
 supposed to consume the **committed bindgen output**; this export consumes the
@@ -69,7 +69,7 @@ note explaining the reshape), no
 introspection (`rmw_get_topic_names_and_types`, `rmw_count_publishers`), no
 `rmw_publisher_wait_for_all_acked`, no content filters. Also asymmetric:
 `create_service`/`create_client` take a `qos` argument but
-`nros_rmw_service_t`/`nros_rmw_client_t` (`rmw_entity.h:332,347`) carry no `qos`
+`rmw_service_t`/`rmw_client_t` (`rmw_entity.h:332,347`) carry no `qos`
 field, unlike their publisher/subscription peers, so a backend cannot read back
 the profile it was created with. → append to 0242.
 

@@ -8,11 +8,11 @@
 namespace nros_rmw_cyclonedds {
 
 /**
- * Build a Cyclone `dds_qos_t` from an `nros_rmw_qos_t`. Caller owns
+ * Build a Cyclone `dds_qos_t` from an `rmw_qos_profile_t`. Caller owns
  * the returned pointer; release with `dds_delete_qos`. Returns
  * nullptr on allocation failure or null input.
  */
-dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src);
+dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src);
 
 } // namespace nros_rmw_cyclonedds
 

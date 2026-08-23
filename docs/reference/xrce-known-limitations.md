@@ -89,7 +89,7 @@ the cost of bypassing the runtime's
 ```c
 /* Returns OK and writes ops if a transport was registered, NO_DATA
  * otherwise. Drains the slot. */
-nros_rmw_ret_t nros_rmw_take_custom_transport(nros_transport_ops_t *out);
+rmw_ret_t nros_rmw_take_custom_transport(nros_transport_ops_t *out);
 ```
 
 then update `nros_rmw_xrce_init_custom_transport` to call it. This

@@ -31,17 +31,17 @@ struct SubState {
     SertypeMin* st{nullptr};
 };
 
-inline SubState* as_state(nros_rmw_subscription_t* s) {
+inline SubState* as_state(rmw_subscription_t* s) {
     return static_cast<SubState*>(s->backend_data);
 }
 
 } // namespace
 
-nros_rmw_ret_t subscription_create(nros_rmw_session_t* session, const char* topic_name,
+rmw_ret_t subscription_create(rmw_session_t* session, const char* topic_name,
                                  const char* type_name, const char* /*type_hash*/,
-                                 uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                 const nros_rmw_subscription_options_t* /*options*/,
-                                 nros_rmw_subscription_t* out) {
+                                 uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
+                                 const rmw_subscription_options_t* /*options*/,
+                                 rmw_subscription_t* out) {
     if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -107,7 +107,7 @@ nros_rmw_ret_t subscription_create(nros_rmw_session_t* session, const char* topi
     return NROS_RMW_RET_OK;
 }
 
-void subscription_destroy(nros_rmw_subscription_t* subscriber) {
+void subscription_destroy(rmw_subscription_t* subscriber) {
     if (subscriber == nullptr) return;
     SubState* state = as_state(subscriber);
     if (state == nullptr) return;
@@ -118,7 +118,7 @@ void subscription_destroy(nros_rmw_subscription_t* subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-nros_rmw_ret_t subscription_take(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
+rmw_ret_t subscription_take(rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
                                  size_t* out_len, bool* out_taken) {
     // Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. The parameter
     // is `out_taken`, not upstream's `taken`: this function already has a
@@ -214,7 +214,7 @@ nros_rmw_ret_t subscription_take(nros_rmw_subscription_t* subscriber, uint8_t* b
 // (reader, buf, info, count, maxs) and returns N samples in one
 // call. Serialise each typed sample back to CDR with the same
 // encoding-header convention as `subscription_try_recv_raw`.
-static int32_t subscription_take_sequence_count(nros_rmw_subscription_t* subscriber, uint8_t* buf,
+static int32_t subscription_take_sequence_count(rmw_subscription_t* subscriber, uint8_t* buf,
                                                size_t per_msg_cap, size_t max_msgs,
                                                size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
@@ -298,7 +298,7 @@ static int32_t subscription_take_sequence_count(nros_rmw_subscription_t* subscri
  * paths got one: the body's partial-drain and loan-return logic is easy to
  * disturb, and only the reporting convention is changing. A count of 0 is a
  * legitimate OK here — an empty reader, not an error. */
-nros_rmw_ret_t subscription_take_sequence(nros_rmw_subscription_t* subscriber, uint8_t* buf,
+rmw_ret_t subscription_take_sequence(rmw_subscription_t* subscriber, uint8_t* buf,
                                           size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
                                           size_t* taken) {
     if (taken == nullptr) {
@@ -306,13 +306,13 @@ nros_rmw_ret_t subscription_take_sequence(nros_rmw_subscription_t* subscriber, u
     }
     int32_t n = subscription_take_sequence_count(subscriber, buf, per_msg_cap, max_msgs, out_lens);
     if (n < 0) {
-        return static_cast<nros_rmw_ret_t>(n);
+        return static_cast<rmw_ret_t>(n);
     }
     *taken = static_cast<size_t>(n);
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* out_has_data) {
+rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
     // Phase 376 W3.d step A — flag out, status returned.
     if (out_has_data == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
@@ -327,7 +327,7 @@ nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* 
     return NROS_RMW_RET_OK;
 }
 
-dds_entity_t subscription_reader(const nros_rmw_subscription_t* subscriber) {
+dds_entity_t subscription_reader(const rmw_subscription_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
     return static_cast<const SubState*>(subscriber->backend_data)->reader;
 }

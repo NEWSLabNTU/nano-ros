@@ -233,7 +233,7 @@ action). Two distinct bugs:
 
 **Bug 1 — registration ABI (fixed).** `xrce_service_{client,server}_create`
 (service.c) were
-missing the `const nros_rmw_qos_t *qos` parameter that the
+missing the `const rmw_qos_profile_t *qos` parameter that the
 `nros_rmw_vtable_t` `create_service_{client,server}` typedef grew in the Phase
 193.5 QoS work. The cffi caller passed 7 args (`…, domain_id, &qos, &out`); the
 C impls declared 6, so the impl read `&qos` as its `out` and wrote

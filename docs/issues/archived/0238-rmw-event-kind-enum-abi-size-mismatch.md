@@ -1,6 +1,6 @@
 ---
 id: 238
-title: "RMW C-ABI: NrosRmwEventKind is repr(u8) in Rust but the C nros_rmw_event_kind_t is an int-sized enum, passed by value across the vtable"
+title: "RMW C-ABI: NrosRmwEventKind is repr(u8) in Rust but the C rmw_event_type_t is an int-sized enum, passed by value across the vtable"
 status: resolved
 type: bug
 severity: medium
@@ -17,7 +17,7 @@ NrosRmwEventKind, …)` / `register_publisher_event(…)`
 (`lib.rs:564,572`) — and as the first argument of the event callback
 (`rmw_event.h:87` ↔ `lib.rs:804`).
 
-The C counterpart `nros_rmw_event_kind_t`
+The C counterpart `rmw_event_type_t`
 (`packages/rmw/cffi/include/nros/rmw_event.h:36-48`) is an
 UNFIXED C enum (no `: int32_t` / `: uint8_t` underlying type), so it is
 `int`-sized (4 bytes) by default on every supported toolchain. The Rust
@@ -33,7 +33,7 @@ future `-fshort-enums`-style flag, breaks it silently).
 
 Make the two sides agree on a fixed width. Either:
 - give the C enum a fixed underlying type — `typedef enum
-  nros_rmw_event_kind_t : int32_t { … }` (C23) or a `_Static_assert` +
+  rmw_event_type_t : int32_t { … }` (C23) or a `_Static_assert` +
   explicit `int32_t` field/param — and change the Rust `repr(u8)` to
   `repr(i32)`; OR
 - keep the compact `u8` and make the C signatures take `uint8_t` explicitly
@@ -49,7 +49,7 @@ this.
 Rust conforms to C (the C header is the wire contract; C/C++ backends
 already treat the kind as `int`). `NrosRmwEventKind` changed
 `#[repr(u8)]` → `#[repr(C)]` so it is C-int-sized, matching the unfixed
-`nros_rmw_event_kind_t`. Zero header change; no backend edit (they
+`rmw_event_type_t`. Zero header change; no backend edit (they
 positionally pass an int-sized enum already). The enum is only ever
 passed by value, never stored in a mirrored struct, so the width change
 is layout-safe.
@@ -75,7 +75,7 @@ on ARM). So the regression is only observable on int-enum targets.
 - C: `tests/c_stubs/abi_layout_check.c`, a `_Static_assert`-only TU
   compiled `-fsyntax-only` by the `check-c` push-lane recipe (and under
   the `c-stub-test` feature via build.rs). Compiled host-side (int-enum)
-  so it pins `sizeof(nros_rmw_event_kind_t) == 4`, plus the qos size,
+  so it pins `sizeof(rmw_event_type_t) == 4`, plus the qos size,
   handle alignment, and vtable pointer-slot count.
 
 Both guards verified to fire on injected drift: flipping the Rust repr

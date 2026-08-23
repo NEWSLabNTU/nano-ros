@@ -38,7 +38,7 @@ extern "C" {
  * @retval NROS_RMW_RET_OK    on success.
  * @retval NROS_RMW_RET_ERROR if the runtime rejected the vtable.
  */
-nros_rmw_ret_t nros_rmw_uorb_register(void);
+rmw_ret_t nros_rmw_uorb_register(void);
 
 #ifdef __cplusplus
 }

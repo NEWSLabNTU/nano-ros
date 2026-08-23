@@ -100,7 +100,7 @@ static size_t xrce_custom_read_trampoline(struct uxrCustomTransport *t,
 
 /* ---- Registration entry points ---- */
 
-nros_rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
+rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     const nros_rmw_xrce_transport_ops_t *ops, int framing) {
     if (ops == NULL || ops->open == NULL || ops->close == NULL
         || ops->write == NULL || ops->read == NULL) {
@@ -112,7 +112,7 @@ nros_rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing) {
+rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing) {
     (void)framing;
     /* Phase 115.K.2.4 gap: `nros_rmw_take_custom_transport()` is not
      * yet exported by nros-rmw-cffi. Until that lands, callers must
@@ -122,7 +122,7 @@ nros_rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing) {
 
 /* ---- Install on a session (called from session.c on `custom://`) -- */
 
-nros_rmw_ret_t xrce_custom_transport_install(xrce_session_state_t *st,
+rmw_ret_t xrce_custom_transport_install(xrce_session_state_t *st,
                                              bool framing) {
     if (st == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

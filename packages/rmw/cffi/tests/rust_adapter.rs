@@ -702,7 +702,7 @@ unsafe extern "C" fn capture_event(
     // bridge transmuted a `LivelinessChangedStatus` ptr into the cffi
     // shape; reading the matching union member should yield the
     // synthetic values written by the fixture.
-    if kind == nros_rmw_cffi::nros_rmw_event_kind_t::NROS_RMW_EVENT_LIVELINESS_CHANGED {
+    if kind == nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_LIVELINESS_CHANGED {
         // SAFETY: payload points to a fixture-built
         // LivelinessChangedStatus whose layout matches the cffi mirror.
         let p: &NrosRmwLivelinessChangedStatus =
@@ -908,7 +908,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     let rc = unsafe {
         (vt.register_subscription_event.expect("vtable slot"))(
             &mut subr,
-            nros_rmw_cffi::nros_rmw_event_kind_t::NROS_RMW_EVENT_LIVELINESS_CHANGED,
+            nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_LIVELINESS_CHANGED,
             0,
             Some(capture_event),
             user_ctx,
@@ -919,7 +919,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(EVENT_CALLBACK_HITS.load(Ordering::SeqCst), 1);
     assert_eq!(
         last_kind.load(Ordering::SeqCst),
-        nros_rmw_cffi::nros_rmw_event_kind_t::NROS_RMW_EVENT_LIVELINESS_CHANGED,
+        nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_LIVELINESS_CHANGED,
         "kind enum should round-trip via transmute"
     );
 
@@ -928,7 +928,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     let rc = unsafe {
         (vt.register_publisher_event.expect("vtable slot"))(
             &mut pubr,
-            nros_rmw_cffi::nros_rmw_event_kind_t::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED,
+            nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED,
             500,
             Some(capture_event),
             user_ctx,
@@ -939,7 +939,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(EVENT_CALLBACK_HITS.load(Ordering::SeqCst), 2);
     assert_eq!(
         last_kind.load(Ordering::SeqCst),
-        nros_rmw_cffi::nros_rmw_event_kind_t::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
+        nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
     );
 
     unsafe { (vt.destroy_subscription.expect("vtable slot"))(&mut subr) };

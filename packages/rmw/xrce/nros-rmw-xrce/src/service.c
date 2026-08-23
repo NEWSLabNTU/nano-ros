@@ -109,10 +109,10 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 
 /* ---- Service server -------------------------------------------------- */
 
-nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* service_name,
+rmw_ret_t xrce_service_create(rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
-                                          uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_service_t* out) {
+                                          uint32_t domain_id, const rmw_qos_profile_t* qos,
+                                          rmw_service_t* out) {
     (void)type_hash;
     (void)domain_id;
 
@@ -168,8 +168,8 @@ nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* serv
     /* Honor the caller's QoS; fall back to the default reliable /
      * volatile / keep-last(10) profile (matches the Rust impl's
      * `QosSettings::services_default`) when none is supplied. */
-    nros_rmw_qos_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    const nros_rmw_qos_t* eff_qos = (qos != NULL) ? qos : &default_qos;
+    rmw_qos_profile_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    const rmw_qos_profile_t* eff_qos = (qos != NULL) ? qos : &default_qos;
     uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
 
     uint16_t req = uxr_buffer_create_replier_bin(
@@ -178,7 +178,7 @@ nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* serv
 
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
-    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     if (cret != NROS_RMW_RET_OK) {
         free(ss);
         return cret;
@@ -210,7 +210,7 @@ nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* serv
     return NROS_RMW_RET_OK;
 }
 
-void xrce_service_destroy(nros_rmw_service_t* server) {
+void xrce_service_destroy(rmw_service_t* server) {
     if (server == NULL || server->backend_data == NULL) {
         return;
     }
@@ -228,7 +228,7 @@ void xrce_service_destroy(nros_rmw_service_t* server) {
     server->backend_data = NULL;
 }
 
-static int32_t xrce_service_try_recv_request_len(nros_rmw_service_t* server, uint8_t* buf,
+static int32_t xrce_service_try_recv_request_len(rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -292,7 +292,7 @@ static int32_t xrce_service_try_recv_request_len(nros_rmw_service_t* server, uin
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-nros_rmw_ret_t xrce_service_take_request(nros_rmw_service_t* server, uint8_t* buf,
+rmw_ret_t xrce_service_take_request(rmw_service_t* server, uint8_t* buf,
                                          size_t buf_len, int64_t* seq_out, size_t* out_len,
                                          bool* taken) {
     if (out_len == NULL || taken == NULL) {
@@ -304,14 +304,14 @@ nros_rmw_ret_t xrce_service_take_request(nros_rmw_service_t* server, uint8_t* bu
         return NROS_RMW_RET_OK;
     }
     if (n < 0) {
-        return (nros_rmw_ret_t)n;
+        return (rmw_ret_t)n;
     }
     *out_len = (size_t)n;
     *taken = true;
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_has_request) {
+rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request) {
     /* Phase 376 W3.d step A — flag out, status returned. */
     if (out_has_request == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -328,7 +328,7 @@ nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_ha
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
+rmw_ret_t xrce_service_send_reply(rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -379,7 +379,7 @@ nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
  * re-sending the request or sleeping in a never-signaled
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
-nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
+rmw_ret_t xrce_service_send_request_raw(rmw_client_t* client,
                                              const uint8_t* request, size_t req_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -418,7 +418,7 @@ nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-static int32_t xrce_service_try_recv_reply_raw_len(nros_rmw_client_t* client, uint8_t* reply_buf,
+static int32_t xrce_service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* reply_buf,
                                         size_t reply_buf_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -454,7 +454,7 @@ static int32_t xrce_service_try_recv_reply_raw_len(nros_rmw_client_t* client, ui
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-nros_rmw_ret_t xrce_service_take_response(nros_rmw_client_t* client, uint8_t* reply_buf,
+rmw_ret_t xrce_service_take_response(rmw_client_t* client, uint8_t* reply_buf,
                                           size_t reply_buf_len, size_t* out_len, bool* taken) {
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -465,7 +465,7 @@ nros_rmw_ret_t xrce_service_take_response(nros_rmw_client_t* client, uint8_t* re
         return NROS_RMW_RET_OK;
     }
     if (n < 0) {
-        return (nros_rmw_ret_t)n;
+        return (rmw_ret_t)n;
     }
     *out_len = (size_t)n;
     *taken = true;
@@ -474,10 +474,10 @@ nros_rmw_ret_t xrce_service_take_response(nros_rmw_client_t* client, uint8_t* re
 
 /* ---- Service client -------------------------------------------------- */
 
-nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* service_name,
+rmw_ret_t xrce_client_create(rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
-                                          uint32_t domain_id, const nros_rmw_qos_t* qos,
-                                          nros_rmw_client_t* out) {
+                                          uint32_t domain_id, const rmw_qos_profile_t* qos,
+                                          rmw_client_t* out) {
     (void)type_hash;
     (void)domain_id;
 
@@ -526,8 +526,8 @@ nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* servi
     xrce_dds_request_topic(service_name, req_topic_buf, sizeof(req_topic_buf));
     xrce_dds_reply_topic(service_name, reply_topic_buf, sizeof(reply_topic_buf));
 
-    nros_rmw_qos_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    const nros_rmw_qos_t* eff_qos = (qos != NULL) ? qos : &default_qos;
+    rmw_qos_profile_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    const rmw_qos_profile_t* eff_qos = (qos != NULL) ? qos : &default_qos;
     uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
 
     uint16_t req = uxr_buffer_create_requester_bin(
@@ -536,7 +536,7 @@ nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* servi
 
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
-    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     if (cret != NROS_RMW_RET_OK) {
         free(cs);
         return cret;
@@ -563,7 +563,7 @@ nros_rmw_ret_t xrce_client_create(nros_rmw_session_t* session, const char* servi
     return NROS_RMW_RET_OK;
 }
 
-void xrce_client_destroy(nros_rmw_client_t* client) {
+void xrce_client_destroy(rmw_client_t* client) {
     if (client == NULL || client->backend_data == NULL) {
         return;
     }

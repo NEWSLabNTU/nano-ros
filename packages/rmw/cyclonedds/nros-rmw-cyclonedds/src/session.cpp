@@ -2,7 +2,7 @@
 //
 // `session_create` creates a Cyclone participant on the requested
 // domain id. The participant entity is stashed in
-// `nros_rmw_session_t::backend_data` via a small heap-allocated state
+// `rmw_session_t::backend_data` via a small heap-allocated state
 // struct so future per-session resources (publishers, listeners)
 // share the same `void*` slot.
 //
@@ -49,7 +49,7 @@ struct SessionState {
     GraphState graph{};  // Phase 177.36 — ros_discovery_info publisher state
 };
 
-inline SessionState* as_state(nros_rmw_session_t* s) {
+inline SessionState* as_state(rmw_session_t* s) {
     return static_cast<SessionState*>(s->backend_data);
 }
 
@@ -121,8 +121,8 @@ constexpr const char* kEmbeddedCycloneConfig =
 
 } // namespace
 
-nros_rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
-                            const char* node_name, nros_rmw_session_t* out) {
+rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
+                            const char* node_name, rmw_session_t* out) {
     if (out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -195,12 +195,12 @@ nros_rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_
 
 // Phase 177.36 — expose the per-session graph so the endpoint-create paths
 // (publisher/subscriber/service) can register their reader/writer GIDs.
-GraphState* session_graph(nros_rmw_session_t* session) {
+GraphState* session_graph(rmw_session_t* session) {
     if (session == nullptr || session->backend_data == nullptr) return nullptr;
     return &as_state(session)->graph;
 }
 
-nros_rmw_ret_t session_destroy(nros_rmw_session_t* session) {
+rmw_ret_t session_destroy(rmw_session_t* session) {
     if (session == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -221,7 +221,7 @@ nros_rmw_ret_t session_destroy(nros_rmw_session_t* session) {
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t session_drive_io(nros_rmw_session_t* /*session*/, int32_t timeout_ms) {
+rmw_ret_t session_drive_io(rmw_session_t* /*session*/, int32_t timeout_ms) {
     // Cyclone owns its own RX threads internally — `drive_io` has
     // nothing to pump. Listener trampolines (Phase 117.6) wake the
     // runtime's `Activator` directly from inside Cyclone's worker.
@@ -267,7 +267,7 @@ nros_rmw_ret_t session_drive_io(nros_rmw_session_t* /*session*/, int32_t timeout
     return NROS_RMW_RET_OK;
 }
 
-dds_entity_t session_participant(const nros_rmw_session_t* session) {
+dds_entity_t session_participant(const rmw_session_t* session) {
     if (session == nullptr || session->backend_data == nullptr) {
         return 0;
     }

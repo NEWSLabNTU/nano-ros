@@ -53,10 +53,10 @@ unsafe extern "C" {
 /// - `user_data` — opaque caller context, threaded back as the first arg
 ///   into every callback; must outlive the transport's active period.
 /// - `open` / `close` — open / tear down the underlying medium. `open`
-///   returns `0` on success, negative `nros_rmw_ret_t` on failure.
-/// - `write` — send `len` bytes; `0` ok, negative `nros_rmw_ret_t` on fail.
+///   returns `0` on success, negative `rmw_ret_t` on failure.
+/// - `write` — send `len` bytes; `0` ok, negative `rmw_ret_t` on fail.
 /// - `read` — receive up to `len` bytes within `timeout_ms`; non-negative
-///   byte count on success, negative `nros_rmw_ret_t` on error / timeout.
+///   byte count on success, negative `rmw_ret_t` on error / timeout.
 ///
 /// Threading: `read` / `write` are never invoked concurrently; callbacks
 /// must not run from interrupt context.

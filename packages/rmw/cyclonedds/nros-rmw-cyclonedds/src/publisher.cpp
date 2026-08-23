@@ -52,7 +52,7 @@ struct PubState {
     SertypeMin* st{nullptr};
 };
 
-inline PubState* as_state(nros_rmw_publisher_t* p) {
+inline PubState* as_state(rmw_publisher_t* p) {
     return static_cast<PubState*>(p->backend_data);
 }
 
@@ -91,7 +91,7 @@ bool writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) {
+rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) {
     while (platform_now_ms() < deadline_ms) {
         if (writer_matched(writer)) return NROS_RMW_RET_OK;
         platform_sleep_ms(5);
@@ -101,11 +101,11 @@ nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) 
 
 } // namespace
 
-nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_name,
+rmw_ret_t publisher_create(rmw_session_t* session, const char* topic_name,
                                 const char* type_name, const char* /*type_hash*/,
-                                uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                const nros_rmw_publisher_options_t* /*options*/,
-                                nros_rmw_publisher_t* out) {
+                                uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
+                                const rmw_publisher_options_t* /*options*/,
+                                rmw_publisher_t* out) {
     if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -172,7 +172,7 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_n
     return NROS_RMW_RET_OK;
 }
 
-void publisher_destroy(nros_rmw_publisher_t* publisher) {
+void publisher_destroy(rmw_publisher_t* publisher) {
     if (publisher == nullptr) return;
     PubState* state = as_state(publisher);
     if (state == nullptr) return;
@@ -183,7 +183,7 @@ void publisher_destroy(nros_rmw_publisher_t* publisher) {
     publisher->backend_data = nullptr;
 }
 
-nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint8_t* data,
+rmw_ret_t publisher_publish_raw(rmw_publisher_t* publisher, const uint8_t* data,
                                      size_t len) {
     if (publisher == nullptr || data == nullptr || len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -252,7 +252,7 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-dds_entity_t publisher_writer(const nros_rmw_publisher_t* publisher) {
+dds_entity_t publisher_writer(const rmw_publisher_t* publisher) {
     if (publisher == nullptr || publisher->backend_data == nullptr) return 0;
     return static_cast<const PubState*>(publisher->backend_data)->writer;
 }

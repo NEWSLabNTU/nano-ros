@@ -19,7 +19,7 @@ namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -31,7 +31,7 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "ros2_pub";
     s.namespace_ = "/";
     uint32_t domain = 0;
@@ -42,9 +42,9 @@ int main() {
         return 2;
     }
 
-    nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
+    rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
-    nros_rmw_publisher_t pub{};
+    rmw_publisher_t pub{};
     pub.topic_name = "chatter";
     pub.type_name  = "std_msgs::msg::dds_::String_";
     pub.qos        = qos;
@@ -75,7 +75,7 @@ int main() {
     size_t cdr_len = 8 + mlen;
 
     for (int i = 0; i < 50; ++i) {
-        nros_rmw_ret_t r = g_vt->publish_raw(&pub, cdr, cdr_len);
+        rmw_ret_t r = g_vt->publish_raw(&pub, cdr, cdr_len);
         if (r != NROS_RMW_RET_OK) {
             std::fprintf(stderr, "publish_raw[%d] = %d\n", i,
                          static_cast<int>(r));

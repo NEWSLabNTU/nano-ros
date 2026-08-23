@@ -58,7 +58,7 @@ internally via `dds_set_listener`. Apps that rely on
 this backend.
 
 **Path forward:** wire Cyclone's reader/writer listener trampolines
-through to `nros_rmw_event_callback_t` in a separate phase. Each
+through to `rmw_event_callback_t` in a separate phase. Each
 status callback maps cleanly to one event kind; ~150 LOC.
 
 ## Service request-id correlation — done (Phase 117.7.B)
@@ -107,7 +107,7 @@ application drains via `send_reply`. Tune by editing
 `kRequestSlots` in `src/service.cpp`.
 
 **Caveat — Cyclone same-participant local-delivery race:**
-creating two service clients on the same `nros_rmw_session_t`
+creating two service clients on the same `rmw_session_t`
 back-to-back occasionally results in only the second writer
 matching the server's reader (Cyclone 0.10.5 local-delivery
 shortcut). Stagger client creation by ≥ 100 ms, or move to one
@@ -149,7 +149,7 @@ suitable interface is missing.
 
 ## QoS coverage
 
-`make_dds_qos` honours the full `nros_rmw_qos_t` field set
+`make_dds_qos` honours the full `rmw_qos_profile_t` field set
 (reliability, durability, history+depth, deadline, lifespan,
 liveliness+lease) **except**:
 
@@ -157,7 +157,7 @@ liveliness+lease) **except**:
   has no node-scoped variant).
 - `max_blocking_time` on reliable writers — hard-coded to 100 ms
   to match `rmw_cyclonedds_cpp`. Surfacing it through
-  `nros_rmw_qos_t._reserved` is a follow-up.
+  `rmw_qos_profile_t._reserved` is a follow-up.
 
 ## Type discovery (XTypes metadata) — Phase 117.X.6 opt-in
 

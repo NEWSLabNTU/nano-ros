@@ -64,8 +64,8 @@ rmw's terms — `open`/`close` → `create_session`/`destroy_session`,
 `subscriber` → `subscription`, `service_server` → `service`,
 `service_client` → `client` — deleted the deprecated blocking `call_raw`
 slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
-`nros_rmw_qos_t` into NULLable trailing `nros_rmw_publisher_options_t` /
-`nros_rmw_subscription_options_t` params on `create_publisher` /
+`rmw_qos_profile_t` into NULLable trailing `rmw_publisher_options_t` /
+`rmw_subscription_options_t` params on `create_publisher` /
 `create_subscription`.
 
 | # | slot | kind | NULL behaviour |
@@ -96,7 +96,7 @@ contract; a new optional slot MUST declare its class in the header doc-comment.
 
 ### Return codes
 
-The negative `nros_rmw_ret_t` space (`rmw_ret.h`) is part of the ABI: `OK=0`,
+The negative `rmw_ret_t` space (`rmw_ret.h`) is part of the ABI: `OK=0`,
 `ERROR=-1` … `CONNECTION_FAILED=-18`. New codes append at the tail (next: `-19`).
 `NROS_RMW_RET_INCOMPATIBLE_ABI=-14` becomes live (see versioning).
 

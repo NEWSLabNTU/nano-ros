@@ -32,7 +32,7 @@ int64_t get_le64(const uint8_t *in) {
 }
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -44,7 +44,7 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "ros2_srv_server";
     s.namespace_ = "/";
     uint32_t domain = 0;
@@ -55,7 +55,7 @@ int main() {
         return 2;
     }
 
-    nros_rmw_service_t srv{};
+    rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
     if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",

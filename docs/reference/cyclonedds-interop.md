@@ -110,7 +110,7 @@ Cyclone takes the `dds_domainid_t` (uint32) directly. nano-ros's
 
 ## QoS
 
-Phase 117.6 maps `nros_rmw_qos_t` → `dds_qos_t` via:
+Phase 117.6 maps `rmw_qos_profile_t` → `dds_qos_t` via:
 
 | nano-ros field       | Cyclone setter |
 |----------------------|----------------|
@@ -121,7 +121,7 @@ Phase 117.6 maps `nros_rmw_qos_t` → `dds_qos_t` via:
 | `lifespan_ms`        | `dds_qset_lifespan` |
 | `liveliness_kind` + `liveliness_lease_ms` | `dds_qset_liveliness` |
 
-Cyclone honours every policy in the `nros_rmw_qos_t` struct, so the
+Cyclone honours every policy in the `rmw_qos_profile_t` struct, so the
 runtime's per-policy support mask is "all set" for this backend.
 `NROS_RMW_RET_INCOMPATIBLE_QOS` only fires for inter-endpoint
 mismatches that Cyclone itself rejects (e.g. reliable publisher +
@@ -138,7 +138,7 @@ The vtable's three event slots are NULL in 117.3:
 ```
 
 A follow-up phase wires Cyclone's `dds_set_listener` through to
-`nros_rmw_event_callback_t`. Until then, the runtime falls back to
+`rmw_event_callback_t`. Until then, the runtime falls back to
 `NROS_RMW_RET_OK` for AUTOMATIC / NONE liveliness and
 `NROS_RMW_RET_UNSUPPORTED` for any explicit event registration.
 

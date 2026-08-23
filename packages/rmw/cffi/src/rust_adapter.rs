@@ -50,7 +50,7 @@ use crate::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
     NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
     NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c,
-    nros_rmw_publisher_options_t, nros_rmw_subscription_options_t, ret_from_error,
+    ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -439,7 +439,7 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
-    options: *const nros_rmw_publisher_options_t,
+    options: *const rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
@@ -511,7 +511,7 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
     type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
-    options: *const nros_rmw_subscription_options_t,
+    options: *const rmw_subscription_options_t,
     out: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     if out.is_null() || qos.is_null() {
@@ -978,7 +978,7 @@ const _: () = {
     assert!(align_of::<crate::NrosRmwCountStatus>() == align_of::<nros_rmw::CountStatus>());
     // EventKind tags must round-trip 0..=4 between the generated C
     // discriminants and the `#[repr(u8)]` trait enum.
-    use crate::nros_rmw_event_kind_t as ck;
+    use crate::rmw_event_type_t as ck;
     assert!(
         ck::NROS_RMW_EVENT_LIVELINESS_CHANGED == nros_rmw::EventKind::LivelinessChanged as ck::Type
     );

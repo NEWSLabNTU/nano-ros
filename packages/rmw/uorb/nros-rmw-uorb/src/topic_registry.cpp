@@ -48,7 +48,7 @@ bool eq(const char *a, const char *b) {
 
 extern "C" {
 
-nros_rmw_ret_t nros_rmw_uorb_register_topic(const char *topic_name,
+rmw_ret_t nros_rmw_uorb_register_topic(const char *topic_name,
                                             const char *type_name,
                                             const struct orb_metadata *meta) {
     if (topic_name == nullptr || type_name == nullptr || meta == nullptr) {

@@ -115,86 +115,86 @@ inline uint64_t platform_random_u64() {
 /* ---- session.cpp helpers ---- */
 /** Return the Cyclone participant handle for an open session, or 0
  *  if the session is uninitialised / closed. */
-dds_entity_t session_participant(const nros_rmw_session_t *session);
+dds_entity_t session_participant(const rmw_session_t *session);
 
 /** Phase 177.36 — the per-session ros_discovery_info graph state, or nullptr
  *  for an unopened session. Endpoint-create paths register their reader/writer
  *  GIDs via graph_track_*. */
-GraphState *session_graph(nros_rmw_session_t *session);
+GraphState *session_graph(rmw_session_t *session);
 
 /* ---- publisher.cpp / subscriber.cpp helpers ---- */
 /** Return the Cyclone writer handle for a publisher created by
  *  this backend, or 0 if the publisher is uninitialised. Used by
  *  Phase 117.6.B's data-plane wiring once the raw-CDR path lands. */
-dds_entity_t publisher_writer(const nros_rmw_publisher_t *publisher);
+dds_entity_t publisher_writer(const rmw_publisher_t *publisher);
 /** Return the Cyclone reader handle for a subscriber, or 0 if
  *  uninitialised. */
-dds_entity_t subscription_reader(const nros_rmw_subscription_t *subscriber);
+dds_entity_t subscription_reader(const rmw_subscription_t *subscriber);
 
 
 /* ---- session.cpp ---- */
-nros_rmw_ret_t session_create(const char *locator, uint8_t mode,
+rmw_ret_t session_create(const char *locator, uint8_t mode,
                             uint32_t domain_id, const char *node_name,
-                            nros_rmw_session_t *out);
-nros_rmw_ret_t session_destroy(nros_rmw_session_t *session);
-nros_rmw_ret_t session_drive_io(nros_rmw_session_t *session, int32_t timeout_ms);
+                            rmw_session_t *out);
+rmw_ret_t session_destroy(rmw_session_t *session);
+rmw_ret_t session_drive_io(rmw_session_t *session, int32_t timeout_ms);
 
 /* ---- publisher.cpp ---- */
-nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
+rmw_ret_t publisher_create(rmw_session_t *session,
                                 const char *topic_name, const char *type_name,
                                 const char *type_hash, uint32_t domain_id,
-                                const nros_rmw_qos_t *qos,
-                                const nros_rmw_publisher_options_t *options,
-                                nros_rmw_publisher_t *out);
-void           publisher_destroy(nros_rmw_publisher_t *publisher);
-nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t *publisher,
+                                const rmw_qos_profile_t *qos,
+                                const rmw_publisher_options_t *options,
+                                rmw_publisher_t *out);
+void           publisher_destroy(rmw_publisher_t *publisher);
+rmw_ret_t publisher_publish_raw(rmw_publisher_t *publisher,
                                      const uint8_t *data, size_t len);
 
 /* ---- subscriber.cpp ---- */
-nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
+rmw_ret_t subscription_create(rmw_session_t *session,
                                  const char *topic_name, const char *type_name,
                                  const char *type_hash, uint32_t domain_id,
-                                 const nros_rmw_qos_t *qos,
-                                 const nros_rmw_subscription_options_t *options,
-                                 nros_rmw_subscription_t *out);
-void           subscription_destroy(nros_rmw_subscription_t *subscriber);
-nros_rmw_ret_t subscription_take(nros_rmw_subscription_t *subscriber, uint8_t *buf,
+                                 const rmw_qos_profile_t *qos,
+                                 const rmw_subscription_options_t *options,
+                                 rmw_subscription_t *out);
+void           subscription_destroy(rmw_subscription_t *subscriber);
+rmw_ret_t subscription_take(rmw_subscription_t *subscriber, uint8_t *buf,
                                  size_t buf_len, size_t *out_len, bool *taken);
-nros_rmw_ret_t subscription_take_sequence(nros_rmw_subscription_t *subscriber, uint8_t *buf,
+rmw_ret_t subscription_take_sequence(rmw_subscription_t *subscriber, uint8_t *buf,
                                           size_t per_msg_cap, size_t max_msgs, size_t *out_lens,
                                           size_t *taken);
-nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t *subscriber, bool *out_has_data);
+rmw_ret_t subscription_has_data(rmw_subscription_t *subscriber, bool *out_has_data);
 
 /* ---- service.cpp ---- */
-nros_rmw_ret_t service_create(nros_rmw_session_t *session,
+rmw_ret_t service_create(rmw_session_t *session,
                                      const char *service_name,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
-                                     const nros_rmw_qos_t *qos,
-                                     nros_rmw_service_t *out);
-void           service_destroy(nros_rmw_service_t *server);
-nros_rmw_ret_t service_take_request(nros_rmw_service_t *server, uint8_t *buf, size_t buf_len,
+                                     const rmw_qos_profile_t *qos,
+                                     rmw_service_t *out);
+void           service_destroy(rmw_service_t *server);
+rmw_ret_t service_take_request(rmw_service_t *server, uint8_t *buf, size_t buf_len,
                                     int64_t *seq_out, size_t *out_len, bool *taken);
-nros_rmw_ret_t service_has_request(nros_rmw_service_t *server, bool *out_has_request);
-nros_rmw_ret_t service_send_reply(nros_rmw_service_t *server, int64_t seq,
+rmw_ret_t service_has_request(rmw_service_t *server, bool *out_has_request);
+rmw_ret_t service_send_reply(rmw_service_t *server, int64_t seq,
                                   const uint8_t *data, size_t len);
 
-nros_rmw_ret_t client_create(nros_rmw_session_t *session,
+rmw_ret_t client_create(rmw_session_t *session,
                                      const char *service_name,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
-                                     const nros_rmw_qos_t *qos,
-                                     nros_rmw_client_t *out);
-void           client_destroy(nros_rmw_client_t *client);
+                                     const rmw_qos_profile_t *qos,
+                                     rmw_client_t *out);
+void           client_destroy(rmw_client_t *client);
 // Phase 130.8 — non-blocking send/recv split (phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair is the
 // one request/reply path).
-nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t *client,
+rmw_ret_t service_send_request_raw(rmw_client_t *client,
                                         const uint8_t *request,
                                         size_t req_len);
-nros_rmw_ret_t service_take_response(nros_rmw_client_t *client, uint8_t *reply_buf,
+rmw_ret_t service_take_response(rmw_client_t *client, uint8_t *reply_buf,
                                      size_t reply_buf_len, size_t *out_len, bool *taken);
 
 } // namespace nros_rmw_cyclonedds

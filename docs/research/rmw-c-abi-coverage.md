@@ -195,7 +195,7 @@ yet justified by a concrete user need.
 |---|---|---|
 | `rmw_event_set_callback` | `register_publisher_event` / `register_subscription_event` | ⚠ |
 | `rmw_take_event` | (callbacks fire directly) | 🔀 |
-| Statuses: `OFFERED_DEADLINE_MISSED` etc. | `nros_rmw_event_kind_t` | ✅ |
+| Statuses: `OFFERED_DEADLINE_MISSED` etc. | `rmw_event_type_t` | ✅ |
 | Liveliness statuses | covered via `assert_publisher_liveliness` + events | ✅ |
 
 ### 16. Liveliness — ✅ covered
@@ -230,8 +230,8 @@ for historical context.
 Reality was more nuanced than "missing entirely":
 
 - `nros-rmw-abi/include/nros/rmw_entity.h` defines a
-  `can_loan_messages` flag on both `nros_rmw_publisher_t` and
-  `nros_rmw_subscription_t`. Backend opts in by setting the flag
+  `can_loan_messages` flag on both `rmw_publisher_t` and
+  `rmw_subscription_t`. Backend opts in by setting the flag
   during `create_*`. Today's data plane treats it as an opaque
   capability advertisement that no consumer reads.
 - `nros-node/src/executor/handles.rs` exposes a Rust-side
@@ -252,14 +252,14 @@ typedef struct nros_rmw_vtable_t {
 
     /* Phase 99 — loaned message ABI. NULL = backend doesn't support
      * loan; runtime falls back to copy via `publish_raw`. */
-    nros_rmw_ret_t (*loan_publish)(nros_rmw_publisher_t *pub,
+    rmw_ret_t (*loan_publish)(rmw_publisher_t *pub,
         size_t requested_len, uint8_t **out_buf, size_t *out_cap);
-    nros_rmw_ret_t (*commit_publish)(nros_rmw_publisher_t *pub,
+    rmw_ret_t (*commit_publish)(rmw_publisher_t *pub,
         uint8_t *buf, size_t actual_len);
 
-    int32_t (*loan_recv)(nros_rmw_subscription_t *sub,
+    int32_t (*loan_recv)(rmw_subscription_t *sub,
         const uint8_t **out_buf, size_t *out_len);
-    void (*release_recv)(nros_rmw_subscription_t *sub,
+    void (*release_recv)(rmw_subscription_t *sub,
         const uint8_t *buf);
 } nros_rmw_vtable_t;
 ```
@@ -383,17 +383,17 @@ typedef struct nros_rmw_vtable_t {
      * a bitmask (or callback) that the runtime reads to skip
      * the `has_data` poll loop. NULL slot = backend doesn't
      * support waitset; runtime stays in poll mode. */
-    nros_rmw_ret_t (*wait_multi)(nros_rmw_session_t *session,
+    rmw_ret_t (*wait_multi)(rmw_session_t *session,
         const void *const *handles, size_t n_handles,
         int32_t timeout_ms, uint64_t *ready_mask);
 
     /* Phase 110+ — guard condition (optional). Allows external
      * triggers to wake the wait. NULL slot = signal-style
      * triggers fall back to the next `drive_io` poll iteration. */
-    nros_rmw_ret_t (*create_guard_condition)(
-        nros_rmw_session_t *session, void **out_handle);
+    rmw_ret_t (*create_guard_condition)(
+        rmw_session_t *session, void **out_handle);
     void (*destroy_guard_condition)(void *handle);
-    nros_rmw_ret_t (*trigger_guard_condition)(void *handle);
+    rmw_ret_t (*trigger_guard_condition)(void *handle);
 } nros_rmw_vtable_t;
 ```
 
@@ -422,9 +422,9 @@ trips.
 
 ```c
 /* Phase 124 — batch take. Returns number of messages taken
- * (0..max), or negative `nros_rmw_ret_t` on error. NULL slot
+ * (0..max), or negative `rmw_ret_t` on error. NULL slot
  * = backend doesn't support; runtime loops `try_recv_raw`. */
-int32_t (*try_recv_sequence)(nros_rmw_subscription_t *sub,
+int32_t (*try_recv_sequence)(rmw_subscription_t *sub,
     uint8_t *buf, size_t per_msg_cap, size_t max_msgs,
     size_t *out_lens);
 ```
@@ -461,9 +461,9 @@ latency) or hardcode startup delays.
 ```c
 /* Phase 124 — service availability probe. Returns 1 if at
  * least one matching server has been discovered, 0 otherwise.
- * Negative `nros_rmw_ret_t` on error. NULL slot = backend can't
+ * Negative `rmw_ret_t` on error. NULL slot = backend can't
  * answer; runtime returns NROS_RMW_RET_UNSUPPORTED. */
-int32_t (*service_server_available)(nros_rmw_client_t *client);
+int32_t (*service_server_available)(rmw_client_t *client);
 ```
 
 **Backend impl notes.** All three RMWs already track discovery
@@ -559,7 +559,7 @@ of upstream rmw.h:
 | **Discovery** (`discovery.h`) — `rmw_uros_discover_agent(timeout_ms, attempts, out_ip, out_port)`. UDP/TCP autodiscovery. | nano-ros doesn't broadcast-scan; locator is explicit. | **NO** — explicit locator is the embedded-friendly choice. |
 | **Per-context timeouts** (`timing.h`) — granular session/entity timeout knobs per client + per context. | Single global timeout in `RmwConfig`. | **PARTIAL** — could surface as Cargo features / env vars; not API-level. |
 | **Init options** (`init_options.h`) — extra params bundled with `rmw_init_options_t`. | nano-ros passes locator + domain_id; XRCE-specific options live in `Rmw::open` impl. | **NO** — upstream's init-options struct is a maintenance burden vs targeted explicit params. |
-| **Error handling** (`error_handling.h`) — error string registration. | nano-ros has `nros_rmw_ret_t` enum; no per-error string. | **MAYBE** — small library on top of rret codes for debug builds. |
+| **Error handling** (`error_handling.h`) — error string registration. | nano-ros has `rmw_ret_t` enum; no per-error string. | **MAYBE** — small library on top of rret codes for debug builds. |
 
 ### Compile-time configuration knobs
 
@@ -623,8 +623,8 @@ Combining §3 analysis + micro-ROS lessons:
 3. **Continuous serialization** — new addition learned from
    micro-ROS. Spec'd:
    ```c
-   nros_rmw_ret_t (*publish_streamed)(
-       nros_rmw_publisher_t *pub,
+   rmw_ret_t (*publish_streamed)(
+       rmw_publisher_t *pub,
        nros_rmw_stream_size_cb size_cb,
        nros_rmw_stream_ser_cb ser_cb,
        void *user_ctx);
@@ -632,6 +632,6 @@ Combining §3 analysis + micro-ROS lessons:
 4. **Loaned message vtable** (§3.1) — bigger zero-copy win
    than continuous serialization.
 5. **Wait set + guard condition** (§3.2) — Phase 110 timing.
-6. **Ping primitive** — `nros_rmw_ret_t (*ping)(session, timeout_ms);`
+6. **Ping primitive** — `rmw_ret_t (*ping)(session, timeout_ms);`
    optional vtable slot. Backend returns `RET_OK` if the
    peer/agent responded within timeout.

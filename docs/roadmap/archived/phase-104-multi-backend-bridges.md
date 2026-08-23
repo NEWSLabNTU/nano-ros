@@ -52,7 +52,7 @@ phase 123 release-prep makes to users, (d) rclcpp parity for
 the multi-Node-per-Executor pattern users expect.
 
 **Depends on.** Phase 102 (typed entity structs — reserved
-`vtable` slot in `nros_rmw_session_t`). Phase 110 (`SchedContext`
+`vtable` slot in `rmw_session_t`). Phase 110 (`SchedContext`
 + PiCAS + ARINC TT). Phase 121 (canonical platform-cffi).
 Phase 122 (handle ABI collapse — handles already carry session
 refs; C/C++ wrappers thin). Phase 123.A.1.x (physical archive
@@ -431,7 +431,7 @@ C++-side logic; C surface stays canonical.
 
 - [x] **104.C.1 — Per-session vtable pointer.**
       Embed `vtable: *const NrosRmwVtable` in
-      `nros_rmw_session_t` (C) / `NrosRmwSession`
+      `rmw_session_t` (C) / `NrosRmwSession`
       (Rust). All dispatch sites
       (`Session::create_publisher`, `Publisher::publish_raw`,
       `Subscriber::try_recv_raw`, …) thread through

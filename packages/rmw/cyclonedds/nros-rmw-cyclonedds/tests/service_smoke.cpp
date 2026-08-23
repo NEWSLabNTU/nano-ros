@@ -19,7 +19,7 @@ namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -31,14 +31,14 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "service_smoke";
     s.namespace_ = "/";
     if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_service_t srv{};
+    rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
@@ -52,7 +52,7 @@ int main() {
         return 4;
     }
 
-    nros_rmw_client_t cli{};
+    rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_client(&s, cli.service_name, cli.type_name, "",
@@ -81,7 +81,7 @@ int main() {
     // An unregistered type name must be rejected with UNSUPPORTED
     // so consumers get a clear error if they forgot to call the
     // codegen helper.
-    nros_rmw_service_t any{};
+    rmw_service_t any{};
     if (g_vt->create_service(&s, "missing", "no::such::Svc", "",
                                     99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,

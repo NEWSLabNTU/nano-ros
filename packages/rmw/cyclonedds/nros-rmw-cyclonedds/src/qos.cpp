@@ -1,8 +1,8 @@
-// QoS mapping: nros_rmw_qos_t → dds_qos_t.
+// QoS mapping: rmw_qos_profile_t → dds_qos_t.
 //
 // Phase 117.6 — applies the full DDS-shaped subset (reliability,
 // durability, history+depth, deadline, lifespan, liveliness +
-// lease). Cyclone honours every policy in `nros_rmw_qos_t`, so no
+// lease). Cyclone honours every policy in `rmw_qos_profile_t`, so no
 // per-policy support mask is exposed yet.
 
 #include "qos.hpp"
@@ -13,7 +13,7 @@
 
 namespace nros_rmw_cyclonedds {
 
-dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src) {
+dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
     if (src == nullptr) {
         return nullptr;
     }
@@ -33,7 +33,7 @@ dds_qos_t *make_dds_qos(const nros_rmw_qos_t *src) {
         // concurrent service clients — Cyclone's SEDP propagation
         // across SMP cores routinely takes 100–500 ms on POSIX.
         // 1 s matches typical `rmw_cyclonedds_cpp` deployments.
-        // `nros_rmw_qos_t` doesn't expose this knob in v1 — surface
+        // `rmw_qos_profile_t` doesn't expose this knob in v1 — surface
         // it through the reserved bytes if a tighter bound matters.
         DDS_SECS(1));
 

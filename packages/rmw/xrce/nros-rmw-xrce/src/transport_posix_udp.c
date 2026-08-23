@@ -94,7 +94,7 @@ static size_t posix_udp_read(struct uxrCustomTransport *t,
 
 /* ---- Init ------------------------------------------------------- */
 
-nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
+rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
                                    const char *host, const char *port) {
     if (st == NULL || host == NULL || port == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

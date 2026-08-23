@@ -36,10 +36,10 @@ gates) evaporated with phase-299.
 - **`service_server` → `service`, `service_client` → `client`** — rmw's
   `rmw_service_t`/`rmw_client_t` terms.
 - **Transport hints leave the QoS struct**: new
-  `nros_rmw_publisher_options_t` (carries `tx_express`) and
-  `nros_rmw_subscription_options_t` (carries `rx_buffer_hint`), passed as
+  `rmw_publisher_options_t` (carries `tx_express`) and
+  `rmw_subscription_options_t` (carries `rx_buffer_hint`), passed as
   a NULLable trailing param to `create_publisher`/`create_subscription`.
-  `nros_rmw_qos_t` becomes a pure policy mirror; hint growth no longer
+  `rmw_qos_profile_t` becomes a pure policy mirror; hint growth no longer
   churns the QoS ABI.
 - **`call_raw` DELETED** — the deprecated blocking RPC slot goes; the
   async `send_request_raw` + `try_recv_reply_raw` pair is the one path.

@@ -35,14 +35,14 @@ struct PublisherState {
 
 } // namespace
 
-nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
+rmw_ret_t publisher_create(rmw_session_t *session,
                                 const char *topic_name,
                                 const char * /*type_name*/,
                                 const char * /*type_hash*/,
                                 uint32_t /*domain_id*/,
-                                const nros_rmw_qos_t * /*qos*/,
-                                const nros_rmw_publisher_options_t * /*options*/,
-                                nros_rmw_publisher_t *out) {
+                                const rmw_qos_profile_t * /*qos*/,
+                                const rmw_publisher_options_t * /*options*/,
+                                rmw_publisher_t *out) {
     if (session == nullptr || session->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -73,7 +73,7 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void publisher_destroy(nros_rmw_publisher_t *publisher) {
+void publisher_destroy(rmw_publisher_t *publisher) {
     if (publisher == nullptr || publisher->backend_data == nullptr) {
         return;
     }
@@ -86,7 +86,7 @@ void publisher_destroy(nros_rmw_publisher_t *publisher) {
     publisher->backend_data = nullptr;
 }
 
-nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t *publisher,
+rmw_ret_t publisher_publish_raw(rmw_publisher_t *publisher,
                                      const uint8_t *data, size_t len) {
     if (publisher == nullptr || publisher->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

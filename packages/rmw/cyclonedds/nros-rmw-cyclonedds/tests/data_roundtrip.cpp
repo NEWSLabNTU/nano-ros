@@ -31,7 +31,7 @@ namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -58,16 +58,16 @@ int main() {
     std::memcpy(cdr + 8, msg, mlen);
     size_t cdr_len = 8 + mlen;
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "data_roundtrip";
     s.namespace_ = "/";
     if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
+    rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
-    nros_rmw_subscription_t sub{};
+    rmw_subscription_t sub{};
     sub.topic_name = "rt/data_roundtrip";
     sub.type_name  = "nros_test::msg::TestString";
     sub.qos        = qos;
@@ -77,7 +77,7 @@ int main() {
         return 3;
     }
 
-    nros_rmw_publisher_t pub{};
+    rmw_publisher_t pub{};
     pub.topic_name = "rt/data_roundtrip";
     pub.type_name  = "nros_test::msg::TestString";
     pub.qos        = qos;
@@ -92,7 +92,7 @@ int main() {
     // pre-empt subscription matching.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    nros_rmw_ret_t pr = g_vt->publish_raw(&pub, cdr, cdr_len);
+    rmw_ret_t pr = g_vt->publish_raw(&pub, cdr, cdr_len);
     if (pr != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw returned %d\n", static_cast<int>(pr));
         return 5;

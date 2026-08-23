@@ -7,8 +7,8 @@
  *
  * Allocation: a single `struct xrce_session_state` per session lives
  * on the heap (`malloc`). The pointer is parked in
- * `nros_rmw_session_t::backend_data`. The runtime owns the entity-
- * shell `nros_rmw_session_t` struct itself.
+ * `rmw_session_t::backend_data`. The runtime owns the entity-
+ * shell `rmw_session_t` struct itself.
  */
 
 #include <unistd.h>
@@ -41,7 +41,7 @@ uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type) {
     return uxr_object_id(id, type);
 }
 
-nros_rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* requests,
+rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* requests,
                                      uint8_t* statuses, size_t count) {
     bool ok = uxr_run_session_until_all_status(&st->session, XRCE_ENTITY_CREATION_TIMEOUT_MS,
                                                requests, statuses, count);
@@ -163,7 +163,7 @@ void xrce_dds_reply_type(const char* type_name, char* out, size_t out_cap) {
     insert_before_trailing_underscore(type_name, "Response", out, out_cap);
 }
 
-uxrQoS_t xrce_map_qos(const nros_rmw_qos_t* qos) {
+uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos) {
     uxrQoS_t out;
     if (qos == NULL) {
         out.durability = UXR_DURABILITY_VOLATILE;
@@ -290,8 +290,8 @@ static const char* locator_serial_path(const char* locator) {
     return NULL;
 }
 
-nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
-                                 const char* node_name, nros_rmw_session_t* out) {
+rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
+                                 const char* node_name, rmw_session_t* out) {
     (void)mode;
     if (out == NULL || node_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -340,7 +340,7 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
 #endif
     if (route_custom) {
         st->use_custom_transport = true;
-        nros_rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
+        rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
         if (ret != NROS_RMW_RET_OK) {
             free(st);
             return ret;
@@ -349,7 +349,7 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
 #if defined(UCLIENT_PLATFORM_POSIX)
     } else if (serial_path != NULL) {
         st->use_custom_transport = true;
-        nros_rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
+        rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
         if (sret != NROS_RMW_RET_OK) {
             free(st);
             return sret;
@@ -386,7 +386,7 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
          * ABI. Platform-blind: works on any target with a wired
          * platform-provider. */
         st->use_custom_transport = true;
-        nros_rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
+        rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
             free(st);
             return udp_ret;
@@ -429,7 +429,7 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
     uint8_t status = 0;
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
-    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
+    rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     (void)status;
     if (cret != NROS_RMW_RET_OK) {
         (void)uxr_delete_session(&st->session);
@@ -442,7 +442,7 @@ nros_rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t d
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_session_destroy(nros_rmw_session_t* session) {
+rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -461,7 +461,7 @@ nros_rmw_ret_t xrce_session_destroy(nros_rmw_session_t* session) {
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeout_ms) {
+rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -535,7 +535,7 @@ nros_rmw_ret_t xrce_session_drive_io(nros_rmw_session_t* session, int32_t timeou
  * GET_INFO round-trip over the already-open session that doesn't
  * disturb the rest of the application's streams. One attempt per
  * call — the runtime's `timeout_ms` is the per-attempt budget. */
-nros_rmw_ret_t xrce_session_ping(nros_rmw_session_t* session, int32_t timeout_ms) {
+rmw_ret_t xrce_session_ping(rmw_session_t* session, int32_t timeout_ms) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

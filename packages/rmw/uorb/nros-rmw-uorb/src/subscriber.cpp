@@ -65,14 +65,14 @@ extern "C" void subscriber_ready_callback(void *arg) {
 
 } // namespace
 
-nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
+rmw_ret_t subscription_create(rmw_session_t *session,
                                  const char *topic_name,
                                  const char * /*type_name*/,
                                  const char * /*type_hash*/,
                                  uint32_t /*domain_id*/,
-                                 const nros_rmw_qos_t * /*qos*/,
-                                 const nros_rmw_subscription_options_t * /*options*/,
-                                 nros_rmw_subscription_t *out) {
+                                 const rmw_qos_profile_t * /*qos*/,
+                                 const rmw_subscription_options_t * /*options*/,
+                                 rmw_subscription_t *out) {
     if (session == nullptr || session->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -119,7 +119,7 @@ nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void subscription_destroy(nros_rmw_subscription_t *subscriber) {
+void subscription_destroy(rmw_subscription_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return;
     }
@@ -133,7 +133,7 @@ void subscription_destroy(nros_rmw_subscription_t *subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-nros_rmw_ret_t subscription_take(nros_rmw_subscription_t *subscriber,
+rmw_ret_t subscription_take(rmw_subscription_t *subscriber,
                                  uint8_t *buf, size_t buf_len,
                                  size_t *out_len, bool *taken) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
@@ -186,7 +186,7 @@ nros_rmw_ret_t subscription_take(nros_rmw_subscription_t *subscriber,
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t *subscriber, bool *out_has_data) {
+rmw_ret_t subscription_has_data(rmw_subscription_t *subscriber, bool *out_has_data) {
     // Phase 376 W3.d step A — flag out, status returned. A failing `orb_check`
     // used to be reported as "no data"; it is now an error.
     if (out_has_data == nullptr) {

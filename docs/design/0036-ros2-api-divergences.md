@@ -48,7 +48,7 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 |---|---|---|---|
 | rclcpp throws `std::exception` subclasses | C++ returns `nros::Result` + `NROS_TRY(expr)` early-return macro | `-fno-exceptions` on Zephyr/FreeRTOS/bare-metal | RFC-0018 |
 | rclrs `RclrsError` | Rust `NanoRosError { code: RclReturnCode, context, nested }`; `RclReturnCode` mirrors `rcl_ret_t` numerics as a Rust enum | result-only, `no_std`, C-ABI-compatible codes | `nros-core/src/error.rs` |
-| `rcl_ret_t` int | C `nros_ret_t` enum (`NROS_RET_OK=0`, …); RMW layer `nros_rmw_ret_t` (`0 … -18`) | explicit numeric ABI | RFC-0035 (rmw) |
+| `rcl_ret_t` int | C `nros_ret_t` enum (`NROS_RET_OK=0`, …); RMW layer `rmw_ret_t` (`0 … -18`) | explicit numeric ABI | RFC-0035 (rmw) |
 
 > **Naming note:** older prose still calls the Rust error `RclrsError`. The
 > actual type is `NanoRosError` (+ `RclReturnCode`). Treat this RFC as the

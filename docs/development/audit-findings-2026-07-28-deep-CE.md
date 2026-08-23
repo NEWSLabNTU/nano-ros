@@ -113,7 +113,7 @@ shape after the quick run already harvested this surface's P1s (#321–#324).
 - **C7** · `rmw_ret.h:23` · The public ABI header documents a calling convention no slot
   has any more: "Pointer-returning calls (`open`, `create_publisher`, …) signal failure
   with `NULL`" — every `create_*` now takes an `out` struct and returns
-  `nros_rmw_ret_t`, and `open` was renamed `create_session`.
+  `rmw_ret_t`, and `open` was renamed `create_session`.
 - **E3** · `nros-cli-core/src/cmd/ws.rs:3119` · `lookup_table_covers_w6_example_flip_extras`
   bakes a wave number into a test name.
 - **E3** · `rosidl-codegen/src/config.rs:42` · `StorageMode::is_phase1_supported()` is a

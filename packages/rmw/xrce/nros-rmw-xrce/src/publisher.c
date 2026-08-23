@@ -18,14 +18,14 @@
 #include <uxr/client/core/session/write_access.h>
 #include <ucdr/microcdr.h>
 
-nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
+rmw_ret_t xrce_publisher_create(rmw_session_t *session,
                                      const char *topic_name,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
-                                     const nros_rmw_qos_t *qos,
-                                     const nros_rmw_publisher_options_t *options,
-                                     nros_rmw_publisher_t *out) {
+                                     const rmw_qos_profile_t *qos,
+                                     const rmw_publisher_options_t *options,
+                                     rmw_publisher_t *out) {
     (void)type_hash;
     (void)domain_id;
     (void)options;
@@ -80,7 +80,7 @@ nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
 
     uint16_t requests[3] = { req_topic, req_pub, req_dw };
     uint8_t  statuses[3] = { 0, 0, 0 };
-    nros_rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
+    rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
     if (cret != NROS_RMW_RET_OK) {
         free(ps);
         return cret;
@@ -92,7 +92,7 @@ nros_rmw_ret_t xrce_publisher_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_publisher_destroy(nros_rmw_publisher_t *publisher) {
+void xrce_publisher_destroy(rmw_publisher_t *publisher) {
     if (publisher == NULL || publisher->backend_data == NULL) {
         return;
     }
@@ -109,7 +109,7 @@ void xrce_publisher_destroy(nros_rmw_publisher_t *publisher) {
     publisher->backend_data = NULL;
 }
 
-nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
+rmw_ret_t xrce_publisher_publish_raw(rmw_publisher_t *publisher,
                                           const uint8_t *data, size_t len) {
     if (publisher == NULL || publisher->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -161,8 +161,8 @@ nros_rmw_ret_t xrce_publisher_publish_raw(nros_rmw_publisher_t *publisher,
  * the reported byte count. Once the full `total` is delivered the
  * session is flushed so the bytes reach the agent immediately
  * (mirrors `publish_raw`). */
-nros_rmw_ret_t xrce_publisher_publish_streamed(
-        nros_rmw_publisher_t *publisher,
+rmw_ret_t xrce_publisher_publish_streamed(
+        rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
         void (*chunk_cb)(uint8_t *out_buf, size_t cap,
                          size_t *out_written, void *user_ctx),

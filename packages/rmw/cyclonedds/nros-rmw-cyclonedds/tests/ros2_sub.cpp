@@ -19,7 +19,7 @@ namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -30,7 +30,7 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "ros2_sub";
     s.namespace_ = "/";
     uint32_t domain = 0;
@@ -41,8 +41,8 @@ int main() {
         return 2;
     }
 
-    nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
-    nros_rmw_subscription_t sub{};
+    rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
+    rmw_subscription_t sub{};
     sub.topic_name = "chatter";
     sub.type_name  = "std_msgs::msg::dds_::String_";
     sub.qos        = qos;

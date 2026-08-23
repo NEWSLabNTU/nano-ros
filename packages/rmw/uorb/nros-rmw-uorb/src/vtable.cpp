@@ -60,7 +60,7 @@ const nros_rmw_vtable_t kVtable = {
 
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_uorb_register(void) {
+extern "C" rmw_ret_t nros_rmw_uorb_register(void) {
     // Issue 0436 — register under the CANONICAL name, not the deprecated unnamed
     // shim (which registers the literal name "default"). Every other backend uses
     // `nros_rmw_cffi_register_named` with its own name, and the shim's own

@@ -164,7 +164,7 @@ Standard ROS 2 supports the full DDS QoS profile family
 `avoid_ros_namespace_conventions`) and performs profile *matching*
 between endpoints.
 
-nano-ros's `nros_rmw_qos_t` carries the same field set; standard
+nano-ros's `rmw_qos_profile_t` carries the same field set; standard
 profile constants (`NROS_RMW_QOS_PROFILE_DEFAULT`, `_SENSOR_DATA`,
 `_SERVICES_DEFAULT`, `_PARAMETERS`, `_SYSTEM_DEFAULT`) match
 upstream `rmw_qos_profile_*` field-for-field. ROS 2 apps porting

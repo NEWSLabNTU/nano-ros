@@ -84,7 +84,7 @@ static size_t nros_udp_read(struct uxrCustomTransport *t,
 #define XRCE_NROS_SOCK_STORAGE_BYTES     64
 #define XRCE_NROS_ENDPOINT_STORAGE_BYTES 64
 
-nros_rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
+rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
                                   const char *host, const char *port) {
     if (st == NULL || host == NULL || port == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

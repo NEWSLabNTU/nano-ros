@@ -19,7 +19,7 @@ namespace {
 const nros_rmw_vtable_t* g_vt = nullptr;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
                                                        const nros_rmw_vtable_t* vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -31,7 +31,7 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name = "nros_rmw_cyclonedds_pubsub_smoke";
     s.namespace_ = "/";
 
@@ -41,11 +41,11 @@ int main() {
     }
 
     // Default-ish QoS — reliability=reliable, history=keep_last(10).
-    nros_rmw_qos_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
+    rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
     // Publisher round-trip: create + destroy on the registered test
     // type.
-    nros_rmw_publisher_t pub{};
+    rmw_publisher_t pub{};
     pub.topic_name = "rt/pubsub_smoke";
     pub.type_name = "nros_test::msg::TestString";
     pub.qos = qos;
@@ -60,7 +60,7 @@ int main() {
         return 4;
     }
 
-    nros_rmw_subscription_t sub{};
+    rmw_subscription_t sub{};
     sub.topic_name = "rt/pubsub_smoke";
     sub.type_name = "nros_test::msg::TestString";
     sub.qos = qos;
@@ -104,7 +104,7 @@ int main() {
 
     // Unknown type: create_publisher must report UNSUPPORTED, not
     // ERROR.
-    nros_rmw_publisher_t bad{};
+    rmw_publisher_t bad{};
     if (g_vt->create_publisher(&s, "rt/unknown", "no::such::Type", "", 99, &qos, nullptr, &bad) !=
         NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr, "create_publisher unknown-type should be UNSUPPORTED\n");

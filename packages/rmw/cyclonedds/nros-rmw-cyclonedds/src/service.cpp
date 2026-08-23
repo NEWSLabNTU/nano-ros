@@ -347,7 +347,7 @@ bool strip_goal_id_len_at(const uint8_t* in, size_t in_len, size_t len_off, uint
 // sequence path when fed the CDR assembled by nros. Build the generated
 // C layout directly for this smoke-test action until the generic raw-CDR
 // writer path is replaced.
-nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
+rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
                                                    const dds_topic_descriptor_t* desc,
                                                    const uint8_t* wire_cdr, size_t wire_len) {
     if (desc == nullptr || desc->m_ops == nullptr || wire_cdr == nullptr ||
@@ -503,7 +503,7 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
 
 // Run dds_stream_read_sample on @p wire_cdr, then dds_write. Caller
 // owns @p wire_cdr.
-nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
+rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
                            const SertypeMin* st, const uint8_t* wire_cdr, size_t wire_len) {
     if (writer <= 0 || desc == nullptr || st == nullptr || wire_cdr == nullptr ||
         wire_len < kEncapLen) {
@@ -745,7 +745,7 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t maybe_flush_request(ClientState* state) {
+rmw_ret_t maybe_flush_request(ClientState* state) {
     if (state == nullptr || state->pending_request_len == 0) {
         return NROS_RMW_RET_OK;
     }
@@ -757,7 +757,7 @@ nros_rmw_ret_t maybe_flush_request(ClientState* state) {
     if (!request_writer_matched(state->writer)) {
         return NROS_RMW_RET_OK;
     }
-    nros_rmw_ret_t r = write_typed(state->writer, state->req_desc, state->req_st,
+    rmw_ret_t r = write_typed(state->writer, state->req_desc, state->req_st,
                                    state->pending_request, state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
         state->pending_request_len = 0;
@@ -771,10 +771,10 @@ nros_rmw_ret_t maybe_flush_request(ClientState* state) {
 // Service server
 // =========================================================================
 
-nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_name,
+rmw_ret_t service_create(rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                     nros_rmw_service_t* out) {
+                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
+                                     rmw_service_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -815,7 +815,7 @@ nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_n
     // KEEP_LAST(10)) — the stock-RMW-interop default (without it Cyclone
     // defaults to KEEP_LAST(1), surprising stock clients). One profile
     // applied to both request reader + reply writer.
-    nros_rmw_qos_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    rmw_qos_profile_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
     dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
     state->reader = dds_create_reader(pp, state->request_topic, dq_reader, nullptr);
@@ -852,7 +852,7 @@ nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_n
     return NROS_RMW_RET_OK;
 }
 
-void service_destroy(nros_rmw_service_t* server) {
+void service_destroy(rmw_service_t* server) {
     if (server == nullptr || server->backend_data == nullptr) return;
     auto* state = static_cast<ServerState*>(server->backend_data);
     if (state->reader > 0) (void)dds_delete(state->reader);
@@ -865,7 +865,7 @@ void service_destroy(nros_rmw_service_t* server) {
     server->backend_data = nullptr;
 }
 
-static int32_t service_try_recv_request_len(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
+static int32_t service_try_recv_request_len(rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                  int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -900,7 +900,7 @@ static int32_t service_try_recv_request_len(nros_rmw_service_t* server, uint8_t*
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-nros_rmw_ret_t service_take_request(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
+rmw_ret_t service_take_request(rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                     int64_t* seq_out, size_t* out_len, bool* taken) {
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -911,14 +911,14 @@ nros_rmw_ret_t service_take_request(nros_rmw_service_t* server, uint8_t* buf, si
         return NROS_RMW_RET_OK;
     }
     if (n < 0) {
-        return (nros_rmw_ret_t)n;
+        return (rmw_ret_t)n;
     }
     *out_len = (size_t)n;
     *taken = true;
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t service_has_request(nros_rmw_service_t* server, bool* out_has_request) {
+rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
     // Phase 376 W3.d step A — flag out, status returned. Note the middle case:
     // a failing `dds_get_status_changes` used to return 0, indistinguishable
     // from "no request pending". It is now an error the caller can see.
@@ -935,7 +935,7 @@ nros_rmw_ret_t service_has_request(nros_rmw_service_t* server, bool* out_has_req
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
+rmw_ret_t service_send_reply(rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len) {
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {
@@ -978,9 +978,9 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
 
     uint8_t wire[kWireScratch];
     int32_t wire_len = build_wire_with_header(data, len, slot.id, wire, sizeof(wire));
-    nros_rmw_ret_t r;
+    rmw_ret_t r;
     if (wire_len < 0) {
-        r = static_cast<nros_rmw_ret_t>(wire_len);
+        r = static_cast<rmw_ret_t>(wire_len);
     } else {
         r = write_typed(state->writer, state->rep_desc, state->rep_st, wire,
                         static_cast<size_t>(wire_len));
@@ -993,10 +993,10 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
 // Service client
 // =========================================================================
 
-nros_rmw_ret_t client_create(nros_rmw_session_t* session, const char* service_name,
+rmw_ret_t client_create(rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
-                                     nros_rmw_client_t* out) {
+                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
+                                     rmw_client_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1035,7 +1035,7 @@ nros_rmw_ret_t client_create(nros_rmw_session_t* session, const char* service_na
 
     // Phase 193.1b: honour the caller's profile, defaulting to
     // `rmw_qos_profile_services_default` (stock-RMW-interop default).
-    nros_rmw_qos_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    rmw_qos_profile_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
     dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
     state->writer = dds_create_writer(pp, state->request_topic, dq_writer, nullptr);
@@ -1086,7 +1086,7 @@ nros_rmw_ret_t client_create(nros_rmw_session_t* session, const char* service_na
     return NROS_RMW_RET_OK;
 }
 
-void client_destroy(nros_rmw_client_t* client) {
+void client_destroy(rmw_client_t* client) {
     if (client == nullptr || client->backend_data == nullptr) return;
     auto* state = static_cast<ClientState*>(client->backend_data);
     if (state->writer > 0) (void)dds_delete(state->writer);
@@ -1106,7 +1106,7 @@ void client_destroy(nros_rmw_client_t* client) {
 // (Phase 127.C.4 root cause class). Phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair
 // is the one request/reply path.
-nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t* client, const uint8_t* request,
+rmw_ret_t service_send_request_raw(rmw_client_t* client, const uint8_t* request,
                                         size_t req_len) {
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1131,7 +1131,7 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t* client, const uint8_t
     std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
     state->pending_request_len = static_cast<size_t>(wire_len);
     state->pending_seq.store(my_id.seq, std::memory_order_release);
-    nros_rmw_ret_t pr = maybe_flush_request(state);
+    rmw_ret_t pr = maybe_flush_request(state);
     if (pr < 0 && pr != NROS_RMW_RET_NO_DATA) {
         state->pending_request_len = 0;
         state->pending_seq.store(-1, std::memory_order_release);
@@ -1140,7 +1140,7 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_client_t* client, const uint8_t
     return NROS_RMW_RET_OK;
 }
 
-static int32_t service_try_recv_reply_raw_len(nros_rmw_client_t* client, uint8_t* reply_buf,
+static int32_t service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* reply_buf,
                                    size_t reply_buf_len) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1152,7 +1152,7 @@ static int32_t service_try_recv_reply_raw_len(nros_rmw_client_t* client, uint8_t
         return NROS_RMW_RET_NO_DATA;
     }
 
-    nros_rmw_ret_t flush = maybe_flush_request(state);
+    rmw_ret_t flush = maybe_flush_request(state);
     if (flush < 0) {
         if (flush != NROS_RMW_RET_NO_DATA) {
             state->pending_request_len = 0;
@@ -1193,7 +1193,7 @@ static int32_t service_try_recv_reply_raw_len(nros_rmw_client_t* client, uint8_t
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-nros_rmw_ret_t service_take_response(nros_rmw_client_t* client, uint8_t* reply_buf,
+rmw_ret_t service_take_response(rmw_client_t* client, uint8_t* reply_buf,
                                      size_t reply_buf_len, size_t* out_len, bool* taken) {
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1204,7 +1204,7 @@ nros_rmw_ret_t service_take_response(nros_rmw_client_t* client, uint8_t* reply_b
         return NROS_RMW_RET_OK;
     }
     if (n < 0) {
-        return (nros_rmw_ret_t)n;
+        return (rmw_ret_t)n;
     }
     *out_len = (size_t)n;
     *taken = true;

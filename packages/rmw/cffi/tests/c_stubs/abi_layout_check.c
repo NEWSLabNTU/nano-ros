@@ -27,26 +27,26 @@
  * compiled HOST-side (int-enum ABI, no `-fshort-enums`), so it is
  * int-sized here — 4 bytes. It is passed by value into
  * `register_subscription_event` / `register_publisher_event` and out
- * through `nros_rmw_event_callback_t`. The Rust mirror MUST be
+ * through `rmw_event_callback_t`. The Rust mirror MUST be
  * `#[repr(C)]` (tracks the C ABI per-target), never a fixed
  * `#[repr(u8)]`/`#[repr(i32)]`. On ARM EABI the same enum is 1 byte on
  * BOTH sides — that target is not checked here (see the Rust
  * `abi_layout` block, which gates its width pin to non-ARM). */
-_Static_assert(sizeof(nros_rmw_event_kind_t) == 4,
-               "nros_rmw_event_kind_t must be C-int-sized host-side (issue #238)");
+_Static_assert(sizeof(rmw_event_type_t) == 4,
+               "rmw_event_type_t must be C-int-sized host-side (issue #238)");
 
 /* QoS mirror — the by-value struct crossing the create_* slots. Must
  * match `size_of::<NrosRmwQos>() == 24` in the Rust abi_layout block.
  * (phase-301 / issue 0240: the transport hints left this struct for
  * the options structs; 28 -> 24 bytes.) */
-_Static_assert(sizeof(nros_rmw_qos_t) == 24,
-               "nros_rmw_qos_t size drifted from the Rust mirror (24)");
+_Static_assert(sizeof(rmw_qos_profile_t) == 24,
+               "rmw_qos_profile_t size drifted from the Rust mirror (24)");
 
 /* phase-301 options structs — NULLable trailing create_* params. */
-_Static_assert(sizeof(nros_rmw_publisher_options_t) == 8,
-               "nros_rmw_publisher_options_t size drifted (8)");
-_Static_assert(sizeof(nros_rmw_subscription_options_t) == 8,
-               "nros_rmw_subscription_options_t size drifted (8)");
+_Static_assert(sizeof(rmw_publisher_options_t) == 8,
+               "rmw_publisher_options_t size drifted (8)");
+_Static_assert(sizeof(rmw_subscription_options_t) == 8,
+               "rmw_subscription_options_t size drifted (8)");
 
 /* issue 0331 — `nros_transport_ops_t` had NO layout assert on either side,
  * while `nros_rmw_cffi_set_custom_transport` bridged the C type to the Rust
@@ -65,16 +65,16 @@ _Static_assert(_Alignof(nros_transport_ops_t) >= sizeof(void*),
 /* Opaque handle structs are pointer-aligned (they carry a `void*`
  * backend_data / backend pointer). Rust mirror asserts the same via
  * `align_of >= size_of::<*mut c_void>()`. */
-_Static_assert(_Alignof(nros_rmw_session_t) >= sizeof(void*),
-               "nros_rmw_session_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_publisher_t) >= sizeof(void*),
-               "nros_rmw_publisher_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_subscription_t) >= sizeof(void*),
-               "nros_rmw_subscription_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_service_t) >= sizeof(void*),
-               "nros_rmw_service_t under-aligned vs pointer");
-_Static_assert(_Alignof(nros_rmw_client_t) >= sizeof(void*),
-               "nros_rmw_client_t under-aligned vs pointer");
+_Static_assert(_Alignof(rmw_session_t) >= sizeof(void*),
+               "rmw_session_t under-aligned vs pointer");
+_Static_assert(_Alignof(rmw_publisher_t) >= sizeof(void*),
+               "rmw_publisher_t under-aligned vs pointer");
+_Static_assert(_Alignof(rmw_subscription_t) >= sizeof(void*),
+               "rmw_subscription_t under-aligned vs pointer");
+_Static_assert(_Alignof(rmw_service_t) >= sizeof(void*),
+               "rmw_service_t under-aligned vs pointer");
+_Static_assert(_Alignof(rmw_client_t) >= sizeof(void*),
+               "rmw_client_t under-aligned vs pointer");
 
 /* The vtable is all function pointers — its size must be a whole number
  * of pointer slots. Mirrors the Rust

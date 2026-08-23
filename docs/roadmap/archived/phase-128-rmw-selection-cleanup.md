@@ -340,7 +340,7 @@ sweep is its own scope:
     `nros/rmw-zenoh-cffi` (deleted) → `nros/rmw-cffi`.
   - ESP-32 examples + `nros-c/include/nros/bridge.h` +
     `nros-cpp/include/nros/bridge.hpp` — clang-format pass.
-    `bridge.h` switched from `nros_rmw_ret_t` to `int32_t` so
+    `bridge.h` switched from `rmw_ret_t` to `int32_t` so
     `check-cpp` syntax probe doesn't need the cffi include path.
     `bridge.hpp` returns `Expected<PubSubBridge>` (Result is
     non-generic in nros-cpp); `PubSubBridge` gets a default ctor

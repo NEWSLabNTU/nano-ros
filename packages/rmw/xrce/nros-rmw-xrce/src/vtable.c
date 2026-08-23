@@ -99,7 +99,7 @@ static const nros_rmw_vtable_t kVtable = {
     .process_raw_in_place           = xrce_subscription_process_raw_in_place,
 };
 
-nros_rmw_ret_t nros_rmw_xrce_register(void) {
+rmw_ret_t nros_rmw_xrce_register(void) {
     /* Phase 104.B.2 — register under the canonical name "xrce" so
      * bridge code (and `Executor::create_node_with_rmw("name", "xrce",
      * ...)`) can resolve this backend through the named registry. */

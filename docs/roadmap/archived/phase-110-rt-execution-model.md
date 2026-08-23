@@ -302,7 +302,7 @@ C side — optional vtable function pointer (NULL = no deadline):
 ```c
 typedef struct nros_rmw_vtable_t {
     /* … */
-    int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
+    int32_t (*next_deadline_ms)(const rmw_session_t *session);
 } nros_rmw_vtable_t;
 ```
 

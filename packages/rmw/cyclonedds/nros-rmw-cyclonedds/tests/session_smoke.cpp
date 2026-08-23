@@ -19,7 +19,7 @@ const nros_rmw_vtable_t *g_vt = nullptr;
 
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vtable) {
     g_vt = vtable;
     return NROS_RMW_RET_OK;
@@ -31,14 +31,14 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "nros_rmw_cyclonedds_session_smoke";
     s.namespace_ = "/";
 
     // Domain 42 keeps this test off the default ROS_DOMAIN_ID so a
     // running ROS 2 stack on the same host doesn't see our short-
     // lived participant.
-    nros_rmw_ret_t r = g_vt->create_session(nullptr, 0, nros_test_domain(42), s.node_name, &s);
+    rmw_ret_t r = g_vt->create_session(nullptr, 0, nros_test_domain(42), s.node_name, &s);
     if (r != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d\n", static_cast<int>(r));
         return 2;

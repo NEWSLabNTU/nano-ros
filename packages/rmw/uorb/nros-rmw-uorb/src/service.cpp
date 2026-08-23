@@ -17,23 +17,23 @@
 
 namespace nros_rmw_uorb {
 
-nros_rmw_ret_t service_create(nros_rmw_session_t* /*session*/, const char* /*service_name*/,
+rmw_ret_t service_create(rmw_session_t* /*session*/, const char* /*service_name*/,
                                      const char* /*type_name*/, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* /*qos*/,
-                                     nros_rmw_service_t* /*out*/) {
+                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
+                                     rmw_service_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void service_destroy(nros_rmw_service_t* /*server*/) {}
+void service_destroy(rmw_service_t* /*server*/) {}
 
-nros_rmw_ret_t service_take_request(nros_rmw_service_t* /*server*/, uint8_t* /*buf*/,
+rmw_ret_t service_take_request(rmw_service_t* /*server*/, uint8_t* /*buf*/,
                                     size_t /*buf_len*/, int64_t* /*seq_out*/,
                                     size_t* /*out_len*/, bool* /*taken*/) {
     /* uORB has no service transport — see service_send_reply. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-nros_rmw_ret_t service_has_request(nros_rmw_service_t* /*server*/, bool* out_has_request) {
+rmw_ret_t service_has_request(rmw_service_t* /*server*/, bool* out_has_request) {
     // uORB has no service transport at all — see `service_send_reply`, which
     // returns UNSUPPORTED. "Never a request" is the honest answer, not an error.
     if (out_has_request == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -41,19 +41,19 @@ nros_rmw_ret_t service_has_request(nros_rmw_service_t* /*server*/, bool* out_has
     return NROS_RMW_RET_OK;
 }
 
-nros_rmw_ret_t service_send_reply(nros_rmw_service_t* /*server*/, int64_t /*seq*/,
+rmw_ret_t service_send_reply(rmw_service_t* /*server*/, int64_t /*seq*/,
                                   const uint8_t* /*data*/, size_t /*len*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-nros_rmw_ret_t client_create(nros_rmw_session_t* /*session*/, const char* /*service_name*/,
+rmw_ret_t client_create(rmw_session_t* /*session*/, const char* /*service_name*/,
                                      const char* /*type_name*/, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* /*qos*/,
-                                     nros_rmw_client_t* /*out*/) {
+                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
+                                     rmw_client_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void client_destroy(nros_rmw_client_t* /*client*/) {}
+void client_destroy(rmw_client_t* /*client*/) {}
 
 // Phase-301: the deprecated blocking `call_raw` slot was deleted from
 // the vtable; `send_request_raw` / `try_recv_reply_raw` stay NULL on

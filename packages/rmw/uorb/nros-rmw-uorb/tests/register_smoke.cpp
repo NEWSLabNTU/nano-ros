@@ -41,7 +41,7 @@ struct MockOrbState {
 MockOrbState g_orb;
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
+extern "C" rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
     g_stashed_vtable = vtable;
     return NROS_RMW_RET_OK;
 }
@@ -145,7 +145,7 @@ int nros_orb_unregister_callback(int handle) {
 } // extern "C"
 
 int main() {
-    nros_rmw_ret_t rc = nros_rmw_uorb_register();
+    rmw_ret_t rc = nros_rmw_uorb_register();
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "register returned %d, expected 0\n", rc);
         return 1;
@@ -166,7 +166,7 @@ int main() {
     // K.4.1 — open + close round-trip. uORB ignores the locator,
     // session mode, and domain id; the only validated state is
     // `backend_data` allocated by open and freed by close.
-    nros_rmw_session_t session{};
+    rmw_session_t session{};
     rc = vt->create_session("/* ignored */", 0, 0, "test_module", &session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d, expected OK\n", rc);
@@ -204,7 +204,7 @@ int main() {
 
     // Without a registered topic, create_publisher must reject with
     // TOPIC_NAME_INVALID — distinct from UNSUPPORTED.
-    nros_rmw_publisher_t pubp{};
+    rmw_publisher_t pubp{};
     rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
@@ -300,7 +300,7 @@ int main() {
     //
     // Without a registered topic, create_subscription must reject
     // with TOPIC_NAME_INVALID.
-    nros_rmw_subscription_t subp{};
+    rmw_subscription_t subp{};
     rc = vt->create_subscription(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(

@@ -18,6 +18,23 @@
 #   cargo install bindgen-cli --locked --version "$BINDGEN_PIN"
 
 set -euo pipefail
+
+# A FAILED bindgen must not overwrite the committed bindings. The `{ … } > tmp`
+# block writes its header lines regardless of whether bindgen ran, so a clang
+# error (a missing include path, a header that moved) produced a valid-looking
+# stub — which then compiled to "no such symbol" errors that point at the
+# CALLERS rather than at the generator. Phase 376 W3.a hit exactly that.
+# A binding file with no `pub` item in it is not a binding file.
+refuse_stub() {
+    local f="$1"
+    if ! grep -qE '^\s*pub ' "$f"; then
+        echo "ERROR: bindgen produced no items for $f — the generator failed;" >&2
+        echo "       refusing to overwrite the committed bindings with a stub." >&2
+        rm -f "$f"
+        exit 1
+    fi
+}
+
 cd "$(dirname "$0")/.."
 
 BINDGEN_PIN="0.72.1"
@@ -53,16 +70,27 @@ EOF
     echo "//! Edit the headers, rerun the script, commit both."
     echo "#![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]"
     echo "#![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]"
+    # Phase 376 W3.a — the ABI's types are vendor-free now (`rmw_publisher_t`,
+    # `rmw_ret_t`, …), so an allowlist keyed only on `nros_rmw_*` silently DROPS
+    # them. The nano-ros-prefixed patterns stay for what is still ours: the
+    # vtable, the descriptor, the registration entry points.
+    #
+    # NOTE the comment lives HERE and not among the flags: a `#` line between
+    # backslash-continued arguments ENDS the command, so the `-I` at the bottom
+    # never reached clang and bindgen failed with "'nros/rmw_ret.h' file not
+    # found" — while the surrounding `{ … } > file` still truncated the
+    # committed bindings to a stub.
     bindgen "$wrapper" \
         --use-core \
         --ctypes-prefix core::ffi \
         --default-enum-style moduleconsts \
         --default-macro-constant-type signed \
-        --allowlist-item 'nros_rmw_.*|NROS_RMW_.*|nros_transport_.*|NROS_TRANSPORT_.*' \
+        --allowlist-item 'rmw_.*|RMW_.*|nros_rmw_.*|NROS_RMW_.*|nros_transport_.*|NROS_TRANSPORT_.*' \
         --no-layout-tests \
         --sort-semantically \
         -- -I"$RMW_ABI/include"
 } > "$RMW_OUT.tmp"
+refuse_stub "$RMW_OUT.tmp"
 
 rustfmt +nightly "$RMW_OUT.tmp" 2>/dev/null || true
 # write-if-changed: an identical rewrite still bumps mtime, which re-stales
@@ -109,6 +137,7 @@ EOF2
         --sort-semantically \
         -- -I"$PLAT_API/include"
 } > "$PLAT_OUT.tmp"
+refuse_stub "$PLAT_OUT.tmp"
 
 rustfmt +nightly "$PLAT_OUT.tmp" 2>/dev/null || true
 if ! cmp -s "$PLAT_OUT.tmp" "$PLAT_OUT"; then
@@ -143,6 +172,7 @@ BOARD_OUT="packages/boards/nros-board-cffi/src/generated.rs"
         --sort-semantically \
         -- -I"$BOARD_API/include"
 } > "$BOARD_OUT.tmp"
+refuse_stub "$BOARD_OUT.tmp"
 
 rustfmt +nightly "$BOARD_OUT.tmp" 2>/dev/null || true
 if ! cmp -s "$BOARD_OUT.tmp" "$BOARD_OUT"; then

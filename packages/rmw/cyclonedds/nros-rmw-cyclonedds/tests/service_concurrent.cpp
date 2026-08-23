@@ -34,12 +34,12 @@ constexpr int kCallsPerClient = 1;
  * caller test `n < 0` — a test that stops meaning anything once step B gives
  * error codes positive values. The helper follows the same rule as the slots it
  * drives. */
-nros_rmw_ret_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len,
+rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len,
                              uint8_t *rep, size_t rep_cap, size_t *out_len) {
     if (out_len == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    nros_rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
+    rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -48,7 +48,7 @@ nros_rmw_ret_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t 
         /* Phase 376 W3.b/W3.d step A — see ros2_srv_client.cpp. */
         size_t n = 0;
         bool took = false;
-        nros_rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }
@@ -62,7 +62,7 @@ nros_rmw_ret_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t 
 }
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -79,14 +79,14 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
     char node_name[64];
     std::snprintf(node_name, sizeof(node_name),
                   "service_concurrent_client_%d", client_idx);
-    nros_rmw_session_t my_s{};
+    rmw_session_t my_s{};
     my_s.node_name  = node_name;
     my_s.namespace_ = "/";
     if (g_vt->create_session(nullptr, 0, nros_test_domain(99), node_name, &my_s) != NROS_RMW_RET_OK) {
         failures->fetch_add(1);
         return 1;
     }
-    nros_rmw_client_t cli{};
+    rmw_client_t cli{};
     cli.service_name = "concurrent_test";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_client(&my_s, cli.service_name, cli.type_name,
@@ -116,7 +116,7 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
         }
         uint8_t rep[64] = {};
         size_t n = 0;
-        nros_rmw_ret_t call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
+        rmw_ret_t call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
         if (call_rc != NROS_RMW_RET_OK) {
             std::fprintf(stderr,
                 "client %d call %d: call_blocking returned %d\n",
@@ -153,14 +153,14 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "service_concurrent";
     s.namespace_ = "/";
     if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 
-    nros_rmw_service_t srv{};
+    rmw_service_t srv{};
     srv.service_name = "concurrent_test";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",

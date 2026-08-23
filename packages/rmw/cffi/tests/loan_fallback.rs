@@ -63,7 +63,7 @@ unsafe extern "C" fn create_publisher(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *const nros_rmw_cffi::nros_rmw_publisher_options_t,
+    _: *const nros_rmw_cffi::rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     unsafe {
@@ -93,7 +93,7 @@ unsafe extern "C" fn noop_csub(
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
-    _: *const nros_rmw_cffi::nros_rmw_subscription_options_t,
+    _: *const nros_rmw_cffi::rmw_subscription_options_t,
     _: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED

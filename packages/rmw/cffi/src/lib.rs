@@ -56,15 +56,15 @@ pub use rust_adapter::{RustBackend, RustBackendAdapter};
 pub mod section;
 
 // ============================================================================
-// Phase 102.1 / RFC-0054 — `nros_rmw_ret_t` named return codes
+// Phase 102.1 / RFC-0054 — `rmw_ret_t` named return codes
 // ============================================================================
 //
 // The constants live in `generated` (from `<nros/rmw_ret.h>`); only the
 // compat alias and the re-typed `OK` shadow live here.
 
-/// Compat alias for the generated `nros_rmw_ret_t` typedef.
+/// Compat alias for the generated `rmw_ret_t` typedef.
 /// Zero on success; negative on error.
-pub type NrosRmwRet = nros_rmw_ret_t;
+pub type NrosRmwRet = rmw_ret_t;
 
 // Anchor every C-stub-transport symbol so they survive
 // `--gc-sections` when integration tests link against
@@ -91,7 +91,7 @@ pub fn _c_stub_transport_vtable_anchor() -> [*const core::ffi::c_void; 6] {
         nros_c_stub_get_read_calls as *const _,
     ]
 }
-/// Map a `TransportError` to the corresponding `nros_rmw_ret_t` code.
+/// Map a `TransportError` to the corresponding `rmw_ret_t` code.
 ///
 /// By-reference because `TransportError` carries a `String` on its
 /// dynamic-diagnostic variant and is not `Copy`. The string itself is
@@ -136,7 +136,7 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
     }
 }
 
-/// Map a `nros_rmw_ret_t` returned by a C-side vtable function back to
+/// Map a `rmw_ret_t` returned by a C-side vtable function back to
 /// a `TransportError` for the Rust caller. Inverse of `ret_from_error`
 /// — used when `nros-rmw-cffi`'s `CffiSession` etc. receive a code
 /// from the registered C backend.
@@ -188,24 +188,24 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
 // same value by contract; a header edit that drifts one fails here.
 const _: () = assert!(nros_rmw::DURATION_INFINITE_MS as i64 == NROS_RMW_DURATION_INFINITE_MS);
 
-/// Compat alias for the generated `nros_rmw_qos_t`.
-pub type NrosRmwQos = nros_rmw_qos_t;
-/// Compat alias for the generated `nros_rmw_session_t`.
-pub type NrosRmwSession = nros_rmw_session_t;
-/// Compat alias for the generated `nros_rmw_publisher_t`.
-pub type NrosRmwPublisher = nros_rmw_publisher_t;
-/// Compat alias for the generated `nros_rmw_subscription_t`.
-pub type NrosRmwSubscription = nros_rmw_subscription_t;
-/// Compat alias for the generated `nros_rmw_service_t`.
-pub type NrosRmwService = nros_rmw_service_t;
-/// Compat alias for the generated `nros_rmw_client_t`.
-pub type NrosRmwClient = nros_rmw_client_t;
+/// Compat alias for the generated `rmw_qos_profile_t`.
+pub type NrosRmwQos = rmw_qos_profile_t;
+/// Compat alias for the generated `rmw_session_t`.
+pub type NrosRmwSession = rmw_session_t;
+/// Compat alias for the generated `rmw_publisher_t`.
+pub type NrosRmwPublisher = rmw_publisher_t;
+/// Compat alias for the generated `rmw_subscription_t`.
+pub type NrosRmwSubscription = rmw_subscription_t;
+/// Compat alias for the generated `rmw_service_t`.
+pub type NrosRmwService = rmw_service_t;
+/// Compat alias for the generated `rmw_client_t`.
+pub type NrosRmwClient = rmw_client_t;
 /// Compat alias for the generated `nros_rmw_vtable_t`.
 pub type NrosRmwVtable = nros_rmw_vtable_t;
 
 // The generated struct intentionally derives only Copy/Clone/Debug;
 // consumers (and the hand-written predecessor) compare QoS profiles.
-impl PartialEq for nros_rmw_qos_t {
+impl PartialEq for rmw_qos_profile_t {
     fn eq(&self, other: &Self) -> bool {
         self.reliability == other.reliability
             && self.durability == other.durability
@@ -218,7 +218,7 @@ impl PartialEq for nros_rmw_qos_t {
             && self.avoid_ros_namespace_conventions == other.avoid_ros_namespace_conventions
     }
 }
-impl Eq for nros_rmw_qos_t {}
+impl Eq for rmw_qos_profile_t {}
 
 // The QoS profile constants below are `#define` struct-literal macros in the
 // C header; bindgen does not translate function-like/struct-literal macros,
@@ -229,7 +229,7 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
     reliability: 1, // RELIABLE
     durability: 0,  // VOLATILE
     history: 0,     // KEEP_LAST
-    liveliness_kind: nros_rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
+    liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 10,
     _reserved0: 0,
     deadline_ms: 0,
@@ -244,7 +244,7 @@ pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
     reliability: 0, // BEST_EFFORT
     durability: 0,  // VOLATILE
     history: 0,     // KEEP_LAST
-    liveliness_kind: nros_rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
+    liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 5,
     _reserved0: 0,
     deadline_ms: 0,
@@ -309,28 +309,28 @@ impl TryFrom<QosSettings> for NrosRmwQos {
 // Phase 108 / RFC-0054 — status-event types (defined in `generated`)
 // ============================================================================
 //
-// `nros_rmw_event_kind_t` is a module-consts alias (bindgen
+// `rmw_event_type_t` is a module-consts alias (bindgen
 // `--default-enum-style=moduleconsts`), not a Rust enum, so the retired
 // `From` impls between it and `nros_rmw::EventKind` become plain functions.
 
-/// Compat alias for the generated `nros_rmw_event_kind_t::Type`
+/// Compat alias for the generated `rmw_event_type_t::Type`
 /// (C-`unsigned`-sized event-kind discriminant).
-pub type NrosRmwEventKind = nros_rmw_event_kind_t::Type;
-/// Compat alias for the generated `nros_rmw_liveliness_changed_status_t`.
-pub type NrosRmwLivelinessChangedStatus = nros_rmw_liveliness_changed_status_t;
-/// Compat alias for the generated `nros_rmw_count_status_t`.
-pub type NrosRmwCountStatus = nros_rmw_count_status_t;
-/// Compat alias for the generated `nros_rmw_event_payload_t` union.
-pub type NrosRmwEventPayload = nros_rmw_event_payload_t;
-/// Compat alias for the generated `nros_rmw_event_callback_t`
+pub type NrosRmwEventKind = rmw_event_type_t::Type;
+/// Compat alias for the generated `rmw_liveliness_changed_status_t`.
+pub type NrosRmwLivelinessChangedStatus = rmw_liveliness_changed_status_t;
+/// Compat alias for the generated `rmw_count_status_t`.
+pub type NrosRmwCountStatus = rmw_count_status_t;
+/// Compat alias for the generated `rmw_event_payload_t` union.
+pub type NrosRmwEventPayload = rmw_event_payload_t;
+/// Compat alias for the generated `rmw_event_callback_t`
 /// (nullable — `Option`-wrapped fn pointer, per C ABI).
-pub type NrosRmwEventCallback = nros_rmw_event_callback_t;
+pub type NrosRmwEventCallback = rmw_event_callback_t;
 
 /// Convert a trait-level [`nros_rmw::EventKind`] to the C ABI discriminant.
 /// Replaces the retired `From<nros_rmw::EventKind> for NrosRmwEventKind`.
 pub fn event_kind_to_c(k: nros_rmw::EventKind) -> NrosRmwEventKind {
     use nros_rmw::EventKind as K;
-    use nros_rmw_event_kind_t as C;
+    use rmw_event_type_t as C;
     match k {
         K::LivelinessChanged => C::NROS_RMW_EVENT_LIVELINESS_CHANGED,
         K::RequestedDeadlineMissed => C::NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED,
@@ -348,7 +348,7 @@ pub fn event_kind_to_c(k: nros_rmw::EventKind) -> NrosRmwEventKind {
 /// `MessageLost`, mirroring the forward direction's fallback.
 pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
     use nros_rmw::EventKind as K;
-    use nros_rmw_event_kind_t as C;
+    use rmw_event_type_t as C;
     match k {
         C::NROS_RMW_EVENT_LIVELINESS_CHANGED => K::LivelinessChanged,
         C::NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED => K::RequestedDeadlineMissed,
@@ -1096,7 +1096,7 @@ const _: () = {
 ///
 /// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`
 /// (or `None` when `ops == NULL`) but returns the canonical
-/// `nros_rmw_ret_t` codes so non-Rust consumers don't have to
+/// `rmw_ret_t` codes so non-Rust consumers don't have to
 /// reach into nros-c's higher-level error enum.
 ///
 /// The struct's contents are copied internally; the caller may
@@ -1393,7 +1393,7 @@ impl Session for CffiSession {
         // phase-301 (issue 0240) — the express hint travels in the options
         // struct, not the QoS profile. Either surface wins: the QoS profile
         // field (language APIs) or `TopicInfo::with_tx_express` (direct RMW).
-        let options = nros_rmw_publisher_options_t {
+        let options = rmw_publisher_options_t {
             tx_express: (topic.tx_express || qos.tx_express) as u8,
             _reserved: [0u8; 7],
         };
@@ -1460,7 +1460,7 @@ impl Session for CffiSession {
         // size hint travels in the options struct so a size-classing backend
         // can route its receive storage. A hint, not a policy: oversize
         // saturates.
-        let options = nros_rmw_subscription_options_t {
+        let options = rmw_subscription_options_t {
             rx_buffer_hint: topic.rx_buffer_hint.min(u32::MAX as usize) as u32,
             _reserved: [0u8; 4],
         };
@@ -2965,7 +2965,7 @@ mod tests {
         _type_hash: *const core::ffi::c_char,
         _domain_id: u32,
         qos: *const NrosRmwQos,
-        _options: *const nros_rmw_publisher_options_t,
+        _options: *const rmw_publisher_options_t,
         out: *mut NrosRmwPublisher,
     ) -> NrosRmwRet {
         // Capture the typed-struct fields the runtime supplied.
@@ -3006,7 +3006,7 @@ mod tests {
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
-        _: *const nros_rmw_subscription_options_t,
+        _: *const rmw_subscription_options_t,
         out: *mut NrosRmwSubscription,
     ) -> NrosRmwRet {
         unsafe {

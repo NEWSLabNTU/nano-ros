@@ -16,7 +16,7 @@
 
 #include "nros/rmw_vtable.h"
 
-__attribute__((weak)) nros_rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
+__attribute__((weak)) rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
     if (vtable == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

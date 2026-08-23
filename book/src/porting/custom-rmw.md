@@ -143,7 +143,7 @@ impl ClientTrait for MyProtoClient {
 ### Pick the right `TransportError` variant
 
 The runtime maps every `TransportError` variant to a named
-`nros_rmw_ret_t` constant at the C boundary. Picking a specific
+`rmw_ret_t` constant at the C boundary. Picking a specific
 variant gives the caller actionable information instead of an opaque
 "failed somehow":
 
@@ -251,77 +251,77 @@ per-field return-value, threading, and blocking conventions.
 #include <nros/rmw_entity.h>
 
 // -- Session lifecycle --
-static nros_rmw_ret_t my_create_session(const char *locator, uint8_t mode,
+static rmw_ret_t my_create_session(const char *locator, uint8_t mode,
                               uint32_t domain_id, const char *node_name,
-                              nros_rmw_session_t *out) {
+                              rmw_session_t *out) {
     /* Connect. On success: write out->backend_data with your session
      * pointer, return NROS_RMW_RET_OK. On failure: return one of the
      * named codes (NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_TIMEOUT,
      * NROS_RMW_RET_BAD_ALLOC, NROS_RMW_RET_ERROR). out->node_name is
      * already set by the runtime — read it for diagnostics. */
 }
-static nros_rmw_ret_t my_destroy_session(nros_rmw_session_t *session) { /* ... */ }
-static nros_rmw_ret_t my_drive_io(nros_rmw_session_t *session, int32_t timeout_ms) {
+static rmw_ret_t my_destroy_session(rmw_session_t *session) { /* ... */ }
+static rmw_ret_t my_drive_io(rmw_session_t *session, int32_t timeout_ms) {
     /* Dispatch network I/O for up to timeout_ms; return NROS_RMW_RET_OK
      * on success, NROS_RMW_RET_TIMEOUT / NROS_RMW_RET_ERROR otherwise. */
 }
 
 // -- Publisher --
-static nros_rmw_ret_t my_create_publisher(
-        nros_rmw_session_t *session,
+static rmw_ret_t my_create_publisher(
+        rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        const nros_rmw_publisher_options_t *options,  /* hints (tx_express); NULL = defaults */
-        nros_rmw_publisher_t *out) {
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        const rmw_publisher_options_t *options,  /* hints (tx_express); NULL = defaults */
+        rmw_publisher_t *out) {
     /* Runtime has already filled out->topic_name / type_name / qos.
      * Backend writes out->backend_data with its publisher handle and
      * may set out->can_loan_messages = true to advertise the
      * loan_publish / commit_publish primitive. */
 }
-static void           my_destroy_publisher(nros_rmw_publisher_t *publisher) { /* ... */ }
-static nros_rmw_ret_t my_publish_raw(nros_rmw_publisher_t *publisher,
+static void           my_destroy_publisher(rmw_publisher_t *publisher) { /* ... */ }
+static rmw_ret_t my_publish_raw(rmw_publisher_t *publisher,
         const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Subscription --
-static nros_rmw_ret_t my_create_subscription(
-        nros_rmw_session_t *session,
+static rmw_ret_t my_create_subscription(
+        rmw_session_t *session,
         const char *topic, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        const nros_rmw_subscription_options_t *options,  /* hints (rx_buffer_hint); NULL = defaults */
-        nros_rmw_subscription_t *out) { /* ... */ }
-static void    my_destroy_subscription(nros_rmw_subscription_t *subscription) { /* ... */ }
-static int32_t my_try_recv_raw(nros_rmw_subscription_t *subscription,
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        const rmw_subscription_options_t *options,  /* hints (rx_buffer_hint); NULL = defaults */
+        rmw_subscription_t *out) { /* ... */ }
+static void    my_destroy_subscription(rmw_subscription_t *subscription) { /* ... */ }
+static int32_t my_try_recv_raw(rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len) {
     /* >= 0 = bytes received (0 = no data),
-     * negative nros_rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
+     * negative rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
 }
-static int32_t my_has_data(nros_rmw_subscription_t *subscription) { /* 1 = yes, 0 = no */ }
+static int32_t my_has_data(rmw_subscription_t *subscription) { /* 1 = yes, 0 = no */ }
 
 // -- Service (server side) --
-static nros_rmw_ret_t my_create_service(
-        nros_rmw_session_t *session,
+static rmw_ret_t my_create_service(
+        rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_service_t *out) { /* ... */ }
-static void    my_destroy_service(nros_rmw_service_t *server) { /* ... */ }
-static int32_t my_try_recv_request(nros_rmw_service_t *server,
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        rmw_service_t *out) { /* ... */ }
+static void    my_destroy_service(rmw_service_t *server) { /* ... */ }
+static int32_t my_try_recv_request(rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
-static int32_t my_has_request(nros_rmw_service_t *server) { /* 1 = yes, 0 = no */ }
-static nros_rmw_ret_t my_send_reply(nros_rmw_service_t *server,
+static int32_t my_has_request(rmw_service_t *server) { /* 1 = yes, 0 = no */ }
+static rmw_ret_t my_send_reply(rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len) { /* ... */ }
 
 // -- Client --
-static nros_rmw_ret_t my_create_client(
-        nros_rmw_session_t *session,
+static rmw_ret_t my_create_client(
+        rmw_session_t *session,
         const char *service, const char *type_name, const char *type_hash,
-        uint32_t domain_id, const nros_rmw_qos_t *qos,
-        nros_rmw_client_t *out) { /* ... */ }
-static void    my_destroy_client(nros_rmw_client_t *client) { /* ... */ }
-static nros_rmw_ret_t my_send_request_raw(nros_rmw_client_t *client,
+        uint32_t domain_id, const rmw_qos_profile_t *qos,
+        rmw_client_t *out) { /* ... */ }
+static void    my_destroy_client(rmw_client_t *client) { /* ... */ }
+static rmw_ret_t my_send_request_raw(rmw_client_t *client,
         const uint8_t *request, size_t req_len) {
     /* Send without blocking for the reply; return NROS_RMW_RET_OK. */
 }
-static int32_t my_try_recv_reply_raw(nros_rmw_client_t *client,
+static int32_t my_try_recv_reply_raw(rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len) {
     /* >= 0 = reply bytes, NROS_RMW_RET_NO_DATA = no reply yet. */
 }
@@ -390,7 +390,7 @@ storage). Entities are typed structs with an opaque `backend_data`
 slot — the runtime fills metadata fields (`topic_name`, `qos`, …)
 before calling `create_*`; the backend writes `backend_data`. Return
 convention: `NROS_RMW_RET_OK` = success, negative = named
-`nros_rmw_ret_t` constant, positive = byte count (only on
+`rmw_ret_t` constant, positive = byte count (only on
 `try_recv_*`).
 
 ---

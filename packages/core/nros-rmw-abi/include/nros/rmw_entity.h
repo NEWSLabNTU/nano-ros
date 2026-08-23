@@ -39,20 +39,20 @@
 /* QoS profile — full DDS shape (matches `rmw_qos_profile_t`)          */
 /* ------------------------------------------------------------------ */
 
-/** Reliability policy values for `nros_rmw_qos_t::reliability`. */
+/** Reliability policy values for `rmw_qos_profile_t::reliability`. */
 #define NROS_RMW_RELIABILITY_BEST_EFFORT 0
 #define NROS_RMW_RELIABILITY_RELIABLE    1
 
-/** Durability policy values for `nros_rmw_qos_t::durability`. */
+/** Durability policy values for `rmw_qos_profile_t::durability`. */
 #define NROS_RMW_DURABILITY_VOLATILE         0
 #define NROS_RMW_DURABILITY_TRANSIENT_LOCAL  1
 
-/** History policy values for `nros_rmw_qos_t::history`. */
+/** History policy values for `rmw_qos_profile_t::history`. */
 #define NROS_RMW_HISTORY_KEEP_LAST 0
 #define NROS_RMW_HISTORY_KEEP_ALL  1
 
-/** Liveliness kind values for `nros_rmw_qos_t::liveliness_kind`. */
-typedef enum nros_rmw_liveliness_kind_t {
+/** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`. */
+typedef enum rmw_liveliness_kind_t {
     /** No liveliness assertion or tracking. Default for entities
      *  that don't care about liveliness. */
     NROS_RMW_LIVELINESS_NONE              = 0,
@@ -62,7 +62,7 @@ typedef enum nros_rmw_liveliness_kind_t {
     NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 2,
     /** Application calls `assert_liveliness()` at the node level. */
     NROS_RMW_LIVELINESS_MANUAL_BY_NODE    = 3,
-} nros_rmw_liveliness_kind_t;
+} rmw_liveliness_kind_t;
 
 /**
  * Full DDS-shaped QoS profile.
@@ -100,17 +100,17 @@ typedef enum nros_rmw_liveliness_kind_t {
  *
  * **Pure policy mirror (phase-301, issue 0240).** Transport hints
  * (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into
- * `nros_rmw_publisher_options_t` / `nros_rmw_subscription_options_t` —
+ * `rmw_publisher_options_t` / `rmw_subscription_options_t` —
  * the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`
  * home for exactly that class. QoS carries DDS policy only; hint growth
  * no longer churns this ABI.
  */
-typedef struct nros_rmw_qos_t {
+typedef struct rmw_qos_profile_t {
     /* ---- 8-byte core, layout-equivalent to the original subset ---- */
     uint8_t  reliability;     /**< @see NROS_RMW_RELIABILITY_*    */
     uint8_t  durability;      /**< @see NROS_RMW_DURABILITY_*     */
     uint8_t  history;         /**< @see NROS_RMW_HISTORY_*        */
-    uint8_t  liveliness_kind; /**< @see nros_rmw_liveliness_kind_t */
+    uint8_t  liveliness_kind; /**< @see rmw_liveliness_kind_t */
     uint16_t depth;
     uint16_t _reserved0;      /**< Reserved; must be zero. */
 
@@ -136,7 +136,7 @@ typedef struct nros_rmw_qos_t {
      *  toolchains.) */
     uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
-} nros_rmw_qos_t;             /* 24 bytes */
+} rmw_qos_profile_t;             /* 24 bytes */
 
 /** Explicit infinite spelling for the u32-ms duration fields
  *  (phase-301, issue 0241). Semantically identical to 0 (no check) but
@@ -152,27 +152,27 @@ typedef struct nros_rmw_qos_t {
  * hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable
  * trailing param to `create_publisher`; NULL = all defaults.
  */
-typedef struct nros_rmw_publisher_options_t {
+typedef struct rmw_publisher_options_t {
     /** phase-279 (#145) — express hint (`TopicInfo::tx_express` across
      *  the C ABI): non-zero = this publisher's samples bypass transport
      *  tx batching. A transport hint, not a DDS policy — no RxO
      *  matching. */
     uint8_t tx_express;
     uint8_t _reserved[7];     /**< Reserved; must be zero. */
-} nros_rmw_publisher_options_t;
+} rmw_publisher_options_t;
 
 /**
  * Subscription creation options — the home for subscription-side
  * transport hints (upstream: `rmw_subscription_options_t`). Passed as a
  * NULLable trailing param to `create_subscription`; NULL = all defaults.
  */
-typedef struct nros_rmw_subscription_options_t {
+typedef struct rmw_subscription_options_t {
     /** Phase 231 (RFC-0038) — receive-buffer size hint, bytes, so a
      *  size-classing backend (zenoh-pico) can pick a small/large receive
      *  buffer. `0` = unset. A transport hint, not a DDS policy. */
     uint32_t rx_buffer_hint;
     uint8_t  _reserved[4];    /**< Reserved; must be zero. */
-} nros_rmw_subscription_options_t;
+} rmw_subscription_options_t;
 
 /* ---- Standard QoS profile constants ---- */
 /* Defined as static const initialisers at the bottom of this
@@ -183,7 +183,7 @@ typedef struct nros_rmw_subscription_options_t {
 /** `rmw_qos_profile_default`-equivalent: reliable + volatile +
  *  keep-last(10), automatic liveliness, no deadline / lifespan. */
 #define NROS_RMW_QOS_PROFILE_DEFAULT \
-    ((nros_rmw_qos_t){                                                   \
+    ((rmw_qos_profile_t){                                                   \
         .reliability = NROS_RMW_RELIABILITY_RELIABLE,                    \
         .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
@@ -200,7 +200,7 @@ typedef struct nros_rmw_subscription_options_t {
 /** `rmw_qos_profile_sensor_data`-equivalent: best-effort +
  *  volatile + keep-last(5). */
 #define NROS_RMW_QOS_PROFILE_SENSOR_DATA \
-    ((nros_rmw_qos_t){                                                   \
+    ((rmw_qos_profile_t){                                                   \
         .reliability = NROS_RMW_RELIABILITY_BEST_EFFORT,                 \
         .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
@@ -221,7 +221,7 @@ typedef struct nros_rmw_subscription_options_t {
 /** `rmw_qos_profile_parameters`-equivalent: reliable + volatile +
  *  keep-last(1000). */
 #define NROS_RMW_QOS_PROFILE_PARAMETERS \
-    ((nros_rmw_qos_t){                                                   \
+    ((rmw_qos_profile_t){                                                   \
         .reliability = NROS_RMW_RELIABILITY_RELIABLE,                    \
         .durability  = NROS_RMW_DURABILITY_VOLATILE,                     \
         .history     = NROS_RMW_HISTORY_KEEP_LAST,                       \
@@ -254,7 +254,7 @@ typedef struct nros_rmw_subscription_options_t {
  * multi-instance work will land here. Backends and runtime keep
  * these bytes zero.
  */
-typedef struct nros_rmw_session_t {
+typedef struct rmw_session_t {
     /** Node name (borrowed from caller; outlives the session). */
     const char *node_name;
     /** Node namespace (borrowed from caller; outlives the session). */
@@ -264,7 +264,7 @@ typedef struct nros_rmw_session_t {
     uint8_t     _reserved[8];
     /** Opaque backend state. NULL for an uninitialised session. */
     void       *backend_data;
-} nros_rmw_session_t;
+} rmw_session_t;
 
 /**
  * Publisher entity.
@@ -281,40 +281,40 @@ typedef struct nros_rmw_session_t {
  * runtime reads it once at create time and picks the publish path
  * accordingly; no per-call probe.
  */
-typedef struct nros_rmw_publisher_t {
+typedef struct rmw_publisher_t {
     /** Topic name (borrowed; outlives the publisher). */
     const char    *topic_name;
     /** ROS-2-style fully-qualified type name
      *  (e.g., `"std_msgs/msg/Int32"`). Borrowed; outlives the publisher. */
     const char    *type_name;
     /** QoS subset honoured by this publisher. */
-    nros_rmw_qos_t qos;
+    rmw_qos_profile_t qos;
     /** Backend exposes loan_publish / commit_publish (Phase 99). */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
     /** Opaque backend state. NULL if creation failed. */
     void          *backend_data;
-} nros_rmw_publisher_t;
+} rmw_publisher_t;
 
 /**
  * Subscription entity (phase-301: renamed from `subscriber` to the upstream `rmw_subscription_t` term). Same shape as the publisher; `can_loan_messages`
  * means the backend exposes the receive-side loan primitive.
  */
-typedef struct nros_rmw_subscription_t {
+typedef struct rmw_subscription_t {
     /** Topic name (borrowed; outlives the subscription). */
     const char    *topic_name;
     /** Fully-qualified type name. Borrowed. */
     const char    *type_name;
     /** QoS subset honoured by this subscription. */
-    nros_rmw_qos_t qos;
+    rmw_qos_profile_t qos;
     /** Backend exposes loan_recv / release_recv (Phase 99). */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
     /** Opaque backend state. NULL if creation failed. */
     void          *backend_data;
-} nros_rmw_subscription_t;
+} rmw_subscription_t;
 
 /**
  * Service entity (phase-301: renamed from `service_server` to the upstream `rmw_service_t` term).
@@ -329,7 +329,7 @@ typedef struct nros_rmw_subscription_t {
  * `_reserved[8]` block accommodates the bool + 7 padding bytes
  * without an ABI break.
  */
-typedef struct nros_rmw_service_t {
+typedef struct rmw_service_t {
     /** Service name (borrowed; outlives the server). */
     const char *service_name;
     /** Fully-qualified service type name (e.g.,
@@ -339,12 +339,12 @@ typedef struct nros_rmw_service_t {
     uint8_t     _reserved[8];
     /** Opaque backend state. NULL if creation failed. */
     void       *backend_data;
-} nros_rmw_service_t;
+} rmw_service_t;
 
 /**
  * Client entity (phase-301: renamed from `service_client` to the upstream `rmw_client_t` term). Same shape as the service.
  */
-typedef struct nros_rmw_client_t {
+typedef struct rmw_client_t {
     /** Service name (borrowed; outlives the client). */
     const char *service_name;
     /** Fully-qualified service type name. Borrowed. */
@@ -353,6 +353,6 @@ typedef struct nros_rmw_client_t {
     uint8_t     _reserved[8];
     /** Opaque backend state. NULL if creation failed. */
     void       *backend_data;
-} nros_rmw_client_t;
+} rmw_client_t;
 
 #endif /* NROS_RMW_ENTITY_H */

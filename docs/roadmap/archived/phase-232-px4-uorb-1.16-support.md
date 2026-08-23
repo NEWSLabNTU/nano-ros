@@ -94,7 +94,7 @@ backend builds + the smoke test passes.
 
 ### 232.4b — Repair the uORB RMW vtable vs the current ABI  ✅ (nano-ros, found while validating 232.4)
 The uORB C++ vtable no longer compiled against `nros_rmw_vtable_t`: the service
-`create_*` slots gained a `const nros_rmw_qos_t*` param the stubs lacked, and the
+`create_*` slots gained a `const rmw_qos_profile_t*` param the stubs lacked, and the
 positional initializer skipped Phase-130 `send_request_raw`/`try_recv_reply_raw`,
 shifting every later slot (hard error). Fixed: qos param on the two UNSUPPORTED
 service-create stubs + gap-free positional init through `call_raw` (rest NULL via

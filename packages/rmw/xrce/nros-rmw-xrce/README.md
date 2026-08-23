@@ -18,7 +18,7 @@ a static library + a single public header carrying the
 - [x] **115.K.2.1 — session lifecycle.** `xrce_session_open` parses
   `udp/host:port` (or bare `host:port`), runs `uxr_init_udp_transport`
   + `uxr_create_session_retries`, allocates reliable streams, parks
-  the per-session state in `nros_rmw_session_t::backend_data`. Close
+  the per-session state in `rmw_session_t::backend_data`. Close
   + drive_io fully wired.
 - [x] **115.K.2.2 (this commit) — pub/sub.** `xrce_publisher_create`
   allocates 3 entity ids (TOPIC, PUBLISHER, DATAWRITER) and creates

@@ -14,7 +14,7 @@
  *
  * Two return-shape conventions exist:
  *
- *  - **Status only.** `nros_rmw_ret_t` returned directly. `0` =
+ *  - **Status only.** `rmw_ret_t` returned directly. `0` =
  *    success, negative = one of the named error codes.
  *  - **Byte count + error.** A non-negative return is the number of
  *    bytes produced; a negative return is one of the named error
@@ -55,7 +55,7 @@
  *
  *  Signedness is kept (`int32_t`, not an unsigned type) to match upstream's
  *  `rmw_ret_t` exactly. Nothing returns a negative value any more. */
-typedef int32_t nros_rmw_ret_t;
+typedef int32_t rmw_ret_t;
 
 /** First value in the nano-ros extension range. Everything at or above this is
  *  ours; everything below it is upstream's or reserved for upstream. */

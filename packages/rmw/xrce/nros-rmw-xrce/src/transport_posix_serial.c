@@ -135,7 +135,7 @@ static size_t posix_serial_read(struct uxrCustomTransport *t,
 
 /* ---- Init ------------------------------------------------------- */
 
-nros_rmw_ret_t xrce_posix_serial_init(xrce_session_state_t *st,
+rmw_ret_t xrce_posix_serial_init(xrce_session_state_t *st,
                                       const char *path) {
     if (st == NULL || path == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

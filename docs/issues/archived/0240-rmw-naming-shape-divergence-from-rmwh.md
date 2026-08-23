@@ -21,7 +21,7 @@ naming/shape cleanup pass.
 - **`open`/`close`** (`rmw_vtable.h:50,53`) break the table's own
   `create_*`/`destroy_*` convention and rmw's `rmw_create_node`/
   `rmw_destroy_node`. → `create_session`/`destroy_session` (or `_node`).
-- **`session`** (`nros_rmw_session_t`, `rmw_entity.h:207`) merges
+- **`session`** (`rmw_session_t`, `rmw_entity.h:207`) merges
   `rmw_context_t` + `rmw_node_t`; reasonable for 1-node-per-process, but
   the struct carries `node_name`/`namespace_` — it IS a node. "session" is
   a transport term. Consider `nros_rmw_node_t`.
@@ -34,13 +34,13 @@ naming/shape cleanup pass.
 `tx_express` (`lib.rs:258-262`, `traits.rs:459-465`) and `rx_buffer_hint`
 (`lib.rs:279-284`, `rmw_entity.h:119-124`) are TRANSPORT HINTS, not DDS QoS
 policies — the code comments say so ("a transport hint, not a DDS policy —
-no RxO matching"). They live in `nros_rmw_qos_t`, so they get
+no RxO matching"). They live in `rmw_qos_profile_t`, so they get
 compared/defaulted/carried on every entity, and each new hint is an
 ABI-append into the QoS struct (`rx_buffer_hint` was appended at the tail).
 Upstream's home for exactly this class is `rmw_publisher_options_t` /
 `rmw_subscription_options_t`. Introducing
-`nros_rmw_publisher_options_t`/`_subscription_options_t` params on
-`create_publisher`/`create_subscriber` would keep `nros_rmw_qos_t` a pure
+`rmw_publisher_options_t`/`_subscription_options_t` params on
+`create_publisher`/`create_subscriber` would keep `rmw_qos_profile_t` a pure
 policy mirror and stop the QoS-struct ABI churn.
 
 ### Deprecated blocking primitive still in the vtable
@@ -51,7 +51,7 @@ blocking call. Plan its removal with this cleanup so there is one
 request/reply path.
 
 ### Minor note — return-code scheme
-`nros_rmw_ret_t`'s negative-error convention is justified (byte-count dual
+`rmw_ret_t`'s negative-error convention is justified (byte-count dual
 use), but note it also diverges numerically from `RMW_RET_*` (small
 positives) — cross-referenced here so a future rmw-parity reviewer isn't
 surprised; NOT proposed for change.
@@ -89,7 +89,7 @@ notes), not a mirror-by-mirror plan.
 All accepted items shipped on the RFC-0054 header-SSoT model: open/close
 -> create_session/destroy_session; subscriber -> subscription;
 service_server -> service; service_client -> client (types + slots);
-transport hints moved to nros_rmw_publisher_options_t /
+transport hints moved to rmw_publisher_options_t /
 _subscription_options_t (QoS is a pure 24-byte policy mirror); the
 deprecated blocking call_raw slot deleted (send_request_raw +
 try_recv_reply_raw is the one path; nros-cpp's public blocking C API now

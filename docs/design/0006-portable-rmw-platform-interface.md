@@ -73,7 +73,7 @@ expose nano-ros to Python apps via `ctypes`.
 1. Read `nros-rmw/src/traits.rs`. Translate trait surface mentally.
 2. Look at `nros-rmw-cffi/src/lib.rs` for the C-vtable mirror.
 3. Notice the two definitions are *almost* aligned but not quite —
-   `Result<T, E>` vs `nros_rmw_ret_t`, `Option<usize>` vs sentinel,
+   `Result<T, E>` vs `rmw_ret_t`, `Option<usize>` vs sentinel,
    `&[u8]` vs `(ptr, len)`, etc.
 4. Pick one (the cffi vtable, since Zig can't import the trait).
 5. Hope cffi stays in sync with the trait when we update it.

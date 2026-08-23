@@ -3,15 +3,15 @@
 **Goal:** Two API + FFI surface additions to the RMW layer, both ship as API-only first (no backend wiring), with backends opting in per-policy in follow-up phases.
 
 - **108.A — Status events** — trait + C-vtable + user-facing surface for transport-level status events (liveliness changes, deadline misses, message loss). Adopts callback-on-entity dispatch (matches existing message-callback path) instead of upstream's `rmw_event_t + rmw_take_event + waitset` machinery.
-- **108.B — Full DDS-shaped QoS profile** — extends `nros_rmw_qos_t` to carry deadline, lifespan, liveliness, and the namespace-convention flag in addition to the existing reliability / durability / history / depth subset. Backends advertise per-policy support via a bitmask; unsupported policies return `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously (no silent degradation).
+- **108.B — Full DDS-shaped QoS profile** — extends `rmw_qos_profile_t` to carry deadline, lifespan, liveliness, and the namespace-convention flag in addition to the existing reliability / durability / history / depth subset. Backends advertise per-policy support via a bitmask; unsupported policies return `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously (no silent degradation).
 
-Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C header, both ship API-only, and Phase 108.A's deadline/liveliness events depend on Phase 108.B's QoS fields to be meaningful.
+Both bundled because they share the `rmw_qos_profile_t` / `nros_rmw_event_t` C header, both ship API-only, and Phase 108.A's deadline/liveliness events depend on Phase 108.B's QoS fields to be meaningful.
 
 **Status:** Complete. v1 surface (108.A + 108.B) shipped end-to-end including the C / C++ user-facing wrappers (108.B.7) and book / Doxygen updates (108.B.8). All four backends wired in 108.C: dust-DDS native; XRCE-DDS clock-emulated DEADLINE + agent-side full-DDS QoS via FastDDS XML profiles; zenoh-pico shim-emulated DEADLINE / LIFESPAN / LIVELINESS_AUTOMATIC + MessageLost via attachment seq gap; uORB MessageLost via publish-counter delta. Cross-backend test matrix lands per backend (108.C.x.1). All v1 acceptance criteria satisfied.
 
 **Priority:** Medium — surfaces let users start writing code; backend wiring follows in per-backend sub-phases below.
 
-**Depends on:** Phase 102 (typed entity structs, `nros_rmw_ret_t`), Phase 110 (Activator + ReadySet — events count as ready callbacks under `DrainMode::Latched` and against the dispatch loop's count cap; `OptUs` newtype + sentinel-`0` ABI convention reused for time fields).
+**Depends on:** Phase 102 (typed entity structs, `rmw_ret_t`), Phase 110 (Activator + ReadySet — events count as ready callbacks under `DrainMode::Latched` and against the dispatch loop's count cap; `OptUs` newtype + sentinel-`0` ABI convention reused for time fields).
 
 ---
 
@@ -22,7 +22,7 @@ Both bundled because they share the `nros_rmw_qos_t` / `nros_rmw_event_t` C head
 | Tier | Events | Why grouped |
 |------|--------|-------------|
 | **Tier-1 (this phase)** | LivelinessChanged, RequestedDeadlineMissed, MessageLost, LivelinessLost, OfferedDeadlineMissed | Steady-state runtime events that fire repeatedly during normal operation; drive RTOS-side fail-over / alarm / drop logic. |
-| **Tier-2 (deferred)** | Matched, QosIncompatible, IncompatibleType | Discovery-time events that fire once at startup in static-topology embedded apps. Surface via existing `nros_rmw_ret_t` codes at create-time instead. Re-evaluate if dynamic-discovery apps appear. |
+| **Tier-2 (deferred)** | Matched, QosIncompatible, IncompatibleType | Discovery-time events that fire once at startup in static-topology embedded apps. Surface via existing `rmw_ret_t` codes at create-time instead. Re-evaluate if dynamic-discovery apps appear. |
 | **Tier-3 (deferred)** | SampleRejected, RequestedIncompatibleQos (DDS-spec extras) | DDS-spec events with no clear RTOS use case. Skip indefinitely. |
 
 Tier-1 use cases:
@@ -43,17 +43,17 @@ nano-ros is no_std + heapless across all backends. Phase 110 explicitly forbids 
 
 ### 108.B — Why full QoS now
 
-Today's `nros_rmw_qos_t` is a deliberate subset of `rmw_qos_profile_t`:
+Today's `rmw_qos_profile_t` is a deliberate subset of `rmw_qos_profile_t`:
 
 ```c
-typedef struct nros_rmw_qos_t {
+typedef struct rmw_qos_profile_t {
     uint8_t  reliability;
     uint8_t  durability;
     uint8_t  history;
     uint8_t  _reserved0;
     uint16_t depth;
     uint16_t _reserved1;
-} nros_rmw_qos_t;            // 8 bytes
+} rmw_qos_profile_t;            // 8 bytes
 ```
 
 Two factors changed the calculus:
@@ -137,50 +137,50 @@ Closure ergonomics on `nros-node`: typed wrappers store the closure in a per-cal
 C vtable extension:
 
 ```c
-typedef enum nros_rmw_event_kind_t {
+typedef enum rmw_event_type_t {
     NROS_RMW_EVENT_LIVELINESS_CHANGED         = 0,
     NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED  = 1,
     NROS_RMW_EVENT_MESSAGE_LOST               = 2,
     NROS_RMW_EVENT_LIVELINESS_LOST            = 3,
     NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED    = 4,
-} nros_rmw_event_kind_t;
+} rmw_event_type_t;
 
-typedef struct nros_rmw_liveliness_changed_status_t {
+typedef struct rmw_liveliness_changed_status_t {
     uint16_t alive_count;
     uint16_t not_alive_count;
     int16_t  alive_count_change;
     int16_t  not_alive_count_change;
-} nros_rmw_liveliness_changed_status_t;
+} rmw_liveliness_changed_status_t;
 
-typedef struct nros_rmw_count_status_t {
+typedef struct rmw_count_status_t {
     uint32_t total_count;
     uint32_t total_count_change;
-} nros_rmw_count_status_t;
+} rmw_count_status_t;
 
-typedef union nros_rmw_event_payload_t {
-    nros_rmw_liveliness_changed_status_t liveliness_changed;
-    nros_rmw_count_status_t              count;
-} nros_rmw_event_payload_t;
+typedef union rmw_event_payload_t {
+    rmw_liveliness_changed_status_t liveliness_changed;
+    rmw_count_status_t              count;
+} rmw_event_payload_t;
 
-typedef void (*nros_rmw_event_callback_t)(
-    nros_rmw_event_kind_t kind,
-    const nros_rmw_event_payload_t *payload,
+typedef void (*rmw_event_callback_t)(
+    rmw_event_type_t kind,
+    const rmw_event_payload_t *payload,
     void *user_context);
 
 typedef struct nros_rmw_vtable_t {
     /* … */
-    nros_rmw_ret_t (*register_subscriber_event)(
+    rmw_ret_t (*register_subscriber_event)(
         nros_rmw_subscriber_t *sub,
-        nros_rmw_event_kind_t  kind,
+        rmw_event_type_t  kind,
         uint32_t               deadline_ms,
-        nros_rmw_event_callback_t cb,
+        rmw_event_callback_t cb,
         void                  *user_context);
 
-    nros_rmw_ret_t (*register_publisher_event)(
-        nros_rmw_publisher_t *pub,
-        nros_rmw_event_kind_t kind,
+    rmw_ret_t (*register_publisher_event)(
+        rmw_publisher_t *pub,
+        rmw_event_type_t kind,
         uint32_t              deadline_ms,
-        nros_rmw_event_callback_t cb,
+        rmw_event_callback_t cb,
         void                 *user_context);
 } nros_rmw_vtable_t;
 ```
@@ -220,14 +220,14 @@ Async equivalents (`next_liveliness_change().await` etc.) — Future variant via
 ### 108.B — Full QoS shape
 
 ```c
-typedef enum nros_rmw_liveliness_kind_t {
+typedef enum rmw_liveliness_kind_t {
     NROS_RMW_LIVELINESS_NONE              = 0,
     NROS_RMW_LIVELINESS_AUTOMATIC         = 1,
     NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 2,
     NROS_RMW_LIVELINESS_MANUAL_BY_NODE    = 3,
-} nros_rmw_liveliness_kind_t;
+} rmw_liveliness_kind_t;
 
-typedef struct nros_rmw_qos_t {
+typedef struct rmw_qos_profile_t {
     /* ---- Existing 8-byte subset, layout-preserved. ---- */
     uint8_t  reliability;
     uint8_t  durability;
@@ -242,7 +242,7 @@ typedef struct nros_rmw_qos_t {
     uint32_t liveliness_lease_ms;        /* 0 = infinite */
     uint8_t  avoid_ros_namespace_conventions;  /* 0 = false, nonzero = true */
     uint8_t  _reserved1[3];
-} nros_rmw_qos_t;                        /* 24 bytes */
+} rmw_qos_profile_t;                        /* 24 bytes */
 ```
 
 Avoid C99 `_Bool` for ABI stability — `sizeof(_Bool)` is impl-defined; use `uint8_t` w/ documented `0/nonzero` convention. Sentinel `0` for time fields = "policy off / infinite" matches Phase 110 `OptUs` ABI convention.
@@ -368,7 +368,7 @@ Each backend uses native attachment mechanism. nano-ros doesn't define a cross-b
 
 ### v1 — 108.B (Full QoS surface) — **COMPLETE** (commit `c5ef9fdc`)
 
-- [x] **108.B.1 — Update C header `<nros/rmw_entity.h>`.** `nros_rmw_qos_t` = 24 bytes; `nros_rmw_liveliness_kind_t` enum; standard profile constants; `bool` → `uint8_t` for ABI stability.
+- [x] **108.B.1 — Update C header `<nros/rmw_entity.h>`.** `rmw_qos_profile_t` = 24 bytes; `rmw_liveliness_kind_t` enum; standard profile constants; `bool` → `uint8_t` for ABI stability.
 - [x] **108.B.2 — Update Rust mirror in `nros-rmw-cffi`.** `NrosRmwQos` grows; `LivelinessKind` enum; `pub const`s for standard profiles; `avoid_ros_namespace_conventions: u8`.
 - [x] **108.B.3 — Update `nros-rmw` `QosSettings` + add `QosPolicyMask`.** Extended fields; bitflags; `Session::supported_qos_policies()` trait method; `QosSettings::required_policies()` / `validate_against()` helpers.
 - [x] **108.B.4 — `Node::create_*` validates QoS against mask.** Synchronous `Err(IncompatibleQos)`; no silent downgrade. (Validation lives in `nros-node` `Node::create_*_with_qos`, not in the `Session` trait — keeps backends transport-only.)
@@ -462,7 +462,7 @@ Tracked as sub-phases above. Current status:
 
 ### No upstream ABI compat
 
-`nros_rmw_qos_t` ABI break is one-shot; pre-publish so no version-bump migration. Apps recompile against the new header; in-tree backends recompile cleanly because they don't honour any new policies yet (default mask = CORE).
+`rmw_qos_profile_t` ABI break is one-shot; pre-publish so no version-bump migration. Apps recompile against the new header; in-tree backends recompile cleanly because they don't honour any new policies yet (default mask = CORE).
 
 ### uORB QoS
 

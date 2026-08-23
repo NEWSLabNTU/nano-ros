@@ -152,18 +152,18 @@ typedef struct nros_rmw_vtable_t {
      * bytes_t, DDS sample-info, XRCE output cursor). */
 
     /* Publisher side. */
-    nros_rmw_ret_t (*pub_loan)(
-        nros_rmw_publisher_t *pub,
+    rmw_ret_t (*pub_loan)(
+        rmw_publisher_t *pub,
         size_t                requested_len,
         uint8_t             **out_buf,
         size_t               *out_cap,        /* may exceed requested */
         void                **out_token);
-    nros_rmw_ret_t (*pub_commit)(
-        nros_rmw_publisher_t *pub,
+    rmw_ret_t (*pub_commit)(
+        rmw_publisher_t *pub,
         void                 *token,
         size_t                actual_len);
     void           (*pub_discard)(
-        nros_rmw_publisher_t *pub,
+        rmw_publisher_t *pub,
         void                 *token);
 
     /* Subscriber side. */
@@ -220,7 +220,7 @@ nros_rmw_publisher_commit(pub, token, encoded_len);
 
 **Arena fallback** moves from `nros-node` into `nros-rmw-cffi`. When
 `vt.pub_loan == NULL`, the runtime allocates a per-publisher
-`TxArena` slot inside `nros_rmw_publisher_t` and emits the
+`TxArena` slot inside `rmw_publisher_t` and emits the
 fallback loan path. Same fallback for ALL callers (Rust + C/C++),
 not Rust-only.
 
@@ -263,8 +263,8 @@ typedef struct nros_rmw_vtable_t {
      * `cb == NULL` clears any previously installed callback —
      * backend must drop the stored pair and never invoke after
      * this returns. */
-    nros_rmw_ret_t (*set_wake_callback)(
-        nros_rmw_session_t *session,
+    rmw_ret_t (*set_wake_callback)(
+        rmw_session_t *session,
         nros_rmw_wake_cb    cb,
         void               *ctx);
 } nros_rmw_vtable_t;
@@ -381,7 +381,7 @@ typedef struct nros_rmw_vtable_t {
 
     /* Phase 124 — service availability probe.
      * Returns 1 if ≥ 1 matching server discovered, 0 if none,
-     * negative `nros_rmw_ret_t` on error. NULL slot = backend
+     * negative `rmw_ret_t` on error. NULL slot = backend
      * cannot answer; runtime returns NROS_RMW_RET_UNSUPPORTED. */
     int32_t (*service_server_available)(
         nros_rmw_service_client_t *client);
@@ -403,7 +403,7 @@ typedef struct nros_rmw_vtable_t {
     /* ... */
 
     /* Phase 124 — batch take. Returns count of messages
-     * taken (0..max), or negative `nros_rmw_ret_t` on error.
+     * taken (0..max), or negative `rmw_ret_t` on error.
      * `buf` is a contiguous block of `max_msgs * per_msg_cap`
      * bytes; the i-th message lives at `buf + i*per_msg_cap`
      * with length `out_lens[i]`. NULL slot = backend doesn't
@@ -445,8 +445,8 @@ typedef struct nros_rmw_vtable_t {
      * constrained nodes. NULL slot = backend doesn't stream;
      * runtime falls back to user-provided one-shot
      * publish_raw using a staging buffer. */
-    nros_rmw_ret_t (*publish_streamed)(
-        nros_rmw_publisher_t       *pub,
+    rmw_ret_t (*publish_streamed)(
+        rmw_publisher_t       *pub,
         nros_rmw_serialize_size_cb  size_cb,
         nros_rmw_serialize_chunk_cb chunk_cb,
         void                       *user_ctx);
@@ -470,8 +470,8 @@ typedef struct nros_rmw_vtable_t {
      * probe. Less work than service-availability probe — no
      * discovery state required, just a wire-level round trip
      * (ICMP-like). */
-    nros_rmw_ret_t (*ping_session)(
-        nros_rmw_session_t *session,
+    rmw_ret_t (*ping_session)(
+        rmw_session_t *session,
         int32_t             timeout_ms);
 } nros_rmw_vtable_t;
 ```
@@ -992,7 +992,7 @@ the same change as `set_wake_callback` lands.
 ### Thread F — Ping primitive
 
 - [x] **124.F.1 — vtable slot.** Added `ping_session(session,
-      timeout_ms) -> nros_rmw_ret_t` to `nros_rmw_vtable_t` +
+      timeout_ms) -> rmw_ret_t` to `nros_rmw_vtable_t` +
       matching `Option<unsafe extern "C" fn(...)>` on
       `NrosRmwVtable`. `Session::ping_session` trait method on
       `nros-rmw` returns `Err(Unsupported)` by default; adapter

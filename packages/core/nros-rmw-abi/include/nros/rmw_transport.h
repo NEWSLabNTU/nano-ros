@@ -106,7 +106,7 @@ typedef struct nros_transport_ops_s {
      * @param params Opaque per-transport metadata (e.g. UART baud
      *               rate, USB-CDC endpoint id). May be NULL.
      * @retval NROS_RMW_RET_OK on success.
-     * @retval <0 on failure (any `nros_rmw_ret_t` error code).
+     * @retval <0 on failure (any `rmw_ret_t` error code).
      */
     int32_t (*open)(void *user_data, const void *params);
 
@@ -123,7 +123,7 @@ typedef struct nros_transport_ops_s {
      * `NROS_RMW_RET_TIMEOUT`.
      *
      * @retval NROS_RMW_RET_OK on success.
-     * @retval <0 on failure (any `nros_rmw_ret_t` error code).
+     * @retval <0 on failure (any `rmw_ret_t` error code).
      */
     int32_t (*write)(void *user_data, const uint8_t *buf, size_t len);
 
@@ -131,7 +131,7 @@ typedef struct nros_transport_ops_s {
      * Receive up to `len` bytes into `buf` within `timeout_ms`.
      *
      * @retval >=0 number of bytes read (may be less than `len`).
-     * @retval <0 on error / timeout (any `nros_rmw_ret_t` error
+     * @retval <0 on error / timeout (any `rmw_ret_t` error
      *            code).
      */
     int32_t (*read)(void *user_data, uint8_t *buf, size_t len,
@@ -157,7 +157,7 @@ typedef struct nros_transport_ops_s {
  *         `NROS_TRANSPORT_OPS_ABI_VERSION_V1`. The previously
  *         installed transport (if any) is left untouched.
  */
-nros_rmw_ret_t nros_rmw_cffi_set_custom_transport(const nros_transport_ops_t *ops);
+rmw_ret_t nros_rmw_cffi_set_custom_transport(const nros_transport_ops_t *ops);
 
 #ifdef __cplusplus
 }  // extern "C"

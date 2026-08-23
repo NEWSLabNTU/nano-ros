@@ -42,7 +42,7 @@ extern "C" {
  * @retval NROS_RMW_RET_OK    on success.
  * @retval NROS_RMW_RET_ERROR if the runtime rejected the vtable.
  */
-nros_rmw_ret_t nros_rmw_xrce_register(void);
+rmw_ret_t nros_rmw_xrce_register(void);
 
 /**
  * Phase 115.K.2.4 — runtime transport vtable for the XRCE-DDS
@@ -62,12 +62,12 @@ nros_rmw_ret_t nros_rmw_xrce_register(void);
  *   active period (i.e. until `close` returns).
  * - `open`: open the underlying medium. `params` is opaque
  *   per-transport metadata; may be NULL. Returns 0 on success,
- *   negative `nros_rmw_ret_t` on failure.
+ *   negative `rmw_ret_t` on failure.
  * - `close`: tear the transport down. Complement of `open`.
  * - `write`: send `len` bytes from `buf`. Returns 0 on success,
- *   negative `nros_rmw_ret_t` on failure.
+ *   negative `rmw_ret_t` on failure.
  * - `read`: receive up to `len` bytes within `timeout_ms`. Returns
- *   the non-negative byte count on success, negative `nros_rmw_ret_t`
+ *   the non-negative byte count on success, negative `rmw_ret_t`
  *   on error / timeout.
  *
  * Threading contract (matches `<nros/transport.h>`):
@@ -106,7 +106,7 @@ typedef struct nros_rmw_xrce_transport_ops_t {
  * @retval NROS_RMW_RET_INVALID_ARGUMENT if `ops` is NULL or any of
  *         the four fn pointers is NULL.
  */
-nros_rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
+rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
     const nros_rmw_xrce_transport_ops_t *ops, int framing);
 
 /**
@@ -129,7 +129,7 @@ nros_rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
  * @retval NROS_RMW_RET_NO_DATA     no transport currently registered.
  * @retval NROS_RMW_RET_UNSUPPORTED runtime drain symbol not exported (K.2.4 gap).
  */
-nros_rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing);
+rmw_ret_t nros_rmw_xrce_init_custom_transport(int framing);
 
 #ifdef __cplusplus
 }

@@ -63,7 +63,7 @@ preserved when callers don't override.
   relax it later, but that's a follow-up, not required).
 - **C↔C++ vtable (ABI bump):** `nros-rmw-cffi/src/rust_adapter.rs:597,716`
   trampolines + the vtable `create_service_{server,client}` slots have **no qos
-  arg**. Add `qos: nros_rmw_qos_t` (the struct already crosses the FFI for
+  arg**. Add `qos: rmw_qos_profile_t` (the struct already crosses the FFI for
   pub/sub — reuse it). This is the one ABI change; both sides bump together.
 - **zenoh** (`nros-rmw-zenoh/src/shim/session.rs:398,441`): pass `qos` to
   `ZenohServiceServer::new` / `ZenohServiceClient::new` (currently `None`); keep

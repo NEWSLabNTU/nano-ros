@@ -18,14 +18,14 @@ using namespace nros_rmw_cyclonedds;
 
 // Phase 108 event hooks left NULL until a follow-up phase wires
 // Cyclone listeners through to the runtime's status-event surface.
-constexpr nros_rmw_ret_t (*kRegisterSubscriptionEvent)(
-    nros_rmw_subscription_t *, nros_rmw_event_kind_t, uint32_t,
-    nros_rmw_event_callback_t, void *) = nullptr;
-constexpr nros_rmw_ret_t (*kRegisterPublisherEvent)(
-    nros_rmw_publisher_t *, nros_rmw_event_kind_t, uint32_t,
-    nros_rmw_event_callback_t, void *) = nullptr;
-constexpr nros_rmw_ret_t (*kAssertPublisherLiveliness)(
-    nros_rmw_publisher_t *) = nullptr;
+constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
+    rmw_subscription_t *, rmw_event_type_t, uint32_t,
+    rmw_event_callback_t, void *) = nullptr;
+constexpr rmw_ret_t (*kRegisterPublisherEvent)(
+    rmw_publisher_t *, rmw_event_type_t, uint32_t,
+    rmw_event_callback_t, void *) = nullptr;
+constexpr rmw_ret_t (*kAssertPublisherLiveliness)(
+    rmw_publisher_t *) = nullptr;
 
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
@@ -143,7 +143,7 @@ void zephyr_log_sink(void *userdata, const dds_log_data_t *data) {
 
 extern "C" __attribute__((weak)) void nros_rmw_cyclonedds_register_app_descriptors(void) {}
 
-extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
+extern "C" rmw_ret_t nros_rmw_cyclonedds_register(void) {
     nros_rmw_cyclonedds_register_app_descriptors();
 #ifdef __ZEPHYR__
     dds_set_log_sink(zephyr_log_sink, nullptr);

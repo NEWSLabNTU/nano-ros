@@ -173,13 +173,13 @@ buffer shape changes.
 
 ```c
 /* CDR-byte loan (existing — Phase 99 / 102 shape). */
-nros_rmw_ret_t (*loan_publish_cdr)(
-    nros_rmw_publisher_t *pub,
+rmw_ret_t (*loan_publish_cdr)(
+    rmw_publisher_t *pub,
     size_t requested_len,
     uint8_t **slot_out,
     size_t *cap_out);
-nros_rmw_ret_t (*commit_publish_cdr)(
-    nros_rmw_publisher_t *pub,
+rmw_ret_t (*commit_publish_cdr)(
+    rmw_publisher_t *pub,
     uint8_t *slot,
     size_t actual_len);
 
@@ -189,24 +189,24 @@ nros_rmw_ret_t (*commit_publish_cdr)(
  * `type_size_bytes` parameter); calling try_loan_typed when the slot
  * is in use returns NROS_RMW_RET_LOAN_NOT_SUPPORTED with errno-style
  * "would block" semantics handled by the runtime. */
-nros_rmw_ret_t (*loan_publish_typed)(
-    nros_rmw_publisher_t *pub,
+rmw_ret_t (*loan_publish_typed)(
+    rmw_publisher_t *pub,
     void **slot_out);
-nros_rmw_ret_t (*commit_publish_typed)(
-    nros_rmw_publisher_t *pub,
+rmw_ret_t (*commit_publish_typed)(
+    rmw_publisher_t *pub,
     void *slot);
 ```
 
 Same shape on the receive side:
 
 ```c
-nros_rmw_ret_t (*loan_recv_cdr)(...);     /* Phase 99 — existing */
-nros_rmw_ret_t (*release_recv_cdr)(...);
+rmw_ret_t (*loan_recv_cdr)(...);     /* Phase 99 — existing */
+rmw_ret_t (*release_recv_cdr)(...);
 
-nros_rmw_ret_t (*loan_recv_typed)(
+rmw_ret_t (*loan_recv_typed)(
     nros_rmw_subscriber_t *sub,
     const void **slot_out);
-nros_rmw_ret_t (*release_recv_typed)(
+rmw_ret_t (*release_recv_typed)(
     nros_rmw_subscriber_t *sub,
     const void *slot);
 ```

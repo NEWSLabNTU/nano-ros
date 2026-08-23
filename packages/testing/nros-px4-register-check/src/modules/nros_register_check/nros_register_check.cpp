@@ -64,7 +64,7 @@ __EXPORT int nros_register_check_main(int argc, char *argv[])
 		return nros_register_check_usage();
 	}
 
-	nros_rmw_ret_t rc = nros_rmw_uorb_register();
+	rmw_ret_t rc = nros_rmw_uorb_register();
 
 	if (rc == NROS_RMW_RET_OK) {
 		PX4_INFO("nros_rmw_uorb_register() -> OK");

@@ -13,12 +13,12 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 > **Phase-301 rename.** The vtable historically diverged from rmw's
 > vocabulary (`subscriber`, `service_server`, `service_client`,
 > `open`/`close`). Phase-301 (issues 0240/0241) aligned it: the entity
-> types are now `nros_rmw_subscription_t` / `nros_rmw_service_t` /
-> `nros_rmw_client_t`, the session slots are `create_session` /
+> types are now `rmw_subscription_t` / `rmw_service_t` /
+> `rmw_client_t`, the session slots are `create_session` /
 > `destroy_session`, and the deprecated blocking `call_raw` slot is
 > deleted (`send_request_raw` + `try_recv_reply_raw` is the one
 > request/reply path). Transport hints (`tx_express`,
-> `rx_buffer_hint`) moved out of `nros_rmw_qos_t` into per-create
+> `rx_buffer_hint`) moved out of `rmw_qos_profile_t` into per-create
 > options structs. This page uses the new names throughout.
 
 ## TL;DR
@@ -27,14 +27,14 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 |---------|------------------|------------------|
 | Plugin loading | `dlopen("librmw_*.so")` at runtime | Single vtable registered at init |
 | Init sequence | `rmw_init_options_t` → `rmw_context_t` → entities | One `create_session()` call, returns the session |
-| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | Typed-with-opaque-tail: `nros_rmw_publisher_t` / `_subscription_t` / `_service_t` / `_client_t` (visible metadata + opaque `backend_data`) |
+| Entity types | `rmw_publisher_t` / `rmw_subscription_t` / `rmw_service_t` / `rmw_client_t` | Typed-with-opaque-tail: `rmw_publisher_t` / `_subscription_t` / `_service_t` / `_client_t` (visible metadata + opaque `backend_data`) |
 | Wait | `rmw_wait(waitset, timeout)` blocks the caller | `drive_io(session, timeout_ms)` drives I/O once |
 | Serialization | typesupport-driven (rosidl) | Pre-serialized CDR bytes only |
 | Graph queries | `rmw_get_topic_names_and_types`, … | None |
 | QoS profiles | Full DDS profile match between endpoints | Same field set; per-backend support advertised; synchronous `IncompatibleQos` on create instead of runtime mismatch event |
 | DDS events | `rmw_event_t` (`rmw_take_event`) | None |
 | Loaned messages | Optional `rmw_borrow_loaned_message` | First-class `loan_publish` / `loan_recv` |
-| Error returns | `rmw_ret_t` (`RMW_RET_OK`, …) | `nros_rmw_ret_t` (`NROS_RMW_RET_OK`, …) — same named-constant style |
+| Error returns | `rmw_ret_t` (`RMW_RET_OK`, …) | `rmw_ret_t` (`NROS_RMW_RET_OK`, …) — same named-constant style |
 
 ## 1. Plugin loading vs. compile-time backend
 
@@ -85,8 +85,8 @@ rmw_shutdown(&context);
 options + context:
 
 ```c
-nros_rmw_session_t session = {0};
-nros_rmw_ret_t ret = vtable->create_session(locator, mode, domain_id, node_name, &session);
+rmw_session_t session = {0};
+rmw_ret_t ret = vtable->create_session(locator, mode, domain_id, node_name, &session);
 /* ... use &session to create_publisher / create_subscription / … */
 vtable->destroy_session(&session);
 ```
@@ -118,28 +118,28 @@ inline; backend-private state stays behind an opaque `backend_data`
 pointer.
 
 ```c
-typedef struct nros_rmw_publisher_t {
+typedef struct rmw_publisher_t {
     const char *   topic_name;          /* borrowed; outlives the publisher */
     const char *   type_name;           /* borrowed */
-    nros_rmw_qos_t qos;
+    rmw_qos_profile_t qos;
     bool           can_loan_messages;   /* matches upstream's field of the same name */
     uint8_t        _reserved[7];        /* forward-compat; must be zero */
     void *         backend_data;        /* opaque */
-} nros_rmw_publisher_t;
+} rmw_publisher_t;
 
-nros_rmw_ret_t (*create_publisher)(
-    nros_rmw_session_t * session,
+rmw_ret_t (*create_publisher)(
+    rmw_session_t * session,
     const char * topic_name, const char * type_name, const char * type_hash,
-    uint32_t domain_id, const nros_rmw_qos_t * qos,
-    const nros_rmw_publisher_options_t * options,   /* transport hints; NULL = defaults */
-    nros_rmw_publisher_t * out);   /* runtime-allocated; backend fills */
+    uint32_t domain_id, const rmw_qos_profile_t * qos,
+    const rmw_publisher_options_t * options,   /* transport hints; NULL = defaults */
+    rmw_publisher_t * out);   /* runtime-allocated; backend fills */
 ```
 
-Same shape for `nros_rmw_subscription_t` (whose
-`nros_rmw_subscription_options_t` carries `rx_buffer_hint`, as the
+Same shape for `rmw_subscription_t` (whose
+`rmw_subscription_options_t` carries `rx_buffer_hint`, as the
 publisher's carries `tx_express`). Service entities
-(`nros_rmw_service_t`, `nros_rmw_client_t`) and
-`nros_rmw_session_t` have no `qos` and no `can_loan_messages` —
+(`rmw_service_t`, `rmw_client_t`) and
+`rmw_session_t` have no `qos` and no `can_loan_messages` —
 service-level QoS doesn't generalise across non-DDS backends
 (see [QoS, Section 7](#7-qos-minimal-subset-not-full-dds-profiles))
 and service request/reply uses the byte-buffer API rather than the
@@ -210,7 +210,7 @@ callbacks asynchronously.
 **nano-ros.** The executor calls a single drive-I/O entry point:
 
 ```c
-nros_rmw_ret_t (*drive_io)(nros_rmw_session_t * session, int32_t timeout_ms);
+rmw_ret_t (*drive_io)(rmw_session_t * session, int32_t timeout_ms);
 ```
 
 The backend dispatches whatever receive / send / wakeup work is
@@ -346,10 +346,10 @@ The backend dereferences `ros_message` according to a
 receive *already-CDR-encoded* bytes:
 
 ```c
-nros_rmw_ret_t (*publish_raw)(nros_rmw_publisher_t * publisher,
+rmw_ret_t (*publish_raw)(rmw_publisher_t * publisher,
                               const uint8_t * data, size_t len);
 
-int32_t (*try_recv_raw)(nros_rmw_subscription_t * subscription,
+int32_t (*try_recv_raw)(rmw_subscription_t * subscription,
                         uint8_t * buf, size_t len);
 ```
 
@@ -414,7 +414,7 @@ runtime events.
 **nano-ros.** Same field set, packed into 24 bytes:
 
 ```c
-typedef struct nros_rmw_qos_t {
+typedef struct rmw_qos_profile_t {
     uint8_t  reliability;
     uint8_t  durability;
     uint8_t  history;
@@ -426,7 +426,7 @@ typedef struct nros_rmw_qos_t {
     uint32_t liveliness_lease_ms;     /* 0 = infinite */
     uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];
-} nros_rmw_qos_t;
+} rmw_qos_profile_t;
 ```
 
 Standard profile constants
@@ -590,7 +590,7 @@ C side mirrors with `nros_subscription_set_*_callback` functions.
   shows up; additive.
 - **`QOS_INCOMPATIBLE`** / **`INCOMPATIBLE_TYPE`** — these surface
   at create time, not as runtime events. The existing
-  `nros_rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS`) carry
+  `rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS`) carry
   the diagnostic synchronously from `create_publisher` /
   `create_subscription`. No event needed.
 
@@ -688,7 +688,7 @@ thread-local error string via `rmw_set_error_string`.
 different sign convention, no thread-local error string:
 
 ```c
-typedef int32_t nros_rmw_ret_t;
+typedef int32_t rmw_ret_t;
 #define NROS_RMW_RET_OK                       0
 #define NROS_RMW_RET_ERROR                   -1
 #define NROS_RMW_RET_TIMEOUT                 -2
@@ -709,9 +709,9 @@ Two return-shape conventions, picked by call shape:
 
 | Returns | Success | Failure |
 |---------|---------|---------|
-| `nros_rmw_ret_t` + entity-struct out-param (`create_session`, `create_publisher`, `create_subscription`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
-| `nros_rmw_ret_t` (`destroy_session`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
-| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`) | `>= 0` (bytes received) | negative `nros_rmw_ret_t` |
+| `rmw_ret_t` + entity-struct out-param (`create_session`, `create_publisher`, `create_subscription`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
+| `rmw_ret_t` (`destroy_session`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
+| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`) | `>= 0` (bytes received) | negative `rmw_ret_t` |
 
 **Differences from upstream.**
 

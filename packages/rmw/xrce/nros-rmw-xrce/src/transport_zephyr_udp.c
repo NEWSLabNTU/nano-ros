@@ -70,7 +70,7 @@ static size_t zephyr_udp_read(struct uxrCustomTransport *t,
     return n == NROS_PLATFORM_NET_SOCKET_ERROR ? 0u : n;
 }
 
-nros_rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
+rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
                                     const char *host, const char *port) {
     if (st == NULL || host == NULL || port == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

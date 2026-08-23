@@ -34,9 +34,9 @@ int64_t get_le64(const uint8_t *in) {
 
 // Phase-301: the blocking `call_raw` vtable slot was deleted; emulate
 // the old blocking call with the non-blocking send + poll pair.
-int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
+int32_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
                       size_t rep_cap) {
-    nros_rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
+    rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -47,7 +47,7 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
          * loop, which is what `!= NO_DATA` used to mean. */
         size_t n = 0;
         bool took = false;
-        nros_rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }
@@ -60,7 +60,7 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
 }
 } // namespace
 
-extern "C" nros_rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
                                                         const nros_rmw_vtable_t *vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
@@ -72,7 +72,7 @@ int main() {
         return 1;
     }
 
-    nros_rmw_session_t s{};
+    rmw_session_t s{};
     s.node_name  = "ros2_srv_client";
     s.namespace_ = "/";
     uint32_t domain = 0;
@@ -83,7 +83,7 @@ int main() {
         return 2;
     }
 
-    nros_rmw_client_t cli{};
+    rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
     if (g_vt->create_client(&s, cli.service_name, cli.type_name, "",

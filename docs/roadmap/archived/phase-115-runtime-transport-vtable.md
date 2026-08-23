@@ -350,7 +350,7 @@ Ordered execution-first (policy → port → tracking entries):
     `uxr_init_udp_transport` + `uxr_init_session` +
     `uxr_create_session_retries`, allocates output / input reliable
     streams, parks the per-session state in
-    `nros_rmw_session_t::backend_data`. `xrce_session_close` calls
+    `rmw_session_t::backend_data`. `xrce_session_close` calls
     `uxr_delete_session` + `uxr_close_udp_transport` + frees the
     state. `xrce_session_drive_io` forwards to `uxr_run_session_time`.
     CMakeLists now compiles the vendored micro-xrce-dds-client +
@@ -1471,7 +1471,7 @@ Ordered easiest → hardest:
      `packages/core/nros-rmw-cffi/src/lib.rs` — accepts the
      `*const NrosTransportOps` struct, forwards to
      `nros_rmw::set_custom_transport(Some(*ops))`, returns
-     canonical `nros_rmw_ret_t` codes
+     canonical `rmw_ret_t` codes
      (`NROS_RMW_RET_INCOMPATIBLE_ABI = -14` on abi_version
      mismatch). NULL clears the slot. 3/3 smoke tests pass
      (`packages/core/nros-rmw-cffi/tests/set_custom_transport.rs`).
