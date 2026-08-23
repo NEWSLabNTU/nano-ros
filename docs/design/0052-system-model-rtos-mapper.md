@@ -326,6 +326,15 @@ earlier version had nano-ros *consume* a resolved chain structure that
 The realization design below is unchanged; it operates on the DAG the shared
 extraction crate produces, realized with RTOS kernel features.
 
+> **The realizer's priority rule is RFC-0079.** The "*priorityless* ordered/
+> segmented structure" this section specifies is exactly what RFC-0079 §3
+> derives (deadline-monotonic over the declared contract) and §5 allocates into
+> a per-port address plan. Worth recording that the implementation went the
+> other way for a while: raw per-platform priority tables in the user's
+> `system.toml`, which pushed the realizer's job onto the user and cost 3.5
+> hand-written kernel numbers per tier. Nothing in this RFC is retired by that
+> — RFC-0079 is the missing half, not a correction.
+
 ### The realization — causal segments over tiers
 
 The tier tables in §"The mapper" are a **fixed-priority realization**, not

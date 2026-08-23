@@ -7,6 +7,7 @@ last-reviewed: 2026-06
 implements-tracked-by: [phase-227, phase-228]
 supersedes: []
 superseded-by: null
+superseded-in-part-by: [rfc-0079]
 ---
 
 # RTOS Scheduling Features for nano-ros
@@ -258,6 +259,20 @@ Regardless of user customization, these invariants must hold:
 - **Priority model**: Normalized 0–31 range (higher = more important), mapped per
   platform. Provides fine-grained control while the core library handles
   direction mapping (FreeRTOS: higher=more, ThreadX: lower=more).
+
+  > **RETIRED as a user-facing concept — RFC-0079.** The normalized scale was
+  > issue 0623's defect rather than a convenience over it: tier priorities and
+  > transport priorities land in ONE kernel scheduler, so a tier written `5`
+  > against a transport band reading `16` was ABOVE it, not below, and the two
+  > numbers looked comparable while meaning opposite things. `[tiers.*]` now
+  > carries no number at all — the user declares a timing contract and the
+  > realizer allocates (RFC-0079 §3, §5). `to_freertos_priority` survives only
+  > as the single conversion for callers still supplying normalized values;
+  > nothing in the FreeRTOS default path calls it.
+  >
+  > The platform capability tables below are NOT retired. They are the input to
+  > RFC-0079 §4's per-port address plans, which is the first thing that has
+  > ever consumed them systematically.
 - **Configuration source**: `config.toml` file, matching existing pattern.
   Board crates parse the `[scheduling]` section via `Config::from_toml()`.
 - **Zenoh-pico task control**: Platform-shim globals set before `zpico_open()`.
