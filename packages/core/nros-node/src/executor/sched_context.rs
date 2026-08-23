@@ -360,6 +360,17 @@ pub struct SporadicState {
     /// past the entry, so a starved tier looks exactly like an idle one. This
     /// counter is what lets it say so. Reset on any dispatch.
     pub consecutive_budget_skips: u32,
+    /// issue 0736 — skips and dispatches over a rolling window.
+    ///
+    /// The consecutive counter above catches TOTAL starvation quickly and
+    /// misses the commoner shape entirely: a budget that merely THROTTLES.
+    /// Measured on nuttx-arm/rust, a 5 ms budget per 10 ms period held the
+    /// tier to about a quarter of its declared rate — skip a few, refill,
+    /// dispatch, repeat — so no streak ever reached the consecutive threshold
+    /// and the tier was silently 4x slow. A declaration that cannot be met has
+    /// to be reported whether it starves or merely throttles.
+    pub window_skips: u32,
+    pub window_dispatches: u32,
 }
 
 impl SporadicState {
@@ -370,6 +381,8 @@ impl SporadicState {
             period_us,
             last_refill_ms: 0,
             consecutive_budget_skips: 0,
+            window_skips: 0,
+            window_dispatches: 0,
         }
     }
 
@@ -409,6 +422,36 @@ impl SporadicState {
     pub fn consume(&mut self, us: u32) {
         self.budget_remaining_us = self.budget_remaining_us.saturating_sub(us);
         self.consecutive_budget_skips = 0;
+        self.window_dispatches = self.window_dispatches.saturating_add(1);
+    }
+
+    /// How many dispatch opportunities before the throttle ratio is judged.
+    /// Long enough that a brief burst of skips is not news; short enough to
+    /// close inside a short run. 1000 was the first value and it NEVER closed
+    /// on the measured case — that tier misses roughly 240 dispatches over the
+    /// whole e2e window, so a 1000-opportunity window is larger than the
+    /// evidence and the warning existed without ever being reachable, which is
+    /// the same silence it was written to break.
+    pub const BUDGET_WINDOW: u32 = 200;
+    /// Report when more than this share of the window was skipped. A quarter
+    /// is already a tier delivering at 75% of what it declared.
+    pub const BUDGET_SKIP_REPORT_PERMILLE: u32 = 250;
+
+    /// Close the window if it is full. Returns `Some((skips, total))` when the
+    /// window closed with a skip share worth reporting.
+    pub fn take_budget_window(&mut self) -> Option<(u32, u32)> {
+        let total = self.window_skips + self.window_dispatches;
+        if total < Self::BUDGET_WINDOW {
+            return None;
+        }
+        let skips = self.window_skips;
+        self.window_skips = 0;
+        self.window_dispatches = 0;
+        if skips.saturating_mul(1000) / total.max(1) >= Self::BUDGET_SKIP_REPORT_PERMILLE {
+            Some((skips, total))
+        } else {
+            None
+        }
     }
 
     /// Record one budget-skipped dispatch. Returns `Some(n)` when the streak
@@ -416,6 +459,7 @@ impl SporadicState {
     /// so a starved SC is loud once and does not then flood the console.
     pub fn note_budget_skip(&mut self) -> Option<u32> {
         self.consecutive_budget_skips = self.consecutive_budget_skips.saturating_add(1);
+        self.window_skips = self.window_skips.saturating_add(1);
         let n = self.consecutive_budget_skips;
         // Once when the streak is clearly not noise, then sparsely: a starved
         // SC must be loud, and must not then drown the console it is reporting

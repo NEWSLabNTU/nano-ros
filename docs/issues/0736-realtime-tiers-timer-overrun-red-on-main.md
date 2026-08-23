@@ -548,3 +548,81 @@ value is not this issue's answer, and which side of the tiers a NuttX transport
 should sit on is 0506's open question. Shipping the knob without choosing the
 number is the point: "both orderings are legitimate; choosing by accident is
 not."
+
+## The residual is the KERNEL sporadic server — and that reverses an earlier finding (2026-08-23)
+
+Two corrections to this issue's own record, both from measurement.
+
+### 1. The publish failures were never the limiter
+
+The section above says the cell is "still red for a different reason — publishes
+are failing", and describes the run as "full of" `_Z_ERR_TRANSPORT_TX_FAILED`.
+That was an impression from `head`, never a count. Counted:
+
+```
+/ctrl delivered 75, publish failures  3
+/telem delivered 30, publish failures 6
+```
+
+Three failures against seventy-five deliveries is not what holds `/ctrl` to a
+quarter of its declared rate. The TX errors are real and worth their own look,
+but they are a side effect here, not the cause. My earlier framing sent the next
+reader at the transport; it should have sent them back to the dispatch rate.
+
+### 2. With the executor gate fixed, the KERNEL half became the binding one
+
+`budget_us`/`period_us` on a NuttX tier is enforced TWICE — once cooperatively
+by `spin_once`, once by NuttX's own `SCHED_SPORADIC` server — from ONE
+declaration. This issue previously concluded:
+
+> Removing the kernel half could never have helped.
+
+True when it was written, and false now. That conclusion came from an
+experiment run BEFORE the executor's `delta_us` over-charging was fixed: with
+the cooperative gate skipping 96 % of spins, the kernel half had nothing left to
+constrain, so disabling it changed nothing. Once the executor stopped
+over-charging, the kernel became the binding constraint.
+
+Isolated by disabling ONLY the kernel apply (`apply_tier_sporadic`), leaving the
+declaration and the executor's gate in place:
+
+| kernel `SCHED_SPORADIC` | `realtime_tiers` |
+| --- | --- |
+| ON — as declared | **4 / 4 FAIL** (`/ctrl` ~62-75 against `/telem` ~25-30, needs 3x) |
+| OFF | **3 / 3 PASS** |
+
+And removing `budget_us`/`period_us` from the bringup entirely — which disables
+BOTH halves — also passes. So the causal chain is: the declaration engages a
+kernel sporadic server whose replenishment cannot sustain this tier's callbacks
+on this target.
+
+The callbacks are not large. The image's own contract monitor prints
+`timer-overrun-runtime timer measured=1..4 declared=0` — 1-4 ms against a 5 ms
+budget per 10 ms period. That is satisfiable on paper and is not being satisfied
+in practice, which points at the kernel's replenishment accounting under
+`-icount` (this guest's clock runs 6.5-7.9x ahead, measured earlier in this
+issue) rather than at the arithmetic.
+
+### The cell is FLAKY, not deterministically red
+
+Worth recording because it changes how any future measurement must be read: with
+the budget in place the cell passed 1 run in roughly 6 and failed the rest. A
+single green here means nothing. Every rate above is from consecutive runs.
+
+### What is NOT fixed
+
+Nothing is changed in the product by this section — it is a diagnosis. The
+choice it leaves is the one this issue has been circling:
+
+* the declaration `budget_us = 5000 / period_us = 10000` is not satisfiable for
+  these callbacks on this target, so either it is wrong and should change, or
+* the kernel sporadic path is mis-serving a satisfiable declaration.
+
+Either way an unsatisfiable declaration must be REPORTED. The executor side now
+does that (`sporadic budget throttled sched context N: X of the last Y dispatch
+opportunities were skipped`), added here after the consecutive-streak warning
+proved unreachable for a budget that merely THROTTLES rather than starves — the
+measured tier never accumulated a streak because it skips a few, refills, and
+dispatches. **The kernel side has no equivalent**: NuttX's sporadic server
+throttles silently and nothing in the image can currently see it. That is the
+gap a fix should close.

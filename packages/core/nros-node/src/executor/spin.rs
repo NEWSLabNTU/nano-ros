@@ -5469,6 +5469,25 @@ impl<'s> Executor<'s> {
                     // indistinguishable from an idle one. It took a hand-run
                     // 45 s image and a per-executor probe to learn that this
                     // line was skipping 96 % of one tier's spins.
+                    // The rolling window catches a budget that THROTTLES; the
+                    // streak below catches one that starves outright. issue
+                    // 0736 needed both: the measured case skipped ~3 spins in
+                    // 4 without ever reaching a streak, so the tier ran at a
+                    // quarter of its declared rate in silence.
+                    if let Some((skips, total)) = self
+                        .sporadic_states
+                        .get_mut(sc_idx)
+                        .and_then(|st| st.as_mut())
+                        .and_then(|st| st.take_budget_window())
+                    {
+                        nros_log::nros_warn!(
+                            nros_log::get_logger("nros"),
+                            "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this tier's callbacks on this target.",
+                            sc_idx,
+                            skips,
+                            total
+                        );
+                    }
                     if let Some(streak) = self
                         .sporadic_states
                         .get_mut(sc_idx)
