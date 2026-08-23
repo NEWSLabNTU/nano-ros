@@ -99,6 +99,56 @@ instead of reading a cached graph. That is the trade — correctness (each query
 uses the caller's RMW and locator; no test can kill a singleton another test is
 using) against work per call.
 
+## Follow-up sweep 2026-08-23 — every remaining hand-rolled site
+
+The fix above unified the zenoh env; this swept the rest of the tree for the
+same shape. Two more defects, one of which had been shipping a wrong answer.
+
+**`spawn_domain_bridge` bridged the wrong RMW.** Its hand-built setup line
+dropped `RMW_IMPLEMENTATION`, so the bridge ran on the image default
+`rmw_fastrtps_cpp` while both callers build `Middleware::Cyclonedds` peers and
+`docker/ros-editions/Dockerfile` sets no default. The lane passes only because
+two RTPS vendors interoperate on a plain topic; over zenoh the same bypass is a
+bridge with no shared wire. The comment defending it — "the bridge sets domains
+itself" — was true and irrelevant: the domain is inert there
+(`InitOptions::set_domain_id` from the YAML outranks the env), which says
+nothing about the RMW. `spawn_zenoh_router` shared the bypass, opting the router
+out of the snippet that decides which INSTALL it comes from — router and RMW
+link one `libzenohc` (RFC-0075, drift class 0609). Both route through
+`docker_run` now, which also removed a duplicated container-invocation block.
+
+**Three RMW probes hardcoded `humble`**, in a module whose premise is that the
+host's edition varies. On a jazzy host the source fails, the probe returns
+false, and every guarded test SKIPS — green having measured nothing on exactly
+the host it existed to exercise. One `is_ros2_package_available(distro, pkg)`
+now, public signatures unchanged.
+
+**Gate:** `check-ros-env-spelling`. Exemptions structural where possible
+(per-language comments; a literal `<distro>` cannot execute, so it is prose
+wherever it appears), otherwise a path-keyed allowlist with a reason each —
+never a glob, which would silently cover the next script added. `#` is not a
+comment in Rust, because `r#"source /opt/ros/…"#` is the likeliest bypass shape.
+
+## Residual, part 2 — the same class one field over
+
+`NROS_LOCATOR` is a nano-ros variable, so a docker `rmw_zenoh_cpp` peer ignores
+the `Middleware::Zenoh` locator entirely: the host backend writes a real
+`ZENOH_SESSION_CONFIG_URI` pointing at it, the docker backend does not. It works
+only because every lane uses the default `tcp/127.0.0.1:7447` with
+`--network host`. A non-default locator would be honoured by one backend and
+dropped by the other — exactly the shape this issue is about, one field over
+from what `both_backends_agree_on_middleware_and_domain` currently guards.
+Extending that test to the locator is the obvious next step, and
+`spawn_zenoh_router`'s readiness poll hardcodes `127.0.0.1:7447` for the same
+reason.
+
+Three smaller ones, all recorded rather than silently carried: the docker Zenoh
+arm uses `;` where the other arms use `&&`, so a failed `source` still runs the
+inner command against an unsourced ROS; `/opt/nros-overlay` is a permanent no-op
+guarding a path RFC-0075 deleted; `HostRosEnv::available()` checks the distro
+but never the RMW its `Middleware` selects, so a cell can report available and
+then fail at runtime instead of skipping.
+
 ## Verification
 
 Tier 1, two samples on the final state: `Real failures: 0 / 0`, matching
