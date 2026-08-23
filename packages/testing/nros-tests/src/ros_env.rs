@@ -205,8 +205,12 @@ impl HostRosEnv {
     /// that must outlive any process reading it.
     fn env_snippet(&self) -> (String, Option<tempfile::TempDir>) {
         match &self.mw {
-            Middleware::Zenoh { locator, .. } => {
-                let (snip, dir) = ros2::ros2_env_setup_with_locator(&self.distro, locator);
+            // `domain_id`, NOT `..` — issue 0763. This match dropped it, so a
+            // host zenoh peer ran on domain 0 whatever the cell asked for,
+            // while the docker backend exported it: one `Middleware` value,
+            // two different environments depending on the backend.
+            Middleware::Zenoh { locator, domain_id } => {
+                let (snip, dir) = ros2::ros2_env_setup_zenoh(&self.distro, locator, *domain_id);
                 (snip, Some(dir))
             }
             Middleware::FastRtps { domain_id } => (
@@ -1074,5 +1078,54 @@ mod tests {
         assert_eq!(env.edition(), "no_such_distro_xyz");
         // available() is false (no image built) — the skip contract, not a panic.
         assert!(!env.available());
+    }
+
+    /// Issue 0763 — the two backends must produce the SAME environment for the
+    /// same `Middleware`, because that is the whole claim `RosEnv` makes.
+    ///
+    /// They did not. `Middleware::Zenoh` carries a `domain_id`; the docker
+    /// backend exported it and the host backend destructured it away with
+    /// `{ locator, .. }`, so a host zenoh peer ran on domain 0 whatever the
+    /// cell asked for. Nothing caught it because each backend was only ever
+    /// read on its own.
+    ///
+    /// The assertion is on the env vars that decide whether two peers can SEE
+    /// each other — the middleware and the domain — not on the whole snippet:
+    /// the backends legitimately differ in how they reach the install (host
+    /// sources a distro, docker also sources an overlay) and in how the zenoh
+    /// session is pointed at a router.
+    #[test]
+    fn both_backends_agree_on_middleware_and_domain() {
+        for (mw, want_rmw, want_domain) in [
+            (
+                Middleware::Zenoh {
+                    locator: "tcp/127.0.0.1:7999".to_string(),
+                    domain_id: 42,
+                },
+                "rmw_zenoh_cpp",
+                42,
+            ),
+            (Middleware::FastRtps { domain_id: 7 }, "rmw_fastrtps_cpp", 7),
+            (
+                Middleware::Cyclonedds { domain_id: 13 },
+                "rmw_cyclonedds_cpp",
+                13,
+            ),
+        ] {
+            let host = HostRosEnv::new("humble", mw.clone()).env_snippet().0;
+            let docker = DockerRosEnv::new("humble", mw.clone()).env_snippet();
+            for (backend, snippet) in [("host", &host), ("docker", &docker)] {
+                assert!(
+                    snippet.contains(&format!("RMW_IMPLEMENTATION={want_rmw}")),
+                    "{backend} backend does not select {want_rmw} for {mw:?}:\n{snippet}"
+                );
+                assert!(
+                    snippet.contains(&format!("ROS_DOMAIN_ID={want_domain}")),
+                    "{backend} backend drops the domain for {mw:?} — a peer and the \
+                     nano-ros node must share it or they never discover each other, and \
+                     ros2cli keys its daemon on this alone:\n{snippet}"
+                );
+            }
+        }
     }
 }

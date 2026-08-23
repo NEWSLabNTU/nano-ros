@@ -214,14 +214,60 @@ fn shipped_session_config() -> Option<serde_json::Value> {
 /// Uses `ZENOH_SESSION_CONFIG_URI` to point rmw_zenoh_cpp at a JSON5 config
 /// file with `mode: "client"` and the specified locator as the connect endpoint.
 pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, tempfile::TempDir) {
+    // Domain 0 is a CHOICE here, not an absence — see `ros2_env_setup_zenoh`.
+    ros2_env_setup_zenoh(distro, locator, 0)
+}
+
+/// THE zenoh peer environment — issue 0763. Every other zenoh spelling routes
+/// here, so there is one place that decides what a ROS 2 peer's environment is.
+///
+/// `ROS_DOMAIN_ID` is exported unconditionally, and that is the point. It was
+/// absent from this family entirely, with two consequences that look unrelated
+/// and are not:
+///
+/// * **Discovery.** The domain is the FIRST segment of an `rmw_zenoh` keyexpr,
+///   so a peer and the nano-ros node must agree on it or they simply never see
+///   each other. `Middleware::Zenoh` has carried a `domain_id` since phase-309
+///   and says so in its own doc comment; the host backend destructured it away
+///   with `{ locator, .. }` and every zenoh peer silently ran on domain 0. The
+///   docker backend exported it. Same `Middleware` value, two environments.
+/// * **The daemon.** ros2cli keys its daemon on `ROS_DOMAIN_ID` ALONE
+///   (`get_ros_domain_id()` — no RMW in the key), so "no domain" means every
+///   test in a parallel suite shares domain 0's singleton daemon. Distinct
+///   domains give distinct daemons.
+///
+/// Note what is NOT here: `ros2 daemon stop`. It used to lead this command and
+/// under a parallel suite it is a cross-test kill. The daemon caching a stale
+/// `RMW_IMPLEMENTATION` is a real hazard, but the answer is not to consult a
+/// shared daemon — every query helper in this module passes `--no-daemon`.
+pub fn ros2_env_setup_zenoh(
+    distro: &str,
+    locator: &str,
+    domain_id: u8,
+) -> (String, tempfile::TempDir) {
     let config_dir = write_zenoh_session_config(locator);
     let config_path = config_dir.path().join("session_config.json5");
     // The distro's `rmw_zenoh_cpp`, and only that. A source overlay used to be
     // layered on top when present; it is gone (see `is_rmw_zenoh_available`).
+    // No `ros2 daemon stop` here — issue 0763.
+    //
+    // It used to lead this command, and under a parallel suite that is a
+    // CROSS-TEST KILL: the daemon is a singleton keyed on `ROS_DOMAIN_ID`
+    // alone (ros2cli `get_ros_domain_id()`, no RMW in the key), nothing here
+    // sets a domain, so every test shares domain 0's daemon and each one of
+    // these setups stopped the daemon the others were mid-query against.
+    //
+    // What it was defending against is real: the daemon caches
+    // `RMW_IMPLEMENTATION` and the rest of the environment from whoever
+    // started it, and serves every later caller from that stale snapshot. But
+    // the defence has to be "do not consult a shared daemon", not "restart the
+    // shared daemon" — hence `--no-daemon` on every query helper below, which
+    // makes a stale daemon unable to poison a result and a daemon stop
+    // unnecessary.
     let cmd = format!(
         "source /opt/ros/{distro}/setup.bash && \
-         ros2 daemon stop >/dev/null 2>&1; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
+         export ROS_DOMAIN_ID={domain_id} && \
          export ZENOH_SESSION_CONFIG_URI={config_path}",
         config_path = config_path.display()
     );
@@ -684,7 +730,7 @@ fn wait_child_data(remaining: Duration) {
 /// Run `ros2 node list` and return the output
 pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list --no-daemon 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -697,7 +743,7 @@ pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic list --no-daemon 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -718,8 +764,9 @@ pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
 /// connect".
 pub fn ros2_topic_info_verbose(locator: &str, distro: &str, topic: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd =
-        format!("{env_setup} && timeout --foreground 15 ros2 topic info --verbose {topic} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 15 ros2 topic info --verbose --no-daemon {topic} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -869,7 +916,7 @@ pub fn await_topic_endpoints(
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 service list 2>&1");
+    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 service list --no-daemon 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -882,7 +929,9 @@ pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
 /// Run `ros2 node info` for a specific node
 pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node info {node_name} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 10 ros2 node info --no-daemon {node_name} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -895,7 +944,9 @@ pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResul
 /// Run `ros2 param list` for a specific node
 pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 15 ros2 param list {node_name} 2>&1");
+    let cmd = format!(
+        "{env_setup} && timeout --foreground 15 ros2 param list --no-daemon {node_name} 2>&1"
+    );
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -914,7 +965,7 @@ pub fn ros2_param_get(
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param get {node_name} {param_name} 2>&1"
+        "{env_setup} && timeout --foreground 15 ros2 param get --no-daemon {node_name} {param_name} 2>&1"
     );
 
     let output = Command::new("bash")
@@ -935,7 +986,7 @@ pub fn ros2_param_set(
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param set {node_name} {param_name} {value} 2>&1"
+        "{env_setup} && timeout --foreground 15 ros2 param set --no-daemon {node_name} {param_name} {value} 2>&1"
     );
 
     let output = Command::new("bash")
@@ -955,7 +1006,7 @@ pub fn ros2_param_describe(
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param describe {node_name} {param_name} 2>&1"
+        "{env_setup} && timeout --foreground 15 ros2 param describe --no-daemon {node_name} {param_name} 2>&1"
     );
 
     let output = Command::new("bash")
@@ -969,7 +1020,8 @@ pub fn ros2_param_describe(
 /// Run `ros2 topic info` for a specific topic
 pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic info {topic} 2>&1");
+    let cmd =
+        format!("{env_setup} && timeout --foreground 10 ros2 topic info --no-daemon {topic} 2>&1");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])

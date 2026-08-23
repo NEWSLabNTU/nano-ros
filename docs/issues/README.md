@@ -61,6 +61,18 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
+Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
+which under a parallel suite is a CROSS-TEST KILL: ros2cli keys its daemon on `ROS_DOMAIN_ID` ALONE, nothing
+in the zenoh family set a domain, so ~1500 tests shared domain 0's singleton and each setup stopped the
+daemon the others were mid-query against. Surfaced by #0761's poll (40 setups per case instead of 1) and
+attributed by a controlled experiment, not a guess: baseline 0 real failures, with the poll 2. Two more
+defects behind it — `HostRosEnv` destructured the peer's `domain_id` away with `{ locator, .. }` while
+`DockerRosEnv` exported it (ONE `Middleware` value, two environments), and `lifecycle nodes` never got the
+`--no-daemon` its neighbour `lifecycle get` already had. Fixed by bypassing the daemon on all 13 queries that
+can, one canonical `ros2_env_setup_zenoh` that always exports the domain, and a mutation-verified gate that
+both backends agree. Residual named in the issue: four commands cannot bypass the daemon at all. See
+`archived/0763-*`. (2026-08-23)
+
 Recently resolved (2026-08-23): **#0761** (testing/interop) — `qos_override_e2e` flaked under full-sweep
 load with `Unknown topic '/qos_chatter'` and passed solo. Not a short sleep: a SINGLE-SHOT query, which is a
 race by construction — it slept a fixed 3 s and asked `ros2 topic info` exactly once. Issue 0705 had already

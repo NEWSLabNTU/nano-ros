@@ -833,7 +833,18 @@ fn run_cell(pcell: &MCell) {
             // Discover the managed node (the entry's executor node hosting
             // the 5 services) — robust to the executor node name.
             let nodes_out =
-                poll_ros2_until(&locator, "lifecycle nodes", "/", Duration::from_secs(20));
+                // `--no-daemon`, like the `lifecycle get` below already had
+                // (issue 0763). This polls at 200 ms for up to 20 s, so via the
+                // daemon it is up to 100 queries against a singleton shared by
+                // every concurrent test — and the setup it goes through used to
+                // stop that daemon each time. The remedy was already spelled
+                // one call down; this is the site that never got it.
+                poll_ros2_until(
+                    &locator,
+                    "lifecycle nodes --no-daemon --spin-time 0.1",
+                    "/",
+                    Duration::from_secs(20),
+                );
             let lifecycle_node = first_lifecycle_node(&nodes_out).unwrap_or_else(|| {
                 node.kill();
                 panic!(
