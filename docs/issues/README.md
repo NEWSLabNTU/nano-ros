@@ -63,6 +63,26 @@ who validates). See `0760-*`. (2026-08-23)
 
 **#0761** (testing/interop, open 2026-08-23) — `qos_override_e2e`'s ROS 2-discovery assertion flakes under full-sweep load (`Unknown topic '/qos_chatter'`), passes solo; costs a re-run-and-re-judge per hit. See `0761-*`.
 
+Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
+priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
+the spawned `low` tier printed nothing in a full 12 s). Fixed by `boot_tier_index`: the session owner is now
+the tier that outranks NOTHING, on all five kernels — `tiers[0]` had meant "most urgent" on bigger-wins
+kernels and "least" on smaller-wins ones, so which tier owned the session depended on the kernel's number
+direction, which nobody chose. Two further findings: #579's "every declaring tier announces its priority"
+was enforced in Rust and on NuttX ONLY, so a FreeRTOS boot task adopting no priority at all had no cell that
+could see it; and the residue that would not converge (rates of 1/5, 3/5, 4/6, "16/20", each read as
+progress) was not a runtime defect but the test READER — `wait_for_output_pattern` waited on the prefix
+EVERY tier's marker shares, returned at the first, and killed QEMU, so whichever tier printed second read as
+dropped. Option 3 landed too (`TierSpinGap`, gated by `check-tier-spin-gap`): a tier loop may not run longer
+than `max(spin_period_us, 10 ms)` without blocking in its own spin or taking a 1 ms gap, because
+`spin_once` drives I/O with a ZERO timeout whenever a wake already fired — so under load the loop never
+blocked, and under SCHED_FIFO a thread that never blocks never lets a lower tier run. That gate found a
+Zephyr Rust loop missed by hand, and found FreeRTOS (`vTaskDelay(1)`) and native (full-period sleep) had each
+solved it privately while three other kernels had nothing. Confirmed on a second host: NuttX 25/25 incl. a
+16x-load arm, FreeRTOS 12/12 + 8/8 per language, mutation-proven non-vacuous. NOT covered: option 3 is
+measured on two kernels of five (`just ci-matrix` closes that), and no gap has been observed FIRING on
+target — these cells are not traffic-saturated. See `archived/0636-*`. (2026-08-23)
+
 Recently resolved (2026-08-22): **#0756** — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
 `dds_create_participant`; the param store was built on the STACK rather than in the box, so raising the knob
 overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolved the issue but left the file
@@ -1567,17 +1587,6 @@ existing system.toml (rt-eval's 3/2/1 -> raw 0/0/0), while the board knobs had n
 defaults convert exactly (12->3, 16->4) — behaviour unchanged by construction. Verified on the QEMU guest:
 6793 ctrl ticks, report silent for 3/2/1 vs floor 4, now a direct comparison. See `archived/0623-*`.
 (2026-08-16)
-
-**#0636** (boards/platform, open 2026-08-16) — the NuttX boot tier holds the HIGHEST declared priority and spins, so on the uniprocessor
-`arm-virt` guest every lower tier is starved. `sched_dims_applied_e2e`'s `TierPriority/nuttx/rust` cell
-measured 1 of 5 solo runs passing: the spawned `low` tier prints nothing at all — the console stops at
-`tier 'high' entering spin` — and the guest runs a full 12 s, so this is starvation, not a startup race
-(the cell's own timeout is 90 s). Two partial fixes landed and are worth keeping: the spawn attribute now
-carries the tier's declared priority (phase-364 W5 taught the POSIX port to honour `attr->priority`; this
-call site still passed `PRIORITY_INHERIT`, so a tier was BORN at the spawner's priority) → 1/5 → 3/5, and
-the owner yields once per tier before raising itself above them → 3/5 → 4/6. Converging slowly is the
-evidence: they shorten an unbounded window. Sibling of #0623 one layer over — the author's ordering is
-applied exactly and the outcome is still wrong. See `0636-*`. (2026-08-16)
 
 RESOLVED 2026-08-16 — **#0621** a VENDORED nano-ros splices its 272 example packages into the CONSUMER's
 package index. `build_pkg_index` walks the consumer's root, descends into the nano-ros subdirectory and dies

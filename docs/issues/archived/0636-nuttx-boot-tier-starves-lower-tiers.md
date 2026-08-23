@@ -2,7 +2,7 @@
 id: 636
 title: "The NuttX boot tier holds the highest declared priority and spins, so on
   a uniprocessor guest every lower tier is starved for seconds"
-status: open
+status: resolved
 type: bug
 area: boards, platform
 related: [issue-0579, issue-0623, issue-0246, phase-358, phase-364, phase-359]
@@ -755,15 +755,28 @@ comparator to ascending turns it red.
 
 ## What remains
 
-Only **option 3** — "give the owner's spin a bounded blocking point so lower
-tiers get a scheduled gap by construction rather than by transport luck". With
-option 2 landed the owner is the least urgent tier, so it cannot starve the
-tiers it spawned, and the starvation this issue was opened for is gone. Option 3
-is now a robustness property rather than a fix: it would make the guarantee
-structural instead of resting on the priority order being right.
+**Nothing — option 3 landed on 2026-08-22; see the section at the end.** Kept as
+written because the recommendation it makes is the one that was NOT taken, and
+why is the interesting part: it proposed closing here and re-opening option 3 as
+its own item "if a consumer needs the stronger guarantee". Implementing it
+instead cost about a day and found two things that a deferred item would not
+have — a Zephyr Rust tier loop with no gap, and the fact that FreeRTOS and
+native had each already solved this privately, in their own dialect, while the
+other three kernels running the identical loop had nothing. A robustness
+property nobody has asked for is exactly the kind of item that stays open
+forever; this one was cheap to finish and paid for itself in what it exposed.
 
-Recommend closing on that basis and re-opening option 3 as its own item if a
-consumer needs the stronger guarantee.
+The original text follows.
+
+> Only **option 3** — "give the owner's spin a bounded blocking point so lower
+> tiers get a scheduled gap by construction rather than by transport luck". With
+> option 2 landed the owner is the least urgent tier, so it cannot starve the
+> tiers it spawned, and the starvation this issue was opened for is gone. Option 3
+> is now a robustness property rather than a fix: it would make the guarantee
+> structural instead of resting on the priority order being right.
+>
+> Recommend closing on that basis and re-opening option 3 as its own item if a
+> consumer needs the stronger guarantee.
 ## Second, independent confirmation — 25/25 with a 16x load arm (2026-08-22)
 
 Separate session, separate box from the clean-tree re-measurement above, and
@@ -943,4 +956,48 @@ inference.
 With option 3 landed, every option in this issue is either implemented or
 deliberately declined, and both arms — NuttX C/C++ and FreeRTOS — are confirmed
 on a second host. Recommend closing.
+
+## Closed 2026-08-23
+
+Every option is landed or deliberately declined, and both language arms are
+confirmed on a second host.
+
+| | |
+| --- | --- |
+| Option 1 — announce where the priority is SET | landed; one helper, one marker, both languages |
+| Option 2 — the owner must not be the most urgent tier | landed on all five kernels (`boot_tier_index`); **this is what fixed the issue** |
+| Option 3 — a bounded blocking point | landed (`TierSpinGap` / `nros_tier_spin_gap_step`, ten loops, gated by `check-tier-spin-gap`) |
+| The residue that would not converge | not a runtime defect at all: a harness SHORT READ (`ce152db1f`), fixed by `wait_for_output_each` |
+
+Measurements, second host, fixtures rebuilt each time: NuttX 25/25 including a
+16x-load arm; FreeRTOS 12/12 ambient and 8/8 under load on each of `cpp` and
+`c`; all four TierPriority cells 8/8 again after option 3 landed. The FreeRTOS
+cells were proven non-vacuous here by removing the seam and watching them go
+red.
+
+**Two things this closes WITHOUT:**
+
+1. Option 3 is measured on two kernels of five. Zephyr, ThreadX and Linux got
+   the same helper; their call sites are covered by the gate and the decision
+   function by unit tests, but no cell of theirs has run against it.
+   `just ci-matrix` is the lane that would.
+2. No gap has been observed FIRING on target. These cells are not
+   traffic-saturated, and saturation is the condition that makes a loop
+   free-run. The NuttX tier heartbeat now prints the gap count, so a busy image
+   can answer it directly rather than by inference.
+
+Neither is a suspected defect, and neither is a reason to hold the issue open —
+but both are claims someone might otherwise read into "resolved", so they are
+written down instead.
+
+**What this issue is worth remembering for.** Every substantive finding here was
+a case of the same rule existing in one dialect and not another: #579's
+"every declaring tier announces its priority" was enforced in Rust and on NuttX
+only, so the FreeRTOS boot task adopted no priority at all and nothing could
+see it; the spin gap existed as `vTaskDelay(1)` on FreeRTOS and a full-period
+sleep on native, and nowhere else. Both were found by writing the gate, not by
+reading the code. And the long tail — rates of 1/5, 3/5, 4/6, "16/20", each read
+as progress — was not a runtime defect at all but the test reader, which is why
+`cd1c0c47d` credited an ordering change with a convergence it did not cause.
+When a rate moves with host and load, suspect the harness before the kernel.
 
