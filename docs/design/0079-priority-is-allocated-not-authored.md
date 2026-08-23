@@ -251,19 +251,44 @@ which nano-ros does not use.
 `scripts/dev/priority-collision-report.py` evaluates all 38 pins against the
 system bands that can be CITED from code today. **Four of 38 are clean.**
 
-| verdict | at first run | after the first two plans landed |
+| verdict | at first run | with plans + `above` |
 | --- | --- | --- |
 | `UNPLANNED` — the port declares no band at all | 21 | **21** |
-| `PREEMPTS` — more urgent than a system band | 8 | **8** |
+| `PREEMPTS` — more urgent than a system band | 8 | **0** |
 | `COLLIDES` — lands exactly ON one | 4 | **0** |
-| below bands — correct by the plan | 5 | **9** |
+| below bands — correct by the plan | 5 | **17** |
 
-The `COLLIDES` column is closed: FreeRTOS and NuttX now declare
-`[board.priority_plan]`, `check-tier-priority-plan` rejects a pin landing on a
-reserved band, and the four that did were moved (`tiers.low.nuttx` 100 → 99).
-`PREEMPTS` stays a warning until `above = "<band>"` exists to make it a stated
-choice — enforcing a rule before its escape hatch exists would just teach people
-to route around the checker.
+**Both defect columns are closed on the two ports that can describe
+themselves.** FreeRTOS and NuttX declare `[board.priority_plan]`;
+`check-tier-priority-plan` fails a pin that lands on a reserved band, and fails
+one that outranks a band without saying so. All 12 offending pins were moved
+into their port's `pool.app` rather than grandfathered:
+
+| | before | after |
+| --- | --- | --- |
+| FreeRTOS (pool 1–3, transport 4) | high 5, mid 3, low 2 | high 3, mid 2, low 1 |
+| NuttX (pool 1–99, transport 100) | high 110, low 100 | high 99, low 98 |
+
+Order is preserved throughout, and every tier now sits below the link it
+publishes over. Measured after the move: all four `TierPriority` arms report
+every tier ACCEPT (`freertos cpp` 3/3, `freertos c` 2/2, `nuttx cpp` 2/2,
+`nuttx rust` 2/2), and `realtime_tiers` is 16 of 17 rows — the one red is issue
+0736's, unmoved at 49 vs 25 inside its usual range. That is now the THIRD
+independent check that 0736's publish failures are not about priority ordering.
+
+`above = "<band>"` is what keeps the rule honest rather than merely strict. It
+is declared on the TIER, not the platform table, because it states something
+about the system rather than about one kernel's numbering:
+
+```toml
+[tiers.safety]
+above = "transport"
+```
+
+With it, the pin is accepted and the consequence is PRINTED — "this tier can
+outrun the link it publishes over, and inbound traffic waits on it". Without
+it, the error names both remedies. Verified in both directions: the declaration
+turns an error into a reported choice, and removing it turns it back.
 
 The specific findings answer the question the migration section was guessing at.
 Static pins are not a rare escape hatch; they are the only mechanism, and they

@@ -48,10 +48,18 @@ deadline_us = 10000
 # phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
 # freertos bake (same consolidation dropped it here).
 [tiers.high.freertos]
-priority = 5
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 3
 
 [tiers.high.nuttx]
-priority = 110
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 99
 
 [tiers.low]
 spin_period_us = 100000
@@ -70,7 +78,11 @@ priority = 10
 # not an ordering. One step below keeps the tier order (high 110 > low 99)
 # and vacates the band. Declared in the port's [board.priority_plan];
 # `check-tier-priority-plan` rejects a pin that lands on it.
-priority = 99
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 98
 
 [deploy.native]
 kind = "self"

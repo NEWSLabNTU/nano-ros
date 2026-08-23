@@ -57,10 +57,18 @@ deadline_us = 10000
 # `workspace-cpp-freertos-realtime` fixture onto this bringup but left these
 # behind, so the freertos bake had no tier priorities at all.
 [tiers.high.freertos]
-priority = 5
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 3
 
 [tiers.high.nuttx]
-priority = 110
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 99
 # NUTTX-SCOPED sporadic policy (both fields required).
 budget_us = 5000
 period_us = 10000
@@ -74,7 +82,11 @@ spin_period_us = 50000
 [tiers.mid.posix]
 priority = 40
 [tiers.mid.freertos]
-priority = 3
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 2
 
 [tiers.low]
 spin_period_us = 100000
@@ -84,7 +96,11 @@ priority = 10
 # this exact dim reaches the tier spawn — "the realtime-cpp `low` tier pins to
 # core 0" — so dropping it silently is the failure that test exists to catch.
 [tiers.low.freertos]
-priority = 2
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 1
 core = 0
 
 [tiers.low.zephyr]
@@ -97,7 +113,11 @@ priority = 10
 # not an ordering. One step below keeps the tier order (high 110 > low 99)
 # and vacates the band. Declared in the port's [board.priority_plan];
 # `check-tier-priority-plan` rejects a pin that lands on it.
-priority = 99
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A tier that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a tier that needs
+# the other side must SAY so with `above = "transport"` on the tier.
+priority = 98
 
 [deploy.native]
 kind = "self"

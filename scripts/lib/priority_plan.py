@@ -62,11 +62,26 @@ def load_plans():
 
 
 
+ABOVE_RE = re.compile(r'^above\s*=\s*"([A-Za-z0-9_]+)"')
+
+
 def scan_pins():
-    """-> [(path, tier, platform, priority)] over every tracked system.toml."""
+    """-> [(path, tier, platform, priority, above)] over every system.toml.
+
+    `above` is the band this tier DELIBERATELY outranks, declared on the tier
+    (RFC-0079 §6) and inherited by each of its per-platform pins:
+
+        [tiers.safety]
+        above = "transport"      # states the choice once, for every port
+
+    It sits on the tier rather than the platform table because it is a
+    statement about the SYSTEM, not about one kernel's numbering — the same
+    reason the timing contract lives there.
+    """
     pins = []
     for f in sorted(tracked(ROOT / "examples", name="system.toml")):
         tier = plat = None
+        above = {}
         for raw in f.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if not line or line.startswith("#"):
@@ -82,7 +97,12 @@ def scan_pins():
             if line.startswith("["):
                 tier = plat = None
                 continue
+            m = ABOVE_RE.match(line)
+            if m and tier and plat is None:
+                above[tier] = m.group(1)
+                continue
             m = PRIO_RE.match(line)
             if m and tier and plat:
-                pins.append((f.relative_to(ROOT), tier, plat, int(m.group(1))))
+                pins.append((f.relative_to(ROOT), tier, plat,
+                             int(m.group(1)), above.get(tier)))
     return pins

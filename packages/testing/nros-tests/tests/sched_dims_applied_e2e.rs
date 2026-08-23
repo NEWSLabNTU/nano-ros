@@ -324,7 +324,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             // `high` is tiers[0] (the boot tier, 110) and `low` is spawned
             // (100). Before W4 only `low` ever printed.
             shape: EachTierOrFailNote {
-                tiers: &[("high", 110), ("low", 99)],
+                tiers: &[("high", 99), ("low", 98)],
                 fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "per-tier SCHED_FIFO priority applied for EVERY declaring tier, \
@@ -343,7 +343,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: NUTTX_TIER_PRIORITY_MARKER,
             fallback: None,
             shape: EachTierOrFailNote {
-                tiers: &[("high", 110), ("low", 99)],
+                tiers: &[("high", 99), ("low", 98)],
                 fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "issue 0636 — the C arm reports per-tier priority too, boot tier \
@@ -365,7 +365,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: FREERTOS_TIER_PRIORITY_MARKER,
             fallback: None,
             shape: EachTierOrFailNote {
-                tiers: &[("high", 5), ("mid", 3), ("low", 2)],
+                tiers: &[("high", 3), ("mid", 2), ("low", 1)],
                 fail_marker: FREERTOS_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "issue 0636 — every declaring tier reports its RAW FreeRTOS priority, \
@@ -388,7 +388,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: FREERTOS_TIER_PRIORITY_MARKER,
             fallback: None,
             shape: EachTierOrFailNote {
-                tiers: &[("high", 5), ("low", 2)],
+                tiers: &[("high", 3), ("low", 2)],
                 fail_marker: FREERTOS_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "issue 0636 — the C entry shares the C++ entry's seam TU; its bringup \

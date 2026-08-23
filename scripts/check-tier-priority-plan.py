@@ -73,8 +73,8 @@ def main():
 
     cross_reference(plans, errors)
 
-    checked = 0
-    for rel, tier, plat, prio in scan_pins():
+    checked, declared = 0, []
+    for rel, tier, plat, prio, above in scan_pins():
         plan = plans.get(plat)
         if plan is None:
             unplanned[plat] = unplanned.get(plat, 0) + 1
@@ -90,13 +90,29 @@ def main():
                     f"priority with a system task it depends on "
                     f"({plan['source']})")
             elif (prio > hi) if bigger else (prio < lo):
-                warnings.append(
-                    f"{where} is MORE URGENT than the reserved `{name}` "
-                    f"band [{lo}, {hi}] — this tier preempts it. RFC-0079 "
-                    f"makes this legal only by naming it "
-                    f"(`above = \"{name}\"`); that syntax does not exist "
-                    "yet, so this is a warning.")
+                if above == name:
+                    # A STATED choice. RFC-0079 §6: both orderings are
+                    # legitimate; what was never acceptable is choosing by
+                    # accident. Reported, not silent — the consequence is real
+                    # and a reader of the build log should see it.
+                    declared.append(
+                        f"{where} preempts `{name}` [{lo}, {hi}] BY DECLARATION "
+                        f"(`above = \"{name}\"`): this tier can outrun the "
+                        "link it publishes over, and inbound traffic waits on "
+                        "it.")
+                else:
+                    errors.append(
+                        f"{where} is MORE URGENT than the reserved `{name}` "
+                        f"band [{lo}, {hi}] and does not say so. A tier that "
+                        f"outranks the transport cannot be drained or refilled "
+                        f"by it (issue 0623, measured again in 0736).\n"
+                        f"      Either move it into the pool "
+                        f"{plan['pool']}, or state the choice on the tier:\n"
+                        f"          [tiers.{tier}]\n"
+                        f"          above = \"{name}\"")
 
+    for d in declared:
+        print(f"  DECLARED  {d}")
     for w in warnings:
         print(f"  WARN  {w}")
     if unplanned:
@@ -111,7 +127,8 @@ def main():
             print(f"  {e}")
         return 1
     print(f"\ntier-priority-plan: OK ({checked} pin(s) checked against "
-          f"{len(plans)} declared plan(s), {len(warnings)} warning(s))")
+          f"{len(plans)} declared plan(s), {len(declared)} declared "
+          f"preemption(s), {len(warnings)} warning(s))")
     return 0
 
 

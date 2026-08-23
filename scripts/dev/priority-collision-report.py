@@ -40,7 +40,7 @@ def more_urgent(a, b, direction):
     return a > b if direction == "bigger-is-urgent" else a < b
 
 
-def verdict(plans, plat, prio):
+def verdict(plans, plat, prio, above=None):
     plan = plans.get(plat)
     if plan is None:
         why = NO_PLAN_REASON.get(plat, "port is not described at all")
@@ -52,15 +52,23 @@ def verdict(plans, plat, prio):
             return "COLLIDES", f"lands ON the {name} band {lo}..{hi}"
         floor = lo if d == "bigger-is-urgent" else hi
         if more_urgent(prio, floor, d):
+            if above == name:
+                # RFC-0079 §6 — a STATED choice, not an accident. Kept as its
+                # own verdict rather than folded into "below bands": the
+                # consequence is real, it is just no longer a surprise.
+                worst = f"DECLARED above the {name} band ({prio} vs {floor})"
+                continue
             worst = f"PREEMPTS the {name} band ({prio} vs {floor}, {d})"
+    if worst and worst.startswith("DECLARED"):
+        return "DECLARED preempt", worst
     return ("PREEMPTS", worst) if worst else ("below bands", "")
 
 
 def main():
     plans = load_plans()
     pins = scan_pins()
-    rows = [(rel, tier, plat, prio, *verdict(plans, plat, prio))
-            for rel, tier, plat, prio in pins]
+    rows = [(rel, tier, plat, prio, *verdict(plans, plat, prio, above))
+            for rel, tier, plat, prio, above in pins]
     bringups = {r[0] for r in rows}
 
     print(f"RFC-0079 collision report — {len(rows)} pin(s) over "
@@ -87,7 +95,7 @@ def main():
     print("\n--- ambiguous ORDER (same platform, same value, one bringup) ---")
     found = False
     per = {}
-    for rel, tier, plat, prio, _, _ in rows:
+    for rel, tier, plat, prio, _v, _w in rows:
         per.setdefault(rel, {}).setdefault((plat, prio), []).append(tier)
     for rel, seen in sorted(per.items()):
         for (plat, prio), tiers in sorted(seen.items()):
