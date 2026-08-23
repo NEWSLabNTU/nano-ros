@@ -308,6 +308,32 @@ over a 63-byte MTU**, so the transport's own fragmentation is driving the link,
 and `candump` shows traffic on both identifiers. The `_flow = DATAGRAM` choice
 was right all along; only `_transport` was wrong.
 
+## Sharing a bus between sessions
+
+One zenoh session owns one link owns one CAN socket
+(`_z_transport_multicast_t` holds a single `_z_link_t *`). Several sessions may
+share one controller, and the two platforms reach that differently.
+
+**Linux is correct by construction.** Each link opens its own
+`socket(PF_CAN, SOCK_RAW, CAN_RAW)` with its own filter; the kernel demuxes and
+`close()` is per socket. The one requirement is that each session use a distinct
+`id`, since the read drops frames whose sender is its own identifier — two
+sessions sharing an id would each discard the other's traffic.
+
+**Zephyr needs the sharing built explicitly**, because a controller has one
+driver, a handful of filter slots, and a single start/stop. Each link therefore
+takes a receive queue from a pool (`Z_CAN_MAX_LINKS`, default 2), keeps the
+filter id so `close` can release the slot, and the device is refcounted —
+started by the first link to claim it and stopped only by the last to leave. A
+link that finds a controller already running inherits its configuration rather
+than reconfiguring it under the peers already using it.
+
+`CONFIG_CAN_FD_MODE` gates more than performance on Zephyr: without it
+`z_impl_can_set_bitrate_data` is not compiled — the declaration is
+unconditional, so that is a link error rather than a compile error — and
+`struct can_frame.data` is 8 bytes rather than 64. FD-specific paths must be
+behind that Kconfig, not behind a runtime flag.
+
 ## Exploration log
 
 **2026-08-23 — the CUSTOM hook is stream-shaped.** Discovered while reading
