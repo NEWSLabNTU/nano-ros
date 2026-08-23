@@ -67,6 +67,18 @@ overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolve
 in `docs/issues/`, which `check-issue-index` reads as an open issue whose frontmatter says resolved — main
 was red on it. See `archived/0756-*`. (2026-08-22)
 
+Recently resolved (2026-08-23): **#0759** (build/testing) — host and distrobox shared build artifacts
+while having distinct compilers and libc, with nothing checking the two toolchains are compatible.
+`ros2-box-env.sh` redirected `CARGO_TARGET_DIR` but the fixture builds pass their own `--target-dir`
+(the RFC-0070 cache root) or are leaf-relative by contract (0401, unredirectable). A cached unit is
+reused without being EXECUTED, so a box run over a host-populated tree reported every fixture built and
+the first edit then failed on a host binary — the build script, then the proc-macro `.so`, reported AT A
+SOURCE LINE. Found when it made a #0636 mutation test rebuild nothing and the museum binary PASS.
+Resolved by REFUSING the mode rather than covering the paths (maintainer's call: if the box is in play,
+every job runs in the box): `ros2-box-env.sh` returns 1 against a tree with no `.nros-box-tree` marker,
+naming `ros2-box-sync.sh`; `NROS_ALLOW_SHARED_BOX_TREE=1` is the deliberate exception. See
+`archived/0759-*`. (2026-08-23)
+
 Recently resolved (2026-08-22): **#0757** — the C++/typed arena dispatch swallowed every non-OK take, so a
 `BufferTooSmall` sample was received, ACKed by cyclone, then discarded while the subscription looked healthy
 from every outside probe. The audit the issue mandated found the remedy ALREADY in the same file one copy
@@ -314,17 +326,6 @@ case — autonomous mode could not actuate until the consumer hand-rolled an SNT
 Direction: an optional `epoch_us`/`acquire_epoch` platform-vtable slot with SNTP as the first provider
 (Zephyr in-tree client, lwIP SNTP, POSIX `CLOCK_REALTIME`), server address as a deploy fact, acquired
 between netif-up and component construction. See `0758-*`. (2026-08-22)
-**#0759** (build/testing, open 2026-08-22) — the box env's SHARED-tree mode can build but never
-REBUILD. It redirects `CARGO_TARGET_DIR` so host-built build scripts do not die on GLIBC, but the fixture
-builds use two paths that redirect does not reach: the RFC-0070 cache root `build/cargo-fixtures/` (their
-own `--target-dir`) and the leaf `examples/**/target-fixtures/` dirs (leaf-relative by contract, 0401). A
-cached unit is reused without being EXECUTED, so a box run over a host-populated tree reports every
-fixture built — and the first source edit fails on a host binary, first the build script, then the
-proc-macro `.so`, which is reported AT A SOURCE LINE and reads as a compile error. Found while
-mutation-testing #0636's FreeRTOS cells, where it made the mutation appear not to matter. `NROS_BUILD_ROOT`
-would cover the first path (not the second) but phase-334 W2.b has 236 unmigrated literals; the
-alternative is for the box env to refuse the mode loudly. See `0759-*`. (2026-08-22)
-
 
 
 

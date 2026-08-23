@@ -27,7 +27,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Build / test / SDK tiers / jobserver / zephyr versions | [AGENTS.md](AGENTS.md) + [docs/development/](docs/development/) + `just/*.just` |
 | Long-form practices + pitfalls (cmake, tests, multi-session) | AGENTS.md “Practices & Pitfalls” (this file keeps the one-liners) |
 | `nros setup` / provisioning / `nros-sdk-index.toml` | RFC-0014 + AGENTS.md “Toolchain & SDK Provisioning” |
-| ROS 2 on a host with no apt ROS (Arch, Fedora, NixOS) | [docs/development/ros2-on-non-ubuntu.md](docs/development/ros2-on-non-ubuntu.md) — Ubuntu distrobox; `scripts/dev/ros2-{distrobox-setup,box-env}.sh` |
+| ROS 2 on a host with no apt ROS (Arch, Fedora, NixOS) | [docs/development/ros2-on-non-ubuntu.md](docs/development/ros2-on-non-ubuntu.md) — Ubuntu distrobox; `scripts/dev/ros2-{distrobox-setup,box-env}.sh`. **Box in play ⇒ EVERY job in the box, on its OWN tree** (`ros2-box-sync.sh`): different compiler + libc, shared artifacts, nothing checks they agree — refused since issue 0759 |
 | Feature axes (RMW × platform × ROS edition) | ARCHITECTURE §2 + RFC-0005, RFC-0006 |
 | Platform/RMW impl notes + deep pitfalls | [docs/reference/platform-implementation-notes.md](docs/reference/platform-implementation-notes.md) |
 | C/C++ integration shape | AGENTS.md “C/C++ Integration” + RFC-0018/0019 + [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) |

@@ -249,6 +249,15 @@ is the same checkout, so `NROS_REPO_DIR` matches the host either way.
 - **`rmw_zenoh_cpp` is an apt package on humble+** (`ros-<distro>-rmw-zenoh-cpp`;
   this note used to say humble had none). Install it like the others — there is
   no source overlay to build any more (RFC-0075, amended 2026-08-19).
+- **If the box is in play, EVERY job runs in the box — against the box's OWN
+  tree.** Not a style preference: the two sides have different compilers and a
+  different libc, and nothing in the build system checks that the toolchains
+  agree. Sharing one checkout means sharing artifacts built by both. The mode is
+  refused outright since issue 0759 (`ros2-box-env.sh` returns 1 against a tree
+  with no `.nros-box-tree` marker); `NROS_ALLOW_SHARED_BOX_TREE=1` is the
+  deliberate exception. Make the tree with `scripts/dev/ros2-box-sync.sh` and
+  `cd` into it. Do not half-share — a host-side `just setup-cli` or a host-side
+  fixture build reaches into the same directories.
 - **A box created BEFORE that note has no router, and nothing says so loudly.**
   The setup script installs `rmw_zenoh_cpp` today; a box built earlier does not
   gain it, and the only symptom is cells reporting `[SKIPPED] zenohd failed to

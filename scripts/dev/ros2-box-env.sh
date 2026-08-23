@@ -73,10 +73,50 @@ export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
 # Sharing the host tree is still supported — that is what a checkout with no
 # `.nros-box-tree` marker means — and keeps the redirect, because there the
 # alternative is host-built build scripts dying on GLIBC.
+#
+# issue 0759 — that support is now REFUSED by default, because the redirect
+# never covered the paths the fixture builds actually use. They pass their own
+# `--target-dir` (the RFC-0070 cache root `build/cargo-fixtures/<family>/`) or
+# are leaf-relative BY CONTRACT (`examples/**/target-fixtures/<plat>/`, issue
+# 0401 — those cannot be redirected at all). Host and box then share artifacts
+# built by DIFFERENT compilers against a different libc, with nothing anywhere
+# checking that the two toolchains agree.
+#
+# The failure is not merely that it breaks. A cargo unit that is a fingerprint
+# HIT is reused without ever being EXECUTED, so a box run over a
+# host-populated tree reports every fixture built — and the first source edit
+# after that fails on a host binary: the build script (`GLIBC_2.39 not found`),
+# then the proc-macro `.so`, which the compiler dlopens and reports AT A SOURCE
+# LINE, so it reads as a compile error in code that is fine. The green run is
+# the harmful part: on 2026-08-22 it made a mutation test rebuild nothing and
+# the unchanged museum binary PASS, i.e. deleting the thing under test appeared
+# not to matter.
+#
+# So: if the box is in play, EVERY job runs in the box, against the box's own
+# tree. `scripts/dev/ros2-box-sync.sh` makes one.
 if [ -f "$_nros_box_root/.nros-box-tree" ]; then
     unset CARGO_TARGET_DIR
-else
+elif [ -n "${NROS_ALLOW_SHARED_BOX_TREE:-}" ]; then
+    echo "box: WARNING — shared host tree by request (NROS_ALLOW_SHARED_BOX_TREE)." >&2
+    echo "     Host and box artifacts collide under build/cargo-fixtures and the" >&2
+    echo "     leaf target-fixtures dirs; a build can succeed and never REBUILD" >&2
+    echo "     (issue 0759). Wipe those before switching sides." >&2
     export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd -P "$_nros_box_root/.." && pwd -P)/.cargo-target-box}"
+else
+    echo "box: REFUSING to run against the host's own checkout (issue 0759)." >&2
+    echo "       tree: $_nros_box_root  (no .nros-box-tree marker)" >&2
+    echo "" >&2
+    echo "  Host and box have different compilers and a different libc, and they" >&2
+    echo "  would share build artifacts here — nothing guarantees the two" >&2
+    echo "  toolchains are compatible. A build may even SUCCEED, by reusing" >&2
+    echo "  cached units it never executes, and fail only on the next edit." >&2
+    echo "" >&2
+    echo "  Give the box its own tree, then work there:" >&2
+    echo "      scripts/dev/ros2-box-sync.sh" >&2
+    echo "      cd $(cd -P "$_nros_box_root/.." && pwd -P)/$(basename "$_nros_box_root")-box" >&2
+    echo "" >&2
+    echo "  Deliberate exception: NROS_ALLOW_SHARED_BOX_TREE=1, and say why." >&2
+    return 1 2>/dev/null || exit 1
 fi
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 
