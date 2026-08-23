@@ -968,6 +968,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: true,
             ivc: false,
+            can: false,
             custom: true,
         };
         let buf = ZenohBufferConfig {
@@ -983,6 +984,12 @@ int32_t zpico_init(void);\n";
         assert!(header.contains("#define Z_FEATURE_LINK_TCP 1"));
         assert!(header.contains("#define Z_FEATURE_LINK_UDP_UNICAST 0"));
         assert!(header.contains("#define Z_FEATURE_LINK_TLS 1"));
+        // RFC-0080 — the CAN link's define is emitted like every other link's.
+        // Asserted because the field was added to `LinkFeatures` without a test
+        // that reads it back: the two literals here had to gain `can` to keep
+        // compiling, and a field that only ever appears as `false` in a struct
+        // literal is not covered by anything.
+        assert!(header.contains("#define Z_FEATURE_LINK_CAN 0"));
         assert!(header.contains("#define Z_FEATURE_LINK_CUSTOM 1"));
         assert!(header.contains("#define Z_FEATURE_UNSTABLE_API"));
         // phase-337 W7.b — both were 0 only under the `orin_spe` flag this
@@ -1010,6 +1017,7 @@ int32_t zpico_init(void);\n";
             raweth: false,
             tls: false,
             ivc: false,
+            can: false,
             custom: false,
         };
         let buf = ZenohBufferConfig {
