@@ -454,9 +454,8 @@ fn rust_backend_adapter_routes_every_slot() {
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(CREATE_PUB_HITS.load(Ordering::SeqCst), 1);
     let payload = b"hello";
-    let rc = unsafe {
-        (vt.publish_raw.expect("vtable slot"))(&mut pubr, payload.as_ptr(), payload.len())
-    };
+    let rc =
+        unsafe { (vt.publish.expect("vtable slot"))(&mut pubr, payload.as_ptr(), payload.len()) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(PUBLISH_HITS.load(Ordering::SeqCst), 1);
     unsafe { (vt.destroy_publisher.expect("vtable slot"))(&mut pubr) };
@@ -790,7 +789,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     let reply = b"ok";
     assert_eq!(
         unsafe {
-            (vt.send_reply.expect("vtable slot"))(&mut srv, seq, reply.as_ptr(), reply.len())
+            (vt.send_response.expect("vtable slot"))(&mut srv, seq, reply.as_ptr(), reply.len())
         },
         NROS_RMW_RET_OK
     );
@@ -886,7 +885,7 @@ fn rust_backend_adapter_routes_events_and_services() {
 
     // assert_publisher_liveliness routes to Publisher::assert_liveliness.
     assert_eq!(
-        unsafe { (vt.assert_publisher_liveliness.expect("vtable slot"))(&mut pubr) },
+        unsafe { (vt.publisher_assert_liveliness.expect("vtable slot"))(&mut pubr) },
         NROS_RMW_RET_OK
     );
     assert_eq!(ASSERT_LIVELINESS_HITS.load(Ordering::SeqCst), 1);
@@ -906,7 +905,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     let last_kind: AtomicU32 = AtomicU32::new(0xffff_ffff);
     let user_ctx = &last_kind as *const _ as *mut core::ffi::c_void;
     let rc = unsafe {
-        (vt.register_subscription_event.expect("vtable slot"))(
+        (vt.subscription_event_init.expect("vtable slot"))(
             &mut subr,
             nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_LIVELINESS_CHANGED,
             0,
@@ -926,7 +925,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     // Publisher event registration — fires Count payload via
     // OfferedDeadlineMissed kind.
     let rc = unsafe {
-        (vt.register_publisher_event.expect("vtable slot"))(
+        (vt.publisher_event_init.expect("vtable slot"))(
             &mut pubr,
             nros_rmw_cffi::rmw_event_type_t::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED,
             500,

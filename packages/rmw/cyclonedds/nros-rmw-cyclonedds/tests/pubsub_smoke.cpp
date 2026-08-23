@@ -96,7 +96,7 @@ int main() {
     }
 
     // publish_raw with too-short input (< 4-byte CDR header) → invalid arg.
-    if (g_vt->publish_raw(&pub, reinterpret_cast<const uint8_t*>("x"), 1) !=
+    if (g_vt->publish(&pub, reinterpret_cast<const uint8_t*>("x"), 1) !=
         NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "publish_raw too-short should report INVALID_ARGUMENT\n");
         return 8;

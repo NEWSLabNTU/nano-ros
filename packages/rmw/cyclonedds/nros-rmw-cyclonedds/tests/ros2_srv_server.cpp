@@ -82,7 +82,7 @@ int main() {
                 int64_t b = get_le64(rbuf + 12);
                 uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
                 put_le64(reply + 4, a + b);
-                if (g_vt->send_reply(&srv, seq, reply, sizeof(reply))
+                if (g_vt->send_response(&srv, seq, reply, sizeof(reply))
                     != NROS_RMW_RET_OK) {
                     std::fprintf(stderr, "send_reply failed\n");
                     return 4;

@@ -39,7 +39,7 @@ const nros_rmw_vtable_t kVtable = {
     /* ---- Publisher ---- */
     /*create_publisher*/ publisher_create,
     /*destroy_publisher*/ publisher_destroy,
-    /*publish_raw*/ publisher_publish_raw,
+    /*publish*/ publisher_publish_raw,
     /* ---- Subscription ---- */
     /*create_subscription*/ subscription_create,
     /*destroy_subscription*/ subscription_destroy,
@@ -50,7 +50,7 @@ const nros_rmw_vtable_t kVtable = {
     /*destroy_service*/ service_destroy,
     /*take_request*/ service_take_request,
     /*has_request*/ service_has_request,
-    /*send_reply*/ service_send_reply,
+    /*send_response*/ service_send_reply,
     /* ---- Client (uORB: UNSUPPORTED stubs) ---- */
     /*create_client*/ client_create,
     /*destroy_client*/ client_destroy,

@@ -183,7 +183,7 @@ int main() {
     // Brief stabilisation so writer-↔-reader match completes.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    rmw_ret_t pr = g_vt->publish_raw(&pub, wire, wire_len);
+    rmw_ret_t pr = g_vt->publish(&pub, wire, wire_len);
     EXPECT(pr == NROS_RMW_RET_OK, "publish_raw returned %d", static_cast<int>(pr));
 
     bool got = false;

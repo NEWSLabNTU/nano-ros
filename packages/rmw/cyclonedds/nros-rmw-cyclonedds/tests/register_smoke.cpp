@@ -45,7 +45,7 @@ int main() {
         g_captured->drive_io == nullptr ||
         g_captured->create_publisher == nullptr ||
         g_captured->destroy_publisher == nullptr ||
-        g_captured->publish_raw == nullptr ||
+        g_captured->publish == nullptr ||
         g_captured->create_subscription == nullptr ||
         g_captured->destroy_subscription == nullptr ||
         g_captured->take == nullptr ||
@@ -54,10 +54,10 @@ int main() {
         g_captured->destroy_service == nullptr ||
         g_captured->take_request == nullptr ||
         g_captured->has_request == nullptr ||
-        g_captured->send_reply == nullptr ||
+        g_captured->send_response == nullptr ||
         g_captured->create_client == nullptr ||
         g_captured->destroy_client == nullptr ||
-        g_captured->send_request_raw == nullptr ||
+        g_captured->send_request == nullptr ||
         g_captured->take_response == nullptr) {
         std::fprintf(stderr, "vtable has NULL mandatory slot\n");
         return 3;

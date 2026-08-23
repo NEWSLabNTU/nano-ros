@@ -77,7 +77,7 @@ int main(void) {
      * must reach the backend (no longer the K.2.0 UNSUPPORTED stub)
      * and return INVALID_ARGUMENT. */
     rmw_publisher_t pub = {0};
-    r = g_received_vtable->publish_raw(&pub, NULL, 0);
+    r = g_received_vtable->publish(&pub, NULL, 0);
     if (r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: publish_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
@@ -141,7 +141,7 @@ int main(void) {
     }
 
     rmw_client_t cli = {0};
-    int32_t cr = g_received_vtable->send_request_raw(&cli, NULL, 0);
+    int32_t cr = g_received_vtable->send_request(&cli, NULL, 0);
     if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: send_request_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",

@@ -25,7 +25,7 @@ static const nros_rmw_vtable_t kVtable = {
     /* ---- Publisher ---- */
     .create_publisher           = xrce_publisher_create,
     .destroy_publisher          = xrce_publisher_destroy,
-    .publish_raw                = xrce_publisher_publish_raw,
+    .publish                = xrce_publisher_publish_raw,
 
     /* ---- Subscription ---- */
     .create_subscription        = xrce_subscription_create,
@@ -38,7 +38,7 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_service            = xrce_service_destroy,
     .take_request               = xrce_service_take_request,
     .has_request                = xrce_service_has_request,
-    .send_reply                 = xrce_service_send_reply,
+    .send_response                 = xrce_service_send_reply,
 
     /* ---- Client ---- */
     .create_client              = xrce_client_create,
@@ -49,13 +49,13 @@ static const nros_rmw_vtable_t kVtable = {
      * re-sending the request (Phase 127.C.4 C++ action send_goal
      * root cause). Phase-301 deleted the deprecated blocking
      * call_raw slot; this pair is the one request/reply path. */
-    .send_request_raw           = xrce_service_send_request_raw,
+    .send_request           = xrce_service_send_request_raw,
     .take_response              = xrce_service_take_response,
 
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
-    .register_subscription_event = NULL,
-    .register_publisher_event   = NULL,
-    .assert_publisher_liveliness = NULL,
+    .subscription_event_init = NULL,
+    .publisher_event_init   = NULL,
+    .publisher_assert_liveliness = NULL,
     .next_deadline_ms           = NULL,
     /* Phase 124.B.1 — XRCE has no asynchronous notify path
      * (XRCE-DDS-Client is poll-driven via xrce_session_drive_io).
@@ -68,11 +68,11 @@ static const nros_rmw_vtable_t kVtable = {
      * with caller-provided staging buffers; loan/borrow would
      * require a per-publisher arena equivalent. Leave NULL; runtime
      * falls back to the staging-buffer path. */
-    .pub_loan                   = NULL,
-    .pub_commit                 = NULL,
-    .pub_discard                = NULL,
+    .borrow_loaned_message                   = NULL,
+    .publish_loaned_message                 = NULL,
+    .return_loaned_message_from_publisher                = NULL,
     .take_loaned_message        = NULL,
-    .sub_release                = NULL,
+    .return_loaned_message_from_subscription                = NULL,
 
     /* Phase 124.C — service availability probe. micro-XRCE-DDS-Client
      * has no participant enumeration; leave NULL → runtime surfaces

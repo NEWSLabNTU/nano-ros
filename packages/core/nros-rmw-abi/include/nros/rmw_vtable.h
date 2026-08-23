@@ -89,7 +89,7 @@ typedef struct nros_rmw_vtable_t {
         const rmw_publisher_options_t *options,
         rmw_publisher_t *out);
     void (*destroy_publisher)(rmw_publisher_t *publisher);
-    rmw_ret_t (*publish_raw)(rmw_publisher_t *publisher,
+    rmw_ret_t (*publish)(rmw_publisher_t *publisher,
         const uint8_t *data, size_t len);
 
     /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
@@ -162,7 +162,7 @@ typedef struct nros_rmw_vtable_t {
      *  `has_data`; same contract, same reason. */
     rmw_ret_t (*has_request)(rmw_service_t *server,
         bool *out_has_request);
-    rmw_ret_t (*send_reply)(rmw_service_t *server,
+    rmw_ret_t (*send_response)(rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len);
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
@@ -180,7 +180,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Sends the request to the backend without blocking for a
      *  reply. Returns immediately. */
-    rmw_ret_t (*send_request_raw)(rmw_client_t *client,
+    rmw_ret_t (*send_request)(rmw_client_t *client,
         const uint8_t *request, size_t req_len);
 
     /** Phase 130.4 — non-blocking try_recv_reply_raw.
@@ -202,7 +202,7 @@ typedef struct nros_rmw_vtable_t {
      *  events = `NROS_RMW_RET_UNSUPPORTED` return.
      *  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`
      *  only; ignored otherwise. */
-    rmw_ret_t (*register_subscription_event)(
+    rmw_ret_t (*subscription_event_init)(
         rmw_subscription_t *subscription,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
@@ -212,7 +212,7 @@ typedef struct nros_rmw_vtable_t {
     /** Register a callback for a publisher-side event. Same NULL /
      *  unsupported-kind conventions as `register_subscription_event`.
      *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
-    rmw_ret_t (*register_publisher_event)(
+    rmw_ret_t (*publisher_event_init)(
         rmw_publisher_t  *publisher,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
@@ -225,7 +225,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't support manual
      *  liveliness; runtime returns `NROS_RMW_RET_OK` for AUTOMATIC /
      *  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*. */
-    rmw_ret_t (*assert_publisher_liveliness)(
+    rmw_ret_t (*publisher_assert_liveliness)(
         rmw_publisher_t *publisher);
 
     /** Phase 110.0 — backend's next internal-event deadline in
@@ -293,7 +293,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't natively lend; the
      *  runtime falls back to a per-publisher staging arena and emits
      *  a single memcpy on commit. */
-    rmw_ret_t (*pub_loan)(rmw_publisher_t *publisher,
+    rmw_ret_t (*borrow_loaned_message)(rmw_publisher_t *publisher,
                                 size_t                requested_len,
                                 uint8_t             **out_buf,
                                 size_t               *out_cap,
@@ -307,7 +307,7 @@ typedef struct nros_rmw_vtable_t {
      *  wire send.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    rmw_ret_t (*pub_commit)(rmw_publisher_t *publisher,
+    rmw_ret_t (*publish_loaned_message)(rmw_publisher_t *publisher,
                                   void                 *token,
                                   size_t                actual_len);
 
@@ -317,7 +317,7 @@ typedef struct nros_rmw_vtable_t {
      *  returned from a prior `pub_loan` on the same publisher.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    void (*pub_discard)(rmw_publisher_t *publisher, void *token);
+    void (*return_loaned_message_from_publisher)(rmw_publisher_t *publisher, void *token);
 
     /** Phase 124.A — zero-copy subscription borrow.
      *
@@ -362,7 +362,7 @@ typedef struct nros_rmw_vtable_t {
      *  the buffer.
      *
      *  NULL = paired NULL with `sub_borrow`. */
-    void (*sub_release)(rmw_subscription_t *subscription, void *token);
+    void (*return_loaned_message_from_subscription)(rmw_subscription_t *subscription, void *token);
 
     /** Phase 124.C.1 — service-server availability probe.
      *

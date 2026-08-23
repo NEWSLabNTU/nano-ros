@@ -777,7 +777,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
         destroy_publisher,
         create_subscription,
         destroy_subscription,
-        publish_raw,
+        publish,
         drive_io,
         has_data,
         take,
@@ -785,15 +785,15 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
         destroy_service,
         create_client,
         destroy_client,
-        send_reply,
+        send_response,
         has_request,
         take_request,
     );
     // NOT required (issue 0349) — optional capabilities with a typed
     // `Unsupported` error at the point of use, exactly like the ~14 other
-    // nullable slots (`pub_loan`, `take_loaned_message`, `next_deadline_ms`,
+    // nullable slots (`borrow_loaned_message`, `take_loaned_message`, `next_deadline_ms`,
     // `service_server_is_available`, …) this list has always allowed to be NULL:
-    //   register_publisher_event, register_subscription_event,
+    //   publisher_event_init, subscription_event_init,
     //   assert_publisher_liveliness
     None
 }
@@ -1901,7 +1901,7 @@ impl<'a> Drop for CffiSlot<'a> {
             return;
         }
         if let Some(p) = self.publisher
-            && let Some(discard) = p.vtable.pub_discard
+            && let Some(discard) = p.vtable.return_loaned_message_from_publisher
         {
             // Re-materialise the publisher view so the backend sees
             // the same `NrosRmwPublisher` shape it created the loan
@@ -1927,7 +1927,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
     type Slot<'a> = CffiSlot<'a>;
 
     fn try_lend_slot(&self, len: usize) -> Result<Option<CffiSlot<'_>>, TransportError> {
-        let Some(loan) = self.vtable.pub_loan else {
+        let Some(loan) = self.vtable.borrow_loaned_message else {
             // Phase 124.A.3 — backend doesn't natively lend; allocate
             // a staging buffer and stash it in `token` so commit can
             // memcpy → publish_raw and discard / Drop can reclaim.
@@ -1979,7 +1979,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         if out_buf.is_null() || out_cap < len {
             // Defensive: a buggy backend returned OK with a too-small
             // slot. Treat as transient.
-            if let Some(discard) = self.vtable.pub_discard {
+            if let Some(discard) = self.vtable.return_loaned_message_from_publisher {
                 unsafe { discard(&mut view, out_token) };
             }
             return Ok(None);
@@ -2019,7 +2019,10 @@ impl nros_rmw::SlotLending for CffiPublisher {
                 return Err(TransportError::Unsupported);
             }
         }
-        let commit = self.vtable.pub_commit.ok_or(TransportError::Unsupported)?;
+        let commit = self
+            .vtable
+            .publish_loaned_message
+            .ok_or(TransportError::Unsupported)?;
         let mut view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
@@ -2053,7 +2056,7 @@ impl Publisher for CffiPublisher {
             backend_data: self.backend_data,
         };
         let ret = unsafe {
-            (self.vtable.publish_raw.expect("rmw vtable: publish_raw"))(
+            (self.vtable.publish.expect("rmw vtable: publish"))(
                 &mut view,
                 data.as_ptr(),
                 data.len(),
@@ -2168,7 +2171,7 @@ impl Publisher for CffiPublisher {
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
-        let Some(register) = self.vtable.register_publisher_event else {
+        let Some(register) = self.vtable.publisher_event_init else {
             return Err(TransportError::Unsupported);
         };
         let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
@@ -2188,7 +2191,7 @@ impl Publisher for CffiPublisher {
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
-        let Some(assert_liveliness) = self.vtable.assert_publisher_liveliness else {
+        let Some(assert_liveliness) = self.vtable.publisher_assert_liveliness else {
             return Err(TransportError::Unsupported);
         };
         let ret = unsafe { assert_liveliness(&mut view) };
@@ -2326,7 +2329,7 @@ impl<'a> AsRef<[u8]> for CffiView<'a> {
 impl<'a> Drop for CffiView<'a> {
     fn drop(&mut self) {
         if let Some(sub) = self.subscriber.take()
-            && let Some(release) = sub.vtable.sub_release
+            && let Some(release) = sub.vtable.return_loaned_message_from_subscription
         {
             let mut view = sub.make_view();
             // SAFETY: `token` paired with a prior `sub_borrow` on
@@ -2564,7 +2567,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
-        let Some(register) = self.vtable.register_subscription_event else {
+        let Some(register) = self.vtable.subscription_event_init else {
             return Err(TransportError::Unsupported);
         };
         let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
@@ -2674,7 +2677,10 @@ impl ServiceTrait for CffiService {
     fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
         let mut view = self.make_view();
         let ret = unsafe {
-            (self.vtable.send_reply.expect("rmw vtable: send_reply"))(
+            (self
+                .vtable
+                .send_response
+                .expect("rmw vtable: send_response"))(
                 &mut view,
                 sequence_number,
                 data.as_ptr(),
@@ -2742,7 +2748,7 @@ impl ClientTrait for CffiClient {
         // blocking `call_raw` slot is gone from the vtable). Backends
         // that omit the slot get `Unsupported`; the executor surfaces
         // the error instead of silently degrading.
-        let Some(f) = self.vtable.send_request_raw else {
+        let Some(f) = self.vtable.send_request else {
             return Err(TransportError::Unsupported);
         };
         let mut view = self.make_view();
@@ -3124,7 +3130,7 @@ mod tests {
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),
         destroy_publisher: Some(stub_destroy_publisher),
-        publish_raw: Some(stub_publish_raw),
+        publish: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
         take: Some(stub_take),
@@ -3133,21 +3139,21 @@ mod tests {
         destroy_service: Some(stub_destroy_service),
         take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
-        send_reply: Some(stub_send_reply),
+        send_response: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
-        send_request_raw: None,
+        send_request: None,
         take_response: None,
-        register_subscription_event: Some(stub_register_subscription_event),
-        register_publisher_event: Some(stub_register_publisher_event),
-        assert_publisher_liveliness: Some(stub_assert_publisher_liveliness),
+        subscription_event_init: Some(stub_register_subscription_event),
+        publisher_event_init: Some(stub_register_publisher_event),
+        publisher_assert_liveliness: Some(stub_assert_publisher_liveliness),
         next_deadline_ms: None,
         set_wake_callback: None,
-        pub_loan: None,
-        pub_commit: None,
-        pub_discard: None,
+        borrow_loaned_message: None,
+        publish_loaned_message: None,
+        return_loaned_message_from_publisher: None,
         take_loaned_message: None,
-        sub_release: None,
+        return_loaned_message_from_subscription: None,
         service_server_is_available: None,
         take_sequence: None,
         publish_streamed: None,
@@ -3319,9 +3325,9 @@ mod tests {
     #[test]
     fn register_accepts_vtable_without_optional_capability_slots() {
         let mut vt = STUB_VTABLE;
-        vt.register_publisher_event = None;
-        vt.register_subscription_event = None;
-        vt.assert_publisher_liveliness = None;
+        vt.publisher_event_init = None;
+        vt.subscription_event_init = None;
+        vt.publisher_assert_liveliness = None;
 
         assert_eq!(
             first_missing_vtable_slot(&vt),
@@ -3346,9 +3352,9 @@ mod tests {
     #[test]
     fn register_still_rejects_a_missing_required_slot() {
         let mut vt = STUB_VTABLE;
-        vt.publish_raw = None;
+        vt.publish = None;
 
-        assert_eq!(first_missing_vtable_slot(&vt), Some("publish_raw"));
+        assert_eq!(first_missing_vtable_slot(&vt), Some("publish"));
 
         let rc = unsafe { nros_rmw_cffi_register_named(c"no_publish_0349".as_ptr(), &vt) };
         assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);

@@ -296,7 +296,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         drive_io: Some(drive_io_trampoline::<R>),
         create_publisher: Some(create_publisher_trampoline::<R>),
         destroy_publisher: Some(destroy_publisher_trampoline::<R>),
-        publish_raw: Some(publish_raw_trampoline::<R>),
+        publish: Some(publish_trampoline::<R>),
         create_subscription: Some(create_subscription_trampoline::<R>),
         destroy_subscription: Some(destroy_subscription_trampoline::<R>),
         take: Some(take_trampoline::<R>),
@@ -305,27 +305,27 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         destroy_service: Some(destroy_service_trampoline::<R>),
         take_request: Some(take_request_trampoline::<R>),
         has_request: Some(has_request_trampoline::<R>),
-        send_reply: Some(send_reply_trampoline::<R>),
+        send_response: Some(send_response_trampoline::<R>),
         create_client: Some(create_client_trampoline::<R>),
         destroy_client: Some(destroy_client_trampoline::<R>),
         // Phase-301 (issue 0240) — `send_request_raw` + `try_recv_reply_raw`
         // is the one request/reply path; the blocking `call_raw` slot is gone.
-        send_request_raw: Some(send_request_raw_trampoline::<R>),
+        send_request: Some(send_request_trampoline::<R>),
         take_response: Some(take_response_trampoline::<R>),
-        register_subscription_event: Some(register_subscription_event_trampoline::<R>),
-        register_publisher_event: Some(register_publisher_event_trampoline::<R>),
-        assert_publisher_liveliness: Some(assert_publisher_liveliness_trampoline::<R>),
+        subscription_event_init: Some(subscription_event_init_trampoline::<R>),
+        publisher_event_init: Some(publisher_event_init_trampoline::<R>),
+        publisher_assert_liveliness: Some(publisher_assert_liveliness_trampoline::<R>),
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
         set_wake_callback: Some(set_wake_callback_trampoline::<R>),
         // Phase 124.A — zero-copy slots default to NULL on the
         // generic adapter; per-backend opt-in via dedicated trampolines
         // (see `nros-rmw-zenoh` for the first implementation in 124.A.4).
         // Runtime falls back to the arena path when these are NULL.
-        pub_loan: None,
-        pub_commit: None,
-        pub_discard: None,
+        borrow_loaned_message: None,
+        publish_loaned_message: None,
+        return_loaned_message_from_publisher: None,
         take_loaned_message: None,
-        sub_release: None,
+        return_loaned_message_from_subscription: None,
         service_server_is_available: Some(service_server_is_available_trampoline::<R>),
         take_sequence: Some(take_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
@@ -482,7 +482,7 @@ unsafe extern "C" fn destroy_publisher_trampoline<R: RustBackend>(
     let _ = unsafe { take_box::<R::Publisher>(publisher_data_mut(publisher)) };
 }
 
-unsafe extern "C" fn publish_raw_trampoline<R: RustBackend>(
+unsafe extern "C" fn publish_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
     data: *const u8,
     len: usize,
@@ -819,7 +819,7 @@ unsafe extern "C" fn has_request_trampoline<R: RustBackend>(
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn send_reply_trampoline<R: RustBackend>(
+unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
     server: *mut NrosRmwService,
     seq: i64,
     data: *const u8,
@@ -886,7 +886,7 @@ unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(client: *mut Nros
 
 // Non-blocking send/recv trampolines — the one request/reply path
 // (phase-301: the blocking `call_raw` slot is deleted).
-unsafe extern "C" fn send_request_raw_trampoline<R: RustBackend>(
+unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
     client: *mut NrosRmwClient,
     request: *const u8,
     req_len: usize,
@@ -994,7 +994,7 @@ const _: () = {
     );
 };
 
-unsafe extern "C" fn register_subscription_event_trampoline<R: RustBackend>(
+unsafe extern "C" fn subscription_event_init_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     kind: NrosRmwEventKind,
     deadline_ms: u32,
@@ -1036,7 +1036,7 @@ unsafe extern "C" fn register_subscription_event_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn register_publisher_event_trampoline<R: RustBackend>(
+unsafe extern "C" fn publisher_event_init_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
     kind: NrosRmwEventKind,
     deadline_ms: u32,
@@ -1068,7 +1068,7 @@ unsafe extern "C" fn register_publisher_event_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn assert_publisher_liveliness_trampoline<R: RustBackend>(
+unsafe extern "C" fn publisher_assert_liveliness_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
     let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {

@@ -92,7 +92,7 @@ int main() {
     // pre-empt subscription matching.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    rmw_ret_t pr = g_vt->publish_raw(&pub, cdr, cdr_len);
+    rmw_ret_t pr = g_vt->publish(&pub, cdr, cdr_len);
     if (pr != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw returned %d\n", static_cast<int>(pr));
         return 5;

@@ -297,9 +297,9 @@ mod loan_trampolines {
     /// trampolines for all standard slots; loan slots overridden to
     /// route through zenoh-pico's aliased-publish path.
     pub(super) static ZENOH_VTABLE: NrosRmwVtable = NrosRmwVtable {
-        pub_loan: Some(zenoh_pub_loan),
-        pub_commit: Some(zenoh_pub_commit),
-        pub_discard: Some(zenoh_pub_discard),
+        borrow_loaned_message: Some(zenoh_pub_loan),
+        publish_loaned_message: Some(zenoh_pub_commit),
+        return_loaned_message_from_publisher: Some(zenoh_pub_discard),
         ..RustBackendAdapter::<ZenohRmw>::VTABLE
     };
 }

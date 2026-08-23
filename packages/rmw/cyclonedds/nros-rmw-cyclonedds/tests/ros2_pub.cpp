@@ -75,7 +75,7 @@ int main() {
     size_t cdr_len = 8 + mlen;
 
     for (int i = 0; i < 50; ++i) {
-        rmw_ret_t r = g_vt->publish_raw(&pub, cdr, cdr_len);
+        rmw_ret_t r = g_vt->publish(&pub, cdr, cdr_len);
         if (r != NROS_RMW_RET_OK) {
             std::fprintf(stderr, "publish_raw[%d] = %d\n", i,
                          static_cast<int>(r));

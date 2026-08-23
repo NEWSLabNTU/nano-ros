@@ -36,7 +36,7 @@ const nros_rmw_vtable_t kVtable = {
     /* ---- Publisher ---- */
     /*create_publisher*/          publisher_create,
     /*destroy_publisher*/         publisher_destroy,
-    /*publish_raw*/               publisher_publish_raw,
+    /*publish*/               publisher_publish_raw,
 
     /* ---- Subscription ---- */
     /*create_subscription*/       subscription_create,
@@ -49,7 +49,7 @@ const nros_rmw_vtable_t kVtable = {
     /*destroy_service*/           service_destroy,
     /*take_request*/             service_take_request,
     /*has_request*/               service_has_request,
-    /*send_reply*/                service_send_reply,
+    /*send_response*/                service_send_reply,
 
     /* ---- Client ---- */
     /*create_client*/             client_create,
@@ -57,13 +57,13 @@ const nros_rmw_vtable_t kVtable = {
     /* Phase 130.8 — non-blocking send/recv split; phase-301 deleted
      * the deprecated blocking call_raw slot, so this pair is the one
      * request/reply path. */
-    /*send_request_raw*/          service_send_request_raw,
+    /*send_request*/          service_send_request_raw,
     /*take_response*/            service_take_response,
 
     /* ---- Phase 108 event hooks (deferred) ---- */
-    /*register_subscription_event*/ kRegisterSubscriptionEvent,
-    /*register_publisher_event*/  kRegisterPublisherEvent,
-    /*assert_publisher_liveliness*/ kAssertPublisherLiveliness,
+    /*subscription_event_init*/ kRegisterSubscriptionEvent,
+    /*publisher_event_init*/  kRegisterPublisherEvent,
+    /*publisher_assert_liveliness*/ kAssertPublisherLiveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */
     /*next_deadline_ms*/          nullptr,
     /* Phase 124.B.1 — Cyclone DDS has its own background threads
@@ -77,11 +77,11 @@ const nros_rmw_vtable_t kVtable = {
      * dds_loan_sample / dds_return_loan; wire-up is a follow-up
      * (track under 124.A.5). nullptr today → runtime falls back to
      * the arena staging-buffer path on this backend. */
-    /*pub_loan*/                  nullptr,
-    /*pub_commit*/                nullptr,
-    /*pub_discard*/               nullptr,
+    /*borrow_loaned_message*/                  nullptr,
+    /*publish_loaned_message*/                nullptr,
+    /*return_loaned_message_from_publisher*/               nullptr,
     /*take_loaned_message*/       nullptr,
-    /*sub_release*/               nullptr,
+    /*return_loaned_message_from_subscription*/               nullptr,
 
     /* Phase 124.C — service availability probe. Deferred until the
      * Cyclone DDS built-in topic readers are wired through (matches

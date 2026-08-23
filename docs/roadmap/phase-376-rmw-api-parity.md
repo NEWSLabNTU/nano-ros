@@ -1,6 +1,10 @@
 # Phase 376 — the RMW ABI campaign: generic naming, feature completeness, RTOS correctness
 
-**Status (2026-08-23). W3.d is COMPLETE — no vtable slot multiplexes a count
+**Status (2026-08-23). W3 IS COMPLETE — 24 of 79 slots match upstream's name
+AND argument list, 0 undeclared extras, 0 vendor-named types, every remaining
+difference declared with its RTOS reason. What is left of the campaign is W4
+(55 slots upstream has that we do not) and W5 (auditing the deviations).
+W3.d is COMPLETE — no vtable slot multiplexes a count
 with a status, and the return VALUES are upstream's. W1 and W2 landed as
 MEASUREMENT: the contract is derived
 from real implementations, and three automated checks report how far the vtable
@@ -276,7 +280,7 @@ Status line at the top is derived from these, so it stays a measurement.
 Legend: **done** / **open**. Counts in parentheses are what the tools report
 today.
 
-### W3.a — types lose the vendor prefix (open, 10 types / 45 uses)
+### W3.a — types lose the vendor prefix (**COMPLETE**)
 
 | item | state |
 | --- | --- |
@@ -295,7 +299,7 @@ today.
 
 Verified by: `just rmw-abi-shape` -> `vendor-named types in sigs: 0`.
 
-### W3.b — slots take upstream names (open, 16)
+### W3.b — slots take upstream names (**COMPLETE**)
 
 `take`, `take_request`, `take_response`, `take_sequence`,
 `take_loaned_message`, `borrow_loaned_message`, `publish_loaned_message`,
@@ -306,7 +310,7 @@ Verified by: `just rmw-abi-shape` -> `vendor-named types in sigs: 0`.
 
 Verified by: `UNDECLARED extra slots: 0`.
 
-### W3.c — argument deviations declared (open)
+### W3.c — argument deviations declared (**COMPLETE**)
 
 One `ARG_DEVIATIONS` entry per slot whose parameters differ from upstream, each
 naming the target constraint. `service_server_is_available` **done**; the rest

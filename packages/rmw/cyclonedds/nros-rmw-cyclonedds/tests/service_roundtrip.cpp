@@ -43,7 +43,7 @@ int64_t get_le64(const uint8_t *in) {
 // the old blocking call with the non-blocking send + poll pair.
 int32_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
                       size_t rep_cap) {
-    rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
+    rmw_ret_t sr = g_vt->send_request(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -141,7 +141,7 @@ int main() {
                     int64_t b = get_le64(rbuf + 12);
                     uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
                     put_le64(reply + 4, a + b);
-                    (void) g_vt->send_reply(&srv, seq, reply, sizeof(reply));
+                    (void) g_vt->send_response(&srv, seq, reply, sizeof(reply));
                     return;
                 }
             }

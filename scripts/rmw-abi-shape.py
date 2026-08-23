@@ -120,6 +120,47 @@ ARG_DEVIATIONS = {
     "take_response": (
         "same two deviations as `take_request`, client side"
     ),
+    # ---- Entity lifecycle ----
+    # The session/node difference and the OUT-parameter shape are one decision
+    # applied consistently, described in the phase doc: an image opens ONE
+    # session, there is no typesupport indirection on target, and nothing is
+    # allocated at create time.
+    "create_publisher": ("session not node; baked pkg/type strings not typesupport; entity is an OUT parameter (no runtime allocation)"),
+    "create_subscription": ("as create_publisher"),
+    "create_service": ("as create_publisher"),
+    "create_client": ("as create_publisher"),
+    # `const`-ONLY differences: ours take a non-const handle where upstream
+    # takes const. These are the cheapest deviations in the table to REMOVE
+    # rather than declare — adding `const` costs one signature change per
+    # backend and buys exact parity — and they are listed here so that stays
+    # visible instead of settling in as permanent.
+    "publisher_assert_liveliness": ("const-only: upstream takes `const rmw_publisher_t *`. Fixable, not fundamental"),
+    "return_loaned_message_from_publisher": ("const-only, as publisher_assert_liveliness"),
+    "return_loaned_message_from_subscription": ("const-only, as publisher_assert_liveliness"),
+    # ---- No node object to destroy through ----
+    "destroy_publisher": ("upstream takes (node, entity); an image has no node object, so the entity alone identifies it"),
+    "destroy_subscription": ("as destroy_publisher"),
+    "destroy_service": ("as destroy_publisher"),
+    "destroy_client": ("as destroy_publisher"),
+    # ---- Data plane ----
+    "publish": ("bytes (`const uint8_t *`, `size_t`) rather than a typed `const void *`, because codegen bakes the type and there is no typesupport on target; no allocation argument, because pools are baked"),
+    "publish_loaned_message": ("a length instead of upstream's allocation argument: the loan is a byte slot, and the backend needs to know how much of it was written"),
+    "borrow_loaned_message": ("upstream loans a typed message via `void **`; ours reserves a byte slot of a requested size and reports the granted capacity plus an opaque token, because the payload is bytes and the backend owns the buffer until it is committed or discarded"),
+    # ---- Events ----
+    "publisher_event_init": ("upstream fills an `rmw_event_t` the caller then polls with `rmw_take_event`; ours registers a CALLBACK directly, because an RTOS executor has no wait-set to poll an event handle from. The extra `uint32_t` is the QoS-policy filter and `void *` the callback context"),
+    "subscription_event_init": ("as publisher_event_init"),
+    "send_request": (
+        "bytes rather than a typed `const void *`, and no `int64_t *sequence_id` "
+        "OUT parameter: upstream hands the caller the sequence it assigned, while "
+        "ours is a fire-and-forget publish whose reply is matched by "
+        "`take_response`. Worth revisiting in W5 — a client that cannot learn its "
+        "own request id cannot correlate two in-flight calls"
+    ),
+    "send_response": (
+        "bytes plus a bare `int64_t` sequence rather than upstream's "
+        "`rmw_request_id_t *`: an RTOS reply needs the sequence and nothing else "
+        "in that struct, the same deviation `take_request` declares on the way in"
+    ),
     "take_sequence": (
         "upstream takes (sub, count, message_sequence, info_sequence, size_t *taken, allocation); "
         "ours takes a contiguous byte block plus a per-slot length array, because there is no "

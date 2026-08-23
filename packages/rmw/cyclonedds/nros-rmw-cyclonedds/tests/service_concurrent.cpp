@@ -39,7 +39,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len,
     if (out_len == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
+    rmw_ret_t sr = g_vt->send_request(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -201,7 +201,7 @@ int main() {
                         reply[4 + k] =
                             static_cast<uint8_t>((sum >> (k * 8)) & 0xff);
                     }
-                    (void) g_vt->send_reply(&srv, seq, reply, sizeof(reply));
+                    (void) g_vt->send_response(&srv, seq, reply, sizeof(reply));
                     ++handled;
                 }
             } else {

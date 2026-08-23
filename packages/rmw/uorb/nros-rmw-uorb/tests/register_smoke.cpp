@@ -242,7 +242,7 @@ int main() {
 
     // First publish must trigger lazy orb_advertise_multi.
     uint8_t payload[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    rc = vt->publish_raw(&pubp, payload, sizeof(payload));
+    rc = vt->publish(&pubp, payload, sizeof(payload));
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw[0] returned %d\n", rc);
         return 1;
@@ -264,7 +264,7 @@ int main() {
 
     // Subsequent publish must use orb_publish.
     payload[0] = 0xff;
-    rc = vt->publish_raw(&pubp, payload, sizeof(payload));
+    rc = vt->publish(&pubp, payload, sizeof(payload));
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw[1] returned %d\n", rc);
         return 1;
@@ -279,7 +279,7 @@ int main() {
     }
 
     // Short payload must reject with BUFFER_TOO_SMALL.
-    rc = vt->publish_raw(&pubp, payload, sizeof(payload) - 1);
+    rc = vt->publish(&pubp, payload, sizeof(payload) - 1);
     if (rc != NROS_RMW_RET_BUFFER_TOO_SMALL) {
         std::fprintf(stderr, "short publish returned %d, expected BUFFER_TOO_SMALL\n", rc);
         return 1;
