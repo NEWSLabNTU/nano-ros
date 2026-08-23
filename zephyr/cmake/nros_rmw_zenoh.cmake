@@ -123,6 +123,8 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_UDP_UNICAST)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_SCOUTING)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_SERIAL)
+# RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
+_nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_WS)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
 

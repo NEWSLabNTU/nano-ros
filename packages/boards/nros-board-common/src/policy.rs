@@ -32,6 +32,8 @@ pub struct LinkFeatures {
     pub ivc: bool,
     // Phase 115.B — runtime-pluggable user transport.
     pub custom: bool,
+    // RFC-0080 — CAN / CAN FD link transport.
+    pub can: bool,
 }
 
 impl LinkFeatures {
@@ -73,6 +75,7 @@ impl LinkFeatures {
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
             custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok(),
+            can: env::var("CARGO_FEATURE_LINK_CAN").is_ok(),
         }
     }
 
@@ -92,6 +95,7 @@ impl LinkFeatures {
         self.tls = policy.tls.resolve(self.tls);
         self.ivc = policy.ivc.resolve(self.ivc);
         self.custom = policy.custom.resolve(self.custom);
+        self.can = policy.can.resolve(self.can);
         self
     }
 
@@ -118,6 +122,9 @@ impl LinkFeatures {
     }
     pub fn custom_flag(&self) -> u8 {
         self.custom as u8
+    }
+    pub fn can_flag(&self) -> u8 {
+        self.can as u8
     }
 }
 
@@ -153,6 +160,8 @@ pub struct LinkPolicy {
     pub tls: PolicyChoice,
     pub ivc: PolicyChoice,
     pub custom: PolicyChoice,
+    // RFC-0080 — CAN / CAN FD.
+    pub can: PolicyChoice,
 }
 
 impl LinkPolicy {
@@ -170,6 +179,7 @@ impl LinkPolicy {
             tls: PolicyChoice::Follow,
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
+            can: PolicyChoice::Follow,
         }
     }
 
@@ -205,6 +215,7 @@ impl LinkPolicy {
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
+            can: PolicyChoice::Follow,
         }
     }
 
@@ -236,6 +247,7 @@ impl LinkPolicy {
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
+            can: PolicyChoice::Follow,
         }
     }
 
@@ -255,6 +267,7 @@ impl LinkPolicy {
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
+            can: PolicyChoice::Follow,
         }
     }
 
@@ -275,6 +288,7 @@ impl LinkPolicy {
             tls: PolicyChoice::Force(false),
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
+            can: PolicyChoice::Follow,
         }
     }
 }

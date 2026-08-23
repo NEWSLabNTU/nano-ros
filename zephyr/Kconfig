@@ -338,6 +338,21 @@ config NROS_ZENOH_LINK_SERIAL
       Enable serial/UART transport link.
       Maps to Z_FEATURE_LINK_SERIAL.
 
+config NROS_ZENOH_LINK_CAN
+    bool "CAN / CAN FD link"
+    default n
+    help
+      Enable CAN transport for zenoh-pico (RFC-0080). The link is a
+      DATAGRAM link with a 63-byte MTU on CAN FD (64-byte frame minus a
+      length byte) or 7 bytes on classic CAN; zenoh's own transport
+      fragments anything larger, so no segmentation layer is involved.
+
+      Endpoint syntax:
+        can/<device>#bitrate=500000;dbitrate=2000000;tx_id=0x100;rx_id=0x101
+
+      Requires a CAN controller (CONFIG_CAN) on the board.
+      Maps to Z_FEATURE_LINK_CAN.
+
 config NROS_ZENOH_LINK_WS
     bool "WebSocket link"
     default n

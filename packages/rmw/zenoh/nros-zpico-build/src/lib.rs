@@ -303,6 +303,8 @@ pub fn config_header(
         link.custom_flag()
     )
     .unwrap();
+    // RFC-0080 — CAN / CAN FD.
+    writeln!(header, "#define Z_FEATURE_LINK_CAN {}", link.can_flag()).unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,

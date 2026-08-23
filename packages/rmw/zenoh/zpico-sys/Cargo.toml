@@ -70,6 +70,10 @@ threadx = []
 link-ip = []
 link-raweth = []
 link-tls = []
+# RFC-0080 — CAN / CAN FD link transport. Self-contained in the vendored
+# zenoh-pico tree: no extra crate, the platform bindings live alongside the
+# other links in src/system/<platform>/network.c.
+link-can = []
 # Phase 128.D.3 — opt-in C aliasing TU that maps z_*/_z_get_time_*
 # symbols to the canonical nros_platform_* ABI. Off by default;
 # consumers that have linked nros-platform-cffi can drop the
