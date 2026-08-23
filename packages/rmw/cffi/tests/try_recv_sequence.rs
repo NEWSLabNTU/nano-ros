@@ -241,7 +241,7 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: if native_batch {
             Some(stub_try_recv_sequence)
         } else {
@@ -289,7 +289,7 @@ const fn make_vtable_native() -> NrosRmwVtable {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: Some(stub_try_recv_sequence),
         publish_streamed: None,
         ping_session: None,
@@ -329,7 +329,7 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,
@@ -369,7 +369,7 @@ const fn make_vtable_no_data() -> NrosRmwVtable {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,

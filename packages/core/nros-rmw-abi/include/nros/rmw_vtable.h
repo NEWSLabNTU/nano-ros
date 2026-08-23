@@ -1,6 +1,7 @@
 #ifndef NROS_RMW_VTABLE_H
 #define NROS_RMW_VTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -287,9 +288,29 @@ typedef struct nros_rmw_vtable_t {
      *    `NROS_RMW_RET_UNSUPPORTED`.
      *
      *  NULL function pointer = backend cannot answer; the runtime
-     *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller. */
-    int32_t (*service_server_available)(
-        nros_rmw_client_t *client);
+     *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller.
+     *
+     *  Phase 376 W3.d step A — upstream's shape: the STATUS is the
+     *  return value and the answer is an out-parameter. Previously
+     *  this slot multiplexed both through one `int32_t` (1 = yes,
+     *  0 = no, negative = error), which is what makes upstream's
+     *  positive `RMW_RET_ERROR = 1` unadoptable — `1` would mean
+     *  both "available" and "failed". Splitting them is what lets
+     *  step B renumber at all.
+     *
+     *  A backend writes `*out_available` only on
+     *  `NROS_RMW_RET_OK`; on any error the caller's value is
+     *  untouched. The old contract's tolerance for "any positive
+     *  value other than 1 means available" is gone with the int:
+     *  a `bool` has no non-spec value to be lenient about.
+     *
+     *  Deviation from upstream, declared: no `node` parameter.
+     *  `rmw_service_server_is_available` takes both a node and a
+     *  client; an image has no node object to pass — the client
+     *  reaches its session directly. */
+    nros_rmw_ret_t (*service_server_is_available)(
+        nros_rmw_client_t *client,
+        bool *out_available);
 
     /** Phase 124.D.1 — burst-take.
      *

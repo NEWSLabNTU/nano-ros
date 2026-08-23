@@ -87,7 +87,7 @@ const nros_rmw_vtable_t kVtable = {
      * Cyclone DDS built-in topic readers are wired through (matches
      * the 124.C.2 DDS blocker). nullptr → runtime surfaces
      * NROS_RMW_RET_UNSUPPORTED, no stub. */
-    /*service_server_available*/  nullptr,
+    /*service_server_is_available*/  nullptr,
 
     /* Phase 124.D.3 — native batch take. Cyclone provides
      * `dds_take(reader, buf, info, count, maxs)` as a single-call

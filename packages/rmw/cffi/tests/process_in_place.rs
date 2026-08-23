@@ -212,7 +212,7 @@ fn base_vtable() -> NrosRmwVtable {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,

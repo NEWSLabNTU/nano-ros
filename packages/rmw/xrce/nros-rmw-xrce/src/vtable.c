@@ -77,7 +77,7 @@ static const nros_rmw_vtable_t kVtable = {
     /* Phase 124.C — service availability probe. micro-XRCE-DDS-Client
      * has no participant enumeration; leave NULL → runtime surfaces
      * NROS_RMW_RET_UNSUPPORTED. */
-    .service_server_available   = NULL,
+    .service_server_is_available = NULL,
 
     /* Phase 124.D — native batch take. XRCE delivers one sample per
      * topic callback into a single-slot inbox; no native take_n.

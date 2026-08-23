@@ -101,7 +101,14 @@ ADDED = {
 
 # Parameter differences on slots that DO correspond to an upstream function.
 ARG_DEVIATIONS = {
-    # Filled as slots are migrated to upstream names. Keyed by slot name.
+    # Keyed by slot name. Each entry is a difference from upstream's parameter
+    # list that a target constraint forces, and the reason must be about the
+    # TARGET rather than about our convenience.
+    "service_server_is_available": (
+        "upstream takes (node, client, bool *); an image has no node object — "
+        "the client reaches its session directly, so the node parameter would be "
+        "a pointer with nothing to point at"
+    ),
 }
 
 # Contract symbols we deliberately do not implement at all.

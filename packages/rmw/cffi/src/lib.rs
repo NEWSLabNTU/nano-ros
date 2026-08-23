@@ -792,7 +792,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
     // NOT required (issue 0349) — optional capabilities with a typed
     // `Unsupported` error at the point of use, exactly like the ~14 other
     // nullable slots (`pub_loan`, `sub_borrow`, `next_deadline_ms`,
-    // `service_server_available`, …) this list has always allowed to be NULL:
+    // `service_server_is_available`, …) this list has always allowed to be NULL:
     //   register_publisher_event, register_subscription_event,
     //   assert_publisher_liveliness
     None
@@ -2720,7 +2720,7 @@ impl ClientTrait for CffiClient {
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {
-        let Some(f) = self.vtable.service_server_available else {
+        let Some(f) = self.vtable.service_server_is_available else {
             return Err(TransportError::Unsupported);
         };
         // SAFETY: `f` accepts a `*mut NrosRmwClient`. We
@@ -2735,16 +2735,16 @@ impl ClientTrait for CffiClient {
             _reserved: [0u8; 8],
             backend_data: self.backend_data,
         };
-        let rc = unsafe { f(&mut view) };
-        match rc {
-            0 => Ok(false),
-            1 => Ok(true),
-            n if n < 0 => Err(error_from_ret(n)),
-            // Any positive value other than 1 is non-spec; treat as
-            // "server available" — backends signalling availability
-            // counts ≥ 1 still mean "ready".
-            _ => Ok(true),
+        // Phase 376 W3.d step A — the slot answers through an out-parameter and
+        // returns a plain status, so there is no non-spec value left to be
+        // lenient about: the old arm treating "any positive other than 1" as
+        // available existed only because a count and a status shared one int.
+        let mut available = false;
+        let rc = unsafe { f(&mut view, &mut available) };
+        if rc != NROS_RMW_RET_OK {
+            return Err(error_from_ret(rc));
         }
+        Ok(available)
     }
 }
 
@@ -3063,7 +3063,7 @@ mod tests {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: None,
+        service_server_is_available: None,
         try_recv_sequence: None,
         publish_streamed: None,
         ping_session: None,

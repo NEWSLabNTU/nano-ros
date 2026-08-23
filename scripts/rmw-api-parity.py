@@ -81,7 +81,7 @@ MAP = {
     "rmw_take_request": ("vtable", "try_recv_request"),
     "rmw_send_response": ("vtable", "send_reply"),
     "rmw_take_response": ("vtable", "try_recv_reply_raw"),
-    "rmw_service_server_is_available": ("vtable", "service_server_available"),
+    "rmw_service_server_is_available": ("vtable", "service_server_is_available"),
     "rmw_publisher_assert_liveliness": ("vtable", "assert_publisher_liveliness"),
     # ---- Zero-copy / loaned ----
     "rmw_borrow_loaned_message": ("vtable", "pub_loan"),

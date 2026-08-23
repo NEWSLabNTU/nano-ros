@@ -3,7 +3,7 @@
 //! Exercises the new vtable slot via a stub backend that toggles the
 //! return code through `0` → `1` → `-NROS_RMW_RET_ERROR`. Verifies that:
 //!
-//! - A backend leaving `service_server_available` as `None` surfaces
+//! - A backend leaving `service_server_is_available` as `None` surfaces
 //!   `Err(TransportError::Unsupported)` to the caller.
 //! - Slot returning `0` → `Ok(false)`, slot returning `1` → `Ok(true)`.
 //! - Slot returning a negative `nros_rmw_ret_t` → `Err(_)` (any
@@ -17,7 +17,7 @@
 
 use core::{
     ffi::c_void,
-    sync::atomic::{AtomicI32, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, Ordering},
 };
 
 use nros_rmw::{
@@ -33,6 +33,14 @@ use nros_rmw_cffi::{
 // ---- Mutable script the stub reads on each `server_available` call ----
 
 static SCRIPT: AtomicI32 = AtomicI32::new(0);
+/// What the slot writes to `*out_available` when it returns OK. Phase 376 W3.d
+/// step A split this from `SCRIPT`: the status and the answer are now two
+/// values, which is the whole point of the change.
+static AVAIL: AtomicBool = AtomicBool::new(false);
+/// Makes the stub violate the contract — write the out-parameter and THEN
+/// return an error — so the runtime's handling of a misbehaving backend is
+/// tested rather than the stub's own good manners.
+static SCRIPT_WRITES_ON_ERROR: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" fn stub_open(
     _: *const core::ffi::c_char,
@@ -162,8 +170,17 @@ unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmw
     NROS_RMW_RET_UNSUPPORTED
 }
 // The slot under test: returns whatever `SCRIPT` currently holds.
-unsafe extern "C" fn scripted_server_available(_: *mut NrosRmwClient) -> i32 {
-    SCRIPT.load(Ordering::SeqCst)
+unsafe extern "C" fn scripted_server_is_available(
+    _: *mut NrosRmwClient,
+    out_available: *mut bool,
+) -> NrosRmwRet {
+    let rc = SCRIPT.load(Ordering::SeqCst);
+    if rc == NROS_RMW_RET_OK || SCRIPT_WRITES_ON_ERROR.load(Ordering::SeqCst) {
+        // SAFETY: the caller owns a `bool`; the runtime always passes one.
+        unsafe { *out_available = AVAIL.load(Ordering::SeqCst) };
+    }
+    // On a non-OK status the out-parameter is left ALONE — asserted below.
+    rc
 }
 
 static VTABLE_WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
@@ -196,7 +213,7 @@ static VTABLE_WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
     pub_discard: None,
     sub_borrow: None,
     sub_release: None,
-    service_server_available: Some(scripted_server_available),
+    service_server_is_available: Some(scripted_server_is_available),
     try_recv_sequence: None,
     publish_streamed: None,
     ping_session: None,
@@ -234,7 +251,7 @@ static VTABLE_NULL_SLOT: NrosRmwVtable = NrosRmwVtable {
     pub_discard: None,
     sub_borrow: None,
     sub_release: None,
-    service_server_available: None,
+    service_server_is_available: None,
     try_recv_sequence: None,
     publish_streamed: None,
     ping_session: None,
@@ -284,20 +301,40 @@ fn server_available_tracks_slot_return_value() {
 
     let client = open_client("/svc_scripted");
 
-    SCRIPT.store(0, Ordering::SeqCst);
+    SCRIPT.store(NROS_RMW_RET_OK, Ordering::SeqCst);
+    AVAIL.store(false, Ordering::SeqCst);
     assert!(!client.server_available().unwrap());
 
-    SCRIPT.store(1, Ordering::SeqCst);
+    AVAIL.store(true, Ordering::SeqCst);
     assert!(client.server_available().unwrap());
 
     SCRIPT.store(NROS_RMW_RET_ERROR, Ordering::SeqCst);
     assert!(client.server_available().is_err());
 
-    // Backends sometimes report ≥ 1 as a participant count rather
-    // than a strict boolean. Treat any positive non-1 value as
-    // "available" — covered in `CffiClient::server_available`.
-    SCRIPT.store(7, Ordering::SeqCst);
-    assert!(client.server_available().unwrap());
+    // The case this shape RETIRES: the old slot multiplexed a count and a
+    // status through one `int32_t`, so a backend reporting a participant count
+    // of 7 had to be read as "available", and the runtime carried an arm for
+    // "any positive value other than 1". With the answer in a `bool` there is
+    // no non-spec value left to be lenient about — which is exactly what makes
+    // upstream's `RMW_RET_ERROR = 1` adoptable in step B.
+
+    // And the property the old shape could not express: on a non-OK status the
+    // caller's answer must not be readable as fresh.
+    //
+    // Asserted against the RUNTIME, not against the stub. The obvious version
+    // of this test — call the stub and check it left `*out_available` alone —
+    // asserts only that the stub in this file does what its own body says,
+    // which is worth nothing. What matters is that a backend VIOLATING the
+    // contract cannot leak a value into a caller: `SCRIPT_WRITES_ON_ERROR`
+    // makes the stub write `true` and then fail.
+    SCRIPT_WRITES_ON_ERROR.store(true, Ordering::SeqCst);
+    SCRIPT.store(NROS_RMW_RET_ERROR, Ordering::SeqCst);
+    AVAIL.store(true, Ordering::SeqCst);
+    assert!(
+        client.server_available().is_err(),
+        "a backend that writes the out-param AND fails must still surface the error"
+    );
+    SCRIPT_WRITES_ON_ERROR.store(false, Ordering::SeqCst);
 }
 
 #[test]
@@ -306,6 +343,6 @@ fn vtable_has_slot_field() {
     // the const initialisers above already enforce structural
     // presence, but assert against an explicit `Option<fn>` value
     // for documentation.
-    let _ = VTABLE_WITH_SLOT.service_server_available.is_some();
-    let _ = VTABLE_NULL_SLOT.service_server_available.is_none();
+    let _ = VTABLE_WITH_SLOT.service_server_is_available.is_some();
+    let _ = VTABLE_NULL_SLOT.service_server_is_available.is_none();
 }

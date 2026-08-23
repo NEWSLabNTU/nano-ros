@@ -327,7 +327,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         pub_discard: None,
         sub_borrow: None,
         sub_release: None,
-        service_server_available: Some(service_server_available_trampoline::<R>),
+        service_server_is_available: Some(service_server_is_available_trampoline::<R>),
         try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
         ping_session: Some(ping_session_trampoline::<R>),
@@ -1020,19 +1020,32 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn service_server_available_trampoline<R: RustBackend>(
+unsafe extern "C" fn service_server_is_available_trampoline<R: RustBackend>(
     client: *mut NrosRmwClient,
-) -> i32 {
+    out_available: *mut bool,
+) -> NrosRmwRet {
     // Phase 124.C.1 — delegate to the Rust backend's
     // `ClientTrait::server_available` impl. Default trait
     // body returns `Err(TransportError::Unsupported)`; concrete
     // backends opt in by overriding.
+    //
+    // Phase 376 W3.d step A — status in the return, answer in the
+    // out-parameter. `*out_available` is written ONLY on OK, so an
+    // error leaves whatever the caller initialised it to; that is
+    // upstream's contract and it is also what keeps a caller who
+    // ignores the status from reading a stale `true` as fresh.
+    if out_available.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     match ClientTrait::server_available(c) {
-        Ok(true) => 1,
-        Ok(false) => 0,
+        Ok(available) => {
+            // SAFETY: checked non-null above; the caller owns a `bool`.
+            unsafe { *out_available = available };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }
