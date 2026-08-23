@@ -79,7 +79,11 @@ period_us = 10000
 # the app thread priority (4). Mirrors config/system_model.yaml (the entries
 # read the model; this file feeds `play_launch resolve --system`).
 [tiers.high.threadx]
-priority = 5
+# RFC-0079 — allocated from the port's `pool.app` [15, 31], strictly LESS
+# urgent than the reserved transport band (Z_TASK_PRIORITY 14). ThreadX counts
+# 0 as the HIGHEST priority, so "below the transport" is NUMERICALLY LARGER
+# here and `<= 3` on FreeRTOS — the direction flip issue 0623 is about.
+priority = 15
 # issue 0636 gap 2 — RAW FreeRTOS priority (0..configMAX_PRIORITIES-1; the MPS2
 # board builds with 8, so 0..7). Bigger is more urgent, which is why the BOOT
 # tier on this board is `low` and not `high`: `resolve_tiers` sorts descending
@@ -124,7 +128,11 @@ priority = 2
 # `low` tier precisely to exercise that fallback; this arm asserts tier
 # PRIORITY, so it does not need a second copy of that experiment.
 [tiers.low.threadx]
-priority = 15
+# RFC-0079 — allocated from the port's `pool.app` [15, 31], strictly LESS
+# urgent than the reserved transport band (Z_TASK_PRIORITY 14). ThreadX counts
+# 0 as the HIGHEST priority, so "below the transport" is NUMERICALLY LARGER
+# here and `<= 3` on FreeRTOS — the direction flip issue 0623 is about.
+priority = 16
 # THREADX-SCOPED: preemption threshold + round-robin slice; `core` is an SMP
 # pin via tx_thread_smp_core_exclude (threadx-linux is non-SMP, so the board
 # seam ignores it there).

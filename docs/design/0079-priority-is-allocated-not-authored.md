@@ -253,10 +253,10 @@ system bands that can be CITED from code today. **Four of 38 are clean.**
 
 | verdict | at first run | with plans + `above` |
 | --- | --- | --- |
-| `UNPLANNED` — the port declares no band at all | 21 | **21** |
+| `UNPLANNED` — the port declares no band at all | 21 | **19** |
 | `PREEMPTS` — more urgent than a system band | 8 | **0** |
 | `COLLIDES` — lands exactly ON one | 4 | **0** |
-| below bands — correct by the plan | 5 | **17** |
+| below bands — correct by the plan | 5 | **19** |
 
 **Both defect columns are closed on the two ports that can describe
 themselves.** FreeRTOS and NuttX declare `[board.priority_plan]`;
@@ -329,6 +329,47 @@ The report also finds **no ambiguous ordering** — no two tiers in one bringup
 share a value on one platform — so deadline-monotonic derivation has a total
 order to reproduce on every existing bringup, and the declaration-order
 tiebreak is not load-bearing yet.
+
+## Port status, and what actually blocks the rest
+
+Three ports declare a plan. The remaining two are blocked on different things,
+and the difference matters more than the count:
+
+| port | tiers written in | transport actually at | plan |
+| --- | --- | --- | --- |
+| FreeRTOS | raw | raw 4 (`FreertosScheduling::default`) | declared |
+| NuttX | raw | raw 100 (INHERITED, nobody chose it) | declared |
+| ThreadX | raw | raw 14 (`Z_TASK_PRIORITY`) | declared |
+| Zephyr | raw `k_thread` | pthread, band 0–31 → `SCHED_RR` | **blocked** |
+| POSIX | advisory — never applied | discarded (privilege) | **n/a** |
+
+**ThreadX was not blocked, and a first reading of this said it was.** The claim
+was that its transport sits on the normalised band while its tiers are raw —
+issue 0623's split, unfixed. The band exists (`_z_task_threadx_priority`
+inverts it, because ThreadX counts 0 as most urgent), but it is only reached by
+a caller of `zpico_set_task_config`, and nothing calls that on ThreadX. So
+`_z_task_init` takes its `attr == NULL` path and every zenoh task gets the
+compile-time `Z_TASK_PRIORITY` — a RAW ThreadX priority, in the tiers' own
+units. Describable immediately, and now described.
+
+**Zephyr is genuinely blocked**, and not on willingness. Its tiers are native
+`k_thread` priorities passed straight to `k_thread_create` (negatives =
+cooperative), while zenoh-pico's Zephyr platform creates its tasks with
+`pthread_create` and `zpico_posix_set_priority` maps a normalised 0–31 across
+`CONFIG_NUM_PREEMPT_PRIORITIES` under `SCHED_RR`. Those are two scales in two
+namespaces, and stating a band in either without the POSIX→native conversion
+would re-author issue 0623 inside the mechanism built to prevent it. The
+conversion is Zephyr's, not ours, so the plan needs it read out of Zephyr's
+POSIX layer rather than guessed.
+
+**POSIX is not a port to convert but a question to answer.** The Linux board
+never calls `sched_setscheduler` — it prints "posix tier priority/core are
+advisory (not applied natively)" whenever a tier declares one — and
+`zpico_set_task_config` discards the priority there for the same privilege
+reason. So there is no kernel address space to collide in, and a plan
+describing kernel priorities would be fiction. If POSIX gets one it must
+describe the EXECUTOR's ordering space, which is a different object from the
+other four and deserves deciding rather than assuming.
 
 ## Open questions
 

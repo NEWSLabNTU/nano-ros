@@ -43,7 +43,9 @@ def load_plans():
                 in_plan = False
             if not in_plan:
                 continue
-            if line.startswith("direction"):
+            if line.startswith("tier_key"):
+                plan["tier_key"] = line.split("=", 1)[1].strip().strip('"')
+            elif line.startswith("direction"):
                 plan["direction"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("range"):
                 m = PAIR_RE.search(line)
@@ -56,8 +58,25 @@ def load_plans():
                 name = line.split("=", 1)[0].strip().split(".", 1)[1]
                 m = PAIR_RE.search(line)
                 plan["pool"][name] = (int(m.group(1)), int(m.group(2)))
-        if platform:
-            plans[platform] = plan
+        # The key a `[tiers.<name>.<key>]` pin is written under. Usually the
+        # board's own `platform`, but not always: both ThreadX boards are
+        # `threadx-linux` / `threadx-riscv64` while bringups write
+        # `[tiers.*.threadx]`. FreeRTOS and NuttX matched by coincidence, which
+        # is not a thing to build on — so the plan states it.
+        key = plan.pop("tier_key", None) or platform
+        if not key:
+            continue
+        prev = plans.get(key)
+        if prev is not None and (prev["reserved"], prev["pool"],
+                                 prev.get("direction")) != (plan["reserved"],
+                                                            plan["pool"],
+                                                            plan.get("direction")):
+            raise SystemExit(
+                f"two boards claim tier_key {key!r} with DIFFERENT plans:\n"
+                f"  {prev['source']}\n  {plan['source']}\n"
+                "One tier key is one address space; if these ports really "
+                "differ, they need different keys.")
+        plans[key] = plan
     return plans
 
 

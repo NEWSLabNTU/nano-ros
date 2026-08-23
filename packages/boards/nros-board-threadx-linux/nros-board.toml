@@ -25,3 +25,33 @@ signature = "fn main() -> !"
 heap = true
 atomics = true
 threads = true
+
+# RFC-0079 — the PORT's priority address plan.
+#
+# `tier_key` because the pin key and the board platform differ here: bringups
+# write `[tiers.<name>.threadx]` while this board's platform is
+# `threadx-linux`. FreeRTOS and NuttX happened to match; stating it is cheaper
+# than relying on that.
+#
+# The whole plan is READ FROM the port. Note especially that the transport is
+# NOT on the normalised band: `zpico_set_task_config` is never called on
+# ThreadX, so `_z_task_init` takes its `attr == NULL` path and every zenoh task
+# gets the compile-time `Z_TASK_PRIORITY` — a RAW ThreadX priority, in the same
+# units the tiers are written in. The band and its inversion
+# (`_z_task_threadx_priority`) only apply to a caller that configures one, and
+# today nobody does.
+[board.priority_plan]
+tier_key = "threadx"
+# ThreadX documents priority as "0 through (TX_MAX_PRIORITIES-1), where a value
+# of 0 represents the highest priority" — the OPPOSITE direction to FreeRTOS
+# and NuttX, which is exactly why a plan has to state it rather than assume.
+direction = "smaller-is-urgent"
+range = [0, 31]
+# Z_TASK_PRIORITY, zpico-sys/c/platform/threadx/platform.h:42 — the read, lease
+# and tx-flush tasks all take it.
+reserved.transport = [14, 14]
+# Tiers allocate strictly less urgent than the transport, i.e. NUMERICALLY
+# LARGER on this kernel. The direction flip is the trap issue 0623 is about:
+# the same "below the transport" rule reads as `<= 3` on FreeRTOS and `>= 15`
+# here.
+pool.app = [15, 31]
