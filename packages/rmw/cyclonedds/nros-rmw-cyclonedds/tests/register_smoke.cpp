@@ -48,7 +48,7 @@ int main() {
         g_captured->publish_raw == nullptr ||
         g_captured->create_subscription == nullptr ||
         g_captured->destroy_subscription == nullptr ||
-        g_captured->try_recv_raw == nullptr ||
+        g_captured->take == nullptr ||
         g_captured->has_data == nullptr ||
         g_captured->create_service == nullptr ||
         g_captured->destroy_service == nullptr ||

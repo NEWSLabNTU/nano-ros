@@ -336,9 +336,15 @@ int main() {
     // has_data must short-circuit to 0 *without* an extra orb_check
     // syscall.
     uint8_t rxbuf[16] = {};
-    int32_t n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
-    if (n != NROS_RMW_RET_NO_DATA) {
-        std::fprintf(stderr, "try_recv_raw empty[0] returned %d, expected NO_DATA\n", n);
+    // Phase 376 W3.b/W3.d step A — `take` reports a status; "nothing to take"
+    // is `taken = false` with OK, so an empty queue and a FAILED take are no
+    // longer the same observation.
+    size_t n = 0;
+    bool took = true;
+    nros_rmw_ret_t rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    if (rc != NROS_RMW_RET_OK || took) {
+        std::fprintf(stderr, "take empty[0] rc=%d taken=%d, expected OK/false\n", (int)rc,
+                     (int)took);
         return 1;
     }
     int check_after_first = g_orb.check_calls;
@@ -354,14 +360,16 @@ int main() {
                      g_orb.check_calls, check_after_first);
         return 1;
     }
-    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
-    if (n != NROS_RMW_RET_NO_DATA) {
-        std::fprintf(stderr, "try_recv_raw empty[1] returned %d, expected NO_DATA\n", n);
+    took = true;
+    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    if (rc != NROS_RMW_RET_OK || took) {
+        std::fprintf(stderr, "take empty[1] rc=%d taken=%d, expected OK/false\n", (int)rc,
+                     (int)took);
         return 1;
     }
     if (g_orb.check_calls != check_after_first) {
         std::fprintf(stderr,
-                     "try_recv_raw fast-path missed: orb_check called %d times, expected %d\n",
+                     "take fast-path missed: orb_check called %d times, expected %d\n",
                      g_orb.check_calls, check_after_first);
         return 1;
     }
@@ -381,9 +389,10 @@ int main() {
         std::fprintf(stderr, "has_data with pending returned false\n");
         return 1;
     }
-    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
-    if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
-        std::fprintf(stderr, "try_recv_raw returned %d, expected %u\n", n, kFakeMeta.o_size);
+    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    if (rc != NROS_RMW_RET_OK || !took || n != static_cast<size_t>(kFakeMeta.o_size)) {
+        std::fprintf(stderr, "take returned rc=%d taken=%d %zu bytes, expected %u\n", (int)rc,
+                     (int)took, n, kFakeMeta.o_size);
         return 1;
     }
     for (size_t i = 0; i < kFakeMeta.o_size; ++i) {
@@ -402,19 +411,20 @@ int main() {
     g_orb.pending = true;
     g_orb.pending_len = kFakeMeta.o_size;
     g_push.cb(g_push.arg);
-    n = vt->try_recv_raw(&subp, rxbuf, /*too small*/ 4);
-    if (n != NROS_RMW_RET_BUFFER_TOO_SMALL) {
-        std::fprintf(stderr, "short try_recv_raw returned %d, expected BUFFER_TOO_SMALL\n", n);
+    rc = vt->take(&subp, rxbuf, /*too small*/ 4, &n, &took);
+    if (rc != NROS_RMW_RET_BUFFER_TOO_SMALL) {
+        std::fprintf(stderr, "short take returned %d, expected BUFFER_TOO_SMALL\n", (int)rc);
         return 1;
     }
     if (!g_orb.pending) {
-        std::fprintf(stderr, "short try_recv_raw drained the queue (should not)\n");
+        std::fprintf(stderr, "short take drained the queue (should not)\n");
         return 1;
     }
     // Retry with full buffer drains.
-    n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));
-    if (n != static_cast<int32_t>(kFakeMeta.o_size)) {
-        std::fprintf(stderr, "retry try_recv_raw returned %d, expected %u\n", n, kFakeMeta.o_size);
+    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    if (rc != NROS_RMW_RET_OK || !took || n != static_cast<size_t>(kFakeMeta.o_size)) {
+        std::fprintf(stderr, "retry take returned rc=%d taken=%d %zu bytes, expected %u\n",
+                     (int)rc, (int)took, n, kFakeMeta.o_size);
         return 1;
     }
 

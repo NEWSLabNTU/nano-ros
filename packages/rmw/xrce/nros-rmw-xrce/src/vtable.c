@@ -30,7 +30,7 @@ static const nros_rmw_vtable_t kVtable = {
     /* ---- Subscription ---- */
     .create_subscription        = xrce_subscription_create,
     .destroy_subscription       = xrce_subscription_destroy,
-    .try_recv_raw               = xrce_subscription_try_recv_raw,
+    .take                       = xrce_subscription_take,
     .has_data                   = xrce_subscription_has_data,
 
     /* ---- Service ---- */
@@ -81,7 +81,7 @@ static const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.D — native batch take. XRCE delivers one sample per
      * topic callback into a single-slot inbox; no native take_n.
-     * Leave NULL → runtime emits the try_recv_raw loop fallback. */
+     * Leave NULL → runtime emits the `take` loop fallback. */
     .try_recv_sequence          = NULL,
 
     /* Phase 124.E.3 — streamed publish via uxr_prepare_output_stream

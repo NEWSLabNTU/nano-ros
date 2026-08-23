@@ -118,8 +118,14 @@ void subscription_destroy(nros_rmw_subscription_t* subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len) {
-    if (subscriber == nullptr || buf == nullptr) {
+nros_rmw_ret_t subscription_take(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
+                                 size_t* out_len, bool* out_taken) {
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. The parameter
+    // is `out_taken`, not upstream's `taken`: this function already has a
+    // `dds_return_t taken` holding Cyclone's sample count, and the two would
+    // shadow — a name collision the compiler caught, between two things that
+    // both legitimately mean "taken".
+    if (subscriber == nullptr || buf == nullptr || out_len == nullptr || out_taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     SubState* state = as_state(subscriber);
@@ -148,7 +154,9 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* 
     if (taken == 0 || !si[0].valid_data) {
         dds_stream_free_sample(sample, state->desc->m_ops);
         ddsrt_free(sample);
-        return NROS_RMW_RET_NO_DATA;
+        // Empty subscription: OK with `taken = false`, not a sentinel.
+        *out_taken = false;
+        return NROS_RMW_RET_OK;
     }
 
     // Serialise the typed sample back to CDR (XCDR1, native byte
@@ -197,7 +205,9 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* 
     dds_stream_free_sample(sample, state->desc->m_ops);
     ddsrt_free(sample);
 
-    return static_cast<int32_t>(total);
+    *out_len = static_cast<size_t>(total);
+    *out_taken = true;
+    return NROS_RMW_RET_OK;
 }
 
 // Phase 124.D.3 — native batch take. Cyclone DDS `dds_take` accepts

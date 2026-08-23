@@ -780,7 +780,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
         publish_raw,
         drive_io,
         has_data,
-        try_recv_raw,
+        take,
         create_service,
         destroy_service,
         create_client,
@@ -2396,23 +2396,31 @@ impl nros_rmw::Subscription for CffiSubscription {
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         let mut view = self.make_view();
+        // Phase 376 W3.b/W3.d step A — `take` reports through out-parameters.
+        // Three arms collapse into one: NO_DATA, a negative error, and the
+        // `rc == 0` case that used to mean "zero bytes, treat as nothing" are
+        // now `taken = false`, a status check, and `taken = true` with
+        // `out_len == 0` respectively. That last one is a real behaviour fix:
+        // a legitimately EMPTY message was previously indistinguishable from an
+        // empty subscription.
+        let mut out_len = 0usize;
+        let mut taken = false;
         let rc = unsafe {
-            (self.vtable.try_recv_raw.expect("rmw vtable: try_recv_raw"))(
+            (self.vtable.take.expect("rmw vtable: take"))(
                 &mut view,
                 buf.as_mut_ptr(),
                 buf.len(),
+                &mut out_len,
+                &mut taken,
             )
         };
-        if rc == NROS_RMW_RET_NO_DATA {
-            return Ok(None);
-        }
-        if rc < 0 {
+        if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        if rc == 0 {
+        if !taken {
             return Ok(None);
         }
-        Ok(Some(rc as usize))
+        Ok(Some(out_len))
     }
 
     fn try_recv_raw_with_info(
@@ -2971,12 +2979,17 @@ mod tests {
         NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
-    unsafe extern "C" fn stub_try_recv_raw(
+    unsafe extern "C" fn stub_take(
         _: *mut NrosRmwSubscription,
         _: *mut u8,
         _: usize,
-    ) -> i32 {
-        0
+        _: *mut usize,
+        taken: *mut bool,
+    ) -> NrosRmwRet {
+        // Phase 376 W3.d step A — the stub takes nothing, which is now stated
+        // rather than encoded as a zero byte count.
+        unsafe { *taken = false };
+        NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_has_data(
         _: *mut NrosRmwSubscription,
@@ -3073,7 +3086,7 @@ mod tests {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),

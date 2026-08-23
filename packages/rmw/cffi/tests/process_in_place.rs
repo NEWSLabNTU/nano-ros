@@ -21,9 +21,9 @@ use std::sync::Mutex;
 
 use nros_rmw::{QosSettings, RmwConfig, Session, SessionMode, Subscription, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, CffiSubscription, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
-    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    CffiRmw, CffiSubscription, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
+    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     nros_rmw_cffi_register_named,
 };
 
@@ -91,8 +91,17 @@ unsafe extern "C" fn stub_create_subscription(
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
-unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
-    NROS_RMW_RET_NO_DATA
+unsafe extern "C" fn stub_take(
+    _: *mut NrosRmwSubscription,
+    _: *mut u8,
+    _: usize,
+    _: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — NO_DATA retires: "nothing to take" is
+    // `taken = false` with OK.
+    unsafe { *taken = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_has_data(
     _: *mut NrosRmwSubscription,
@@ -215,7 +224,7 @@ fn base_vtable() -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),

@@ -115,9 +115,11 @@ int main() {
     }
 
     uint8_t buf[256] = {};
-    int32_t n = g_vt->try_recv_raw(&sub, buf, sizeof(buf));
-    if (n <= 0) {
-        std::fprintf(stderr, "try_recv_raw returned %d\n", n);
+    size_t n = 0;
+    bool took = false;
+    /* Phase 376 W3.b/W3.d step A — status returned, bytes + taken out. */
+    if (g_vt->take(&sub, buf, sizeof(buf), &n, &took) != NROS_RMW_RET_OK || !took || n == 0) {
+        std::fprintf(stderr, "take returned %zu bytes, taken=%d\n", n, (int)took);
         return 7;
     }
     if (static_cast<size_t>(n) != cdr_len) {

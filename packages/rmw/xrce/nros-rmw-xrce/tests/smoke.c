@@ -85,13 +85,14 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    /* Phase 115.K.2.2 — try_recv_raw / has_data on a fresh subscriber
+    /* Phase 115.K.2.2 — take / has_data on a fresh subscriber
      * shell with NULL backend_data must reach the backend. */
     nros_rmw_subscription_t sub = {0};
-    int32_t rr = g_received_vtable->try_recv_raw(&sub, NULL, 0);
+    size_t rr_len = 0;
+    bool rr_took = false;
+    nros_rmw_ret_t rr = g_received_vtable->take(&sub, NULL, 0, &rr_len, &rr_took);
     if (rr != NROS_RMW_RET_INVALID_ARGUMENT) {
-        fprintf(stderr,
-                "FAIL: try_recv_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+        fprintf(stderr, "FAIL: take on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)rr);
         return EXIT_FAILURE;
     }

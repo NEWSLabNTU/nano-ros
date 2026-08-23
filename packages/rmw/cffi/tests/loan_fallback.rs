@@ -99,8 +99,16 @@ unsafe extern "C" fn noop_csub(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) {}
-unsafe extern "C" fn noop_recv(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
-    -1
+unsafe extern "C" fn noop_recv(
+    _: *mut NrosRmwSubscription,
+    _: *mut u8,
+    _: usize,
+    _: *mut usize,
+    _: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — this stub always FAILED (-1); it still does,
+    // now as a named status rather than a negative number.
+    NROS_RMW_RET_ERROR
 }
 unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription) -> i32 {
     0
@@ -179,7 +187,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     publish_raw: Some(publish_raw),
     create_subscription: Some(noop_csub),
     destroy_subscription: Some(noop_dsub),
-    try_recv_raw: Some(noop_recv),
+    take: Some(noop_recv),
     has_data: Some(noop_hasd),
     create_service: Some(noop_csrv),
     destroy_service: Some(noop_dsrv),

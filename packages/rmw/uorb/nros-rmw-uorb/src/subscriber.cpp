@@ -133,12 +133,17 @@ void subscription_destroy(nros_rmw_subscription_t *subscriber) {
     subscriber->backend_data = nullptr;
 }
 
-int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
-                                uint8_t *buf, size_t buf_len) {
+nros_rmw_ret_t subscription_take(nros_rmw_subscription_t *subscriber,
+                                 uint8_t *buf, size_t buf_len,
+                                 size_t *out_len, bool *taken) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     if (buf == nullptr && buf_len != 0) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape.
+    if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
@@ -148,7 +153,8 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
     // is pinned to `true` so we always fall through.
     if (state->callback_active
         && !state->ready.load(std::memory_order_acquire)) {
-        return NROS_RMW_RET_NO_DATA;
+        *taken = false;
+        return NROS_RMW_RET_OK;
     }
     bool updated = false;
     if (orb_check(state->sub_handle, &updated) != 0) {
@@ -160,7 +166,8 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
         if (state->callback_active) {
             state->ready.store(false, std::memory_order_release);
         }
-        return NROS_RMW_RET_NO_DATA;
+        *taken = false;
+        return NROS_RMW_RET_OK;
     }
     if (buf_len < state->meta->o_size) {
         // Don't drain — caller may retry with a larger buffer.
@@ -174,7 +181,9 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
         // the broker callback.
         state->ready.store(false, std::memory_order_release);
     }
-    return static_cast<int32_t>(state->meta->o_size);
+    *out_len = static_cast<size_t>(state->meta->o_size);
+    *taken = true;
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t *subscriber, bool *out_has_data) {

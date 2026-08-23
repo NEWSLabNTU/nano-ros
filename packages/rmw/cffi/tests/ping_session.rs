@@ -83,8 +83,15 @@ unsafe extern "C" fn stub_create_subscription(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
-unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
-    0
+unsafe extern "C" fn stub_take(
+    _: *mut NrosRmwSubscription,
+    _: *mut u8,
+    _: usize,
+    _: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    unsafe { *taken = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_has_data(
     _: *mut NrosRmwSubscription,
@@ -179,7 +186,7 @@ const fn base_vtable() -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),

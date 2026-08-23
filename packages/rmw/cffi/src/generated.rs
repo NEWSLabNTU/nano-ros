@@ -208,12 +208,15 @@ pub struct nros_rmw_vtable_t {
     >,
     pub destroy_subscription:
         ::core::option::Option<unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t)>,
-    pub try_recv_raw: ::core::option::Option<
+    #[doc = " Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a message was copied; `*out_len` is\n  how many bytes, meaningful only when taken. Both are\n  written only on `NROS_RMW_RET_OK`.\n\n  Second slot to retire `NROS_RMW_RET_NO_DATA`: an empty\n  subscription is `taken = false` with OK, which is what\n  upstream's `taken` out-parameter means.\n\n  Deviations from upstream, declared:\n  - `buf` / `buf_len` / `*out_len` replace upstream's typed\n    `void *ros_message`. There is no typesupport indirection\n    on target — the payload is bytes and the caller owns the\n    buffer, so it needs the length back.\n  - no `rmw_subscription_allocation_t *`: pools are baked, so\n    there is nothing to pre-size (the matching\n    `rmw_init_subscription_allocation` is declined for the\n    same reason)."]
+    pub take: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut nros_rmw_subscription_t,
             buf: *mut u8,
             buf_len: usize,
-        ) -> i32,
+            out_len: *mut usize,
+            taken: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
     #[doc = " Phase 376 W3.d step A — status in the return, answer in the\n  out-parameter, so no slot multiplexes a flag with a status.\n  `*out_has_data` is written only on `NROS_RMW_RET_OK`.\n\n  RTOS addition: upstream has no equivalent, because a hosted\n  caller reaches for a wait-set. This is the poll a loop with\n  no wait-set needs, and it allocates nothing.\n\n  A backend must not mutate subscription state here — the\n  probe is logically read-only."]
     pub has_data: ::core::option::Option<

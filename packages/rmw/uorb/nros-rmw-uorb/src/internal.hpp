@@ -34,7 +34,8 @@ nros_rmw_ret_t subscription_create(nros_rmw_session_t* session, const char* topi
                                  const nros_rmw_subscription_options_t* options,
                                  nros_rmw_subscription_t* out);
 void subscription_destroy(nros_rmw_subscription_t* subscriber);
-int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len);
+nros_rmw_ret_t subscription_take(nros_rmw_subscription_t* subscriber, uint8_t* buf,
+                                 size_t buf_len, size_t* out_len, bool* taken);
 nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* out_has_data);
 
 /* ---- service.cpp ---- */

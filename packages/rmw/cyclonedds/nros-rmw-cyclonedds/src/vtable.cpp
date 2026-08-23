@@ -41,7 +41,7 @@ const nros_rmw_vtable_t kVtable = {
     /* ---- Subscription ---- */
     /*create_subscription*/       subscription_create,
     /*destroy_subscription*/      subscription_destroy,
-    /*try_recv_raw*/              subscription_try_recv_raw,
+    /*take*/                      subscription_take,
     /*has_data*/                  subscription_has_data,
 
     /* ---- Service ---- */

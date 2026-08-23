@@ -104,6 +104,13 @@ ARG_DEVIATIONS = {
     # Keyed by slot name. Each entry is a difference from upstream's parameter
     # list that a target constraint forces, and the reason must be about the
     # TARGET rather than about our convenience.
+    "take": (
+        "upstream takes (sub, void *ros_message, bool *taken, allocation); ours takes "
+        "(sub, buf, buf_len, size_t *out_len, bool *taken) — there is no typesupport "
+        "indirection on target, so the payload is BYTES and the caller owns the buffer, "
+        "which means it needs the length back; the allocation argument has nothing to "
+        "pre-size because pools are baked"
+    ),
     "service_server_is_available": (
         "upstream takes (node, client, bool *); an image has no node object — "
         "the client reaches its session directly, so the node parameter would be "

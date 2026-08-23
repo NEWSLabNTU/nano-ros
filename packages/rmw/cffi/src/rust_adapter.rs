@@ -300,7 +300,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         publish_raw: Some(publish_raw_trampoline::<R>),
         create_subscription: Some(create_subscription_trampoline::<R>),
         destroy_subscription: Some(destroy_subscription_trampoline::<R>),
-        try_recv_raw: Some(try_recv_raw_trampoline::<R>),
+        take: Some(take_trampoline::<R>),
         has_data: Some(has_data_trampoline::<R>),
         create_service: Some(create_service_trampoline::<R>),
         destroy_service: Some(destroy_service_trampoline::<R>),
@@ -579,11 +579,19 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
     let _ = unsafe { take_box::<R::Subscription>(slot) };
 }
 
-unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     buf: *mut u8,
     buf_len: usize,
-) -> i32 {
+    out_len: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.b/W3.d step A — upstream's `rmw_take` shape: status in the
+    // return, `taken` and the byte count in out-parameters. `Ok(None)` is no
+    // longer the NO_DATA sentinel.
+    if out_len.is_null() || taken.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -593,14 +601,22 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, buf_len) };
     let key = unsafe { (*subscriber).backend_data as usize };
 
+    // SAFETY (all four writes below): both pointers checked non-null above.
     #[cfg(feature = "safety-e2e")]
     if crate::take_cffi_integrity_request(key) {
         return match Subscription::try_recv_validated(s, slice) {
             Ok(Some((n, status))) => {
                 crate::store_cffi_integrity_status(key, status);
-                n as i32
+                unsafe {
+                    *out_len = n;
+                    *taken = true;
+                }
+                NROS_RMW_RET_OK
             }
-            Ok(None) => NROS_RMW_RET_NO_DATA,
+            Ok(None) => {
+                unsafe { *taken = false };
+                NROS_RMW_RET_OK
+            }
             Err(e) => ret_from_error(&e),
         };
     }
@@ -608,9 +624,16 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
     match Subscription::try_recv_raw_with_info(s, slice) {
         Ok(Some((n, info))) => {
             crate::store_cffi_message_info(key, info);
-            n as i32
+            unsafe {
+                *out_len = n;
+                *taken = true;
+            }
+            NROS_RMW_RET_OK
         }
-        Ok(None) => NROS_RMW_RET_NO_DATA,
+        Ok(None) => {
+            unsafe { *taken = false };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }

@@ -12,9 +12,10 @@ use core::{
 
 use nros_rmw::{RmwConfig, Session as _, SessionMode, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
-    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
-    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
+    CffiRmw, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
+    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    nros_rmw_cffi_register_named,
 };
 
 // ---- Backend A ----------------------------------------------------------
@@ -140,8 +141,14 @@ unsafe extern "C" fn noop_create_sub(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) {}
-unsafe extern "C" fn noop_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
-    -1
+unsafe extern "C" fn noop_take(
+    _: *mut NrosRmwSubscription,
+    _: *mut u8,
+    _: usize,
+    _: *mut usize,
+    _: *mut bool,
+) -> NrosRmwRet {
+    NROS_RMW_RET_ERROR
 }
 unsafe extern "C" fn noop_has_data(
     _: *mut NrosRmwSubscription,
@@ -230,7 +237,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     publish_raw: Some(a_publish_raw),
     create_subscription: Some(noop_create_sub),
     destroy_subscription: Some(noop_destroy_sub),
-    try_recv_raw: Some(noop_try_recv_raw),
+    take: Some(noop_take),
     has_data: Some(noop_has_data),
     create_service: Some(noop_create_srv),
     destroy_service: Some(noop_destroy_srv),
@@ -268,7 +275,7 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     publish_raw: Some(b_publish_raw),
     create_subscription: Some(noop_create_sub),
     destroy_subscription: Some(noop_destroy_sub),
-    try_recv_raw: Some(noop_try_recv_raw),
+    take: Some(noop_take),
     has_data: Some(noop_has_data),
     create_service: Some(noop_create_srv),
     destroy_service: Some(noop_destroy_srv),

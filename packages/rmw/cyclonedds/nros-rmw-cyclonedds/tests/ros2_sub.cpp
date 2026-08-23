@@ -59,8 +59,11 @@ int main() {
         bool has_d = false;
         /* Phase 376 W3.d step A — flag out, status returned. */
         if (g_vt->has_data(&sub, &has_d) == NROS_RMW_RET_OK && has_d) {
-            int32_t n = g_vt->try_recv_raw(&sub, buf, sizeof(buf));
-            if (n > 0) {
+            size_t n = 0;
+            bool took = false;
+            /* Phase 376 W3.b/W3.d step A. */
+            if (g_vt->take(&sub, buf, sizeof(buf), &n, &took) == NROS_RMW_RET_OK && took &&
+                n > 0) {
                 // CDR-LE std_msgs/msg/String:
                 //   [0..4)  encap
                 //   [4..8)  string length (incl NUL) LE

@@ -199,8 +199,10 @@ int main() {
     EXPECT(got, "no data delivered");
 
     uint8_t recv[256] = {};
-    int32_t n = g_vt->try_recv_raw(&sub, recv, sizeof(recv));
-    EXPECT(n > 0, "try_recv_raw returned %d", n);
+    size_t n = 0;
+    bool took = false;
+    EXPECT(g_vt->take(&sub, recv, sizeof(recv), &n, &took) == NROS_RMW_RET_OK && took && n > 0,
+           "take returned nothing (%zu bytes, taken=%d)", n, (int)took);
 
     // 233.6 — the goal_id is a fixed `octet[16]` on both wire and IDL, so the
     // publisher/subscriber pass it straight through (no strip/reinsert). The

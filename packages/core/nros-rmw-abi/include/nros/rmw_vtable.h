@@ -84,8 +84,28 @@ typedef struct nros_rmw_vtable_t {
         const nros_rmw_subscription_options_t *options,
         nros_rmw_subscription_t *out);
     void (*destroy_subscription)(nros_rmw_subscription_t *subscription);
-    int32_t (*try_recv_raw)(nros_rmw_subscription_t *subscription,
-        uint8_t *buf, size_t buf_len);
+    /** Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.
+     *
+     *  `*taken` says whether a message was copied; `*out_len` is
+     *  how many bytes, meaningful only when taken. Both are
+     *  written only on `NROS_RMW_RET_OK`.
+     *
+     *  Second slot to retire `NROS_RMW_RET_NO_DATA`: an empty
+     *  subscription is `taken = false` with OK, which is what
+     *  upstream's `taken` out-parameter means.
+     *
+     *  Deviations from upstream, declared:
+     *  - `buf` / `buf_len` / `*out_len` replace upstream's typed
+     *    `void *ros_message`. There is no typesupport indirection
+     *    on target — the payload is bytes and the caller owns the
+     *    buffer, so it needs the length back.
+     *  - no `rmw_subscription_allocation_t *`: pools are baked, so
+     *    there is nothing to pre-size (the matching
+     *    `rmw_init_subscription_allocation` is declined for the
+     *    same reason). */
+    nros_rmw_ret_t (*take)(nros_rmw_subscription_t *subscription,
+        uint8_t *buf, size_t buf_len,
+        size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the
      *  out-parameter, so no slot multiplexes a flag with a status.
      *  `*out_has_data` is written only on `NROS_RMW_RET_OK`.

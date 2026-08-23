@@ -494,10 +494,23 @@ fn rust_backend_adapter_routes_every_slot() {
     );
     assert_eq!(HAS_DATA_HITS.load(Ordering::SeqCst), 1);
     let mut recv_buf = [0u8; 64];
-    let n = unsafe {
-        (vt.try_recv_raw.expect("vtable slot"))(&mut subr, recv_buf.as_mut_ptr(), recv_buf.len())
+    // Phase 376 W3.d step A — "nothing to take" is OK with `taken = false`,
+    // not a negative sentinel. The old assertion (`n < 0`) accepted ANY error
+    // as the expected answer, so a backend failing for an unrelated reason
+    // passed this line.
+    let mut recv_len = 0usize;
+    let mut recv_taken = true;
+    let rc = unsafe {
+        (vt.take.expect("vtable slot"))(
+            &mut subr,
+            recv_buf.as_mut_ptr(),
+            recv_buf.len(),
+            &mut recv_len,
+            &mut recv_taken,
+        )
     };
-    assert!(n < 0, "expected NO_DATA, got {n}");
+    assert_eq!(rc, NROS_RMW_RET_OK);
+    assert!(!recv_taken, "an empty subscription takes nothing");
     assert_eq!(TRY_RECV_HITS.load(Ordering::SeqCst), 1);
     unsafe { (vt.destroy_subscription.expect("vtable slot"))(&mut subr) };
     assert_eq!(DESTROY_SUB_HITS.load(Ordering::SeqCst), 1);

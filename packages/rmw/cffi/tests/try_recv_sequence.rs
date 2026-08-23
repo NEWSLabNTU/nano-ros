@@ -23,10 +23,9 @@ use core::{
 
 use nros_rmw::{Session, SessionMode, Subscription, TopicInfo};
 use nros_rmw_cffi::{
-    NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
-    nros_rmw_cffi_register_named,
+    NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
+    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 const PER_MSG_CAP: usize = 32;
@@ -98,26 +97,39 @@ unsafe extern "C" fn stub_create_subscription(
 unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
 
 // `try_recv_raw` stub: feed the i-th queue entry on the i-th call.
-unsafe extern "C" fn stub_try_recv_raw(
+unsafe extern "C" fn stub_take(
     _: *mut NrosRmwSubscription,
     buf: *mut u8,
     buf_len: usize,
-) -> i32 {
+    out_len: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — the byte count is an out-parameter now, so a
+    // drained queue (`taken = false`) and a zero-length message (`taken = true`
+    // with `out_len == 0`) stop sharing the value 0.
     let cursor = RAW_CURSOR.fetch_add(1, Ordering::SeqCst);
     if cursor >= QUEUE.len() {
-        return 0;
+        unsafe { *taken = false };
+        return NROS_RMW_RET_OK;
     }
     let msg = QUEUE[cursor];
     let copy = msg.len().min(buf_len);
-    unsafe { core::ptr::copy_nonoverlapping(msg.as_ptr(), buf, copy) };
-    copy as i32
+    unsafe {
+        core::ptr::copy_nonoverlapping(msg.as_ptr(), buf, copy);
+        *out_len = copy;
+        *taken = true;
+    }
+    NROS_RMW_RET_OK
 }
-unsafe extern "C" fn stub_try_recv_raw_no_data(
+unsafe extern "C" fn stub_take_no_data(
     _: *mut NrosRmwSubscription,
     _: *mut u8,
     _: usize,
-) -> i32 {
-    NROS_RMW_RET_NO_DATA
+    _: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    unsafe { *taken = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_has_data(
     _: *mut NrosRmwSubscription,
@@ -226,7 +238,7 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
@@ -274,7 +286,7 @@ const fn make_vtable_native() -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
@@ -314,7 +326,7 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw),
+        take: Some(stub_take),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
@@ -354,7 +366,7 @@ const fn make_vtable_no_data() -> NrosRmwVtable {
         publish_raw: Some(stub_publish_raw),
         create_subscription: Some(stub_create_subscription),
         destroy_subscription: Some(stub_destroy_subscription),
-        try_recv_raw: Some(stub_try_recv_raw_no_data),
+        take: Some(stub_take_no_data),
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),

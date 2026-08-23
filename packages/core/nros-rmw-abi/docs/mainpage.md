@@ -60,8 +60,9 @@ The vtable is a struct of function pointers grouped by entity (see
 - **Publisher** — `create_publisher`, `destroy_publisher`,
   `publish_raw`. Raw payloads are CDR-encoded by the upper layer.
 - **Subscription** — `create_subscription`, `destroy_subscription`,
-  `try_recv_raw`, `has_data`. `try_recv_raw` is non-blocking; return
-  `0` if no data is ready.
+  `take`, `has_data`. `take` is non-blocking; report `taken = false`
+  with `NROS_RMW_RET_OK` when no data is ready (phase 376 W3.d
+  retired the `NROS_RMW_RET_NO_DATA` sentinel here — see below).
 - **Service** — `create_service`, `destroy_service`,
   `try_recv_request`, `has_request`, `send_reply`. The `seq_out`
   parameter on `try_recv_request` carries the request sequence number
@@ -80,9 +81,9 @@ Zero is success; every error code is a named negative constant in
 create_session           non-NULL = success, NULL = error
 destroy_session/drive_io/
   publish_raw/send_reply NROS_RMW_RET_OK = success, negative = named error code
-try_recv_raw             >= 0 = bytes received (0 = no data), negative = named error code
+take                     NROS_RMW_RET_OK + *taken / *out_len; negative = named error code
 try_recv_request         >= 0 = bytes received (seq_out written), negative = named error code
-has_data/has_request     1 = yes, 0 = no
+has_data/has_request     NROS_RMW_RET_OK + *out_has_{data,request}; negative = named error
 send_request_raw         NROS_RMW_RET_OK = queued, negative = named error code
 try_recv_reply_raw       >= 0 = reply bytes, NO_DATA = not yet, negative = error
 destroy_*                void (best-effort cleanup)
@@ -108,7 +109,7 @@ the failure site through the platform's `printk` equivalent.
   pointers must be safe to invoke from any executor thread.
 - `drive_io` may block up to `timeout_ms`; it must not hold
   application locks across the wait.
-- `publish_raw`, `try_recv_raw`, and `send_reply` may run concurrently
+- `publish_raw`, `take`, and `send_reply` may run concurrently
   from different threads — the backend is responsible for any
   required serialisation.
 - `send_request_raw` / `try_recv_reply_raw` are non-blocking; the

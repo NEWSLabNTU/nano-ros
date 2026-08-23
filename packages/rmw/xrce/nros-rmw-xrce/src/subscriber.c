@@ -212,21 +212,25 @@ void xrce_subscription_destroy(nros_rmw_subscription_t *subscriber) {
     subscriber->backend_data = NULL;
 }
 
-int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
-                                     uint8_t *buf, size_t buf_len) {
-    if (subscriber == NULL || subscriber->backend_data == NULL) {
+nros_rmw_ret_t xrce_subscription_take(nros_rmw_subscription_t *subscriber, uint8_t *buf,
+                                      size_t buf_len, size_t *out_len, bool *taken) {
+    /* Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. */
+    if (subscriber == NULL || subscriber->backend_data == NULL || out_len == NULL ||
+        taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
     xrce_subscriber_slot *slot = ss->slot;
     if (slot == NULL || slot->count == 0) {
-        return NROS_RMW_RET_NO_DATA;
+        /* Empty subscription: OK with `taken = false`, not a sentinel. */
+        *taken = false;
+        return NROS_RMW_RET_OK;
     }
     xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
     /* Always consume the head slot regardless of outcome — overflow,
      * buffer-too-small, and successful read all advance the ring so a
      * single bad entry can't wedge the queue. */
-    int32_t ret;
+    nros_rmw_ret_t ret;
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
     } else if (entry->len > buf_len) {
@@ -237,7 +241,9 @@ int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
             memcpy(buf, entry->data, entry->len);
         }
         slot->locked = false;
-        ret = (int32_t)entry->len;
+        *out_len = entry->len;
+        *taken = true;
+        ret = NROS_RMW_RET_OK;
     }
     entry->len = 0;
     entry->overflow = false;

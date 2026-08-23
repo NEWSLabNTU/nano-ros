@@ -79,13 +79,16 @@ int main() {
     // No publish has occurred. This backend is poll-only: has_data() is a
     // conservative "maybe" that always returns 1 (Cyclone's DATA_AVAILABLE is
     // edge-like, so querying it as a pre-filter would suppress the take path).
-    // try_recv_raw is the authoritative non-blocking check — with nothing
-    // published it must yield no bytes (NROS_RMW_RET_NO_DATA, a negative
-    // status; the contract's "non-negative == byte count" makes any positive
-    // return a spurious sample).
+    // `take` is the authoritative non-blocking check — with nothing published
+    // it must report `taken = false` with an OK status. Phase 376 W3.d step A
+    // retired NROS_RMW_RET_NO_DATA here: an empty subscription is no longer a
+    // negative sentinel, so this assertion now distinguishes "nothing to take"
+    // from "the take FAILED", which the old `> 0` test could not.
     uint8_t rxbuf[64];
-    if (g_vt->try_recv_raw(&sub, rxbuf, sizeof(rxbuf)) > 0) {
-        std::fprintf(stderr, "try_recv_raw should yield no bytes with no published data\n");
+    size_t rxn = 0;
+    bool rxtook = true;
+    if (g_vt->take(&sub, rxbuf, sizeof(rxbuf), &rxn, &rxtook) != NROS_RMW_RET_OK || rxtook) {
+        std::fprintf(stderr, "take should yield nothing with no published data\n");
         g_vt->destroy_subscription(&sub);
         g_vt->destroy_publisher(&pub);
         (void)g_vt->destroy_session(&s);
