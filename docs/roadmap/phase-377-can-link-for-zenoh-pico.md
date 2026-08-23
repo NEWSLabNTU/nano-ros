@@ -136,17 +136,27 @@ giving 2,793 frames/s and **1.41 Mbit/s of usable payload**.
 
 **Bus load** for the island's 14 publishers:
 
-| scenario | load |
-| --- | ---: |
-| Odometry alone at 50 Hz | 27% |
-| Odometry 50 Hz + 13 others at 20 Hz | **37%** |
-| everything at 10 Hz | 10% |
+**Rates now measured, not assumed** (from the nodes' `update_rate` / `rate`
+parameters): emergency-stop 30 Hz, comfortable-stop 10 Hz, stop-mode 30 Hz,
+mrm-handler 10 Hz. That splits the load into two very different halves:
 
-**The frame counts are measured; the RATES are assumed.** 50 Hz for Odometry and
-20 Hz for the rest were picked as plausible, not read off the island. Autoware
-commonly runs odometry at 50-100 Hz, and at 100 Hz the figure roughly doubles.
-Measuring the actual publish periods is a prerequisite before anyone treats 37%
-as a budget.
+| direction | traffic | load |
+| --- | --- | ---: |
+| **island OUTBOUND** | all 14 publishers, small messages (~40 B), measured rates | **~10%** |
+| **Odometry INBOUND** | one subscribed `nav_msgs/Odometry`, 15.5 frames | 5% @ 10 Hz … **52% @ 100 Hz** |
+
+The safety-relevant traffic the island *produces* — stop commands, MRM state,
+gear/mode reports — is **~10% of a CAN FD bus**, comfortable anywhere. The
+earlier "37%" was almost entirely the ASSUMED inbound Odometry, and it is the
+one flow the island does not control: Autoware sets that rate, and a single
+Odometry message is 15.5 frames because it is 718 B on a 63 B MTU.
+
+**So the design conclusion sharpens.** If CAN carries only the island's own
+output plus small commands inbound, it sits near 10% and every headroom argument
+holds. If it also carries Odometry, one subscribed bulk topic dominates the bus
+and at 100 Hz exceeds a shared-bus budget by itself. The lever is not the link —
+it is whether bulk telemetry the island merely *consumes* should cross a CAN
+segment at all, or stay on Ethernet while CAN carries the safety signals.
 RFC §8's "0.5–1 Mbit/s against 1–1.5 available, without much margin" was
 pessimistic: the margin is real, but it comes with Odometry costing 15 frames.
 
