@@ -131,6 +131,40 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   exfiltration guard): the agent commits + rebases locally and leaves the branch ready; the
   maintainer pushes. The agent may push only when a scoped `Bash(git -C <submodule-path> push:*)`
   allow-rule exists — never a blanket `git push:*`.
+- **A submodule has exactly two legitimate shapes, and patching decides which.** Either it
+  **pins a stable version on an untouched third-party repo** (a tag or release commit — the
+  usual case, and the pin is a decision, see below), or it **tracks a patch-line branch on OUR
+  fork**. There is no third shape where we patch someone else's repo in place.
+  The distinction that matters is *fork* vs *ours*: a fork of an upstream project keeps its
+  patches on a named branch and its `main` clean, while a repo WE AUTHOR (`play_launch`,
+  `px4-rs`) has no upstream to mirror, so its `main` IS the line and `branch = main` is correct
+  there. Both still record the branch.
+  **Before writing the first patch line, make the fork and the branch exist** — fork the repo,
+  create the patch-line branch (`nano-ros` by convention; `nros-lp64-ulong`, `nuttx-0.2`,
+  `nano-ros-v11.0.0-patches` where a narrower name reads better), and point the submodule at
+  it. Doing this after the fact is how a patch line ends up somewhere nobody can find it.
+  **The fork's `main` mirrors upstream.** It is the thing you diff against and the thing you
+  rebase onto; the moment patches land on it, "what have we changed?" stops having an answer.
+  On 2026-08-23 zenoh-pico's fork had it backwards — `main` was a four-commit orphan carrying
+  the patches (root `07de44f`, no upstream history beneath it) while the real `nano-ros` branch
+  sat four months stale without the IVC or CUSTOM links. Reconstructing which patches were live
+  took a tree-level audit, because commit history could not answer it.
+  **Record the branch in `.gitmodules`** (`git submodule set-branch --branch <b> <path>`), for
+  every fork, always. Be precise about what that buys: the gitlink is still a COMMIT and still
+  what a clone and CI check out — `branch =` only tells `git submodule update --remote` which
+  line to follow, and tells a reader where the patches live without an archaeology session
+  against the remote. Absence of `branch =` should mean "unmodified upstream", so it is only
+  informative if every fork has one: as of 2026-08-23, 11 of 20 submodules are forks and all 11
+  declare a branch; the other 9 are untouched upstream.
+  **Resolve the branch by containment, not by guessing.** A pin is often BEHIND its branch tip,
+  so matching the pin against branch heads finds nothing and matching it against `main` is a
+  coin flip — `ros2_rust_examples` pins a commit on `add-justfile`, not `main`. Fetch the
+  candidate branches and ask `git merge-base --is-ancestor <pin> <branch>`.
+  **Before force-pushing a patch line, prove the replacement is a superset.** Not "the commits
+  look similar" — compare the trees: `comm -23 <(git ls-tree -r --name-only OLD|sort)
+  <(git ls-tree -r --name-only NEW|sort)` must be empty, and spot-check each old patch's content
+  in the new tree. And recover the old ref first (`git reflog show refs/remotes/origin/<branch>`,
+  anchor it to a branch, push it) so the check is reversible rather than merely careful.
 - **Two kinds of submodule, and the difference decides whether a lag is a BUG.** A `git status`
   showing a submodule dirty is not uniformly "stale, update it":
   - **Vendored third-party (`third-party/dds/cyclonedds`, `third-party/threadx/kernel`,
