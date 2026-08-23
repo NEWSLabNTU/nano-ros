@@ -474,3 +474,77 @@ can close pointing at 0506.
 
 Threshold is 3x. The scheduler defect this issue diagnosed is fixed and the
 tier dispatches; what is left is the transport dropping what it dispatches.
+
+## The priority hypothesis is REFUTED, by controlled experiment — 2026-08-23
+
+The section above proposed that the TX failures were issue 0506 reaching this
+cell: tiers at `SCHED_FIFO` 110/100 above zenoh-pico's read/lease threads at the
+inherited 100. It said the settling experiment was to change that order and see
+whether the failures stop.
+
+They do not.
+
+| transport read/lease priority | `/ctrl` | `/telem` | publishes |
+| --- | --- | --- | --- |
+| 1 (below every tier) | **69** | 26 | still failing |
+| inherited ~100 (baseline, 4 runs) | 55-77 | 25-28 | still failing |
+| 111 (above every tier) | **46** | 24 | still failing |
+
+Placing the transport ABOVE the tiers — the arrangement CLAUDE.md names as the
+right default, and the one 0623 fixed for FreeRTOS — makes this cell slightly
+WORSE, and `_Z_ERR_TRANSPORT_TX_FAILED` appears at every setting. So the TX
+failure is not a scheduling-order problem and 0506 is not the parent of this
+residue.
+
+The spread between 46 and 69 is also the control that makes the negative result
+mean something: the knob demonstrably reaches the threads, so "no effect on the
+failures" is a finding rather than a no-op.
+
+### What that leaves
+
+`_Z_ERR_TRANSPORT_TX_FAILED` with an 8-byte payload and a 33-byte attachment, at
+every priority arrangement, on both tiers. The remaining candidates are inside
+the link rather than around it — a full TX batch / session buffer, or the
+emulated NIC not draining as fast as the guest offers. Worth noting that this
+guest's clock runs 6.5-7.9x AHEAD under `-icount` (measured earlier in this
+issue), so a "10 ms" publish cadence is offered to the emulated link far faster
+than 100 Hz of wall time. That would make the cell's threshold a property of the
+emulator's link, not of the scheduler — but that is a hypothesis, and this
+section exists because the last one was too.
+
+The probe that would settle it: count `z_publisher_put` failures against
+successes over a fixed window at two different tier spin periods. If the failure
+RATE tracks offered load rather than priority, it is congestion.
+
+## Fixed on the way: NuttX could not state its transport priority at all
+
+Independent of the above, and kept because it is a real platform gap:
+`zpico_set_task_config` DISCARDED the priority on NuttX.
+
+```c
+#else
+    // Linux / macOS / NuttX: priority needs a policy this process may not be
+    // allowed to request. Stack size only, as before.
+    (void)read_priority;
+    (void)lease_priority;
+#endif
+```
+
+That reason is a HOSTED concern — SCHED_FIFO needing privilege — and NuttX is an
+RTOS with no such gate; the board's own tier spawn sets SCHED_FIFO priorities
+through the same pthread API a few files over. This is exactly issue 0626's
+finding for Zephyr, left behind in the same `#else` when that one was fixed:
+the class was fixed at the reported site only.
+
+Added `zpico_nuttx_set_priority` — a RAW-priority sibling of the Zephyr helper,
+deliberately separate because Zephyr's takes a NORMALISED 0-31 value and NuttX
+tier priorities are authored raw (`[tiers.*.nuttx] priority = 110`); two scales
+through one function is how 0623's inversion happened. `PTHREAD_EXPLICIT_SCHED`
+is set, without which the policy and param are silently ignored and the thread
+takes the creator's priority — the same silent inheritance this fixes.
+
+**No board calls it, and that is deliberate.** The measurement above says the
+value is not this issue's answer, and which side of the tiers a NuttX transport
+should sit on is 0506's open question. Shipping the knob without choosing the
+number is the point: "both orderings are legitimate; choosing by accident is
+not."

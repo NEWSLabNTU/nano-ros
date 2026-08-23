@@ -1132,6 +1132,54 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * the CPU indefinitely. Round-robin preserves the priority ORDER, which is what
  * is being asked for, without turning a busy transport into a starvation
  * source. */
+/* issue 0736 — NuttX's raw-priority sibling of `zpico_posix_set_priority`.
+ *
+ * Separate function on purpose. The Zephyr helper takes a NORMALISED 0-31
+ * priority and maps it across `CONFIG_NUM_PREEMPT_PRIORITIES`; NuttX tier
+ * priorities are authored RAW (`[tiers.*.nuttx] priority = 110`) and go
+ * verbatim into `pthread_attr_setschedparam`, which is the vocabulary issue
+ * 0623 settled on after a normalised scale silently inverted a tier against
+ * the transport band. Two scales through one function is how that happened;
+ * this keeps NuttX in the units its callers already write.
+ *
+ * `sched_get_priority_{min,max}` are safe to call here — the NuttX board's own
+ * tier spawn already uses them (`nuttx_clamp_priority`), unlike Zephyr where
+ * they sit behind an experimental Kconfig.
+ *
+ * SCHED_FIFO, not SCHED_RR: the tiers are FIFO, and mixing policies across one
+ * priority ORDER only matters among equals. The read task blocks in `recvfrom`
+ * with a timeout, so it is not the never-yielding thread the Zephyr helper's
+ * round-robin choice guards against.
+ *
+ * PTHREAD_EXPLICIT_SCHED is load-bearing, for the same reason it is in the
+ * Zephyr arm and in the board's tier spawn: the default is
+ * PTHREAD_INHERIT_SCHED, under which the policy and param below are IGNORED and
+ * the thread silently takes the creator's priority. That silent inheritance is
+ * the defect this is fixing — do not reintroduce it one layer down.
+ *
+ * A raw 0 means "unset": keep whatever the port would have done. */
+#if defined(__NuttX__)
+static void zpico_nuttx_set_priority(pthread_attr_t *attr, uint32_t raw) {
+    if (raw == 0u) {
+        return;
+    }
+    int lo = sched_get_priority_min(SCHED_FIFO);
+    int hi = sched_get_priority_max(SCHED_FIFO);
+    int p = (int)raw;
+    if (p < lo) {
+        p = lo;
+    }
+    if (p > hi) {
+        p = hi;
+    }
+    struct sched_param sp;
+    sp.sched_priority = p;
+    (void)pthread_attr_setschedpolicy(attr, SCHED_FIFO);
+    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
+    (void)pthread_attr_setschedparam(attr, &sp);
+}
+#endif
+
 static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) {
 #if !defined(CONFIG_PREEMPT_ENABLED)
     /* No preemptive priorities to place a task on. */
@@ -1240,8 +1288,24 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     (void)read_priority;
     (void)lease_priority;
 #endif
+#elif defined(__NuttX__)
+    // issue 0736 — NuttX is an RTOS and its priority IS settable; it was in the
+    // Linux bucket below, whose reason ("a policy this process may not be
+    // allowed to request") is a HOSTED concern about SCHED_FIFO needing
+    // privilege. NuttX has no such gate — the board's own tier spawn sets
+    // SCHED_FIFO priorities through this very API a few files over.
+    //
+    // The consequence of being in the wrong bucket: the read and lease tasks
+    // inherited whatever thread opened the session, so no NuttX image could
+    // state where its transport sits relative to its tiers. Measured on
+    // realtime-rust: tiers at FIFO 110/100 against transport threads at the
+    // inherited 100, and every publish failing with
+    // `_Z_ERR_TRANSPORT_TX_FAILED`. Exactly issue 0626's finding for Zephyr,
+    // left behind in the same `#else` when that one was fixed.
+    zpico_nuttx_set_priority(&g_default_read_task_attr, read_priority);
+    zpico_nuttx_set_priority(&g_default_lease_task_attr, lease_priority);
 #else
-    // Linux / macOS / NuttX: priority needs a policy this process may not be
+    // Linux / macOS: priority needs a policy this process may not be
     // allowed to request. Stack size only, as before.
     (void)read_priority;
     (void)lease_priority;
