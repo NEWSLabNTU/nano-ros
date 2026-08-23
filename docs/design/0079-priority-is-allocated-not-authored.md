@@ -246,9 +246,46 @@ which nano-ros does not use.
 4. `budget_us` (2) is the only hard break. Both sites are in this repo's own
    bringups.
 
-The collision report over the existing 38 is the first implementation step: it
-says whether static pins are a rare escape hatch or the norm, which determines
-how much the presets must carry.
+### The collision report, run
+
+`scripts/dev/priority-collision-report.py` evaluates all 38 pins against the
+system bands that can be CITED from code today. **Four of 38 are clean.**
+
+| verdict | pins |
+| --- | --- |
+| `UNPLANNED` — the port declares no band at all | **21** |
+| `PREEMPTS` — more urgent than a system band | **8** |
+| `COLLIDES` — lands exactly ON one | **5** |
+| below bands — correct by the plan | **4** |
+
+The specific findings answer the question the migration section was guessing at.
+Static pins are not a rare escape hatch; they are the only mechanism, and they
+are mostly wrong or unverifiable:
+
+* **`tiers.low.nuttx = 100` collides in every bringup that has it (4 of 4).**
+  100 is the app_main default the zenoh read/lease threads inherit, so the boot
+  tier and the transport share one priority and round-robin against each other.
+  Nobody wrote that down; it falls out of two defaults meeting.
+* **`tiers.high.freertos = 5` preempts the transport band in 4 bringups.** This
+  is exactly what `report_tiers_above_transport` warns about at boot — "tier
+  `high` at 5 >= 4 — this tier PREEMPTS transport I/O". The diagnostic exists to
+  make that a CHOICE. The count says the choice was never made: it is 4 for 4,
+  in every bringup that targets FreeRTOS.
+* **`tiers.mid.freertos = 3` lands on the `app` band**, sharing a priority with
+  the application task itself.
+* **21 pins are on ports that declare no band**, so no tool can say whether
+  they are right. Two of those ports cannot even express one:
+  `zpico_set_task_config` discards priority on Linux/macOS, and did so on NuttX
+  until issue 0736.
+
+The 8 `PREEMPTS` and 5 `COLLIDES` are the ones a checked static lease would
+reject on day one. That is the migration cost, and it is concentrated: 4 tiers
+in 5 bringups, all in this repo.
+
+The report also finds **no ambiguous ordering** — no two tiers in one bringup
+share a value on one platform — so deadline-monotonic derivation has a total
+order to reproduce on every existing bringup, and the declaration-order
+tiebreak is not load-bearing yet.
 
 ## Open questions
 
