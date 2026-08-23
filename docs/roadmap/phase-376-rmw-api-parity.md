@@ -1,6 +1,8 @@
 # Phase 376 — the RMW ABI campaign: generic naming, feature completeness, RTOS correctness
 
-**Status (2026-08-23). W1 and W2 landed as MEASUREMENT: the contract is derived
+**Status (2026-08-23). W3.d is COMPLETE — no vtable slot multiplexes a count
+with a status, and the return VALUES are upstream's. W1 and W2 landed as
+MEASUREMENT: the contract is derived
 from real implementations, and three automated checks report how far the vtable
 is from mirroring it. Today: 0 of 79 slots match name and args, 10 vendor-named
 types in signatures, 71 contract symbols with no slot. W3+ (the migration) is
@@ -341,17 +343,17 @@ found a silent failure in — a backend that FAILED to compute its deadline
 returned `-1` and was read as "quiet link", which is precisely the reading that
 makes the executor sleep longer. It now has an error channel it never had.
 
-### W3.d step B — the values flip (open, blocked on step A)
+### W3.d step B — the values flip (**COMPLETE 2026-08-23**)
 
 | item | state |
 | --- | --- |
-| adopt `RMW_RET_OK 0 / ERROR 1 / TIMEOUT 2 / UNSUPPORTED 3 / BAD_ALLOC 10 / INVALID_ARGUMENT 11` | open |
-| our 12 extra codes move to the 1000+ extension range, documented in `rmw_ret.h` | open |
-| retire `NO_DATA` where `taken = false` + OK now says it | open |
-| fix the status-only sign tests the audit lists (6) | open |
-| decide `INCORRECT_RMW_IMPLEMENTATION`: upstream has it, a single-backend image cannot raise it | open |
+| adopt `RMW_RET_OK 0 / ERROR 1 / TIMEOUT 2 / UNSUPPORTED 3 / BAD_ALLOC 10 / INVALID_ARGUMENT 11` | **done** |
+| our 13 extra codes move to the 1000+ extension range, via `NROS_RMW_RET_EXTENSION_BASE` | **done** |
+| retire `NO_DATA` where `taken = false` + OK now says it | **done** — the constant stays for the backends' own internal helpers, but no vtable slot returns it |
+| fix the status-only sign tests the audit lists | **done** — `just rmw-ret-sign` is 0/0 |
+| decide `INCORRECT_RMW_IMPLEMENTATION` | **done** — DEFINED at upstream's 12 though unreachable here, so the value can never be reused for one of ours; that is the point of pinning to upstream's numbering |
 
-Verified by: `just rmw-ret-sign` -> both counts 0.
+Verified by: `just rmw-ret-sign` -> both counts 0 (it is).
 
 ### W4 — feature completeness (open, 70 slots with no slot today)
 

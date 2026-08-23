@@ -73,19 +73,26 @@ The vtable is a struct of function pointers grouped by entity (see
 
 ## Return-value conventions
 
-Status is reported as `nros_rmw_ret_t` — a signed 32-bit integer.
-Zero is success; every error code is a named negative constant in
-@ref rmw_ret.h. Pointer-returning calls signal failure with `NULL`.
+Status is reported as `nros_rmw_ret_t` — a signed 32-bit integer whose VALUES
+are upstream rmw's (phase 376 W3.d step B): `OK 0`, `ERROR 1`, `TIMEOUT 2`,
+`UNSUPPORTED 3`, `BAD_ALLOC 10`, `INVALID_ARGUMENT 11`,
+`NODE_NAME_NON_EXISTENT 203`. Codes upstream does not define live in the
+extension range at `NROS_RMW_RET_EXTENSION_BASE` (1000) and above, so a future
+upstream addition can never collide with one of ours.
+
+Zero is success; **nothing returns a negative value any more**. Do not test a
+status by its sign — compare against a named constant. Pointer-returning calls
+still signal failure with `NULL`.
 
 ```
 create_session           non-NULL = success, NULL = error
 destroy_session/drive_io/
-  publish_raw/send_reply NROS_RMW_RET_OK = success, negative = named error code
-take                     NROS_RMW_RET_OK + *taken / *out_len; negative = named error code
-take_request             NROS_RMW_RET_OK + *taken / *out_len / *seq_out; negative = named error
-has_data/has_request     NROS_RMW_RET_OK + *out_has_{data,request}; negative = named error
-send_request_raw         NROS_RMW_RET_OK = queued, negative = named error code
-take_response            NROS_RMW_RET_OK + *taken / *out_len; negative = named error
+  publish_raw/send_reply NROS_RMW_RET_OK = success, else a named error code
+take                     NROS_RMW_RET_OK + *taken / *out_len; else a named error
+take_request             NROS_RMW_RET_OK + *taken / *out_len / *seq_out; else a named error
+has_data/has_request     NROS_RMW_RET_OK + *out_has_{data,request}; else a named error
+send_request_raw         NROS_RMW_RET_OK = queued, else a named error code
+take_response            NROS_RMW_RET_OK + *taken / *out_len; else a named error
 destroy_*                void (best-effort cleanup)
 ```
 
