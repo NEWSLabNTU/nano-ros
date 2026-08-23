@@ -191,3 +191,35 @@ threads = true
 # RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]
 toolchain_file = "cmake/toolchain/riscv32imac-nuttx-elf.cmake"
+
+# RFC-0079 — the PORT's priority address plan. Applies to both `[[board]]`
+# entries above: arm and riscv share one kernel and one set of defaults.
+#
+# Read from the vendored kernel, not chosen here (sys/types.h):
+#   SCHED_PRIORITY_MIN 1, SCHED_PRIORITY_DEFAULT 100, SCHED_PRIORITY_MAX 255
+[board.priority_plan]
+direction = "bigger-is-urgent"
+range = [1, 255]
+
+# INHERITED, not chosen — and that distinction is the point.
+#
+# zenoh-pico's read and lease threads are pthreads created with the default
+# attr, so under PTHREAD_INHERIT_SCHED they take the priority of whichever
+# thread opened the session. That is the boot task, which keeps app_main's
+# SCHED_PRIORITY_DEFAULT (100) through session open and the spawn loop. Nobody
+# decided 100; it is where two defaults met.
+#
+# Until issue 0736 the port could not have decided otherwise even in principle:
+# `zpico_set_task_config` DISCARDED the priority on NuttX, lumped in with
+# Linux/macOS under a hosted privilege concern that does not apply to an RTOS.
+# It can now state a band (`zpico_nuttx_set_priority`), and no board calls it
+# yet — deliberately, because measurement showed the value is not issue 0736's
+# answer and which side of the tiers it belongs on is issue 0506's open
+# question. So this records the CURRENT fact and will change when that is
+# decided.
+reserved.transport = [100, 100]
+
+# Tiers allocate strictly below the transport band. Sharing a priority with it
+# is not an ordering at all — equal-priority FIFO threads round-robin, so which
+# of the app and the link runs first is unspecified.
+pool.app = [1, 99]

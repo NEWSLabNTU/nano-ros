@@ -96,7 +96,14 @@ priority = 10
 # `[tiers.high.zephyr]`, which is spawned. (The nuttx/threadx `core` below stay
 # — those boards apply placement through their own mechanisms.)
 [tiers.low.nuttx]
-priority = 100
+# RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
+# threads INHERIT from the thread that opens the session (app_main's
+# SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it
+# publishes over — and equal-priority SCHED_FIFO threads round-robin, which is
+# not an ordering. One step below keeps the tier order (high 110 > low 99)
+# and vacates the band. Declared in the port's [board.priority_plan];
+# `check-tier-priority-plan` rejects a pin that lands on it.
+priority = 99
 core = 0
 [tiers.low.freertos]
 priority = 2

@@ -324,7 +324,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             // `high` is tiers[0] (the boot tier, 110) and `low` is spawned
             // (100). Before W4 only `low` ever printed.
             shape: EachTierOrFailNote {
-                tiers: &[("high", 110), ("low", 100)],
+                tiers: &[("high", 110), ("low", 99)],
                 fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "per-tier SCHED_FIFO priority applied for EVERY declaring tier, \
@@ -343,7 +343,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: NUTTX_TIER_PRIORITY_MARKER,
             fallback: None,
             shape: EachTierOrFailNote {
-                tiers: &[("high", 110), ("low", 100)],
+                tiers: &[("high", 110), ("low", 99)],
                 fail_marker: NUTTX_TIER_PRIORITY_FAILED_MARKER,
             },
             note: "issue 0636 — the C arm reports per-tier priority too, boot tier \

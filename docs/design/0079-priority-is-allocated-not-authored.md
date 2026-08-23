@@ -251,21 +251,33 @@ which nano-ros does not use.
 `scripts/dev/priority-collision-report.py` evaluates all 38 pins against the
 system bands that can be CITED from code today. **Four of 38 are clean.**
 
-| verdict | pins |
-| --- | --- |
-| `UNPLANNED` — the port declares no band at all | **21** |
-| `PREEMPTS` — more urgent than a system band | **8** |
-| `COLLIDES` — lands exactly ON one | **4** |
-| below bands — correct by the plan | **5** |
+| verdict | at first run | after the first two plans landed |
+| --- | --- | --- |
+| `UNPLANNED` — the port declares no band at all | 21 | **21** |
+| `PREEMPTS` — more urgent than a system band | 8 | **8** |
+| `COLLIDES` — lands exactly ON one | 4 | **0** |
+| below bands — correct by the plan | 5 | **9** |
+
+The `COLLIDES` column is closed: FreeRTOS and NuttX now declare
+`[board.priority_plan]`, `check-tier-priority-plan` rejects a pin landing on a
+reserved band, and the four that did were moved (`tiers.low.nuttx` 100 → 99).
+`PREEMPTS` stays a warning until `above = "<band>"` exists to make it a stated
+choice — enforcing a rule before its escape hatch exists would just teach people
+to route around the checker.
 
 The specific findings answer the question the migration section was guessing at.
 Static pins are not a rare escape hatch; they are the only mechanism, and they
 are mostly wrong or unverifiable:
 
-* **`tiers.low.nuttx = 100` collides in every bringup that has it (4 of 4).**
+* **`tiers.low.nuttx = 100` collided in every bringup that has it (4 of 4).**
   100 is the app_main default the zenoh read/lease threads inherit, so the boot
-  tier and the transport share one priority and round-robin against each other.
-  Nobody wrote that down; it falls out of two defaults meeting.
+  tier and the transport shared one priority and round-robinned against each
+  other. Nobody wrote that down; it fell out of two defaults meeting. FIXED —
+  moved to 99, which keeps the tier order and vacates the band. The
+  `[nuttx cpp|rust TierPriority]` cells confirm 2/2 tiers ACCEPT at the new
+  value, and issue 0736's cell is unmoved (68 vs 30, inside its usual range),
+  consistent with the separate finding there that transport PRIORITY is not
+  what makes its publishes fail.
 * **`tiers.high.freertos = 5` preempts the transport band in 4 bringups.** This
   is exactly what `report_tiers_above_transport` warns about at boot — "tier
   `high` at 5 >= 4 — this tier PREEMPTS transport I/O". The diagnostic exists to
