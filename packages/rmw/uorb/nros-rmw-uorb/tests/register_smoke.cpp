@@ -341,7 +341,7 @@ int main() {
     // longer the same observation.
     size_t n = 0;
     bool took = true;
-    nros_rmw_ret_t rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || took) {
         std::fprintf(stderr, "take empty[0] rc=%d taken=%d, expected OK/false\n", (int)rc,
                      (int)took);
