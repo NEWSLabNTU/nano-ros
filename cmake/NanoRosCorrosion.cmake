@@ -156,7 +156,17 @@ endfunction()
 # correct-version path.
 function(_nros_corrosion_store_dir out_var)
     set(${out_var} "" PARENT_SCOPE)
-    find_program(_NROS_CLI nros)
+    # Issue 0754 — prefer the CLI the build was HANDED (`-D_NANO_ROS_
+    # CODEGEN_TOOL=<path>`, the canonical lane's spelling) over a fresh
+    # PATH discovery: a second independent `find_program` re-introduces
+    # the 0663/0625 shadowing class (a stale `nros` earlier on PATH
+    # answering for the one the build validated).
+    set(_NROS_CLI "")
+    if(DEFINED _NANO_ROS_CODEGEN_TOOL AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+        set(_NROS_CLI "${_NANO_ROS_CODEGEN_TOOL}")
+    else()
+        find_program(_NROS_CLI nros)
+    endif()
     if(NOT _NROS_CLI)
         return()
     endif()

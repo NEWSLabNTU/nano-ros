@@ -241,7 +241,14 @@ if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
     # version 155 times in one configure (issue 0625). Silence on failure keeps
     # the existing "no SDK libstdc++" fallback.
     set(_riscv_stdcxx "")
-    find_program(_NROS_CLI_RV nros)
+    # Issue 0754 — same one-resolution rule as the cyclonedds idlc rung:
+    # take the handed-in CLI before searching PATH.
+    set(_NROS_CLI_RV "")
+    if(DEFINED _NANO_ROS_CODEGEN_TOOL AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+        set(_NROS_CLI_RV "${_NANO_ROS_CODEGEN_TOOL}")
+    else()
+        find_program(_NROS_CLI_RV nros)
+    endif()
     if(_NROS_CLI_RV)
         # WORKING_DIRECTORY for the reason spelled out in
         # `zephyr/cmake/nros_rmw_cyclonedds.cmake`: `nros sdk-path` reads

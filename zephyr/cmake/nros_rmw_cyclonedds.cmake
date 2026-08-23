@@ -289,7 +289,34 @@ else()
     # and here it selects the IDL compiler that emits type-support, which is
     # exactly the museum-compiler failure the comment below already describes.
     set(_nros_idlc_store_hints "")
-    find_program(_NROS_CLI_IDLC nros)
+    # Issue 0754 — reuse the CLI the build already resolved, in the same
+    # rung order the codegen tool itself uses (west `-D` pre-set → Kconfig
+    # → cached resolution), and only then fall back to a PATH search. The
+    # old unconditional `find_program(nros)` was a SECOND, independent
+    # discovery: a consumer that handed the build an explicit CLI still
+    # needed `nros` on PATH for this rung, and a DIFFERENT `nros` on PATH
+    # (stale ~/.nros/bin copy — the 0663/0625 shadowing class) could give
+    # the store lookup an answer that disagrees with the tool the build
+    # was told to use. One resolution, one answer.
+    #
+    # Note the rungs are consulted directly rather than calling
+    # `_nros_resolve_codegen_tool()`: this function runs BEFORE the
+    # interface generator is included (zephyr/CMakeLists.txt:132 vs 231),
+    # and the resolver FATALs when it finds nothing — the store rung must
+    # instead degrade to its host-idlc fallback.
+    set(_NROS_CLI_IDLC "")
+    foreach(_cand
+        "${_NROS_ZEPHYR_CODEGEN_TOOL}"
+        "${_NANO_ROS_CODEGEN_TOOL}"
+        "${CONFIG_NROS_CODEGEN_TOOL}")
+        if(NOT _cand STREQUAL "" AND EXISTS "${_cand}")
+            set(_NROS_CLI_IDLC "${_cand}")
+            break()
+        endif()
+    endforeach()
+    if(_NROS_CLI_IDLC STREQUAL "")
+        find_program(_NROS_CLI_IDLC nros)
+    endif()
     if(_NROS_CLI_IDLC)
         # WORKING_DIRECTORY, and it is load-bearing: `nros sdk-path` reads
         # `nros-sdk-index.toml` relative to the CURRENT DIRECTORY, and cmake

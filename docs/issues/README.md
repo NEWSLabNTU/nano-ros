@@ -71,6 +71,10 @@ misdiagnose because a `touch` that produces no relink is evidence the build is C
 change does propagate — verified by symbol. See `0764-*`.
 
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
+
+Recently resolved (2026-08-24): **#0754** (cmake/zephyr) — the idlc store rung (and two siblings)
+re-found `nros` on PATH instead of reusing the resolved CLI; all three now take the handed-in
+tool first. See `archived/0754-*`.
 which under a parallel suite is a CROSS-TEST KILL: ros2cli keys its daemon on `ROS_DOMAIN_ID` ALONE, nothing
 in the zenoh family set a domain, so ~1500 tests shared domain 0's singleton and each setup stopped the
 daemon the others were mid-query against. Surfaced by #0761's poll (40 setups per case instead of 1) and
@@ -92,6 +96,8 @@ required sweep found two more defects at that site: 0690's first-block-of-kind s
 on the topic could be the one asserted against) and a private copy of `topic_endpoint_block` still carrying
 0690's bug after the library's copy was fixed. Mutation-verified both ways; NOT reproduced under sweep load,
 so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
+
+**#0770** (testing, open 2026-08-24) — tier-2 runs the native interop cells against fixtures its build lane never refreshed (the #482 exists-vs-fresh split, resurfaced for `interop::CELLS`); ~8 one-cause reds per sweep on a stale native lane. See `0770-*`.
 
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
@@ -439,12 +445,6 @@ carries several deploys on one board that resolve differently, the verb's (corre
 soft-skipped by the wrapper and board facts silently vanish from the image. Thread DEPLOY through to a
 `--deploy` flag like `--board`. See `0755-*`. (2026-08-22)
 
-**#0754** (cmake/zephyr/rmw, open 2026-08-22) — the Zephyr module's idlc store rung re-finds the CLI with
-`find_program(_NROS_CLI_IDLC nros)` on PATH instead of reusing the already-resolved
-`_NROS_ZEPHYR_CODEGEN_TOOL`/`_NANO_ROS_CODEGEN_TOOL`, so consumers handing an explicit CLI still must
-export PATH themselves — and a stale PATH `nros` can answer for a build that was told to use another
-(0663/0625 shadowing class). Reuse the validated tool first, fall back to `find_program` only when unset.
-See `0754-*`. (2026-08-22)
 
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
 reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
