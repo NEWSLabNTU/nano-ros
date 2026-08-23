@@ -39,35 +39,58 @@ OUT = os.path.join(ROOT, "book", "src", "reference", "rmw-feature-matrix.md")
 
 CYCLONE_VTABLE = "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp"
 XRCE_VTABLE = "packages/rmw/xrce/nros-rmw-xrce/src/vtable.c"
+# The canonical slot list: EMPTY_VTABLE in the cffi crate names EVERY field
+# (phase-376 W4 made that a load-bearing property). Parsed as the authority so
+# a slot rename/addition surfaces here as a diff, never as a silent miss.
+CFFI_EMPTY = "packages/rmw/cffi/src/lib.rs"
 ZENOH_SRC_DIR = "packages/rmw/zenoh/nros-rmw-zenoh/src"
 ZENOH_SESSION = "packages/rmw/zenoh/nros-rmw-zenoh/src/shim/session.rs"
 CFFI_LIB = "packages/rmw/cffi/src/lib.rs"
 
 # slot-name -> (row label, which C-ABI slot(s) must be non-NULL,
 #               regex for the zenoh Rust override)
+# Slot names follow the phase-376 upstream-rmw spellings.
 FEATURES = [
     ("Publish / subscribe", ["create_publisher", "create_subscription"],
      r"fn (create_publisher|publish_raw)"),
-    ("Services (server side)", ["create_service", "try_recv_request", "send_reply"],
+    ("Services (server side)", ["create_service", "take_request", "send_response"],
      r"fn (create_service|send_reply)"),
-    ("Service clients", ["create_client", "send_request_raw", "try_recv_reply_raw"],
+    ("Service clients", ["create_client", "send_request", "take_response"],
      r"fn (create_client|send_request)"),
-    ("Server-availability probe", ["service_server_available"],
+    ("Server-availability probe", ["service_server_is_available"],
      r"fn server_available"),
     ("Status events (deadline / liveliness / lost)",
-     ["register_subscription_event", "register_publisher_event"],
+     ["subscription_event_init", "publisher_event_init"],
      r"fn register_event_callback"),
-    ("Manual liveliness assert", ["assert_publisher_liveliness"],
+    ("Manual liveliness assert", ["publisher_assert_liveliness"],
      r"fn assert_liveliness"),
     ("Event-driven wake (`set_wake_callback`)", ["set_wake_callback"],
      r"fn set_wake_callback"),
     ("Deadline hint (`next_deadline_ms`)", ["next_deadline_ms"],
      r"fn next_deadline_ms"),
-    ("Zero-copy loan API", ["pub_loan"], r"fn (pub_loan|loan)"),
-    ("Batch receive (`try_recv_sequence`)", ["try_recv_sequence"],
+    ("Zero-copy loan API", ["borrow_loaned_message"], r"fn (pub_loan|borrow_loaned)"),
+    ("Batch receive (`take_sequence`)", ["take_sequence"],
      r"fn try_recv_sequence"),
     ("Streamed publish", ["publish_streamed"], r"fn publish_streamed"),
     ("Connectivity ping", ["ping_session"], r"fn ping_session"),
+    # ---- phase-376 W4 parity surface (declared slots; wiring in flight) ----
+    ("Identity / feature probe",
+     ["get_implementation_identifier", "feature_supported"],
+     r"fn (implementation_identifier|feature_supported)"),
+    ("Publisher GID / matched counts",
+     ["get_gid_for_publisher", "publisher_count_matched_subscriptions"],
+     r"fn (gid_for_publisher|count_matched)"),
+    ("Actual-QoS read-back", ["publisher_get_actual_qos"],
+     r"fn (get_actual_qos|actual_qos)"),
+    ("Wait-for-acked", ["publisher_wait_for_all_acked"],
+     r"fn wait_for_all_acked"),
+    ("Take-with-info", ["take_with_info"], r"fn take_with_info"),
+    ("Entity new-data callbacks",
+     ["subscription_set_on_new_message_callback"],
+     r"fn set_on_new_message"),
+    ("Graph introspection (names/types/counts)",
+     ["get_node_names", "get_topic_names_and_types", "count_publishers"],
+     r"fn (get_node_names|get_topic_names)"),
 ]
 
 # Node-layer features: not a backend slot; static rows with the rule.
@@ -95,8 +118,23 @@ def read(rel):
         return fh.read()
 
 
+def canonical_slots():
+    """Every vtable slot, parsed from cffi's EMPTY_VTABLE literal (which is
+    required to name every field). The authority for rename detection."""
+    text = read(CFFI_EMPTY)
+    m = re.search(r"pub const EMPTY_VTABLE[^{]*\{(.*?)\};", text, re.S)
+    if not m:
+        sys.exit("gen-rmw-feature-matrix: EMPTY_VTABLE not found in cffi lib.rs")
+    return set(re.findall(r"([a-z_][a-z0-9_]*)\s*:\s*None", m.group(1)))
+
+
 def parse_designated(text):
-    """xrce shape: `.slot = value,` -> {slot: bool(wired)}"""
+    """xrce shape: `.slot = value,` -> {slot: bool(wired)}.
+
+    A slot ABSENT from a designated initializer is implicitly NULL —
+    phase-376's new parity slots are exactly that, so absence means
+    unwired, never an error (the canonical-slot check catches renames).
+    """
     out = {}
     for m in re.finditer(r"^\s*\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z_][A-Za-z0-9_]*)",
                          text, re.M):
@@ -157,12 +195,15 @@ def render():
     zen_qos = qos_mask(read(ZENOH_SESSION), "supported_qos_policies")
     cffi_qos = qos_mask(read(CFFI_LIB), "supported_qos_policies")
 
-    missing = [s for _l, slots, _z in FEATURES for s in slots
-               if s not in cyc or s not in xrce]
+    canon = canonical_slots()
+    missing = [s for _l, slots, _z in FEATURES for s in slots if s not in canon]
     if missing:
         # A renamed/removed slot must fail the generator, not silently
-        # render a `—` for a feature that merely moved.
-        sys.exit(f"gen-rmw-feature-matrix: slot(s) not found in a vtable: {missing}")
+        # render a `—` for a feature that merely moved. Absence from a
+        # BACKEND's initializer is fine (implicitly NULL); absence from the
+        # canonical EMPTY_VTABLE list is a rename.
+        sys.exit(f"gen-rmw-feature-matrix: slot(s) not in the canonical "
+                 f"vtable (EMPTY_VTABLE): {missing}")
 
     lines = [
         "<!-- GENERATED by scripts/gen-rmw-feature-matrix.py — do not edit by hand.",
@@ -180,7 +221,11 @@ def render():
         "",
         "`wired` = the backend implements it. `—` = not wired: the runtime",
         "surfaces `UNSUPPORTED` or falls back where a fallback exists (the",
-        "vtable comments name which).",
+        "vtable comments name which). The rows below the parity marker are",
+        "the phase-376 W4 surface — slots declared in the ABI whose backend",
+        "wiring is the in-flight campaign; all-dash rows there mean",
+        "*declared, not yet wired anywhere*, and they flip automatically as",
+        "backends land implementations.",
         "",
         "## Session / entity capabilities",
         "",
@@ -189,8 +234,8 @@ def render():
     ]
     for label, slots, zpat in FEATURES:
         zen = zenoh_has(zpat)
-        xr = all(xrce[s] for s in slots)
-        cy = all(cyc[s] for s in slots)
+        xr = all(xrce.get(s, False) for s in slots)
+        cy = all(cyc.get(s, False) for s in slots)
         lines.append(f"| {label} | {cell(zen)} | {cell(xr)} | {cell(cy)} |")
 
     lines += [

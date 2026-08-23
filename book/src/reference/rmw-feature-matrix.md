@@ -13,7 +13,11 @@ the same commit or fails the gate.
 
 `wired` = the backend implements it. `—` = not wired: the runtime
 surfaces `UNSUPPORTED` or falls back where a fallback exists (the
-vtable comments name which).
+vtable comments name which). The rows below the parity marker are
+the phase-376 W4 surface — slots declared in the ABI whose backend
+wiring is the in-flight campaign; all-dash rows there mean
+*declared, not yet wired anywhere*, and they flip automatically as
+backends land implementations.
 
 ## Session / entity capabilities
 
@@ -28,9 +32,16 @@ vtable comments name which).
 | Event-driven wake (`set_wake_callback`) | wired | — | — |
 | Deadline hint (`next_deadline_ms`) | wired | — | — |
 | Zero-copy loan API | — | — | — |
-| Batch receive (`try_recv_sequence`) | wired | — | wired |
+| Batch receive (`take_sequence`) | wired | — | wired |
 | Streamed publish | wired | wired | — |
 | Connectivity ping | wired | wired | — |
+| Identity / feature probe | — | — | — |
+| Publisher GID / matched counts | — | — | — |
+| Actual-QoS read-back | — | — | — |
+| Wait-for-acked | — | — | — |
+| Take-with-info | — | — | — |
+| Entity new-data callbacks | — | — | — |
+| Graph introspection (names/types/counts) | — | — | — |
 
 ## Node-layer features
 
