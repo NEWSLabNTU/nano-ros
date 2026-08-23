@@ -41,16 +41,16 @@ impl ExecutableNode for Listener {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_chatter" {
-            if let Ok(msg) = ctx.message::<StringMsg>() {
-                *state += 1;
-                // Canonical delivery line every listener fixture (c/cpp/rust)
-                // emits — the E2E `count_zephyr_received` asserts on
-                // `I heard: [...]`. Without it the rust listener received
-                // samples silently and the native→Zephyr E2E read 0 despite
-                // working transport.
-                log::info!("I heard: [{}]", msg.data);
-            }
+        if callback.as_str() == "on_chatter"
+            && let Ok(msg) = ctx.message::<StringMsg>()
+        {
+            *state += 1;
+            // Canonical delivery line every listener fixture (c/cpp/rust)
+            // emits — the E2E `count_zephyr_received` asserts on
+            // `I heard: [...]`. Without it the rust listener received
+            // samples silently and the native→Zephyr E2E read 0 despite
+            // working transport.
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 }

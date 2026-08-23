@@ -38,13 +38,13 @@ impl ExecutableNode for Listener {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_chatter" {
-            if let Ok(msg) = ctx.message::<StringMsg>() {
-                *state = state.wrapping_add(1);
-                // Observable per-receive line (routed to the console by the
-                // board's log writer) — the e2e harness asserts on `I heard:`.
-                log::info!("I heard: [{}]", msg.data);
-            }
+        if callback.as_str() == "on_chatter"
+            && let Ok(msg) = ctx.message::<StringMsg>()
+        {
+            *state = state.wrapping_add(1);
+            // Observable per-receive line (routed to the console by the
+            // board's log writer) — the e2e harness asserts on `I heard:`.
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 }

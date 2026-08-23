@@ -48,14 +48,14 @@ impl ExecutableNode for Listener {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_chatter" {
-            if let Ok(msg) = ctx.message::<StringMsg>() {
-                *state = state.wrapping_add(1);
-                // Canonical delivery line (phase-277 W4) — the rtos e2e
-                // harness counts `I heard:` lines; without it a working
-                // listener looked silent (pre-existing gap found in T4).
-                log::info!("I heard: [{}]", msg.data);
-            }
+        if callback.as_str() == "on_chatter"
+            && let Ok(msg) = ctx.message::<StringMsg>()
+        {
+            *state = state.wrapping_add(1);
+            // Canonical delivery line (phase-277 W4) — the rtos e2e
+            // harness counts `I heard:` lines; without it a working
+            // listener looked silent (pre-existing gap found in T4).
+            log::info!("I heard: [{}]", msg.data);
         }
     }
 }
