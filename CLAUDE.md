@@ -34,6 +34,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | User-facing workflow | [book/src/](book/src/) (`just book`) |
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
 | Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
+| How our RMW C API compares to upstream `rmw` | `just check-rmw-api-parity` (phase-376) — contract is the 88 symbols EVERY `librmw_*_cpp.so` defines, not the 177 headers declare |
 | Profile a build's time (passive, read-only) | `just profile <dir>` → `nros-build-profile` (phase-251); [book](book/src/user-guide/build-profiling.md) |
 | Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204) |
 
