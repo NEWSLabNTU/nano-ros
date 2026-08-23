@@ -3521,6 +3521,12 @@ check-cmake-image-policy:
 check-tier-spin-gap:
     @python3 scripts/check-tier-spin-gap.py
 
+# Phase 376 W3.d — call sites that test an RMW status by its SIGN. Reporting
+# only: the dual-return list is the CONTRACT today and changes with the slots.
+[group("check")]
+rmw-ret-sign:
+    @python3 scripts/check-rmw-ret-sign.py
+
 # Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and
 # arg by arg. REPORTING ONLY, deliberately not on the `check` line: `--check`
 # fails by construction until the W3+ migration lands, and a gate that cannot

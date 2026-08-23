@@ -164,8 +164,50 @@ message" and `RMW_RET_ERROR`. So this is not a free rename; it is a choice:
   count an OUT parameter — more churn, but then a value means the same thing on
   both sides of the seam.
 
-Recommend **(b)**, decided BEFORE W3.b: doing it afterwards touches the same
-call sites twice.
+**DECIDED 2026-08-23: (b).** Upstream already solved this the same way — every
+one of its count-or-flag functions returns `rmw_ret_t` and passes the count as an
+out-parameter, which is *why* its positive error codes work. So (b) is not our
+invention competing with theirs; it is the reason their numbering is coherent,
+and taking it removes a declared arg deviation on all 11 slots rather than adding
+one.
+
+Our 12 extra codes (`NO_DATA`, `WOULD_BLOCK`, `BUFFER_TOO_SMALL`,
+`MESSAGE_TOO_LARGE`, `INCOMPATIBLE_ABI`, `NO_BACKEND`, `CONNECTION_FAILED`, …)
+take an explicit **extension range at 1000+**, documented in `rmw_ret.h` as the
+one place we knowingly add to upstream's namespace, so a future upstream code can
+never collide. `NO_DATA` largely disappears: "nothing to take" becomes
+`taken = false` with `RMW_RET_OK`, which is upstream's semantics.
+
+### W3.d order — signatures first, values second
+
+The two halves must not land together, and the order is forced. While a slot
+still multiplexes count and status, flipping the values makes `1` ambiguous
+between "one message" and `RMW_RET_ERROR`; there is no green intermediate state
+in that direction. So:
+
+* **Step A** — the 11 slots take upstream's shape: status in the return, count
+  or flag in an out-parameter. Values stay negative. The tree is green at every
+  point, and each slot's `< 0` callers move to `!= RMW_RET_OK` as it converts.
+* **Step B** — flip the values and add the 1000+ range. Safe only because no
+  slot multiplexes any more.
+
+### The sweep, done before either step
+
+`just rmw-ret-sign` lists every call site that tests a status by its sign — the
+failure mode that is not a compile error, not a test failure, just error handling
+that stops running. Today: **6 on status-only results** (fix before the flip) and
+**9 on dual-return results** (fix with the slot).
+
+Building it was itself instructive. The first version required the call and the
+test to be near each other in a form it could parse, and reported **zero** — a
+clean bill of health for the exact sweep it exists to produce. Real sites look
+like a five-line `let rc = unsafe { (self.vtable.take.expect(…))( … ) };` followed
+nine lines later by `if rc < 0`, behind a `let Some(f) = … else` guard. Every
+widening was driven by a site verified BY HAND first; tuning the window until the
+output looked tidy would have optimised for a quiet report rather than a complete
+one. Two false-positive classes were removed the same way: bindgen's
+`#[doc = "…"]` strings (which quote the `< 0` contract in prose) and bit-shifts
+(`Self(1 << 0)` contains the characters `< 0`).
 
 ## W4 — feature completeness (71 symbols with no slot)
 
