@@ -324,10 +324,10 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: Some(service_server_is_available_trampoline::<R>),
-        try_recv_sequence: Some(try_recv_sequence_trampoline::<R>),
+        take_sequence: Some(take_sequence_trampoline::<R>),
         publish_streamed: Some(publish_streamed_trampoline::<R>),
         ping_session: Some(ping_session_trampoline::<R>),
         subscription_supports_in_place: Some(subscription_supports_in_place_trampoline::<R>),
@@ -1185,13 +1185,19 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn try_recv_sequence_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     buf: *mut u8,
     per_msg_cap: usize,
     max_msgs: usize,
     out_lens: *mut usize,
-) -> i32 {
+    taken: *mut usize,
+) -> NrosRmwRet {
+    // Phase 376 W3.b/W3.d step A — the COUNT is an out-parameter, matching
+    // upstream's `size_t *taken`.
+    if taken.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     // Phase 124.D.1 — delegate to the Rust backend's
     // `Subscription::try_recv_sequence` impl. Default trait body
     // loop-drives `try_recv_raw`; concrete backends opt in by
@@ -1210,7 +1216,11 @@ unsafe extern "C" fn try_recv_sequence_trampoline<R: RustBackend>(
         unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
     let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
     match Subscription::try_recv_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
-        Ok(count) => count as i32,
+        Ok(count) => {
+            // SAFETY: checked non-null above.
+            unsafe { *taken = count };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }

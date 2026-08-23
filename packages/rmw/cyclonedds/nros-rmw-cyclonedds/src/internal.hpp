@@ -160,11 +160,9 @@ nros_rmw_ret_t subscription_create(nros_rmw_session_t *session,
 void           subscription_destroy(nros_rmw_subscription_t *subscriber);
 nros_rmw_ret_t subscription_take(nros_rmw_subscription_t *subscriber, uint8_t *buf,
                                  size_t buf_len, size_t *out_len, bool *taken);
-int32_t        subscription_try_recv_sequence(nros_rmw_subscription_t *subscriber,
-                                            uint8_t *buf,
-                                            size_t   per_msg_cap,
-                                            size_t   max_msgs,
-                                            size_t  *out_lens);
+nros_rmw_ret_t subscription_take_sequence(nros_rmw_subscription_t *subscriber, uint8_t *buf,
+                                          size_t per_msg_cap, size_t max_msgs, size_t *out_lens,
+                                          size_t *taken);
 nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t *subscriber, bool *out_has_data);
 
 /* ---- service.cpp ---- */

@@ -214,8 +214,9 @@ nros_rmw_ret_t subscription_take(nros_rmw_subscription_t* subscriber, uint8_t* b
 // (reader, buf, info, count, maxs) and returns N samples in one
 // call. Serialise each typed sample back to CDR with the same
 // encoding-header convention as `subscription_try_recv_raw`.
-int32_t subscription_try_recv_sequence(nros_rmw_subscription_t* subscriber, uint8_t* buf,
-                                     size_t per_msg_cap, size_t max_msgs, size_t* out_lens) {
+static int32_t subscription_take_sequence_count(nros_rmw_subscription_t* subscriber, uint8_t* buf,
+                                               size_t per_msg_cap, size_t max_msgs,
+                                               size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -290,6 +291,25 @@ int32_t subscription_try_recv_sequence(nros_rmw_subscription_t* subscriber, uint
         return err;
     }
     return static_cast<int32_t>(produced);
+}
+
+/* Phase 376 W3.b/W3.d step A — upstream `rmw_take_sequence`'s shape over the
+ * unchanged counting body above. A thin adapter for the same reason the service
+ * paths got one: the body's partial-drain and loan-return logic is easy to
+ * disturb, and only the reporting convention is changing. A count of 0 is a
+ * legitimate OK here — an empty reader, not an error. */
+nros_rmw_ret_t subscription_take_sequence(nros_rmw_subscription_t* subscriber, uint8_t* buf,
+                                          size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
+                                          size_t* taken) {
+    if (taken == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    int32_t n = subscription_take_sequence_count(subscriber, buf, per_msg_cap, max_msgs, out_lens);
+    if (n < 0) {
+        return static_cast<nros_rmw_ret_t>(n);
+    }
+    *taken = static_cast<size_t>(n);
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* out_has_data) {

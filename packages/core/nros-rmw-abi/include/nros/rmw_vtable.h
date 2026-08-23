@@ -304,10 +304,27 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL function pointer = backend doesn't natively borrow; the
      *  runtime falls back to `try_recv_raw` into a staging buffer. */
-    int32_t (*sub_borrow)(nros_rmw_subscription_t *subscription,
+    /** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.
+     *
+     *  `*taken` says whether a view was handed out; `*out_buf`,
+     *  `*out_len` and `*out_token` describe it and are meaningful
+     *  only when taken. All are written only on
+     *  `NROS_RMW_RET_OK`.
+     *
+     *  Before this, the length was returned AND written to
+     *  `*out_len`, and the runtime used the return — so a backend
+     *  that disagreed with itself had one of its two answers
+     *  silently ignored. There is now one length.
+     *
+     *  Deviation from upstream, declared: upstream loans a typed
+     *  `void **loaned_message`; ours is a byte view plus an opaque
+     *  token to release, because there is no typesupport on target
+     *  and the backend owns the buffer until `sub_release`. */
+    nros_rmw_ret_t (*take_loaned_message)(nros_rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
-                           void                 **out_token);
+                           void                 **out_token,
+                           bool                  *taken);
 
     /** Phase 124.A — release a previously borrowed view.
      *
@@ -384,11 +401,17 @@ typedef struct nros_rmw_vtable_t {
      *  `CffiSubscriber::try_recv_sequence`. The fallback gives
      *  identical observable behaviour (each call still costs N
      *  vtable hops) but lets user code commit to the batched API. */
-    int32_t (*try_recv_sequence)(nros_rmw_subscription_t *subscription,
+    /** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —
+     *  the COUNT moves to `*taken`, matching upstream's
+     *  `size_t *taken`, and the return carries only a status.
+     *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
+     *  drain reports what it got rather than erroring. */
+    nros_rmw_ret_t (*take_sequence)(nros_rmw_subscription_t *subscription,
                                   uint8_t              *buf,
                                   size_t                per_msg_cap,
                                   size_t                max_msgs,
-                                  size_t               *out_lens);
+                                  size_t               *out_lens,
+                                  size_t               *taken);
 
     /** Phase 124.E.1 — streamed publish.
      *

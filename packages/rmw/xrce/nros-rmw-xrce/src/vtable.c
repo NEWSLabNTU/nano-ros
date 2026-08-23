@@ -71,7 +71,7 @@ static const nros_rmw_vtable_t kVtable = {
     .pub_loan                   = NULL,
     .pub_commit                 = NULL,
     .pub_discard                = NULL,
-    .sub_borrow                 = NULL,
+    .take_loaned_message        = NULL,
     .sub_release                = NULL,
 
     /* Phase 124.C — service availability probe. micro-XRCE-DDS-Client
@@ -82,7 +82,7 @@ static const nros_rmw_vtable_t kVtable = {
     /* Phase 124.D — native batch take. XRCE delivers one sample per
      * topic callback into a single-slot inbox; no native take_n.
      * Leave NULL → runtime emits the `take` loop fallback. */
-    .try_recv_sequence          = NULL,
+    .take_sequence              = NULL,
 
     /* Phase 124.E.3 — streamed publish via uxr_prepare_output_stream
      * (writes the payload straight into the reliable output stream,

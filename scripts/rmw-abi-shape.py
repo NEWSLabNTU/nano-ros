@@ -120,6 +120,16 @@ ARG_DEVIATIONS = {
     "take_response": (
         "same two deviations as `take_request`, client side"
     ),
+    "take_sequence": (
+        "upstream takes (sub, count, message_sequence, info_sequence, size_t *taken, allocation); "
+        "ours takes a contiguous byte block plus a per-slot length array, because there is no "
+        "typed message sequence on target and no allocator to pre-size"
+    ),
+    "take_loaned_message": (
+        "upstream loans a typed `void **loaned_message`; ours is a byte view plus an opaque "
+        "token to release, because there is no typesupport and the backend owns the buffer "
+        "until `sub_release`"
+    ),
     "service_server_is_available": (
         "upstream takes (node, client, bool *); an image has no node object — "
         "the client reaches its session directly, so the node parameter would be "

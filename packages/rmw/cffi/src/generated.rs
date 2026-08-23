@@ -352,14 +352,15 @@ pub struct nros_rmw_vtable_t {
     pub pub_discard: ::core::option::Option<
         unsafe extern "C" fn(publisher: *mut nros_rmw_publisher_t, token: *mut core::ffi::c_void),
     >,
-    #[doc = " Phase 124.A — zero-copy subscription borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscription empty).\n    * `< 0` — error (see `nros_rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscription at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer."]
-    pub sub_borrow: ::core::option::Option<
+    #[doc = " Phase 124.A — zero-copy subscription borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscription empty).\n    * `< 0` — error (see `nros_rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscription at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer. */\n/** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a view was handed out; `*out_buf`,\n  `*out_len` and `*out_token` describe it and are meaningful\n  only when taken. All are written only on\n  `NROS_RMW_RET_OK`.\n\n  Before this, the length was returned AND written to\n  `*out_len`, and the runtime used the return — so a backend\n  that disagreed with itself had one of its two answers\n  silently ignored. There is now one length.\n\n  Deviation from upstream, declared: upstream loans a typed\n  `void **loaned_message`; ours is a byte view plus an opaque\n  token to release, because there is no typesupport on target\n  and the backend owns the buffer until `sub_release`."]
+    pub take_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut nros_rmw_subscription_t,
             out_buf: *mut *const u8,
             out_len: *mut usize,
             out_token: *mut *mut core::ffi::c_void,
-        ) -> i32,
+            taken: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
     #[doc = " Phase 124.A — release a previously borrowed view.\n\n  `token` MUST be a value returned from a prior `sub_borrow`\n  on the same subscription. Lets the next message advance into\n  the buffer.\n\n  NULL = paired NULL with `sub_borrow`."]
     pub sub_release: ::core::option::Option<
@@ -375,15 +376,16 @@ pub struct nros_rmw_vtable_t {
             out_available: *mut bool,
         ) -> nros_rmw_ret_t,
     >,
-    #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscription catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API."]
-    pub try_recv_sequence: ::core::option::Option<
+    #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscription catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `nros_rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API. */\n/** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —\n  the COUNT moves to `*taken`, matching upstream's\n  `size_t *taken`, and the return carries only a status.\n  `*taken` is written only on `NROS_RMW_RET_OK`; a partial\n  drain reports what it got rather than erroring."]
+    pub take_sequence: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut nros_rmw_subscription_t,
             buf: *mut u8,
             per_msg_cap: usize,
             max_msgs: usize,
             out_lens: *mut usize,
-        ) -> i32,
+            taken: *mut usize,
+        ) -> nros_rmw_ret_t,
     >,
     #[doc = " Phase 124.E.1 — streamed publish.\n\n  Caller hands the backend two callbacks. The backend invokes\n  `size_cb` once to learn the total payload length, allocates\n  a single slot of that size in its outbound buffer, then\n  invokes `chunk_cb` repeatedly to fill the slot in chunks\n  until the buffer is full. Saves the per-publisher staging\n  buffer on RAM-constrained nodes — useful for large messages\n  on MCUs where the staging buffer dominates `.bss`.\n\n  Callback contract:\n    * `size_cb(*out_total_len, user_ctx)` — write the exact\n      total payload length, in bytes, to `*out_total_len`.\n      Called exactly once per `publish_streamed` invocation.\n    * `chunk_cb(out_buf, cap, *out_written, user_ctx)` —\n      write up to `cap` bytes starting at `out_buf`, then\n      report the count written via `*out_written`. The backend\n      may call `chunk_cb` repeatedly until the total promised\n      by `size_cb` has been delivered. `*out_written == 0`\n      means EOF; the backend tears down the slot.\n\n  Lesson from micro-ROS's\n  `rmw_uros_set_continous_serialization_callbacks`: pass the\n  callbacks per-call rather than binding them to publisher\n  state, so different messages on the same publisher can use\n  different serialisation strategies.\n\n  NULL function pointer = backend doesn't stream; the runtime\n  falls back to a one-shot staging buffer (capped at the\n  configured `NROS_MAX_STREAM_CHUNK`) + `publish_raw`."]
     pub publish_streamed: ::core::option::Option<

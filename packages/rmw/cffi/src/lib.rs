@@ -791,7 +791,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
     );
     // NOT required (issue 0349) — optional capabilities with a typed
     // `Unsupported` error at the point of use, exactly like the ~14 other
-    // nullable slots (`pub_loan`, `sub_borrow`, `next_deadline_ms`,
+    // nullable slots (`pub_loan`, `take_loaned_message`, `next_deadline_ms`,
     // `service_server_is_available`, …) this list has always allowed to be NULL:
     //   register_publisher_event, register_subscription_event,
     //   assert_publisher_liveliness
@@ -2331,7 +2331,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
     type View<'a> = CffiView<'a>;
 
     fn try_borrow(&mut self) -> Result<Option<CffiView<'_>>, TransportError> {
-        let Some(borrow) = self.vtable.sub_borrow else {
+        let Some(borrow) = self.vtable.take_loaned_message else {
             // Phase 124.A — backend doesn't natively borrow; runtime
             // falls back to `try_recv_raw` into a staging buffer
             // (124.A.3). `None` lets the caller use the slow path.
@@ -2343,18 +2343,28 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
         let mut out_token: *mut c_void = core::ptr::null_mut();
         // SAFETY: vtable contract — borrowed pointers stay valid
         // until `sub_release` runs.
-        let rc = unsafe { borrow(&mut view, &mut out_buf, &mut out_len, &mut out_token) };
-        if rc == 0 {
-            // No message ready.
-            return Ok(None);
-        }
-        if rc < 0 {
+        // Phase 376 W3.b/W3.d step A — status returned, `taken` out. The old
+        // shape carried the length TWICE (returned and written to `*out_len`)
+        // and reconciled them with `min(rc, max(out_len, rc))`, which is `rc`
+        // for every input — so a backend whose two answers disagreed had one
+        // silently ignored. There is one length now.
+        let mut taken = false;
+        let rc = unsafe {
+            borrow(
+                &mut view,
+                &mut out_buf,
+                &mut out_len,
+                &mut out_token,
+                &mut taken,
+            )
+        };
+        if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        if out_buf.is_null() {
+        if !taken || out_buf.is_null() {
             return Ok(None);
         }
-        let len = (rc as usize).min(out_len.max(rc as usize));
+        let len = out_len;
         Ok(Some(CffiView {
             buf: out_buf,
             len,
@@ -2466,7 +2476,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         // `try_recv_raw`. Either way the caller sees the same shape:
         // contiguous slot block + per-slot length array + count
         // return.
-        if let Some(f) = self.vtable.try_recv_sequence {
+        if let Some(f) = self.vtable.take_sequence {
             if per_msg_cap == 0 || max_msgs == 0 {
                 return Ok(0);
             }
@@ -2475,6 +2485,8 @@ impl nros_rmw::Subscription for CffiSubscription {
                 return Err(TransportError::BufferTooSmall);
             }
             let mut view = self.make_view();
+            // Phase 376 W3.b/W3.d step A — the count arrives in `taken`.
+            let mut taken = 0usize;
             let rc = unsafe {
                 f(
                     &mut view,
@@ -2482,12 +2494,13 @@ impl nros_rmw::Subscription for CffiSubscription {
                     per_msg_cap,
                     limit,
                     out_lens.as_mut_ptr(),
+                    &mut taken,
                 )
             };
-            if rc < 0 {
+            if rc != NROS_RMW_RET_OK {
                 return Err(error_from_ret(rc));
             }
-            return Ok(rc as usize);
+            return Ok(taken);
         }
         // Phase 124.D.2 — `try_recv_raw` loop fallback. Inlined
         // here (rather than dispatching back through the trait
@@ -3123,10 +3136,10 @@ mod tests {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: None,
-        try_recv_sequence: None,
+        take_sequence: None,
         publish_streamed: None,
         ping_session: None,
         subscription_supports_in_place: None,

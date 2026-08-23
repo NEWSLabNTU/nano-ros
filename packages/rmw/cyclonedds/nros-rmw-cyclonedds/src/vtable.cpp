@@ -80,7 +80,7 @@ const nros_rmw_vtable_t kVtable = {
     /*pub_loan*/                  nullptr,
     /*pub_commit*/                nullptr,
     /*pub_discard*/               nullptr,
-    /*sub_borrow*/                nullptr,
+    /*take_loaned_message*/       nullptr,
     /*sub_release*/               nullptr,
 
     /* Phase 124.C — service availability probe. Deferred until the
@@ -91,9 +91,9 @@ const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.D.3 — native batch take. Cyclone provides
      * `dds_take(reader, buf, info, count, maxs)` as a single-call
-     * batch API; we wrap it in subscription_try_recv_sequence with
+     * batch API; we wrap it in subscription_take_sequence with
      * CDR re-serialisation per slot. */
-    /*try_recv_sequence*/         subscription_try_recv_sequence,
+    /*take_sequence*/             subscription_take_sequence,
 
     /* Phase 124.E — continuous serialization. nullptr → runtime
      * staging-buffer fallback. */

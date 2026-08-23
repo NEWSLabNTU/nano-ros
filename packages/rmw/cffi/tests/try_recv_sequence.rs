@@ -212,13 +212,15 @@ unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmw
     NROS_RMW_RET_UNSUPPORTED
 }
 // Native batch: write all 8 messages in one call.
-unsafe extern "C" fn stub_try_recv_sequence(
+unsafe extern "C" fn stub_take_sequence(
     _: *mut NrosRmwSubscription,
     buf: *mut u8,
     per_msg_cap: usize,
     max_msgs: usize,
     out_lens: *mut usize,
-) -> i32 {
+    taken: *mut usize,
+) -> NrosRmwRet {
+    // Phase 376 W3.b/W3.d step A — the count is an out-parameter.
     SEQ_CALLS_NATIVE.fetch_add(1, Ordering::SeqCst);
     let to_emit = QUEUE.len().min(max_msgs);
     for (i, msg) in QUEUE.iter().take(to_emit).enumerate() {
@@ -228,7 +230,8 @@ unsafe extern "C" fn stub_try_recv_sequence(
             *out_lens.add(i) = copy;
         }
     }
-    to_emit as i32
+    unsafe { *taken = to_emit };
+    NROS_RMW_RET_OK
 }
 
 fn make_vtable(native_batch: bool) -> NrosRmwVtable {
@@ -260,11 +263,11 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: None,
-        try_recv_sequence: if native_batch {
-            Some(stub_try_recv_sequence)
+        take_sequence: if native_batch {
+            Some(stub_take_sequence)
         } else {
             None
         },
@@ -308,10 +311,10 @@ const fn make_vtable_native() -> NrosRmwVtable {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: None,
-        try_recv_sequence: Some(stub_try_recv_sequence),
+        take_sequence: Some(stub_take_sequence),
         publish_streamed: None,
         ping_session: None,
         subscription_supports_in_place: None,
@@ -348,10 +351,10 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: None,
-        try_recv_sequence: None,
+        take_sequence: None,
         publish_streamed: None,
         ping_session: None,
         subscription_supports_in_place: None,
@@ -388,10 +391,10 @@ const fn make_vtable_no_data() -> NrosRmwVtable {
         pub_loan: None,
         pub_commit: None,
         pub_discard: None,
-        sub_borrow: None,
+        take_loaned_message: None,
         sub_release: None,
         service_server_is_available: None,
-        try_recv_sequence: None,
+        take_sequence: None,
         publish_streamed: None,
         ping_session: None,
         subscription_supports_in_place: None,
