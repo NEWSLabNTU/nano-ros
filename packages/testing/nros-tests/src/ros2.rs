@@ -58,7 +58,7 @@ pub fn is_ros2_distro_available(distro: &str) -> bool {
 /// grep -q …` shape is what let the distro drift in three places at once.
 /// Returns false (never panics) when the setup script is missing or the command
 /// fails.
-fn is_ros2_package_available(distro: &str, pkg: &str) -> bool {
+pub fn is_ros2_package_available(distro: &str, pkg: &str) -> bool {
     // Both strings are interpolated into a shell command, so both must be bare
     // identifiers (same guard, same reason, as `is_ros2_distro_available`).
     let is_bare =

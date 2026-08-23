@@ -67,6 +67,20 @@ pub fn is_default_zenoh_locator(locator: &str) -> bool {
 }
 
 impl Middleware {
+    /// The ROS 2 package this middleware needs installed.
+    ///
+    /// A `Middleware` is a CHOICE of wire, and the choice is only real if the
+    /// package implementing it exists — `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+    /// against an install that lacks it does not fall back, it fails at node
+    /// construction, several layers from anything that names the RMW.
+    pub fn rmw_package(&self) -> &'static str {
+        match self {
+            Middleware::Zenoh { .. } => "rmw_zenoh_cpp",
+            Middleware::FastRtps { .. } => "rmw_fastrtps_cpp",
+            Middleware::Cyclonedds { .. } => "rmw_cyclonedds_cpp",
+        }
+    }
+
     /// The default zenoh locator used across the interop suite.
     pub fn zenoh_default() -> Self {
         Middleware::Zenoh {
@@ -245,7 +259,18 @@ impl RosEnv for HostRosEnv {
     }
 
     fn available(&self) -> bool {
+        // The DISTRO and the RMW, not just the distro — issue 0763 follow-up.
+        //
+        // Callers use `available()` to decide skip-vs-run, so it has to answer
+        // the question they are really asking: "can this env run the cell I
+        // built it for?" A distro-only check says yes on a host that has ROS
+        // but not this `Middleware`'s package, and the cell then FAILS at node
+        // construction — an unprovisioned host reported as a red instead of a
+        // skip, which is the inverse of the false-skip class and just as
+        // misleading. `rmw_zenoh_cpp` is the live case: humble and iron ship no
+        // official apt package for it, so a humble host is exactly this.
         ros2::is_ros2_distro_available(&self.distro)
+            && ros2::is_ros2_package_available(&self.distro, self.mw.rmw_package())
     }
 
     fn shell(&self, inner: &str) -> Command {
@@ -1123,6 +1148,44 @@ mod tests {
         assert_eq!(env.edition(), "no_such_distro_xyz");
         // available() is false (no image built) — the skip contract, not a panic.
         assert!(!env.available());
+    }
+
+    /// `available()` must answer "can this env run the cell", not "is there a
+    /// ROS install" — issue 0763 follow-up.
+    ///
+    /// It checked the distro only, so on a host with ROS but without the
+    /// `Middleware`'s RMW package it returned true and the cell then failed at
+    /// node construction. That is an unprovisioned host reported as a RED —
+    /// the inverse of the silent-skip class, and equally misleading about what
+    /// the sweep measured.
+    ///
+    /// `rmw_zenoh_cpp` is the live case rather than a hypothetical: humble and
+    /// iron ship no official apt package for it (the docker zenoh lane says so
+    /// in its own skip message), so a humble host IS the failing configuration.
+    #[test]
+    fn host_available_requires_the_middlewares_rmw_not_just_the_distro() {
+        // Every variant must name a package — a `Middleware` whose RMW cannot
+        // be probed would silently regain the distro-only behaviour.
+        for mw in [
+            Middleware::zenoh_default(),
+            Middleware::FastRtps { domain_id: 0 },
+            Middleware::Cyclonedds { domain_id: 0 },
+        ] {
+            let pkg = mw.rmw_package();
+            assert!(
+                pkg.starts_with("rmw_") && pkg.ends_with("_cpp"),
+                "{mw:?} must name its ROS 2 RMW package, got {pkg:?}"
+            );
+        }
+
+        // A distro that does not exist cannot satisfy either half. This is the
+        // cheap end of the rule; the expensive end (ROS present, RMW absent) is
+        // host-dependent and asserted by construction above.
+        let absent = HostRosEnv::new("no_such_distro_xyz", Middleware::zenoh_default());
+        assert!(
+            !absent.available(),
+            "a missing distro must not report available"
+        );
     }
 
     /// Issue 0763 — the LOCATOR half of backend agreement.
