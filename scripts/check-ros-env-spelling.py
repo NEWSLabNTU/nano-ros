@@ -77,6 +77,15 @@ ROOT = Path(__file__).resolve().parent.parent
 SANCTIONED = {
     "packages/testing/nros-tests/src/ros2.rs",
     "packages/testing/nros-tests/src/ros_env.rs",
+    # This file. Its self-test fixtures are deliberate SPECIMENS of the thing it
+    # forbids — a rule that cannot state what it rejects cannot be tested.
+    #
+    # It is here because the gate went red the moment it was committed and not
+    # one run before: `git ls-files` does not list an untracked file, so every
+    # verification of it — the author's and the reviewer's — scanned a tree that
+    # did not contain it. A gate whose first honest run happens after the commit
+    # is a gate nobody has actually run.
+    "scripts/check-ros-env-spelling.py",
 }
 
 # Legitimate hand-rolled sites, path-keyed, one reason each.
@@ -367,6 +376,12 @@ def self_test(quiet=False):
     assert not fires("a/b.rs",
                      'eprintln!("run `source /opt/ros/<distro>/setup.bash`");'), \
         "a <distro> placeholder must NOT fire"
+    # This script's own fixtures must not fire — see SANCTIONED. Asserted so the
+    # exemption cannot be dropped by someone tidying the set.
+    assert not fires(
+        "scripts/check-ros-env-spelling.py",
+        'assert fires("a/b.sh", "source /opt/ros/humble/setup.bash")',
+    ), "the gate must exempt its own self-test specimens"
     assert fires("a/b.rs", 'run("source /opt/ros/humble/setup.bash");'), \
         "a CONCRETE distro in the same position must FIRE"
 
