@@ -61,6 +61,15 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
+**#0764** (testing/build, open 2026-08-23) — the fixture staleness probe compares MTIMES while the build
+compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moves without its content changing
+is STALE and rebuilding CANNOT clear it: the build is right to do nothing, the probe is right that the mtime
+is older, and they are answering different questions. NOT the documented treadmill, whose "rebuild affected
+fixtures" remedy is a no-op by construction here. Measured: cargo rebuilt `libnros_cpp.a` at 14:56, the copy
+cmake links stayed at 08:24, `cpp_action_server` never relinked; 16 tier-1 tests failed on it. Easy to
+misdiagnose because a `touch` that produces no relink is evidence the build is CORRECT, while a semantic
+change does propagate — verified by symbol. See `0764-*`.
+
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
 which under a parallel suite is a CROSS-TEST KILL: ros2cli keys its daemon on `ROS_DOMAIN_ID` ALONE, nothing
 in the zenoh family set a domain, so ~1500 tests shared domain 0's singleton and each setup stopped the
