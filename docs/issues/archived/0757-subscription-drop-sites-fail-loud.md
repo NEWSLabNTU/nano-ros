@@ -99,6 +99,37 @@ misconfigured subscription into a flood (issue 0371's shape). `nros_log`, never
 stdio — the site is reached on `no_std` and inside Zephyr `native_sim`, where a
 Rust std stdio call is fatal (issue 0589).
 
+## Verification 2026-08-23 — the mock could not express the failure
+
+The fix commit stated its own gap honestly: the e2e half could not run, because
+a core-crate change re-stales every native fixture and the rebuild was blocked
+by another session's active gate campaign. That gap is now closed from a
+different direction, and the reason it was open is the more interesting half.
+
+**`MockSubscriber` held a queue of canned MESSAGES.** There was no way to say
+"the next take fails" — so no unit test could reach the error arm of any of the
+four drain loops, and every test written against the mock necessarily exercised
+the happy path. The bug was not merely uncaught; it was *uncatchable* by the
+suite that existed. `load_error` enqueues a canned failure, with `has_data`
+still reporting true for it: exactly the state the bug lived in, a subscription
+the executor believes is ready whose take then fails.
+
+Two tests in `executor/tests.rs`:
+
+* `failed_subscription_take_is_counted_not_swallowed` — the failure reaches
+  `subscription_errors`, and no callback runs for a message that never arrived.
+  **Verified as a control, not just a green line:** with the pre-0757
+  `_ => break` restored in the typed Ring arm, it fails with exactly the
+  reported symptom (`left: 0, right: 1`).
+* `empty_subscription_is_not_an_error` — the negative control. The defect was
+  conflating "take failed" with "nothing to take"; a fix that counted both
+  would be the same conflation with the sign flipped, and every idle spin on
+  every board reporting errors is how a counter stops being read.
+
+`cargo test -p nros-node --lib --features std` — 263 passed. Still not the full
+e2e, which wants a fixture; but it is the assertion that would have failed
+before the fix, which the fixture path would not have given either.
+
 ## Follow-up: eight action/client sites audited, NOT changed
 
 The sweep also covers "service/action takes". Eight sites carry the same
