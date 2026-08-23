@@ -2976,7 +2976,7 @@ mod tests {
         out_has_data: *mut bool,
     ) -> NrosRmwRet {
         // Phase 376 W3.d step A — flag out, status returned.
-        unsafe { *out_has_data = (0) != 0 };
+        unsafe { *out_has_data = false };
         NROS_RMW_RET_OK
     }
 
@@ -3008,7 +3008,7 @@ mod tests {
         out_has_request: *mut bool,
     ) -> NrosRmwRet {
         // Phase 376 W3.d step A — flag out, status returned.
-        unsafe { *out_has_request = (0) != 0 };
+        unsafe { *out_has_request = false };
         NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_send_reply(
