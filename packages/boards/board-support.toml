@@ -42,8 +42,11 @@
 #   - tier 1    => a nightly lane covers it (or it is the native host, which
 #                  `just ci` runs directly — stronger than a nightly build)
 #   - every board directory appears exactly once; every entry names a real one
+#   - tier 1 => >=3 named maintainers, tier 2 => >=2, tier 3 => >=1 (phase-375
+#     W1), with rows that predate the rule grandfathered by
+#     scripts/board-maintainer-baseline.json — a list that only shrinks
 #
-# `maintainers` is recorded but NOT yet enforced — see the note at the bottom.
+# `maintainers` is ENFORCED since phase-375 W1 — see the note at the bottom.
 # ---------------------------------------------------------------------------
 
 # ===== tier 1 — supported ==================================================
@@ -251,12 +254,23 @@ maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate."
 
 # ---------------------------------------------------------------------------
-# `maintainers` is deliberately empty everywhere and NOT yet enforced.
+# `maintainers` is ENFORCED (phase-375 W1): tier 1 needs 3, tier 2 needs 2,
+# tier 3 needs 1.
 #
 # Rust's target-tier policy requires a named person per target and demotes
 # targets whose maintainer goes unreachable — that mechanism, not the directory
-# layout, is what actually collects abandoned targets. Recording an owner is the
-# point; inventing one would be worse than leaving it blank, so the field exists,
-# the gate reports how many boards are unowned, and enforcement (non-empty for
-# tier 2 and below, plus the demotion clause) turns on once owners are assigned.
+# layout, is what actually collects abandoned targets.
+#
+# It is still empty everywhere, and that is the point of the shape the rule took.
+# Inventing an owner would be worse than leaving the field blank, so enforcement
+# landed as a RATCHET rather than a cliff: the 13 rows that predate it are
+# grandfathered in scripts/board-maintainer-baseline.json, which only shrinks. A
+# NEW board is bound immediately, an existing one when someone claims it, and a
+# PROMOTION is bound too — an exemption granted at tier 3 does not cover tier 2,
+# because a stronger promise is a new one. A gate that failed all 22 rows on the
+# day it landed would have been bypassed, and a bypassed gate enforces nothing.
+#
+# To claim a board: add your handle to its `maintainers`, then run
+# `python3 scripts/check-board-tiers.py --write-baseline` to drop the row from
+# the grandfather list.
 # ---------------------------------------------------------------------------

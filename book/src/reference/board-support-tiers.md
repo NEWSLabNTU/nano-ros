@@ -62,4 +62,6 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 
 ## Maintainers
 
-The `maintainers` column is recorded but **not yet enforced**. Rust's target-tier policy requires a named person per target and demotes targets whose maintainer becomes unreachable — that mechanism, not the directory layout, is what actually retires abandoned targets. Recording an owner is the point; inventing one would be worse than leaving it blank, so the field exists and enforcement turns on once owners are assigned.
+A tier is a promise, and `just check-board-tiers` requires someone to have made it: **tier 1 needs 3 named maintainers, tier 2 needs 2, tier 3 needs 1** (phase-375 W1). Rust's target-tier policy is the model — a named person per target, and demotion when the maintainer becomes unreachable; that mechanism, not the directory layout, is what actually retires abandoned targets.
+
+Rows that predate the rule are grandfathered by `scripts/board-maintainer-baseline.json`, a list that only shrinks. So the rule binds a NEW board immediately and an existing one as its owner is found — a gate that failed all 22 rows on the day it landed would have been bypassed instead. Recording an owner is the point; inventing one would be worse than leaving the row at the tier it can carry.

@@ -1492,7 +1492,7 @@ govern owners and onboarding, not test counts.
 | `matrix::CELLS` | **191** — 181 Runtime, 5 BuildOnly, 5 CarveOut |
 | `fixtures.toml` rows | **422**, of which `linux` is **195 (46 %)** |
 | lane coordinates | tier 1 **10**, tier 2 **14**, nightly **37**, tier 3 **51** |
-| board registry | 5 tier-1, 6 tier-2, 2 tier-3, 9 infra — **0 with a maintainer** |
+| board registry | 5 tier-1, 6 tier-2, 2 tier-3, 9 infra — **0 with a maintainer** (13 non-infra rows, all grandfathered by W1) |
 
 (Revision 3 quoted 202 cells / 174 / 17 / 11 from 2026-08-04. BuildOnly has since
 fallen 17 -> 5, mostly by promotion. Re-measure before quoting; an early pass of
@@ -1525,9 +1525,14 @@ requirement lapses. Two clauses transfer directly:
 > Cannot substantially slow CI.
 
 Under that policy S32Z270 — a *tier 3* board — reddening main for everyone is
-the disqualifying condition, not a nuisance. And `board-support.toml` carries
-`maintainers = []` on all 22 rows, with `check-board-tiers` printing "not
-enforced yet (phase-320 W3.b)". The valve exists and is not turned.
+the disqualifying condition, not a nuisance. `board-support.toml` carried
+`maintainers = []` on all 22 rows with `check-board-tiers` printing "not
+enforced yet (phase-320 W3.b)" — the valve existed and was not turned. **W1
+turned it** (3/2/1 by tier), as a ratchet: the 13 rows that predate the rule are
+grandfathered in a list that only shrinks, so a new board is bound the day it
+lands and an existing one when someone claims it. The field is still empty
+everywhere, which is the honest state — inventing an owner is worse than
+recording none — and the ratchet is what lets the rule bind anyway.
 
 **Zephyr's Twister** separates two things this tree fuses: `platform_allow` says
 where a test CAN run, `integration_platforms` says where CI runs it BY DEFAULT,

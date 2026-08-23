@@ -1,0 +1,15 @@
+{
+  "nros-board-esp32-qemu@Esp32Qemu": "2",
+  "nros-board-freertos-posix@FreertosPosix": "2",
+  "nros-board-linux@Linux": "1",
+  "nros-board-mps2-an385-freertos@FreertosMps2": "1",
+  "nros-board-mps2-an385@QemuBaremetal": "2",
+  "nros-board-nuttx-qemu@NuttxArm": "1",
+  "nros-board-nuttx-qemu@NuttxRiscv": "2",
+  "nros-board-s32z270-freertos@-": "3",
+  "nros-board-threadx-linux@ThreadxLinux": "1",
+  "nros-board-threadx-qemu-riscv64@ThreadxRiscv64": "2",
+  "nros-board-zephyr@Fvp": "3",
+  "nros-board-zephyr@ZephyrNativeSim": "1",
+  "nros-board-zephyr@ZephyrQemuCortexM": "2"
+}

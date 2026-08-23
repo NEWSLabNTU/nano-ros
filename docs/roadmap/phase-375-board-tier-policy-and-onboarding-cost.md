@@ -55,19 +55,44 @@ the regex matched only bare-identifier tiers and silently dropped
 before proposing a mechanism, and prefer a count the code produces over one a
 regex infers.
 
-## W1 — Maintainers become the tier gate
+## W1 — Maintainers become the tier gate — **LANDED 2026-08-23**
 
-- [ ] Adopt Rust's counts in `check-board-tiers`: tier 1 >=3, tier 2 >=2,
-      tier 3 >=1 named maintainer. Currently ALL 22 rows carry `maintainers = []`
-      and the gate prints "not enforced yet (phase-320 W3.b)".
-- [ ] Land it as a RATCHET, not a cliff: existing rows are grandfathered by an
-      explicit baseline that can only shrink, so the rule binds new boards
-      immediately and existing ones as owners are found. A gate that fails 22
-      rows on the day it lands gets bypassed, which is worse than one that binds.
-- [ ] Demotion is automatic and printed, never silent.
+- [x] Adopted Rust's counts in `check-board-tiers`: tier 1 >=3, tier 2 >=2,
+      tier 3 >=1 named maintainer. `infra` and `scaffold` owe nobody — neither
+      makes a tier promise, and charging the honest states more than the
+      dishonest one is how a rule gets routed around.
+- [x] Landed as a RATCHET: `scripts/board-maintainer-baseline.json` grandfathers
+      the 13 non-infra rows that predate the rule, and only shrinks. Claiming a
+      board is `maintainers = [...]` plus `--write-baseline`; meeting the rule
+      while baselined is PRINTED, never failed, because a ratchet that punishes
+      the good deed gets bypassed for the same reason a cliff does.
+- [x] Demotion is automatic and printed: the gate cannot edit the registry, so
+      the demotion it performs is a refusal that names the tier the row IS
+      entitled to (`tier_supported_by`) rather than leaving the author to
+      re-derive the table.
+- [x] Two leaks closed that a plain exemption list would have had. The baseline
+      is keyed by the `(crate, platform)` PAIR the registry is keyed by, so a
+      crate serving several witnesses at different tiers (phase-337 W1.c) cannot
+      have one row grandfather another. And an exemption does not travel UPWARD:
+      a row baselined at tier 3 and later promoted to tier 2 is making a stronger
+      promise than anyone grandfathered, so it needs its own owners. A demotion
+      stays exempt — the rule must never block the direction it is asking for.
+- [x] Negative controls run on EVERY invocation, not behind `--self-test`: a
+      control nobody runs decays into a comment, and this rule's whole job is to
+      fire. Nine cases, each asserting the refusal happens and then that the
+      intended escape silences it. A MISSING baseline is a failure, not an empty
+      exemption set — empty is the strictest reading and still the wrong one,
+      failing all 13 rows at once with a message about maintainers rather than
+      about the absent file.
 
-**Acceptance:** a new board row without a maintainer cannot be tier 1 or 2, and
-the baseline count only decreases.
+**Acceptance — met.** A new board row without a maintainer cannot be tier 1 or 2
+(it is not in the baseline, and the baseline is a committed file, so growing it
+is a reviewable diff rather than a silent default). The list only shrinks.
+
+**Still true and still the point:** all 22 rows carry `maintainers = []`. W1 did
+not assign owners — inventing one would be worse than recording none. It made
+the field load-bearing, so the next board pays the question and the existing
+ones pay it when someone answers.
 
 ## W2 — `just board-new` — onboarding is a scaffold, not a scavenger hunt
 

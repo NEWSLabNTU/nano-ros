@@ -16,11 +16,16 @@ structures that actually decide it:
   justfile rust-rtos-link-check   -> is it compiled by `just ci`?
   packages/boards/                -> does every board appear exactly once?
 
+phase-375 W1 adds the one input that is not a structure but a person: a tier is
+a promise, so it needs enough named maintainers to be one (3/2/1 for tiers
+1/2/3), grandfathered for existing rows by scripts/board-maintainer-baseline.json.
+
 Dependency-free on purpose: CI hosts are not guaranteed a TOML library (this
 repo's Python is 3.10, so no `tomllib`), and `scripts/build/fixtures-manifest.py`
 already establishes regex parsing as the house pattern for exactly this reason.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -28,6 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "packages/boards/board-support.toml"
+BASELINE = ROOT / "scripts/board-maintainer-baseline.json"
 MATRIX = ROOT / "packages/testing/nros-tests/src/matrix.rs"
 FIXTURES = ROOT / "examples/fixtures.toml"
 NIGHTLY = ROOT / ".github/workflows/nightly.yml"
@@ -35,6 +41,44 @@ JUSTFILE = ROOT / "justfile"
 BOARDS_DIR = ROOT / "packages/boards"
 
 VALID_TIERS = {"1", "2", "3", "scaffold", "infra"}
+
+# phase-375 W1 — a tier is a promise, and a promise needs someone who made it.
+#
+# Rust's target-tier policy is the model: tier 1 requires three named
+# maintainers, tier 2 two, tier 3 one, and a target whose maintainers go
+# unreachable is DEMOTED rather than quietly kept. What collects abandoned
+# targets is that rule, not the directory layout — which is why this repo's
+# registry has carried a `maintainers` field since phase-320 W2 while enforcing
+# nothing: every one of the 22 rows is `[]`.
+#
+# Counts are lower than Rust's for tiers 1 and 2 would be for a project this
+# size, but the shape is theirs deliberately: more owners for a stronger
+# promise, and the weakest promise still has exactly one person to ask.
+MAINTAINER_MIN = {"1": 3, "2": 2, "3": 1}
+
+
+def tier_supported_by(count):
+    """The strongest tier `count` maintainers can carry, or None.
+
+    This is the "demotion is automatic and printed" half of the rule: the gate
+    cannot edit the registry, so the demotion it performs is a REFUSAL that
+    names the tier the row is actually entitled to. A message that only says
+    "not enough maintainers" leaves the author to re-derive the table.
+    """
+    for tier in ("1", "2", "3"):
+        if count >= MAINTAINER_MIN[tier]:
+            return tier
+    return None
+
+
+def row_key(entry):
+    """Baseline key: the (crate, platform) PAIR the registry is keyed by.
+
+    Not the crate alone — phase-337 W1.c made one crate able to hold several
+    rows at different tiers (`nuttx-qemu` is arm at tier 1 and riscv at tier 2),
+    so a crate-keyed exemption would grandfather a witness nobody looked at.
+    """
+    return f"{entry.get('crate', '<no crate key>')}@{entry.get('matrix_platform') or '-'}"
 
 
 def parse_registry(text):
@@ -121,8 +165,170 @@ def link_check_examples(text):
     return set(re.findall(r'cd (examples/[\w./-]+)', body.group(0)))
 
 
+def write_baseline(reg):
+    """Regenerate the grandfather list from rows that do not yet meet the rule."""
+    out = {}
+    for e in reg:
+        tier = str(e.get("tier", ""))
+        need = MAINTAINER_MIN.get(tier)
+        if need is None:
+            continue
+        if len(e.get("maintainers") or []) < need:
+            out[row_key(e)] = tier
+    BASELINE.write_text(json.dumps(dict(sorted(out.items())), indent=2) + "\n")
+    print(f"wrote {BASELINE.relative_to(ROOT)}: {len(out)} row(s) grandfathered")
+    return 0
+
+
+def self_test(quiet=False):
+    """Negative controls — a gate whose rule never fires proves nothing.
+
+    Each case asserts the rule FIRES, then that the intended escape silences it.
+    """
+    def run(entry, baseline):
+        errors, exempt, improved = [], [], []
+        check_maintainers(entry, entry["crate"], str(entry["tier"]), baseline,
+                          errors, exempt, improved)
+        return errors, exempt, improved
+
+    new_t1 = {"crate": "new-board", "matrix_platform": "Linux", "tier": 1,
+              "maintainers": []}
+    errors, _, _ = run(new_t1, {})
+    assert errors, "a NEW tier-1 row with no maintainer must fail"
+    assert "supports tier" not in errors[0], "0 maintainers supports no tier at all"
+
+    # The escape is naming owners, not editing the baseline.
+    errors, _, _ = run({**new_t1, "maintainers": ["a", "b", "c"]}, {})
+    assert not errors, "three maintainers must satisfy tier 1"
+    errors, _, _ = run({**new_t1, "maintainers": ["a", "b"]}, {})
+    assert errors and "supports tier 2" in errors[0], \
+        "two maintainers must be refused at tier 1 AND told they support tier 2"
+
+    # Grandfathering: the exemption holds at the tier it was granted at...
+    errors, exempt, _ = run(new_t1, {"new-board@Linux": "1"})
+    assert not errors and len(exempt) == 1, "a baselined row must be exempt"
+
+    # ...and NOT above it. This is the ratchet: a promotion is a new promise.
+    promoted = {"crate": "b", "matrix_platform": "P", "tier": 2, "maintainers": []}
+    errors, exempt, _ = run(promoted, {"b@P": "3"})
+    assert errors and "promotion" in errors[0], \
+        "an exemption granted at tier 3 must not cover tier 2"
+    # A DEMOTION is the direction the rule wants, so it must never be blocked.
+    errors, exempt, _ = run({**promoted, "tier": 3}, {"b@P": "2"})
+    assert not errors and exempt, "a demotion must stay exempt"
+
+    # infra/scaffold promise nothing, so they owe nobody.
+    for tier in ("infra", "scaffold"):
+        errors, _, _ = run({"crate": "x", "tier": tier, "maintainers": []}, {})
+        assert not errors, f"{tier} must not require a maintainer"
+
+    # Meeting the rule while baselined is reported, never failed — a ratchet
+    # that punishes the good deed gets bypassed too.
+    errors, _, improved = run({**new_t1, "maintainers": ["a", "b", "c"]},
+                              {"new-board@Linux": "1"})
+    assert not errors and len(improved) == 1, "an improved row must be reported, not failed"
+
+    # One crate, two witnesses at different tiers — the key must separate them.
+    assert row_key({"crate": "n", "matrix_platform": "A"}) != \
+        row_key({"crate": "n", "matrix_platform": "B"}), \
+        "rows are keyed by (crate, platform), not crate (phase-337 W1.c)"
+
+    # A missing baseline must FAIL rather than read as an empty exemption set.
+    # Empty would be the strictest possible reading and still the wrong one: it
+    # fails every unowned row at once, which is the cliff W1 exists to avoid,
+    # and it does so with a message about maintainers rather than about the
+    # missing file.
+    global BASELINE
+    real, BASELINE = BASELINE, ROOT / "scripts/does-not-exist.json"
+    try:
+        errors = []
+        assert load_baseline(errors) == {} and errors, \
+            "a missing baseline must be an error, not a silent empty set"
+    finally:
+        BASELINE = real
+
+    if not quiet:
+        print("check-board-tiers self-test: OK")
+    return 0
+
+
+def load_baseline(errors):
+    """The grandfather list: rows that predate the maintainer rule.
+
+    A gate that fails 22 rows on the day it lands gets bypassed, and a bypassed
+    gate is worse than a narrower one that binds — so the rule binds NEW rows
+    immediately and existing ones as owners are found. The exemption is a
+    committed file, so growing it is a reviewable diff rather than a silent
+    default, which is the same shape `scripts/grep-q-baseline.json` uses.
+    """
+    if not BASELINE.exists():
+        errors.append(
+            f"missing maintainer baseline {BASELINE.relative_to(ROOT)} — regenerate "
+            "with --write-baseline. A missing baseline is a FAILURE, not an empty "
+            "exemption set: silently treating it as empty would fail every "
+            "unowned row and invite the bypass this ratchet exists to avoid")
+        return {}
+    try:
+        return json.loads(BASELINE.read_text())
+    except (OSError, ValueError) as exc:
+        errors.append(f"cannot read maintainer baseline: {exc}")
+        return {}
+
+
+def check_maintainers(entry, crate, tier, baseline, errors, exempt, improved):
+    """Enforce MAINTAINER_MIN against the grandfather baseline (phase-375 W1)."""
+    need = MAINTAINER_MIN.get(tier)
+    if need is None:
+        # `infra` carries no tier promise and `scaffold` is explicitly NOT
+        # supported — neither promises anyone will answer, so neither needs an
+        # owner. Requiring one would make the honest states cost more than the
+        # dishonest one.
+        return
+    have = len(entry.get("maintainers") or [])
+    key = row_key(entry)
+    grandfathered = baseline.get(key)
+    if have >= need:
+        if grandfathered is not None:
+            improved.append((key, tier, have))
+        return
+    # An exemption is granted at a TIER, and it does not travel upward: a row
+    # baselined at tier 3 that is later promoted to tier 2 is making a stronger
+    # promise than the one anybody grandfathered. Weaker is fine (a demotion
+    # must never be blocked by the rule that asks for demotions).
+    # A bigger tier NUMBER is a weaker promise, so the exemption holds when the
+    # declared tier is numerically >= the one it was granted at.
+    if grandfathered is not None and int(tier) >= int(grandfathered):
+        exempt.append((key, tier, have, str(grandfathered)))
+        return
+    supported = tier_supported_by(have)
+    if grandfathered is not None:
+        errors.append(
+            f"{key}: baselined at tier {grandfathered} but declared tier {tier} — a "
+            f"promotion is a NEW promise, so it needs its own owners "
+            f"({have} named, tier {tier} needs {need}). The grandfather list covers "
+            "the promise that was already there, not a stronger one")
+        return
+    errors.append(
+        f"{key}: declared tier {tier} with {have} maintainer(s); tier {tier} needs "
+        f"{need}. "
+        + (f"This row supports tier {supported} — declare that, or name "
+           f"{need - have} more maintainer(s)."
+           if supported else
+           "With no maintainer named, no tier promise holds — the honest states "
+           "are `scaffold` (unfinished) and `infra` (not a board).")
+        + " Recording an owner is the point; inventing one is worse than leaving "
+          "the row at the tier it can carry")
+
+
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this rule's whole job is to fire.
+    self_test(quiet=True)
     reg = parse_registry(REGISTRY.read_text())
+    if "--write-baseline" in sys.argv:
+        return write_baseline(reg)
     matrix_txt = MATRIX.read_text()
     rt = runtime_platforms(matrix_txt)
     fx = fixture_platforms(FIXTURES.read_text())
@@ -215,7 +421,11 @@ def main():
             "directory check above, which is why this one exists")
 
     # --- per-entry predicates -------------------------------------------------
+    baseline = load_baseline(errors)
     unowned = 0
+    exempt = []
+    improved = []
+    seen_keys = set()
     borrowed: list[tuple[str, str, str]] = []
     for e in reg:
         crate = e.get("crate", "<no crate key>")
@@ -223,8 +433,10 @@ def main():
         if tier not in VALID_TIERS:
             errors.append(f"{crate}: tier {tier!r} is not one of {sorted(VALID_TIERS)}")
             continue
+        seen_keys.add(row_key(e))
         if not e.get("maintainers"):
             unowned += 1
+        check_maintainers(e, crate, tier, baseline, errors, exempt, improved)
         if tier == "infra":
             continue
 
@@ -301,10 +513,35 @@ def main():
     print(f"board-support registry: {len(reg)} entries, {len(on_disk)} directories")
     print(f"  platforms with Runtime cells: {', '.join(sorted(rt)) or '(none)'}")
     print(f"  nightly sweep: {', '.join(sorted(nl)) or '(none)'}")
-    if unowned:
-        print(f"  note: {unowned} entries have no maintainer. Not enforced yet "
-              "(phase-320 W3.b) — recording an owner is the point, inventing one is worse "
-              "than leaving it blank.")
+    # A baseline key naming no row is dead weight, and dead weight is how a
+    # ratchet slips: rename a row and its exemption survives, attached to
+    # nothing, ready to grandfather whatever later takes the name back.
+    for key in sorted(set(baseline) - seen_keys):
+        errors.append(
+            f"maintainer baseline names {key}, which is not a row in the registry. "
+            "An exemption for a row that no longer exists can only ever be "
+            "reclaimed by accident — drop it (--write-baseline)")
+
+    print(f"  maintainer rule: tier 1 needs {MAINTAINER_MIN['1']}, tier 2 "
+          f"{MAINTAINER_MIN['2']}, tier 3 {MAINTAINER_MIN['3']} "
+          f"({unowned} of {len(reg)} rows have no maintainer)")
+    if exempt:
+        # The count every run, the roster only near the end. Thirteen lines on
+        # every `check-fast` is noise a reader learns to scroll past, and the
+        # roster is a committed file anyone can read; but once the ratchet is
+        # nearly done, naming who is left is exactly the nudge that finishes it.
+        print(f"  {len(exempt)} row(s) grandfathered by "
+              f"{BASELINE.relative_to(ROOT)} — the rule binds them as owners are "
+              "found, and binds a NEW board immediately")
+        if len(exempt) <= 5:
+            for key, tier, have, at in sorted(exempt):
+                at_note = "" if at == tier else f", baselined at tier {at}"
+                print(f"    still unowned: {key} (tier {tier}, "
+                      f"{have} maintainer(s){at_note})")
+    if improved:
+        for key, tier, have in sorted(improved):
+            print(f"  {key} now has {have} maintainer(s) and meets tier {tier} — "
+                  "drop it from the baseline (--write-baseline); the list only shrinks")
 
     if errors:
         print("\n[FAIL] board support tiers disagree with the evidence:", file=sys.stderr)
