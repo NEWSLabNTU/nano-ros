@@ -3521,6 +3521,14 @@ check-cmake-image-policy:
 check-tier-spin-gap:
     @python3 scripts/check-tier-spin-gap.py
 
+# Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and
+# arg by arg. REPORTING ONLY, deliberately not on the `check` line: `--check`
+# fails by construction until the W3+ migration lands, and a gate that cannot
+# pass is a gate people learn to skip. It joins `check` at the end of W3.
+[group("check")]
+rmw-abi-shape:
+    @python3 scripts/rmw-abi-shape.py
+
 # Phase 376 — every symbol in the rmw implementation contract is classified:
 # a vtable slot, another layer, or a declined RTOS reason. Reads the RECORDED
 # contract, so it needs no ROS install; regenerate that with `--contract` in the

@@ -1,9 +1,9 @@
 # Phase 376 — RMW API parity: measure the gap to upstream, then close it
 
-**Status (2026-08-23). W1 landed: the contract is derived and the comparison is
-automated (`scripts/rmw-api-parity.py`, `--check` gates it). 88 contract symbols
-— 29 vtable, 23 answered at another layer, 9 declined for RTOS reasons, and
-**27 gaps**. W2+ (closing them) is not started.**
+**Status (2026-08-23). W1 landed (the contract is derived and capability parity
+is automated). W2 landed as MEASUREMENT ONLY: `scripts/rmw-abi-shape.py` compares
+our vtable to upstream slot-by-slot and arg-by-arg. It reports **0 of 79** slots
+matching name and args today. W3+ (the migration) is not started.**
 
 Goal, from the campaign brief: feature completeness against official RMW, where
 every remaining difference is traceable to an RTOS design consideration and
@@ -150,3 +150,94 @@ scripts/rmw-api-parity.py --check    # non-zero if anything is unclassified
 scripts/rmw-api-parity.py --contract # re-derive from an installed ROS (in the box)
 scripts/rmw-api-inventory.py         # the raw 177-function header inventory
 ```
+
+---
+
+# W2 — the target is the ABI's SHAPE, not just the capability (landed as measurement)
+
+The brief sharpened after W1:
+
+> Our ABI should look mostly identical to the official ABI except the RTOS
+> revision. The revision can be done by adding or removing items, or fixing
+> args. All RMW functions should go into the C vtable, generic over all
+> backends.
+
+That is a stricter target than W1 measured, and it invalidates two of W1's
+buckets as end states:
+
+* **`layer` (23) is no longer an answer.** "We answer it in `nros-node`" was
+  acceptable for capability parity; it is not acceptable when every RMW function
+  must be a vtable slot. Those 23 move from *covered* to *to be moved into the
+  vtable*.
+* **capability parity is not name parity.** `try_recv_raw` covers `rmw_take`
+  perfectly well and shares nothing with it — not the name, not the argument
+  list.
+
+## The rule, made mechanical
+
+Every contract symbol gets a vtable slot named exactly the upstream name minus
+its `rmw_` prefix (`rmw_take` -> `take`), with upstream's parameters, unless the
+difference is DECLARED with an RTOS reason. Deliberately mechanical: it needs no
+authored name mapping, and a mapping with 88 entries is a place for a mistake to
+hide. The slots live inside `nros_rmw_vtable_t`, so the type carries the
+namespace and a `rmw_` on each member would stutter.
+
+`scripts/rmw-abi-shape.py` checks exactly that.
+
+## Where we are
+
+| | |
+| --- | ---: |
+| contract symbols to mirror (88 less 9 declined) | 79 |
+| slots matching name **and** args | **0** |
+| slots present, args differ | 8 |
+| no slot at all | 71 |
+| declared RTOS additions | 11 |
+| extra slots not yet declared (these are the renames) | 16 |
+
+Zero is the honest starting number, and it is not as bad as it sounds: the 8
+"args differ" and the 16 "extra" are the same slots seen from two directions —
+they do the upstream job under a different name and a different signature.
+
+## The argument differences are the interesting part
+
+They are systematic, not incidental, and each is a real RTOS revision that
+should be declared per slot rather than smoothed away:
+
+| upstream | ours | why |
+| --- | --- | --- |
+| `const rmw_node_t *` | `nros_rmw_session_t *` | an image has ONE session opened once; upstream's context/node split has no target-side meaning |
+| `const rosidl_message_type_support_t *` | `const char *` pkg + `const char *` type | no typesupport indirection on target — the type is baked by codegen |
+| returns `rmw_publisher_t *` | returns `nros_rmw_ret_t`, entity is an OUT parameter | no runtime allocation: the caller owns the storage |
+| `rmw_publisher_allocation_t *` | absent | pools are baked; there is nothing to pre-size |
+
+## Migration plan (W3+)
+
+Each wave keeps the tree green and moves the shape counter, so progress is
+measured rather than asserted:
+
+1. **Rename the 16.** `try_recv_raw` -> `take`, `publish_raw` -> `publish`,
+   `pub_loan` -> `borrow_loaned_message`, and so on. Mechanical, but it touches
+   every backend and both bindgen'd mirrors (RFC-0054: the header is the SSoT,
+   `scripts/gen-abi-bindings.sh` regenerates, `check-abi-bindings` gates
+   staleness). Declares the arg deviations above at the same time. Expected:
+   0 -> 16 matching, 16 -> 0 undeclared extras.
+2. **Move the `layer` set into the vtable** (~23 slots): `wait`, the guard
+   conditions, serialize/deserialize, node create/destroy, init/shutdown. Each
+   needs a decision about what "generic over all backends" means for something
+   currently answered above the seam — `wait` in particular, since
+   `Executor::spin_once` IS our wait and a vtable `wait` would sit under it.
+3. **The graph slot** (13 symbols) and **QoS read-back** (7) — the W1 gaps, now
+   with upstream names and signatures fixed in advance.
+4. **Turn `--check` into a gate** on the `just check` line. Deliberately NOT
+   wired today: it fails by construction until the migration lands, and a gate
+   that cannot pass is a gate people learn to skip.
+
+## Open question for W3, worth settling before the renames
+
+Whether `nros_rmw_ret_t` should become value-identical to `rmw_ret_t`. Upstream
+uses `RMW_RET_OK = 0`, `RMW_RET_ERROR = 1`, `RMW_RET_TIMEOUT = 2`; ours are
+negative constants. "Mostly identical" argues for adopting upstream's values,
+which is a one-time break of every backend and every caller — cheaper now than
+after the renames land.
+

@@ -54,8 +54,55 @@ def strip_noise(text):
     return text
 
 
-def functions_in(text):
-    """Every RMW_PUBLIC-marked function name, in declaration order."""
+def normalise_params(raw):
+    """`(rmw_node_t * node, const char * name)` -> `rmw_node_t *, const char *`.
+
+    Parameter NAMES are dropped and whitespace collapsed, so the comparison is
+    about the types a caller must supply. Keeping the names would report a
+    difference every time upstream renamed an argument, which is not a
+    difference in the ABI and would train people to skim the output.
+    """
+    raw = raw.strip()
+    if not raw or raw == "void":
+        return []
+    out = []
+    depth = 0
+    cur = ""
+    for ch in raw:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+
+    types = []
+    for p in out:
+        p = " ".join(p.split())
+        if not p:
+            continue
+        # A function-pointer parameter keeps its shape; anything else loses a
+        # trailing identifier.
+        if "(*" in p:
+            types.append(re.sub(r"\(\*\s*[A-Za-z_][A-Za-z0-9_]*\s*\)", "(*)", p))
+            continue
+        p = re.sub(r"\[\s*\]$", " []", p)
+        m = re.match(r"^(.*?[\s*])([A-Za-z_][A-Za-z0-9_]*)((\s*\[\s*\])?)$", p)
+        if m:
+            p = (m.group(1) + m.group(3)).strip()
+        types.append(" ".join(p.replace("*", " * ").split()))
+    return types
+
+
+def functions_in(text, with_signature=False):
+    """Every RMW_PUBLIC-marked function, in declaration order.
+
+    With `with_signature`, yields `(name, return_type, [param types])`.
+    """
     body = strip_noise(text)
     out = []
     for chunk in body.split(PUBLIC)[1:]:
@@ -65,8 +112,25 @@ def functions_in(text):
         for attr in ATTRS:
             decl = decl.replace(attr, " ")
         m = DECL.search(decl)
-        if m:
+        if not m:
+            continue
+        if not with_signature:
             out.append(m.group(1))
+            continue
+        ret = " ".join(decl[: m.start(1)].replace("*", " * ").split())
+        # Params run from the matched `(` to its matching `)`.
+        rest = decl[m.end() :]
+        depth = 1
+        params = ""
+        for ch in rest:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            params += ch
+        out.append((m.group(1), ret, normalise_params(params)))
     return out
 
 
@@ -86,8 +150,10 @@ def resolve_include(explicit=None):
     return None
 
 
-def inventory(include_dir):
-    """{name: header} for every RMW_PUBLIC function under `include_dir`."""
+def inventory(include_dir, with_signature=False):
+    """{name: header} for every RMW_PUBLIC function under `include_dir`.
+
+    With `with_signature`, values are `(header, return_type, [param types])`."""
     found = {}
     # walk-ok: an installed ROS include tree, not a repo path
     for root, _dirs, files in os.walk(include_dir):
@@ -100,8 +166,12 @@ def inventory(include_dir):
             except OSError:
                 continue
             rel = os.path.relpath(path, include_dir)
-            for name in functions_in(text):
-                found.setdefault(name, rel)
+            for item in functions_in(text, with_signature):
+                if with_signature:
+                    name, ret, params = item
+                    found.setdefault(name, (rel, ret, params))
+                else:
+                    found.setdefault(item, rel)
     return found
 
 
@@ -135,11 +205,26 @@ typedef struct rmw_thing_s { int x; } rmw_thing_t;
     if functions_in(one_line) != ["rmw_init"]:
         bad.append(f"one-line return type not matched: {functions_in(one_line)}")
 
+    # Signature extraction: parameter NAMES go, types stay, and a function
+    # pointer parameter keeps its shape.
+    sig = functions_in(
+        "RMW_PUBLIC\nrmw_ret_t\nrmw_x(rmw_node_t * node, const char * n, void (*cb)(void *), int a[]);",
+        with_signature=True,
+    )
+    # A function-pointer parameter keeps its own spelling — it returns before
+    # the `*`-spacing pass, deliberately, since `void ( * )(void *)` would be a
+    # worse thing to print at every call site than the shape as written.
+    want = ("rmw_x", "rmw_ret_t", ["rmw_node_t *", "const char *", "void (*)(void *)", "int []"])
+    if sig != [want]:
+        bad.append(f"signature extraction: got {sig}, want [{want}]")
+    if normalise_params("void") != []:
+        bad.append("`void` must normalise to no parameters")
+
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-inventory --self-test: " + b + "\n")
         return 2
-    print("rmw-api-inventory --self-test: OK (3 case(s))")
+    print("rmw-api-inventory --self-test: OK (5 case(s))")
     return 0
 
 
@@ -147,6 +232,11 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--include", help="rmw include dir (default: via AMENT_PREFIX_PATH)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--signatures", action="store_true",
+        help="emit `name<TAB>return<TAB>param, param<TAB>header` — the form the "
+             "shape comparison consumes offline",
+    )
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args(argv)
 
@@ -162,7 +252,12 @@ def main(argv):
         )
         return 2
 
-    found = inventory(inc)
+    found = inventory(inc, with_signature=args.signatures)
+    if args.signatures:
+        for name in sorted(found):
+            header, ret, params = found[name]
+            print(f"{name}\t{ret}\t{', '.join(params)}\t{header}")
+        return 0
     if args.json:
         print(json.dumps({"include": inc, "functions": found}, indent=2, sort_keys=True))
         return 0
