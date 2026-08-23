@@ -584,3 +584,47 @@ more reading of this repo.
 Worth keeping in view: the sibling `test_xrce_action_ros2_client` and
 `test_xrce_to_ros2_pubsub` PASS in the same run. Whatever is wrong is specific to
 the service REPLY path, which is a strong constraint on any proposed cause.
+
+## Agent-side investigation (2026-08-24) — the 15 is NOT the Agent's
+
+Vendored Agent is **v2.4.3** at `third-party/xrce/agent`. Traced the bin/replier
+path:
+
+* `FastDDSMiddleware::create_replier_by_bin` fills `ReplierAttributes` from the
+  binary profile and sets `subscriber.topic.topicDataType = request_type()` and
+  `publisher.topic.topicDataType = reply_type()` — type NAMES only, matching what
+  nano-ros sends.
+* `FastDDSReplier::create_by_attributes` then creates a datawriter on the reply
+  topic and a datareader on the request topic.
+* The Agent's generic type support is `TopicPubSubType`, and its size is a
+  constant:
+
+```cpp
+TopicPubSubType::TopicPubSubType(bool with_key) {
+    m_typeSize = 1024 + 4 /*encapsulation*/;
+```
+
+**So the Agent advertises 1028 bytes, not 15.** Whatever sizes that reply
+reader's history to 15, it is not the Agent's type registration — which is the
+hypothesis this issue was pointing at, and it is now eliminated.
+
+That leaves the ROS 2 client side. `rmw_fastrtps` creates the reply reader from
+its OWN `AddTwoInts_Response` type support, so 15 has to come from either that
+type's computed max serialized size or from a discovered-endpoint negotiation.
+Note 15 is not a plausible size for that type either (8-byte `sum` + 4-byte
+encapsulation = 12), so something is computing it from the wrong type
+descriptor.
+
+### Still not fixed, and the next step is not in this repo
+
+Three of the four layers are now excluded by direct inspection: nano-ros never
+advertises a size, the type names are correct, and the Agent advertises 1028.
+The remaining layer is `rmw_fastrtps`/Fast-DDS on the ROS 2 client, which needs
+Fast-DDS-side inspection (or a Fast-DDS log at discovery showing what max size
+the reply reader negotiated).
+
+The host split is the strongest remaining clue and should be used: two hosts
+reproduce and two environments do not, so comparing their Fast-DDS and
+`ros-humble-rmw-fastrtps-cpp` versions is likely faster than reading further —
+whatever changed between those versions is a candidate for whether the reader
+resizes or refuses.
