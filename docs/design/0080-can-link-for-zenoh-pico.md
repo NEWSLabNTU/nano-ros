@@ -139,6 +139,32 @@ free choice. Not built now, but **the endpoint syntax must not foreclose it**:
 keep identifiers explicit rather than derived, so a future `peers=` or
 `id_base=` extends the same grammar.
 
+**This is RFC-0079's problem in a second address space.** That RFC calls raw
+kernel priorities a DHCP/static-IP collision: one address space, static
+assignments authored by hand, addresses already held by infrastructure, no
+reservation protocol. CAN identifiers are all four — and the defaults shipped
+here are an instance of the failure rather than an exception to it.
+`CAN_CONFIG_DEFAULT_ID` is `0x100`, and the examples use `0x100`/`0x101`, so
+**whichever peer is configured first silently outranks the other, permanently**.
+If the Orin takes `0x100` and the safety island `0x101`, the island's stop
+command loses arbitration to the Orin's Odometry frames and the bounded-latency
+argument inverts. Nothing warns; nothing measures it.
+
+Three consequences worth carrying into any allocation design:
+
+* **Priority is per PEER today.** One identifier per peer means a node's urgent
+  and bulk traffic arbitrate identically. Per-message priority would need the
+  identifier laid out priority-major (`[class][peer]`, so class dominates from
+  the MSB) AND zenoh's QoS to reach the link.
+* **zenoh's link is priority-blind, and that is the blocker.**
+  `_z_f_link_write(self, ptr, len, socket)` has no priority argument, and
+  `tx.c` hands the link a batch with priorities already mixed. No allocation
+  policy can fix this from below; it needs per-priority batching or a priority
+  hint on the write, upstream.
+* **So allocation is necessary but not sufficient.** Integrating with an
+  RFC-0079-style allocator would fix WHICH identifiers peers get. It would not
+  give per-message priority until the link can see one.
+
 ### 4.3 [OPEN] Bus sharing
 
 If the island's CAN bus also carries ordinary vehicle signals, zenoh traffic
@@ -236,9 +262,13 @@ island's 14 publishers with Odometry at 50 Hz and the rest at 20 Hz come to
 **37% bus load**. `nav_msgs/Odometry` costs 15.5 frames (5.2 ms of wire time);
 every command-sized message is one or two frames, under half a millisecond.
 
-The latency property is the interesting one: CAN arbitrates per frame, so a
-stop command with a high-priority identifier waits **0.34 ms** behind a 15-frame
-Odometry burst rather than 5.2 ms. Bounded worst case, from the medium itself.
+The latency property is the interesting one, and it is conditional in three ways
+that were not stated when it was first written. CAN arbitrates per frame, so a
+stop command CAN wait 0.34 ms behind a 15-frame Odometry burst rather than 5.2 ms
+— but only if the burst belongs to ANOTHER peer (zenoh-pico batches a link FIFO
+with no per-priority split, so within a peer there is no preemption), only if the
+urgent peer holds the LOWER identifier, and only at per-peer rather than
+per-message granularity. See phase-377 section 3b.
 
 Still analytic rather than a wire measurement — see phase-377 §3b for the model
 and its caveats.

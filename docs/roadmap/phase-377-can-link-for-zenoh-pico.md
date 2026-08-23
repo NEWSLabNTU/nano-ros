@@ -142,22 +142,52 @@ giving 2,793 frames/s and **1.41 Mbit/s of usable payload**.
 | Odometry 50 Hz + 13 others at 20 Hz | **37%** |
 | everything at 10 Hz | 10% |
 
-So the workload fits with roughly 2.7x headroom at the busiest realistic rate.
+**The frame counts are measured; the RATES are assumed.** 50 Hz for Odometry and
+20 Hz for the rest were picked as plausible, not read off the island. Autoware
+commonly runs odometry at 50-100 Hz, and at 100 Hz the figure roughly doubles.
+Measuring the actual publish periods is a prerequisite before anyone treats 37%
+as a budget.
 RFC §8's "0.5–1 Mbit/s against 1–1.5 available, without much margin" was
 pessimistic: the margin is real, but it comes with Odometry costing 15 frames.
 
-**The latency property that matters.** CAN arbitrates **per frame**, so a
-high-priority identifier preempts a long burst at the next frame boundary rather
-than waiting for it to finish. A stop command queued behind a 15-frame Odometry
-burst waits **0.34 ms**, not 5.2 ms. That is the bounded worst case a safety
-island wants, and it is a property of the medium rather than of anything this
-link does — provided the stop command is given a lower (higher-priority)
-identifier than the bulk traffic.
+**The latency property, and its three conditions.** CAN arbitrates **per
+frame**, so a burst can be preempted at the next frame boundary rather than at
+its end. A stop command can therefore wait **0.34 ms** behind a 15-frame
+Odometry burst instead of 5.2 ms — but only when all three of these hold, and
+none of them is currently enforced:
+
+1. **The burst is another peer's.** zenoh-pico batches a link's traffic into one
+   buffer, FIFO, with no per-priority separation, so *within* a peer there is no
+   preemption at all. Board sends Odometry then a stop → the stop waits the whole
+   burst, 5.2 ms. This island happens to be safe because it only SUBSCRIBES to
+   Odometry and publishes nothing large; that is a property of today's workload,
+   not of the design.
+2. **The urgent peer holds the lower identifier.** Lower wins arbitration. If the
+   Orin takes `0x100` and the board `0x101`, the result inverts and the board's
+   stop loses to the Orin's Odometry frames.
+3. **Priority is per PEER, not per message.** One identifier per peer means all
+   of a peer's traffic shares one arbitration priority. Per-message priority
+   would need zenoh's QoS to reach the link, and it cannot — `_z_f_link_write`
+   takes `(self, ptr, len, socket)` with no priority, and the batch it receives
+   has priorities already mixed.
+
+So the honest claim is: CAN gives bounded latency **between peers on a shared
+bus with deliberately allocated identifiers**. It does not give per-message
+priority for free.
 
 **Caveats.** The airtime model is analytic, not a wire measurement: it assumes
 11-bit identifiers, BRS, and 10% stuff bits, and it ignores arbitration lost to
 other traffic on a shared bus. W6 on hardware is what turns it into a
-measurement.
+measurement. The "vehicle buses are engineered below ~50%" figure often quoted
+alongside numbers like these is a rule of thumb, not a specification.
+
+**And the comparison this invites.** On a POINT-TO-POINT board-to-Orin link, CAN
+is half duplex: the board's stop command contends with the Orin's Odometry and
+wins in <= 0.34 ms. A UART is full duplex — separate wires — so the same stop
+command waits **0 ms**, and `NROS_ZENOH_LINK_SERIAL` already exists with no new
+code. CAN earns its place on a SHARED bus with other ECUs, where arbitration is
+doing work no point-to-point link needs done. Choosing CAN for a private link to
+the Orin is choosing a worse worst case and more code.
 
 **Found while measuring:** zenoh-pico's own `examples/unix/c11/z_pub.c` has
 `char buf[256]` and `sprintf`s the payload into it, so any `-v` argument beyond
