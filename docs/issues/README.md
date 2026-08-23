@@ -61,6 +61,8 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
+**#0761** (testing/interop, open 2026-08-23) — `qos_override_e2e`'s ROS 2-discovery assertion flakes under full-sweep load (`Unknown topic '/qos_chatter'`), passes solo; costs a re-run-and-re-judge per hit. See `0761-*`.
+
 Recently resolved (2026-08-22): **#0756** — `NROS_MAX_PARAMETERS=256` hung Zephyr boot right after
 `dds_create_participant`; the param store was built on the STACK rather than in the box, so raising the knob
 overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolved the issue but left the file
