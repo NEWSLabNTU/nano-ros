@@ -106,3 +106,77 @@ correct, which is the honest state and is visible in every run of
    NuttX precedent is to record the INHERITED value and say it was inherited
    rather than chosen.
 3. Only then declare the band — and measure it on a host that can build Zephyr.
+
+## The conversion, READ rather than guessed — 2026-08-23
+
+A Zephyr workspace is now provisioned on this host (`just zephyr setup`, 3.7,
+`zephyr-workspace/`), so step 1 of the plan above is done from the source
+rather than from memory.
+
+**The whole chain, with the file each link came from:**
+
+| step | value | source |
+| --- | --- | --- |
+| Kconfig | `CONFIG_NROS_ZENOH_READ_PRIORITY` = 16 | `zephyr/cmake/nros_rmw_zenoh.cmake:184` |
+| band | `ZPICO_READ_TASK_PRIORITY` = 16 (default also 16) | `zpico.c:196`, applied at `zpico.c:1414` |
+| band → POSIX | `mapped = lo + (span·n·2 + 31) / 62`, `lo=0`, `hi=NUM_PREEMPT-1` | `zpico_posix_set_priority`, `zpico.c` |
+| POSIX → native | `SCHED_RR` ⇒ `NUM_PREEMPT - prio - 1` | `zephyr/lib/posix/options/pthread.c:25` (`POSIX_TO_ZEPHYR_PRIORITY`) |
+
+Evaluated for the `ws-rs-realtime-entry-zenoh` image, whose `.config` has
+`CONFIG_NUM_PREEMPT_PRIORITIES=15`, `CONFIG_NUM_COOP_PRIORITIES=16`,
+`CONFIG_PREEMPT_ENABLED=y`, `CONFIG_POSIX_PRIORITY_SCHEDULING=y`:
+
+```
+band 16 → posix 7 (SCHED_RR) → k_thread 7
+```
+
+So the transport lands at **`k_thread` priority 7**, against tiers declared at
+`[tiers.high.zephyr] priority = 5` and `[tiers.low.zephyr] priority = 10`.
+Smaller is more urgent, so:
+
+* `high` (5) is MORE urgent than the transport (7) — it PREEMPTS it.
+* `low` (10) is less urgent — correctly below.
+
+That is the same arrangement every other port had before RFC-0079's plans
+landed, and nobody chose it here either.
+
+**Both Kconfig gates are ON in this image**, so the earlier worry that a stock
+image applies nothing does not hold for the images we actually build. It
+remains true for an image that turns either off, and the plan still has to say
+what happens then.
+
+### The finding that changes the design: this band cannot be a constant
+
+Every other port's `reserved.transport` is a literal read off the port —
+FreeRTOS 4, NuttX 100, ThreadX 14. Zephyr's is **computed from two
+image-specific Kconfig values**: `CONFIG_NROS_ZENOH_READ_PRIORITY` (the band)
+and `CONFIG_NUM_PREEMPT_PRIORITIES` (the map's range). Change either and the
+reserved priority moves. `NUM_PREEMPT_PRIORITIES` in particular is a per-board
+Kconfig, not a per-port constant.
+
+So a literal `reserved.transport = [7, 7]` in `[board.priority_plan]` would be
+true for exactly one image and quietly wrong for the next — the same shape as
+the pins RFC-0079 exists to eliminate, one level up. Zephyr needs either a
+DERIVED band (the descriptor states the formula and its inputs, resolved at
+configure time when `.config` is known) or a build-time check that reads the
+generated `.config` and verifies the pins against it.
+
+That is a real addition to RFC-0079 §4, and Zephyr is the port that forces it.
+
+### Newly visible, and NOT caused by the priority work
+
+With the fixture built, `realtime_tiers`'s `zephyr/rust` row runs here for the
+first time — and fails:
+
+```
+zephyr/rust: [zephyr rust] low-tier /telem never reached 5 deliveries
+             — the low tier was not scheduled
+```
+
+`[tiers.*.zephyr]` was never touched by the RFC-0079 work (5/10 before and
+after, verified against `a7c1bbf8a~1`), so this is pre-existing and was simply
+invisible on a host with no Zephyr workspace. Whether it is the same
+tier-vs-transport story the computation above describes is not established —
+`low` at 10 sits correctly BELOW the transport at 7, so the obvious explanation
+does not fit, and it should be investigated on its own evidence rather than
+assumed to be this issue.

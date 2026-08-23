@@ -219,3 +219,11 @@ packages/core/*/include/nros/.*.tmp.*
 skills-lock.json
 third-party/ros/
 .nros-box-tree
+
+# The Zephyr lane's Python interpreter. `scripts/zephyr/setup.sh` deliberately
+# does NOT install Python prerequisites — choosing between a distro package,
+# `pip --user` and a venv is a decision about YOUR interpreter — and names this
+# path as the one it picks up automatically (`nros_zephyr_activate`, resolved
+# per-lane rather than on PATH). So the tree tells you to create it and then
+# has to not track it.
+scripts/zephyr/.venv/
