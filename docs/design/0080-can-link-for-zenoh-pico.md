@@ -228,11 +228,20 @@ sharing this wire format. That work is real and is not scoped here — but §7
 means it can be deferred while everything else is proven, because a zenoh-pico
 peer over SocketCAN is a legitimate other end.
 
-**Bandwidth is not generous.** CAN FD at a 2 Mbit/s data phase yields roughly
-1–1.5 Mbit/s of usable payload after arbitration and framing. The safety island
-needs an estimated 0.5–1 Mbit/s. That fits, without much margin, and the
-estimate should be replaced by a measurement on the tier-1 harness before anyone
-commits hardware.
+**Bandwidth was measured (W5, 2026-08-23) and it fits.** One frame carries
+**47.3 payload bytes**, not the full 63 — zenoh's per-fragment overhead is about
+16 bytes, so the link runs at 75% of MTU. At 500 kbit/s arbitration and
+2 Mbit/s data a full frame is 336 µs, giving 1.41 Mbit/s of usable payload. The
+island's 14 publishers with Odometry at 50 Hz and the rest at 20 Hz come to
+**37% bus load**. `nav_msgs/Odometry` costs 15.5 frames (5.2 ms of wire time);
+every command-sized message is one or two frames, under half a millisecond.
+
+The latency property is the interesting one: CAN arbitrates per frame, so a
+stop command with a high-priority identifier waits **0.34 ms** behind a 15-frame
+Odometry burst rather than 5.2 ms. Bounded worst case, from the medium itself.
+
+Still analytic rather than a wire measurement — see phase-377 §3b for the model
+and its caveats.
 
 ## [RESOLVED 2026-08-23] UNICAST cannot complete a two-peer handshake
 
