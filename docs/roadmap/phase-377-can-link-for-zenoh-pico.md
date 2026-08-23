@@ -1,6 +1,16 @@
 # Phase 377 — A CAN link for zenoh-pico
 
-**Status (2026-08-23). PROPOSED — nothing started.** Opened from the Autoware
+**Status (2026-08-23). W0-W2 and W4 DONE; W3 BLOCKED on a transport-capability
+choice.** The link is implemented, compiles for both platforms, and passes its
+link-level test on `vcan0` — CAN FD negotiated, MTU 63, every DLC boundary, both
+directions, over-MTU refusal. A zenoh *session* does not come up: the RFC's
+`Z_LINK_CAP_TRANSPORT_UNICAST` obliges the listen side through
+`_zp_unicast_accept_task`, which needs a socket and an `accept()` that a
+datagram medium does not have. See [RFC-0080 §"UNICAST cannot complete a
+two-peer handshake"](../design/0080-can-link-for-zenoh-pico.md). The fix is
+`MULTICAST`, which is what a CAN bus actually is.
+
+**Original status.** PROPOSED — nothing started. Opened from the Autoware
 safety island bring-up: the MR-CANHUBK344's Ethernet is one 100BASE-T1 port on a
 GMAC with no RGMII, so it is capped at 100 Mbit and needs a media converter to
 reach any normal host — while the same board carries six CAN FD ports unused.
@@ -34,11 +44,13 @@ Ordered so that each wave is provable by the one before it, and so that the
 
 | | What | Proves | State |
 | --- | --- | --- | --- |
-| **W0** | Settle the wire format: DLC/length scheme, endpoint grammar, identifier plan (RFC §4). Header comment first, code after. | the wire is decided, not discovered | next |
-| **W1** | `can.h` contract + `link/config/can.c` + `link/unicast/can.c`. Declares `UNICAST` / `DATAGRAM` / `_mtu`. No platform binding yet — does not link. | the generic half compiles and declares itself correctly | |
-| **W2** | `src/system/unix/network.c` SocketCAN binding. | a Linux zenoh-pico peer opens a CAN link | |
-| **W3** | **Tier-1 harness**: `vcan0`, two Linux zenoh-pico peers, pub/sub across it. `candump` capture as the artifact. | the wire format works, fragmentation works, end to end | |
-| **W4** | `src/system/zephyr/network.c` binding + `NROS_ZENOH_LINK_CAN` Kconfig. Run the island as `native_sim` on the same `vcan0` against a Linux peer. | the Zephyr port works, still with no hardware | |
+| **W0** | Settle the wire format: DLC/length scheme, endpoint grammar, identifier plan (RFC §4). Header comment first, code after. | the wire is decided, not discovered | **done** |
+| **W1** | `can.h` contract + `link/config/can.c` + `link/unicast/can.c`. | the generic half compiles and declares itself correctly | **done** |
+| **W2** | `src/system/unix/network.c` SocketCAN binding. | a Linux zenoh-pico peer opens a CAN link | **done** |
+| **W2.5** | `tests/z_can_link_test.c` against `vcan0`. | the frame codec is right — DLC steps, MTU, both directions | **done, passes** |
+| **W3** | **Tier-1 harness**: two zenoh-pico peers, pub/sub across `vcan0`, `candump` capture. | the wire format works, fragmentation works, end to end | **BLOCKED** — needs the MULTICAST rework below |
+| **W3.a** | Change `_cap._transport` to `MULTICAST`: `read` returns the sender identifier, the rx filter widens to a peer mask, the endpoint grammar becomes own-id + mask. | a datagram link can host a session at all | next |
+| **W4** | `src/system/zephyr/network.c` binding + `NROS_ZENOH_LINK_CAN` Kconfig + the full Kconfig→cargo→define chain. | the Zephyr port compiles; island unchanged with it off | **done** |
 | **W5** | Bandwidth + latency measurement on the tier-1 harness at real island message rates. | the estimate in RFC §8 is replaced by a number | |
 | **W6** | Hardware: MR-CANHUBK344 CAN ↔ USB-CAN dongle ↔ Linux peer. | real bit rates, real errors, real timing | |
 

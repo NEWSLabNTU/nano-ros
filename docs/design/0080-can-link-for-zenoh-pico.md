@@ -234,6 +234,62 @@ needs an estimated 0.5–1 Mbit/s. That fits, without much margin, and the
 estimate should be replaced by a measurement on the tier-1 harness before anyone
 commits hardware.
 
+## [OPEN] 2026-08-23 — UNICAST cannot complete a two-peer handshake
+
+Found by implementing it. The link works: `tests/z_can_link_test` passes every
+boundary on `vcan0` (CAN FD negotiated, MTU 63, both directions, DLC steps,
+over-MTU refusal). A *session* does not.
+
+`_zp_unicast_accept_task` (`src/transport/unicast/accept.c:29`) opens with
+
+```c
+const _z_sys_net_socket_t *socket_ptr = _z_link_get_socket(ztu->_common._link);
+if (socket_ptr == NULL) { return NULL; }
+...
+z_result_t ret = _z_socket_accept(&listen_socket, &con_socket);
+```
+
+Both halves are stream/TCP assumptions. A CAN link returns NULL from
+`_z_link_get_socket` (its read must filter on the receive identifier, which a
+bare socket read cannot do), so the accept task exits immediately, and there is
+no `accept()` for a datagram medium anyway.
+
+Observed on `vcan0` with `candump`: the connecting peer emits exactly one frame
+and the listener never answers.
+
+```
+(000.000000)  vcan0  TX B -  100  [32]  18 C1 09 F2 ...
+```
+
+The listening side declares its subscriber locally and then waits forever.
+
+**IVC has the same shape**, so this is not specific to CAN — it is what
+`Z_LINK_CAP_TRANSPORT_UNICAST` costs a link with no socket and no accept.
+
+### Direction: multicast, which is what CAN actually is
+
+`Z_LINK_CAP_TRANSPORT_MULTICAST` is the honest model. CAN is a broadcast bus —
+every node hears every frame and filters by identifier — and the multicast
+transport needs no accept at all (`transport/multicast/transport.c:118` sets
+`_accept_task_running = NULL`).
+
+It asks one thing of the link that unicast does not: `read` must fill the
+`addr` slice so the transport can tell peers apart
+(`transport/multicast/rx.c:110` compares `_remote_addr`). The sender's CAN
+identifier *is* that address, which fits without inventing anything.
+
+Concretely this changes:
+
+* `_z_read_can` gains an out-parameter for the sender identifier, and the
+  platform contract in `system/link/can.h` changes with it;
+* the receive filter widens from one identifier to a range or mask, since a
+  peer must hear every other peer rather than one;
+* the endpoint grammar moves from `tx_id`/`rx_id` to an own-identifier plus a
+  peer mask, which is also what section 4.2 wanted for multi-peer.
+
+Section 4.2 already said the grammar must not foreclose multi-peer. This is that
+bill arriving earlier than expected.
+
 ## Exploration log
 
 **2026-08-23 — the CUSTOM hook is stream-shaped.** Discovered while reading
