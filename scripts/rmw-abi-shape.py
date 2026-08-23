@@ -99,6 +99,33 @@ ADDED = {
     "process_raw_in_place": "dispatch from the transport's own buffer — no copy on a target with no spare RAM",
 }
 
+# RETURN-type differences, declared. Separate from ARG_DEVIATIONS because the
+# return is the channel a caller detects failure through, so a difference here
+# is a different KIND of claim from a parameter difference.
+RET_DEVIATIONS = {
+    # The four `create_*` slots: upstream RETURNS the entity pointer and signals
+    # failure with NULL; ours returns a status and writes the entity through an
+    # OUT parameter. Same decision as their ARG_DEVIATIONS entry — no runtime
+    # allocation, so the caller owns the storage — and returning a status is
+    # strictly more informative than NULL.
+    "create_publisher": "entity is an OUT parameter; the return carries the status (no runtime allocation)",
+    "create_subscription": "as create_publisher",
+    "create_service": "as create_publisher",
+    "create_client": "as create_publisher",
+    # The six `void` slots. NOT a target constraint — flagged in W5 as a
+    # candidate to FIX rather than keep. Upstream returns `rmw_ret_t` from all
+    # six; ours return nothing, so a backend that fails to release a handle or a
+    # loan has no way to say so and the caller has no way to find out. The
+    # current contract calls this "best-effort cleanup", which describes the
+    # behaviour without justifying it.
+    "destroy_publisher": "returns void: cleanup is best-effort. NOT a target constraint — W5 candidate to change to rmw_ret_t",
+    "destroy_subscription": "as destroy_publisher",
+    "destroy_service": "as destroy_publisher",
+    "destroy_client": "as destroy_publisher",
+    "return_loaned_message_from_publisher": "as destroy_publisher — a rejected loan return is unreportable",
+    "return_loaned_message_from_subscription": "as destroy_publisher",
+}
+
 # Parameter differences on slots that DO correspond to an upstream function.
 ARG_DEVIATIONS = {
     # Keyed by slot name. Each entry is a difference from upstream's parameter
@@ -199,8 +226,10 @@ def vtable_slots():
     body = re.sub(r"(?m)//.*$", " ", body)
 
     slots = {}
-    for m in re.finditer(r"\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(", body):
-        name = m.group(1)
+    rets = {}
+    for m in re.finditer(r"([A-Za-z_][A-Za-z0-9_ ]*?)\s*\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(", body):
+        ret = " ".join(m.group(1).split())
+        name = m.group(2)
         depth = 1
         params = ""
         for ch in body[m.end():]:
@@ -214,7 +243,8 @@ def vtable_slots():
         # A nested function-pointer parameter (`set_wake_callback`'s `cb`) is
         # matched by the same regex; it is a parameter, not a slot.
         slots.setdefault(name, _norm(params))
-    return slots
+        rets.setdefault(name, ret)
+    return slots, rets
 
 
 def _norm(raw):
@@ -240,14 +270,17 @@ def upstream_signatures():
         parts = line.rstrip("\n").split("\t")
         if len(parts) < 3:
             continue
-        name, _ret, params = parts[0], parts[1], parts[2]
+        name, ret, params = parts[0], parts[1], parts[2]
         if name in contract:
-            sigs[name] = [p.strip() for p in params.split(",") if p.strip()]
+            sigs[name] = (
+                " ".join(ret.split()),
+                [p.strip() for p in params.split(",") if p.strip()],
+            )
     return sigs
 
 
 def compare():
-    slots = vtable_slots()
+    slots, rets = vtable_slots()
     up = upstream_signatures()
     if up is None:
         return None
@@ -256,18 +289,28 @@ def compare():
     for probably_a_param in ("cb", "chunk_cb", "size_cb"):
         slots.pop(probably_a_param, None)
 
-    missing, arg_diff, matched = [], [], []
-    for name, params in sorted(up.items()):
+    missing, arg_diff, matched, declared, ret_diff = [], [], [], [], []
+    for name, (up_ret, params) in sorted(up.items()):
         if name in DECLINED:
             continue
         slot = name[len("rmw_"):]
         if slot not in slots:
             missing.append((name, slot, params))
             continue
-        if slots[slot] != params and slot not in ARG_DEVIATIONS:
-            arg_diff.append((slot, params, slots[slot]))
-        else:
+        # Phase 376 W5 — the RETURN type is part of a signature. This tool did
+        # not parse it, so six slots returned `void` where upstream returns
+        # `rmw_ret_t` — a difference nobody had declared, on the axis that
+        # decides whether a caller can detect failure at all — and `--check` was
+        # about to join `just check` blind to it.
+        ret_ok = rets.get(slot, "") == up_ret
+        if slots[slot] == params and ret_ok:
             matched.append(slot)
+        elif slot in ARG_DEVIATIONS and (ret_ok or slot in RET_DEVIATIONS):
+            declared.append(slot)
+        elif not ret_ok and slot not in RET_DEVIATIONS:
+            ret_diff.append((slot, up_ret, rets.get(slot, "?")))
+        else:
+            arg_diff.append((slot, params, slots[slot]))
 
     expected = {n[len("rmw_"):] for n in up} | set(ADDED)
     undeclared_extra = sorted(s for s in slots if s not in expected)
@@ -287,13 +330,15 @@ def compare():
         "missing": missing,
         "arg_diff": arg_diff,
         "matched": matched,
+        "declared": declared,
+        "ret_diff": ret_diff,
         "undeclared_extra": undeclared_extra,
     }
 
 
 def self_test():
     bad = []
-    slots = vtable_slots()
+    slots, _rets = vtable_slots()
     if "create_publisher" not in slots:
         bad.append("vtable parse found no create_publisher slot")
     if "cb" in slots and len(slots.get("cb", [])) == 0:
@@ -342,8 +387,15 @@ def main(argv):
     total = len(r["upstream"]) - len(DECLINED & set(r["upstream"]))
     print("rmw ABI shape — our vtable against upstream, name and args")
     print(f"  contract symbols to mirror : {total}")
-    print(f"  slots matching name + args : {len(r['matched'])}")
+    # Phase 376 W5 — three numbers, not two. This used to print ONE, counting a
+    # slot with a DECLARED deviation as "matching name + args", so the headline
+    # said 24 exact matches when 20 of those were declared differences. A
+    # measurement that folds "identical" into "different but explained" cannot
+    # answer the question the campaign is actually asking.
+    print(f"  slots identical to upstream : {len(r['matched'])}")
+    print(f"  name matches, args DECLARED : {len(r['declared'])}")
     print(f"  slots present, args differ : {len(r['arg_diff'])}")
+    print(f"  UNDECLARED return-type diff: {len(r['ret_diff'])}")
     print(f"  no slot at all             : {len(r['missing'])}")
     print(f"  declared RTOS additions    : {len(ADDED)}")
     print(f"  UNDECLARED extra slots     : {len(r['undeclared_extra'])}")
@@ -357,6 +409,12 @@ def main(argv):
             target = TYPE_TARGET.get(tname, "?? no target spelling recorded")
             uses = len(r["vendor_types"][tname])
             print(f"  {tname:34s} -> {target:30s} ({uses} slot(s))")
+        print()
+
+    if r["ret_diff"]:
+        print(f"## return type differs, undeclared ({len(r['ret_diff'])})")
+        for slot, want, got in r["ret_diff"]:
+            print(f"  {slot:44s} upstream {want!r}, ours {got!r}")
         print()
 
     if r["arg_diff"]:
@@ -381,7 +439,8 @@ def main(argv):
 
     rc = 0
     if args.check and (
-        r["missing"] or r["arg_diff"] or r["undeclared_extra"] or r["vendor_types"]
+        r["missing"] or r["arg_diff"] or r["ret_diff"] or r["undeclared_extra"]
+        or r["vendor_types"]
     ):
         sys.stderr.write(
             "rmw-abi-shape: the vtable does not mirror upstream.\n"
