@@ -168,8 +168,11 @@ unsafe extern "C" fn noop_recvreq(
     _: *mut u8,
     _: usize,
     _: *mut i64,
-) -> i32 {
-    -1
+    _: *mut usize,
+    _: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — this stub always FAILED; still does, named.
+    NROS_RMW_RET_ERROR
 }
 unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService) -> i32 {
     0
@@ -229,13 +232,13 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     has_data: Some(noop_hasd),
     create_service: Some(noop_csrv),
     destroy_service: Some(noop_dsrv),
-    try_recv_request: Some(noop_recvreq),
+    take_request: Some(noop_recvreq),
     has_request: Some(noop_hasreq),
     send_reply: Some(noop_reply),
     create_client: Some(noop_ccli),
     destroy_client: Some(noop_dcli),
     send_request_raw: None,
-    try_recv_reply_raw: None,
+    take_response: None,
     register_subscription_event: Some(noop_regsubev),
     register_publisher_event: Some(noop_regpubev),
     assert_publisher_liveliness: Some(noop_alv),

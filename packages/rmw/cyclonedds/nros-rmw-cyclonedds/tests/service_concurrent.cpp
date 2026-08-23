@@ -37,9 +37,15 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
     }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
-        int32_t n = g_vt->try_recv_reply_raw(cli, rep, rep_cap);
-        if (n != NROS_RMW_RET_NO_DATA) {
-            return n;
+        /* Phase 376 W3.b/W3.d step A — see ros2_srv_client.cpp. */
+        size_t n = 0;
+        bool took = false;
+        nros_rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        if (rc != NROS_RMW_RET_OK) {
+            return rc;
+        }
+        if (took) {
+            return static_cast<int32_t>(n);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -168,8 +174,12 @@ int main() {
             if (g_vt->has_request(&srv, &has_r) == NROS_RMW_RET_OK && has_r) {
                 uint8_t rbuf[64] = {};
                 int64_t seq = -1;
-                int32_t r = g_vt->try_recv_request(&srv, rbuf, sizeof(rbuf), &seq);
-                if (r > 0) {
+                size_t r = 0;
+                bool rtook = false;
+                /* Phase 376 W3.b/W3.d step A. */
+                if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
+                        NROS_RMW_RET_OK &&
+                    rtook && r > 0) {
                     int64_t a = 0, b = 0;
                     for (int k = 0; k < 8; ++k) {
                         a |= static_cast<int64_t>(rbuf[4 + k])  << (k * 8);

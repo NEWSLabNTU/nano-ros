@@ -238,13 +238,16 @@ pub struct nros_rmw_vtable_t {
     >,
     pub destroy_service:
         ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_t)>,
-    pub try_recv_request: ::core::option::Option<
+    #[doc = " Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a request was copied, `*out_len` how\n  many bytes, `*seq_out` the sequence number to reply against.\n  All three are written only on `NROS_RMW_RET_OK`.\n\n  Deviations from upstream, declared: the payload is bytes\n  (`buf` / `buf_len` / `*out_len`) rather than a typed\n  `void *ros_request`, and `*seq_out` stands in for\n  `rmw_service_info_t *` — an RTOS reply needs the sequence\n  and nothing else in that struct."]
+    pub take_request: ::core::option::Option<
         unsafe extern "C" fn(
             server: *mut nros_rmw_service_t,
             buf: *mut u8,
             buf_len: usize,
             seq_out: *mut i64,
-        ) -> i32,
+            out_len: *mut usize,
+            taken: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
     #[doc = " Phase 376 W3.d step A — the service-side sibling of\n  `has_data`; same contract, same reason."]
     pub has_request: ::core::option::Option<
@@ -282,13 +285,15 @@ pub struct nros_rmw_vtable_t {
             req_len: usize,
         ) -> nros_rmw_ret_t,
     >,
-    #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. Paired with\n  `send_request_raw` — backends implement both or neither."]
-    pub try_recv_reply_raw: ::core::option::Option<
+    #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. Paired with\n  `send_request_raw` — backends implement both or neither. */\n/** Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`."]
+    pub take_response: ::core::option::Option<
         unsafe extern "C" fn(
             client: *mut nros_rmw_client_t,
             reply_buf: *mut u8,
             reply_buf_len: usize,
-        ) -> i32,
+            out_len: *mut usize,
+            taken: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
     #[doc = " Register a callback for a subscription-side event. NULL function\n  pointer = backend doesn't generate any subscription events.\n  Specific kind unsupported on a backend that supports some\n  events = `NROS_RMW_RET_UNSUPPORTED` return.\n  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`\n  only; ignored otherwise."]
     pub register_subscription_event: ::core::option::Option<

@@ -228,7 +228,7 @@ void xrce_service_destroy(nros_rmw_service_t* server) {
     server->backend_data = NULL;
 }
 
-int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
+static int32_t xrce_service_try_recv_request_len(nros_rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -284,6 +284,31 @@ int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
     XRCE_REQ_RING_POP();
 #undef XRCE_REQ_RING_POP
     return (int32_t)len;
+}
+
+/* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
+ * A THIN adapter rather than a rewrite: the length-returning logic below has
+ * error paths that are easy to get subtly wrong (WOULD_BLOCK is an error here,
+ * not "nothing to take"), so it is preserved verbatim and only the reporting
+ * convention is translated. NO_DATA is the one code that becomes
+ * `taken = false` with OK. */
+nros_rmw_ret_t xrce_service_take_request(nros_rmw_service_t* server, uint8_t* buf,
+                                         size_t buf_len, int64_t* seq_out, size_t* out_len,
+                                         bool* taken) {
+    if (out_len == NULL || taken == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    int32_t n = xrce_service_try_recv_request_len(server, buf, buf_len, seq_out);
+    if (n == NROS_RMW_RET_NO_DATA) {
+        *taken = false;
+        return NROS_RMW_RET_OK;
+    }
+    if (n < 0) {
+        return (nros_rmw_ret_t)n;
+    }
+    *out_len = (size_t)n;
+    *taken = true;
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_has_request) {
@@ -393,7 +418,7 @@ nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-int32_t xrce_service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* reply_buf,
+static int32_t xrce_service_try_recv_reply_raw_len(nros_rmw_client_t* client, uint8_t* reply_buf,
                                         size_t reply_buf_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -421,6 +446,30 @@ int32_t xrce_service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* repl
     }
     slot->has_reply = false;
     return (int32_t)len;
+}
+
+/* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
+ * A THIN adapter rather than a rewrite: the length-returning logic below has
+ * error paths that are easy to get subtly wrong (WOULD_BLOCK is an error here,
+ * not "nothing to take"), so it is preserved verbatim and only the reporting
+ * convention is translated. NO_DATA is the one code that becomes
+ * `taken = false` with OK. */
+nros_rmw_ret_t xrce_service_take_response(nros_rmw_client_t* client, uint8_t* reply_buf,
+                                          size_t reply_buf_len, size_t* out_len, bool* taken) {
+    if (out_len == NULL || taken == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    int32_t n = xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len);
+    if (n == NROS_RMW_RET_NO_DATA) {
+        *taken = false;
+        return NROS_RMW_RET_OK;
+    }
+    if (n < 0) {
+        return (nros_rmw_ret_t)n;
+    }
+    *out_len = (size_t)n;
+    *taken = true;
+    return NROS_RMW_RET_OK;
 }
 
 /* ---- Service client -------------------------------------------------- */

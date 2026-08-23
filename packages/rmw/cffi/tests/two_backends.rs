@@ -170,13 +170,16 @@ unsafe extern "C" fn noop_create_srv(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwService) {}
-unsafe extern "C" fn noop_try_recv_req(
+unsafe extern "C" fn noop_take_request(
     _: *mut NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
-) -> i32 {
-    -1
+    _: *mut usize,
+    _: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — this stub always FAILED; still does, named.
+    NROS_RMW_RET_ERROR
 }
 unsafe extern "C" fn noop_has_request(
     _: *mut NrosRmwService,
@@ -241,13 +244,13 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     has_data: Some(noop_has_data),
     create_service: Some(noop_create_srv),
     destroy_service: Some(noop_destroy_srv),
-    try_recv_request: Some(noop_try_recv_req),
+    take_request: Some(noop_take_request),
     has_request: Some(noop_has_request),
     send_reply: Some(noop_send_reply),
     create_client: Some(noop_create_client),
     destroy_client: Some(noop_destroy_client),
     send_request_raw: None,
-    try_recv_reply_raw: None,
+    take_response: None,
     register_subscription_event: Some(noop_reg_sub_event),
     register_publisher_event: Some(noop_reg_pub_event),
     assert_publisher_liveliness: Some(noop_assert_liveliness),
@@ -279,13 +282,13 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     has_data: Some(noop_has_data),
     create_service: Some(noop_create_srv),
     destroy_service: Some(noop_destroy_srv),
-    try_recv_request: Some(noop_try_recv_req),
+    take_request: Some(noop_take_request),
     has_request: Some(noop_has_request),
     send_reply: Some(noop_send_reply),
     create_client: Some(noop_create_client),
     destroy_client: Some(noop_destroy_client),
     send_request_raw: None,
-    try_recv_reply_raw: None,
+    take_response: None,
     register_subscription_event: Some(noop_reg_sub_event),
     register_publisher_event: Some(noop_reg_pub_event),
     assert_publisher_liveliness: Some(noop_assert_liveliness),

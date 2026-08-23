@@ -44,8 +44,9 @@ nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_n
                                      uint32_t domain_id, const nros_rmw_qos_t* qos,
                                      nros_rmw_service_t* out);
 void service_destroy(nros_rmw_service_t* server);
-int32_t service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                 int64_t* seq_out);
+nros_rmw_ret_t service_take_request(nros_rmw_service_t* server, uint8_t* buf,
+                                    size_t buf_len, int64_t* seq_out, size_t* out_len,
+                                    bool* taken);
 nros_rmw_ret_t service_has_request(nros_rmw_service_t* server, bool* out_has_request);
 nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len);

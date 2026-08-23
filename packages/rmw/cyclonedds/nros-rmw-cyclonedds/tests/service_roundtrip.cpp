@@ -1,14 +1,14 @@
 // Phase 117.7 service request/reply data-plane round-trip.
 //
-// Drives a full send_request_raw → server.try_recv_request →
-// server.send_reply → client try_recv_reply_raw chain on the
+// Drives a full send_request_raw → server.take_request →
+// server.send_reply → client take_response chain on the
 // AddTwoInts test type.
 //
 // Wire format (CDR-LE, XCDR1):
 //   Request:  int64 a, int64 b
 //   Response: int64 sum
 //
-// Tests on a single thread by polling try_recv_request between
+// Tests on a single thread by polling take_request between
 // the client's reply poll loop. Cyclone services discovery happens
 // in its background thread so the writer/reader pair will rendezvous
 // after a short delay.
@@ -49,9 +49,14 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
     }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
-        int32_t n = g_vt->try_recv_reply_raw(cli, rep, rep_cap);
-        if (n != NROS_RMW_RET_NO_DATA) {
-            return n;
+        size_t n = 0;
+        bool took = false;
+        nros_rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        if (rc != NROS_RMW_RET_OK) {
+            return rc;
+        }
+        if (took) {
+            return static_cast<int32_t>(n);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -126,8 +131,12 @@ int main() {
             if (g_vt->has_request(&srv, &has_r) == NROS_RMW_RET_OK && has_r) {
                 uint8_t rbuf[64] = {};
                 int64_t seq = -1;
-                int32_t r = g_vt->try_recv_request(&srv, rbuf, sizeof(rbuf), &seq);
-                if (r > 0) {
+                size_t r = 0;
+                bool rtook = false;
+                /* Phase 376 W3.b/W3.d step A. */
+                if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
+                        NROS_RMW_RET_OK &&
+                    rtook && r > 0) {
                     int64_t a = get_le64(rbuf + 4);
                     int64_t b = get_le64(rbuf + 12);
                     uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};

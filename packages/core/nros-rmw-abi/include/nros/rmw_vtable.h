@@ -127,8 +127,20 @@ typedef struct nros_rmw_vtable_t {
         uint32_t domain_id, const nros_rmw_qos_t *qos,
         nros_rmw_service_t *out);
     void (*destroy_service)(nros_rmw_service_t *server);
-    int32_t (*try_recv_request)(nros_rmw_service_t *server,
-        uint8_t *buf, size_t buf_len, int64_t *seq_out);
+    /** Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.
+     *
+     *  `*taken` says whether a request was copied, `*out_len` how
+     *  many bytes, `*seq_out` the sequence number to reply against.
+     *  All three are written only on `NROS_RMW_RET_OK`.
+     *
+     *  Deviations from upstream, declared: the payload is bytes
+     *  (`buf` / `buf_len` / `*out_len`) rather than a typed
+     *  `void *ros_request`, and `*seq_out` stands in for
+     *  `rmw_service_info_t *` — an RTOS reply needs the sequence
+     *  and nothing else in that struct. */
+    nros_rmw_ret_t (*take_request)(nros_rmw_service_t *server,
+        uint8_t *buf, size_t buf_len, int64_t *seq_out,
+        size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of
      *  `has_data`; same contract, same reason. */
     nros_rmw_ret_t (*has_request)(nros_rmw_service_t *server,
@@ -160,8 +172,11 @@ typedef struct nros_rmw_vtable_t {
      *  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.
      *  Other negative = backend error. Paired with
      *  `send_request_raw` — backends implement both or neither. */
-    int32_t (*try_recv_reply_raw)(nros_rmw_client_t *client,
-        uint8_t *reply_buf, size_t reply_buf_len);
+    /** Upstream `rmw_take_response`. Same shape and the same
+     *  declared deviations as `take_request`. */
+    nros_rmw_ret_t (*take_response)(nros_rmw_client_t *client,
+        uint8_t *reply_buf, size_t reply_buf_len,
+        size_t *out_len, bool *taken);
 
     /* ---- Phase 108 — status events (optional) ---- */
     /** Register a callback for a subscription-side event. NULL function

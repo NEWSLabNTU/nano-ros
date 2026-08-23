@@ -314,7 +314,7 @@ allocation argument) are described above.
 
 Verified by: `slots present, args differ: 0` with every difference in the table.
 
-### W3.d step A — no slot multiplexes a count with a status (6 of 11 done)
+### W3.d step A — no slot multiplexes a count with a status (8 of 11 done)
 
 | slot | state |
 | --- | --- |
@@ -324,8 +324,8 @@ Verified by: `slots present, args differ: 0` with every difference in the table.
 | `subscription_supports_in_place` | **done** |
 | `process_raw_in_place` | **done** — first slot to retire `NO_DATA` |
 | `try_recv_raw` -> `take` | **done** — second slot to retire `NO_DATA` |
-| `try_recv_request` -> `take_request` | open |
-| `try_recv_reply_raw` -> `take_response` | open |
+| `try_recv_request` -> `take_request` | **done** |
+| `try_recv_reply_raw` -> `take_response` | **done** |
 | `try_recv_sequence` -> `take_sequence` | open |
 | `sub_borrow` -> `take_loaned_message` | open |
 | `next_deadline_ms` | open — needs a decision first: does "no deadline" stay a negative sentinel, or become an out-parameter plus an explicit status? |

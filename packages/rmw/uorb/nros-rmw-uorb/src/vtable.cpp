@@ -48,7 +48,7 @@ const nros_rmw_vtable_t kVtable = {
     /* ---- Service (uORB: UNSUPPORTED stubs) ---- */
     /*create_service*/ service_create,
     /*destroy_service*/ service_destroy,
-    /*try_recv_request*/ service_try_recv_request,
+    /*take_request*/ service_take_request,
     /*has_request*/ service_has_request,
     /*send_reply*/ service_send_reply,
     /* ---- Client (uORB: UNSUPPORTED stubs) ---- */

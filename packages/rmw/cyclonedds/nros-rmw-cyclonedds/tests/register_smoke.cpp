@@ -52,13 +52,13 @@ int main() {
         g_captured->has_data == nullptr ||
         g_captured->create_service == nullptr ||
         g_captured->destroy_service == nullptr ||
-        g_captured->try_recv_request == nullptr ||
+        g_captured->take_request == nullptr ||
         g_captured->has_request == nullptr ||
         g_captured->send_reply == nullptr ||
         g_captured->create_client == nullptr ||
         g_captured->destroy_client == nullptr ||
         g_captured->send_request_raw == nullptr ||
-        g_captured->try_recv_reply_raw == nullptr) {
+        g_captured->take_response == nullptr) {
         std::fprintf(stderr, "vtable has NULL mandatory slot\n");
         return 3;
     }

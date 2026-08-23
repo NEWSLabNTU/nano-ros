@@ -42,9 +42,17 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
     }
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
-        int32_t n = g_vt->try_recv_reply_raw(cli, rep, rep_cap);
-        if (n != NROS_RMW_RET_NO_DATA) {
-            return n;
+        /* Phase 376 W3.b/W3.d step A — a poll that takes nothing is OK with
+         * `taken = false`; anything else (a real reply, or an error) ends the
+         * loop, which is what `!= NO_DATA` used to mean. */
+        size_t n = 0;
+        bool took = false;
+        nros_rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        if (rc != NROS_RMW_RET_OK) {
+            return rc;
+        }
+        if (took) {
+            return static_cast<int32_t>(n);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }

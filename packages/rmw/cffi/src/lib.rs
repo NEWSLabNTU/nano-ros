@@ -787,7 +787,7 @@ fn first_missing_vtable_slot(v: &NrosRmwVtable) -> Option<&'static str> {
         destroy_client,
         send_reply,
         has_request,
-        try_recv_request,
+        take_request,
     );
     // NOT required (issue 0349) — optional capabilities with a typed
     // `Unsupported` error at the point of use, exactly like the ~14 other
@@ -2619,27 +2619,29 @@ impl ServiceTrait for CffiService {
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
         let mut seq: i64 = 0;
         let mut view = self.make_view();
+        // Phase 376 W3.b/W3.d step A — status returned, payload length and
+        // `taken` in out-parameters. The `rc == 0` arm is gone with the same
+        // fix `take` got: a zero-length REQUEST is a legitimate message and
+        // used to be indistinguishable from an empty queue.
+        let mut out_len = 0usize;
+        let mut taken = false;
         let rc = unsafe {
-            (self
-                .vtable
-                .try_recv_request
-                .expect("rmw vtable: try_recv_request"))(
+            (self.vtable.take_request.expect("rmw vtable: take_request"))(
                 &mut view,
                 buf.as_mut_ptr(),
                 buf.len(),
                 &mut seq,
+                &mut out_len,
+                &mut taken,
             )
         };
-        if rc == NROS_RMW_RET_NO_DATA {
-            return Ok(None);
-        }
-        if rc < 0 {
+        if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        if rc == 0 {
+        if !taken {
             return Ok(None);
         }
-        let len = rc as usize;
+        let len = out_len;
         Ok(Some(ServiceRequest {
             data: &buf[..len],
             sequence_number: seq,
@@ -2734,18 +2736,29 @@ impl ClientTrait for CffiClient {
     ) -> Result<Option<usize>, TransportError> {
         // Non-blocking poll only. NULL slot = backend doesn't implement
         // the service-client path; surface Unsupported.
-        let Some(f) = self.vtable.try_recv_reply_raw else {
+        let Some(f) = self.vtable.take_response else {
             return Err(TransportError::Unsupported);
         };
         let mut view = self.make_view();
-        let rc = unsafe { f(&mut view, reply_buf.as_mut_ptr(), reply_buf.len()) };
-        if rc == NROS_RMW_RET_NO_DATA {
-            return Ok(None);
-        }
-        if rc < 0 {
+        // Phase 376 W3.b/W3.d step A — see `take_request`.
+        let mut out_len = 0usize;
+        let mut taken = false;
+        let rc = unsafe {
+            f(
+                &mut view,
+                reply_buf.as_mut_ptr(),
+                reply_buf.len(),
+                &mut out_len,
+                &mut taken,
+            )
+        };
+        if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        Ok(Some(rc as usize))
+        if !taken {
+            return Ok(None);
+        }
+        Ok(Some(out_len))
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {
@@ -3015,13 +3028,18 @@ mod tests {
         NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
-    unsafe extern "C" fn stub_try_recv_request(
+    unsafe extern "C" fn stub_take_request(
         _: *mut NrosRmwService,
         _: *mut u8,
         _: usize,
         _: *mut i64,
-    ) -> i32 {
-        NROS_RMW_RET_NO_DATA
+        _: *mut usize,
+        taken: *mut bool,
+    ) -> NrosRmwRet {
+        // Phase 376 W3.d step A — NO_DATA retires: nothing to take is
+        // `taken = false` with OK.
+        unsafe { *taken = false };
+        NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_has_request(
         _: *mut NrosRmwService,
@@ -3090,13 +3108,13 @@ mod tests {
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
-        try_recv_request: Some(stub_try_recv_request),
+        take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
-        try_recv_reply_raw: None,
+        take_response: None,
         register_subscription_event: Some(stub_register_subscription_event),
         register_publisher_event: Some(stub_register_publisher_event),
         assert_publisher_liveliness: Some(stub_assert_publisher_liveliness),

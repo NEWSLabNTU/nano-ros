@@ -72,8 +72,12 @@ int main() {
         if (g_vt->has_request(&srv, &has_r) == NROS_RMW_RET_OK && has_r) {
             uint8_t rbuf[64] = {};
             int64_t seq = -1;
-            int32_t n = g_vt->try_recv_request(&srv, rbuf, sizeof(rbuf), &seq);
-            if (n > 0) {
+            size_t n = 0;
+            bool took = false;
+            /* Phase 376 W3.b/W3.d step A. */
+            if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &n, &took) ==
+                    NROS_RMW_RET_OK &&
+                took && n > 0) {
                 int64_t a = get_le64(rbuf + 4);
                 int64_t b = get_le64(rbuf + 12);
                 uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};

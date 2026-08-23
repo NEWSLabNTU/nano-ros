@@ -47,11 +47,10 @@ use nros_rmw::{
 };
 
 use crate::{
-    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_NO_DATA, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
-    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
-    event_kind_from_c, nros_rmw_publisher_options_t, nros_rmw_subscription_options_t,
-    ret_from_error,
+    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
+    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c,
+    nros_rmw_publisher_options_t, nros_rmw_subscription_options_t, ret_from_error,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -304,7 +303,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         has_data: Some(has_data_trampoline::<R>),
         create_service: Some(create_service_trampoline::<R>),
         destroy_service: Some(destroy_service_trampoline::<R>),
-        try_recv_request: Some(try_recv_request_trampoline::<R>),
+        take_request: Some(take_request_trampoline::<R>),
         has_request: Some(has_request_trampoline::<R>),
         send_reply: Some(send_reply_trampoline::<R>),
         create_client: Some(create_client_trampoline::<R>),
@@ -312,7 +311,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // Phase-301 (issue 0240) — `send_request_raw` + `try_recv_reply_raw`
         // is the one request/reply path; the blocking `call_raw` slot is gone.
         send_request_raw: Some(send_request_raw_trampoline::<R>),
-        try_recv_reply_raw: Some(try_recv_reply_raw_trampoline::<R>),
+        take_response: Some(take_response_trampoline::<R>),
         register_subscription_event: Some(register_subscription_event_trampoline::<R>),
         register_publisher_event: Some(register_publisher_event_trampoline::<R>),
         assert_publisher_liveliness: Some(assert_publisher_liveliness_trampoline::<R>),
@@ -748,12 +747,18 @@ unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(server: *mut Nro
     let _ = unsafe { take_box::<R::Service>(service_data_mut(server)) };
 }
 
-unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
     server: *mut NrosRmwService,
     buf: *mut u8,
     buf_len: usize,
     seq_out: *mut i64,
-) -> i32 {
+    out_len: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_request`'s shape.
+    if out_len.is_null() || taken.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(s) = (unsafe { service_mut::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -782,9 +787,18 @@ unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
                 // backend; copy_within respects overlapping ranges.
                 slice.copy_within(offset..total, 0);
             }
-            len as i32
+            // SAFETY: both checked non-null above.
+            unsafe {
+                *out_len = len;
+                *taken = true;
+            }
+            NROS_RMW_RET_OK
         }
-        Ok(None) => NROS_RMW_RET_NO_DATA,
+        Ok(None) => {
+            // SAFETY: checked non-null above.
+            unsafe { *taken = false };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }
@@ -890,11 +904,17 @@ unsafe extern "C" fn send_request_raw_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
     client: *mut NrosRmwClient,
     reply_buf: *mut u8,
     reply_buf_len: usize,
-) -> i32 {
+    out_len: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_response`'s shape.
+    if out_len.is_null() || taken.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -903,8 +923,19 @@ unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
     }
     let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
     match ClientTrait::try_recv_reply_raw(c, reply) {
-        Ok(Some(n)) => n as i32,
-        Ok(None) => NROS_RMW_RET_NO_DATA,
+        Ok(Some(n)) => {
+            // SAFETY: both checked non-null above.
+            unsafe {
+                *out_len = n;
+                *taken = true;
+            }
+            NROS_RMW_RET_OK
+        }
+        Ok(None) => {
+            // SAFETY: checked non-null above.
+            unsafe { *taken = false };
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }

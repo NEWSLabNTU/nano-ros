@@ -151,13 +151,16 @@ unsafe extern "C" fn stub_create_service(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
-unsafe extern "C" fn stub_try_recv_request(
+unsafe extern "C" fn stub_take_request(
     _: *mut NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
-) -> i32 {
-    0
+    _: *mut usize,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    unsafe { *taken = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_has_request(
     _: *mut NrosRmwService,
@@ -242,13 +245,13 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
-        try_recv_request: Some(stub_try_recv_request),
+        take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
-        try_recv_reply_raw: None,
+        take_response: None,
         register_subscription_event: Some(stub_reg_sub_event),
         register_publisher_event: Some(stub_reg_pub_event),
         assert_publisher_liveliness: Some(stub_assert_liveliness),
@@ -290,13 +293,13 @@ const fn make_vtable_native() -> NrosRmwVtable {
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
-        try_recv_request: Some(stub_try_recv_request),
+        take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
-        try_recv_reply_raw: None,
+        take_response: None,
         register_subscription_event: Some(stub_reg_sub_event),
         register_publisher_event: Some(stub_reg_pub_event),
         assert_publisher_liveliness: Some(stub_assert_liveliness),
@@ -330,13 +333,13 @@ const fn make_vtable_fallback() -> NrosRmwVtable {
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
-        try_recv_request: Some(stub_try_recv_request),
+        take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
-        try_recv_reply_raw: None,
+        take_response: None,
         register_subscription_event: Some(stub_reg_sub_event),
         register_publisher_event: Some(stub_reg_pub_event),
         assert_publisher_liveliness: Some(stub_assert_liveliness),
@@ -370,13 +373,13 @@ const fn make_vtable_no_data() -> NrosRmwVtable {
         has_data: Some(stub_has_data),
         create_service: Some(stub_create_service),
         destroy_service: Some(stub_destroy_service),
-        try_recv_request: Some(stub_try_recv_request),
+        take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
         send_reply: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         send_request_raw: None,
-        try_recv_reply_raw: None,
+        take_response: None,
         register_subscription_event: Some(stub_reg_sub_event),
         register_publisher_event: Some(stub_reg_pub_event),
         assert_publisher_liveliness: Some(stub_assert_liveliness),

@@ -26,8 +26,10 @@ nros_rmw_ret_t service_create(nros_rmw_session_t* /*session*/, const char* /*ser
 
 void service_destroy(nros_rmw_service_t* /*server*/) {}
 
-int32_t service_try_recv_request(nros_rmw_service_t* /*server*/, uint8_t* /*buf*/,
-                                 size_t /*buf_len*/, int64_t* /*seq_out*/) {
+nros_rmw_ret_t service_take_request(nros_rmw_service_t* /*server*/, uint8_t* /*buf*/,
+                                    size_t /*buf_len*/, int64_t* /*seq_out*/,
+                                    size_t* /*out_len*/, bool* /*taken*/) {
+    /* uORB has no service transport — see service_send_reply. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
 

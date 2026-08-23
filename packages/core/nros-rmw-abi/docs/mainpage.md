@@ -64,11 +64,11 @@ The vtable is a struct of function pointers grouped by entity (see
   with `NROS_RMW_RET_OK` when no data is ready (phase 376 W3.d
   retired the `NROS_RMW_RET_NO_DATA` sentinel here — see below).
 - **Service** — `create_service`, `destroy_service`,
-  `try_recv_request`, `has_request`, `send_reply`. The `seq_out`
+  `take_request`, `has_request`, `send_reply`. The `seq_out`
   parameter on `try_recv_request` carries the request sequence number
   forwarded back to `send_reply`.
 - **Client** — `create_client`, `destroy_client`,
-  `send_request_raw`, `try_recv_reply_raw` (non-blocking pair; the
+  `send_request_raw`, `take_response` (non-blocking pair; the
   executor drives I/O between them — there is no blocking call slot).
 
 ## Return-value conventions
@@ -82,10 +82,10 @@ create_session           non-NULL = success, NULL = error
 destroy_session/drive_io/
   publish_raw/send_reply NROS_RMW_RET_OK = success, negative = named error code
 take                     NROS_RMW_RET_OK + *taken / *out_len; negative = named error code
-try_recv_request         >= 0 = bytes received (seq_out written), negative = named error code
+take_request             NROS_RMW_RET_OK + *taken / *out_len / *seq_out; negative = named error
 has_data/has_request     NROS_RMW_RET_OK + *out_has_{data,request}; negative = named error
 send_request_raw         NROS_RMW_RET_OK = queued, negative = named error code
-try_recv_reply_raw       >= 0 = reply bytes, NO_DATA = not yet, negative = error
+take_response            NROS_RMW_RET_OK + *taken / *out_len; negative = named error
 destroy_*                void (best-effort cleanup)
 ```
 
@@ -112,7 +112,7 @@ the failure site through the platform's `printk` equivalent.
 - `publish_raw`, `take`, and `send_reply` may run concurrently
   from different threads — the backend is responsible for any
   required serialisation.
-- `send_request_raw` / `try_recv_reply_raw` are non-blocking; the
+- `send_request_raw` / `take_response` are non-blocking; the
   executor drives I/O between them.
 
 ## See also

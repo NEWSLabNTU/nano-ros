@@ -126,13 +126,16 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    /* try_recv_request / has_request / send_reply / send_request_raw
+    /* take_request / has_request / send_reply / send_request_raw
      * on NULL backend_data also reach the backend. */
     int64_t seq = 0;
-    int32_t tr = g_received_vtable->try_recv_request(&srv, NULL, 0, &seq);
+    size_t tr_len = 0;
+    bool tr_took = false;
+    nros_rmw_ret_t tr =
+        g_received_vtable->take_request(&srv, NULL, 0, &seq, &tr_len, &tr_took);
     if (tr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
-                "FAIL: try_recv_request on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                "FAIL: take_request on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)tr);
         return EXIT_FAILURE;
     }

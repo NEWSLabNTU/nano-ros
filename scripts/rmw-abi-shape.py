@@ -111,6 +111,15 @@ ARG_DEVIATIONS = {
         "which means it needs the length back; the allocation argument has nothing to "
         "pre-size because pools are baked"
     ),
+    "take_request": (
+        "upstream takes (service, rmw_service_info_t *, void *ros_request, bool *taken); ours "
+        "takes bytes (buf/buf_len/out_len) because there is no typesupport on target, and a "
+        "bare `int64_t *seq_out` in place of the info struct — an RTOS reply needs the sequence "
+        "number and nothing else in it"
+    ),
+    "take_response": (
+        "same two deviations as `take_request`, client side"
+    ),
     "service_server_is_available": (
         "upstream takes (node, client, bool *); an image has no node object — "
         "the client reaches its session directly, so the node parameter would be "

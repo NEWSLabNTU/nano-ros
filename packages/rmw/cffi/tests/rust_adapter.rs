@@ -768,15 +768,22 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(HAS_REQUEST_HITS.load(Ordering::SeqCst), 1);
     let mut rbuf = [0u8; 64];
     let mut seq: i64 = 0;
-    let n = unsafe {
-        (vt.try_recv_request.expect("vtable slot"))(
+    // Phase 376 W3.b/W3.d step A — status returned, length and `taken` out.
+    let mut req_len = 0usize;
+    let mut req_taken = false;
+    let rc = unsafe {
+        (vt.take_request.expect("vtable slot"))(
             &mut srv,
             rbuf.as_mut_ptr(),
             rbuf.len(),
             &mut seq,
+            &mut req_len,
+            &mut req_taken,
         )
     };
-    assert_eq!(n, 4, "expected 4-byte payload, got {n}");
+    assert_eq!(rc, NROS_RMW_RET_OK);
+    assert!(req_taken, "the scripted backend has a request pending");
+    assert_eq!(req_len, 4, "expected 4-byte payload, got {req_len}");
     assert_eq!(seq, 42);
     assert_eq!(&rbuf[..4], &[0xde, 0xad, 0xbe, 0xef]);
     assert_eq!(TRY_RECV_REQUEST_HITS.load(Ordering::SeqCst), 1);

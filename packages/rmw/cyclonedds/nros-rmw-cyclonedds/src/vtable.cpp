@@ -47,7 +47,7 @@ const nros_rmw_vtable_t kVtable = {
     /* ---- Service ---- */
     /*create_service*/            service_create,
     /*destroy_service*/           service_destroy,
-    /*try_recv_request*/          service_try_recv_request,
+    /*take_request*/             service_take_request,
     /*has_request*/               service_has_request,
     /*send_reply*/                service_send_reply,
 
@@ -58,7 +58,7 @@ const nros_rmw_vtable_t kVtable = {
      * the deprecated blocking call_raw slot, so this pair is the one
      * request/reply path. */
     /*send_request_raw*/          service_send_request_raw,
-    /*try_recv_reply_raw*/        service_try_recv_reply_raw,
+    /*take_response*/            service_take_response,
 
     /* ---- Phase 108 event hooks (deferred) ---- */
     /*register_subscription_event*/ kRegisterSubscriptionEvent,

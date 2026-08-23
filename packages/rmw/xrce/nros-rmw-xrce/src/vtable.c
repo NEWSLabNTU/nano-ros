@@ -36,7 +36,7 @@ static const nros_rmw_vtable_t kVtable = {
     /* ---- Service ---- */
     .create_service             = xrce_service_create,
     .destroy_service            = xrce_service_destroy,
-    .try_recv_request           = xrce_service_try_recv_request,
+    .take_request               = xrce_service_take_request,
     .has_request                = xrce_service_has_request,
     .send_reply                 = xrce_service_send_reply,
 
@@ -50,7 +50,7 @@ static const nros_rmw_vtable_t kVtable = {
      * root cause). Phase-301 deleted the deprecated blocking
      * call_raw slot; this pair is the one request/reply path. */
     .send_request_raw           = xrce_service_send_request_raw,
-    .try_recv_reply_raw         = xrce_service_try_recv_reply_raw,
+    .take_response              = xrce_service_take_response,
 
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
     .register_subscription_event = NULL,

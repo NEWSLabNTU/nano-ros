@@ -364,8 +364,8 @@ nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* serv
                                           uint32_t domain_id, const nros_rmw_qos_t* qos,
                                           nros_rmw_service_t* out);
 void xrce_service_destroy(nros_rmw_service_t* server);
-int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
-                                      size_t buf_len, int64_t* seq_out);
+nros_rmw_ret_t xrce_service_take_request(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
+                                         int64_t* seq_out, size_t* out_len, bool* taken);
 nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_has_request);
 nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
@@ -380,8 +380,8 @@ void xrce_client_destroy(nros_rmw_client_t* client);
  * request/reply path). */
 nros_rmw_ret_t xrce_service_send_request_raw(nros_rmw_client_t* client,
                                              const uint8_t* request, size_t req_len);
-int32_t xrce_service_try_recv_reply_raw(nros_rmw_client_t* client, uint8_t* reply_buf,
-                                        size_t reply_buf_len);
+nros_rmw_ret_t xrce_service_take_response(nros_rmw_client_t* client, uint8_t* reply_buf,
+                                          size_t reply_buf_len, size_t* out_len, bool* taken);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                            SampleIdentity* sample_id, struct ucdrBuffer* ub, uint16_t length,
