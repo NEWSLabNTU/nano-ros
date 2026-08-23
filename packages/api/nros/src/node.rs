@@ -101,6 +101,17 @@ pub enum NodeDeclError {
     /// Carries the capacity cause through the `NodeError → NodeDeclError`
     /// collapse so the register seam can name `NROS_EXECUTOR_MAX_CBS`.
     ExecutorFull,
+    /// A publish named an entity this component has no publisher for — the
+    /// LOOKUP failed, nothing was ever handed to the transport.
+    ///
+    /// issue 0736 — split out of [`Self::Runtime`], which the publish path
+    /// returned for BOTH "the transport rejected the sample" and "there is no
+    /// such publisher": `lookup_publisher(...).unwrap_or(Err(Runtime))`. Those
+    /// are different bugs in different layers with different fixes, and from a
+    /// serial console they were the same line. Exactly the conflation #572
+    /// removed one level out, where discarding the result made "the timer never
+    /// fired" and "every publish failed" the same observation.
+    UnknownPublisher,
 }
 
 impl NodeDeclError {
@@ -120,6 +131,7 @@ impl NodeDeclError {
             }
             Self::MissingExport => MISSING_NODE_EXPORT_ERROR,
             Self::Runtime => "component runtime rejected declaration",
+            Self::UnknownPublisher => "no publisher declared for that entity",
             Self::ExecutorFull => {
                 "executor callback table full — raise NROS_EXECUTOR_MAX_CBS \
                  (build-time, default 4)"

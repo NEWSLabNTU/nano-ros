@@ -408,3 +408,69 @@ SLOW tier delivers is also short of its own declared rate (100 ms over the same
 window should be more than 25 if the window is the ~2.5 s the counts imply).
 Filing that as its own issue would be reasonable; it is not the defect this
 one describes.
+
+## The residue, traced to the wire — 2026-08-23
+
+The publishes fail with **`_Z_ERR_TRANSPORT_TX_FAILED` (-100)**, zenoh-pico's
+transport TX error, on BOTH tiers.
+
+Getting that took four probes, because four layers each discard the cause and
+each reports its own generic:
+
+```
+z_publisher_put()            -> -100  _Z_ERR_TRANSPORT_TX_FAILED
+  zpico.c                    -> -8    ZPICO_ERR_PUBLISH        (rc dropped)
+    zpico.rs                 ->       ZpicoError::Publish
+      shim/publisher.rs      ->       TransportError::PublishFailed  (`map_err(|_| ..)`)
+        handles.rs           ->       NodeError::Transport(PublishFailed)
+          node_runtime.rs    ->       NodeDeclError::Runtime   (`map_err(|_| ..)`)
+            ctrl_pkg         ->       "publish to /ctrl FAILED: Runtime"
+```
+
+Every step compiles, every step is honest about *that* it failed, and the one
+fact worth having — the wire said TX failed — survives none of them. Worth
+naming because #572 fixed the same shape one layer further out (a discarded
+`Result` made "the timer never fired" and "every publish failed" the same
+observation) and the chain below it was left intact.
+
+### One thing fixed here, because it was a genuine conflation
+
+`CellResolver::publish_raw` returned `NodeDeclError::Runtime` for BOTH a
+transport rejection and `lookup_publisher` missing — `.unwrap_or(Err(Runtime))`.
+Those are different bugs in different layers, and from a serial console they
+were one line. Split: a lookup miss is now `NodeDeclError::UnknownPublisher`
+("no publisher declared for that entity"). Measured on this cell — the arm that
+fires is the TRANSPORT one, so the wiring is fine and the publishers resolve.
+That eliminated a hypothesis in one run instead of a debugging session, which is
+the whole argument for the split.
+
+The remaining collapses are left alone deliberately: widening `NodeDeclError`
+into a payload-carrying error crosses the FFI/plugin boundary its `message()`
+exists to serve, and that is a design change, not a bug fix.
+
+### Where the next reader should start, and it is issue 0506
+
+`high` is `SCHED_FIFO` 110 and `low` is 100 (`[tiers.*.nuttx]` in
+`realtime-rust/src/demo_bringup/system.toml`). zenoh-pico's read and lease
+threads on this port are pthreads created at the inherited default — 100. So
+the fast tier sits ABOVE the transport and the slow tier sits level with it,
+which predicts exactly what is measured: TX failing on both, worst on `high`.
+That is issue 0506's subject ("transport tasks above application tiers is the
+right default but has no budget") reaching this cell, and it is the same class
+as 0623 one layer down.
+
+**Not measured, so not claimed.** The evidence is the error code plus the
+priority arithmetic; the experiment that would settle it is to run the tiers
+below the transport threads' priority and see whether the TX failures stop. If
+they do, the cell's threshold is not a scheduler question at all and this issue
+can close pointing at 0506.
+
+### Current state of the cell
+
+| | `/ctrl` (10 ms) | `/telem` (100 ms) | ratio |
+| --- | --- | --- | --- |
+| before the budget fix | 2 | 21 | 0.1x inverted |
+| after, four runs | 55, 60, 66, 77 | 25-28 | 2.0x - 2.9x |
+
+Threshold is 3x. The scheduler defect this issue diagnosed is fixed and the
+tier dispatches; what is left is the transport dropping what it dispatches.

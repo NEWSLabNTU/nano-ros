@@ -210,11 +210,17 @@ struct CellResolver<'a> {
 
 impl PublisherResolver for CellResolver<'_> {
     fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()> {
+        // issue 0736 — the two arms report DIFFERENT failures. A miss on
+        // `lookup_publisher` means this component declared no publisher for the
+        // entity, so nothing ever reached the transport; a `publish_raw` error
+        // means the transport had the sample and refused it. Both used to
+        // return `Runtime`, which is why a console full of "publish FAILED"
+        // could not distinguish a wiring bug from a congested link.
         self.cell
             .lookup_publisher(entity_id, |p| {
                 p.publish_raw(data).map_err(|_| NodeDeclError::Runtime)
             })
-            .unwrap_or(Err(NodeDeclError::Runtime))
+            .unwrap_or(Err(NodeDeclError::UnknownPublisher))
     }
 }
 
