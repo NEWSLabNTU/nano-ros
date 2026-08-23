@@ -24,3 +24,42 @@ supported_netstacks = []
 heap = true
 atomics = true
 threads = true
+
+# RFC-0079 §4.1 — a DERIVED priority address plan.
+#
+# The other three ports state literals read off the port: FreeRTOS 4, NuttX
+# 100, ThreadX 14. Zephyr cannot, and that is a property of the port rather
+# than of anyone's diligence (issue 0766).
+#
+# Tiers here are RAW `k_thread` priorities passed straight to
+# `k_thread_create`. The transport is NOT: zenoh-pico's Zephyr platform creates
+# its read/lease tasks with `pthread_create`, so their priority goes through a
+# normalised 0-31 band, then Zephyr's POSIX layer, before it lands anywhere a
+# tier can be compared against:
+#
+#   CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY  (Kconfig, default 16)
+#     -> ZPICO_{READ,LEASE}_TASK_PRIORITY    band 0..31
+#     -> POSIX  lo + (span*n*2 + 31)/62,  hi = CONFIG_NUM_PREEMPT_PRIORITIES - 1
+#     -> k_thread  NUM_PREEMPT - posix - 1  (SCHED_RR; pthread.c
+#                                            POSIX_TO_ZEPHYR_PRIORITY)
+#
+# BOTH ends of that are per-IMAGE Kconfig — the band itself, and
+# NUM_PREEMPT_PRIORITIES, which is per-board. So a literal `reserved.transport`
+# would be true for exactly one image and quietly wrong for the next: the very
+# failure this plan exists to prevent, one level up. The numbers therefore live
+# nowhere static; this declares WHAT they depend on and WHO resolves them, and
+# `check-tier-priority-plan` reports Zephyr pins as DEFERRED rather than
+# pretending to judge them.
+[board.priority_plan]
+tier_key = "zephyr"
+direction = "smaller-is-urgent"
+derived = "zephyr"
+resolver = "scripts/lib/priority_plan.py:resolve_zephyr_plan"
+inputs = [
+    "CONFIG_NUM_PREEMPT_PRIORITIES",
+    "CONFIG_NUM_COOP_PRIORITIES",
+    "CONFIG_NROS_ZENOH_READ_PRIORITY",
+    "CONFIG_NROS_ZENOH_LEASE_PRIORITY",
+    "CONFIG_POSIX_PRIORITY_SCHEDULING",
+    "CONFIG_PREEMPT_ENABLED",
+]

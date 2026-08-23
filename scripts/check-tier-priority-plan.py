@@ -73,11 +73,18 @@ def main():
 
     cross_reference(plans, errors)
 
-    checked, declared = 0, []
+    checked, declared, deferred = 0, [], {}
     for rel, tier, plat, prio, above in scan_pins():
         plan = plans.get(plat)
         if plan is None:
             unplanned[plat] = unplanned.get(plat, 0) + 1
+            continue
+        if plan.get("derived"):
+            # RFC-0079 §4.1 — the band is per-IMAGE, so this checker cannot
+            # judge the pin and does not pretend to. DEFERRED is a different
+            # verdict from UNPLANNED: one says "checked elsewhere, here is
+            # where", the other says "nobody checks this".
+            deferred.setdefault(plat, {"n": 0, "plan": plan})["n"] += 1
             continue
         checked += 1
         where = f"{rel}: tiers.{tier}.{plat} = {prio}"
@@ -115,6 +122,14 @@ def main():
         print(f"  DECLARED  {d}")
     for w in warnings:
         print(f"  WARN  {w}")
+    if deferred:
+        print("\n  DEFERRED — the band is per-image, resolved where `.config` is known:")
+        for plat, d in sorted(deferred.items()):
+            print(f"        {plat:9s} {d['n']:3d} pin(s)  resolver: "
+                  f"{d['plan'].get('resolver', '<unnamed>')}")
+            print(f"        {'':9s}      check one image: "
+                  f"just check-tier-priority-plan-image <build>/zephyr/.config")
+
     if unplanned:
         print("\n  ports with NO [priority_plan], so their pins are unchecked:")
         for plat, n in sorted(unplanned.items()):
@@ -126,9 +141,10 @@ def main():
         for e in errors:
             print(f"  {e}")
         return 1
+    n_deferred = sum(d["n"] for d in deferred.values())
     print(f"\ntier-priority-plan: OK ({checked} pin(s) checked against "
-          f"{len(plans)} declared plan(s), {len(declared)} declared "
-          f"preemption(s), {len(warnings)} warning(s))")
+          f"{len(plans)} declared plan(s), {n_deferred} deferred, "
+          f"{len(declared)} declared preemption(s), {len(warnings)} warning(s))")
     return 0
 
 

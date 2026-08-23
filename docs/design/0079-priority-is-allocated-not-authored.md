@@ -123,6 +123,86 @@ pool.app           = [10, 190]
 the port; a wrong one is a porting bug, and must be verifiable rather than
 asserted.
 
+### 4.1 A band is STATIC or DERIVED, and Zephyr forces the second kind
+
+Three ports state a literal read off the port — FreeRTOS 4, NuttX 100, ThreadX
+14. Zephyr cannot, and that is a property of the port rather than of anyone's
+diligence.
+
+Zephyr's tiers are RAW `k_thread` priorities passed to `k_thread_create`. Its
+transport is not: zenoh-pico's Zephyr platform builds its read and lease tasks
+with `pthread_create`, so the priority travels a chain before it lands anywhere
+a tier can be compared against —
+
+```
+CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY   (Kconfig, default 16)
+  → ZPICO_{READ,LEASE}_TASK_PRIORITY      band 0..31
+  → POSIX   lo + (span·n·2 + 31)/62,  hi = CONFIG_NUM_PREEMPT_PRIORITIES − 1
+  → k_thread   NUM_PREEMPT − posix − 1   (SCHED_RR, `POSIX_TO_ZEPHYR_PRIORITY`)
+```
+
+— and BOTH ends are per-image Kconfig: the band itself, and
+`NUM_PREEMPT_PRIORITIES`, which is per-board. A literal
+`reserved.transport = [7, 7]` would be true for exactly one image and quietly
+wrong for the next. **That is this RFC's own defect, one level up**: a number
+written once, in a place that cannot see what it depends on.
+
+So a plan declares one of two kinds of band:
+
+* **STATIC** — `reserved.transport = [4, 4]`, plus the source it was read from.
+  Checkable by `check-tier-priority-plan` with nothing but the repo.
+* **DERIVED** — no numbers at all. The descriptor names what the band depends
+  on and who resolves it:
+
+```toml
+[board.priority_plan]
+tier_key  = "zephyr"
+direction = "smaller-is-urgent"
+derived   = "zephyr"
+resolver  = "scripts/lib/priority_plan.py:resolve_zephyr_plan"
+inputs    = ["CONFIG_NUM_PREEMPT_PRIORITIES", "CONFIG_NROS_ZENOH_READ_PRIORITY", …]
+```
+
+Two rules make the derived kind honest rather than an excuse:
+
+1. **DEFERRED is not UNPLANNED.** The static checker reports a derived port's
+   pins as deferred and names the resolver and the command that finishes the
+   job. "Checked elsewhere, here is where" and "nobody checks this" are
+   different states and must read differently — collapsing them is how the
+   unchecked pins got to 21 in the first place.
+2. **Unapplied is not a band.** If the image's Kconfig gates
+   (`CONFIG_POSIX_PRIORITY_SCHEDULING`, `CONFIG_PREEMPT_ENABLED`) are off, the
+   priority is never applied, the tasks INHERIT their creator, and there is no
+   band to reserve. The resolver returns that as its own verdict rather than a
+   number — the same rule as "absent is not a budget", and the state NuttX was
+   in before issue 0736.
+
+`check-tier-priority-plan-image.py <build>/zephyr/.config` resolves and judges.
+Against the `ws-rs-realtime-entry` image
+(`NUM_PREEMPT_PRIORITIES=15`, both gates on):
+
+```
+read   band  16 -> posix   7 -> k_thread   7
+reserved.transport = [7, 7]   pool.app = [8, 14]   range = (-16, 14)
+```
+
+and it finds four real violations — `tiers.high.zephyr = 5` outranks the
+transport in every bringup that has it, undeclared, exactly as every other port
+did before its plan landed.
+
+**The pins are not moved yet, deliberately.** `realtime_tiers`' `zephyr/rust`
+row fails for an unrelated, pre-existing reason ("low-tier /telem never reached
+5 deliveries — the low tier was not scheduled"), so the one cell that could
+validate a move cannot show green either way. Moving them would be a change
+justified by reasoning rather than measurement, which this issue's siblings have
+already cost enough to make the rule obvious.
+
+Worth recording that the obvious hypothesis was TESTED and REFUTED: `high` (5)
+outranking the transport (7) which outranks `low` (10) looks like an exact
+explanation for "low was not scheduled", so `high` was moved to 9 — inside the
+pool, below the transport — the image rebuilt, and the row fails identically.
+Whatever starves that tier, it is not this.
+
 ### 5. The realizer allocates
 
 Ordinal sequence → concrete numbers inside `pool.app`, in the port's direction,

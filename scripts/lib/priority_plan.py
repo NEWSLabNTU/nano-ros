@@ -43,7 +43,11 @@ def load_plans():
                 in_plan = False
             if not in_plan:
                 continue
-            if line.startswith("tier_key"):
+            if line.startswith("derived"):
+                plan["derived"] = line.split("=", 1)[1].strip().strip('"')
+            elif line.startswith("resolver"):
+                plan["resolver"] = line.split("=", 1)[1].strip().strip('"')
+            elif line.startswith("tier_key"):
                 plan["tier_key"] = line.split("=", 1)[1].strip().strip('"')
             elif line.startswith("direction"):
                 plan["direction"] = line.split("=", 1)[1].strip().strip('"')
@@ -125,3 +129,120 @@ def scan_pins():
                 pins.append((f.relative_to(ROOT), tier, plat,
                              int(m.group(1)), above.get(tier)))
     return pins
+
+
+# ---------------------------------------------------------------------------
+# Derived bands (RFC-0079 §4.1) — Zephyr
+# ---------------------------------------------------------------------------
+#
+# Every other port's reserved band is a LITERAL read off the port: FreeRTOS 4,
+# NuttX 100, ThreadX 14. Zephyr's is computed, per image, from Kconfig — so a
+# literal in the descriptor would be true for one build and quietly wrong for
+# the next, which is the shape RFC-0079 exists to eliminate one level up
+# (issue 0766).
+#
+# The chain, each link with the file it comes from:
+#
+#   CONFIG_NROS_ZENOH_{READ,LEASE}_PRIORITY   zephyr/cmake/nros_rmw_zenoh.cmake
+#     -> ZPICO_{READ,LEASE}_TASK_PRIORITY     zpico.c (band 0..31)
+#     -> POSIX priority                       zpico_posix_set_priority():
+#                                             lo + (span*n*2 + 31)/62,
+#                                             lo = 0, hi = NUM_PREEMPT - 1
+#     -> k_thread priority                    zephyr/lib/posix/options/pthread.c
+#                                             POSIX_TO_ZEPHYR_PRIORITY, SCHED_RR:
+#                                             NUM_PREEMPT - prio - 1
+#
+# Tiers are RAW k_thread priorities, so the band has to end in k_thread units
+# for `reserved.transport` to mean anything against them.
+
+ZPICO_BAND_MAX = 31
+
+
+def _dotconfig_ints(path):
+    """`CONFIG_x=<int>` pairs out of a Zephyr `.config`."""
+    out = {}
+    for raw in pathlib_Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        v = v.strip()
+        if v.lstrip("-").isdigit():
+            out[k.strip()] = int(v)
+    return out
+
+
+def zpico_band_to_posix(band, num_preempt):
+    """The band -> POSIX half, mirroring `zpico_posix_set_priority`."""
+    lo, hi = 0, num_preempt - 1
+    if hi < lo:
+        return None
+    n = min(max(band, 0), ZPICO_BAND_MAX)
+    span = hi - lo
+    return lo + (span * n * 2 + 31) // 62
+
+
+def posix_rr_to_kthread(posix_prio, num_preempt):
+    """`POSIX_TO_ZEPHYR_PRIORITY(prio, SCHED_RR)` — pthread.c:25."""
+    return num_preempt - posix_prio - 1
+
+
+def resolve_zephyr_plan(dotconfig):
+    """Resolve a Zephyr `[board.priority_plan]` against ONE image's `.config`.
+
+    Returns the same shape a static plan has, plus `derived_from` so a reader
+    can see which image produced it, or an `unapplied` note when the image's
+    Kconfig means the priority is never set at all — in which case the
+    transport INHERITS its creator and the band is not a choice, the way NuttX
+    read before issue 0736.
+    """
+    cfg = _dotconfig_ints(dotconfig)
+    has = lambda k: _dotconfig_has(dotconfig, k)
+    num_preempt = cfg.get("CONFIG_NUM_PREEMPT_PRIORITIES")
+    num_coop = cfg.get("CONFIG_NUM_COOP_PRIORITIES", 0)
+    if num_preempt is None:
+        return {"error": "CONFIG_NUM_PREEMPT_PRIORITIES absent — not a Zephyr .config?"}
+
+    # Both gates must be on, or `zpico_posix_set_priority` returns without
+    # touching the attr and the tasks inherit (zpico.c + issue 0766).
+    if not (has("CONFIG_POSIX_PRIORITY_SCHEDULING") and has("CONFIG_PREEMPT_ENABLED")):
+        return {
+            "unapplied": "CONFIG_POSIX_PRIORITY_SCHEDULING and/or "
+                         "CONFIG_PREEMPT_ENABLED is off — the transport priority "
+                         "is NOT applied in this image; the tasks inherit their "
+                         "creator and no band can be reserved",
+            "derived_from": str(dotconfig),
+        }
+
+    bands = {}
+    for name, key in (("read", "CONFIG_NROS_ZENOH_READ_PRIORITY"),
+                      ("lease", "CONFIG_NROS_ZENOH_LEASE_PRIORITY")):
+        band = cfg.get(key, 16)  # zpico.c's own default
+        posix = zpico_band_to_posix(band, num_preempt)
+        bands[name] = {"band": band, "posix": posix,
+                       "kthread": posix_rr_to_kthread(posix, num_preempt)}
+
+    ks = sorted(b["kthread"] for b in bands.values())
+    return {
+        "direction": "smaller-is-urgent",
+        # Zephyr's usable k_thread range: negatives are cooperative.
+        "range": (-num_coop, num_preempt - 1),
+        "reserved": {"transport": (ks[0], ks[-1])},
+        # Tiers allocate strictly LESS urgent than the transport — numerically
+        # larger here.
+        "pool": {"app": (ks[-1] + 1, num_preempt - 1)},
+        "detail": bands,
+        "derived_from": str(dotconfig),
+        "source": "derived from Kconfig (RFC-0079 §4.1)",
+    }
+
+
+def _dotconfig_has(path, key):
+    """True when `<key>=y` is set."""
+    for raw in pathlib_Path(path).read_text(encoding="utf-8").splitlines():
+        if raw.strip() == f"{key}=y":
+            return True
+    return False
+
+
+from pathlib import Path as pathlib_Path  # noqa: E402  (used above)
