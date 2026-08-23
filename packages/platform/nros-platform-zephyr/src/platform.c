@@ -72,6 +72,18 @@ uint64_t nros_platform_clock_resolution_ns(void) {
     return (uint64_t) k_ticks_to_ns_floor64(1);
 }
 
+/* issue 0758 — no wall-clock source on this platform, so `0` is the honest
+ * answer, not a placeholder. The header makes `0` mean "no epoch here", which
+ * lets a caller keep stamping boot-relative time knowingly instead of
+ * publishing a confidently wrong absolute one.
+ *
+ * A port gains a real epoch by acquiring one (SNTP, an RTC handoff) and
+ * returning it here; until then this is correct rather than unfinished.
+ * Monotonic time is `nros_platform_clock_ns` and is unaffected. */
+uint64_t nros_platform_epoch_us(void) {
+    return 0;
+}
+
 /* ---- Allocation ---- */
 
 void *nros_platform_alloc(size_t size) {

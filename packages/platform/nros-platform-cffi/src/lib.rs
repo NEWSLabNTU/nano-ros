@@ -143,6 +143,15 @@ impl nros_platform_api::PlatformClock for CffiPlatform {
     fn clock_resolution_ns() -> u64 {
         unsafe { nros_platform_clock_resolution_ns() }
     }
+
+    /// issue 0758 — forwards to the C symbol. NOT defaulted here: a C port
+    /// that supplies the symbol must be able to answer, and one that does
+    /// not returns `0` from its own definition. Taking the trait default
+    /// instead would silently ignore a C implementation that exists.
+    #[inline]
+    fn epoch_us() -> u64 {
+        unsafe { nros_platform_epoch_us() }
+    }
 }
 
 impl nros_platform_api::PlatformAlloc for CffiPlatform {
@@ -620,6 +629,13 @@ macro_rules! nros_platform_export_clock {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_clock_resolution_ns() -> u64 {
             <$ty as ::nros_platform_api::PlatformClock>::clock_resolution_ns()
+        }
+        /// issue 0758 — a Rust port that does not override
+        /// `PlatformClock::epoch_us` emits this and answers `0`, which is
+        /// the honest reading for a platform with no wall clock.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_epoch_us() -> u64 {
+            <$ty as ::nros_platform_api::PlatformClock>::epoch_us()
         }
     };
 }

@@ -46,6 +46,10 @@ void nros_platform_stub_reset_counters(void) {
 
 uint64_t nros_platform_clock_ns(void)                           { bump(NROS_STUB_CLOCK); return 0; }
 uint64_t nros_platform_clock_resolution_ns(void)                { bump(NROS_STUB_CLOCK); return 1; }
+/* issue 0758 — counts as a CLOCK call. Returns 0: "this stub platform has no
+ * wall clock", which is both the honest answer and the one a caller must be
+ * able to handle. */
+uint64_t nros_platform_epoch_us(void)                           { bump(NROS_STUB_CLOCK); return 0; }
 
 /* ---- Alloc ---- */
 

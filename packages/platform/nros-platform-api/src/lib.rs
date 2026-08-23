@@ -94,6 +94,28 @@ pub trait PlatformClock {
     /// non-zero difference two successive reads can report. Non-zero,
     /// and constant after platform init.
     fn clock_resolution_ns() -> u64;
+
+    /// Microseconds since the UNIX epoch, or `0` when this platform has no
+    /// wall-clock source. See `<nros/platform.h>` for the full contract
+    /// (issue 0758).
+    ///
+    /// DEFAULTED to `0` deliberately. Every existing port is correct
+    /// without changing a line: none of them has an epoch source today, and
+    /// `0` is precisely the honest answer. Making this a required method
+    /// would have forced eleven ports to write `0` by hand, which is the
+    /// same information spelled eleven times plus eleven chances to write
+    /// something else.
+    ///
+    /// It is also the difference between an ABI addition that is a
+    /// no-op for ports and one that breaks every image that has not caught
+    /// up — and the C side has no such default, so a port implemented in C
+    /// DOES say `0` explicitly.
+    ///
+    /// Unlike [`Self::clock_ns`] this is not monotonic: a port that
+    /// acquires its epoch after boot jumps when it does.
+    fn epoch_us() -> u64 {
+        0
+    }
 }
 
 // ============================================================================

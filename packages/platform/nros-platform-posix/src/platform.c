@@ -55,6 +55,25 @@ uint64_t nros_platform_clock_resolution_ns(void) {
     return ns == 0 ? 1 : ns;
 }
 
+/* issue 0758 — the one port where a wall clock is free. CLOCK_REALTIME is
+ * the host's (or NuttX's) notion of absolute time; no acquisition step, no
+ * SNTP, nothing to configure.
+ *
+ * NOTE this file is ALSO the NuttX port: `nros-platform-nuttx/CMakeLists.txt`
+ * compiles `../nros-platform-posix/src/platform.c` verbatim rather than
+ * carrying a copy. NuttX implements CLOCK_REALTIME, so both get a real epoch
+ * from this one definition — and a change here is a change to two platforms.
+ *
+ * Returns 0 on failure, per the header's rule, which also covers a NuttX
+ * build whose clock has never been set. */
+uint64_t nros_platform_epoch_us(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        return 0;
+    }
+    return (uint64_t) ts.tv_sec * 1000000ULL + (uint64_t) ts.tv_nsec / 1000ULL;
+}
+
 /* ---- Allocation ---- */
 
 void *nros_platform_alloc(size_t size) {

@@ -185,6 +185,44 @@ uint64_t nros_platform_clock_resolution_ns(void);
  * either retired name is caught by
  * `scripts/check-retired-platform-clock-symbols.py` (issue #555). */
 
+/* ---- Clock (wall-clock epoch) ---- */
+
+/** Microseconds since the UNIX EPOCH (1970-01-01T00:00:00Z), or `0` when
+ *  this platform has no wall-clock source.
+ *
+ *  READ THIS BEFORE REACHING FOR `nros_platform_clock_ns` (issue 0758).
+ *  The two clocks in this header differ by one word in their names and by
+ *  the only property that matters for interop:
+ *
+ *    - `nros_platform_clock_ns` is MONOTONIC and boot-relative. Use it for
+ *      durations, deadlines, spin gaps, timeouts — anything comparing two
+ *      readings from THIS image. It is meaningless to a peer.
+ *    - `nros_platform_epoch_us` is ABSOLUTE. Use it for message stamps and
+ *      anything a peer will compare against its own clock.
+ *
+ *  Reaching for the wrong one does not fail to build and does not fail
+ *  locally; it fails at a peer, which is the expensive place to find out.
+ *  The concrete case is the consumer this exists for: an embedded island
+ *  stamped control commands from its boot epoch and Autoware's
+ *  `vehicle_cmd_gate` rejected every one as stale, so autonomous mode could
+ *  never actuate.
+ *
+ *  `0` MEANS "NO WALL CLOCK", not "the epoch". Per this header's clock rule
+ *  (see the top of file: "If the platform has no clock, return `0`") this
+ *  never errors. A caller that gets `0` knows the image cannot stamp
+ *  absolute time and should keep publishing boot-relative stamps knowingly,
+ *  rather than publishing a confidently wrong absolute one. 1970 is not a
+ *  plausible reading, so the sentinel costs no real value.
+ *
+ *  Not required to be monotonic: a platform that acquires its epoch after
+ *  boot (SNTP, RTC handoff) will JUMP when it does, and may jump backwards.
+ *  Callers needing monotonicity use `nros_platform_clock_ns`.
+ *
+ *  Need not be ISR-safe, and unlike `nros_platform_clock_ns` need not be
+ *  available immediately after platform init — a port that acquires its
+ *  epoch over the network necessarily answers `0` until it has. */
+uint64_t nros_platform_epoch_us(void);
+
 /* ---- Allocation ---- */
 
 /** Allocate `size` bytes; return `NULL` on failure. May be called from
