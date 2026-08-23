@@ -19,6 +19,9 @@
 
 set -euo pipefail
 
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/grep-q.sh"
+
 # A FAILED bindgen must not overwrite the committed bindings. The `{ … } > tmp`
 # block writes its header lines regardless of whether bindgen ran, so a clang
 # error (a missing include path, a header that moved) produced a valid-looking
@@ -27,7 +30,9 @@ set -euo pipefail
 # A binding file with no `pub` item in it is not a binding file.
 refuse_stub() {
     local f="$1"
-    if ! grep -qE '^\s*pub ' "$f"; then
+    # issue 0726 — `nros_grep_q`, so a grep that fails to START cannot be read
+    # as "no items" and delete a good regeneration.
+    if ! nros_grep_q '^[[:space:]]*pub ' "$f"; then
         echo "ERROR: bindgen produced no items for $f — the generator failed;" >&2
         echo "       refusing to overwrite the committed bindings with a stub." >&2
         rm -f "$f"
