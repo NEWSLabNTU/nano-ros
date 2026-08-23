@@ -495,7 +495,7 @@ check-fast: _check-skip-reset \
     check-platform-provider-features \
     check-sdk-store-not-enumerated \
     check-goal-cdr-stripped \
-    check-test-domain-assignment \
+    check-test-domain-assignment check-ros-env-spelling \
     check-zenohd-spawn-sites check-zenohd-resolution-parity \
     check-zenohd-flag-invocations \
     check-interface-glob-configure-depends \
@@ -1744,6 +1744,20 @@ check-goal-cdr-stripped:
 # rather than as a collision.
 check-test-domain-assignment:
     @bash scripts/check-test-domain-assignment.sh
+
+# Issue 0763 — a test's ROS 2 environment is spelled in ONE place
+# (`nros_tests::ros_env::RosEnv` + `Middleware`, RFC-0058 / phase-309, over the
+# `ros2::ros2_env_setup_*` helpers). A hand-rolled `source /opt/ros/<distro>/
+# setup.bash && export ...` elsewhere is a second place, and every second place
+# has drifted invisibly: one dropped the peer's ROS_DOMAIN_ID (the first segment
+# of an rmw_zenoh keyexpr, and the key ros2cli's daemon is singleton on),
+# another opened with a `ros2 daemon stop` that killed the daemon a parallel
+# test was mid-query against, another hardcoded `humble` so every guarded test
+# SKIPPED forever on a jazzy host. The gate does not forbid the exception — it
+# makes adding one a reviewable line in a diff. Buildless: greps tracked source.
+[private]
+check-ros-env-spelling:
+    @python3 scripts/check-ros-env-spelling.py
 
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.
 check-zenohd-spawn-sites:

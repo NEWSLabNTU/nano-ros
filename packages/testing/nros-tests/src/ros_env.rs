@@ -467,29 +467,24 @@ impl DockerRosEnv {
              YAML\n\
              exec ros2 run domain_bridge domain_bridge /tmp/nros_bridge.yaml"
         );
-        // The bridge sets domains itself; don't pin one via the env snippet.
+        // Issue 0763's other half. This used to source the distro by hand,
+        // reasoning that the bridge sets its own domains — true, and beside the
+        // point: BOTH bridge endpoints are ordinary ROS nodes that must speak
+        // the same RMW as the peers they bridge, and a hand-built setup line
+        // left the bridge on the image DEFAULT (`rmw_fastrtps_cpp`) while both
+        // callers run cyclone. The lane passed only because two RTPS vendors
+        // happen to interoperate on a plain topic; over zenoh — no shared wire
+        // at all — the same bypass is simply a bridge nobody can reach. The
+        // domain the snippet exports is inert here, which is why routing
+        // through it costs nothing: `domain_bridge` builds one context per
+        // domain from the YAML above (`InitOptions::set_domain_id`), and an
+        // explicit init option outranks `ROS_DOMAIN_ID`.
         let cname = format!(
             "nros-bridge-{}-{}",
             std::process::id(),
             PEER_SEQ.fetch_add(1, Ordering::Relaxed)
         );
-        let source = format!("source /opt/ros/{}/setup.bash", self.distro);
-        let mut cmd = Command::new("docker");
-        cmd.args([
-            "run",
-            "--rm",
-            "--network",
-            "host",
-            "--init",
-            "--name",
-            &cname,
-        ]);
-        cmd.args([
-            self.image().as_str(),
-            "bash",
-            "-lc",
-            &format!("{source} && {inner}"),
-        ]);
+        let cmd = self.docker_run(&inner, Some(&cname));
         spawn_command(
             cmd,
             "domain_bridge",
@@ -611,23 +606,18 @@ impl DockerRosEnv {
             std::process::id(),
             PEER_SEQ.fetch_add(1, Ordering::Relaxed)
         );
-        let source = format!("source /opt/ros/{}/setup.bash", self.distro);
-        let mut cmd = Command::new("docker");
-        cmd.args([
-            "run",
-            "--rm",
-            "--network",
-            "host",
-            "--init",
-            "--name",
-            &cname,
-        ]);
-        cmd.args([
-            self.image().as_str(),
-            "bash",
-            "-lc",
-            &format!("{source} && exec ros2 run rmw_zenoh_cpp rmw_zenohd"),
-        ]);
+        // The router goes through the same snippet as the peers it serves, not
+        // a hand-built `source`: it must come from the install THEY resolve
+        // `rmw_zenoh_cpp` out of, because router and RMW link one `libzenohc`
+        // and a router from a different install is exactly the drift issue 0609
+        // measured. Nothing the snippet exports can disturb a router — it joins
+        // no domain and selects no RMW, so `ROS_DOMAIN_ID` /
+        // `RMW_IMPLEMENTATION` pass it by — and the one export that DOES reach
+        // it is the reason to want the snippet: `rmw_zenohd` reads
+        // `ZENOH_ROUTER_CONFIG_URI`, an empty value reads as unset (it starts
+        // on the shipped default config), and setting it empty is what stops an
+        // inherited router config from silently reconfiguring the lane's router.
+        let cmd = self.docker_run("exec ros2 run rmw_zenoh_cpp rmw_zenohd", Some(&cname));
         let peer = spawn_command(
             cmd,
             "rmw_zenohd",

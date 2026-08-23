@@ -41,6 +41,43 @@ pub fn is_ros2_distro_available(distro: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Is `pkg` present in the ROS 2 install for `distro`?
+///
+/// Distro-parametric for the same reason [`is_ros2_distro_available`] is: a host
+/// carries exactly ONE ROS 2 edition (RFC-0058 / phase-309 — humble on Ubuntu
+/// 22.04, jazzy on 24.04, and the apt trees do not coexist). So a literal
+/// `humble` in a probe does not mean "the usual one", it means "a prefix that
+/// does not exist" on every other host — and the failure is silent: the source
+/// fails, the probe returns false, and every test guarded by it reports SKIP
+/// rather than red. A test that skips on exactly the host it was written to
+/// exercise is worse than one that fails, because the sweep still goes green.
+/// The three RMW probes below each carried that literal and took the whole
+/// zenoh/fastrtps/cyclone interop surface out of a jazzy run with no signal.
+///
+/// One spelling, not one per RMW — the repeated `source … && ros2 pkg list |
+/// grep -q …` shape is what let the distro drift in three places at once.
+/// Returns false (never panics) when the setup script is missing or the command
+/// fails.
+fn is_ros2_package_available(distro: &str, pkg: &str) -> bool {
+    // Both strings are interpolated into a shell command, so both must be bare
+    // identifiers (same guard, same reason, as `is_ros2_distro_available`).
+    let is_bare =
+        |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !is_bare(distro) || !is_bare(pkg) {
+        return false;
+    }
+    Command::new("bash")
+        .args([
+            "-c",
+            &format!("source /opt/ros/{distro}/setup.bash && ros2 pkg list | grep -q {pkg}"),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Check if ROS 2 is available (the [`DEFAULT_ROS_DISTRO`] — humble today).
 pub fn is_ros2_available() -> bool {
     is_ros2_distro_available(DEFAULT_ROS_DISTRO)
@@ -62,23 +99,14 @@ pub fn require_ros2() -> bool {
     true
 }
 
-/// Check if rmw_zenoh_cpp is available.
+/// Check if rmw_zenoh_cpp is available in the [`DEFAULT_ROS_DISTRO`] install.
 ///
 /// The distro install is the only source. The opt-in `build/rmw_zenoh_ws`
 /// source overlay it used to prefer is gone — nothing automated ever built it,
 /// and its stated reason (wire-matching our zenoh-pico pin) was refuted by issue
 /// 0291: zenoh's wire is proto-stable across 1.x.
 pub fn is_rmw_zenoh_available() -> bool {
-    Command::new("bash")
-        .args([
-            "-c",
-            "source /opt/ros/humble/setup.bash && ros2 pkg list | grep -q rmw_zenoh_cpp",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    is_ros2_package_available(DEFAULT_ROS_DISTRO, "rmw_zenoh_cpp")
 }
 
 /// Get ROS 2 environment setup command with default locator
@@ -1202,18 +1230,10 @@ rclpy.spin(node)
 // DDS (rmw_fastrtps_cpp) Helpers — for XRCE-DDS ↔ ROS 2 interop tests
 // =============================================================================
 
-/// Check if rmw_fastrtps_cpp is available (default RMW in Humble)
+/// Check if rmw_fastrtps_cpp is available (the default RMW in humble and
+/// jazzy alike) in the [`DEFAULT_ROS_DISTRO`] install.
 pub fn is_rmw_fastrtps_available() -> bool {
-    Command::new("bash")
-        .args([
-            "-c",
-            "source /opt/ros/humble/setup.bash && ros2 pkg list | grep -q rmw_fastrtps_cpp",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    is_ros2_package_available(DEFAULT_ROS_DISTRO, "rmw_fastrtps_cpp")
 }
 
 /// Require ROS 2 with DDS (rmw_fastrtps_cpp) for a test.
@@ -1265,18 +1285,10 @@ pub fn ros2_env_setup_cyclonedds_with_domain(distro: &str, domain_id: u8) -> Str
     ros2_env_setup_rmw_with_domain(distro, "rmw_cyclonedds_cpp", domain_id)
 }
 
-/// Check if `rmw_cyclonedds_cpp` is available in the ROS 2 install.
+/// Check if `rmw_cyclonedds_cpp` is available in the [`DEFAULT_ROS_DISTRO`]
+/// ROS 2 install.
 pub fn is_rmw_cyclonedds_available() -> bool {
-    Command::new("bash")
-        .args([
-            "-c",
-            "source /opt/ros/humble/setup.bash && ros2 pkg list | grep -q rmw_cyclonedds_cpp",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    is_ros2_package_available(DEFAULT_ROS_DISTRO, "rmw_cyclonedds_cpp")
 }
 
 /// Require ROS 2 with CycloneDDS (`rmw_cyclonedds_cpp`) for a test.
