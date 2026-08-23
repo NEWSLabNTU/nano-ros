@@ -265,7 +265,132 @@ At the end of W5, `rmw-abi-shape --check` joins the `just check` line and the
 claim "feature complete against RMW, modulo declared RTOS deviations" becomes
 something CI re-proves on every commit rather than a sentence in a README.
 
+## The complete work inventory
+
+Every item needed to call the RMW API done. Nothing below is implicit: if a
+thing must happen, it has a row, and the counters that verify it are named. The
+Status line at the top is derived from these, so it stays a measurement.
+
+Legend: **done** / **open**. Counts in parentheses are what the tools report
+today.
+
+### W3.a — types lose the vendor prefix (open, 10 types / 45 uses)
+
+| item | state |
+| --- | --- |
+| `nros_rmw_ret_t` -> `rmw_ret_t` | open |
+| `nros_rmw_session_t` -> `rmw_session_t` (10 uses) | open |
+| `nros_rmw_subscription_t` -> `rmw_subscription_t` (10) | open |
+| `nros_rmw_publisher_t` -> `rmw_publisher_t` (9) | open |
+| `nros_rmw_service_t` -> `rmw_service_t` (5) | open |
+| `nros_rmw_client_t` -> `rmw_client_t` (5) | open |
+| `nros_rmw_qos_t` -> `rmw_qos_profile_t` (4) | open |
+| `nros_rmw_event_kind_t` -> `rmw_event_type_t` (2) | open |
+| `nros_rmw_event_callback_t` -> `rmw_event_callback_t` (2) | open |
+| `nros_rmw_{publisher,subscription}_options_t` -> upstream names (2) | open |
+| `#error` guard on `RMW_RMW_H_` so our header and upstream's cannot share a TU | open |
+| the `NROS_RMW_RET_*` constant names follow their type | open |
+
+Verified by: `just rmw-abi-shape` -> `vendor-named types in sigs: 0`.
+
+### W3.b — slots take upstream names (open, 16)
+
+`take`, `take_request`, `take_response`, `take_sequence`,
+`take_loaned_message`, `borrow_loaned_message`, `publish_loaned_message`,
+`return_loaned_message_from_{publisher,subscription}`, `publish`,
+`send_request`, `send_response`, `publisher_assert_liveliness`,
+`{publisher,subscription}_event_init` — plus
+`service_server_is_available`, **done**.
+
+Verified by: `UNDECLARED extra slots: 0`.
+
+### W3.c — argument deviations declared (open)
+
+One `ARG_DEVIATIONS` entry per slot whose parameters differ from upstream, each
+naming the target constraint. `service_server_is_available` **done**; the rest
+land with their rename in W3.b. The four systematic classes (session vs node,
+baked type strings vs typesupport, OUT parameter vs returned pointer, no
+allocation argument) are described above.
+
+Verified by: `slots present, args differ: 0` with every difference in the table.
+
+### W3.d step A — no slot multiplexes a count with a status (3 of 11 done)
+
+| slot | state |
+| --- | --- |
+| `service_server_available` -> `service_server_is_available` | **done** |
+| `has_data` | **done** |
+| `has_request` | **done** |
+| `subscription_supports_in_place` | open |
+| `process_raw_in_place` | open |
+| `try_recv_raw` -> `take` | open |
+| `try_recv_request` -> `take_request` | open |
+| `try_recv_reply_raw` -> `take_response` | open |
+| `try_recv_sequence` -> `take_sequence` | open |
+| `sub_borrow` -> `take_loaned_message` | open |
+| `next_deadline_ms` | open — needs a decision first: does "no deadline" stay a negative sentinel, or become an out-parameter plus an explicit status? |
+
+Verified by: no `int32_t (*slot)` remains in `rmw_vtable.h`.
+
+### W3.d step B — the values flip (open, blocked on step A)
+
+| item | state |
+| --- | --- |
+| adopt `RMW_RET_OK 0 / ERROR 1 / TIMEOUT 2 / UNSUPPORTED 3 / BAD_ALLOC 10 / INVALID_ARGUMENT 11` | open |
+| our 12 extra codes move to the 1000+ extension range, documented in `rmw_ret.h` | open |
+| retire `NO_DATA` where `taken = false` + OK now says it | open |
+| fix the status-only sign tests the audit lists (6) | open |
+| decide `INCORRECT_RMW_IMPLEMENTATION`: upstream has it, a single-backend image cannot raise it | open |
+
+Verified by: `just rmw-ret-sign` -> both counts 0.
+
+### W4 — feature completeness (open, 70 slots with no slot today)
+
+| group | count | slots |
+| --- | ---: | --- |
+| pure functions | 2 | `qos_profile_check_compatible`, `compare_gids_equal` |
+| service/client wake callbacks | 2 | `service_set_on_new_request_callback`, `client_set_on_new_response_callback` |
+| QoS read-back | 6 | the `*_get_actual_qos` family |
+| data-plane names still to add | 13 | `publish`, `take*`, loaned family, `*_event_init`, `take_event`, `event_set_callback`, `subscription_set_on_new_message_callback` — these ARRIVE with W3.b's renames rather than as new work |
+| session / context / node lifecycle | 8 | `init`, `shutdown`, `context_fini`, `init_options_{init,copy,fini}`, `create_node`, `destroy_node` |
+| wait set + guard conditions | 6 | `wait`, `create_wait_set`, `destroy_wait_set`, `{create,destroy,trigger}_guard_condition` |
+| serialization | 6 | `serialize`, `deserialize`, `get_serialized_message_size`, `publish_serialized_message`, `take_serialized_message{,_with_info}` |
+| identity / introspection of the impl | 3 | `get_implementation_identifier`, `get_serialization_format`, `feature_supported` |
+| graph + matched counts | 15 | `get_node_names{,_with_enclaves}`, the four `*_by_node`, `get_{publishers,subscriptions}_info_by_topic`, `get_{topic,service}_names_and_types`, `count_{publishers,subscribers}`, `node_get_graph_guard_condition`, `{publisher,subscription}_count_matched_*`, `get_gid_for_publisher` |
+| clean shutdown | 1 | `publisher_wait_for_all_acked` |
+| with-info takes | 3 | `take_with_info`, `take_loaned_message_with_info`, `take_serialized_message_with_info` |
+
+Verified by: `no slot at all: 0`.
+
+Each group needs a decision recorded before its slots land, and two are not
+mechanical: the **wait set** group (our `Executor::spin_once` IS the wait, so a
+vtable `wait` sits UNDER it and the executor becomes its caller) and the
+**graph** group (a full cache costs RAM a 128 KiB target does not have, so the
+answer is an optional slot with `UNSUPPORTED`, not an unconditional one).
+
+### W5 — RTOS correctness audit (open)
+
+| item | state |
+| --- | --- |
+| every `ADDED` slot's reason re-checked against the target constraint | open |
+| every `ARG_DEVIATIONS` reason re-checked | open |
+| every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
+| re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | open |
+| re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | open |
+| `rmw-abi-shape --check` joins the `just check` line | open |
+
+### Cross-cutting, every wave
+
+| item | why |
+| --- | --- |
+| `scripts/gen-abi-bindings.sh` + commit both halves | RFC-0054: the header is the SSoT; `check-abi-bindings` compares the COMMITTED blob, so it stays red until the regenerated file is committed |
+| update `MAP` / `ADDED` / `ARG_DEVIATIONS` in the tools | the counters are how the Status line stays honest |
+| run `just check`, not a per-crate command | `check-test-targets` runs clippy over test targets with `-D warnings`; `cargo test -p <crate>` does not, and that is how `(0) != 0` reached a commit |
+| per-site edits for stub bodies | a regex pass mangled a multi-statement stub into a file that would not parse, and emitted `(0) != 0` in 13 places |
+
 ## Running it
+
+
 
 ```
 just check-rmw-api-parity                  # classification (gates today)
