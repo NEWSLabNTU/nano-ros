@@ -21,7 +21,7 @@ use core::{
 
 use nros_rmw::{RmwConfig, Session, SessionMode, TransportError};
 use nros_rmw_cffi::{
-    NROS_RMW_RET_OK, NROS_RMW_RET_TIMEOUT, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_TIMEOUT, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
     NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
     NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     nros_rmw_cffi_register_named,
@@ -198,24 +198,10 @@ const fn base_vtable() -> NrosRmwVtable {
         send_response: Some(stub_send_reply),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
-        send_request: None,
-        take_response: None,
         subscription_event_init: Some(stub_reg_sub_event),
         publisher_event_init: Some(stub_reg_pub_event),
         publisher_assert_liveliness: Some(stub_assert_liveliness),
-        next_deadline_ms: None,
-        set_wake_callback: None,
-        borrow_loaned_message: None,
-        publish_loaned_message: None,
-        return_loaned_message_from_publisher: None,
-        take_loaned_message: None,
-        return_loaned_message_from_subscription: None,
-        service_server_is_available: None,
-        take_sequence: None,
-        publish_streamed: None,
-        ping_session: None,
-        subscription_supports_in_place: None,
-        process_raw_in_place: None,
+        ..EMPTY_VTABLE
     }
 }
 

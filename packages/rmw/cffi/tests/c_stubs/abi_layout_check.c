@@ -27,7 +27,7 @@
  * compiled HOST-side (int-enum ABI, no `-fshort-enums`), so it is
  * int-sized here — 4 bytes. It is passed by value into
  * `register_subscription_event` / `register_publisher_event` and out
- * through `rmw_event_callback_t`. The Rust mirror MUST be
+ * through `rmw_status_event_callback_t`. The Rust mirror MUST be
  * `#[repr(C)]` (tracks the C ABI per-target), never a fixed
  * `#[repr(u8)]`/`#[repr(i32)]`. On ARM EABI the same enum is 1 byte on
  * BOTH sides — that target is not checked here (see the Rust

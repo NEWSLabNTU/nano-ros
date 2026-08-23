@@ -59,3 +59,22 @@ The first is best: the globals exist only because the C stub callbacks have no
 context pointer to hang state on — but `stub_publish_streamed` DOES receive a
 `void *ctx`, so the state can travel through it like the runtime's own
 `process_raw_in_place` trampoline does.
+
+## A second instance, same crate (2026-08-23)
+
+`tests/rust_adapter.rs::rust_backend_adapter_routes_every_slot` fails the same
+way under `cargo test`: `PUBLISH_HITS` reads 2 where it asserts 1, because
+another test in the binary drove the same static. Five runs of that test ALONE:
+5/5 green. `cargo nextest run -p nros-rmw-cffi --features alloc`: 33/33 green.
+
+So this is not one test's mistake but a crate-wide pattern — the C stub
+callbacks have no context to hang state on, so every test file reaches for
+`static AtomicUsize`. The fix should be applied to the pattern rather than to
+the two files that have been caught: the vtable stubs that matter already take a
+`void *ctx` (`process_raw_in_place`, `publish_streamed`), and the ones that do
+not could take one the same way the runtime's own trampolines do.
+
+Until then, the honest statement is: **this crate's tests are correct under
+nextest and racy under `cargo test`**, and `just check` only ever runs the
+former.
+

@@ -20,10 +20,10 @@ using namespace nros_rmw_cyclonedds;
 // Cyclone listeners through to the runtime's status-event surface.
 constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
     rmw_subscription_t *, rmw_event_type_t, uint32_t,
-    rmw_event_callback_t, void *) = nullptr;
+    rmw_status_event_callback_t, void *) = nullptr;
 constexpr rmw_ret_t (*kRegisterPublisherEvent)(
     rmw_publisher_t *, rmw_event_type_t, uint32_t,
-    rmw_event_callback_t, void *) = nullptr;
+    rmw_status_event_callback_t, void *) = nullptr;
 constexpr rmw_ret_t (*kAssertPublisherLiveliness)(
     rmw_publisher_t *) = nullptr;
 

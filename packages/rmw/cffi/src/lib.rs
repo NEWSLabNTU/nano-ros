@@ -247,6 +247,12 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     ping_session: None,
     subscription_supports_in_place: None,
     process_raw_in_place: None,
+    get_implementation_identifier: None,
+    get_serialization_format: None,
+    feature_supported: None,
+    get_gid_for_publisher: None,
+    publisher_count_matched_subscriptions: None,
+    subscription_count_matched_publishers: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -375,9 +381,9 @@ pub type NrosRmwLivelinessChangedStatus = rmw_liveliness_changed_status_t;
 pub type NrosRmwCountStatus = rmw_count_status_t;
 /// Compat alias for the generated `rmw_event_payload_t` union.
 pub type NrosRmwEventPayload = rmw_event_payload_t;
-/// Compat alias for the generated `rmw_event_callback_t`
+/// Compat alias for the generated `rmw_status_event_callback_t`
 /// (nullable — `Option`-wrapped fn pointer, per C ABI).
-pub type NrosRmwEventCallback = rmw_event_callback_t;
+pub type NrosRmwEventCallback = rmw_status_event_callback_t;
 
 /// Convert a trait-level [`nros_rmw::EventKind`] to the C ABI discriminant.
 /// Replaces the retired `From<nros_rmw::EventKind> for NrosRmwEventKind`.

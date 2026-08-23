@@ -8,8 +8,7 @@
 
 #[doc = " Status code. Zero on success.\n\n  Phase 376 W3.d step B — the VALUES are upstream rmw's. `RMW_RET_OK` was\n  already 0 on both sides; everything else moved from a negative code to\n  upstream's positive one, so a status means the same number on both sides of\n  the seam: OK 0, ERROR 1, TIMEOUT 2, UNSUPPORTED 3, BAD_ALLOC 10,\n  INVALID_ARGUMENT 11, INCORRECT_RMW_IMPLEMENTATION 12,\n  NODE_NAME_NON_EXISTENT 203.\n\n  (Written as prose, not an indented block: bindgen copies this comment into\n  `generated.rs` verbatim, and rustdoc reads an indented block there as a Rust\n  DOCTEST — which then fails to compile. Caught by `cargo test`.)\n\n  This is why step A had to come first. Eleven slots used to return a COUNT\n  or a FLAG as a non-negative value and a status as a negative one; with\n  `ERROR` at 1, a return of `1` would have meant both \"one message\" and\n  \"failed\". Every one of those slots now reports through an out-parameter, so\n  the sign carries nothing and the numbers are free to move.\n\n  Codes upstream does not define live in the EXTENSION RANGE at 1000+, so a\n  future upstream addition can never collide with one of ours. That range is\n  the one place we knowingly add to upstream's namespace.\n\n  Signedness is kept (`int32_t`, not an unsigned type) to match upstream's\n  `rmw_ret_t` exactly. Nothing returns a negative value any more."]
 pub type rmw_ret_t = i32;
-#[doc = " User callback invoked when an event fires.\n\n @param kind          Identifies which member of @p payload is valid.\n @param payload       Pointer is valid for the duration of this call\n                      only — copy fields if needed beyond return.\n @param user_context  Opaque pointer registered with the callback.\n\n **Threading.** Invoked from inside `drive_io` on the executor\n thread. Must not block; long work should defer via a guard\n condition or queue."]
-pub type rmw_event_callback_t = ::core::option::Option<
+pub type rmw_status_event_callback_t = ::core::option::Option<
     unsafe extern "C" fn(
         kind: rmw_event_type_t::Type,
         payload: *const rmw_event_payload_t,
@@ -18,6 +17,15 @@ pub type rmw_event_callback_t = ::core::option::Option<
 >;
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
+#[doc = " Global identifier for a publisher — upstream `rmw_gid_t`, field for field.\n\n  Phase 376 W4. Mirrors upstream exactly, including the 24-byte width and the\n  `implementation_identifier`. The identifier matters MORE here than upstream:\n  `nros_rmw_cffi_register_named` admits several backends in one image, so two\n  gids are comparable only when it matches.\n\n  Comparison is over the whole array, so a producer MUST zero-pad an\n  identifier shorter than 24 bytes rather than leave the tail undefined —\n  otherwise two gids naming the same entity compare unequal on stack garbage.\n\n  **24, not 16, and that is a discrepancy worth knowing about.** Our own\n  `MessageInfo::publisher_gid` (`nros-core`, `PUBLISHER_GID_SIZE`) is 16 bytes,\n  while the Cyclone backend already computes 24-byte gids for the DDS graph\n  (`entity_gid_24` in `graph.cpp`). Under upstream semantics those are the SAME\n  identifier, so a gid obtained from a take cannot today be compared with one\n  from `get_gid_for_publisher` without a documented mapping — and the narrower\n  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is\n  its own change and is NOT done here."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_gid_t {
+    #[doc = " Which backend produced this gid; gids from different backends are not\n  comparable. Borrowed, static for the life of the image."]
+    pub implementation_identifier: *const core::ffi::c_char,
+    #[doc = " The identifier bytes, zero-padded to the full width."]
+    pub data: [u8; 24usize],
+}
 #[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `rmw_publisher_options_t` / `rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -295,7 +303,7 @@ pub struct nros_rmw_vtable_t {
             subscription: *mut rmw_subscription_t,
             kind: rmw_event_type_t::Type,
             deadline_ms: u32,
-            cb: rmw_event_callback_t,
+            cb: rmw_status_event_callback_t,
             user_context: *mut core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
@@ -305,7 +313,7 @@ pub struct nros_rmw_vtable_t {
             publisher: *mut rmw_publisher_t,
             kind: rmw_event_type_t::Type,
             deadline_ms: u32,
-            cb: rmw_event_callback_t,
+            cb: rmw_status_event_callback_t,
             user_context: *mut core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
@@ -419,6 +427,33 @@ pub struct nros_rmw_vtable_t {
             out_processed: *mut bool,
         ) -> rmw_ret_t,
     >,
+    #[doc = " Upstream `rmw_get_implementation_identifier`.\n\n  The backend's name, static for the life of the image. A gid is only\n  comparable with another carrying the same identifier, which matters here\n  because `nros_rmw_cffi_register_named` admits several backends at once.\n\n  NULL slot: the runtime answers with the name the backend registered\n  under, so this is a slot a backend only needs when it wants to report\n  something other than its registry name."]
+    pub get_implementation_identifier:
+        ::core::option::Option<unsafe extern "C" fn() -> *const core::ffi::c_char>,
+    #[doc = " Upstream `rmw_get_serialization_format`.\n\n  NULL slot: the runtime answers `\"cdr\"`. A backend overrides only if it\n  speaks something else — and a bridge image linking two backends is\n  exactly why this is per-BACKEND rather than a build-time constant."]
+    pub get_serialization_format:
+        ::core::option::Option<unsafe extern "C" fn() -> *const core::ffi::c_char>,
+    #[doc = " Upstream `rmw_feature_supported`.\n\n  Whether the backend populates an optional piece of CONTENT — upstream's\n  two values both concern message-info sequence numbers. Deliberately not\n  expressed as slot nullity: a NULL pointer says the backend cannot\n  perform an OPERATION, which is a different question from whether the\n  data an implemented operation returns is populated.\n\n  NULL slot: the runtime answers `false` for every feature."]
+    pub feature_supported:
+        ::core::option::Option<unsafe extern "C" fn(feature: rmw_feature_t::Type) -> bool>,
+    #[doc = " Upstream `rmw_get_gid_for_publisher`. Exact parity.\n\n  The backend zero-pads to the full width; see `rmw_gid_t`."]
+    pub get_gid_for_publisher: ::core::option::Option<
+        unsafe extern "C" fn(publisher: *const rmw_publisher_t, gid: *mut rmw_gid_t) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_publisher_count_matched_subscriptions`. Exact parity.\n\n  Every backend already tracks this to implement liveliness events — see\n  `service_server_is_available`, which is the same question one entity\n  over. NULL where a backend has no discovery at all (XRCE)."]
+    pub publisher_count_matched_subscriptions: ::core::option::Option<
+        unsafe extern "C" fn(
+            publisher: *const rmw_publisher_t,
+            subscription_count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_subscription_count_matched_publishers`. Exact parity."]
+    pub subscription_count_matched_publishers: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            publisher_count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -481,6 +516,7 @@ pub const NROS_RMW_DURABILITY_VOLATILE: i32 = 0;
 pub const NROS_RMW_DURABILITY_TRANSIENT_LOCAL: i32 = 1;
 pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 0;
 pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 1;
+pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]
@@ -488,6 +524,12 @@ pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 pub union rmw_event_payload_t {
     pub liveliness_changed: rmw_liveliness_changed_status_t,
     pub count: rmw_count_status_t,
+}
+pub mod rmw_feature_t {
+    #[doc = " Upstream `rmw_feature_t` — an optional piece of CONTENT a backend may or may\n  not populate. Upstream defines exactly these two, both about whether\n  message-info sequence numbers are real. Values mirror upstream's."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_FEATURE_MESSAGE_INFO_PUBLICATION_SEQUENCE_NUMBER: Type = 0;
+    pub const RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER: Type = 1;
 }
 pub mod rmw_liveliness_kind_t {
     #[doc = " Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`."]

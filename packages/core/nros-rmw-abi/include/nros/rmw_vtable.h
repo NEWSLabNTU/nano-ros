@@ -206,7 +206,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_subscription_t *subscription,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
-        rmw_event_callback_t cb,
+        rmw_status_event_callback_t cb,
         void                  *user_context);
 
     /** Register a callback for a publisher-side event. Same NULL /
@@ -216,7 +216,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_publisher_t  *publisher,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
-        rmw_event_callback_t cb,
+        rmw_status_event_callback_t cb,
         void                  *user_context);
 
     /** Phase 108.B — manually assert this publisher's liveliness.
@@ -540,6 +540,55 @@ typedef struct nros_rmw_vtable_t {
         void                  *ctx,
         void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len),
         bool                  *out_processed);
+    /* ---- Phase 376 W4 — identity + matched counts (all optional) ---- */
+
+    /** Upstream `rmw_get_implementation_identifier`.
+     *
+     *  The backend's name, static for the life of the image. A gid is only
+     *  comparable with another carrying the same identifier, which matters here
+     *  because `nros_rmw_cffi_register_named` admits several backends at once.
+     *
+     *  NULL slot: the runtime answers with the name the backend registered
+     *  under, so this is a slot a backend only needs when it wants to report
+     *  something other than its registry name. */
+    const char *(*get_implementation_identifier)(void);
+
+    /** Upstream `rmw_get_serialization_format`.
+     *
+     *  NULL slot: the runtime answers `"cdr"`. A backend overrides only if it
+     *  speaks something else — and a bridge image linking two backends is
+     *  exactly why this is per-BACKEND rather than a build-time constant. */
+    const char *(*get_serialization_format)(void);
+
+    /** Upstream `rmw_feature_supported`.
+     *
+     *  Whether the backend populates an optional piece of CONTENT — upstream's
+     *  two values both concern message-info sequence numbers. Deliberately not
+     *  expressed as slot nullity: a NULL pointer says the backend cannot
+     *  perform an OPERATION, which is a different question from whether the
+     *  data an implemented operation returns is populated.
+     *
+     *  NULL slot: the runtime answers `false` for every feature. */
+    bool (*feature_supported)(rmw_feature_t feature);
+
+    /** Upstream `rmw_get_gid_for_publisher`. Exact parity.
+     *
+     *  The backend zero-pads to the full width; see `rmw_gid_t`. */
+    rmw_ret_t (*get_gid_for_publisher)(const rmw_publisher_t *publisher,
+        rmw_gid_t *gid);
+
+    /** Upstream `rmw_publisher_count_matched_subscriptions`. Exact parity.
+     *
+     *  Every backend already tracks this to implement liveliness events — see
+     *  `service_server_is_available`, which is the same question one entity
+     *  over. NULL where a backend has no discovery at all (XRCE). */
+    rmw_ret_t (*publisher_count_matched_subscriptions)(
+        const rmw_publisher_t *publisher, size_t *subscription_count);
+
+    /** Upstream `rmw_subscription_count_matched_publishers`. Exact parity. */
+    rmw_ret_t (*subscription_count_matched_publishers)(
+        const rmw_subscription_t *subscription, size_t *publisher_count);
+
 } nros_rmw_vtable_t;
 
 /**

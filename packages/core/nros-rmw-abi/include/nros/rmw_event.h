@@ -83,7 +83,21 @@ typedef union rmw_event_payload_t {
  * thread. Must not block; long work should defer via a guard
  * condition or queue.
  */
-typedef void (*rmw_event_callback_t)(
+/* Phase 376 W5 — `rmw_status_event_callback_t`, NOT `rmw_event_callback_t`.
+ *
+ * Upstream binds `rmw_event_callback_t` to a DIFFERENT signature —
+ * `void(const void *user_data, size_t number_of_events)`, the callback
+ * `rmw_{service,client,subscription}_set_on_new_*_callback` install. Ours is
+ * the DDS STATUS-event callback: a kind, a payload union, and a context.
+ *
+ * Two types of one name whose shapes disagree is exactly the hazard
+ * `rmw_vtable.h`'s `#error` guard exists for — except this one would have been
+ * INSIDE our own header, where the guard cannot see it, and
+ * `scripts/rmw-abi-shape.py` compares parameter type NAMES, so it would have
+ * reported the `set_on_new_*` slots as matching upstream exactly while they
+ * took a callback of the wrong shape. Introduced by W3.a's rename; caught by
+ * the W5 audit before any slot depended on it. */
+typedef void (*rmw_status_event_callback_t)(
     rmw_event_type_t            kind,
     const rmw_event_payload_t  *payload,
     void                            *user_context);

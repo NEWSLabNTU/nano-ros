@@ -51,6 +51,44 @@
 #define NROS_RMW_HISTORY_KEEP_LAST 0
 #define NROS_RMW_HISTORY_KEEP_ALL  1
 
+/** Upstream `rmw_feature_t` — an optional piece of CONTENT a backend may or may
+ *  not populate. Upstream defines exactly these two, both about whether
+ *  message-info sequence numbers are real. Values mirror upstream's. */
+typedef enum rmw_feature_t {
+    RMW_FEATURE_MESSAGE_INFO_PUBLICATION_SEQUENCE_NUMBER = 0,
+    RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER   = 1,
+} rmw_feature_t;
+
+/** Storage size of a GID, in bytes. Upstream's `RMW_GID_STORAGE_SIZE`. */
+#define RMW_GID_STORAGE_SIZE 24u
+
+/** Global identifier for a publisher — upstream `rmw_gid_t`, field for field.
+ *
+ *  Phase 376 W4. Mirrors upstream exactly, including the 24-byte width and the
+ *  `implementation_identifier`. The identifier matters MORE here than upstream:
+ *  `nros_rmw_cffi_register_named` admits several backends in one image, so two
+ *  gids are comparable only when it matches.
+ *
+ *  Comparison is over the whole array, so a producer MUST zero-pad an
+ *  identifier shorter than 24 bytes rather than leave the tail undefined —
+ *  otherwise two gids naming the same entity compare unequal on stack garbage.
+ *
+ *  **24, not 16, and that is a discrepancy worth knowing about.** Our own
+ *  `MessageInfo::publisher_gid` (`nros-core`, `PUBLISHER_GID_SIZE`) is 16 bytes,
+ *  while the Cyclone backend already computes 24-byte gids for the DDS graph
+ *  (`entity_gid_24` in `graph.cpp`). Under upstream semantics those are the SAME
+ *  identifier, so a gid obtained from a take cannot today be compared with one
+ *  from `get_gid_for_publisher` without a documented mapping — and the narrower
+ *  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is
+ *  its own change and is NOT done here. */
+typedef struct rmw_gid_t {
+    /** Which backend produced this gid; gids from different backends are not
+     *  comparable. Borrowed, static for the life of the image. */
+    const char *implementation_identifier;
+    /** The identifier bytes, zero-padded to the full width. */
+    uint8_t data[RMW_GID_STORAGE_SIZE];
+} rmw_gid_t;
+
 /** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`. */
 typedef enum rmw_liveliness_kind_t {
     /** No liveliness assertion or tracking. Default for entities
