@@ -10,6 +10,13 @@
 # Needs root to load the module and create the link; re-runs are harmless.
 set -euo pipefail
 
+# issue 0726 — `grep -q` in a conditional cannot tell a NON-MATCH (exit 1) from
+# a grep that FAILED TO RUN (exit >= 2). Under a saturated fan-out that
+# difference has already produced a false, specific claim once. `nros_grep_q`
+# keeps 0/1 and turns >= 2 into a fatal.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/grep-q.sh"
+
 DEV="vcan0"
 ACTION="up"
 
@@ -31,7 +38,7 @@ done
 
 have_dev() { ip link show "$DEV" >/dev/null 2>&1; }
 
-is_up() { ip -br link show "$DEV" 2>/dev/null | grep -qE '\b(UP|UNKNOWN)\b'; }
+is_up() { ip -br link show "$DEV" 2>/dev/null | nros_grep_q '\b\(UP\|UNKNOWN\)\b'; }
 
 status() {
     if ! have_dev; then
@@ -83,11 +90,11 @@ case "$ACTION" in
 
         need_root "$@"
 
-        if ! lsmod 2>/dev/null | grep -q '^vcan\b'; then
+        if ! lsmod 2>/dev/null | nros_grep_q '^vcan\b'; then
             # Not fatal if it is built in rather than a module.
             modprobe vcan 2>/dev/null || true
         fi
-        if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | grep -q '^vcan\b'; then
+        if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | nros_grep_q '^vcan\b'; then
             echo "[vcan-setup] the vcan module is not available on this kernel" >&2
             echo "             (Debian/Ubuntu: linux-modules-extra-\$(uname -r))" >&2
             exit 1
