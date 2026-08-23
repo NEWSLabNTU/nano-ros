@@ -371,6 +371,76 @@ describing kernel priorities would be fiction. If POSIX gets one it must
 describe the EXECUTOR's ordering space, which is a different object from the
 other four and deserves deciding rather than assuming.
 
+## Prior art that is not prior — `play_launch` already implements this
+
+`play_launch` (vendored at `packages/cli/third-party/play_launch`) shipped the
+same design for Linux, and it is further along than this RFC's sketch. Its
+platform file:
+
+```yaml
+target: posix
+mapper: rate_monotonic          # or deadline_monotonic, chain_aware, manual
+resources:
+  rt_priority_band: { min: 10, max: 40 }
+  isolated_cpus: [0]
+overrides:
+  control_node: { priority: 20, core: 0 }
+```
+
+and its guide states the thesis in one line: *"You stop hand-writing every
+priority number — you write the mapper and the exceptions."*
+
+The correspondence is close enough that RFC-0079 should ADOPT rather than
+parallel it:
+
+| RFC-0079 | play_launch | note |
+| --- | --- | --- |
+| `pool.app` | `resources.rt_priority_band {min,max}` | same object |
+| deadline-monotonic derivation | `mapper:` — a NAMED, chosen algorithm | theirs is better; see below |
+| static pin, checked | `overrides:`, "overrides always beat derived" | same rule |
+| `[board.priority_plan]` per port | platform file per `target:` | same split |
+| `nros ws model-dims` | `check --explain` | same need |
+
+### Three things to take
+
+1. **`mapper:` is a named choice, not a fixed rule.** This RFC specified
+   deadline-monotonic as THE derivation. play_launch offers
+   `rate_monotonic`, `deadline_monotonic`, `chain_aware` and `manual`, and
+   picks per deployment. That is the better shape for the same reason profiles
+   are: rate-monotonic and deadline-monotonic are different answers to
+   different systems, and a tree that hard-codes one has made a scenario
+   assumption exactly like naming a profile `control`. RFC-0079 §3 should
+   become `mapper = "deadline_monotonic"` with a stated DEFAULT, not a law.
+2. **`chain_aware` is the mapper this codebase actually wants**, eventually —
+   it ranks by position in a causal pipeline rather than local rate, which is
+   what a sensor→filter→control corridor needs. RFC-0052 already names
+   `ros-launch-manifest-sched` as the shared, platform-agnostic core both
+   runtimes vendor; the mapper vocabulary should come from there rather than
+   be re-invented per consumer.
+3. **A node with no timing facts lands in a DEFAULT tier and is reported as
+   such**, rather than being given a plausible number. That is the same rule
+   RFC-0078 sets for WCET ("absent is not zero") and this RFC sets for budget
+   ("absent is not a budget"), and it should be stated for priority too:
+   absent is not a priority.
+
+### One thing NOT to take, and it is the reason this RFC exists
+
+**play_launch has a POOL and no RESERVATIONS.** `rt_priority_band` is a range
+the operator picks to sit clear of everything else on a Linux box; nothing in
+the platform file describes what else holds an address, because on Linux the
+things that do are other people's processes.
+
+On an RTOS the transport is OURS and lives in the same space as the tiers —
+zenoh-pico's read, lease and flush tasks, the netif poll task. That is the
+reservation concept, and it is the part of this design that has no analogue
+upstream. It is also where every measured defect came from: 0623, 0736, and
+the 4 collisions and 8 preemptions this RFC's own report counted.
+
+Notably it applies to nano-ros on POSIX too, and NOT to play_launch on POSIX,
+because nano-ros's zenoh threads are pthreads inside the nano-ros process while
+play_launch schedules processes from outside. Same target, different problem
+(issue 0765).
+
 ## Open questions
 
 * **`reserved.foreign` verification.** A plan can claim lwIP's `tcpip_thread`

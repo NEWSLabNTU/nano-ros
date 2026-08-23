@@ -382,6 +382,28 @@ does NOT cover, and is still open ground: `check-nuttx-shared-tree-headers` insp
 only, so a Rust helper joining `$NUTTX_DIR/nuttx` was invisible to it (0196 pattern). Filed from a
 tier-2 failure without searching archived/ first. See `archived/0748-*`. (2026-08-21)
 
+**#0765** (boards/orchestration, open 2026-08-23) — `[tiers.*.posix] priority` is ADVISORY: 11 pins
+across the bringups reach no kernel at all (`nros-board-linux` prints "advisory (not applied
+natively)" and calls no `sched_setscheduler`; `zpico_set_task_config` discards priority on
+Linux/macOS). The stated reason — RT scheduling needs privilege — is already SOLVED in this tree:
+`play_launch` applies SCHED_FIFO/RR + affinity per-thread with no root, via a ROS-free
+`play_launch_rt_helper` holding `CAP_SYS_NICE` only. Not identical though: play_launch schedules
+PROCESSES it spawns, nano-ros schedules THREADS it owns, and nano-ros has in-process transport
+threads (zenoh read/lease pthreads) so it has RFC-0079's reserved-band problem on POSIX too. Blocks
+a POSIX `[board.priority_plan]`. Three candidate directions, incl. retiring the knob — eleven
+numbers that do nothing are worse than none. See `0765-*`. (2026-08-23)
+
+**#0766** (boards/rmw/zephyr, open 2026-08-23) — Zephyr tiers are RAW `k_thread` priorities (signed;
+negative = cooperative, smaller = more urgent) created by `k_thread_create`, while zenoh-pico's Zephyr
+platform creates its read/lease tasks with `pthread_create` and sets them from a NORMALISED 0–31 band
+mapped onto `[0, CONFIG_NUM_PREEMPT_PRIORITIES-1]` under SCHED_RR. Two namespaces, two scales, one
+scheduler — so RFC-0079's `reserved.transport`, which must be in the tiers' own units, cannot be
+stated without Zephyr's POSIX→native conversion, and guessing the direction IS issue 0623. Worse
+underneath: both `CONFIG_POSIX_PRIORITY_SCHEDULING` (EXPERIMENTAL, off by default) and
+`CONFIG_PREEMPT_ENABLED` gate the apply, so on a stock image nothing is set and the transport
+INHERITS its creator — NuttX's pre-0736 situation one kernel over. Also unverifiable on a host with
+no Zephyr workspace. Blocks 8 of the 19 remaining UNPLANNED pins. See `0766-*`. (2026-08-23)
+
 **#0758** (core/boards, open 2026-08-22) — no platform wall-clock epoch source: embedded images stamp
 messages from their boot epoch and stamped-message peers reject them (ASI's Autoware `vehicle_cmd_gate`
 case — autonomous mode could not actuate until the consumer hand-rolled an SNTP hook + host server).
