@@ -102,7 +102,26 @@ __attribute__((used)) void nros_board_c_startup(void) {
  * loud so a bundle-only image says WHY it has no network instead of
  * timing out silently (RFC-0052 fail-loud).
  */
-__attribute__((weak)) int nros_board_register_netif(void) {
+/* The parameter list MATCHES `nros-board-freertos/c/network_glue.c` — issue
+ * 0769. This was `(void)` while the sole caller
+ * (`network_glue.c:nros_board_network_init`) passes four pointers, and the two
+ * are not merely different prototypes of different functions: they are two WEAK
+ * definitions of the SAME symbol, in crates that compose. This crate depends on
+ * `nros-board-freertos`, whose `build.rs` compiles `network_glue.c` into
+ * `libfreertos_glue.a`, so both land in an S32Z270 image and the LINKER picks
+ * one by archive order — the hazard issue 0050 exists to catch.
+ *
+ * Aligning the signature removes the ABI half. It does NOT remove the tie: two
+ * weak defaults still coexist, both return -1, and only THIS one prints. The
+ * fail-loud promise (RFC-0052) therefore still rides on winning a tie it does
+ * not control — see issue 0769 for the elimination. */
+__attribute__((weak)) int nros_board_register_netif(
+    const uint8_t mac[6],
+    const uint8_t ip[4],
+    const uint8_t netmask[4],
+    const uint8_t gw[4])
+{
+    (void)mac; (void)ip; (void)netmask; (void)gw;
     extern int printf(const char*, ...);
     printf("nros-board-s32z270-freertos: no netif — the NXP NETC glue is "
            "consumer-provided (strong nros_board_register_netif override); "

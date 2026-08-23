@@ -61,6 +61,17 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
+**#0769** (boards/build, open 2026-08-23) — ONE symbol, TWO weak definitions, in crates that compose:
+`nros-board-freertos/c/network_glue.c` and `nros-board-s32z270-freertos/c/board_s32z270.c` both define
+`nros_board_register_netif`, and s32z270 DEPENDS on nros-board-freertos, so both land in one image and
+archive order picks the winner (issue 0050's failure mode verbatim). Signatures differed too — four pointers
+vs `(void)` — confirmed by putting both prototypes in one TU, which is a hard `conflicting types` error the
+compiler never sees across translation units. The signature half is FIXED; the TIE is not: both return -1 but
+only s32z270's PRINTS, so RFC-0052's fail-loud promise rides on winning a tie it does not control.
+Strong-vs-weak cannot fix it — the consumer supplies the strong override, so a strong default would make
+that a duplicate-symbol error. Also revises phase-375's weak-symbol audit: the `override-default` class is 4
+files not 5, and `network_glue.c`'s own label looks wrong. See `0769-*`.
+
 **#0764** (testing/build, open 2026-08-23) — the fixture staleness probe compares MTIMES while the build
 compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moves without its content changing
 is STALE and rebuilding CANNOT clear it: the build is right to do nothing, the probe is right that the mtime
