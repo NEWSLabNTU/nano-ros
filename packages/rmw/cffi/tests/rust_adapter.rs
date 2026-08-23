@@ -18,9 +18,9 @@ use nros_rmw::{
     ServiceInfo, ServiceRequest, ServiceTrait, Session, Subscription, TopicInfo, TransportError,
 };
 use nros_rmw_cffi::{
-    NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventKind,
-    NrosRmwEventPayload, NrosRmwLivelinessChangedStatus, NrosRmwQos, NrosRmwService,
-    NrosRmwSession, RustBackendAdapter,
+    NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
+    NrosRmwEventKind, NrosRmwEventPayload, NrosRmwLivelinessChangedStatus, NrosRmwQos,
+    NrosRmwService, NrosRmwSession, RustBackendAdapter,
 };
 
 // ----------------------------------------------------------------------------
@@ -892,12 +892,15 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(ASSERT_LIVELINESS_HITS.load(Ordering::SeqCst), 1);
 
     // next_deadline_ms: the trampoline forwards to
-    // Session::next_deadline_ms which returns Some(0) on the
-    // NoopSession default body — actually, default trait returns
-    // None, but Session::next_deadline_ms default also returns None.
-    // The NoopSession doesn't override → trampoline returns -1.
-    let nd = unsafe { (vt.next_deadline_ms.unwrap())(&sess) };
-    assert_eq!(nd, -1, "expected -1 (no deadline), got {nd}");
+    // `Session::next_deadline_ms`, whose default body returns None. The
+    // NoopSession does not override it, so the slot reports OK with
+    // `has_deadline = false` — phase 376 W3.d step A replaced the old `-1`
+    // sentinel, which could not be told apart from a failed probe.
+    let mut nd_ms: u32 = 7;
+    let mut nd_has = true;
+    let nd = unsafe { (vt.next_deadline_ms.unwrap())(&sess, &mut nd_ms, &mut nd_has) };
+    assert_eq!(nd, NROS_RMW_RET_OK);
+    assert!(!nd_has, "the noop session schedules no internal deadline");
 
     // Subscription event registration — fixture fires callback inline.
     let last_kind: AtomicU32 = AtomicU32::new(0xffff_ffff);
@@ -968,11 +971,14 @@ fn rust_backend_adapter_rejects_null_pointers() {
             core::ptr::null_mut(),
         )
     };
-    assert!(rc < 0);
+    // Phase 376 W3.d — assert the NAMED status, not merely "negative". The old
+    // `rc < 0` accepted any error as the expected one, and it stops meaning
+    // anything at all once step B makes error codes positive.
+    assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
     // drive_io on uninitialised session (backend_data still null) →
     // INVALID_ARGUMENT.
     let rc = unsafe { (vt.drive_io.expect("vtable slot"))(&mut sess, 0) };
-    assert!(rc < 0);
+    assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
 }
 
 // Silence "unused import" if a future trim removes one of these

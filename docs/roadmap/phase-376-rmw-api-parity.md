@@ -314,7 +314,7 @@ allocation argument) are described above.
 
 Verified by: `slots present, args differ: 0` with every difference in the table.
 
-### W3.d step A — no slot multiplexes a count with a status (10 of 11 done)
+### W3.d step A — no slot multiplexes a count with a status (**COMPLETE, 11 of 11**)
 
 | slot | state |
 | --- | --- |
@@ -328,9 +328,18 @@ Verified by: `slots present, args differ: 0` with every difference in the table.
 | `try_recv_reply_raw` -> `take_response` | **done** |
 | `try_recv_sequence` -> `take_sequence` | **done** |
 | `sub_borrow` -> `take_loaned_message` | **done** |
-| `next_deadline_ms` | open — needs a decision first: does "no deadline" stay a negative sentinel, or become an out-parameter plus an explicit status? |
+| `next_deadline_ms` | **done** — took the out-parameter; see the note below |
 
-Verified by: no `int32_t (*slot)` remains in `rmw_vtable.h`.
+Verified by: no `int32_t (*slot)` remains in `rmw_vtable.h` — checked, none do —
+and `just rmw-ret-sign` reports 0 sign tests in BOTH classes, which is step B's
+precondition.
+
+`next_deadline_ms` was the one member step B did not force: its negative return
+was a "no deadline" SENTINEL rather than an error code, so nothing would have
+collided. Converted anyway, because it had the shape every other conversion
+found a silent failure in — a backend that FAILED to compute its deadline
+returned `-1` and was read as "quiet link", which is precisely the reading that
+makes the executor sleep longer. It now has an error channel it never had.
 
 ### W3.d step B — the values flip (open, blocked on step A)
 

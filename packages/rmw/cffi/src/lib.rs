@@ -1682,8 +1682,18 @@ impl Session for CffiSession {
             _reserved: [0u8; 8],
             backend_data: self.backend_data,
         };
-        let ret = unsafe { f(&view as *const _) };
-        if ret < 0 { None } else { Some(ret as u32) }
+        // Phase 376 W3.d step A — the trait returns `Option<u32>` and has no
+        // error channel, so a FAILING probe maps to `None` here. That is the
+        // same answer a quiet link gives, but it is now a decision rather than
+        // the arithmetic of a negative sentinel — and the backend can at least
+        // distinguish the two on its side of the seam.
+        let mut out_ms: u32 = 0;
+        let mut has_deadline = false;
+        let ret = unsafe { f(&view as *const _, &mut out_ms, &mut has_deadline) };
+        if ret != NROS_RMW_RET_OK || !has_deadline {
+            return None;
+        }
+        Some(out_ms)
     }
 
     unsafe fn set_wake_callback(

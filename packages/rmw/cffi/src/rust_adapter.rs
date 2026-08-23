@@ -1082,11 +1082,32 @@ unsafe extern "C" fn assert_publisher_liveliness_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn next_deadline_ms_trampoline<R: RustBackend>(
     session: *const NrosRmwSession,
-) -> i32 {
+    out_ms: *mut u32,
+    has_deadline: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — value and presence out, status returned.
+    if out_ms.is_null() || has_deadline.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // A NULL session was previously reported as `-1`, indistinguishable from a
+    // link with nothing scheduled. It is an invalid argument.
     let Some(s) = (unsafe { session_ref::<R::Session>(session) }) else {
-        return -1;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    Session::next_deadline_ms(s).map(|v| v as i32).unwrap_or(-1)
+    match Session::next_deadline_ms(s) {
+        Some(ms) => {
+            // SAFETY: both checked non-null above.
+            unsafe {
+                *out_ms = ms;
+                *has_deadline = true;
+            }
+        }
+        None => {
+            // SAFETY: checked non-null above.
+            unsafe { *has_deadline = false };
+        }
+    }
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(

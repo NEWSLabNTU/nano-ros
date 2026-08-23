@@ -52,15 +52,30 @@ STATUS_ONLY = {
     "register_publisher_event", "assert_publisher_liveliness",
     "set_wake_callback", "pub_loan", "pub_commit", "publish_streamed",
     "ping_session",
+    # Converted by W3.d step A — they are status-only now, so a sign test on
+    # any of them is in the "fix before the flip" class like the rest.
+    "take", "take_request", "take_response", "take_sequence",
+    "take_loaned_message", "has_data", "has_request",
+    "service_server_is_available", "subscription_supports_in_place",
+    "process_raw_in_place", "next_deadline_ms",
 }
 
 # Slots that multiplex count-or-flag with status. `< 0` is their CONTRACT today;
 # it becomes wrong when W3.d moves the count to an out-parameter.
-DUAL_RETURN = {
-    "try_recv_raw", "try_recv_request", "try_recv_reply_raw",
-    "try_recv_sequence", "sub_borrow", "has_data", "has_request",
-    "service_server_available", "subscription_supports_in_place",
-    "process_raw_in_place", "next_deadline_ms",
+# NOTE `set()`, not `{}` — the latter is an empty DICT, which made the
+# self-test's `STATUS_ONLY & DUAL_RETURN` raise a TypeError. Caught immediately,
+# which is what a self-test that checks its own invariants is for.
+DUAL_RETURN: set[str] = set()
+_DUAL_RETURN_NOTE = {
+    # EMPTY as of phase 376 W3.d step A (2026-08-23): every one of the eleven
+    # slots that multiplexed a count-or-flag with a status now reports through
+    # an out-parameter, so `rmw_vtable.h` contains no `int32_t (*slot)` at all.
+    #
+    # Kept as a named, empty set rather than deleted: the distinction between
+    # "a sign test that is the contract" and "a sign test that is a bug" is what
+    # this gate is about, and a future RTOS-only slot could reintroduce the
+    # first. An empty set says the migration finished; a deleted one says
+    # somebody forgot why there were two lists.
 }
 
 # `something = slot(...)` then `if (something < 0)` is the shape; a single-file

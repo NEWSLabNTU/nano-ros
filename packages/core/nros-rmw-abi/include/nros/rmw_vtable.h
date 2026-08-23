@@ -218,12 +218,24 @@ typedef struct nros_rmw_vtable_t {
      *  quiet links don't wake early, see no user-visible work, and
      *  round-trip back into `drive_io`.
      *
-     *  Returns a non-negative milliseconds value, or a negative value
-     *  meaning "no internal deadline" (treat as `None`).
+     *  Phase 376 W3.d step A — `*out_ms` carries the value and
+     *  `*has_deadline` whether there is one; both are written only
+     *  on `NROS_RMW_RET_OK`.
      *
-     *  NULL function pointer is permitted — the runtime treats it the
-     *  same as a negative return. */
-    int32_t (*next_deadline_ms)(const nros_rmw_session_t *session);
+     *  This slot was the ONE member of the eleven that step B's
+     *  renumbering did not force: its old negative return was a
+     *  "no deadline" SENTINEL, not an error code, so nothing would
+     *  have collided. It is converted anyway because it had the
+     *  shape every other conversion found a silent failure in — a
+     *  backend that FAILED to compute its deadline returned `-1`
+     *  and was read as "quiet link", which is exactly the reading
+     *  that makes the executor sleep longer. It now has an error
+     *  channel it never had.
+     *
+     *  NULL function pointer is permitted — the runtime treats it
+     *  the same as `*has_deadline = false`. */
+    nros_rmw_ret_t (*next_deadline_ms)(const nros_rmw_session_t *session,
+        uint32_t *out_ms, bool *has_deadline);
 
     /** Phase 124.B.1 — executor wake callback.
      *

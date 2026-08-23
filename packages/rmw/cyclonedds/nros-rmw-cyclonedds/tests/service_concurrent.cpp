@@ -29,8 +29,16 @@ constexpr int kCallsPerClient = 1;
 
 // Phase-301: the blocking `call_raw` vtable slot was deleted; emulate
 // the old blocking call with the non-blocking send + poll pair.
-int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
-                      size_t rep_cap) {
+/* Phase 376 W3.d — returns a STATUS and reports the reply length through
+ * `*out_len`. It used to return "bytes, or a negative status", which made every
+ * caller test `n < 0` — a test that stops meaning anything once step B gives
+ * error codes positive values. The helper follows the same rule as the slots it
+ * drives. */
+nros_rmw_ret_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len,
+                             uint8_t *rep, size_t rep_cap, size_t *out_len) {
+    if (out_len == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     nros_rmw_ret_t sr = g_vt->send_request_raw(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
@@ -45,7 +53,8 @@ int32_t call_blocking(nros_rmw_client_t *cli, const uint8_t *req, size_t req_len
             return rc;
         }
         if (took) {
-            return static_cast<int32_t>(n);
+            *out_len = n;
+            return NROS_RMW_RET_OK;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -106,11 +115,12 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
             req[12 + k] = static_cast<uint8_t>((b >> (k * 8)) & 0xff);
         }
         uint8_t rep[64] = {};
-        int32_t n = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep));
-        if (n < 0) {
+        size_t n = 0;
+        nros_rmw_ret_t call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
+        if (call_rc != NROS_RMW_RET_OK) {
             std::fprintf(stderr,
                 "client %d call %d: call_blocking returned %d\n",
-                client_idx, i, n);
+                client_idx, i, (int)call_rc);
             failures->fetch_add(1);
             break;
         }

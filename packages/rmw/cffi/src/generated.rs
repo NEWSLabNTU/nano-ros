@@ -319,9 +319,14 @@ pub struct nros_rmw_vtable_t {
     pub assert_publisher_liveliness: ::core::option::Option<
         unsafe extern "C" fn(publisher: *mut nros_rmw_publisher_t) -> nros_rmw_ret_t,
     >,
-    #[doc = " Phase 110.0 — backend's next internal-event deadline in\n  milliseconds from now (lease keepalive, heartbeat, reader\n  ACK-NACK timeout, etc.). The runtime caps its `drive_io`\n  timeout against `min(user_timeout, timer_deadline, this)` so\n  quiet links don't wake early, see no user-visible work, and\n  round-trip back into `drive_io`.\n\n  Returns a non-negative milliseconds value, or a negative value\n  meaning \"no internal deadline\" (treat as `None`).\n\n  NULL function pointer is permitted — the runtime treats it the\n  same as a negative return."]
-    pub next_deadline_ms:
-        ::core::option::Option<unsafe extern "C" fn(session: *const nros_rmw_session_t) -> i32>,
+    #[doc = " Phase 110.0 — backend's next internal-event deadline in\n  milliseconds from now (lease keepalive, heartbeat, reader\n  ACK-NACK timeout, etc.). The runtime caps its `drive_io`\n  timeout against `min(user_timeout, timer_deadline, this)` so\n  quiet links don't wake early, see no user-visible work, and\n  round-trip back into `drive_io`.\n\n  Phase 376 W3.d step A — `*out_ms` carries the value and\n  `*has_deadline` whether there is one; both are written only\n  on `NROS_RMW_RET_OK`.\n\n  This slot was the ONE member of the eleven that step B's\n  renumbering did not force: its old negative return was a\n  \"no deadline\" SENTINEL, not an error code, so nothing would\n  have collided. It is converted anyway because it had the\n  shape every other conversion found a silent failure in — a\n  backend that FAILED to compute its deadline returned `-1`\n  and was read as \"quiet link\", which is exactly the reading\n  that makes the executor sleep longer. It now has an error\n  channel it never had.\n\n  NULL function pointer is permitted — the runtime treats it\n  the same as `*has_deadline = false`."]
+    pub next_deadline_ms: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const nros_rmw_session_t,
+            out_ms: *mut u32,
+            has_deadline: *mut bool,
+        ) -> nros_rmw_ret_t,
+    >,
     #[doc = " Phase 124.B.1 — executor wake callback.\n\n  The runtime calls this once per session right after `open`\n  with `cb` pointing at a runtime-supplied function and `ctx`\n  pointing at the executor's wake state. The backend stores\n  both in its per-session state and calls `cb(ctx)` whenever\n  its transport-notification path fires — datagram arrival,\n  condvar wake-up, select-fd ready, etc. The runtime cb does\n  flag-write + condvar-signal atomically so a `spin_once`\n  blocked on the wake condvar resumes immediately.\n\n  `cb == NULL` clears any previously installed callback; the\n  backend must drop the stored (cb, ctx) and never invoke\n  again after this returns.\n\n  NULL slot = backend has no asynchronous wake path (purely\n  poll-driven: XRCE, bare-metal). The runtime still drains the\n  session on its deadline-bound cv-wait boundary."]
     pub set_wake_callback: ::core::option::Option<
         unsafe extern "C" fn(
