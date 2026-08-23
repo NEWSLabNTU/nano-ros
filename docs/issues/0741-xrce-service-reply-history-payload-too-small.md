@@ -533,3 +533,54 @@ x3  6d  .../qemu-arm-baremetal/thumbv7m-none-eabi/nros-relwithdebinfo/qemu-barem
 
 Two coordinates that have produced no runtime result in 5–6 days — the 0445
 shape, in a lane nobody in this issue is watching.
+
+## Reproduced on the second host (2026-08-23)
+
+The environment-specific theory is now much weaker: this host reproduces the
+reported symptom exactly.
+
+```
+cargo nextest run -p nros-tests --test xrce_ros2_interop \
+    -E 'test(test_xrce_service_ros2_client)' --retries 0
+
+FAIL [11.698s] nros-tests::xrce_ros2_interop test_xrce_service_ros2_client
+[RTPS_READER_HISTORY Error] Change payload size of '28' bytes is larger than
+the history payload size of '15' bytes and cannot be resized.
+ROS 2 service client did not get sum=8 from the nano-ros XRCE service server
+```
+
+An 11.7 s runtime, not a sub-second bail — the fixture built, the server ran and
+the ROS 2 client ran. Four earlier attempts on this host never reached the test:
+three died on STALE fixtures (a `git pull` between building them and running,
+which re-stamps every source) and one on unrelated transient gate reds that other
+sessions have since fixed. None of those were evidence about the bug, and the
+"does not reproduce" reading nearly drawn from them would have been wrong.
+
+So the tally is **two hosts reproduce, two environments do not** (the other host
+and the ROS distrobox). Whatever explains the split has to account for both
+sides; a fix should not be accepted until it does.
+
+## Investigation state — NOT fixed
+
+Ruled out so far, by reading:
+
+* **The type names are correct.** `xrce_dds_reply_type()` produces
+  `<Service>_Response_` and `xrce_dds_request_type()` produces
+  `<Service>_Request_` (`session.c`), which is what ROS 2 expects. The topic
+  keeps the `Reply`/`Request` suffix while the type uses `Response`; both
+  spellings are handled.
+* **We never advertise a size.** `create_service` declares the replier with
+  `uxr_buffer_create_replier_bin(...)` passing type NAMES only — no type
+  description and no max-serialized-size. So the 15 is not a number nano-ros
+  computes and gets wrong; it is inferred downstream, by the Agent or by
+  Fast-DDS.
+
+That is where this stops. The next question is where the reply reader's history
+size actually comes from — the Agent's dynamic type registration under a bin
+profile, or the ROS 2 client sizing its reader from a discovered writer's
+advertised max size — and answering it needs Agent-side inspection rather than
+more reading of this repo.
+
+Worth keeping in view: the sibling `test_xrce_action_ros2_client` and
+`test_xrce_to_ros2_pubsub` PASS in the same run. Whatever is wrong is specific to
+the service REPLY path, which is a strong constraint on any proposed cause.
