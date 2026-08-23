@@ -818,6 +818,54 @@ pub fn topic_endpoints_for_node(report: &str, kind: &str, node: &str) -> Vec<Top
         .collect()
 }
 
+/// Poll `ros2 topic info --verbose` until every wanted `(kind, node)` endpoint
+/// has appeared, or the deadline passes — issues 0705, 0761.
+///
+/// **A single-shot query is a race by construction.** The graph is discovered
+/// asynchronously by the ros2 daemon, so "not there yet" and "not there" print
+/// the same thing, and under sweep load the first is far more likely: issue
+/// 0761's `qos_override_e2e` slept a fixed 3 s, asked once, and failed with
+/// `Unknown topic '/qos_chatter'` in a 1658-test sweep while passing solo in
+/// 5.08 s on the same checkout and fixtures. Issue 0705 is the same failure one
+/// file over, where it was worse than a flake: the single shot returned a
+/// report naming some OTHER cell's `talker`, so it read as "the wrong graph"
+/// rather than "not yet propagated".
+///
+/// This does not weaken any assertion. It returns the LAST report and the
+/// matches found in it; the caller still asserts the full profile and still
+/// fails on timeout, carrying that report.
+///
+/// Two things it deliberately does not wait out:
+///
+/// * **More than one match for a wanted endpoint.** That is the sibling-cell
+///   case (issue 0690), and waiting only makes the report bigger. It returns so
+///   the caller's assertion can name the ambiguity.
+/// * **A `ros2` invocation that ERRORS.** Propagated, not retried — a broken
+///   environment is not a slow one, and retrying it for 20 s only delays the
+///   message that says so.
+pub fn await_topic_endpoints(
+    locator: &str,
+    distro: &str,
+    topic: &str,
+    want: &[(&str, &str)],
+    timeout: Duration,
+) -> TestResult<(String, Vec<Vec<TopicEndpoint>>)> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let report = ros2_topic_info_verbose(locator, distro, topic)?;
+        let found: Vec<Vec<TopicEndpoint>> = want
+            .iter()
+            .map(|(kind, node)| topic_endpoints_for_node(&report, kind, node))
+            .collect();
+        let all_present = found.iter().all(|m| !m.is_empty());
+        let ambiguous = found.iter().any(|m| m.len() > 1);
+        if all_present || ambiguous || std::time::Instant::now() >= deadline {
+            return Ok((report, found));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);

@@ -46,7 +46,7 @@ use nros_tests::{
         ManagedProcess, ZenohRouter, build_native_workspace_rust_qos_entry, require_zenohd,
         zenohd_unique,
     },
-    ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
+    ros2::{DEFAULT_ROS_DISTRO, require_ros2},
     skip,
 };
 use rstest::rstest;
@@ -133,41 +133,71 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client")
-        .env("NROS_ENTRY_SPIN_MS", "20000")
+        // Must outlast DISCOVERY_BUDGET below, or the wait races the talker's
+        // own exit: the entry would go away mid-poll and the timeout would
+        // report "never discovered" for a publisher that had simply stopped.
+        .env("NROS_ENTRY_SPIN_MS", "45000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut talker = ManagedProcess::spawn_command(cmd, "qos_talker").expect("spawn qos entry");
 
-    // The publisher must exist and its liveliness token must have propagated
-    // before `ros2 topic info` can report anything.
-    std::thread::sleep(Duration::from_secs(3));
-
-    // The TempDir holds the rmw_zenoh session config alive for the child.
-    let (setup, _cfg) = ros2_env_setup_with_locator(DEFAULT_ROS_DISTRO, &locator);
-    let out = Command::new("bash")
-        .arg("-lc")
-        .arg(format!("{setup} && ros2 topic info --verbose {TOPIC}"))
-        .output()
-        .expect("run ros2 topic info");
+    // Issue 0761 — poll, do not sleep-then-ask-once.
+    //
+    // This slept a fixed 3 s and queried once. In a 1658-test sweep the ros2
+    // daemon had not finished discovering `/qos_chatter` within that window and
+    // the test failed with `Unknown topic`, which reads like a discovery
+    // REGRESSION; an immediate solo rerun on the same checkout and fixtures
+    // passed in 5.08 s. Issue 0705 had already replaced this exact shape in
+    // `workspace_features_e2e`; this is the site that sweep missed.
+    //
+    // The wait is bounded and the assertions below are untouched, so a real
+    // regression still fails — just after 20 s instead of 3.
+    const DISCOVERY_BUDGET: Duration = Duration::from_secs(20);
+    let (report, found) = nros_tests::ros2::await_topic_endpoints(
+        &locator,
+        DEFAULT_ROS_DISTRO,
+        TOPIC,
+        // Issue 0690 — select by NODE, not by "first block of this kind". The
+        // report is a flat list and 24 launch files publish on a `talker`, so
+        // first-of-kind can read a SIBLING CELL's endpoint and assert against
+        // its profile. The names come from `rust_qos.launch.xml`.
+        &[
+            ("PUBLISHER", "reliable_talker"),
+            ("SUBSCRIPTION", "qos_listener"),
+        ],
+        DISCOVERY_BUDGET,
+    )
+    .unwrap_or_else(|e| {
+        talker.kill();
+        panic!("ros2 topic info failed: {e}")
+    });
     talker.kill();
 
-    let report = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
-
+    let waited = DISCOVERY_BUDGET.as_secs();
     // Per-ENDPOINT assertions. A whole-report `contains` is useless here: the
     // report carries the publisher AND the subscription, so a substring match
     // passes on the wrong endpoint's profile. (Verified the hard way — an
     // earlier draft of this test passed with the issue-0306 fix reverted,
     // because the subscription's TRANSIENT_LOCAL satisfied the assertion while
     // the publisher's had been dropped to VOLATILE.)
-    let publisher = endpoint_block(&report, "PUBLISHER").unwrap_or_else(|| {
-        panic!("ros2 did not discover the nros publisher on {TOPIC}:\n{report}")
-    });
-    let subscription = endpoint_block(&report, "SUBSCRIPTION").unwrap_or_else(|| {
-        panic!("ros2 did not discover the nros subscription on {TOPIC}:\n{report}")
-    });
+    let one = |eps: &[nros_tests::ros2::TopicEndpoint], kind: &str, node: &str| -> String {
+        match eps {
+            [] => panic!(
+                "ros2 did not discover the nros {kind} `{node}` on {TOPIC} within {waited}s.\n\
+                 This is a DEADLINE, not a single shot (issue 0761), so the graph really did \
+                 not carry it — check the entry started and the router locator matches, not \
+                 discovery timing.\n{report}"
+            ),
+            [e] => e.block.clone(),
+            many => panic!(
+                "{} endpoints named `{node}` of kind {kind} on {TOPIC} — a sibling cell is \
+                 publishing into this graph (issue 0690), so asserting a profile here would \
+                 read someone else's.\n{report}",
+                many.len()
+            ),
+        }
+    };
+    let publisher = one(&found[0], "PUBLISHER", "reliable_talker");
+    let subscription = one(&found[1], "SUBSCRIPTION", "qos_listener");
 
     // The override is the ONLY possible source of BEST_EFFORT — the node's code
     // declares `reliable`.
@@ -200,21 +230,6 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
         "the subscription's code-declared durability was dropped (issue 0306 \
          regression):\n{subscription}"
     );
-}
-
-/// Slice one `Endpoint type: <kind>` section out of `ros2 topic info --verbose`
-/// output, up to the next blank-line-separated endpoint.
-fn endpoint_block(report: &str, kind: &str) -> Option<String> {
-    let marker = format!("Endpoint type: {kind}");
-    let start = report.find(&marker)?;
-    let rest = &report[start..];
-    // Each endpoint's QoS block ends at the next "Node name:" (the following
-    // endpoint) or at the end of the report.
-    let end = rest[marker.len()..]
-        .find("Node name:")
-        .map(|i| i + marker.len())
-        .unwrap_or(rest.len());
-    Some(rest[..end].to_string())
 }
 
 // phase-329 W3 — bind this test to `interop::CELLS` (the pattern from

@@ -75,9 +75,7 @@ use nros_tests::{
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
     },
     matrix::{Cell as MCell, Lang as ML, Tier as MT, W1Consumer, Workload as MW, w1_consumer_of},
-    ros2::{
-        DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator, ros2_topic_info_verbose,
-    },
+    ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
 };
 use rstest::rstest;
 use std::{
@@ -701,36 +699,27 @@ fn run_cell(pcell: &MCell) {
                 // node's endpoint and still asserts the full declared profile.
                 // On timeout it fails exactly as before, carrying the last
                 // report.
-                let deadline = Instant::now() + Duration::from_secs(20);
-                let (report, pub_eps, sub_eps) = loop {
-                    let report = ros2_topic_info_verbose(&locator, DEFAULT_ROS_DISTRO, topic)
-                        .unwrap_or_else(|e| {
-                            lis.kill();
-                            tlk.kill();
-                            panic!("[{} {}] ros2 topic info failed: {e}", lang, workload)
-                        });
-                    let pub_eps = nros_tests::ros2::topic_endpoints_for_node(
-                        &report,
-                        "PUBLISHER",
-                        "qos_talker",
-                    );
-                    let sub_eps = nros_tests::ros2::topic_endpoints_for_node(
-                        &report,
-                        "SUBSCRIPTION",
-                        "qos_listener",
-                    );
-                    // More than one match is NOT something to wait out — it is
-                    // the sibling-cell case, and waiting would only make the
-                    // report bigger. Break and let the assertion below name it.
-                    if (!pub_eps.is_empty() && !sub_eps.is_empty())
-                        || pub_eps.len() > 1
-                        || sub_eps.len() > 1
-                        || Instant::now() >= deadline
-                    {
-                        break (report, pub_eps, sub_eps);
-                    }
-                    std::thread::sleep(Duration::from_millis(500));
-                };
+                // The poll this loop used to spell inline now lives in
+                // `await_topic_endpoints` — issue 0761 found `qos_override_e2e`
+                // still single-shotting, i.e. this remedy had been applied at
+                // one site and not its sibling. One helper, so the next site is
+                // a call rather than a re-derivation.
+                let (report, found) = nros_tests::ros2::await_topic_endpoints(
+                    &locator,
+                    DEFAULT_ROS_DISTRO,
+                    topic,
+                    &[
+                        ("PUBLISHER", "qos_talker"),
+                        ("SUBSCRIPTION", "qos_listener"),
+                    ],
+                    Duration::from_secs(20),
+                )
+                .unwrap_or_else(|e| {
+                    lis.kill();
+                    tlk.kill();
+                    panic!("[{} {}] ros2 topic info failed: {e}", lang, workload)
+                });
+                let (pub_eps, sub_eps) = (found[0].clone(), found[1].clone());
                 // Issue 0312 (fixed) — both endpoints are asserted. The
                 // subscription used to be absent from discovery entirely: these
                 // C examples pass an EMPTY type hash, which landed in the

@@ -61,7 +61,16 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
-**#0761** (testing/interop, open 2026-08-23) — `qos_override_e2e`'s ROS 2-discovery assertion flakes under full-sweep load (`Unknown topic '/qos_chatter'`), passes solo; costs a re-run-and-re-judge per hit. See `0761-*`.
+Recently resolved (2026-08-23): **#0761** (testing/interop) — `qos_override_e2e` flaked under full-sweep
+load with `Unknown topic '/qos_chatter'` and passed solo. Not a short sleep: a SINGLE-SHOT query, which is a
+race by construction — it slept a fixed 3 s and asked `ros2 topic info` exactly once. Issue 0705 had already
+replaced that shape in `workspace_features_e2e`; this was the site that sweep missed, so the fix adopts the
+existing remedy rather than inventing a second one (`await_topic_endpoints`, now called by BOTH sites). Solo
+runtime went DOWN 6.58 s to 3.25 s — the old code always paid its 3 s whether discovery was done or not. The
+required sweep found two more defects at that site: 0690's first-block-of-kind selection (a foreign endpoint
+on the topic could be the one asserted against) and a private copy of `topic_endpoint_block` still carrying
+0690's bug after the library's copy was fixed. Mutation-verified both ways; NOT reproduced under sweep load,
+so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
