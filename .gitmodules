@@ -1,6 +1,7 @@
 [submodule "packages/rmw/zenoh/zpico-sys/zenoh-pico"]
 	path = packages/rmw/zenoh/zpico-sys/zenoh-pico
 	url = https://github.com/jerry73204/zenoh-pico.git
+	branch = nano-ros
 [submodule "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"]
 	path = packages/rmw/xrce/xrce-sys/micro-xrce-dds-client
 	url = https://github.com/eProsima/Micro-XRCE-DDS-Client.git
@@ -16,6 +17,7 @@
 [submodule "third-party/freertos/lwip"]
 	path = third-party/freertos/lwip
 	url = https://github.com/jerry73204/lwip.git
+	branch = nano-ros
 [submodule "third-party/threadx/kernel"]
 	path = third-party/threadx/kernel
 	url = https://github.com/NEWSLabNTU/threadx.git
@@ -29,18 +31,21 @@
 [submodule "third-party/threadx/netxduo"]
 	path = third-party/threadx/netxduo
 	url = https://github.com/NEWSLabNTU/netxduo.git
+	branch = nano-ros
 [submodule "third-party/esp32/qemu"]
 	path = third-party/esp32/qemu
 	url = https://github.com/espressif/qemu.git
 [submodule "third-party/nuttx/libc"]
 	path = third-party/nuttx/libc
 	url = https://github.com/jerry73204/libc.git
+	branch = nuttx-0.2
 [submodule "third-party/xrce/agent"]
 	path = third-party/xrce/agent
 	url = https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
 [submodule "third-party/nuttx/nuttx"]
 	path = third-party/nuttx/nuttx
 	url = https://github.com/jerry73204/nuttx.git
+	branch = nano-ros
 [submodule "third-party/nuttx/nuttx-apps"]
 	path = third-party/nuttx/nuttx-apps
 	url = https://github.com/apache/nuttx-apps.git
@@ -50,6 +55,7 @@
 [submodule "third-party/px4/px4-rs"]
 	path = third-party/px4/px4-rs
 	url = https://github.com/jerry73204/px4-rs.git
+	branch = main
 [submodule "third-party/px4/PX4-Autopilot"]
 	path = third-party/px4/PX4-Autopilot
 	url = https://github.com/PX4/PX4-Autopilot.git
@@ -68,6 +74,8 @@
 [submodule "packages/cli/testing_workspaces/ros2_rust_examples"]
 	path = packages/cli/testing_workspaces/ros2_rust_examples
 	url = https://github.com/jerry73204/ros2_rust_examples.git
+	branch = add-justfile
 [submodule "packages/cli/third-party/play_launch"]
 	path = packages/cli/third-party/play_launch
 	url = https://github.com/NEWSLabNTU/play_launch.git
+	branch = main
