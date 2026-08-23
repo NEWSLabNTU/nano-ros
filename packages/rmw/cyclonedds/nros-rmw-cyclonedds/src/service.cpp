@@ -894,12 +894,21 @@ int32_t service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf, size_
     return NROS_RMW_RET_WOULD_BLOCK;
 }
 
-int32_t service_has_request(nros_rmw_service_t* server) {
-    if (server == nullptr || server->backend_data == nullptr) return 0;
+nros_rmw_ret_t service_has_request(nros_rmw_service_t* server, bool* out_has_request) {
+    // Phase 376 W3.d step A — flag out, status returned. Note the middle case:
+    // a failing `dds_get_status_changes` used to return 0, indistinguishable
+    // from "no request pending". It is now an error the caller can see.
+    if (out_has_request == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (server == nullptr || server->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     auto* state = static_cast<ServerState*>(server->backend_data);
     uint32_t status = 0;
-    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK) return 0;
-    return (status & DDS_DATA_AVAILABLE_STATUS) ? 1 : 0;
+    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK) {
+        return NROS_RMW_RET_ERROR;
+    }
+    *out_has_request = (status & DDS_DATA_AVAILABLE_STATUS) != 0;
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,

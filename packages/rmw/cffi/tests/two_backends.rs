@@ -143,8 +143,13 @@ unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) {}
 unsafe extern "C" fn noop_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_has_data(_: *mut NrosRmwSubscription) -> i32 {
-    0
+unsafe extern "C" fn noop_has_data(
+    _: *mut NrosRmwSubscription,
+    out_has_data: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — flag out, status returned.
+    unsafe { *out_has_data = (0) != 0 };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_create_srv(
     _: *mut NrosRmwSession,
@@ -166,8 +171,13 @@ unsafe extern "C" fn noop_try_recv_req(
 ) -> i32 {
     -1
 }
-unsafe extern "C" fn noop_has_request(_: *mut NrosRmwService) -> i32 {
-    0
+unsafe extern "C" fn noop_has_request(
+    _: *mut NrosRmwService,
+    out_has_request: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — flag out, status returned.
+    unsafe { *out_has_request = (0) != 0 };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_send_reply(
     _: *mut NrosRmwService,

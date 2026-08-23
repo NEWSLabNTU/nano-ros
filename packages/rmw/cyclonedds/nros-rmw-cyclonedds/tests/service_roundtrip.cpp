@@ -121,7 +121,9 @@ int main() {
     // arrives; service the request from a worker thread.
     std::thread server([&]() {
         for (int i = 0; i < 200; ++i) {
-            if (g_vt->has_request(&srv)) {
+            bool has_r = false;
+            /* Phase 376 W3.d step A — flag out, status returned. */
+            if (g_vt->has_request(&srv, &has_r) == NROS_RMW_RET_OK && has_r) {
                 uint8_t rbuf[64] = {};
                 int64_t seq = -1;
                 int32_t r = g_vt->try_recv_request(&srv, rbuf, sizeof(rbuf), &seq);

@@ -101,7 +101,9 @@ int main() {
     // Poll for data (max ~1s).
     bool got = false;
     for (int i = 0; i < 100 && !got; ++i) {
-        if (g_vt->has_data(&sub)) {
+        bool has_d = false;
+        /* Phase 376 W3.d step A — flag out, status returned. */
+        if (g_vt->has_data(&sub, &has_d) == NROS_RMW_RET_OK && has_d) {
             got = true;
             break;
         }

@@ -63,9 +63,10 @@ int main() {
         return 5;
     }
 
-    // No traffic yet — has_request must be 0.
-    if (g_vt->has_request(&srv) != 0) {
-        std::fprintf(stderr, "has_request should be 0 with no traffic\n");
+    // No traffic yet — has_request must report false, with an OK status.
+    bool has_r = true;
+    if (g_vt->has_request(&srv, &has_r) != NROS_RMW_RET_OK || has_r) {
+        std::fprintf(stderr, "has_request should be false with no traffic\n");
         return 6;
     }
     // send_request_raw with too-short request → invalid arg.

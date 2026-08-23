@@ -31,8 +31,12 @@ int32_t service_try_recv_request(nros_rmw_service_t* /*server*/, uint8_t* /*buf*
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-int32_t service_has_request(nros_rmw_service_t* /*server*/) {
-    return 0;
+nros_rmw_ret_t service_has_request(nros_rmw_service_t* /*server*/, bool* out_has_request) {
+    // uORB has no service transport at all — see `service_send_reply`, which
+    // returns UNSUPPORTED. "Never a request" is the honest answer, not an error.
+    if (out_has_request == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *out_has_request = false;
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t service_send_reply(nros_rmw_service_t* /*server*/, int64_t /*seq*/,

@@ -177,21 +177,28 @@ int32_t subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
     return static_cast<int32_t>(state->meta->o_size);
 }
 
-int32_t subscription_has_data(nros_rmw_subscription_t *subscriber) {
+nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t *subscriber, bool *out_has_data) {
+    // Phase 376 W3.d step A — flag out, status returned. A failing `orb_check`
+    // used to be reported as "no data"; it is now an error.
+    if (out_has_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
-        return 0;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
     // Fast path: the callback flag is the authoritative signal.
     if (state->callback_active
         && !state->ready.load(std::memory_order_acquire)) {
-        return 0;
+        *out_has_data = false;
+        return NROS_RMW_RET_OK;
     }
     bool updated = false;
     if (orb_check(state->sub_handle, &updated) != 0) {
-        return 0;
+        return NROS_RMW_RET_ERROR;
     }
-    return updated ? 1 : 0;
+    *out_has_data = updated;
+    return NROS_RMW_RET_OK;
 }
 
 } // namespace nros_rmw_uorb

@@ -95,9 +95,20 @@ int main(void) {
                 (int)rr);
         return EXIT_FAILURE;
     }
-    int32_t hd = g_received_vtable->has_data(&sub);
-    if (hd != 0) {
-        fprintf(stderr, "FAIL: has_data on NULL backend_data returned %d, expected 0\n", (int)hd);
+    /* Phase 376 W3.d step A — a NULL `backend_data` is now INVALID_ARGUMENT
+       rather than a silent "no data". The two were indistinguishable before:
+       an unbound subscription and an empty one gave the same answer, so a
+       caller could poll a broken handle forever and read it as quiet. The flag
+       must also be left untouched on that path. */
+    bool hd = true;
+    nros_rmw_ret_t hd_rc = g_received_vtable->has_data(&sub, &hd);
+    if (hd_rc != NROS_RMW_RET_INVALID_ARGUMENT) {
+        fprintf(stderr, "FAIL: has_data on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
+                (int)hd_rc);
+        return EXIT_FAILURE;
+    }
+    if (!hd) {
+        fprintf(stderr, "FAIL: has_data wrote the out-parameter on an error path\n");
         return EXIT_FAILURE;
     }
 

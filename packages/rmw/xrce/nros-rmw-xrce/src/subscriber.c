@@ -246,15 +246,23 @@ int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t *subscriber,
     return ret;
 }
 
-int32_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber) {
+nros_rmw_ret_t xrce_subscription_has_data(nros_rmw_subscription_t *subscriber,
+                                          bool *out_has_data) {
+    /* Phase 376 W3.d step A — flag out, status returned. */
+    if (out_has_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     if (subscriber == NULL || subscriber->backend_data == NULL) {
-        return 0;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
     if (ss->slot == NULL) {
-        return 0;
+        /* No slot bound yet: legitimately nothing to take. */
+        *out_has_data = false;
+        return NROS_RMW_RET_OK;
     }
-    return ss->slot->count > 0 ? 1 : 0;
+    *out_has_data = ss->slot->count > 0;
+    return NROS_RMW_RET_OK;
 }
 
 /* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a

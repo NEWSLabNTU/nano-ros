@@ -286,15 +286,21 @@ int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
     return (int32_t)len;
 }
 
-int32_t xrce_service_has_request(nros_rmw_service_t* server) {
+nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_has_request) {
+    /* Phase 376 W3.d step A — flag out, status returned. */
+    if (out_has_request == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     if (server == NULL || server->backend_data == NULL) {
-        return 0;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_service_server_state* ss = (xrce_service_server_state*)server->backend_data;
     if (ss->slot == NULL) {
-        return 0;
+        *out_has_request = false;
+        return NROS_RMW_RET_OK;
     }
-    return ss->slot->req_count > 0 ? 1 : 0;
+    *out_has_request = ss->slot->req_count > 0;
+    return NROS_RMW_RET_OK;
 }
 
 nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,

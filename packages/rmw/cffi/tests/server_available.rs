@@ -99,8 +99,13 @@ unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
 unsafe extern "C" fn stub_try_recv_raw(_: *mut NrosRmwSubscription, _: *mut u8, _: usize) -> i32 {
     0
 }
-unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscription) -> i32 {
-    0
+unsafe extern "C" fn stub_has_data(
+    _: *mut NrosRmwSubscription,
+    out_has_data: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — flag out, status returned.
+    unsafe { *out_has_data = (0) != 0 };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_create_service(
     _: *mut NrosRmwSession,
@@ -122,8 +127,13 @@ unsafe extern "C" fn stub_try_recv_request(
 ) -> i32 {
     0
 }
-unsafe extern "C" fn stub_has_request(_: *mut NrosRmwService) -> i32 {
-    0
+unsafe extern "C" fn stub_has_request(
+    _: *mut NrosRmwService,
+    out_has_request: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — flag out, status returned.
+    unsafe { *out_has_request = (0) != 0 };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_send_reply(
     _: *mut NrosRmwService,

@@ -215,8 +215,12 @@ pub struct nros_rmw_vtable_t {
             buf_len: usize,
         ) -> i32,
     >,
+    #[doc = " Phase 376 W3.d step A — status in the return, answer in the\n  out-parameter, so no slot multiplexes a flag with a status.\n  `*out_has_data` is written only on `NROS_RMW_RET_OK`.\n\n  RTOS addition: upstream has no equivalent, because a hosted\n  caller reaches for a wait-set. This is the poll a loop with\n  no wait-set needs, and it allocates nothing.\n\n  A backend must not mutate subscription state here — the\n  probe is logically read-only."]
     pub has_data: ::core::option::Option<
-        unsafe extern "C" fn(subscription: *mut nros_rmw_subscription_t) -> i32,
+        unsafe extern "C" fn(
+            subscription: *mut nros_rmw_subscription_t,
+            out_has_data: *mut bool,
+        ) -> nros_rmw_ret_t,
     >,
     pub create_service: ::core::option::Option<
         unsafe extern "C" fn(
@@ -239,8 +243,13 @@ pub struct nros_rmw_vtable_t {
             seq_out: *mut i64,
         ) -> i32,
     >,
-    pub has_request:
-        ::core::option::Option<unsafe extern "C" fn(server: *mut nros_rmw_service_t) -> i32>,
+    #[doc = " Phase 376 W3.d step A — the service-side sibling of\n  `has_data`; same contract, same reason."]
+    pub has_request: ::core::option::Option<
+        unsafe extern "C" fn(
+            server: *mut nros_rmw_service_t,
+            out_has_request: *mut bool,
+        ) -> nros_rmw_ret_t,
+    >,
     pub send_reply: ::core::option::Option<
         unsafe extern "C" fn(
             server: *mut nros_rmw_service_t,

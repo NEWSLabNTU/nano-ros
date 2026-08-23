@@ -86,7 +86,18 @@ typedef struct nros_rmw_vtable_t {
     void (*destroy_subscription)(nros_rmw_subscription_t *subscription);
     int32_t (*try_recv_raw)(nros_rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len);
-    int32_t (*has_data)(nros_rmw_subscription_t *subscription);
+    /** Phase 376 W3.d step A — status in the return, answer in the
+     *  out-parameter, so no slot multiplexes a flag with a status.
+     *  `*out_has_data` is written only on `NROS_RMW_RET_OK`.
+     *
+     *  RTOS addition: upstream has no equivalent, because a hosted
+     *  caller reaches for a wait-set. This is the poll a loop with
+     *  no wait-set needs, and it allocates nothing.
+     *
+     *  A backend must not mutate subscription state here — the
+     *  probe is logically read-only. */
+    nros_rmw_ret_t (*has_data)(nros_rmw_subscription_t *subscription,
+        bool *out_has_data);
 
     /* ---- Service (phase-301: rmw's term; was `service_server`) ---- */
     /* Phase 193.1b — `qos` applies to both the request + reply endpoints
@@ -98,7 +109,10 @@ typedef struct nros_rmw_vtable_t {
     void (*destroy_service)(nros_rmw_service_t *server);
     int32_t (*try_recv_request)(nros_rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out);
-    int32_t (*has_request)(nros_rmw_service_t *server);
+    /** Phase 376 W3.d step A — the service-side sibling of
+     *  `has_data`; same contract, same reason. */
+    nros_rmw_ret_t (*has_request)(nros_rmw_service_t *server,
+        bool *out_has_request);
     nros_rmw_ret_t (*send_reply)(nros_rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len);
 

@@ -342,7 +342,8 @@ nros_rmw_ret_t xrce_subscription_create(nros_rmw_session_t* session, const char*
 void xrce_subscription_destroy(nros_rmw_subscription_t* subscriber);
 int32_t xrce_subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf,
                                      size_t buf_len);
-int32_t xrce_subscription_has_data(nros_rmw_subscription_t* subscriber);
+nros_rmw_ret_t xrce_subscription_has_data(nros_rmw_subscription_t* subscriber,
+                                          bool* out_has_data);
 /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static ring. */
 int32_t xrce_subscription_supports_in_place(nros_rmw_subscription_t* subscriber);
 int32_t xrce_subscription_process_raw_in_place(nros_rmw_subscription_t* subscriber, void* ctx,
@@ -362,7 +363,7 @@ nros_rmw_ret_t xrce_service_create(nros_rmw_session_t* session, const char* serv
 void xrce_service_destroy(nros_rmw_service_t* server);
 int32_t xrce_service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out);
-int32_t xrce_service_has_request(nros_rmw_service_t* server);
+nros_rmw_ret_t xrce_service_has_request(nros_rmw_service_t* server, bool* out_has_request);
 nros_rmw_ret_t xrce_service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
 

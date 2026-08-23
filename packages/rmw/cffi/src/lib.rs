@@ -2374,8 +2374,17 @@ impl nros_rmw::Subscription for CffiSubscription {
         // not mutate state from has_data.
         let view_ptr = self as *const _ as *mut Self;
         let mut view = unsafe { (*view_ptr).make_view() };
-        let rc = unsafe { (self.vtable.has_data.expect("rmw vtable: has_data"))(&mut view) };
-        rc > 0
+        // Phase 376 W3.d step A — the flag arrives in an out-parameter and the
+        // return is a plain status. The old `rc > 0` read a NEGATIVE error as
+        // "no data", which is the same answer an empty subscription gives: a
+        // broken backend and a quiet one were indistinguishable here. The trait
+        // returns `bool` and has no error channel, so an error still maps to
+        // false — but now by an explicit decision rather than by the arithmetic
+        // happening to say so.
+        let mut has = false;
+        let rc =
+            unsafe { (self.vtable.has_data.expect("rmw vtable: has_data"))(&mut view, &mut has) };
+        rc == NROS_RMW_RET_OK && has
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
@@ -2580,8 +2589,13 @@ impl ServiceTrait for CffiService {
     fn has_request(&self) -> bool {
         let view_ptr = self as *const _ as *mut Self;
         let mut view = unsafe { (*view_ptr).make_view() };
-        let rc = unsafe { (self.vtable.has_request.expect("rmw vtable: has_request"))(&mut view) };
-        rc > 0
+        // Phase 376 W3.d step A — see `has_data` above for why an error maps to
+        // false explicitly rather than through `rc > 0`.
+        let mut has = false;
+        let rc = unsafe {
+            (self.vtable.has_request.expect("rmw vtable: has_request"))(&mut view, &mut has)
+        };
+        rc == NROS_RMW_RET_OK && has
     }
 
     fn try_recv_request<'a>(
@@ -2957,8 +2971,13 @@ mod tests {
     ) -> i32 {
         0
     }
-    unsafe extern "C" fn stub_has_data(_: *mut NrosRmwSubscription) -> i32 {
-        0
+    unsafe extern "C" fn stub_has_data(
+        _: *mut NrosRmwSubscription,
+        out_has_data: *mut bool,
+    ) -> NrosRmwRet {
+        // Phase 376 W3.d step A — flag out, status returned.
+        unsafe { *out_has_data = (0) != 0 };
+        NROS_RMW_RET_OK
     }
 
     unsafe extern "C" fn stub_create_service(
@@ -2984,8 +3003,13 @@ mod tests {
     ) -> i32 {
         NROS_RMW_RET_NO_DATA
     }
-    unsafe extern "C" fn stub_has_request(_: *mut NrosRmwService) -> i32 {
-        0
+    unsafe extern "C" fn stub_has_request(
+        _: *mut NrosRmwService,
+        out_has_request: *mut bool,
+    ) -> NrosRmwRet {
+        // Phase 376 W3.d step A — flag out, status returned.
+        unsafe { *out_has_request = (0) != 0 };
+        NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_send_reply(
         _: *mut NrosRmwService,

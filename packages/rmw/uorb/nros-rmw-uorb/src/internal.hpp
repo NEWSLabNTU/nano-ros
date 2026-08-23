@@ -35,7 +35,7 @@ nros_rmw_ret_t subscription_create(nros_rmw_session_t* session, const char* topi
                                  nros_rmw_subscription_t* out);
 void subscription_destroy(nros_rmw_subscription_t* subscriber);
 int32_t subscription_try_recv_raw(nros_rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len);
-int32_t subscription_has_data(nros_rmw_subscription_t* subscriber);
+nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* out_has_data);
 
 /* ---- service.cpp ---- */
 nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_name,
@@ -45,7 +45,7 @@ nros_rmw_ret_t service_create(nros_rmw_session_t* session, const char* service_n
 void service_destroy(nros_rmw_service_t* server);
 int32_t service_try_recv_request(nros_rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                  int64_t* seq_out);
-int32_t service_has_request(nros_rmw_service_t* server);
+nros_rmw_ret_t service_has_request(nros_rmw_service_t* server, bool* out_has_request);
 nros_rmw_ret_t service_send_reply(nros_rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len);
 

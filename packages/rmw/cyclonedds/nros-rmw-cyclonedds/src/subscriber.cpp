@@ -282,14 +282,19 @@ int32_t subscription_try_recv_sequence(nros_rmw_subscription_t* subscriber, uint
     return static_cast<int32_t>(produced);
 }
 
-int32_t subscription_has_data(nros_rmw_subscription_t* subscriber) {
-    if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
+nros_rmw_ret_t subscription_has_data(nros_rmw_subscription_t* subscriber, bool* out_has_data) {
+    // Phase 376 W3.d step A — flag out, status returned.
+    if (out_has_data == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (subscriber == nullptr || subscriber->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     // Cyclone's DATA_AVAILABLE status is edge-like for our executor use:
     // querying it as a pre-filter can clear/suppress the subsequent take
     // path while samples remain readable. This backend is poll-only, so a
     // conservative "maybe" keeps dispatch correct; try_recv_raw remains the
     // authoritative non-blocking check.
-    return 1;
+    *out_has_data = true;
+    return NROS_RMW_RET_OK;
 }
 
 dds_entity_t subscription_reader(const nros_rmw_subscription_t* subscriber) {

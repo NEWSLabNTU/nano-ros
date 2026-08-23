@@ -485,8 +485,13 @@ fn rust_backend_adapter_routes_every_slot() {
     };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(CREATE_SUB_HITS.load(Ordering::SeqCst), 1);
-    let has = unsafe { (vt.has_data.expect("vtable slot"))(&mut subr) };
-    assert_eq!(has, 0);
+    let mut has = false;
+    let rc = unsafe { (vt.has_data.expect("vtable slot"))(&mut subr, &mut has) };
+    assert_eq!(rc, NROS_RMW_RET_OK);
+    assert!(
+        !has,
+        "the scripted backend starts with an empty subscription"
+    );
     assert_eq!(HAS_DATA_HITS.load(Ordering::SeqCst), 1);
     let mut recv_buf = [0u8; 64];
     let n = unsafe {
@@ -741,10 +746,12 @@ fn rust_backend_adapter_routes_events_and_services() {
         NROS_RMW_RET_OK
     );
     assert_eq!(CREATE_SRV_SERVER_HITS.load(Ordering::SeqCst), 1);
+    let mut has_req = false;
     assert_eq!(
-        unsafe { (vt.has_request.expect("vtable slot"))(&mut srv) },
-        1
+        unsafe { (vt.has_request.expect("vtable slot"))(&mut srv, &mut has_req) },
+        NROS_RMW_RET_OK
     );
+    assert!(has_req, "the scripted backend reports a pending request");
     assert_eq!(HAS_REQUEST_HITS.load(Ordering::SeqCst), 1);
     let mut rbuf = [0u8; 64];
     let mut seq: i64 = 0;

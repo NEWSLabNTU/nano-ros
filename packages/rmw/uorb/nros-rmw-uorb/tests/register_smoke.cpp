@@ -344,8 +344,9 @@ int main() {
     int check_after_first = g_orb.check_calls;
     // Fast-path check: with `ready` cleared by the re-arm above,
     // has_data must NOT call orb_check.
-    if (vt->has_data(&subp) != 0) {
-        std::fprintf(stderr, "has_data on empty queue returned non-zero\n");
+    bool has_empty = true;
+    if (vt->has_data(&subp, &has_empty) != NROS_RMW_RET_OK || has_empty) {
+        std::fprintf(stderr, "has_data on empty queue returned true\n");
         return 1;
     }
     if (g_orb.check_calls != check_after_first) {
@@ -375,8 +376,9 @@ int main() {
     for (size_t i = 0; i < kFakeMeta.o_size; ++i) {
         g_orb.pending_payload[i] = static_cast<uint8_t>(0xA0 + i);
     }
-    if (vt->has_data(&subp) != 1) {
-        std::fprintf(stderr, "has_data with pending returned 0\n");
+    bool has_pending = false;
+    if (vt->has_data(&subp, &has_pending) != NROS_RMW_RET_OK || !has_pending) {
+        std::fprintf(stderr, "has_data with pending returned false\n");
         return 1;
     }
     n = vt->try_recv_raw(&subp, rxbuf, sizeof(rxbuf));

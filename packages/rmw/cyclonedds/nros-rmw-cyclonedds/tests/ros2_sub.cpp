@@ -56,7 +56,9 @@ int main() {
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < deadline) {
-        if (g_vt->has_data(&sub)) {
+        bool has_d = false;
+        /* Phase 376 W3.d step A — flag out, status returned. */
+        if (g_vt->has_data(&sub, &has_d) == NROS_RMW_RET_OK && has_d) {
             int32_t n = g_vt->try_recv_raw(&sub, buf, sizeof(buf));
             if (n > 0) {
                 // CDR-LE std_msgs/msg/String:

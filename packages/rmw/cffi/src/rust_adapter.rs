@@ -616,12 +616,22 @@ unsafe extern "C" fn try_recv_raw_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn has_data_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscription,
-) -> i32 {
-    let Some(s) = (unsafe { subscription_ref::<R::Subscription>(subscriber) }) else {
+    subscription: *mut NrosRmwSubscription,
+    out_has_data: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — the flag moves to an out-parameter so the return
+    // carries only a status. Written on OK only.
+    if out_has_data.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // `subscription_ref`, not `_mut`: the probe is logically read-only and the
+    // header says a backend must not mutate state here.
+    let Some(s) = (unsafe { subscription_ref::<R::Subscription>(subscription) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if Subscription::has_data(s) { 1 } else { 0 }
+    // SAFETY: checked non-null above.
+    unsafe { *out_has_data = Subscription::has_data(s) };
+    NROS_RMW_RET_OK
 }
 
 // Phase 231 (RFC-0038) — in-place subscription take across the C ABI.
@@ -744,11 +754,20 @@ unsafe extern "C" fn try_recv_request_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn has_request_trampoline<R: RustBackend>(server: *mut NrosRmwService) -> i32 {
+unsafe extern "C" fn has_request_trampoline<R: RustBackend>(
+    server: *mut NrosRmwService,
+    out_has_request: *mut bool,
+) -> NrosRmwRet {
+    // Phase 376 W3.d step A — see `has_data_trampoline`.
+    if out_has_request.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     let Some(s) = (unsafe { service_ref::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    if ServiceTrait::has_request(s) { 1 } else { 0 }
+    // SAFETY: checked non-null above.
+    unsafe { *out_has_request = ServiceTrait::has_request(s) };
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn send_reply_trampoline<R: RustBackend>(
