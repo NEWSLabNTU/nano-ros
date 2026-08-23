@@ -465,7 +465,7 @@ check-fast-parallel:
 check-fast: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers \
+    check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
@@ -1180,6 +1180,18 @@ check-rmw-required-slots:
 check-board-tiers:
     @python3 scripts/check-board-tiers.py
     @python3 scripts/gen-board-support-table.py --check
+
+# RFC-0079 — a tier priority pin must respect its port's declared address plan.
+# Scheduling priority is ONE space shared by application tiers and system tasks;
+# pins were hand-chosen into it with no record of what was already there, and
+# 34 of 38 in the tree were colliding, preempting, or on a port that declares
+# nothing. A pin landing ON a reserved band FAILS; one that merely outranks a
+# band warns until `above = "<band>"` exists to make it a stated choice. Also
+# cross-references each plan against the code it describes, so the plan cannot
+# drift into a second spelling of the same fact. Buildless.
+[private]
+check-tier-priority-plan:
+    @python3 scripts/check-tier-priority-plan.py
 
 # Issue 0363 — a stale in-tree `nros` used to surface at `check-dep-chain`,
 # minutes in, as nine failed cells whose printed cause was a cargo resolution

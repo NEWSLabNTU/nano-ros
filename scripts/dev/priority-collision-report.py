@@ -30,11 +30,20 @@ PLANS = {
     "freertos": {
         "direction": "bigger-is-urgent",
         "bands": {
-            "app": (3, 3),
             "transport": (4, 4),  # zenoh read + lease + netif poll
         },
+        # CORRECTION (2026-08-23): this table also listed `app` at 3..3 as
+        # reserved, which produced a COLLIDES verdict for `tiers.mid.freertos =
+        # 3`. That was wrong. `app_priority = 3` is the priority app_task is
+        # CREATED at, and `run_tiers` immediately replaces it with the boot
+        # tier's own (freertos_run_tiers.c `freertos_apply_tier_priority`,
+        # entry.rs `nros_freertos_set_current_task_priority`). A starting value
+        # is not a standing occupant, so 3 belongs to the POOL and the report
+        # over-counted by one. Recorded rather than quietly deleted: the point
+        # of citing a source per band is to make exactly this checkable.
         "source": "nros-board-common/src/freertos_config.rs "
-                  "(app_priority 3, zenoh_read/lease 4, poll 4)",
+                  "(zenoh_read/lease 4, poll 4); `app_priority` 3 is a creation "
+                  "value the boot tier overwrites, NOT a reserved band",
     },
     "nuttx": {
         "direction": "bigger-is-urgent",
