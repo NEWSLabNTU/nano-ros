@@ -287,6 +287,13 @@ Both results were right, and now they make sense: the same
 the kernel and once cooperatively by the executor, and only the second one was
 starving the tier. Removing the kernel half could never have helped.
 
+> **Superseded — see "The residual is the KERNEL sporadic server" below.** That
+> last sentence was true when written and is false now. It rested on the
+> executor gate eating 96 % of the spins, which left the kernel server nothing
+> to constrain; once `9a7a150ce` fixed the over-charging, the kernel became the
+> binding half. Two serialized constraints: B is unobservable while A dominates,
+> so the kernel experiments recorded above could not have revealed its role.
+
 ### How each earlier reading was wrong, since three of them were mine
 
 * "The tier's sense of time does not keep up with it" — backwards; the clock
@@ -626,3 +633,53 @@ measured tier never accumulated a streak because it skips a few, refills, and
 dispatches. **The kernel side has no equivalent**: NuttX's sporadic server
 throttles silently and nothing in the image can currently see it. That is the
 gap a fix should close.
+
+## Independently re-measured 2026-08-24 — the reversal holds, and the failure changed character
+
+Checked from the other side, by someone who had argued the opposite, on a clean
+rebuild of `main` (CLI, then native lane, then nuttx — the tree had moved far
+enough that all 17 rows skipped STALE on the first attempt, which is its own
+reminder that a rate collected without rebuilding is a rate about nothing).
+
+```
+nuttx-arm/rust: high-tier /ctrl counter 75 is not >= 3x the low-tier /telem counter 26
+```
+
+**2.88x against a 3x bar** — and the guest console shows
+`sporadic budget set tier=high 5000us/10000us`, i.e. the kernel server engaged.
+That lands inside the `/ctrl` 62-75 against `/telem` 25-30 band the section
+above reports, from an independent build and host.
+
+The character of the failure is what settles the disagreement, more than the
+number:
+
+| when | `/ctrl` | `/telem` | ratio |
+| --- | --- | --- | --- |
+| before `9a7a150ce` (executor gate over-charging) | 2 | 21 | **0.1x — inverted** |
+| after it, kernel sporadic still engaged | 75 | 26 | **2.9x — short of the bar** |
+
+An inversion and a near-miss are not the same defect wearing different numbers.
+The executor gate was starving the tier; the kernel server is rate-limiting it.
+So both findings stand, in sequence, and neither replaces the other.
+
+### What was actually wrong, stated precisely
+
+Not the measurement — `9a7a150ce` cites its numbers (`1200` skips / `3`
+dispatches, and the sibling tier's `450/450`) as the evidence it acted on, and
+took the second horn of the dichotomy that investigation left open: *"either the
+declaration is unsatisfiable ... or the budget is over-charged (cycle-level
+`delta_us` instead of per-callback runtime)"*. It was the second.
+
+The wrong part was one INFERENCE drawn from a correct measurement — "removing
+the kernel half could never have helped" — stated flatly rather than as
+conditional on the executor gate dominating. A forward pointer now sits at that
+sentence so a reader arriving there is not misled by 290 lines of intervening
+text.
+
+And `9a7a150ce` found the thing the earlier pass missed, which is the better
+half of it: `consume_dispatch_runtime_us`, the per-callback replacement, was
+DEAD CODE — it charges only `sporadic_atomic_states`, populated solely by
+`register_sporadic_timer`, whose only callers are two unit tests. Every shipped
+image ran the wall-clock charge under a comment asserting per-callback
+accounting. Finding the gate was the easy half; finding that its replacement had
+never run anywhere is what made the fix possible.
