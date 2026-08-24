@@ -26,6 +26,63 @@ rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable) {
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 0787 — the NAMED registry entry, which is what `vtable.c` calls
+ * (phase 104.B.2). Only the legacy single-argument form was stubbed, so this
+ * test had not LINKED since the named registry landed. */
+rmw_ret_t nros_rmw_cffi_register_named(const char *name, const nros_rmw_vtable_t *vtable) {
+    (void) name;
+    g_received_vtable = vtable;
+    return NROS_RMW_RET_OK;
+}
+
+/* The platform clock + sleep this backend's session drive loop calls. Same
+ * reason as the UDP stubs below. */
+uint64_t nros_platform_clock_ns(void) { return 0; }
+void nros_platform_sleep_ms(size_t ms) { (void) ms; }
+void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms) {
+    (void) sock;
+    (void) timeout_ms;
+}
+
+/* Issue 0787 — the platform UDP primitives this backend's `nros_udp`
+ * transport calls. They live in the Rust platform layer, which a standalone C
+ * build of this backend does not link, so the smoke test stubs them exactly as
+ * it already stubs the registry entry point. Every one FAILS: the test never
+ * opens a transport, and a stub that pretended to succeed would make the test
+ * assert against a socket that does not exist.
+ *
+ * Without these the test did not LINK, which is why nothing built this backend
+ * on a host and why five phase-376 signature changes crossed it unchecked. */
+int8_t nros_platform_udp_create_endpoint(void *ep, const uint8_t *address,
+                                         const uint8_t *port) {
+    (void) ep;
+    (void) address;
+    (void) port;
+    return -1;
+}
+void nros_platform_udp_free_endpoint(void *ep) { (void) ep; }
+int8_t nros_platform_udp_open(void *sock, const void *endpoint, uint32_t timeout_ms) {
+    (void) sock;
+    (void) endpoint;
+    (void) timeout_ms;
+    return -1;
+}
+void nros_platform_udp_close(void *sock) { (void) sock; }
+size_t nros_platform_udp_read(const void *sock, uint8_t *buf, size_t len) {
+    (void) sock;
+    (void) buf;
+    (void) len;
+    return 0;
+}
+size_t nros_platform_udp_send(const void *sock, const uint8_t *buf, size_t len,
+                              const void *endpoint) {
+    (void) sock;
+    (void) buf;
+    (void) len;
+    (void) endpoint;
+    return 0;
+}
+
 int main(void) {
     g_received_vtable = NULL;
 
@@ -141,7 +198,10 @@ int main(void) {
     }
 
     rmw_client_t cli = {0};
-    int32_t cr = g_received_vtable->send_request(&cli, NULL, 0);
+    /* Issue 0778 — `send_request` reports the id it assigned. NULL is accepted
+     * for a caller that does not want it; this one is checking the reject
+     * path, so it passes NULL. */
+    int32_t cr = g_received_vtable->send_request(&cli, NULL, 0, NULL);
     if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: send_request_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",

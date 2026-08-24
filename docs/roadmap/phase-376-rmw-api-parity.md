@@ -859,7 +859,7 @@ claim; each is a thing the audit FOUND while checking it.
 | 0779 | fifteen test files behind a `#![cfg(feature)]` no lane enables; `lending` wired, five features baselined | testing |
 | 0767 | `publish_streamed`'s two tests share process globals | testing |
 
-| 0787 | **the xrce and uORB backends have no host lane** — cyclonedds compiles on the fast line, those two only in tier 2 fixture builds. Five W5 signature changes crossed their C ABI seam having been verified by reading, never by a compiler | testing/ci |
+| ~~0787~~ | **RESOLVED** — `check-rmw-xrce` / `check-rmw-uorb` build and CTest both backends on the check-build line. The lanes found uORB not compiling (a W5 sweep regex missed a commented-out parameter name) and neither backend linking (both smoke tests stub the pre-104.B.2 registry entry point) | done |
 
 ## Running it
 

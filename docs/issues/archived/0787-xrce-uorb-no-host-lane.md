@@ -2,7 +2,7 @@
 id: 787
 title: "The xrce and uORB backends have no host lane, so their C sources are
   edited and reviewed but never COMPILED until tier 2"
-status: open
+status: resolved
 type: tech-debt
 area: ci, rmw, xrce, uorb
 related: [phase-376, issue-0773, issue-0778, issue-0319, issue-0652]
@@ -69,3 +69,60 @@ so "no SDK here" never reads as "the backend compiles".
 Any commit touching those two backends should say in its message that they were
 not compiled. Several phase-376 commits do; that is a convention, not a gate,
 and this issue exists because a convention is not enough.
+
+## Resolved 2026-08-25 — and the SDKs were never the blocker
+
+`just check-rmw-xrce` and `just check-rmw-uorb` build each backend and run its
+CTest suite. Both are on the `check-build` line beside `check-rmw-cyclonedds`.
+
+The issue above assumed provisioning was the obstacle and offered "a cheaper
+syntax-only lane with stub headers" as a fallback. Neither backend needed it:
+
+* **xrce** vendors micro-XRCE-DDS-Client and micro-CDR as submodules, so its C
+  compiles on any host with a C compiler. `cargo check -p nros-rmw-xrce-cffi`
+  had been compiling it all along — nothing was wired to notice.
+* **uORB** defaults `NROS_RMW_UORB_LINK_PX4=OFF` *precisely* so it builds
+  without the PX4 SDK. The CMakeLists says so in a comment dated to its
+  original phase.
+
+So nobody had written the recipe. That is a smaller finding than "we need SDKs
+in CI" and a more embarrassing one.
+
+## What the lanes found the moment they ran
+
+**uORB did not compile.** Phase-376 W5/B1 gave the four `create_*` slots a
+`const rmw_node_t *`; the sweep's regex matched signatures with a NAMED
+parameter, and uORB's two service stubs write `rmw_session_t* /*session*/` with
+the name commented out. The signature was left alone and the body-insertion
+still fired, so both functions referenced an undeclared `node`. Four
+compile errors sitting in a committed, pushed tree.
+
+**uORB did not LINK, and had not for much longer.** `register_smoke.cpp` stubs
+`nros_rmw_cffi_register`, the legacy single-argument form. `vtable.cpp` calls
+`nros_rmw_cffi_register_named`, which is phase 104.B.2 — so this test had been
+unlinkable since the named registry landed, long before phase 376.
+
+**uORB's smoke test was never registered with CTest.** The executable was
+built; `enable_testing()` and `add_test` were absent, so `ctest` in that tree
+printed "No tests were found!!!" A lane that only ran ctest would have gone
+green over nothing — issue 0652's shape one more time.
+
+**xrce did not link either**, for three overlapping reasons: the same missing
+`_named` registry stub, and the platform clock/sleep/UDP primitives that live
+in the Rust platform layer and have no provider in a standalone C build. Its
+smoke test now stubs them, all failing — a stub that pretended to succeed would
+make the test assert against a socket that does not exist. One genuine
+phase-376 fallout too: `send_request` gained its `sequence_id` out-parameter
+(issue 0778) and the call site still passed three arguments.
+
+Every one of those is the predicted class. The backends were not "probably
+fine, just unverified"; they were broken, and two of them had been broken for
+longer than this campaign.
+
+## Also caught while wiring this
+
+`third-party/dds/cyclonedds` was BEHIND its recorded pin — the pull that
+brought in the Zephyr atomics fix advanced the pointer and the local checkout
+never followed. So every cyclonedds build earlier in this session compiled the
+older submodule. Re-checked on the correct pin afterwards: 18/18.
+

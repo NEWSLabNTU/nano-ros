@@ -148,6 +148,11 @@ set_target_properties(nros_rmw_uorb PROPERTIES
 # links + returns OK from a minimal C++ test driver.
 option(NROS_RMW_UORB_BUILD_TESTS "Build the nros-rmw-uorb smoke test" ON)
 if(NROS_RMW_UORB_BUILD_TESTS)
+    # Issue 0787 — `enable_testing()` + `add_test` were MISSING: the smoke
+    # executable was built and never registered, so `ctest` in this build tree
+    # reported "No tests were found!!!" and a lane running it would have gone
+    # green over nothing. Same shape as the target itself never being built.
+    enable_testing()
     add_executable(nros_rmw_uorb_register_smoke
         tests/register_smoke.cpp
     )
@@ -159,6 +164,10 @@ if(NROS_RMW_UORB_BUILD_TESTS)
     # nros_rmw_cffi_register lives in the Rust-side staticlib; the
     # smoke test stubs it locally (see tests/register_smoke.cpp) so
     # K.4.0 doesn't need a Rust toolchain on the build host.
+    add_test(
+        NAME nros_rmw_uorb_register_smoke
+        COMMAND nros_rmw_uorb_register_smoke
+    )
 endif()
 
 # Phase 140 — install rules deleted; consumed in-tree via add_subdirectory.

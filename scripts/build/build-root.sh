@@ -136,6 +136,9 @@ export NROS_KIND_ESP32_QEMU="esp32-qemu"
 # deleted the wrong tree; caught before landing.
 export NROS_KIND_ESP32_ZENOH_PICO="esp32-zenoh-pico"
 export NROS_KIND_ZENOH_FIXTURE_POSIX="zenoh-fixture-posix"
+# Issue 0787 — host build dirs for the two C backends that had no lane.
+export NROS_KIND_XRCE_CHECK="xrce-check"
+export NROS_KIND_UORB_CHECK="uorb-check"
 
 # nros_build_dir <kind> [<coordinate>...]
 # RFC-0070 R2 — `<root>/<kind>/<coordinate>`, the ONE naming shape.

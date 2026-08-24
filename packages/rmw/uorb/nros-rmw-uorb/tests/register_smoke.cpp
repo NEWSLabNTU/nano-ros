@@ -46,6 +46,16 @@ extern "C" rmw_ret_t nros_rmw_cffi_register(const nros_rmw_vtable_t* vtable) {
     return NROS_RMW_RET_OK;
 }
 
+// Issue 0787 — the NAMED registry entry, which is what `vtable.cpp` actually
+// calls (phase 104.B.2). Only the legacy single-argument form was stubbed here,
+// so this test had not LINKED since the named registry landed. Nothing noticed
+// because no lane built this backend at all.
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
+                                                  const nros_rmw_vtable_t* vtable) {
+    g_stashed_vtable = vtable;
+    return NROS_RMW_RET_OK;
+}
+
 extern "C" {
 
 orb_advert_t orb_advertise_multi(const struct orb_metadata* meta, const void* data, int* instance) {

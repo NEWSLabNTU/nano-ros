@@ -589,7 +589,7 @@ check-build: \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
     check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
     check-embedded-feature-unification \
-    check-c check-cpp check-rmw-cyclonedds check-cli-tests check-node-std-tests \
+    check-c check-cpp check-rmw-cyclonedds check-rmw-xrce check-rmw-uorb check-cli-tests check-node-std-tests \
     check-required-features-tests \
     check-feature-set-ssot \
     check-no-tracked-file-find \
@@ -3635,6 +3635,48 @@ check-rmw-ret-sign:
 # luck: adjacent slots sharing a signature swap silently.
 check-rmw-vtable-order:
     @python3 scripts/check-vtable-positional-order.py
+
+# Issue 0787 — host lanes for the two C backends that had none.
+#
+# `check-rmw-cyclonedds` has compiled that backend on the fast line for
+# phases; xrce and uORB were only ever built by tier 2 fixture builds, so five
+# phase-376 signature changes crossed their C ABI seam with no compiler
+# looking. Both turned out to be buildable on any host all along:
+#
+#   xrce  vendors micro-XRCE-DDS-Client + micro-CDR as submodules
+#   uORB  defaults `NROS_RMW_UORB_LINK_PX4=OFF` precisely so it builds
+#         without the PX4 SDK
+#
+# So the SDKs were never the blocker. Nobody had written the recipe.
+#
+# Each skips LOUDLY (counted by `scripts/build/check-skip.sh`) when its
+# prerequisite is absent, so "not built here" can never read as "builds".
+check-rmw-xrce:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/build-root.sh
+    if [ ! -f packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt ]; then
+        source scripts/build/check-skip.sh
+        nros_check_skip check-rmw-xrce \
+            "micro-XRCE-DDS-Client submodule not initialised (git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)"
+        exit 0
+    fi
+    BD="$(nros_build_dir "$NROS_KIND_XRCE_CHECK")"
+    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release
+    cmake --build "$BD" --parallel
+    ctest --test-dir "$BD" --output-on-failure
+
+check-rmw-uorb:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/build-root.sh
+    BD="$(nros_build_dir "$NROS_KIND_UORB_CHECK")"
+    # No skip arm: this backend needs nothing but a C++14 compiler. PX4 is
+    # opt-in (`NROS_RMW_UORB_LINK_PX4`), and the default OFF build is exactly
+    # the surface the RMW ABI changes touch.
+    cmake -S packages/rmw/uorb/nros-rmw-uorb -B "$BD" -DCMAKE_BUILD_TYPE=Release
+    cmake --build "$BD" --parallel
+    ctest --test-dir "$BD" --output-on-failure
 
 # Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and
 # arg by arg. REPORTING ONLY, deliberately not on the `check` line: `--check`
