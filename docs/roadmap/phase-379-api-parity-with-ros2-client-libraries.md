@@ -281,9 +281,9 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
-**`types`, `init`, `node`, `pubsub` and `service` are DONE (2026-08-24)** — 629
-authored rows covering five stages in all three languages. Each of the first
-four corrected something the stage was standing on:
+**`types`, `init`, `node`, `pubsub`, `service` and `timer` are DONE
+(2026-08-24)** — 862 authored rows covering six stages in all three languages.
+Each of the first four corrected something the stage was standing on:
 
 * `types` found the taxonomy filing by NAME when the DECLARING HEADER was
   available and better (see below), and produced issue 0783 — the Rust facade
@@ -371,7 +371,7 @@ Get a stage's rows, and see what is left:
     node              0        0        0        0   done
     pubsub            0        0        0        0   done
     service           0        0        0        0   done
-    timer            60       35       30      125
+    timer             0        0        0        0   done
     qos              27       61       17      105
     param            79       49       50      178
     action          155       22        8      185
@@ -382,7 +382,7 @@ Get a stage's rows, and see what is left:
     serde            31        0        7       38
     boot              2        0       10       12
     other            12       18       70      100
-                                              1126
+                                              1001
 
 `--by-topic` counts DECISIONS, not rows: a member whose type already carries a
 verdict is answered, so counting rows would report the same work several times
