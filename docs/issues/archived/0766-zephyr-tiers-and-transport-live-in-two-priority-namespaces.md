@@ -1,7 +1,7 @@
 ---
 id: 766
 title: "Zephyr tiers are native `k_thread` priorities and its transport is a POSIX pthread on a normalised band — two namespaces, so no reserved band can be stated"
-status: open
+status: resolved
 type: limitation
 area: boards, rmw, zephyr
 related: [rfc-0079, issue-0623, issue-0626, issue-0506]
@@ -180,3 +180,63 @@ tier-vs-transport story the computation above describes is not established —
 `low` at 10 sits correctly BELOW the transport at 7, so the obvious explanation
 does not fit, and it should be investigated on its own evidence rather than
 assumed to be this issue.
+
+
+## Resolved 2026-08-25 — the deferral is discharged, automatically
+
+The three steps this issue set out are done, and the last one was the gap:
+
+1. **Read the conversion** — done 2026-08-23, out of Zephyr's own
+   `lib/posix/options/pthread.c`, not guessed.
+2. **Say what a plan means when the Kconfig gates are off** — the resolver
+   returns `unapplied` as its own verdict rather than a number, and the checker
+   prints `[NO BAND]`. An image that applies no priority has nothing for a pin
+   to collide with, and that is neither a pass nor a failure.
+3. **Declare the band and measure it** — `[board.priority_plan]` with
+   `derived = "zephyr"` (RFC-0079 §4.1), and the four `tiers.high.zephyr = 5`
+   violations moved into the resolved pool.
+
+### What was still wrong, and it was mine
+
+`check-tier-priority-plan` reported Zephyr's 8 pins as DEFERRED and told the
+reader to run `just check-tier-priority-plan-image` — **a recipe that did not
+exist**. A deferral nobody can discharge is an unchecked pin with better
+wording, which is precisely the state this issue exists to end.
+
+Fixed:
+
+* The recipe exists (`just check-tier-priority-plan-image [config]`).
+* With no argument it checks **every** built image rather than one the caller
+  names. A derived band is a property of an image, so "the plan holds" is a
+  claim about all of them; letting the caller choose which to prove is how a
+  green comes to mean less than it looks.
+* It runs at the end of `just zephyr build-fixtures` — the only place `.config`
+  files are known to exist, so the deferral is discharged by the lane instead of
+  by remembering.
+* On a host with no built Zephyr image it SKIPS loudly and repeats that the
+  deferred pins stay unchecked, rather than passing (issue 0599's rule).
+
+### Measured
+
+```
+check-tier-priority-plan-image: 4 built image(s)
+  [ok]   build-ws-c-realtime-entry-smp:      transport [7, 7], pool [8, 14] — 8 pin(s)
+  [ok]   build-ws-c-realtime-entry-zenoh:    transport [7, 7], pool [8, 14] — 8 pin(s)
+  [ok]   build-ws-cpp-realtime-entry-zenoh:  transport [7, 7], pool [8, 14] — 8 pin(s)
+  [ok]   build-ws-rs-realtime-entry-zenoh:   transport [7, 7], pool [8, 14] — 8 pin(s)
+
+tier-priority-plan-image: OK (32 pin-check(s) over 4 image(s))
+```
+
+Not vacuous: setting `tiers.high.zephyr = 7` — onto the reserved band — makes it
+FAIL, naming the file, the band and both remedies, exit 1; restoring gives exit
+0 again.
+
+### What this does NOT close
+
+The two namespaces are still two. Nothing here merges Zephyr's raw `k_thread`
+priorities with the transport's normalised-POSIX band; it makes the conversion
+between them explicit, resolvable, and CHECKED per image. Whether zenoh-pico's
+Zephyr platform should create native `k_thread`s instead of pthreads — which
+would remove the conversion rather than describe it — is a larger question and
+belongs to whoever takes that on.

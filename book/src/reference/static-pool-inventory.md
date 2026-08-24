@@ -45,6 +45,7 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_MAX_STRING_VALUE_LEN` | 256 | `packages/core/nros-params` |
 | `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4096 | `packages/core/nros-node` |
 | `NROS_RMW_MAX_BACKENDS` | 8 | `packages/rmw/cffi` |
+| `NROS_RMW_MAX_NODES` | 4 | `packages/rmw/cffi` |
 | `NROS_RMW_MESSAGE_INFO_SLOTS` | 64 | `packages/rmw/cffi` |
 | `NROS_RMW_SUBSCRIBER_SLOTS` | 8 | `packages/rmw/cffi` |
 | `NROS_SERVICE_TIMEOUT_MS` | 30000 | `packages/rmw/zenoh/nros-rmw-zenoh` |

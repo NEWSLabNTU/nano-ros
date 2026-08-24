@@ -1242,6 +1242,20 @@ check-board-tiers:
 check-tier-priority-plan:
     @python3 scripts/check-tier-priority-plan.py
 
+# RFC-0079 §4.1 — finish the check `check-tier-priority-plan` DEFERS.
+#
+# Zephyr's reserved band is computed per IMAGE from Kconfig, so the static gate
+# cannot judge its pins and says so instead of pretending. This resolves the
+# band from every built `.config` and checks the pins against each. With no
+# argument it examines EVERY image in the tree: a derived band is a property of
+# an image, so letting the caller pick which one to prove is how a green comes
+# to mean less than it looks.
+#
+# SKIPS loudly on a host with no built Zephyr image, rather than passing —
+# issue 0599's rule. Buildless (reads `.config`, builds nothing).
+check-tier-priority-plan-image config="":
+    @python3 scripts/check-tier-priority-plan-image.py {{config}}
+
 # Issue 0363 — a stale in-tree `nros` used to surface at `check-dep-chain`,
 # minutes in, as nine failed cells whose printed cause was a cargo resolution
 # error. Same predicate (it CALLS `nros_cli_bin`), better position. Buildless.
