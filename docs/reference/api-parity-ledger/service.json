@@ -1,0 +1,870 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:client_call": {
+    "verdict": "extension",
+    "why": "see `cpp:Client::call`."
+  },
+  "c:client_get_options": {
+    "verdict": "declined",
+    "why": "no runtime options struct; see the `compile-time-options` rule."
+  },
+  "c:client_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+  },
+  "c:client_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "see `c:publisher_get_zero_initialized`."
+  },
+  "c:client_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
+  },
+  "c:client_init_best_effort": {
+    "verdict": "divergence",
+    "why": "rclc ships an entry point per QoS preset; ours takes a QoS value. See `c:publisher_init_best_effort`."
+  },
+  "c:client_init_default": {
+    "verdict": "declined",
+    "why": "rclc's default-QoS wrapper; `nros_client_init` IS the default form. See `c:publisher_init_default`."
+  },
+  "c:client_init_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:client_init_with_options": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_options`."
+  },
+  "c:client_init_with_qos": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_qos`."
+  },
+  "c:client_request_publisher_get_actual_qos": {
+    "verdict": "declined",
+    "why": "QoS is compile-time; actual and requested are the same value. See `c:publisher_get_actual_qos`."
+  },
+  "c:client_response_subscription_get_actual_qos": {
+    "verdict": "declined",
+    "why": "QoS is compile-time; actual and requested are the same value. See `c:publisher_get_actual_qos`."
+  },
+  "c:client_send_request_async": {
+    "verdict": "divergence",
+    "why": "see `cpp:Client::async_send_request`."
+  },
+  "c:client_send_request_raw": {
+    "verdict": "extension",
+    "why": "the raw form; see the pubsub stage's `c:publish_raw`."
+  },
+  "c:client_server_available": {
+    "verdict": "rename",
+    "why": "see `cpp:Client::service_is_ready`; C ships this AND `nros_client_service_is_ready`."
+  },
+  "c:client_service_is_ready": {
+    "verdict": "extension",
+    "why": "the correctly-named half of `c:client_server_available`, present only in C. Keeping both is the defect; see that row."
+  },
+  "c:client_set_on_new_response_callback": {
+    "verdict": "divergence",
+    "why": "see the pubsub stage's `c:subscription_set_on_new_message_callback`."
+  },
+  "c:client_set_response_callback": {
+    "verdict": "divergence",
+    "why": "the reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. `executor-owns-no-entity-storage` and RFC-0041, on the client side."
+  },
+  "c:client_set_timeout": {
+    "verdict": "extension",
+    "why": "a per-client default deadline for a pending request, so a device that must not wait forever states the bound once rather than at every call. rclcpp has no client-level timeout -- the caller passes one to `spin_until_future_complete` each time."
+  },
+  "c:client_set_wake_callback": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `c:subscription_set_wake_callback`."
+  },
+  "c:client_state_t": {
+    "verdict": "extension",
+    "why": "see `c:publisher_state_t`."
+  },
+  "c:client_wait_for_service": {
+    "verdict": "extension",
+    "why": "blocks until the server appears or the deadline passes, driving the executor. rclcpp's `Client::wait_for_service` folds onto ours by the *Base rule; C's rclc has no counterpart."
+  },
+  "c:executor_register_lifecycle_services": {
+    "verdict": "extension",
+    "why": "the same for the five lifecycle services; see `c:executor_register_parameter_services`."
+  },
+  "c:executor_register_parameter_services": {
+    "verdict": "extension",
+    "why": "registers the six `rcl_interfaces/srv/*` servers on the executor as one call. rclcpp starts them from `NodeOptions::start_parameter_services` at node construction; ours is explicit because the six queryables are a measurable cost against `ZPICO_MAX_QUERYABLES` (issue 0460) and an image that does not need them should not pay."
+  },
+  "c:get_zero_initialized_client": {
+    "verdict": "declined",
+    "why": "rcl's free-function spelling; see `c:get_zero_initialized_publisher`."
+  },
+  "c:get_zero_initialized_service": {
+    "verdict": "declined",
+    "why": "see `c:get_zero_initialized_client`."
+  },
+  "c:response_callback_t": {
+    "verdict": "divergence",
+    "why": "see `c:service_callback_t`."
+  },
+  "c:send_request": {
+    "verdict": "rename",
+    "why": "rcl's free-function spelling; ours is `nros_client_send_request{,_async,_raw}`. See `c:publish`."
+  },
+  "c:send_response": {
+    "verdict": "rename",
+    "why": "rcl's free-function spelling; ours is the method-style `nros_service_send_response`. Same shape as `c:publish` -- the word matches, the spelling is ours to align."
+  },
+  "c:service_callback_t": {
+    "verdict": "divergence",
+    "why": "bound to the entity at creation; see the pubsub stage's `c:subscription_callback_t`."
+  },
+  "c:service_get_options": {
+    "verdict": "declined",
+    "why": "no runtime options struct; see the `compile-time-options` rule."
+  },
+  "c:service_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+  },
+  "c:service_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "see `c:publisher_get_zero_initialized`."
+  },
+  "c:service_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
+  },
+  "c:service_init_best_effort": {
+    "verdict": "divergence",
+    "why": "see `c:client_init_best_effort`."
+  },
+  "c:service_init_default": {
+    "verdict": "declined",
+    "why": "see `c:client_init_default`."
+  },
+  "c:service_init_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:service_init_with_options": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_options`."
+  },
+  "c:service_init_with_qos": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_qos`."
+  },
+  "c:service_request_subscription_get_actual_qos": {
+    "verdict": "declined",
+    "why": "QoS is compile-time; actual and requested are the same value. See `c:publisher_get_actual_qos`."
+  },
+  "c:service_response_publisher_get_actual_qos": {
+    "verdict": "declined",
+    "why": "QoS is compile-time; actual and requested are the same value. See `c:publisher_get_actual_qos`."
+  },
+  "c:service_send_reply_raw": {
+    "verdict": "rename",
+    "why": "the raw form, spelled `reply` while its own sibling `nros_service_send_response` says `response`. See `cpp:Service::send_response`."
+  },
+  "c:service_send_response": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides."
+  },
+  "c:service_set_on_new_request_callback": {
+    "verdict": "divergence",
+    "why": "see the pubsub stage's `c:subscription_set_on_new_message_callback`."
+  },
+  "c:service_set_wake_callback": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `c:subscription_set_wake_callback`."
+  },
+  "c:service_state_t": {
+    "verdict": "extension",
+    "why": "see `c:publisher_state_t`."
+  },
+  "c:service_take_request": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:take_request`."
+  },
+  "c:service_type_t": {
+    "verdict": "divergence",
+    "why": "the service typesupport handle; see the pubsub stage's `c:message_type_t`."
+  },
+  "c:take_request": {
+    "verdict": "rename",
+    "why": "rcl's free-function spelling of a word our C already uses: `nros_service_take_request`. Note this makes the pubsub stage's `take` -> `try_recv` rename internally inconsistent as well -- C says TAKE for a service request and TRY_RECV for a subscription, while C++ says `try_recv_request` for both. Whatever W5 picks has to be picked once, for every entity and every language."
+  },
+  "c:take_request_with_info": {
+    "verdict": "rename",
+    "why": "see `c:take_request`."
+  },
+  "c:take_response": {
+    "verdict": "rename",
+    "why": "the client side of `c:take_request`; ours is `nros_client_try_recv_response` -- so within the C API a service TAKES and a client TRY_RECVs. Same one decision."
+  },
+  "c:take_response_with_info": {
+    "verdict": "rename",
+    "why": "see `c:take_response`."
+  },
+  "cpp:AsyncParametersClient": {
+    "verdict": "declined",
+    "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half."
+  },
+  "cpp:CallbackGroup::find_client_ptrs_if": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:CallbackGroup::find_service_ptrs_if": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::Client<S>": {
+    "verdict": "divergence",
+    "why": "constructed into caller-owned storage by `Node::create_client`; see the pubsub stage's `cpp:Publisher::Publisher<M>`."
+  },
+  "cpp:Client::Client<ServiceT>": {
+    "verdict": "declined",
+    "why": "rclcpp's templated constructor taking a `NodeBaseInterface*`; see `cpp:Client::Client<S>` for the shape and the node stage for why there is no interface slice."
+  },
+  "cpp:Client::ClientBase": {
+    "verdict": "declined",
+    "why": "rclcpp's type-erased base constructor; see the pubsub stage's `cpp:Publisher::PublisherBase`."
+  },
+  "cpp:Client::add_to_wait_set": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::async_cancel_all_goals": {
+    "verdict": "declined",
+    "why": "an rclcpp_action client method the correlator folds onto `Client`; see the action stage."
+  },
+  "cpp:Client::async_get_result": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::async_cancel_all_goals`."
+  },
+  "cpp:Client::async_send_goal": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::async_cancel_all_goals`."
+  },
+  "cpp:Client::async_send_request": {
+    "verdict": "divergence",
+    "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`."
+  },
+  "cpp:Client::call": {
+    "verdict": "extension",
+    "why": "the blocking convenience: send and drive the executor until the reply or the timeout. rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter."
+  },
+  "cpp:Client::call_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:Client::clear_on_new_response_callback": {
+    "verdict": "divergence",
+    "why": "see `c:client_set_on_new_response_callback`."
+  },
+  "cpp:Client::clear_on_ready_callback": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set for an entity to describe itself to. Executor plumbing; see the pubsub stage's identical rows."
+  },
+  "cpp:Client::create_request_header": {
+    "verdict": "declined",
+    "why": "allocates the `rmw_request_id_t` that correlates a reply with its request. Ours is an `int64_t` sequence number returned by `send_request` and passed back to `send_response` -- see `rust:RequestId`."
+  },
+  "cpp:Client::create_response": {
+    "verdict": "declined",
+    "why": "allocates the response the executor takes into; ours takes into caller storage. See `cpp:Subscription::create_message`."
+  },
+  "cpp:Client::exchange_in_use_by_wait_set_state": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::execute": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::get_client_handle": {
+    "verdict": "declined",
+    "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+  },
+  "cpp:Client::get_number_of_ready_clients": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::get_number_of_ready_guard_conditions": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::get_number_of_ready_services": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::get_number_of_ready_timers": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::get_service_name": {
+    "verdict": "gap",
+    "why": "reads back the service a client or server was created on. rclrs has it (`Client::service_name`, `Service::service_name`) and our C and C++ do not -- the mirror image of the pubsub stage's `topic_name` gap, where Rust was the one missing it. Phase 379 W3."
+  },
+  "cpp:Client::handle_id": {
+    "verdict": "extension",
+    "why": "the executor-table index this entity occupies, used by generated entry points to bind a callback to it. rclcpp identifies entities by pointer; a static table identifies them by slot."
+  },
+  "cpp:Client::handle_response": {
+    "verdict": "declined",
+    "why": "rclcpp's internal dispatch after a take; see the pubsub stage's `cpp:Subscription::handle_message`."
+  },
+  "cpp:Client::is_ready": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Client::is_valid": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `cpp:Publisher::is_valid`."
+  },
+  "cpp:Client::make_shared": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:Client::make_unique": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:Client::prune_pending_requests": {
+    "verdict": "gap",
+    "why": "rclcpp lets a caller drop requests whose replies will never arrive, because each pending request holds a promise until it is answered. Ours has a per-client timeout (`nros_client_set_timeout`) and no way to abandon a specific outstanding request, so a client that gave up still occupies its slot until the deadline. Bounded by the static request table rather than unbounded as in rclcpp -- but a device that retries has no way to reclaim early. Phase 379 W3."
+  },
+  "cpp:Client::prune_requests_older_than": {
+    "verdict": "gap",
+    "why": "see `cpp:Client::prune_pending_requests`."
+  },
+  "cpp:Client::remove_pending_request": {
+    "verdict": "gap",
+    "why": "see `cpp:Client::prune_pending_requests`."
+  },
+  "cpp:Client::send_request": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:send_request`."
+  },
+  "cpp:Client::server_available": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:Client::service_is_ready`."
+  },
+  "cpp:Client::service_is_ready": {
+    "verdict": "rename",
+    "why": "ours is `Client::server_available` in C++ and `nros_client_server_available` / `nros_client_service_is_ready` in C -- which ships BOTH spellings. rclrs and rclcpp say `service_is_ready`. Phase 379 W5."
+  },
+  "cpp:Client::set_on_new_response_callback": {
+    "verdict": "divergence",
+    "why": "see `c:client_set_on_new_response_callback`."
+  },
+  "cpp:Client::set_on_ready_callback": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set for an entity to describe itself to. Executor plumbing; see the pubsub stage's identical rows."
+  },
+  "cpp:Client::take_response": {
+    "verdict": "rename",
+    "why": "see `c:take_response`."
+  },
+  "cpp:Client::take_type_erased_response": {
+    "verdict": "rename",
+    "why": "see `c:take_response`; ours is the `_raw` form."
+  },
+  "cpp:ClientOptions": {
+    "verdict": "extension",
+    "why": "what a device varies per client (QoS, scheduling context); see `c:publisher_init_with_options`."
+  },
+  "cpp:LifecycleNode::create_client": {
+    "verdict": "declined",
+    "why": "see the lifecycle stage; a lifecycle node creates entities the same way an ordinary one does here."
+  },
+  "cpp:LifecycleNode::create_service": {
+    "verdict": "declined",
+    "why": "see `cpp:LifecycleNode::create_client`."
+  },
+  "cpp:LifecycleNode::get_node_services_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface`."
+  },
+  "cpp:LifecycleNode::register_services": {
+    "verdict": "extension",
+    "why": "see `c:executor_register_lifecycle_services`."
+  },
+  "cpp:Node::get_node_services_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface`."
+  },
+  "cpp:NodeOptions::start_parameter_services": {
+    "verdict": "divergence",
+    "why": "rclcpp starts the parameter servers from node options; ours is an explicit executor call. See `c:executor_register_parameter_services`."
+  },
+  "cpp:ParameterService::ParameterService": {
+    "verdict": "divergence",
+    "why": "rclcpp wraps the parameter SERVERS in an object a node owns; ours is a registration call on the executor. See `c:executor_register_parameter_services`."
+  },
+  "cpp:ParameterService::make_shared": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:ParameterService::make_unique": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:QoS::services": {
+    "verdict": "extension",
+    "why": "the services QoS preset as a member on `QoS`; rclcpp's is a separate type, `ServicesQoS`. See `cpp:ServicesQoS::ServicesQoS`."
+  },
+  "cpp:Server::get_number_of_ready_clients": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Server::get_number_of_ready_services": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Service::Service<S>": {
+    "verdict": "divergence",
+    "why": "see `cpp:Client::Client<S>`."
+  },
+  "cpp:Service::Service<ServiceT>": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::Client<ServiceT>`."
+  },
+  "cpp:Service::ServiceBase": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::ClientBase`."
+  },
+  "cpp:Service::clear_on_new_request_callback": {
+    "verdict": "divergence",
+    "why": "see `c:service_set_on_new_request_callback`."
+  },
+  "cpp:Service::create_request": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::create_response`."
+  },
+  "cpp:Service::create_request_header": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::create_request_header`."
+  },
+  "cpp:Service::exchange_in_use_by_wait_set_state": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Service::get_service_handle": {
+    "verdict": "declined",
+    "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+  },
+  "cpp:Service::get_service_name": {
+    "verdict": "gap",
+    "why": "see `cpp:Client::get_service_name`."
+  },
+  "cpp:Service::handle_id": {
+    "verdict": "extension",
+    "why": "see `cpp:Client::handle_id`."
+  },
+  "cpp:Service::handle_request": {
+    "verdict": "declined",
+    "why": "see `cpp:Client::handle_response`."
+  },
+  "cpp:Service::is_valid": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `cpp:Publisher::is_valid`."
+  },
+  "cpp:Service::make_shared": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:Service::make_unique": {
+    "verdict": "declined",
+    "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+  },
+  "cpp:Service::send_reply": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:Service::send_response`."
+  },
+  "cpp:Service::send_response": {
+    "verdict": "rename",
+    "why": "rcl, rclcpp and rclrs all say send_response. Our C says `nros_service_send_response` -- correctly -- while our C++ says `Service::send_reply` and our Rust says `ServiceTrait::send_reply`. Worse, C contradicts ITSELF: `nros_service_send_response` sits beside `nros_service_send_reply_raw`. Three languages, two words, and one of them uses both. Nothing about an RTOS prefers either. Settle on `send_response` and move `send_reply`, `send_reply_raw` and `ServiceTrait::send_reply` to it. Phase 379 W5."
+  },
+  "cpp:Service::set_on_new_request_callback": {
+    "verdict": "divergence",
+    "why": "see `c:service_set_on_new_request_callback`."
+  },
+  "cpp:Service::take_request": {
+    "verdict": "rename",
+    "why": "see `c:take_request`; ours is `Service::try_recv_request`."
+  },
+  "cpp:Service::take_type_erased_request": {
+    "verdict": "rename",
+    "why": "see `c:take_request`."
+  },
+  "cpp:ServiceOptions": {
+    "verdict": "extension",
+    "why": "see `cpp:ClientOptions`."
+  },
+  "cpp:ServicesQoS::ServicesQoS": {
+    "verdict": "divergence",
+    "why": "rclcpp gives each QoS preset its own TYPE (`ServicesQoS`, `ClockQoS`, `SensorDataQoS`) so a preset can be passed where a `QoS` is expected and still be named. Ours are named constructors on one `QoS` type -- a type per preset costs a class each with no allocator to justify it, and the presets are the same values."
+  },
+  "cpp:SyncParametersClient": {
+    "verdict": "declined",
+    "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half. The sync form additionally blocks on its own spin, which RFC-0021 forbids."
+  },
+  "cpp:WaitSetTemplate::add_client": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:WaitSetTemplate::add_service": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:WaitSetTemplate::remove_client": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:WaitSetTemplate::remove_service": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Waitable::get_number_of_ready_clients": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:Waitable::get_number_of_ready_services": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+  },
+  "cpp:create_client": {
+    "verdict": "rename",
+    "why": "rclcpp's free-function form; ours is `nros::make_client` if it existed -- today there is none, so this is the gap half. `create_publisher`/`make_publisher` is the same pair in pubsub. Phase 379 W5."
+  },
+  "cpp:create_service": {
+    "verdict": "rename",
+    "why": "see `cpp:create_client`."
+  },
+  "rust:AnyClientOutputSender": {
+    "verdict": "declined",
+    "why": "see `rust:ClientOutput`."
+  },
+  "rust:Client": {
+    "verdict": "divergence",
+    "why": "rclrs's `Client` is a handle a node hands back. Ours splits in two: `ServiceClient`, the entity a component DECLARES, and `ClientTrait`, the RMW seam a backend implements. entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:Client::call": {
+    "verdict": "divergence",
+    "why": "rclrs's `call` returns a future. Ours (`ClientTrait::send_request` + `try_recv_reply`, or the C++ `Client::call`) drives the executor. See `cpp:Client::async_send_request`."
+  },
+  "rust:Client::call_then": {
+    "verdict": "declined",
+    "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport."
+  },
+  "rust:Client::call_then_async": {
+    "verdict": "declined",
+    "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport."
+  },
+  "rust:Client::notify_on_service_ready": {
+    "verdict": "declined",
+    "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The event form is `ClientTrait::poll_server_discovery`."
+  },
+  "rust:Client::service_is_ready": {
+    "verdict": "rename",
+    "why": "see `cpp:Client::service_is_ready`; ours is `ClientTrait::is_server_ready`."
+  },
+  "rust:Client::service_name": {
+    "verdict": "gap",
+    "why": "see `cpp:Client::get_service_name` -- rclrs has this and our Rust client does not either."
+  },
+  "rust:ClientAsyncCallback": {
+    "verdict": "declined",
+    "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport."
+  },
+  "rust:ClientCallback": {
+    "verdict": "divergence",
+    "why": "see `c:client_set_response_callback`."
+  },
+  "rust:ClientDispatch::call_raw": {
+    "verdict": "extension",
+    "why": "the generated dispatch path for a raw client call. Machinery `nros::node!` expands into; see issue 0784."
+  },
+  "rust:ClientOptions": {
+    "verdict": "divergence",
+    "why": "rclrs's client options carry QoS and a callback group; ours carry QoS. See `compile-time-options`."
+  },
+  "rust:ClientOptions::new": {
+    "verdict": "divergence",
+    "why": "see `rust:ClientOptions`."
+  },
+  "rust:ClientOutput": {
+    "verdict": "declined",
+    "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. rclrs's channel for delivering a reply to whichever of its three call shapes was used."
+  },
+  "rust:ClientOutput::create_channel": {
+    "verdict": "declined",
+    "why": "see `rust:ClientOutput`."
+  },
+  "rust:ClientTrait": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:ClientTrait::is_server_ready": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:Client::service_is_ready`."
+  },
+  "rust:ClientTrait::poll_server_discovery": {
+    "verdict": "extension",
+    "why": "advances discovery a step without blocking, so a polling task can wait for a server without giving up its loop. rclrs waits on a future."
+  },
+  "rust:ClientTrait::register_waker": {
+    "verdict": "extension",
+    "why": "see `c:client_set_wake_callback`."
+  },
+  "rust:ClientTrait::send_request": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:ClientTrait::send_request_raw": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint. The raw form; see the pubsub stage's `c:publish_raw`."
+  },
+  "rust:ClientTrait::server_available": {
+    "verdict": "rename",
+    "why": "a THIRD spelling of the same predicate, in the same trait as `is_server_ready`. See `cpp:Client::service_is_ready`."
+  },
+  "rust:ClientTrait::start_server_discovery": {
+    "verdict": "extension",
+    "why": "see `rust:ClientTrait::poll_server_discovery`."
+  },
+  "rust:IntoAsyncServiceCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. The async form additionally needs a runtime."
+  },
+  "rust:IntoNodeServiceCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows."
+  },
+  "rust:IntoPrimitiveOptions::services_qos": {
+    "verdict": "declined",
+    "why": "rclrs's builder shorthand for applying the services QoS preset to any entity options. Ours is a named constructor on `QosSettings`; the trait needs a blanket impl that buys nothing with one caller shape."
+  },
+  "rust:IntoWorkerServiceCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. See the node stage's `rust:Node::create_worker`."
+  },
+  "rust:Node::create_async_service": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. needs a future and a runtime to await it; RFC-0021 makes every blocking helper take the executor and drive it."
+  },
+  "rust:Node::create_client": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_client_for_name`."
+  },
+  "rust:Node::create_service": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_server_for_name`."
+  },
+  "rust:NodeServiceCallback": {
+    "verdict": "divergence",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows."
+  },
+  "rust:QoSProfile::parameter_services_default": {
+    "verdict": "gap",
+    "why": "the parameter services use a distinct QoS profile in ROS 2 (transient-local, so a late-joining tool still sees declared parameters). We register the parameter servers with the plain services profile, so a tool that starts after the device will not see them until it asks again. Phase 379 W3; see the param stage."
+  },
+  "rust:QoSProfile::services_default": {
+    "verdict": "rename",
+    "why": "rclrs spells the preset `QoSProfile::services_default`; ours is `QosSettings::services_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; this row records that the preset itself lines up."
+  },
+  "rust:QosSettings::services_default": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSProfile::services_default`."
+  },
+  "rust:RawServiceCallback": {
+    "verdict": "divergence",
+    "why": "the raw-bytes callback type; see the pubsub stage's `rust:RawSubscriptionCallback`."
+  },
+  "rust:RequestId": {
+    "verdict": "divergence",
+    "why": "rclrs wraps `rmw_request_id_t` -- a writer GUID plus a sequence number -- so a reply can be correlated across a restart. Ours is a bare `i64` sequence number scoped to the entity, because the entity table is static and a request cannot outlive its client. Cheaper, and it cannot express a reply to a client that has been recreated."
+  },
+  "rust:RosService": {
+    "verdict": "divergence",
+    "why": "the trait a generated service type implements (request/response types, type name, hash). rclrs's equivalent is `rosidl_runtime_rs::Service`, which lives in the message crates rather than the client library -- ours is in `nros-core` because codegen and the RMW layer both need it."
+  },
+  "rust:Service": {
+    "verdict": "divergence",
+    "why": "see `rust:Client`; ours are `ServiceServer` and `ServiceTrait`."
+  },
+  "rust:Service::service_name": {
+    "verdict": "gap",
+    "why": "see `cpp:Client::get_service_name`."
+  },
+  "rust:Service::set_async_callback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. needs a future and a runtime to await it; RFC-0021 makes every blocking helper take the executor and drive it."
+  },
+  "rust:Service::set_callback": {
+    "verdict": "divergence",
+    "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows."
+  },
+  "rust:Service::set_worker_callback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:ServiceClient": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceClient::name": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceClient::new": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceClient::service_hash": {
+    "verdict": "extension",
+    "why": "the type hash used to detect a client and server built against different .srv definitions. ROS 2 Iron+ computes one; Humble does not (RFC-0036 records `TYPE_HASH = TypeHashNotSupported`), so this is ours for now and a convergence point when the baseline moves."
+  },
+  "rust:ServiceClient::service_type": {
+    "verdict": "extension",
+    "why": "the ROS service type name a declared entity carries, so codegen and the launch resolver can check both ends agree without running the image (RFC-0043). rclrs knows the type statically and never needs it as data."
+  },
+  "rust:ServiceHandle": {
+    "verdict": "divergence",
+    "why": "rclrs's rcl handle wrapper; ours is an index into the executor's static entity table. See the pubsub stage's `rust:PublisherHandle`."
+  },
+  "rust:ServiceInfo::new": {
+    "verdict": "extension",
+    "why": "identity a declared service carries so the launch resolver can attribute it -- domain, namespace, declaring node. rclrs answers the same questions at runtime by querying the graph, which needs discovery."
+  },
+  "rust:ServiceInfo::with_domain": {
+    "verdict": "extension",
+    "why": "see `rust:ServiceInfo::new`."
+  },
+  "rust:ServiceInfo::with_namespace": {
+    "verdict": "extension",
+    "why": "see `rust:ServiceInfo::new`."
+  },
+  "rust:ServiceInfo::with_node_name": {
+    "verdict": "extension",
+    "why": "see `rust:ServiceInfo::new`."
+  },
+  "rust:ServiceOptions": {
+    "verdict": "divergence",
+    "why": "see `rust:ClientOptions`."
+  },
+  "rust:ServiceOptions::new": {
+    "verdict": "divergence",
+    "why": "see `rust:ClientOptions`."
+  },
+  "rust:ServiceRequest": {
+    "verdict": "divergence",
+    "why": "what a service callback receives: the request plus the sequence number its reply must carry. rclrs passes the request and an `rmw_request_id_t` separately. See `rust:RequestId`."
+  },
+  "rust:ServiceServer": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceServer::name": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceServer::new": {
+    "verdict": "divergence",
+    "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+  },
+  "rust:ServiceServer::service_hash": {
+    "verdict": "extension",
+    "why": "see `rust:ServiceClient::service_hash`."
+  },
+  "rust:ServiceServer::service_type": {
+    "verdict": "extension",
+    "why": "see `rust:ServiceClient::service_type`."
+  },
+  "rust:ServiceTag": {
+    "verdict": "extension",
+    "why": "names a declared service so a component's single `on_callback` can tell which one fired (RFC-0043). See the pubsub stage's `rust:SubscriptionTag`."
+  },
+  "rust:ServiceTrait": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:ServiceTrait::handle_request": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:ServiceTrait::has_request": {
+    "verdict": "extension",
+    "why": "non-destructive readiness check so a polling task can decide whether to take. See the pubsub stage's `rust:Subscription::has_data`."
+  },
+  "rust:ServiceTrait::register_waker": {
+    "verdict": "extension",
+    "why": "see `c:client_set_wake_callback`."
+  },
+  "rust:ServiceTrait::send_reply": {
+    "verdict": "rename",
+    "why": "see `cpp:Service::send_response` -- the third of our three languages, and the second to say `reply`."
+  },
+  "rust:Session::create_client": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:Session::create_service": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:Worker::create_service": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:WorkerService": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:WorkerServiceCallback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:rmw_request_id_t": {
+    "verdict": "divergence",
+    "why": "see `rust:RequestId`."
+  }
+}
