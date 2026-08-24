@@ -83,14 +83,7 @@ Strong-vs-weak cannot fix it — the consumer supplies the strong override, so a
 that a duplicate-symbol error. Also revises phase-375's weak-symbol audit: the `override-default` class is 4
 files not 5, and `network_glue.c`'s own label looks wrong. See `0769-*`.
 
-**#0764** (testing/build, open 2026-08-23) — the fixture staleness probe compares MTIMES while the build
-compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moves without its content changing
-is STALE and rebuilding CANNOT clear it: the build is right to do nothing, the probe is right that the mtime
-is older, and they are answering different questions. NOT the documented treadmill, whose "rebuild affected
-fixtures" remedy is a no-op by construction here. Measured: cargo rebuilt `libnros_cpp.a` at 14:56, the copy
-cmake links stayed at 08:24, `cpp_action_server` never relinked; 16 tier-1 tests failed on it. Easy to
-misdiagnose because a `touch` that produces no relink is evidence the build is CORRECT, while a semantic
-change does propagate — verified by symbol. See `0764-*`.
+Recently resolved (2026-08-25): **#0764** — the fixture staleness probe compared MTIMES while the build compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moved without its content changing read STALE and rebuilding could NOT clear it — the build right to do nothing, the probe right that the mtime was older, the two answering different questions. Not the documented treadmill, whose "rebuild affected fixtures" remedy is a no-op here by construction; 16 tier-1 tests failed on it. The fix was WIRING, not construction: `candidates_changed_content_policy` + `.nros-srcbaseline` already existed and TWO of the three probe arms already used them (zephyr since #147, cargo dep-info since phase-353 W2) — only the cmake/ninja arm never got it. Third turn of the shape CLAUDE.md cites as its own example (#222 → #328 → #764: helper added, `binaries/mod.rs` not wired), so the file was swept — every raw mtime compare now FEEDS the content decision instead of returning a verdict. Verified BOTH ways, which matters because a probe that forgives everything turns museum binaries into silent passes: `touch` (sha unchanged) stays fresh, a one-line real edit goes STALE. Fixed in `493440c65`. See `archived/0764-*`. (2026-08-25)
 
 **#0777** (rmw/memory, open 2026-08-24) — seven declared RMW-ABI differences justified themselves with "no
 runtime allocation to pre-size; pools are baked", which is true of ONE backend in five: cyclonedds

@@ -3,7 +3,7 @@ id: 764
 title: "The fixture staleness probe compares MTIMES while the build compares
   CONTENT — a source whose mtime moves without its content changing is STALE
   forever, and rebuilding cannot clear it"
-status: open
+status: resolved
 type: bug
 area: testing, build
 related: [issue-0445, issue-0196, issue-0475]
@@ -96,3 +96,58 @@ The first is the honest fix; the second is the one that lands in an afternoon.
 `find examples/native -path '*nano_ros/packages/api*' -name 'libnros_c*.a'
 -exec touch {} \;` then rebuild — forces the copy-skipped relink for 106
 archives. The binaries' CONTENT was correct throughout; only their mtimes lagged.
+
+## Resolved (2026-08-25, `493440c65`) — the cmake arm now decides by CONTENT
+
+The Direction offered two options and called the content-based one "the honest
+fix" against "the one that lands in an afternoon". It was neither expensive nor
+a choice: **the content machinery already existed and two of the three probe
+arms already used it.**
+
+* `staleness::candidates_changed_content_policy` + the `.nros-srcbaseline`
+  sidecar — written for #147 / phase-286 W2;
+* the **zephyr** arm has used it since then;
+* the **cargo dep-info** arm since phase-353 W2 (`dep_info_newer_source`);
+* the **cmake/ninja** arm never got it. That is the arm this issue reproduces on.
+
+So the fix was wiring, not construction, and no design call was needed.
+
+### What changed
+
+`cmake_dep_info_newer_source` gathers the whole candidate set instead of
+returning on the first newer mtime, then lets the bytes decide through the same
+helper, with the same three-way answer the cargo arm uses — `Some(true)`
+genuinely edited, `Some(false)` an mtime-only rewrite, `None` keep the old strict
+answer.
+
+`zpico_c_source_newer` became `zpico_c_inputs`, returning BOTH the newer path and
+the candidate set from ONE walk. Two functions resolving the same input set is
+exactly how these arms diverged in #0442; the answer and the evidence for it have
+to come from the same resolution.
+
+### Verified in BOTH directions
+
+The second direction matters more than the first: a content-aware probe that
+forgives everything is strictly worse than the mtime probe it replaces, because
+it turns museum binaries into silent passes (#0196's shape).
+
+1. fresh baseline after a clean `build-test-fixtures lane=native` — 2/2 pass;
+2. `touch zpico.c` — mtime newer than the binary, sha unchanged
+   (`0f2fe91a91da07ed`) — **2/2 still pass**. This issue's exact repro;
+3. a real one-line append (sha `9c776bd22c50e73c`) — **STALE**, citing
+   `zpico.c`, on both fixtures;
+4. `git checkout` the file — sha restored, tree clean, 2/2 pass again.
+
+### The class, swept
+
+This was the third turn of a shape CLAUDE.md cites as its own worked example of
+the class rule — "#222 fixed 4 RTOS resolvers, left ~30 in `binaries/mod.rs` →
+#328". Helper added, `binaries/mod.rs` not wired: #222 → #328 → #764.
+
+Every remaining raw mtime comparison in that file now FEEDS the content decision
+rather than returning a verdict (1377/1418 live in
+`newest_path_after`/`newest_source_after`, whose only callers are inside
+`zpico_c_inputs`), and all three early returns of the rewired function are
+`None`. mtime finds the candidate; content decides.
+
+    grep -nE '> *bin_mtime|path_newer_than' packages/testing/nros-tests/src/fixtures/binaries/mod.rs
