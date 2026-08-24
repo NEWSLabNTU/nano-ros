@@ -92,7 +92,7 @@ LEDGER_DIR = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
 
 VERDICTS = ("divergence", "extension", "declined", "gap", "rename")
 
-BUCKETS = ("systematic", "differs", "ours-only", "theirs-only")
+BUCKETS = ("systematic", "arity-only", "differs", "ours-only", "theirs-only")
 
 LANGS = ("c", "cpp", "rust")
 
@@ -518,9 +518,11 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
                 bits = [f"{k}={v}" for k, v in sorted(prov.items()) if v]
                 print("    " + "  ".join(bits))
             print(
-                "    same %d   systematic %d   differs %d   ours-only %d   theirs-only %d"
+                "    same %d   arity-only %d   systematic %d   differs %d   "
+                "ours-only %d   theirs-only %d"
                 % (
                     counts.get("same", 0),
+                    counts.get("arity-only", 0),
                     counts.get("systematic", 0),
                     counts.get("differs", 0),
                     counts.get("ours-only", 0),
@@ -564,11 +566,11 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
                     verdict = "rule:" + ",".join(r["detail"]["rules"])
                 elif bucket != "same" and entry is None:
                     unledgered.append((lang, bucket, r["key"]))
-                mark = {"same": " ", "systematic": "=", "differs": "!",
-                        "ours-only": "+", "theirs-only": "-"}[bucket]
+                mark = {"same": " ", "arity-only": "?", "systematic": "=",
+                        "differs": "!", "ours-only": "+", "theirs-only": "-"}[bucket]
                 line = "  %s %-52s %-12s %s" % (mark, r["key"], verdict or "UNLEDGERED", bucket)
                 print(line)
-                if bucket in ("differs", "systematic") and r.get("detail"):
+                if bucket in ("differs", "systematic", "arity-only") and r.get("detail"):
                     print(
                         "      ours   %s\n      theirs %s"
                         % (
@@ -715,6 +717,31 @@ def self_test():
     rows = {r["key"]: r["bucket"] for r in correlate.compare(ours, theirs, "c++")}
     check("Node same", rows.get("Node"), "same")
 
+    # A library prefix is not a type difference; a meaning is.
+    handles = correlate.shares_only_arity(
+        {"overloads": [{"params": [{"type": "struct nros_client_t *"}]}]},
+        {"overloads": [{"params": [{"type": "rcl_client_t *"}]}]},
+    )
+    check("prefixed handles are the same type", handles, False)
+    # A defaulted tail must be trimmed before positions are compared, or
+    # `spin(int32_t = 10)` against `spin()` reads as arity-only.
+    check(
+        "a defaulted tail does not make a call arity-only",
+        correlate.shares_only_arity(
+            {"overloads": [{"params": [{"type": "int32_t", "default": True}]}]},
+            {"overloads": [{"params": []}]},
+        ),
+        False,
+    )
+    check(
+        "a shared arity with no shared position is not `same`",
+        correlate.shares_only_arity(
+            {"overloads": [{"params": [{"type": "const char *"}, {"type": "uint8_t"}]}]},
+            {"overloads": [{"params": [{"type": "int"}, {"type": "char **"}]}]},
+        ),
+        True,
+    )
+
     # A defaulted parameter must not read as a divergence -- `spin(int32_t = 10)`
     # against `spin()` is the convergence issue 0338 landed on purpose.
     defaulted = correlate.flatten(
@@ -853,7 +880,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--lang", action="append", choices=LANGS, help="default: all three")
     ap.add_argument("--show", action="append", default=None,
-                    help="buckets to list: same, systematic, differs, ours-only, theirs-only, all")
+                    help="buckets: same, arity-only, systematic, differs, ours-only, theirs-only, all")
     ap.add_argument("--check", action="store_true", help="exit non-zero on an unledgered difference")
     ap.add_argument("--suggest-renames", action="store_true",
                     help="pair unmatched names by similarity (suggestions, never findings)")
@@ -880,7 +907,8 @@ def main():
         refresh(langs, args.ros_prefix, args.rclc, args.rclrs)
         return 0
 
-    show = set(args.show or ["differs", "systematic", "ours-only", "theirs-only"])
+    show = set(args.show or ["differs", "arity-only", "systematic",
+                             "ours-only", "theirs-only"])
     if args.by_topic:
         with tempfile.TemporaryDirectory() as tmpdir:
             return by_topic(langs, tmpdir)

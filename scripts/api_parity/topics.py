@@ -216,7 +216,8 @@ HEADER_STEMS = {
     "parameter_service": "param", "parameter_map": "param",
     "parameter_event_handler": "param", "rclc_parameter": "param",
 
-    "lifecycle_node": "lifecycle", "lifecycle_publisher": "lifecycle",
+    "lifecycle": "lifecycle", "lifecycle_node": "lifecycle",
+    "lifecycle_publisher": "lifecycle",
     "rcl_lifecycle": "lifecycle", "rclc_lifecycle": "lifecycle",
     "transition": "lifecycle", "managed_entity": "lifecycle",
     "default_state_machine": "lifecycle",
@@ -403,6 +404,9 @@ def self_test():
     # `shutdown` AND `spin`, so no single mapping would be right.
     check2("spin", "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp", "exec")
     check2("shutdown", "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp", "init")
+    # `on_shutdown` reads as init by name; ours is a lifecycle transition hook,
+    # and its file says so.
+    check2("on_shutdown", "packages/core/nros-node/src/lifecycle.rs", "lifecycle")
 
     check("accepted_callback_t", "action")
     check("response_callback_t", "service")

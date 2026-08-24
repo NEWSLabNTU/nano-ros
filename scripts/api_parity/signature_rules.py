@@ -98,6 +98,89 @@ THEIRS_DROPS = [
     },
 ]
 
+# Type SUBSTITUTIONS: the arity already matches, and the same position is spelled
+# differently on each side because of one decision applied everywhere.
+#
+# These are the divergences a parameter-count comparison cannot see. Without
+# them, `create_publisher`, `create_subscription`, `create_service`,
+# `create_client`, `publish`, `keep_last` and a dozen more each read as an
+# unexplained difference, when between them they are three sentences.
+TYPE_EQUIVALENCES = [
+    {
+        "id": "cstr-not-string",
+        "ours": re.compile(r"^char\*$|^char&$"),
+        "theirs": re.compile(r"^string&?$|^basic_string"),
+        "constraint": (
+            "no allocator and no STL on the freestanding targets (RFC-0018). "
+            "`std::string` owns a heap buffer; a name that must live in a "
+            "`no_std` image is a `const char*` into rodata."
+        ),
+        "covers": "every create_* and get_*_name taking a topic or service name",
+    },
+    {
+        "id": "no-shared-ptr",
+        "ours": re.compile(r"^([A-Za-z_][\w:]*)(<[^>]*>)?&?$"),
+        "theirs": re.compile(r"SharedPtr$|^shared_ptr<|^unique_ptr<|^Arc<"),
+        "constraint": (
+            "no allocator, so an entity cannot be handed back in a refcounted "
+            "box. RFC-0022: entities are owned by the caller and outlive the "
+            "handle, and a `Node` reached twice is a borrow error rather than a "
+            "second `shared_ptr`."
+        ),
+        "covers": "create_* results, publish(unique_ptr<T>), spin(Node::SharedPtr)",
+    },
+    {
+        "id": "no-arc-self",
+        "ours": re.compile(r"^&mut Self$|^&Self$"),
+        "theirs": re.compile(r"^&Arc<Self>$|^Arc<Self>$"),
+        "constraint": (
+            "the Rust half of no-shared-ptr. rclrs takes `&Arc<Self>` so an "
+            "entity can hold its node alive; RFC-0022 makes the node a "
+            "short-lived `&mut` borrow instead, which is what removes the "
+            "refcount and the allocation behind it."
+        ),
+        "covers": "rclrs Node::create_* and the parameter setters",
+    },
+    {
+        "id": "sized-integer",
+        "ours": re.compile(r"^(u?int(8|16|32|64)_t|int|unsigned|usize|u\d+|i\d+)$"),
+        "theirs": re.compile(r"^(size_t|u?int(8|16|32|64)_t|int|unsigned|usize|u\d+|i\d+)$"),
+        "constraint": (
+            "widths are chosen for the target, not inherited: a QoS depth or a "
+            "domain id is a `uint8_t`/`int` here where rclcpp takes `size_t`, "
+            "because the value is bounded by a compile-time capacity and the "
+            "type is what says so."
+        ),
+        "covers": "QoS::keep_last, QoS::QoS, domain ids",
+    },
+]
+
+
+# An alignment rule shifts one side before positions are compared, for the case
+# where the two signatures agree about everything EXCEPT where the result goes.
+#
+# `nros::Node::create_publisher(Publisher<M>& out, const char* topic, const QoS&)`
+# against `rclcpp::Node::create_publisher(const std::string&, const QoS&,
+# const PublisherOptions&)`: same arity, and every position is off by one
+# because ours leads with the entity and theirs returns it. Comparing in place
+# finds no agreement and reports an unexplained difference; comparing after the
+# shift finds `char*`/`string&` and `QoS&`/`QoS&`.
+ALIGNMENTS = [
+    {
+        "id": "out-param-first",
+        "drop_ours": 1,
+        "applies_to": re.compile(r"^([A-Za-z_]\w*::)?create_|^make_"),
+        "constraint": (
+            "no exceptions (-fno-exceptions, RFC-0018) and no allocator, so a "
+            "factory can neither throw on failure nor return an owning pointer. "
+            "The entity is the first parameter and the return is the status; "
+            "everything after it lines up with rclcpp's parameter list."
+        ),
+        "covers": "the C++ Node::create_* family",
+    },
+]
+
+
 # Parameters OUR side adds. Same shape, opposite direction.
 OURS_DROPS = [
     {
@@ -189,7 +272,29 @@ def explain(key, ours_item, theirs_item):
     return []
 
 
+def alignment_for(key):
+    """The alignment rule to try for `key`, or None."""
+    for rule in ALIGNMENTS:
+        scope = rule.get("applies_to")
+        if scope is None or scope.search(key):
+            return rule
+    return None
+
+
+def substitution(ours_type, theirs_type):
+    """The rule id explaining these two spellings of one position, or None."""
+    for rule in TYPE_EQUIVALENCES:
+        if rule["ours"].search(ours_type) and rule["theirs"].search(theirs_type):
+            return rule["id"]
+        if rule["ours"].search(theirs_type) and rule["theirs"].search(ours_type):
+            return rule["id"]
+    return None
+
+
 def constraint(rule_id):
+    for rule in TYPE_EQUIVALENCES + ALIGNMENTS:
+        if rule["id"] == rule_id:
+            return rule["constraint"]
     for rule in THEIRS_DROPS + OURS_DROPS:
         if rule["id"] == rule_id:
             return rule["constraint"]
@@ -239,7 +344,26 @@ def self_test():
     if got:
         failures.append("handle-owns-node escaped its _fini scope: %r" % (got,))
 
-    for rule in THEIRS_DROPS + OURS_DROPS:
+    if substitution("char*", "string&") != "cstr-not-string":
+        failures.append("cstr-not-string did not explain char* vs string&")
+    if substitution("Publisher<M>&", "Publisher<M>::SharedPtr") != "no-shared-ptr":
+        failures.append("no-shared-ptr did not explain a SharedPtr return")
+    if substitution("&mut Self", "&Arc<Self>") != "no-arc-self":
+        failures.append("no-arc-self did not explain &mut Self vs &Arc<Self>")
+    if substitution("int", "size_t") != "sized-integer":
+        failures.append("sized-integer did not explain int vs size_t")
+    # A substitution must not explain two genuinely different things.
+    if substitution("char*", "int") is not None:
+        failures.append("a substitution explained char* vs int")
+    if substitution("QoS&", "CallbackGroupType") is not None:
+        failures.append("a substitution explained QoS vs CallbackGroupType")
+
+    if (alignment_for("Node::create_publisher") or {}).get("id") != "out-param-first":
+        failures.append("out-param-first did not apply to a create_* method")
+    if alignment_for("Node::get_name") is not None:
+        failures.append("out-param-first escaped the create_* family")
+
+    for rule in TYPE_EQUIVALENCES + ALIGNMENTS + THEIRS_DROPS + OURS_DROPS:
         if not rule.get("constraint", "").strip():
             failures.append("rule %s has no constraint" % rule["id"])
         if not rule.get("covers", "").strip():

@@ -1,0 +1,165 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:context_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl splits initialization in two -- an `rcl_context_t` built from a separately-constructed `rcl_init_options_t` -- and threads the context through every entity's init. nano-ros collapses both into `nros_support_t`, which is rclc's `rclc_support_t` name and carries the RMW session INLINE (`_opaque[SESSION_OPAQUE_U64S]`, nros_generated.h:949). The constraint is no allocator: rcl's context hands out a heap `rcl_context_impl_t` and its accessors exist to reach into it, and there is nothing here for them to reach. The useful half lives on `nros_support_*`."
+  },
+  "c:get_default_domain_id": {
+    "verdict": "declined",
+    "why": "rcl reads ROS_DOMAIN_ID from the environment at runtime. An embedded backend has no environment (RFC-0036, Domain ID), so the domain arrives through `nros_support_init`'s parameter over a documented ladder -- explicit argument, then hosted env, then the baked default -- with `NROS_DOMAIN_ID_INHERIT`/`NROS_DOMAIN_ID_EXPLICIT_ZERO` sentinels because plain 0 has to stay the UNSET marker (issues 0206/0227)."
+  },
+  "c:get_zero_initialized_context": {
+    "verdict": "declined",
+    "why": "there is no context type to zero-initialize. `nros_support_get_zero_initialized` is the same idiom on the type we do have."
+  },
+  "c:get_zero_initialized_init_options": {
+    "verdict": "declined",
+    "why": "no init-options type; see `c:init_options_*`."
+  },
+  "c:init": {
+    "verdict": "declined",
+    "why": "`rcl_init(argc, argv, options, context)` is the layer BELOW rclc, and rclc's own examples do not call it -- they call `rclc_support_init`, which is what `nros_support_init` mirrors. Declining the lower layer is what makes the C API rclc-shaped rather than rcl-shaped."
+  },
+  "c:init_options_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "the options half of the same collapse. `rcl_init_options_t` is built, mutated (set_domain_id), copied and finalised before rcl_init consumes it; ours are the two arguments `nros_support_init` takes. Same constraint as the `compile-time-options` signature rule -- there is no runtime options object because nothing negotiates at runtime."
+  },
+  "c:shutdown": {
+    "verdict": "declined",
+    "why": "as `rcl_init`: the rcl-layer counterpart. `nros_support_fini` is the rclc-shaped teardown."
+  },
+  "c:support_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "as `support_is_valid`: rcl's zero-init idiom applied to `nros_support_t`, which rclc does not provide for `rclc_support_t`."
+  },
+  "c:support_init_named": {
+    "verdict": "extension",
+    "why": "`nros_support_init` plus a node name. RFC-0046 makes launch the authority on node identity, and an image that was told its name at boot should not have to re-derive it; rclc has no equivalent because a desktop node gets its name from argv."
+  },
+  "c:support_init_with_options": {
+    "verdict": "declined",
+    "why": "rclc's options-taking variant. Same constraint as `compile-time-options`: there is no `rcl_init_options_t` to pass."
+  },
+  "c:support_is_valid": {
+    "verdict": "extension",
+    "why": "mirrors `rcl_context_is_valid` on the type we actually have. Counted as an extension rather than a rename because rclc -- the C reference -- ships no `rclc_support_is_valid`; we are adding to rclc, not renaming rcl."
+  },
+  "c:support_state_t": {
+    "verdict": "extension",
+    "why": "an explicit lifecycle for the support object (uninitialised / initialised / finalised) so a double-init or a use-after-fini is a returned code rather than undefined behaviour. rcl relies on a zero-initialized struct plus `rcl_context_is_valid`; a device that cannot report a crash needs the state to be inspectable."
+  },
+  "cpp:Context": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rclcpp lets several contexts coexist so one process can host independent ROS graphs, and every entity holds a `Context::SharedPtr`. An image is ONE graph and has no allocator for a context registry, so `nros::init()` initialises the single global one and nothing carries a context pointer. The accessors (`get_rcl_context`, `get_sub_context`, `get_init_options`) exist to reach into that per-context state."
+  },
+  "cpp:ContextAlreadyInitialized": {
+    "verdict": "declined",
+    "why": "an exception type, and the freestanding builds are -fno-exceptions (RFC-0018). Re-initialising returns `ErrorCode::AlreadyExists` through `nros::Result`."
+  },
+  "cpp:InitOptions": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "the C++ face of `rcl_init_options_t`; see `c:init_options_*`. `auto_initialize_logging` and `use_default_domain_id` are runtime toggles for decisions taken at build time here (RFC-0045)."
+  },
+  "cpp:OnShutdownCallbackHandle": {
+    "verdict": "gap",
+    "why": "see cpp:ShutdownCallbackHandle."
+  },
+  "cpp:PreShutdownCallbackHandle": {
+    "verdict": "gap",
+    "why": "rclcpp runs pre-shutdown callbacks BEFORE entities are torn down and on-shutdown ones after. The ordering is the useful part for a device releasing hardware. See `cpp:on_shutdown`."
+  },
+  "cpp:ShutdownCallbackHandle": {
+    "verdict": "gap",
+    "why": "the handle a registered shutdown callback is removed by. Part of `cpp:on_shutdown`'s gap; listed separately because it is a type, not a verb."
+  },
+  "cpp:get_contexts": {
+    "verdict": "declined",
+    "why": "enumerates the process's contexts; there is exactly one and it is not a value you can hold. See `cpp:Context`."
+  },
+  "cpp:get_current_signal_handler_options": {
+    "verdict": "declined",
+    "why": "see install_signal_handlers."
+  },
+  "cpp:init": {
+    "verdict": "divergence",
+    "why": "ours is `init(const char* locator, uint8_t domain_id [, const char* node_name])`; rclcpp's is `init(int argc, char** argv, const InitOptions&, SignalHandlerOptions)`. Both take two arguments and share nothing else -- the correlator reports this as `arity-only` for that reason. Three constraints at once: no argv on a device (RFC-0045), no runtime options object, and no POSIX signals. What is left is the two things a device must actually be told, named directly."
+  },
+  "cpp:init_and_remove_ros_arguments": {
+    "verdict": "declined",
+    "why": "see remove_ros_arguments."
+  },
+  "cpp:install_signal_handlers": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "why": "no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal. rclcpp installs a SIGINT handler so Ctrl-C shuts the context down; an image is stopped by its RTOS, a watchdog or a power rail."
+  },
+  "cpp:on_shutdown": {
+    "verdict": "gap",
+    "why": "rclcpp lets a node register work to run when the context shuts down, and nano-ros has no hook at all -- not the free function, not `Context::add_on_shutdown_callback`, not the pre-shutdown variant. Nothing about no_std prevents a fixed-capacity callback array; a node that must park an actuator or release a bus on the way down currently has nowhere to do it, which matters MORE on a device than on a desktop. Phase 379 W3."
+  },
+  "cpp:remove_ros_arguments": {
+    "verdict": "declined",
+    "why": "argv filtering, and there is no argv. RFC-0045 resolves boot config from baked values and the board."
+  },
+  "cpp:signal_handlers_installed": {
+    "verdict": "declined",
+    "why": "see install_signal_handlers."
+  },
+  "cpp:uninstall_signal_handlers": {
+    "verdict": "declined",
+    "why": "see install_signal_handlers."
+  },
+  "rust:Context": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "as `cpp:Context`. rclrs additionally makes the context the factory for executors (`Context::create_executor`) and reads the domain from the environment (`from_env`, `default_from_env`) -- neither is available to an image with no env and one session."
+  },
+  "rust:InitOptions": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "as `cpp:InitOptions`; the domain arrives through the boot-config ladder, not a mutable options object."
+  },
+  "rust:extract_non_ros_args": {
+    "verdict": "declined",
+    "why": "argv filtering; see `cpp:remove_ros_arguments`."
+  }
+}

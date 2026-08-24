@@ -11,6 +11,10 @@ item on either side has been ACCOUNTED FOR -- matched, or classified with a
 reason. So this produces four buckets and no fifth:
 
   same       -- names correspond and the arguments agree
+  arity-only -- names correspond, the arities overlap, and no parameter position
+                holds a compatible type: the agreement is in the COUNT. `init`
+                is the example -- ours takes (locator, domain), rclcpp's takes
+                (argc, argv), and both take two.
   systematic -- names correspond, the arguments differ, and a SIGNATURE RULE
                 explains it: one platform decision applied everywhere (no
                 allocator, compile-time QoS, callback bound at creation). The
@@ -216,9 +220,18 @@ def flatten(records, lang, side):
 # RFC-0018 already decided once and for all.
 _TYPE_NOISE = [
     (re.compile(r"\bconst\s+"), ""),
+    (re.compile(r"\b(struct|enum|union)\s+"), ""),
+    # The library prefix is not part of the type's identity, exactly as it is
+    # not part of a name's: `struct nros_client_t *` and `rcl_client_t *` are
+    # the same concept spelled by two libraries. Without this, every handle
+    # parameter reads as a type mismatch.
+    (re.compile(r"\b(nros|rclc|rcl|rmw|rosidl)_"), ""),
     (re.compile(r"\s*&\s*"), "&"),
+    (re.compile(r"\s*\*\s*"), "*"),
     (re.compile(r"\s+"), " "),
     (re.compile(r"^rclcpp::"), ""),
+    (re.compile(r"^rclcpp_action::"), ""),
+    (re.compile(r"^rclrs::"), ""),
     (re.compile(r"^nros::"), ""),
     (re.compile(r"^std::"), ""),
 ]
@@ -272,8 +285,21 @@ def compare(ours, theirs, lang):
             oa, ta = arity_set(o), arity_set(t)
             if o["kind"] in ("method", "function") or t["kind"] in ("method", "function"):
                 if oa & ta:
-                    bucket = "same"
-                    detail = None
+                    arity_only, subs = arity_verdict(o, t, key)
+                    if arity_only:
+                        bucket, detail = "arity-only", {
+                            "ours_arity": sorted(oa),
+                            "theirs_arity": sorted(ta),
+                            "rules": [],
+                        }
+                    elif subs:
+                        bucket, detail = "systematic", {
+                            "ours_arity": sorted(oa),
+                            "theirs_arity": sorted(ta),
+                            "rules": subs,
+                        }
+                    else:
+                        bucket, detail = "same", None
                 else:
                     rules = signature_rules.explain(key, o, t)
                     bucket = "systematic" if rules else "differs"
@@ -321,3 +347,105 @@ def suggest_renames(rows, cutoff=0.72):
         out.append((key, match[0], ratio))
     out.sort(key=lambda x: -x[2])
     return out
+
+
+# A shared arity does not mean a shared meaning. `nros::init(const char* locator,
+# uint8_t domain)` and `rclcpp::init(int argc, char** argv)` both take two
+# parameters and have nothing to do with each other, and the bucket report calls
+# that `same`.
+#
+# So `same` is qualified: if two signatures share an arity but NO parameter
+# position holds a compatible type, the agreement is in the count only. That is
+# reported rather than silently accepted -- it is a weaker claim than `same`,
+# and a stage that trusts it will skip a real divergence.
+#
+# Type comparison runs through `canon_type`, so a library prefix, a `struct`
+# keyword and a `const` do not count as a difference; what is left is a genuine
+# disagreement about what the parameter IS.
+def _effective_arities(params):
+    """Every call arity this parameter list accepts, defaults trimmed off."""
+    required = sum(1 for p in params if not p.get("default"))
+    return range(required, len(params) + 1)
+
+
+def _positions_agree(ours_overload, theirs_overload):
+    """(agree, rules) for one overload pair.
+
+    Compared at the SHARED arity with defaulted trailing parameters trimmed, not
+    at the declared length. `spin(int32_t poll_ms = 10)` against `spin()` agree
+    at arity 0 -- comparing declared lengths would call them a mismatch and
+    re-report the convergence issue 0338 landed on purpose, one bucket over.
+
+    A position may agree OUTRIGHT or through a type substitution
+    (`signature_rules.TYPE_EQUIVALENCES`): `const char *` against
+    `const std::string &` is RFC-0018's decision, not a disagreement about what
+    the parameter is. `rules` names the substitutions that were needed, so the
+    report can say WHICH decision made two spellings the same.
+    """
+    a, b = ours_overload["params"], theirs_overload["params"]
+    shared = set(_effective_arities(a)) & set(_effective_arities(b))
+    if not shared:
+        return False, []
+    for n in sorted(shared):
+        if n == 0:
+            return True, []
+        rules = []
+        for pa, pb in zip(a[:n], b[:n]):
+            ca, cb = canon_type(pa["type"]), canon_type(pb["type"])
+            if ca == cb or ca.rstrip("*&") == cb.rstrip("*&"):
+                return True, []
+            rule = signature_rules.substitution(ca, cb)
+            if rule and rule not in rules:
+                rules.append(rule)
+        if rules:
+            return True, rules
+    return False, []
+
+
+def shares_only_arity(ours_item, theirs_item):
+    """True when the arities overlap and no overload pair agrees on a position."""
+    return arity_verdict(ours_item, theirs_item)[0]
+
+
+def _try_alignment(key, ours_item, theirs_item):
+    """Retry the position comparison with an alignment rule applied."""
+    rule = signature_rules.alignment_for(key)
+    if rule is None:
+        return None
+    drop = rule.get("drop_ours", 0)
+    for a in ours_item.get("overloads") or []:
+        if len(a["params"]) <= drop:
+            continue
+        shifted = {"params": a["params"][drop:], "ret": a.get("ret", "")}
+        for b in theirs_item.get("overloads") or []:
+            agree, subs = _positions_agree(shifted, b)
+            if agree:
+                return [rule["id"]] + subs
+    return None
+
+
+def arity_verdict(ours_item, theirs_item, key=""):
+    """(arity_only, rules) -- rules explain the spelling where they agree.
+
+    `arity_only` means the count matches and NOTHING else does. When a type
+    substitution reconciles the position, the row is not arity-only: it is a
+    systematic divergence, and the rules say which one.
+    """
+    oo = (ours_item or {}).get("overloads") or []
+    to = (theirs_item or {}).get("overloads") or []
+    if not oo or not to:
+        return False, []
+    best = None
+    for a in oo:
+        for b in to:
+            agree, rules = _positions_agree(a, b)
+            if agree and not rules:
+                return False, []
+            if agree and (best is None or len(rules) < len(best)):
+                best = rules
+    if best is not None:
+        return False, best
+    aligned = _try_alignment(key, ours_item or {}, theirs_item or {})
+    if aligned:
+        return False, aligned
+    return True, []

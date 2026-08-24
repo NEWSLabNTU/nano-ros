@@ -129,6 +129,23 @@ report rather than guessed:
 | `executor-owns-no-entity-storage` | the callback and message buffer bind to the ENTITY at creation (RFC-0041), so the executor has no per-entity storage to be told the size of |
 | `handle-owns-node` | our entity handles retain their node, so teardown does not ask the caller to still hold it — one pointer per entity against a lifetime the caller would otherwise enforce with no allocator and no ownership types |
 
+Three kinds of rule, because there are three ways one decision shows up:
+
+* **A dropped parameter class** — the five above. Reconciles an arity.
+* **A type substitution** (`TYPE_EQUIVALENCES`) — the arity already matches and
+  one position is spelled differently on each side: `const char*` against
+  `const std::string&` (`cstr-not-string`, RFC-0018), a value or reference
+  against a `SharedPtr` (`no-shared-ptr`, RFC-0022), `&mut Self` against
+  `&Arc<Self>` (`no-arc-self`), `int` against `size_t` (`sized-integer`).
+  Without these, `create_subscription`, `create_service`, `create_client`,
+  `publish`, `QoS::keep_last` and a dozen more each read as an unexplained
+  difference when between them they are three sentences.
+* **An alignment** (`ALIGNMENTS`) — the two signatures agree about everything
+  except where the RESULT goes. `create_publisher(Publisher<M>& out, const
+  char*, const QoS&)` against `create_publisher(const std::string&, const QoS&,
+  const PublisherOptions&)`: same arity, every position off by one. Comparing
+  in place finds no agreement; comparing after the shift finds two.
+
 Matching drops the FEWEST parameters that explain the difference, in priority
 order, stopping the moment the arities overlap. Applying every rule at once
 over-explains: `rcl_publisher_init` takes both an options struct and a node,
@@ -194,19 +211,24 @@ it, zero. All eleven were the tool's. Defect 4 then moved 7 more rows into
 
 ## The first report
 
-    same       both sides have the name and their arities overlap
-    systematic they do not, and a signature rule explains it
-    differs    they do not, and NOTHING explains it
+    same       both sides have the name, and the arguments agree
+    arity-only the arities overlap and NOTHING else does -- the agreement is in
+               the count. `init` is the example: ours takes (locator, domain),
+               rclcpp's takes (argc, argv), and both take two.
+    systematic the arguments differ and a signature rule explains it
+    differs    the arguments differ and NOTHING explains it
     +          ours only
     -          theirs only
 
 Against the PUBLIC ROS 2 surface only:
 
-| lane | reference | same | systematic | differs | ours-only | theirs-only | excluded as not-API |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| C++ | rclcpp (humble) | 61 | 0 | **0** | 217 | 766 | 2 message, 12 plumbing |
-| C | rclc+rcl (humble) | 67 | 24 | **8** | 306 | 385 | 216 message, 33 plumbing |
-| Rust | rclrs 0.5.1 | 44 | 0 | **0** | 709 | 327 | 2 plumbing |
+| lane | reference | same | arity-only | systematic | differs | ours-only | theirs-only |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| C++ | rclcpp (humble) | 44 | 9 | 8 | **0** | 217 | 766 |
+| C | rclc+rcl (humble) | 67 | 0 | 24 | **8** | 306 | 385 |
+| Rust | rclrs 0.5.1 | 40 | 3 | 1 | **0** | 709 | 327 |
+
+Not-API excluded: 216 message + 33 plumbing (C), 2 + 12 (C++), 2 (Rust).
 
 The C++ and Rust lanes show 0 `systematic` because they show 0 `differs` — no
 rule is ever consulted. The out-parameter rule (`status-return-out-param`) is
@@ -259,13 +281,22 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
-**`types` is DONE (2026-08-24)** — 14 authored rows covering 34 report rows in
-all three languages, in `docs/reference/api-parity-ledger/types.json`. It
-produced two `gap`s for W3 and one issue (0783: the Rust facade exports
-`NodeError` but not `TransportError` or `RclReturnCode`, and RFC-0036's Errors
-row names a type the user API never returns). Doing it also corrected the
-taxonomy — see the header rule below — which moved rows in every other stage,
-so counts taken before 2026-08-24 will not match.
+**`types` and `init` are DONE (2026-08-24)** — 44 authored rows covering both
+stages in all three languages. Each corrected something the stage was standing
+on:
+
+* `types` found the taxonomy filing by NAME when the DECLARING HEADER was
+  available and better (see below), and produced issue 0783 — the Rust facade
+  exports `NodeError` but not `TransportError` or `RclReturnCode`, and
+  RFC-0036's Errors row names a type the user API never returns.
+* `init` found the correlator calling `nros::init(const char*, uint8_t)` the
+  SAME as `rclcpp::init(int, char**)` because both take two parameters. That
+  produced the `arity-only` bucket, four type-substitution rules and an
+  alignment rule (below), which between them reclassified 9 rows across the
+  other stages as `systematic` rather than leaving them silently `same`.
+
+Counts taken before 2026-08-24 will not match: both fixes moved rows between
+stages and between buckets.
 
 **1682 decisions across 16 stages.** They parallelise cleanly because a decision
 is a sentence about one item and touches nothing else. This section is written
@@ -294,22 +325,22 @@ Get a stage's rows, and see what is left:
 
     stage             c      cpp     rust    total
     types             0        0        0        0   done
-    init             28       14        4       46
-    node             20       73       73      166
+    init              0        0        0        0   done
+    node             20       75       73      168
     pubsub           77       98       54      229
     service          52       54       31      137
     timer            60       26       29      115
-    qos              27       62       17      106
-    param            79       17       46      142
+    qos              27       63       17      107
+    param            79       17       48      144
     action          155       33        8      196
-    exec             61       58       34      153
-    lifecycle        54       78        9      141
-    log              16        4       36       56
+    exec             61       59       34      154
+    lifecycle        54       83       16      153
+    log              16        4       37       57
     graph            20        2        3       25
     serde            31        0        5       36
     boot              2        0       10       12
-    other            12       20       76      108
-                                              1668
+    other            12       19       70      101
+                                              1634
 
 `--by-topic` counts DECISIONS, not rows: a member whose type already carries a
 verdict is answered, so counting rows would report the same work several times
@@ -430,7 +461,13 @@ Driven by W2's `gap` rows, ordered by what phase 209's port templates and the
 autoware survey nodes call. The `types` stage has already produced two:
 `cpp:FutureReturnCode` (we express SUCCESS and TIMEOUT, not INTERRUPTED, so a
 ported `spin_until_future_complete` caller cannot tell shutdown from timeout)
-and `rust:RclReturnCode` (we have the type and do not export it — issue 0783). Expected shape: `create_wall_timer` as a name
+and `rust:RclReturnCode` (we have the type and do not export it — issue 0783).
+`init` added a third and it is the largest of them: **nano-ros has no shutdown
+hook at all** — not `rclcpp::on_shutdown`, not `Context::add_on_shutdown_callback`,
+not the pre-shutdown variant that runs BEFORE entities are torn down. Nothing
+about `no_std` prevents a fixed-capacity callback array, and a node that must
+park an actuator or release a bus on the way down has nowhere to do it. That
+matters more on a device than on a desktop. Expected shape: `create_wall_timer` as a name
 alongside `create_timer`, `declare_parameter` over the current parameter
 surface, `get_clock`/`Clock`/`Duration`, the QoS policy enums under their rclcpp
 names.
