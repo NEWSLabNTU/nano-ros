@@ -97,3 +97,88 @@ show a user where their tiers landed, because they land nowhere.
 (3) deserves more weight than it looks: RFC-0079 already argues the user should
 not be writing kernel numbers, and on POSIX they are writing numbers that reach
 no kernel at all.
+
+## Decided and implemented 2026-08-24 — apply, or say why not
+
+Direction taken (maintainer): borrow play_launch's art — use `CAP_SYS_NICE`
+where it is available, and WARN where it is not. Option (3), retiring the knob,
+is off the table; the eleven pins become real.
+
+### What was in the way, and it was not the privilege
+
+`nros-platform-posix`'s `task_init` ALREADY sets `SCHED_FIFO` at the declared
+priority — on the attribute with `PTHREAD_EXPLICIT_SCHED`, then again on the
+running thread. Two things defeated it:
+
+1. **The refusal was swallowed.** `(void) pthread_setschedparam(...)`. On a host
+   without the privilege every call returns `EPERM` and nothing said so.
+2. **The native board never goes through that path.** `nros-board-linux` spawns
+   tiers with `std::thread::scope`, so `task_init` — and its attribute — is
+   never involved for a native tier. The machinery existed and could not reach
+   the case it was written for.
+
+### Implemented
+
+* `nros_posix_apply_current_priority(name, priority)` — the sibling of
+  `nros_nuttx_apply_current_priority` and `freertos_apply_tier_priority`: one
+  implementation per port, one marker, a refusal REPORTED. RAW SCHED_FIFO
+  values (issue 0623's vocabulary); `0` means undeclared.
+* Called at tier entry by `run_one_tier` AND `run_boot_tier`. The boot tier runs
+  on the calling thread, which makes it the easiest to forget — and forgetting
+  it is not hypothetical: the same omission was a live defect on FreeRTOS and
+  cost issue 0636 a measurement round on NuttX.
+* `EPERM` prints ONCE per process, with the remedy and the reason it must be
+  re-applied:
+
+```
+[warn] nros: SCHED_FIFO is REFUSED for this process (EPERM), so every tier's
+declared priority is INERT and the kernel runs them all at the default policy.
+       Grant the capability to the binary that runs the tiers:
+           sudo setcap cap_sys_nice+ep <executable>
+       Re-run it after EVERY rebuild: a file capability is bound to the file's
+       CONTENTS, so replacing the binary drops it. Or raise RLIMIT_RTPRIO.
+```
+
+* The board's standing note was CORRECTED rather than left. It said priority and
+  core were both "advisory (not applied natively)". That is now false for
+  priority, and a stale note claiming a declaration is inert while it is being
+  honoured is worse than the silence it replaced.
+
+### Measured
+
+Native realtime entry against a live router, unprivileged host:
+
+```
+nros: NOTE — posix tier `core` is advisory (not applied natively); priority IS
+      applied where the process may request SCHED_FIFO
+[warn] nros: SCHED_FIFO is REFUSED for this process (EPERM) ...
+nros: tier priority FAILED tier=`low`  prio=10 rc=1 — tier runs at inherited priority
+nros: tier priority FAILED tier=`high` prio=80 rc=1 — tier runs at inherited priority
+```
+
+Both tiers report, boot tier included. `realtime_tiers` unchanged: 17 rows ran,
+4 skipped.
+
+One defect found in this very diagnostic, on the way. The markers were invisible
+under a plain pipe and appeared only under `stdbuf -o0`: a tier's spin loop
+never returns, and stdout to a pipe is block-buffered, so the line sat in a
+buffer flushed at exit — i.e. never. Every e2e harness reads through a pipe, so
+the diagnostic would have been unreadable exactly where it is needed. Fixed with
+`fflush`. **A diagnostic nobody can read is not a diagnostic**, which is the
+failure this whole issue is about, reproduced inside its own fix.
+
+### NOT verified here, and it needs a privileged step
+
+The REFUSAL path is verified end-to-end. The SUCCESS path is not: this host has
+`ulimit -r` = 0 with a hard limit of 0, so `SCHED_FIFO` cannot be requested
+without `CAP_SYS_NICE`, and granting it needs root — which this agent does not
+do. What remains is one command by someone who can run it:
+
+```
+sudo setcap cap_sys_nice+ep <the built native_entry>
+```
+
+then re-run the entry and expect `tier priority set tier=...` in place of
+`FAILED`. Until that is done, "priority IS applied where permitted" rests on the
+`pthread_setschedparam` contract and on the same code path working on NuttX, not
+on a measurement of the applied case.

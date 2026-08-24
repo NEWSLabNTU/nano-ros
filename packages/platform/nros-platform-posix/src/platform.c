@@ -371,7 +371,52 @@ int8_t nros_platform_task_init(void *task, void *attr,
             struct sched_param sp;
             memset(&sp, 0, sizeof(sp));
             sp.sched_priority = native;
-            (void) pthread_setschedparam(*t, SCHED_FIFO, &sp);
+            int prio_rc = pthread_setschedparam(*t, SCHED_FIFO, &sp);
+            /* RFC-0079 / issue 0765 — a REFUSAL is reported, once.
+             *
+             * This used to be `(void) pthread_setschedparam(...)`. On a Linux
+             * host without `CAP_SYS_NICE` (or an `RLIMIT_RTPRIO` allowance)
+             * every one of those calls returns EPERM, so a tier that declared
+             * `priority = 80` ran at the default policy and NOTHING said so —
+             * eleven such pins exist in the tree. Silently honouring a
+             * scheduling declaration that was not applied is the same
+             * silent-drop shape RFC-0052 makes fail-loud everywhere else.
+             *
+             * Once per process, not per task: an image with six tiers would
+             * otherwise print six identical lines saying one thing about the
+             * process. `pthread_setschedparam` is called under the spawn path,
+             * which is already serialised by the caller, so a plain static is
+             * enough here and avoids dragging <stdatomic.h> into a file that
+             * compiles for several hosted targets.
+             *
+             * Not a spawn failure: the task runs at the inherited priority, and
+             * turning a missing capability into a boot failure would make
+             * every unprivileged `just ci` run stop dead. The point is that the
+             * operator learns the declaration did not take. */
+            if (prio_rc != 0) {
+                static int reported;
+                if (!reported) {
+                    reported = 1;
+                    if (prio_rc == EPERM) {
+                        fprintf(stderr,
+                                "[warn] nros: SCHED_FIFO priority %d was REFUSED (EPERM) — this "
+                                "process may not request real-time scheduling, so every tier's "
+                                "declared priority is INERT and the kernel runs them all at the "
+                                "default policy.\n"
+                                "       Grant the capability to the binary that runs the tiers:\n"
+                                "           sudo setcap cap_sys_nice+ep <the executable>\n"
+                                "       (re-run it after EVERY rebuild — a file capability is "
+                                "bound to the file's CONTENTS and cannot survive a replaced "
+                                "binary), or raise RLIMIT_RTPRIO for the user.\n",
+                                native);
+                    } else {
+                        fprintf(stderr,
+                                "[warn] nros: SCHED_FIFO priority %d was refused (rc=%d) — the "
+                                "tier runs at its inherited priority.\n",
+                                native, prio_rc);
+                    }
+                }
+            }
             /* issue 0636 — a read-back diagnostic stood here and was REMOVED as
              * unverified. It reported `high` at prio=1 policy=1 on a run where
              * that task demonstrably ran at 110 (it self-applied, printed its
@@ -836,6 +881,76 @@ static const char *severity_label_log(uint8_t s) {
 }
 
 static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* RFC-0079 / issue 0765 — adopt a tier's declared priority on the CALLING
+ * thread, and SAY what happened.
+ *
+ * The sibling of `nros_nuttx_apply_current_priority` and
+ * `freertos_apply_tier_priority`: one implementation per port, one marker, and
+ * a refusal that is reported rather than absorbed. It exists because the Linux
+ * board spawns its tiers with `std::thread::scope`, which never reaches this
+ * file's `task_init` — so the attribute path that gives NuttX its priorities
+ * cannot reach a native tier, and eleven `[tiers.*.posix] priority` pins in the
+ * tree were inert with nothing saying so.
+ *
+ * `priority` is the RAW SCHED_FIFO value, the vocabulary issue 0623 settled on
+ * after a normalised scale silently inverted a tier against the transport band.
+ * 0 means "undeclared" — keep what was inherited, as on NuttX.
+ *
+ * Returns 1 when applied, 0 otherwise. Never fatal: an unprivileged host is the
+ * common case for `just ci`, and refusing to boot there would trade a silent
+ * degradation for a stopped test suite. The operator gets a line instead. */
+int nros_posix_apply_current_priority(const char *name, uint32_t priority);
+int nros_posix_apply_current_priority(const char *name, uint32_t priority) {
+    const char *tname = (name != NULL) ? name : "?";
+    if (priority == 0u) {
+        return 0;
+    }
+    int lo = sched_get_priority_min(SCHED_FIFO);
+    int hi = sched_get_priority_max(SCHED_FIFO);
+    int want = (int) priority;
+    if (want < lo) {
+        want = lo;
+    }
+    if (want > hi) {
+        want = hi;
+    }
+    struct sched_param sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sched_priority = want;
+    int rc = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+    if (rc == 0) {
+        printf("nros: tier priority set tier=`%s` prio=%d\n", tname, want);
+        /* A tier's spin loop never returns, and stdout to a PIPE is
+         * block-buffered — so without this the marker sits in a buffer that is
+         * flushed at exit, i.e. never, and every piped reader (every e2e
+         * harness) sees nothing. Measured: invisible under a plain pipe,
+         * visible under `stdbuf -o0`. A diagnostic nobody can read is not a
+         * diagnostic, which is the whole failure this line exists to fix. */
+        fflush(stdout);
+        return 1;
+    }
+    if (rc == EPERM) {
+        static int reported;
+        if (!reported) {
+            reported = 1;
+            fprintf(stderr,
+                    "[warn] nros: SCHED_FIFO is REFUSED for this process (EPERM), so every "
+                    "tier's declared priority is INERT and the kernel runs them all at the "
+                    "default policy. Tier ordering is then whatever SCHED_OTHER decides.\n"
+                    "       Grant the capability to the binary that runs the tiers:\n"
+                    "           sudo setcap cap_sys_nice+ep <executable>\n"
+                    "       Re-run it after EVERY rebuild: a file capability is bound to the "
+                    "file's CONTENTS, so replacing the binary drops it. Or raise "
+                    "RLIMIT_RTPRIO for the user.\n");
+        }
+    }
+    printf("nros: tier priority FAILED tier=`%s` prio=%d rc=%d — tier runs at inherited "
+           "priority\n",
+           tname, want, rc);
+    fflush(stdout); /* see the note above */
+    return 0;
+}
 
 void nros_platform_log_write(uint8_t severity,
                              const uint8_t *name_ptr, uintptr_t name_len,

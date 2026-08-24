@@ -436,10 +436,18 @@ impl LinuxBoard {
         // (no sched_setscheduler/affinity consumer; strict ordering needs
         // SCHED_FIFO + privileges — phase-162 territory). Say so ONCE, loudly,
         // when any tier declares them, instead of silently dropping the knobs.
-        if tiers.iter().any(|t| t.priority > 0 || t.core.is_some()) {
+        // issue 0765 — priority is no longer advisory here; `core` still is.
+        //
+        // This note used to say BOTH were "advisory (not applied natively)",
+        // which was true and is no longer: each tier now self-applies its
+        // declared SCHED_FIFO priority at entry (`apply_tier_priority`) and
+        // says so, or says why not. Leaving the old wording would have been
+        // worse than the original silence — a reader would believe a
+        // declaration was inert while it was being honoured.
+        if tiers.iter().any(|t| t.core.is_some()) {
             <Self as BoardPrint>::println(format_args!(
-                "nros: NOTE — posix tier priority/core are advisory (not applied \
-                 natively); scheduling is the executor's SchedContext"
+                "nros: NOTE — posix tier `core` is advisory (not applied natively); \
+                 priority IS applied where the process may request SCHED_FIFO"
             ));
         }
         let setup = &setup;
@@ -565,6 +573,47 @@ fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
 
 /// Register + spin one tier on a freshly-opened borrowed-session
 /// executor (spawned-tier path).
+// RFC-0079 / issue 0765 — see `apply_tier_priority` below.
+#[cfg(unix)]
+unsafe extern "C" {
+    fn nros_posix_apply_current_priority(name: *const core::ffi::c_char, priority: u32) -> i32;
+}
+
+/// Adopt this tier's declared SCHED_FIFO priority on the CALLING thread, and
+/// report the outcome.
+///
+/// The native board spawns tiers with `std::thread::scope`, which never reaches
+/// `nros-platform-posix`'s `task_init` — so the attribute path that gives NuttX
+/// its priorities cannot reach a native tier, and every `[tiers.*.posix]
+/// priority` in the tree was inert with nothing saying so. This is the same
+/// self-apply-at-tier-entry shape NuttX and FreeRTOS already use: one
+/// implementation per port, one marker, and a refusal that is REPORTED.
+///
+/// Not fatal when refused. An unprivileged host is the normal case for `just
+/// ci`, and trading a silent degradation for a stopped test suite would be a
+/// bad bargain; the operator gets a line naming `setcap cap_sys_nice+ep`
+/// instead.
+#[cfg(unix)]
+fn apply_tier_priority(tier: &TierSpec<'_>) {
+    if tier.priority <= 0 {
+        return;
+    }
+    let prio = tier.priority.clamp(0, i64::from(u32::MAX)) as u32;
+    // The tier name reaches the C side for the marker; a NUL-bearing name is
+    // simply reported as `?` rather than failing the tier.
+    match std::ffi::CString::new(tier.name) {
+        Ok(c) => unsafe {
+            nros_posix_apply_current_priority(c.as_ptr(), prio);
+        },
+        Err(_) => unsafe {
+            nros_posix_apply_current_priority(core::ptr::null(), prio);
+        },
+    }
+}
+
+#[cfg(not(unix))]
+fn apply_tier_priority(_tier: &TierSpec<'_>) {}
+
 fn run_one_tier<B, F, E>(
     exec: ::nros::Executor<'static>,
     tier: &TierSpec<'_>,
@@ -575,6 +624,10 @@ fn run_one_tier<B, F, E>(
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0765 — the tier's OWN priority, before it does any work, so the
+    // declaration holds for the setup it is about to run and not just for the
+    // spin loop afterwards.
+    apply_tier_priority(tier);
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
     crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(&mut crt, tier);
@@ -612,6 +665,14 @@ fn run_boot_tier<B, F, E>(
     F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
+    // issue 0765 — the BOOT tier adopts its declared priority too.
+    //
+    // It runs on the calling thread rather than a spawned one, so it is the
+    // tier most easily forgotten — and forgetting it is not hypothetical: the
+    // same omission was a real defect on FreeRTOS (the boot task adopted
+    // nothing at all) and cost issue 0636 a measurement round on NuttX. A tier
+    // is a tier whichever thread carries it.
+    apply_tier_priority(tier);
     crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(crt, tier);
     apply_tier_affinity::<B>(tier);
