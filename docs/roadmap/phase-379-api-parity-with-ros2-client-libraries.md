@@ -259,6 +259,14 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
+**`types` is DONE (2026-08-24)** — 14 authored rows covering 34 report rows in
+all three languages, in `docs/reference/api-parity-ledger/types.json`. It
+produced two `gap`s for W3 and one issue (0783: the Rust facade exports
+`NodeError` but not `TransportError` or `RclReturnCode`, and RFC-0036's Errors
+row names a type the user API never returns). Doing it also corrected the
+taxonomy — see the header rule below — which moved rows in every other stage,
+so counts taken before 2026-08-24 will not match.
+
 **1682 decisions across 16 stages.** They parallelise cleanly because a decision
 is a sentence about one item and touches nothing else. This section is written
 so several agents can run at once without meeting — but the ORDER matters more
@@ -285,23 +293,23 @@ Get a stage's rows, and see what is left:
     scripts/api-parity.py --by-topic        # what every stage still owes
 
     stage             c      cpp     rust    total
-    types            44        5        2       51
-    init             12       10        4       26
-    node             14       17       25       56
-    pubsub           89      125       51      265
-    service          53       72       35      160
-    timer            58       33       33      124
-    qos               7       42        9       58
-    param            72       48       46      166
-    action          148       18       11      177
-    exec             44       56       18      118
-    lifecycle        52       36       10       98
-    log              17        5       33       55
-    graph            17       21       13       51
-    serde            32        0        5       37
+    types             0        0        0        0   done
+    init             28       14        4       46
+    node             20       73       73      166
+    pubsub           77       98       54      229
+    service          52       54       31      137
+    timer            60       26       29      115
+    qos              27       62       17      106
+    param            79       17       46      142
+    action          155       33        8      196
+    exec             61       58       34      153
+    lifecycle        54       78        9      141
+    log              16        4       36       56
+    graph            20        2        3       25
+    serde            31        0        5       36
     boot              2        0       10       12
-    other            38       56      134      228
-                                              1682
+    other            12       20       76      108
+                                              1668
 
 `--by-topic` counts DECISIONS, not rows: a member whose type already carries a
 verdict is answered, so counting rows would report the same work several times
@@ -321,6 +329,20 @@ API needs the way you obtain one — while `Node::get_name` is node.
 `count_publishers` is graph. Each of those is a test in `topics.py`, so
 reordering the patterns breaks the tests rather than silently re-filing hundreds
 of rows.
+
+**The DECLARING HEADER decides before the name does.** A C API spells everything
+`lower_snake_t`, so a name pattern broad enough to catch `nros_ret_t` also
+catches `rcl_bool_array_t`, `rcl_topic_endpoint_info_t` and
+`rcl_jump_threshold_t` — filing the YAML parameter parser, a graph query and a
+clock callback under "types". That is what the first taxonomy did, and it is
+invisible in the counts. The header says what the name cannot, and every record
+already carries it. Names remain the fallback for headers no map should bother
+with: rclcpp's `utilities.hpp` holds `ok`, `shutdown` AND `spin`, which are two
+topics.
+
+Our own C surface is the one case neither settles — cbindgen emits it all into
+one `nros_generated.h` — so `topics.KEY_OVERRIDES` names those individually,
+each resolved by reading the declaration.
 
 **`other` is 228 and reported, not hidden.** A large `other` means the taxonomy
 is wrong for part of the surface. The first pass had 316 and it turned out to be
@@ -405,7 +427,10 @@ rows from the day it lands is one somebody switches off.
 ## W3 — close the C++ coverage gaps a ported node actually hits
 
 Driven by W2's `gap` rows, ordered by what phase 209's port templates and the
-autoware survey nodes call. Expected shape: `create_wall_timer` as a name
+autoware survey nodes call. The `types` stage has already produced two:
+`cpp:FutureReturnCode` (we express SUCCESS and TIMEOUT, not INTERRUPTED, so a
+ported `spin_until_future_complete` caller cannot tell shutdown from timeout)
+and `rust:RclReturnCode` (we have the type and do not export it — issue 0783). Expected shape: `create_wall_timer` as a name
 alongside `create_timer`, `declare_parameter` over the current parameter
 surface, `get_clock`/`Clock`/`Duration`, the QoS policy enums under their rclcpp
 names.

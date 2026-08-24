@@ -187,6 +187,7 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
 
 **#0798** (examples, open 2026-08-25) — `examples/workspaces/c`'s root routes `s32z270-freertos` to a FreeRTOS entry that hardcodes `BOARD`/`DEPLOY mps2-an385-freertos`, so all three arms of `_nra_board_active` are false: the image links with NO platform glue and no locator bake — issue 0735's "configure succeeded, the build succeeded, the image was wrong" one arm over. Latent, not red: the only s32z270 fixture row targets the C++ workspace, which phase-372 W2 DID fix (`BOARD ${NANO_ROS_BOARD}`). The class is the implicit (entry × board) pairing that RFC-0065 makes derived. See `0798-*`.
+**#0783** (api/docs, open 2026-08-24) — the Rust user API returns `NodeError` but the `nros` facade exports neither `TransportError` (its most common payload) nor `RclReturnCode` (which we HAVE, unexported), so a `no_std` caller can hold an error and not match its contents; and RFC-0036's Errors row documents `NanoRosError`, which appears nowhere in `nros-node` or `packages/api`. Found by phase-379's `types` stage. See `0783-*`.
 
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;

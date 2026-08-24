@@ -383,11 +383,18 @@ def lookup(ledger, lang, key, bucket, buckets_by_key):
 
 
 def validate_ledger(entries):
-    """Complaints about a set of ledger rows. Empty means the ledger is well-formed.
+    """Structural complaints about ledger rows -- what is checkable with no build.
 
     Separated from `load_ledger` so the self-test can feed it a bad row. A
     validator that can only be run against the good ledger on disk proves the
     good ledger is good and nothing about the check.
+
+    Deliberately does NOT check that a row sits in the right topic shard. A
+    topic is decided by the DECLARING HEADER (see `topics.topic_of`), and a
+    ledger row carries no header -- deciding it from the name alone here would
+    make the gate disagree with the report for exactly the rows the header was
+    introduced to get right. `--check` does that check, where the header is
+    known.
     """
     problems = []
     for key, value in sorted(entries.items()):
@@ -404,14 +411,11 @@ def validate_ledger(entries):
         lang = key.split(":", 1)[0]
         if lang not in LANGS:
             problems.append("ledger %s: unknown language %r" % (key, lang))
-        if "_shard" in value:
-            item = key.partition(":")[2]
-            want = topics.topic_of(item.replace("*", ""))
-            if value["_shard"] != want:
-                problems.append(
-                    "ledger %s: filed in %s, but it is a %s item; move it to "
-                    "%s.json" % (key, value.get("_file", "?"), want, want)
-                )
+        if "_shard" in value and value["_shard"] not in topics.NAMES:
+            problems.append(
+                "ledger %s: %s is not a topic; shards are named for one of %s"
+                % (key, value.get("_file", "?"), ", ".join(topics.NAMES))
+            )
     return problems
 
 
@@ -434,6 +438,22 @@ def run_lang(lang, tmpdir, include_internal=False):
     ours = correlate.flatten(ours_records, clang, "ours")
     theirs = correlate.flatten(theirs_records, clang, "theirs")
     return correlate.compare(ours, theirs, clang), payload.get("provenance", {}), removed
+
+
+def row_topic(row):
+    """The stage a report row belongs to.
+
+    Prefers THEIRS's header, because a `theirs-only` row is a statement about
+    the ROS 2 surface and that is the surface being carved into stages. Falls
+    back to ours, then to the name alone.
+    """
+    header = ""
+    for side in ("theirs", "ours"):
+        item = row.get(side)
+        if item and item.get("header"):
+            header = item["header"]
+            break
+    return topics.topic_of(row["key"], header)
 
 
 def by_topic(langs, tmpdir):
@@ -459,7 +479,7 @@ def by_topic(langs, tmpdir):
                 if buckets.get(owner) == r["bucket"]:
                     # Answered by whatever answers its type.
                     continue
-            topic = topics.topic_of(r["key"])
+            topic = row_topic(r)
             table.setdefault(topic, {}).setdefault(lang, 0)
             table[topic][lang] += 1
 
@@ -483,6 +503,7 @@ def by_topic(langs, tmpdir):
 def report(langs, show, check, suggest, include_internal, grep=None, topic=None):
     ledger = load_ledger()
     unledgered = []
+    misfiled = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
@@ -520,7 +541,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
                 bucket = r["bucket"]
                 if grep is not None and not grep.search(r["key"]):
                     continue
-                if topic is not None and topics.topic_of(r["key"]) != topic:
+                if topic is not None and row_topic(r) != topic:
                     continue
                 if bucket == "same" and "same" not in show:
                     continue
@@ -528,6 +549,11 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
                     if show and "all" not in show:
                         continue
                 entry, inherited = lookup(ledger, lang, r["key"], bucket, by_key)
+                if entry is not None and not inherited:
+                    want = row_topic(r)
+                    if entry.get("_shard") not in (None, want):
+                        misfiled.append((ledger_key(lang, r["key"]),
+                                         entry["_shard"], want))
                 verdict = (entry["verdict"] + "*") if (entry and inherited) else (
                     entry["verdict"] if entry else ""
                 )
@@ -561,6 +587,15 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
                     print("    %.2f  %-42s ->  %s" % (ratio, ours_key, theirs_key))
 
     if check:
+        if misfiled:
+            print(
+                "\n%d ledger row(s) sit in the wrong topic shard:" % len(misfiled),
+                file=sys.stderr,
+            )
+            for key, was, want in misfiled[:20]:
+                print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
+                      file=sys.stderr)
+            return 1
         if unledgered:
             print(
                 "\n%d item(s) differ with no ledger entry. Add a row to "
@@ -760,12 +795,12 @@ def self_test():
     bad = {
         "cpp:A": {"verdict": "typo", "why": "x", "_shard": "cpp"},
         "cpp:B": {"verdict": "gap", "why": "  ", "_shard": "cpp"},
-        "cpp:QoS::reliability": {"verdict": "gap", "why": "x", "_shard": "node",
-                                 "_file": "node.json"},
+        "cpp:E": {"verdict": "gap", "why": "x", "_shard": "nonsense",
+                  "_file": "nonsense.json"},
         "go:D": {"verdict": "gap", "why": "x", "_shard": "go"},
     }
     caught = validate_ledger(bad)
-    for needle in ("unknown verdict", "empty reason", "move it to qos.json",
+    for needle in ("unknown verdict", "empty reason", "is not a topic",
                    "unknown language"):
         if not any(needle in c for c in caught):
             failures.append("validate_ledger missed %r" % needle)

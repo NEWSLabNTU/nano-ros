@@ -155,6 +155,7 @@ def flatten(records, lang, side):
     for rec in records:
         kind = rec["kind"]
         key = normalize(lang, side, rec["qual"], kind)
+        header = rec.get("header", "")
         if kind in ("type", "enum"):
             out.setdefault(
                 key,
@@ -162,6 +163,7 @@ def flatten(records, lang, side):
                     "key": key,
                     "kind": kind,
                     "qual": rec["qual"],
+                    "header": header,
                     "values": rec.get("values"),
                 },
             )
@@ -177,6 +179,7 @@ def flatten(records, lang, side):
                         "key": mkey,
                         "kind": "method",
                         "qual": "%s::%s" % (rec["qual"], m["name"]),
+                        "header": header,
                         "overloads": [],
                     },
                 )
@@ -190,7 +193,8 @@ def flatten(records, lang, side):
         elif kind == "function":
             slot = out.setdefault(
                 key,
-                {"key": key, "kind": "function", "qual": rec["qual"], "overloads": []},
+                {"key": key, "kind": "function", "qual": rec["qual"],
+                 "header": header, "overloads": []},
             )
             slot["overloads"].append(
                 {
@@ -200,7 +204,9 @@ def flatten(records, lang, side):
                 }
             )
         else:
-            out.setdefault(key, {"key": key, "kind": kind, "qual": rec["qual"]})
+            out.setdefault(
+                key, {"key": key, "kind": kind, "qual": rec["qual"], "header": header}
+            )
     return out
 
 

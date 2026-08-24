@@ -1,0 +1,94 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:allocator_t": {
+    "verdict": "declined",
+    "why": "rcl passes an `rcl_allocator_t` by value through most of its API so a caller can supply its own. nano-ros has ONE allocator, `nros_platform_alloc`, enforced by check-no-direct-kernel-alloc, so the type would only ever hold the same value. This is the `no-allocator` signature rule (signature_rules.py) one level up: the rule removes the parameter, this removes the type it would carry."
+  },
+  "c:error_state_t": {
+    "verdict": "declined",
+    "why": "rcl keeps a thread-local error state with a formatted message, file and line, read back with rcl_get_error_string(). nano-ros returns `nros_ret_t` and nothing else -- there is no nros_error_string() and no per-thread error slot. What a C user loses is real and should be said plainly: a code, never a message. The constraint is thread-local storage plus a formatted-string buffer per thread, on targets where a task stack is measured in kilobytes."
+  },
+  "c:error_string_t": {
+    "verdict": "declined",
+    "why": "the 1024-byte formatted buffer rcl_get_error_string() returns BY VALUE. Same decision as error_state_t; listed separately because it is the half a caller actually touches."
+  },
+  "c:integrity_status_t": {
+    "verdict": "extension",
+    "why": "end-to-end safety telemetry per received sample -- sequence gap, duplicate flag, and a CRC verdict that distinguishes `no CRC on the wire` from `CRC mismatch`. RFC-0028. ROS 2 has no equivalent because a desktop DDS link is not treated as a safety channel; on a vehicle bus it is, and a receiver that cannot tell corruption from absence cannot implement a fail-silent reaction."
+  },
+  "c:transport_ops_t": {
+    "verdict": "extension",
+    "why": "a bring-your-own transport vtable (`open`/`close`/`write`/`read` + `abi_version` + `user_data`) so a board can supply its own link. rcl reaches the network through rmw and an installed middleware implementation, neither of which an MCU has; the vtable is how a board with a UART, a CAN controller or a vendor TCP stack participates at all."
+  },
+  "cpp:ErrorCode": {
+    "verdict": "divergence",
+    "why": "the code inside `nros::Result`. Same constraint as Result -- rclcpp's equivalent information lives in the exception TYPE, which -fno-exceptions removes."
+  },
+  "cpp:Expected": {
+    "verdict": "divergence",
+    "why": "value-or-error where rclcpp returns the value and throws on failure. Same no-exceptions constraint. Not `std::expected`: that is C++23 and the freestanding builds have no STL."
+  },
+  "cpp:Future": {
+    "verdict": "divergence",
+    "why": "rclcpp hands back a `std::shared_future` and drives it with `spin_until_future_complete`. `<future>` needs threads, an allocator and exceptions -- all three absent here -- so `nros::Future<T>` is a single-shot slot the caller polls (`is_ready`/`try_take`) or waits on by driving the executor, which is RFC-0021's rule that every blocking helper takes the executor."
+  },
+  "cpp:FutureReturnCode": {
+    "verdict": "gap",
+    "why": "rclcpp's spin_until_future_complete returns {SUCCESS, INTERRUPTED, TIMEOUT}. We can express two: `ErrorCode::Ok` and `ErrorCode::Timeout` (result.hpp). There is no INTERRUPTED -- rclcpp means `the context was shut down while waiting`, and a ported caller that distinguishes shutdown from timeout cannot do so here. Not a divergence: nothing about no_std prevents a third code, nobody has added one. Phase 379 W3."
+  },
+  "cpp:Result": {
+    "verdict": "divergence",
+    "why": "rclcpp signals failure by throwing, so it needs no result type. nano-ros builds with -fno-exceptions on Zephyr, FreeRTOS and bare-metal (RFC-0018), so every fallible call returns `nros::Result` and NROS_TRY() early-returns it. The constraint is no exceptions; the type is what replaces them."
+  },
+  "rust:RclErrorMsg": {
+    "verdict": "declined",
+    "why": "the owned String rclrs copies out of rcl's thread-local error state. Same decision as the C `error_string_t`, and the same constraint: no per-thread formatted-message buffer. A `no_std` build has no String either."
+  },
+  "rust:RclReturnCode": {
+    "verdict": "gap",
+    "why": "we HAVE this type -- nros-core/src/error.rs:36, the rcl_ret_t mirror RFC-0036 describes -- and the `nros` facade does not re-export it, so a user cannot name it. rclrs exports its equivalent. Issue 0783."
+  },
+  "rust:RclrsError": {
+    "verdict": "divergence",
+    "why": "rclrs's error carries a source-chained `RclrsError` with owned context strings and implements std::error::Error. no_std has neither the trait nor the allocation, so our error is a flat `NodeError` enum. NOTE issue 0783: `NodeError` is exported but `TransportError`, its most common payload, is not -- so today a caller can hold the error and cannot match its contents."
+  },
+  "rust:RclrsErrorFilter": {
+    "verdict": "declined",
+    "why": "an iterator adapter over `Result` that swallows take-failed and timeout as non-errors. It exists because rclrs's take path reports an empty queue as an error; ours reports emptiness as `Ok(false)` (issue 0757's audit), so there is nothing to filter."
+  }
+}
