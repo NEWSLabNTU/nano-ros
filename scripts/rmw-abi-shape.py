@@ -200,13 +200,15 @@ ARG_DEVIATIONS = {
         "(sub, buf, buf_len, size_t *out_len, bool *taken) — there is no typesupport "
         "indirection on target, so the payload is BYTES and the caller owns the buffer, "
         "which means it needs the length back; the allocation argument has nothing to "
-        "pre-size because pools are baked"
+        "pre-size — see the allocation note on `publish`"
     ),
     "take_request": (
         "upstream takes (service, rmw_service_info_t *, void *ros_request, bool *taken); ours "
         "takes bytes (buf/buf_len/out_len) because there is no typesupport on target, and a "
         "bare `int64_t *seq_out` in place of the info struct — an RTOS reply needs the sequence "
-        "number and nothing else in it"
+        "number and nothing else in it. NOTE issue 0778: on cyclonedds this int64 is not a "
+        "sequence at all but an index into a 32-entry table released only by send_response, "
+        "so a request taken and never answered leaks a slot"
     ),
     "take_response": (
         "same two deviations as `take_request`, client side"
@@ -238,7 +240,10 @@ ARG_DEVIATIONS = {
     "destroy_service": ("as destroy_publisher"),
     "destroy_client": ("as destroy_publisher"),
     # ---- Data plane ----
-    "publish": ("bytes (`const uint8_t *`, `size_t`) rather than a typed `const void *`, because codegen bakes the type and there is no typesupport on target; no allocation argument, because pools are baked"),
+    "publish": (
+        "bytes (`const uint8_t *`, `size_t`) rather than a typed `const void *`, because "
+        "codegen bakes the type and there is no typesupport on target; and no allocation argument: upstream's pre-sizes a per-entity allocator the CALLER owns, and this ABI has no allocator to hand one. NOT because 'pools are baked' — that clause was FALSE and is retired (issue 0777): cyclonedds ddsrt_malloc/calloc per publish AND per take, zenoh mallocs inside zenoh-pico, and the cffi shim vec![]s per fallback loan. Only uORB preallocates"
+    ),
     "publish_loaned_message": ("a length instead of upstream's allocation argument: the loan is a byte slot, and the backend needs to know how much of it was written"),
     "borrow_loaned_message": ("upstream loans a typed message via `void **`; ours reserves a byte slot of a requested size and reports the granted capacity plus an opaque token, because the payload is bytes and the backend owns the buffer until it is committed or discarded"),
     # ---- Events ----
@@ -273,7 +278,7 @@ ARG_DEVIATIONS = {
     "take_with_info": (
         "the same two deviations `take` declares — bytes rather than a typed "
         "`void *ros_message` because there is no typesupport on target, and no "
-        "allocation argument because pools are baked"
+        "allocation argument — see `publish`"
     ),
     "take_loaned_message_with_info": (
         "the same deviations `take_loaned_message` declares — a byte view plus an "
@@ -288,8 +293,10 @@ ARG_DEVIATIONS = {
         "bytes rather than a typed `const void *`, and no `int64_t *sequence_id` "
         "OUT parameter: upstream hands the caller the sequence it assigned, while "
         "ours is a fire-and-forget publish whose reply is matched by "
-        "`take_response`. Worth revisiting in W5 — a client that cannot learn its "
-        "own request id cannot correlate two in-flight calls"
+        "`take_response`. W5 verdict: this is a GAP, not a deviation — filed as issue "
+        "0778. Nothing matches the reply, because there is nothing to match it BY, and "
+        "each backend invented an unsafe policy to cope (cyclone abandons the first "
+        "request, zenoh assumes idempotence)"
     ),
     "send_response": (
         "bytes plus a bare `int64_t` sequence rather than upstream's "

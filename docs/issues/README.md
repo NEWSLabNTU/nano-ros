@@ -83,6 +83,26 @@ cmake links stayed at 08:24, `cpp_action_server` never relinked; 16 tier-1 tests
 misdiagnose because a `touch` that produces no relink is evidence the build is CORRECT, while a semantic
 change does propagate — verified by symbol. See `0764-*`.
 
+**#0777** (rmw/memory, open 2026-08-24) — seven declared RMW-ABI differences justified themselves with "no
+runtime allocation to pre-size; pools are baked", which is true of ONE backend in five: cyclonedds
+`ddsrt_malloc`s per publish and `ddsrt_calloc`s per take (`publisher.cpp:202,235`, `subscriber.cpp:143`),
+zenoh allocates inside zenoh-pico, xrce per streamed publish, and the cffi shim itself does
+`vec![0u8; len]` per fallback loan (`lib.rs:2025`); only uORB matches. The CONCLUSION survives — upstream's
+allocation argument pre-sizes an `rcutils_allocator_t` the caller owns and this ABI has none — but the
+premise was false and was reused six times after it was written, which is how one unchecked sentence
+becomes an invisible property of the design. Clause retired from all seven. Open question: whether a
+`no_std`-reachable image is claimed for cyclone/zenoh at all. See `0777-*`. (2026-08-24)
+
+**#0778** (rmw, open 2026-08-24) — `send_request` drops upstream's `int64_t *sequence_id`, so a client with
+two calls outstanding cannot match a reply to a request. Every backend computes a sequence and throws it
+away (cyclone `RequestId{guid,seq}`, zenoh `request_seq.fetch_add`, xrce's `uxr_buffer_request` id), and our
+own ABI has the vocabulary on the SERVER side (`take_request`'s `seq_out`) while withdrawing it on the
+client side. Each backend then invented a policy: cyclone ABANDONS the first request when a second is sent,
+zenoh takes FIRST REPLY WINS justified by "queryable is idempotent at the application layer" — which the ABI
+cannot enforce and which is false for `send_goal` and `SetParameters`, both of which run this path. Same
+application code, different behaviour per transport. Recorded as a deviation by phase-376; it is a gap
+wearing a deviation's clothes. See `0778-*`. (2026-08-24)
+
 Recently resolved (2026-08-24): **#0774** (testing) — `rmw_zenohd` links `libzenohc.so` by SONAME, so
 which one it loads is the LOADER's choice, not the resolver's. `<prefix>/opt/zenoh_cpp_vendor/lib` is on
 `LD_LIBRARY_PATH` only when `setup.bash`/`activate.sh` was sourced; without it a stray `/lib/libzenohc.so`

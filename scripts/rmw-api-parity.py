@@ -170,7 +170,14 @@ MAP = {
     "rmw_get_serialization_format": ("layer", "CDR, fixed per build"),
     "rmw_get_implementation_identifier": ("layer", "nros_rmw_descriptor_t (check-rmw-descriptors)"),
     "rmw_feature_supported": ("layer", "a NULL vtable slot IS the feature probe"),
-    "rmw_init_publisher_allocation": ("declined", "no runtime allocation to pre-size; pools are baked"),
+    "rmw_init_publisher_allocation": (
+        "declined",
+        "upstream pre-sizes a per-entity `rcutils_allocator_t` the CALLER owns, and this "
+        "ABI has no allocator to hand one — there is nothing for the argument to point "
+        "at. NOT because 'pools are baked': that clause was FALSE (issue 0777) — "
+        "cyclonedds allocates per publish and per take, zenoh inside zenoh-pico, the cffi "
+        "shim per fallback loan; only uORB preallocates",
+    ),
     "rmw_fini_publisher_allocation": ("declined", "as above"),
     "rmw_init_subscription_allocation": ("declined", "as above"),
     "rmw_fini_subscription_allocation": ("declined", "as above"),
