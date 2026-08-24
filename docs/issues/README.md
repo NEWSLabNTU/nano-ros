@@ -95,15 +95,14 @@ premise was false and was reused six times after it was written, which is how on
 becomes an invisible property of the design. Clause retired from all seven. Open question: whether a
 `no_std`-reachable image is claimed for cyclone/zenoh at all. See `0777-*`. (2026-08-24)
 
-**#0778** (rmw, open 2026-08-24) — `send_request` drops upstream's `int64_t *sequence_id`, so a client with
-two calls outstanding cannot match a reply to a request. Every backend computes a sequence and throws it
-away (cyclone `RequestId{guid,seq}`, zenoh `request_seq.fetch_add`, xrce's `uxr_buffer_request` id), and our
-own ABI has the vocabulary on the SERVER side (`take_request`'s `seq_out`) while withdrawing it on the
-client side. Each backend then invented a policy: cyclone ABANDONS the first request when a second is sent,
-zenoh takes FIRST REPLY WINS justified by "queryable is idempotent at the application layer" — which the ABI
-cannot enforce and which is false for `send_goal` and `SetParameters`, both of which run this path. Same
-application code, different behaviour per transport. Recorded as a deviation by phase-376; it is a gap
-wearing a deviation's clothes. See `0778-*`. (2026-08-24)
+Recently resolved (2026-08-25): **#0778** (rmw) — a client could not learn the id of the request it just
+sent, so two in-flight calls were indistinguishable and each backend invented a policy (cyclonedds
+abandoned the older request, zenoh took first-reply-wins on an idempotence assumption false for
+`send_goal`). `send_request` and `take_response` now carry the id, cyclonedds holds eight outstanding
+calls instead of one, and zenoh's policy is gone. The test written for it found TWO worse bugs: both
+the reply path and `service_has_request` pre-filtered on `DDS_DATA_AVAILABLE_STATUS`, which CLEARS on
+read — so any cyclonedds service receiving a burst answered the first request and silently stranded
+the rest, multi-outstanding client or not. See `archived/0778-*`.
 
 Recently resolved (2026-08-25): **#0786** (testing/threadx) — `test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub` looked like a runtime hang and was a FIVE-DAY-OLD
 binary. The C listener rebuilt 08-24 23:19; both C++ ones sat at 08-19 13:34. Two tests hand-joined

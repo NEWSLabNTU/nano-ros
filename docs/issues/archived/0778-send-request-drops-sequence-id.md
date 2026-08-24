@@ -3,7 +3,7 @@ id: 778
 title: "A client cannot learn the id of the request it just sent, so two
   in-flight calls cannot be told apart — and each backend papers over it
   differently"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-376, issue-0745]
@@ -131,4 +131,53 @@ it.
 **The adjacent finding in this issue is untouched:** `take_request` /
 `send_response`'s `int64_t` is a slot INDEX on cyclonedds, not a sequence
 number, and a request taken but never answered leaks a slot permanently.
+
+## Resolved 2026-08-25 — cyclonedds is multi-outstanding
+
+`ClientState`'s single `pending_seq` became an `outstanding[8]` set
+(`kMaxOutstandingRequests`). `send_request` claims a slot before writing;
+`take_response` accepts a reply for ANY id in the set and retires that one.
+Running out is a loud `WOULD_BLOCK`, never a silent abandon.
+
+Ids only, not eight staging buffers: `pending_request` is 64 KiB and exists
+solely for the window BEFORE the request writer has matched a server reader
+(VOLATILE QoS drops an earlier write). After the match, sends go straight out
+and hold no buffer. A second send while one is still STAGED returns
+`WOULD_BLOCK` — the one place sends still serialise, and now visibly.
+
+### Two more bugs the new test found, both bigger than the one it was written for
+
+`service_two_outstanding` failed on its first run with `got_a=1 got_b=0`, and
+neither cause was the abandon:
+
+1. **`service_try_recv_reply_raw_len` pre-filtered on
+   `DDS_DATA_AVAILABLE_STATUS`.** Reading that status CLEARS it, so the first
+   take consumed the edge and the second reply — readable in the reader —
+   reported `NO_DATA` forever.
+2. **`service_has_request` did the same thing, on the server.** Two requests
+   arriving between two polls produce ONE status change: the server took the
+   first and then answered `false` to every later probe, stranding the second
+   until a third request happened to re-arm the edge. **This one is not
+   specific to multi-outstanding clients** — any cyclonedds service receiving a
+   burst answered the first request of it and silently sat on the rest.
+
+`subscriber.cpp` had already met this class and documented it in as many words
+("querying it as a pre-filter can clear/suppress the subsequent take path while
+samples remain readable"), solving it with a conservative `true`. That was not
+available on the request side: `service_smoke` asserts `has_request` is FALSE
+with no traffic, and it is right to — an unconditional yes makes the probe
+useless to a caller deciding whether to allocate. So the request side PEEKS
+with a non-destructive `dds_read` instead, which is accurate and edge-free
+(`take_typed_wire`'s `dds_take` uses no state mask, so it still takes a sample
+the peek marked READ).
+
+Third site of one class: the subscription probe (fixed earlier), the reply path,
+and the request probe.
+
+## Still open elsewhere
+
+The adjacent finding in this issue is untouched and moves to its own tracking:
+`take_request` / `send_response`'s `int64_t` is a slot INDEX on cyclonedds, not
+a sequence number, and a request taken but never answered leaks one of the 32
+`kRequestSlots` permanently.
 

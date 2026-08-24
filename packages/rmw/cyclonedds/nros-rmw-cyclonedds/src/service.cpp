@@ -79,7 +79,8 @@
 // the `std::memory_order` fallback below, and the `ServiceAtomicI64` selection
 // further down. They must agree, and when they did not, nothing here failed —
 // the build died 1000 lines later on `ClientState has no member named
-// pending_seq`, because an undefined type takes its members down with it.
+// pending_seq` (a member since replaced by the `outstanding` set, issue 0778),
+// because an undefined type takes its members down with it.
 //
 // That is what happened on 2026-08-24: the type selection moved from platform
 // names to this capability, and the include and the enum fallback stayed on the
@@ -231,6 +232,13 @@ using ServiceAtomicI64 = std::atomic<int64_t>;
 #endif
 
 constexpr std::size_t kRequestSlots = 32;
+
+// Issue 0778 — how many requests one client may have in flight. Eight, not
+// thirty-two: this is a per-CLIENT cost (8 bytes + a bool each), a client that
+// needs more than a handful of concurrent calls is doing something the RTOS
+// side of this ABI does not target, and running out is a loud WOULD_BLOCK
+// rather than a silent abandon.
+constexpr std::size_t kMaxOutstandingRequests = 8;
 constexpr std::size_t kMaxTopicName = 256;
 constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
 
@@ -287,15 +295,25 @@ struct ClientState {
     SertypeMin* rep_st{nullptr};
     uint64_t my_guid{0};
     ServiceAtomicI64 next_seq{0};
-    // Phase 130.8 — non-blocking send/recv split. `pending_seq`
-    // tracks the in-flight request issued via
-    // `service_send_request_raw`; `pending_request` holds the wire CDR
-    // until Cyclone reports the request writer matched a server reader.
-    // Service QoS is VOLATILE, so writing before the match can silently
-    // drop the request.
-    ServiceAtomicI64 pending_seq{-1};
+    // Issue 0778 — the sequence ids this client is waiting on. Was a single
+    // `pending_seq`, so a second send ABANDONED the first: it overwrote the one
+    // id, and `take_response` then dropped the older reply as "for a different
+    // in-flight call". Now a set, so N calls can be outstanding and each reply
+    // retires its own.
+    //
+    // Ids only, deliberately. Replicating the 64 KiB `pending_request` staging
+    // buffer N times is not affordable on the targets this backend runs on —
+    // and it is not needed, because staging is only for the window BEFORE the
+    // request writer has matched a server reader (VOLATILE QoS drops a write
+    // sent earlier). After the match, sends go straight out and hold no buffer.
+    int64_t outstanding[kMaxOutstandingRequests]{};
+    bool outstanding_in_use[kMaxOutstandingRequests]{};
+    // Phase 130.8 — the ONE pre-match staging slot, and the id it holds.
+    // Service QoS is VOLATILE, so writing before the match can silently drop
+    // the request.
     uint8_t pending_request[kWireScratch]{};
     std::size_t pending_request_len{0};
+    int64_t pending_request_seq{-1};
 };
 
 bool service_topic_name(const char* service_name, const char* prefix, const char* suffix, char* out,
@@ -826,6 +844,37 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
+
+// Issue 0778 — the outstanding-request set. Linear over eight entries; a map
+// would cost more than it saves at this size.
+bool claim_outstanding(ClientState* state, int64_t seq) {
+    for (std::size_t i = 0; i < kMaxOutstandingRequests; ++i) {
+        if (!state->outstanding_in_use[i]) {
+            state->outstanding[i] = seq;
+            state->outstanding_in_use[i] = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool release_outstanding(ClientState* state, int64_t seq) {
+    for (std::size_t i = 0; i < kMaxOutstandingRequests; ++i) {
+        if (state->outstanding_in_use[i] && state->outstanding[i] == seq) {
+            state->outstanding_in_use[i] = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool any_outstanding(const ClientState* state) {
+    for (std::size_t i = 0; i < kMaxOutstandingRequests; ++i) {
+        if (state->outstanding_in_use[i]) return true;
+    }
+    return false;
+}
+
 rmw_ret_t maybe_flush_request(ClientState* state) {
     if (state == nullptr || state->pending_request_len == 0) {
         return NROS_RMW_RET_OK;
@@ -842,6 +891,7 @@ rmw_ret_t maybe_flush_request(ClientState* state) {
                                    state->pending_request, state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
         state->pending_request_len = 0;
+        state->pending_request_seq = -1;
     }
     return r;
 }
@@ -1019,11 +1069,36 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<ServerState*>(server->backend_data);
-    uint32_t status = 0;
-    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK) {
+
+    // Issue 0778 — PEEK the reader, do not read the status flag.
+    //
+    // `dds_get_status_changes` CLEARS the status it reports. Two requests
+    // arriving between two polls therefore produce ONE change: the server took
+    // the first, and every later `has_request` answered false because no NEW
+    // change had been recorded — the second request sat readable in the reader
+    // and was answered only if a third happened to arrive and re-arm the edge.
+    // A service that silently stranded every request after the first in a
+    // batch. `service_two_outstanding` fails on the old code for exactly this.
+    //
+    // `subscriber.cpp` hit the same class and solved it by answering a
+    // conservative `true`. That is not available here: `service_smoke` asserts
+    // has_request is FALSE with no traffic, and it is right to — an
+    // unconditional yes makes the probe useless for a caller deciding whether
+    // to allocate a request buffer.
+    //
+    // So peek instead. `dds_read` does not consume the sample, and
+    // `take_typed_wire`'s `dds_take` uses no state mask, so it will still take
+    // a sample this call has marked READ. Accurate, and edge-free.
+    void* samples[1] = {nullptr};
+    dds_sample_info_t si[1];
+    dds_return_t n = dds_read(state->reader, samples, si, 1, 1);
+    if (n < 0) {
         return NROS_RMW_RET_ERROR;
     }
-    *out_has_request = (status & DDS_DATA_AVAILABLE_STATUS) != 0;
+    *out_has_request = (n > 0 && si[0].valid_data);
+    if (n > 0) {
+        (void)dds_return_loan(state->reader, samples, n);
+    }
     return NROS_RMW_RET_OK;
 }
 
@@ -1212,39 +1287,53 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, const uint8_t* re
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
-    if (state->pending_seq.load(std::memory_order_acquire) >= 0) {
-        // Issue 0778 — this backend holds ONE outstanding request: a single
-        // `pending_seq` and a single staging buffer. Sending a second while
-        // the first is unanswered ABANDONS the first. That is a real
-        // limitation and it stays for now, but it is no longer SILENT: the
-        // caller gets the sequence id of every send, so it can see that the
-        // reply it eventually receives belongs to the newer request and that
-        // the older one will never be answered. Making it genuinely
-        // multi-outstanding means a pending TABLE here, like the server side's
-        // `slots` — tracked in issue 0778.
-        //
-        // The abandon is also what the upper layers already do: they clear
-        // their in-flight guard on timeout before retrying, and a stale late
-        // reply is filtered below by (seq, guid).
-        state->pending_request_len = 0;
-        state->pending_seq.store(-1, std::memory_order_release);
+
+    // Issue 0778 — a request already STAGED (written before the request writer
+    // matched a server reader) is the one thing that still serialises sends.
+    // There is one 64 KiB staging buffer and replicating it per outstanding
+    // call is not affordable here, so a second send in that window is refused
+    // rather than silently overwriting the first. Loud and retryable, instead
+    // of a request that vanishes.
+    //
+    // Try to drain it first: the writer has usually matched by now, and then
+    // this window does not exist at all.
+    if (state->pending_request_len != 0) {
+        rmw_ret_t drained = maybe_flush_request(state);
+        if (drained != NROS_RMW_RET_OK && drained != NROS_RMW_RET_NO_DATA) {
+            return drained;
+        }
+        if (state->pending_request_len != 0) {
+            return NROS_RMW_RET_WOULD_BLOCK;
+        }
     }
 
     RequestId my_id{};
     my_id.guid = state->my_guid;
     my_id.seq = state->next_seq.fetch_add(1, std::memory_order_relaxed);
 
+    // Claim BEFORE writing: a reply can arrive as soon as the write lands, and
+    // `take_response` only accepts ids in this set.
+    if (!claim_outstanding(state, my_id.seq)) {
+        // kMaxOutstandingRequests calls already in flight. The caller retries;
+        // the alternative is dropping one of the requests it is waiting on.
+        return NROS_RMW_RET_WOULD_BLOCK;
+    }
+
     uint8_t wire_req[kWireScratch];
     int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
-    if (wire_is_status(wire_len)) return wire_status_code(wire_len);
+    if (wire_is_status(wire_len)) {
+        release_outstanding(state, my_id.seq);
+        return wire_status_code(wire_len);
+    }
 
     std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
     state->pending_request_len = static_cast<size_t>(wire_len);
-    state->pending_seq.store(my_id.seq, std::memory_order_release);
+    state->pending_request_seq = my_id.seq;
     rmw_ret_t pr = maybe_flush_request(state);
     if (pr != NROS_RMW_RET_OK && pr != NROS_RMW_RET_NO_DATA) {
         state->pending_request_len = 0;
-        state->pending_seq.store(-1, std::memory_order_release);
+        state->pending_request_seq = -1;
+        release_outstanding(state, my_id.seq);
         return pr;
     }
     if (sequence_id != nullptr) *sequence_id = my_id.seq;
@@ -1258,26 +1347,42 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
 
-    int64_t pending = state->pending_seq.load(std::memory_order_acquire);
-    if (pending < 0) {
+    // Issue 0778 — nothing to wait for is not the same as nothing arrived, but
+    // both are NO_DATA to the caller.
+    if (!any_outstanding(state)) {
         return wire_status(NROS_RMW_RET_NO_DATA);
     }
 
     rmw_ret_t flush = maybe_flush_request(state);
     if (flush != NROS_RMW_RET_OK) {
         if (flush != NROS_RMW_RET_NO_DATA) {
+            // The staged request will never go out; stop waiting for it. Any
+            // OTHER outstanding call is untouched — that is the whole point of
+            // the set.
+            if (state->pending_request_seq >= 0) {
+                release_outstanding(state, state->pending_request_seq);
+            }
             state->pending_request_len = 0;
-            state->pending_seq.store(-1, std::memory_order_release);
+            state->pending_request_seq = -1;
         }
         return wire_status(flush);
     }
 
-    uint32_t status = 0;
-    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK ||
-        !(status & DDS_DATA_AVAILABLE_STATUS)) {
-        return wire_status(NROS_RMW_RET_NO_DATA);
-    }
-
+    // Issue 0778 — NO `DDS_DATA_AVAILABLE_STATUS` pre-filter here.
+    //
+    // Reading that status CLEARS it, and `subscriber.cpp` already documents
+    // the consequence: "querying it as a pre-filter can clear/suppress the
+    // subsequent take path while samples remain readable". The subscription
+    // path removed its pre-filter for that reason; the reply path kept one,
+    // and it did not matter while a client could only ever wait for a single
+    // reply.
+    //
+    // With two replies outstanding it matters immediately: the first take
+    // consumes the edge, the second reply is readable but the status no longer
+    // says so, and the call reports NO_DATA forever. That is what
+    // `service_two_outstanding` caught on its first run — one reply delivered,
+    // one lost. `dds_take` below is the authoritative check, exactly as
+    // `try_recv_raw` is on the subscription side.
     uint8_t wire_rep[kWireScratch];
     int32_t wlen = take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
     if (wire_is_status(wlen)) return wlen;
@@ -1287,16 +1392,17 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
                                          &got_id, reply_buf, reply_buf_len);
     if (wire_is_status(user_len)) return user_len;
 
-    if (got_id.seq == pending && got_id.guid == state->my_guid) {
-        state->pending_seq.store(-1, std::memory_order_release);
-        // Issue 0778 — say WHICH request this answers. The match above already
-        // knew; it simply had nowhere to report it.
+    // Issue 0778 — accept a reply for ANY request this client is waiting on,
+    // and retire that one. It used to compare against a single `pending_seq`,
+    // so a reply to anything but the newest send was dropped here as "for a
+    // different in-flight call" — the other half of the abandon.
+    if (got_id.guid == state->my_guid && release_outstanding(state, got_id.seq)) {
         if (seq_out != nullptr) *seq_out = got_id.seq;
         return user_len;
     }
-    // Reply for a different in-flight call (impossible in single-
-    // shot tests; defensive). Drop, surface as NoData so the
-    // executor retries on the next spin tick.
+    // Genuinely not ours: another client's guid, or a late reply to a call we
+    // already retired. Drop it and surface NO_DATA so the executor retries on
+    // the next spin tick.
     return wire_status(NROS_RMW_RET_NO_DATA);
 }
 

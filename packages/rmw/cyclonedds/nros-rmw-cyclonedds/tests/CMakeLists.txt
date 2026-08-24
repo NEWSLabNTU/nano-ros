@@ -172,6 +172,28 @@ if(_addtwoints_sources)
         COMMAND nros_rmw_cyclonedds_service_roundtrip
     )
 
+    # Issue 0778 — two requests from ONE client in flight at once. Runs by
+    # default (unlike `service_concurrent`, whose flake is cross-PARTICIPANT
+    # SEDP jitter): this is a single client and a single server on one
+    # participant, so there is no second discovery to race.
+    add_executable(nros_rmw_cyclonedds_service_two_outstanding
+        service_two_outstanding.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_two_outstanding
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_two_outstanding
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_two_outstanding
+        COMMAND nros_rmw_cyclonedds_service_two_outstanding
+    )
+
     # Phase 117.7.B concurrent-call correlation. With Phase 117.X.3
     # this now goes through the typed-IDL header path; the
     # AddTwoInts type must be registered.
