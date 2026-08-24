@@ -384,7 +384,6 @@ pub struct nros_rmw_vtable_t {
             user_context: *mut core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Register a callback for a publisher-side event. Same NULL /\n  unsupported-kind conventions as `register_subscription_event`.\n  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only."]
     pub publisher_event_init: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *mut rmw_publisher_t,

@@ -92,6 +92,15 @@ naming only `signal: 11`. Finding a router and being able to RUN one are differe
 first was checked — RFC-0075's drift arriving through the loader instead of a pin (cf. #0609). The fixture
 now derives the paired zenoh dir from the router path and pins it for the child. Verified from a shell that
 never sourced `activate.sh`: 20/20. See `archived/0774-*`. (2026-08-24)
+**#0776** (rmw/codegen, open 2026-08-24) — nothing computes a message's serialized size bound. Upstream has
+`rmw_get_serialized_message_size`; the parity table recorded ours as "generated per type; the bound is
+baked", which was false in both clauses — `nros-serdes` declares only serialize/deserialize, no generated
+crate emits a size constant, and buffers are sized by env knobs the integrator GUESSES. The cost is met in
+`report_dropped_take`, whose only possible advice is "raise the knob", because the runtime cannot name the
+value that would have worked — on targets where that knob is static RAM nobody can spare. Not a vtable slot
+(nothing about a size bound varies by backend) but a CODEGEN capability: the generator knows every field it
+emits, so it can bake a `MAX_SERIALIZED_SIZE` and turn a runtime drop into a compile error. See `0776-*`.
+(2026-08-24)
 
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
 

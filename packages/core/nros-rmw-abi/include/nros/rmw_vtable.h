@@ -246,6 +246,29 @@ typedef struct nros_rmw_vtable_t {
     /** Register a callback for a publisher-side event. Same NULL /
      *  unsupported-kind conventions as `register_subscription_event`.
      *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
+    /* ---- Phase 376 W4 — why there is no `take_event` and no
+     *      `event_set_callback` ----
+     *
+     * Upstream's status-event model is three-part: `*_event_init` fills an
+     * `rmw_event_t` HANDLE, `rmw_event_set_callback` attaches a callback to that
+     * handle, and `rmw_take_event` polls it for a status the wait set said was
+     * ready. Ours fuses the first two and declines the third.
+     *
+     *  - `rmw_event_set_callback` is FUSED: our `*_event_init` takes the
+     *    callback, so there is no handle to attach one to afterwards. What that
+     *    costs is real and small — upstream can replace or clear a callback
+     *    later, and we cannot.
+     *
+     *  - `rmw_take_event` is DECLINED, and the reason is not merely "no handle".
+     *    Upstream polls an event because the WAIT SET told it one was ready, and
+     *    the wait set is declined here (see the lifecycle block); without it a
+     *    poll would be blind. More to the point, upstream's poll exists to move
+     *    status handling OFF the notification context onto a safe one — and our
+     *    callback already runs on the safe one: it is invoked from inside
+     *    `drive_io`, on the executor thread, never from an ISR or a transport
+     *    thread. The deferral upstream needs has already happened by the time
+     *    the callback fires.
+     */
     rmw_ret_t (*publisher_event_init)(
         rmw_publisher_t  *publisher,
         rmw_event_type_t  kind,

@@ -93,8 +93,20 @@ MAP = {
     # ---- Events ----
     "rmw_publisher_event_init": ("vtable", "register_publisher_event"),
     "rmw_subscription_event_init": ("vtable", "register_subscription_event"),
-    "rmw_take_event": ("vtable", "the event callback delivers; no polled take"),
-    "rmw_event_set_callback": ("vtable", "register_*_event takes the callback directly"),
+    "rmw_take_event": (
+        "declined",
+        "upstream polls an event because the WAIT SET said one was ready, and the wait "
+        "set is declined here — a poll would be blind. And upstream's poll exists to "
+        "move status handling off the notification context onto a safe one; our "
+        "callback already runs on the safe one, from inside drive_io on the executor "
+        "thread, never an ISR or a transport thread",
+    ),
+    "rmw_event_set_callback": (
+        "declined",
+        "fused into publisher_event_init / subscription_event_init, which take the "
+        "callback at init time; there is no rmw_event_t handle to attach one to later. "
+        "Costs the ability to replace or clear a callback afterwards, which upstream has",
+    ),
     "rmw_subscription_set_on_new_message_callback": ("vtable", "set_wake_callback"),
     # ---- Answered a layer up or down ----
     "rmw_init": ("vtable", "create_session — grouped"),
@@ -146,7 +158,7 @@ MAP = {
     "rmw_deserialize": ("declined", "as rmw_serialize"),
     "rmw_get_serialized_message_size": (
         "gap",
-        "the old reason — \"generated per type; the bound is baked\" — was FALSE: "
+        "issue 0776. The old reason — \"generated per type; the bound is baked\" — was FALSE: "
         "nros-serdes declares only serialize/deserialize/deserialize_borrowed, no "
         "generated crate emits a size constant, and buffers are sized by env knobs "
         "(NROS_SUBSCRIPTION_BUFFER_SIZE). `report_dropped_take` says outright that it "

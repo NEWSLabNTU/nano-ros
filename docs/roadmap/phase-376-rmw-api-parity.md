@@ -1,6 +1,10 @@
 # Phase 376 — the RMW ABI campaign: generic naming, feature completeness, RTOS correctness
 
-**Status (2026-08-23). W3 IS COMPLETE — 24 of 79 slots match upstream's name
+**Status (2026-08-24). W4 IS COMPLETE — every symbol of the 88-symbol contract
+is a slot, a grouped slot, a plain ABI function, a declined decision with its
+RTOS reason, or (exactly once) a filed gap: issue 0776. What remains of the
+campaign is W5, the audit of whether those declared reasons are TRUE.
+W3 IS COMPLETE — 24 of 79 slots match upstream's name
 AND argument list, 0 undeclared extras, 0 vendor-named types, every remaining
 difference declared with its RTOS reason. What is left of the campaign is W4
 (55 slots upstream has that we do not) and W5 (auditing the deviations).
