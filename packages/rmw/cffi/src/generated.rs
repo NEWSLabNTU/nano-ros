@@ -334,7 +334,7 @@ pub struct nros_rmw_vtable_t {
             taken: *mut bool,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Phase 376 W3.d step A — status in the return, answer in the\n  out-parameter, so no slot multiplexes a flag with a status.\n  `*out_has_data` is written only on `NROS_RMW_RET_OK`.\n\n  RTOS addition: upstream has no equivalent, because a hosted\n  caller reaches for a wait-set. This is the poll a loop with\n  no wait-set needs, and it allocates nothing.\n\n  A backend must not mutate subscription state here — the\n  probe is logically read-only."]
+    #[doc = " Phase 376 W3.d step A — status in the return, answer in the\n  out-parameter, so no slot multiplexes a flag with a status.\n  `*out_has_data` is written only on `NROS_RMW_RET_OK`.\n\n  RTOS addition: upstream has no equivalent, because a hosted\n  caller reaches for a wait-set. This is the poll a loop with\n  no wait-set needs, and it allocates nothing.\n\n  Logically read-only, and that is weaker than it sounds: zenoh's\n  implementation fires deadline and liveliness callbacks from inside this\n  probe and writes their cells, and cyclonedds' peeks its reader (which\n  marks samples READ). The rule a backend must actually keep is that a\n  probe may not CONSUME a message — the sample a `has_data` reports must\n  still be there for the `take` that follows. The stronger \"must not\n  mutate subscription state\" was recorded here and true of nobody\n  (issue 0780)."]
     pub has_data: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut rmw_subscription_t,
@@ -418,6 +418,24 @@ pub struct nros_rmw_vtable_t {
             deadline_ms: u32,
             cb: rmw_status_event_callback_t,
             user_context: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_take_event`, subscription side.\n\n  `*taken` says whether an event was copied into `*out`; both are written\n  only on `NROS_RMW_RET_OK`. `kind` selects which event to drain, and\n  which member of the payload union is valid.\n\n  Deviations from upstream, declared: no `rmw_event_t *` — that handle is\n  declined, so the entity plus the kind identifies the event — and the\n  payload is our `rmw_event_payload_t` union rather than a `void *` the\n  caller must know the shape of.\n\n  NULL is the normal answer for a backend that delivers status events\n  through the `*_event_init` callback and has a safe context to do it\n  from. It is NOT the right answer for a backend whose notifications\n  arrive on a thread of its own."]
+    pub subscription_take_event: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            kind: rmw_event_type_t::Type,
+            out: *mut rmw_event_payload_t,
+            taken: *mut bool,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_take_event`, publisher side. Same contract as\n  `subscription_take_event`; `rmw_take_event` is recorded as GROUPED onto\n  that one, since upstream has a single name for both."]
+    pub publisher_take_event: ::core::option::Option<
+        unsafe extern "C" fn(
+            publisher: *const rmw_publisher_t,
+            kind: rmw_event_type_t::Type,
+            out: *mut rmw_event_payload_t,
+            taken: *mut bool,
         ) -> rmw_ret_t,
     >,
     pub publisher_event_init: ::core::option::Option<

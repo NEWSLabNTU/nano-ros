@@ -62,6 +62,14 @@ const nros_rmw_vtable_t kVtable = {
 
     /* ---- Phase 108 event hooks (deferred) ---- */
     /*subscription_event_init*/ kRegisterSubscriptionEvent,
+    /* Issue 0780 — the poll half of the status-event surface. NULL here for
+     * now, which is the honest answer: this backend registers no DDS listeners
+     * at all yet, so it has nothing buffered to hand out. The slots exist so
+     * that wiring them is a backend change and not an ABI change, and cyclone
+     * is the backend that NEEDS them — its listeners would fire on Cyclone's
+     * own worker thread, and its `drive_io` is a sleep with no callback path. */
+    /*subscription_take_event*/ nullptr,
+    /*publisher_take_event*/  nullptr,
     /*publisher_event_init*/  kRegisterPublisherEvent,
     /*publisher_assert_liveliness*/ kAssertPublisherLiveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */

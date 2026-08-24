@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3625,6 +3625,16 @@ rmw-ret-sign:
 # belongs on the line.
 check-rmw-ret-sign:
     @python3 scripts/check-rmw-ret-sign.py
+
+# Issue 0780 — a POSITIONAL vtable initialiser must agree with the header.
+#
+# Two backends fill `nros_rmw_vtable_t`'s 70-odd slots positionally, annotated
+# only by `/*slot*/` comments that nothing checks. Insert a slot mid-header and
+# every line below initialises its neighbour while still carrying the old name.
+# The compiler catches that only when the shifted types disagree — which is
+# luck: adjacent slots sharing a signature swap silently.
+check-rmw-vtable-order:
+    @python3 scripts/check-vtable-positional-order.py
 
 # Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and
 # arg by arg. REPORTING ONLY, deliberately not on the `check` line: `--check`

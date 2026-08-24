@@ -235,6 +235,8 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     send_request: None,
     take_response: None,
     subscription_event_init: None,
+    subscription_take_event: None,
+    publisher_take_event: None,
     publisher_event_init: None,
     publisher_assert_liveliness: None,
     next_deadline_ms: None,

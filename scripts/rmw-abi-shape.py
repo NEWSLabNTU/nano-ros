@@ -115,6 +115,9 @@ GROUPED_SYMBOLS = {
     # Upstream attaches the callback to an `rmw_event_t` afterwards; ours takes
     # it at init, so `*_event_init` IS this function (phase-376 W5, A3).
     "rmw_event_set_callback": "publisher_event_init",
+    # Issue 0780 — one upstream name, two slots, because upstream's
+    # `rmw_event_t` carries the entity and ours does not exist.
+    "rmw_take_event": "subscription_take_event",
     # Upstream split `_with_enclaves` off `rmw_get_node_names` only because
     # appending to a fixed out-parameter list would have broken its ABI. A
     # visitor has no such list, so the enclave is a fourth argument, NULL where
@@ -140,6 +143,13 @@ GROUPED_SYMBOLS = {
 
 # Slots we add that upstream has no equivalent for.
 ADDED = {
+    "publisher_take_event": (
+        "the publisher half of upstream's single `rmw_take_event`. Upstream "
+        "needs one function because its `rmw_event_t` carries the entity; that "
+        "handle is declined here, so the entity is an argument and the two "
+        "sides cannot share a signature. `subscription_take_event` is the "
+        "grouped answer to the upstream name; this is its twin (issue 0780)"
+    ),
     # `create_session` and `destroy_session` are NOT here. They were, and their
     # own reasons said why they should not be — "grouped onto it in
     # GROUPED_SYMBOLS rather than claimed as having no upstream equivalent",
@@ -317,6 +327,12 @@ ARG_DEVIATIONS = {
     ),
     "publish_loaned_message": ("a length instead of upstream's allocation argument: the loan is a byte slot, and the backend needs to know how much of it was written"),
     "borrow_loaned_message": ("upstream loans a typed message via `void **`; ours reserves a byte slot of a requested size and reports the granted capacity plus an opaque token, because the payload is bytes and the backend owns the buffer until it is committed or discarded"),
+    "subscription_take_event": (
+        "no `rmw_event_t *` — that handle is declined, so the entity plus the "
+        "`kind` identifies the event — and the payload is the typed "
+        "`rmw_event_payload_t` union rather than upstream's `void *`, whose "
+        "shape the caller has to know out of band"
+    ),
     # ---- Content filter / network flows: allocation replaced by a visitor ----
     "subscription_set_content_filter": (
         "upstream passes an allocated `rmw_subscription_content_filter_options_t` "

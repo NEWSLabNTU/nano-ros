@@ -79,9 +79,18 @@ typedef union rmw_event_payload_t {
  *                      only — copy fields if needed beyond return.
  * @param user_context  Opaque pointer registered with the callback.
  *
- * **Threading.** Invoked from inside `drive_io` on the executor
- * thread. Must not block; long work should defer via a guard
- * condition or queue.
+ * **Threading.** Invoked on whatever context the BACKEND delivers on, which
+ * is not uniform and is not `drive_io`. This paragraph claimed "invoked from
+ * inside `drive_io` on the executor thread" until 2026-08-25; no backend did
+ * that, and the claim was load-bearing — it was the stated reason
+ * `rmw_take_event` could be declined (issue 0780). zenoh fires from
+ * `try_recv_raw` and `has_data`; a DDS backend's listeners fire on its own
+ * worker thread.
+ *
+ * So: must not block, and must assume it may be running concurrently with the
+ * executor. A backend with no safe context to deliver from should leave
+ * `*_event_init` NULL and implement `*_take_event` instead, which hands the
+ * caller the deferral upstream gets from its wait set.
  */
 /* Phase 376 W5 — `rmw_status_event_callback_t`, NOT `rmw_event_callback_t`.
  *

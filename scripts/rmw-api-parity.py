@@ -94,13 +94,16 @@ MAP = {
     # ---- Events ----
     "rmw_publisher_event_init": ("vtable", "publisher_event_init"),
     "rmw_subscription_event_init": ("vtable", "subscription_event_init"),
+    # Issue 0780 — was `declined` on two clauses that both failed. "A poll
+    # would be blind without a wait set" contradicts `has_data`, whose own doc
+    # calls a wait-set-free poll the model here; "our callback runs on the safe
+    # context inside drive_io" was true of no backend. Now two slots, split per
+    # entity kind because there is no `rmw_event_t` to carry the entity.
     "rmw_take_event": (
-        "declined",
-        "upstream polls an event because the WAIT SET said one was ready, and the wait "
-        "set is declined here — a poll would be blind. And upstream's poll exists to "
-        "move status handling off the notification context onto a safe one; our "
-        "callback already runs on the safe one, from inside drive_io on the executor "
-        "thread, never an ISR or a transport thread",
+        "vtable",
+        "subscription_take_event — grouped; `publisher_take_event` on the "
+        "publisher side. Upstream has one name because its `rmw_event_t` "
+        "carries the entity; ours is declined, so the entity is the argument",
     ),
     # A GROUPING, not an absence. "Fused into `*_event_init`" describes an
     # ANSWER, and this table has a bucket for that. Listed as `declined` it read

@@ -70,3 +70,63 @@ observation, and neither is true:
 - `rmw_vtable.h`, `has_data` — "A backend must not mutate subscription state
   here; the probe is logically read-only." Zenoh's `has_data` fires deadline
   and liveliness callbacks and writes cells.
+
+## Landed 2026-08-25 — the ABI half
+
+Two slots, split per entity kind because upstream's `rmw_event_t` carries the
+entity and ours is declined:
+
+```c
+rmw_ret_t (*subscription_take_event)(const rmw_subscription_t *subscription,
+    rmw_event_type_t kind, rmw_event_payload_t *out, bool *taken);
+rmw_ret_t (*publisher_take_event)(const rmw_publisher_t *publisher,
+    rmw_event_type_t kind, rmw_event_payload_t *out, bool *taken);
+```
+
+`rmw_take_event` is recorded as GROUPED onto the subscription one;
+`publisher_take_event` is its declared twin. Parity: declined 14 → 13,
+contract 72 → 73, undeclared 0.
+
+Both false clauses are now recorded AS false where the decision lives, so the
+next reader meets the correction rather than the claim.
+
+### The two contract sentences, fixed
+
+* `rmw_event.h` said the callback is "invoked from inside `drive_io` on the
+  executor thread". True of no backend, and load-bearing — it was the stated
+  reason `take_event` could be declined. Replaced with what is actually
+  guaranteed (nothing about the context) plus the consequence: a backend with
+  no safe delivery context should leave `*_event_init` NULL and implement
+  `*_take_event`.
+* `rmw_vtable.h`'s `has_data` said "a backend must not mutate subscription
+  state here — the probe is logically read-only". zenoh's fires callbacks and
+  writes cells from inside it; cyclonedds' now peeks its reader. The rule that
+  is actually keepable, and now recorded, is narrower: a probe may not CONSUME
+  a message.
+
+## Still open: cyclonedds has no status events at all
+
+The slots are NULL in every backend, which for cyclonedds is honest rather than
+lazy — it registers no DDS listeners, so it has nothing buffered to hand out.
+Implementing means listener registration for the five kinds, a per-entity
+buffer, and a drain in `take_event`. That is a feature, not a plumbing change,
+and it is what actually closes this issue.
+
+What the ABI change buys is that the feature is now a BACKEND change. Before
+it, a cyclonedds status event had no route to a caller at any price.
+
+## Found on the way: the positional-initialiser hazard, gated
+
+Inserting two slots mid-header shifted every later entry of cyclonedds'
+POSITIONAL vtable initialiser. The compiler caught it — but only because the
+shifted function-pointer types disagreed. Adjacent slots with the same
+signature (`destroy_service` / `destroy_client`, the two new `*_take_event`
+slots, several `get_*` graph slots) would have swapped SILENTLY.
+
+Issue 0773's write-up proposed exactly this check and deferred it. Added now as
+`scripts/check-vtable-positional-order.py` (`just check-rmw-vtable-order`, on
+the fast line): the `/*slot*/` comment sequence must be an ordered subsequence
+of the header's field order — subsequence because an initialiser may stop early
+and let C++ zero-fill, ordered because it may never name them out of sequence.
+Proven to fire by swapping two adjacent entries.
+

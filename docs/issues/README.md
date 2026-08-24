@@ -3722,7 +3722,7 @@ blind without a wait set" contradicts `has_data`, whose own doc calls a wait-set
 `try_recv_raw`/`has_data`, and cyclone's DDS listeners fire on Cyclone's worker while its `drive_io` is a
 sleep with no callback path (the comment claiming otherwise names an `Activator` that does not exist). So
 the backend a ROS-interop image actually uses cannot deliver a QoS status event at all. See `0780-*`.
-(2026-08-24)
+(2026-08-24) **ABI half landed 2026-08-25**: `subscription_take_event` / `publisher_take_event` are slots (NULL everywhere, which for cyclonedds is honest — it registers no DDS listeners yet), and both false clauses plus `has_data`'s untrue "must not mutate subscription state" are corrected where the decisions live. Implementing cyclonedds' listeners is what closes it. Also gated the positional-vtable hazard the slot insertion exposed (`check-rmw-vtable-order`).
 
 **#0781** (rmw tech-debt, open 2026-08-24) — one in-place-dispatch capability spread over five slots.
 `subscription_supports_in_place` re-encodes what slot NULLITY already says (both impls ignore their

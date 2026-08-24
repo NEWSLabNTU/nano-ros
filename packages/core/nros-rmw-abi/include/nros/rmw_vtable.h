@@ -202,8 +202,14 @@ typedef struct nros_rmw_vtable_t {
      *  caller reaches for a wait-set. This is the poll a loop with
      *  no wait-set needs, and it allocates nothing.
      *
-     *  A backend must not mutate subscription state here — the
-     *  probe is logically read-only. */
+     *  Logically read-only, and that is weaker than it sounds: zenoh's
+     *  implementation fires deadline and liveliness callbacks from inside this
+     *  probe and writes their cells, and cyclonedds' peeks its reader (which
+     *  marks samples READ). The rule a backend must actually keep is that a
+     *  probe may not CONSUME a message — the sample a `has_data` reports must
+     *  still be there for the `take` that follows. The stronger "must not
+     *  mutate subscription state" was recorded here and true of nobody
+     *  (issue 0780). */
     rmw_ret_t (*has_data)(rmw_subscription_t *subscription,
         bool *out_has_data);
 
@@ -304,29 +310,67 @@ typedef struct nros_rmw_vtable_t {
     /** Register a callback for a publisher-side event. Same NULL /
      *  unsupported-kind conventions as `register_subscription_event`.
      *  `deadline_ms` is consulted for `OFFERED_DEADLINE_MISSED` only. */
-    /* ---- Phase 376 W4 — why there is no `take_event` and no
-     *      `event_set_callback` ----
+    /* ---- Status events: how the three upstream parts map here ----
      *
-     * Upstream's status-event model is three-part: `*_event_init` fills an
-     * `rmw_event_t` HANDLE, `rmw_event_set_callback` attaches a callback to that
-     * handle, and `rmw_take_event` polls it for a status the wait set said was
-     * ready. Ours fuses the first two and declines the third.
+     * Upstream's model is three-part: `*_event_init` fills an `rmw_event_t`
+     * HANDLE, `rmw_event_set_callback` attaches a callback to that handle, and
+     * `rmw_take_event` polls it for a status.
      *
-     *  - `rmw_event_set_callback` is FUSED: our `*_event_init` takes the
-     *    callback, so there is no handle to attach one to afterwards. What that
-     *    costs is real and small — upstream can replace or clear a callback
-     *    later, and we cannot.
+     *  - `rmw_event_set_callback` is FUSED into `*_event_init`, which takes the
+     *    callback directly. There is no handle to attach one to afterwards.
+     *    What that costs is real and small: upstream can replace or clear a
+     *    callback later, and we cannot.
      *
-     *  - `rmw_take_event` is DECLINED, and the reason is not merely "no handle".
-     *    Upstream polls an event because the WAIT SET told it one was ready, and
-     *    the wait set is declined here (see the lifecycle block); without it a
-     *    poll would be blind. More to the point, upstream's poll exists to move
-     *    status handling OFF the notification context onto a safe one — and our
-     *    callback already runs on the safe one: it is invoked from inside
-     *    `drive_io`, on the executor thread, never from an ISR or a transport
-     *    thread. The deferral upstream needs has already happened by the time
-     *    the callback fires.
+     *  - `rmw_take_event` is a SLOT (issue 0780), split per entity kind
+     *    because we have no `rmw_event_t` to carry the entity — see
+     *    `subscription_take_event` / `publisher_take_event` below.
+     *
+     * It was DECLINED until 2026-08-25 on two clauses that both turned out
+     * false, and they are worth recording because each sounded right:
+     *
+     *   "Upstream polls because the WAIT SET said one was ready, and the wait
+     *   set is declined here, so a poll would be blind."
+     *      — This ABI is a poll-WITHOUT-a-wait-set design by construction.
+     *        `has_data`'s own doc says so: "the poll a loop with no wait-set
+     *        needs, and it allocates nothing." A poll with no wait set is the
+     *        model here, not a blindness.
+     *
+     *   "Our callback already runs on the safe context — from inside
+     *   `drive_io`, on the executor thread, never an ISR or a transport
+     *   thread."
+     *      — True of no backend. zenoh fires from `try_recv_raw` and
+     *        `has_data`; cyclonedds' DDS listeners fire on Cyclone's own
+     *        worker thread while its `drive_io` is a sleep with no callback
+     *        path at all. So a cyclonedds status event has nowhere safe to be
+     *        delivered from, and buffer-plus-poll IS `take_event`. A
+     *        per-backend fact stated ABI-wide — the same shape as the
+     *        network-flow decline W5 flipped.
      */
+
+    /** Upstream `rmw_take_event`, subscription side.
+     *
+     *  `*taken` says whether an event was copied into `*out`; both are written
+     *  only on `NROS_RMW_RET_OK`. `kind` selects which event to drain, and
+     *  which member of the payload union is valid.
+     *
+     *  Deviations from upstream, declared: no `rmw_event_t *` — that handle is
+     *  declined, so the entity plus the kind identifies the event — and the
+     *  payload is our `rmw_event_payload_t` union rather than a `void *` the
+     *  caller must know the shape of.
+     *
+     *  NULL is the normal answer for a backend that delivers status events
+     *  through the `*_event_init` callback and has a safe context to do it
+     *  from. It is NOT the right answer for a backend whose notifications
+     *  arrive on a thread of its own. */
+    rmw_ret_t (*subscription_take_event)(const rmw_subscription_t *subscription,
+        rmw_event_type_t kind, rmw_event_payload_t *out, bool *taken);
+
+    /** Upstream `rmw_take_event`, publisher side. Same contract as
+     *  `subscription_take_event`; `rmw_take_event` is recorded as GROUPED onto
+     *  that one, since upstream has a single name for both. */
+    rmw_ret_t (*publisher_take_event)(const rmw_publisher_t *publisher,
+        rmw_event_type_t kind, rmw_event_payload_t *out, bool *taken);
+
     rmw_ret_t (*publisher_event_init)(
         const rmw_publisher_t  *publisher,
         rmw_event_type_t  kind,
