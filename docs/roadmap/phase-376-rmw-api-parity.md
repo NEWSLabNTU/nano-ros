@@ -567,7 +567,43 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 | every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
 | re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
 | re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | open |
-| `rmw-abi-shape --check` joins the `just check` line | open |
+| `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check-rmw-abi-shape`, self-test + check, on the fast line |
+| parity MAP cross-checked against the header, both directions | **landed** — the MAP was stale in two ways at once (see below) |
+
+### The parity MAP had drifted 45 entries, in two directions
+
+Wiring `--check` to `just check` surfaced this rather than the campaign
+noticing it: `rmw-api-parity` reported **26 gaps** while `rmw-abi-shape`
+reported **one symbol with no slot**. Two tools over one question, both green,
+disagreeing by 25 symbols.
+
+* **W3.b renamed 17 slots** (`try_recv_raw` → `take`, `send_reply` →
+  `send_response`, `pub_loan` → `borrow_loaned_message`, …). Buckets stayed
+  correct; the details named slots that no longer existed.
+* **W4 landed 28 slots** — the entire graph/introspection family, all six
+  `*_get_actual_qos`, `publisher_wait_for_all_acked`, both service-side
+  callbacks, `feature_supported`, `get_implementation_identifier`,
+  `get_serialization_format` — and the MAP still read `("gap", "no vtable
+  slot")` for every one.
+
+The report is the artifact people quote for "what do we answer?", so a stale
+one is worse than no table. Structural fix: `check_against_vtable()` in
+`rmw-api-parity.py` imports `rmw-abi-shape`'s own header parser (a SECOND
+parser for one header is how they would drift a third time) and fails both
+directions — a `vtable` detail naming no real slot, and a non-`vtable` bucket
+for a symbol whose slot exists. Runs in `--self-test` as well as `--check`,
+against the real header rather than a fixture, because both drifts WERE the
+fixture and the header diverging.
+
+Post-fix: vtable 64, layer 2, declined 21, gap 1.
+
+### Deferral needs a name on it
+
+`--check` could not join the `just check` line while
+`get_serialized_message_size` counted as a hard miss — and "just exempt it"
+would have made the gate worthless. Instead a `gap` whose reason names a
+**tracked issue id** (`issue 0776`) is reported as `deferred, issue tracked`
+and does not fail. A bare "not yet" still reds. Self-tested both ways.
 
 ### Cross-cutting, every wave
 

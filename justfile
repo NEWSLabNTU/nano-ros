@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3556,7 +3556,19 @@ rmw-abi-shape:
 # distrobox when the distro moves.
 [group("check")]
 check-rmw-api-parity:
+    @python3 scripts/rmw-api-parity.py --self-test
     @python3 scripts/rmw-api-parity.py --check
+
+# Phase 376 W5 — the campaign's claim, re-proven per commit.
+#
+# `check-rmw-api-parity` asks "is every contract symbol CLASSIFIED?"; this asks
+# "does the vtable actually MIRROR upstream?" — name, args and return type per
+# slot, with every difference declared. Both read committed snapshots
+# (`docs/reference/rmw-implementation-{contract,signatures}.txt`), so neither
+# needs a ROS install and both run on the fast line.
+check-rmw-abi-shape:
+    @python3 scripts/rmw-abi-shape.py --self-test
+    @python3 scripts/rmw-abi-shape.py --check
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and

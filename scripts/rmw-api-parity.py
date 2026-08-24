@@ -51,6 +51,7 @@ import subprocess
 import sys
 
 import re
+import importlib.util as _util
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -73,26 +74,26 @@ MAP = {
     "rmw_create_client": ("vtable", "create_client"),
     "rmw_destroy_client": ("vtable", "destroy_client"),
     # ---- Data plane ----
-    "rmw_publish": ("vtable", "publish_raw"),
-    "rmw_take": ("vtable", "try_recv_raw"),
-    "rmw_take_with_info": ("vtable", "try_recv_raw + MESSAGE_INFO_TABLE"),
-    "rmw_take_sequence": ("vtable", "try_recv_sequence (burst-take, phase 124.D.1)"),
-    "rmw_send_request": ("vtable", "send_request_raw"),
-    "rmw_take_request": ("vtable", "try_recv_request"),
-    "rmw_send_response": ("vtable", "send_reply"),
-    "rmw_take_response": ("vtable", "try_recv_reply_raw"),
+    "rmw_publish": ("vtable", "publish"),
+    "rmw_take": ("vtable", "take"),
+    "rmw_take_with_info": ("vtable", "take_with_info"),
+    "rmw_take_sequence": ("vtable", "take_sequence (burst-take, phase 124.D.1)"),
+    "rmw_send_request": ("vtable", "send_request"),
+    "rmw_take_request": ("vtable", "take_request"),
+    "rmw_send_response": ("vtable", "send_response"),
+    "rmw_take_response": ("vtable", "take_response"),
     "rmw_service_server_is_available": ("vtable", "service_server_is_available"),
-    "rmw_publisher_assert_liveliness": ("vtable", "assert_publisher_liveliness"),
+    "rmw_publisher_assert_liveliness": ("vtable", "publisher_assert_liveliness"),
     # ---- Zero-copy / loaned ----
-    "rmw_borrow_loaned_message": ("vtable", "pub_loan"),
-    "rmw_return_loaned_message_from_publisher": ("vtable", "pub_discard"),
-    "rmw_publish_loaned_message": ("vtable", "pub_commit"),
-    "rmw_take_loaned_message": ("vtable", "sub_borrow"),
-    "rmw_return_loaned_message_from_subscription": ("vtable", "sub_release"),
-    "rmw_take_loaned_message_with_info": ("vtable", "sub_borrow + MESSAGE_INFO_TABLE"),
+    "rmw_borrow_loaned_message": ("vtable", "borrow_loaned_message"),
+    "rmw_return_loaned_message_from_publisher": ("vtable", "return_loaned_message_from_publisher"),
+    "rmw_publish_loaned_message": ("vtable", "publish_loaned_message"),
+    "rmw_take_loaned_message": ("vtable", "take_loaned_message"),
+    "rmw_return_loaned_message_from_subscription": ("vtable", "return_loaned_message_from_subscription"),
+    "rmw_take_loaned_message_with_info": ("vtable", "take_loaned_message_with_info"),
     # ---- Events ----
-    "rmw_publisher_event_init": ("vtable", "register_publisher_event"),
-    "rmw_subscription_event_init": ("vtable", "register_subscription_event"),
+    "rmw_publisher_event_init": ("vtable", "publisher_event_init"),
+    "rmw_subscription_event_init": ("vtable", "subscription_event_init"),
     "rmw_take_event": (
         "declined",
         "upstream polls an event because the WAIT SET said one was ready, and the wait "
@@ -167,9 +168,9 @@ MAP = {
     "rmw_publish_serialized_message": ("vtable", "publish — grouped; our payload IS CDR"),
     "rmw_take_serialized_message": ("vtable", "take — grouped; our payload IS CDR"),
     "rmw_take_serialized_message_with_info": ("vtable", "take_with_info — grouped"),
-    "rmw_get_serialization_format": ("layer", "CDR, fixed per build"),
-    "rmw_get_implementation_identifier": ("layer", "nros_rmw_descriptor_t (check-rmw-descriptors)"),
-    "rmw_feature_supported": ("layer", "a NULL vtable slot IS the feature probe"),
+    "rmw_get_serialization_format": ("vtable", "get_serialization_format — CDR today, but the ANSWER is the backend's"),
+    "rmw_get_implementation_identifier": ("vtable", "get_implementation_identifier — also in `nros_rmw_descriptor_t` (check-rmw-descriptors)"),
+    "rmw_feature_supported": ("vtable", "feature_supported — a NULL slot is still the structural probe; this answers the named `rmw_feature_t` values"),
     "rmw_init_publisher_allocation": (
         "declined",
         "upstream pre-sizes a per-entity `rcutils_allocator_t` the CALLER owns, and this "
@@ -182,28 +183,35 @@ MAP = {
     "rmw_init_subscription_allocation": ("declined", "as above"),
     "rmw_fini_subscription_allocation": ("declined", "as above"),
     # ---- Graph / introspection ----
-    "rmw_get_node_names": ("gap", "cyclone backend has graph.cpp; no vtable slot, so no portable answer"),
-    "rmw_get_node_names_with_enclaves": ("gap", "same slot, enclave field unpopulated"),
-    "rmw_get_topic_names_and_types": ("gap", "no vtable slot"),
-    "rmw_get_service_names_and_types": ("gap", "no vtable slot"),
-    "rmw_get_publisher_names_and_types_by_node": ("gap", "no vtable slot"),
-    "rmw_get_subscriber_names_and_types_by_node": ("gap", "no vtable slot"),
-    "rmw_get_service_names_and_types_by_node": ("gap", "no vtable slot"),
-    "rmw_get_client_names_and_types_by_node": ("gap", "no vtable slot"),
-    "rmw_get_publishers_info_by_topic": ("gap", "no vtable slot"),
-    "rmw_get_subscriptions_info_by_topic": ("gap", "no vtable slot"),
-    "rmw_count_publishers": ("gap", "no vtable slot"),
-    "rmw_count_subscribers": ("gap", "no vtable slot"),
-    "rmw_node_get_graph_guard_condition": ("gap", "no graph-change notification"),
-    "rmw_publisher_count_matched_subscriptions": ("gap", "service_server_available is the only matched-count we expose"),
-    "rmw_subscription_count_matched_publishers": ("gap", "as above"),
+    "rmw_get_node_names": (
+        "vtable",
+        "get_node_names — W4. A VISITOR (`rmw_node_visit_fn`), not an out-array: there is "
+        "no allocator at this seam to hand back `rcutils_string_array_t` with",
+    ),
+    "rmw_get_node_names_with_enclaves": ("vtable", "get_node_names — grouped; the visitor carries `enclave`"),
+    "rmw_get_topic_names_and_types": ("vtable", "get_topic_names_and_types — `rmw_names_and_types_visit_fn`"),
+    "rmw_get_service_names_and_types": ("vtable", "get_service_names_and_types — visitor"),
+    "rmw_get_publisher_names_and_types_by_node": ("vtable", "get_publisher_names_and_types_by_node — visitor"),
+    "rmw_get_subscriber_names_and_types_by_node": ("vtable", "get_subscriber_names_and_types_by_node — visitor"),
+    "rmw_get_service_names_and_types_by_node": ("vtable", "get_service_names_and_types_by_node — visitor"),
+    "rmw_get_client_names_and_types_by_node": ("vtable", "get_client_names_and_types_by_node — visitor"),
+    "rmw_get_publishers_info_by_topic": ("vtable", "get_publishers_info_by_topic — `rmw_topic_endpoint_info_visit_fn`"),
+    "rmw_get_subscriptions_info_by_topic": ("vtable", "get_subscriptions_info_by_topic — endpoint-info visitor"),
+    "rmw_count_publishers": ("vtable", "count_publishers"),
+    "rmw_count_subscribers": ("vtable", "count_subscribers"),
+    "rmw_node_get_graph_guard_condition": ("vtable", "node_get_graph_guard_condition"),
+    "rmw_publisher_count_matched_subscriptions": ("vtable", "publisher_count_matched_subscriptions"),
+    "rmw_subscription_count_matched_publishers": ("vtable", "subscription_count_matched_publishers"),
     # ---- QoS introspection ----
-    "rmw_publisher_get_actual_qos": ("gap", "requested QoS is baked; the GRANTED profile is never read back"),
-    "rmw_subscription_get_actual_qos": ("gap", "as above"),
-    "rmw_client_request_publisher_get_actual_qos": ("gap", "as above"),
-    "rmw_client_response_subscription_get_actual_qos": ("gap", "as above"),
-    "rmw_service_request_subscription_get_actual_qos": ("gap", "as above"),
-    "rmw_service_response_publisher_get_actual_qos": ("gap", "as above"),
+    "rmw_publisher_get_actual_qos": (
+        "vtable",
+        "publisher_get_actual_qos — W4. ALL-OR-NOTHING: a backend that can determine four policies and not the fifth returns UNSUPPORTED and writes nothing, because `rmw_qos_profile_t` has no UNKNOWN sentinel to report a partial answer with. Owed by W5",
+    ),
+    "rmw_subscription_get_actual_qos": ("vtable", "subscription_get_actual_qos — as above"),
+    "rmw_client_request_publisher_get_actual_qos": ("vtable", "client_request_publisher_get_actual_qos — as above"),
+    "rmw_client_response_subscription_get_actual_qos": ("vtable", "client_response_subscription_get_actual_qos — as above"),
+    "rmw_service_request_subscription_get_actual_qos": ("vtable", "service_request_subscription_get_actual_qos — as above"),
+    "rmw_service_response_publisher_get_actual_qos": ("vtable", "service_response_publisher_get_actual_qos — as above"),
     "rmw_qos_profile_check_compatible": (
         "layer",
         "a plain exported ABI function, not a vtable slot: its answer must not vary "
@@ -212,7 +220,7 @@ MAP = {
         "nros/rmw_entity.h, defined once in nros-rmw-cffi",
     ),
     # ---- Identity ----
-    "rmw_get_gid_for_publisher": ("gap", "cyclone graph.cpp has GIDs; not exposed portably"),
+    "rmw_get_gid_for_publisher": ("vtable", "get_gid_for_publisher"),
     "rmw_compare_gids_equal": ("layer", "a plain exported ABI function; see rmw_qos_profile_check_compatible"),
     # ---- Declined: RTOS design ----
     "rmw_publisher_get_network_flow_endpoints": (
@@ -225,16 +233,70 @@ MAP = {
         "content filtering is a DDS-only expression evaluator; would bloat every non-DDS backend",
     ),
     "rmw_subscription_get_content_filter": ("declined", "as above"),
-        "rmw_set_log_severity": ("vtable", "set_log_severity"),
-    "rmw_publisher_wait_for_all_acked": (
-        "gap",
-        "reliable backends know their unacked count; needed for clean shutdown",
-    ),
-    "rmw_client_set_on_new_response_callback": ("gap", "wake callback exists for subs only"),
-    "rmw_service_set_on_new_request_callback": ("gap", "wake callback exists for subs only"),
+    "rmw_set_log_severity": ("vtable", "set_log_severity"),
+    "rmw_publisher_wait_for_all_acked": ("vtable", "publisher_wait_for_all_acked"),
+    "rmw_client_set_on_new_response_callback": ("vtable", "client_set_on_new_response_callback"),
+    "rmw_service_set_on_new_request_callback": ("vtable", "service_set_on_new_request_callback"),
 }
 
 BUCKETS = ("vtable", "layer", "declined", "gap")
+
+
+# The MAP is authored, and an authored table drifts the moment the thing it
+# describes moves under it. It did, twice, silently:
+#
+#   - W3.b RENAMED 17 slots (`try_recv_raw` -> `take`, `send_reply` ->
+#     `send_response`, …). The buckets stayed right, the details named slots
+#     that no longer existed.
+#   - W4 LANDED 28 slots — the whole graph/introspection family, all six
+#     `*_get_actual_qos`, the two service-side callbacks — and the MAP still
+#     read `("gap", "no vtable slot")` for every one of them.
+#
+# So this file claimed 26 gaps while `rmw-abi-shape` found ONE symbol without a
+# slot: two tools over one question, disagreeing by 25 symbols, each green. The
+# report is the artifact people quote, which makes a stale one worse than none.
+#
+# The check below is the structural fix. It reads the same header
+# `rmw-abi-shape` parses, so the two tools cannot disagree again without one of
+# them going red.
+def vtable_slot_names():
+    """Slot names in `nros/rmw_vtable.h`, via rmw-abi-shape's own parser.
+
+    Importing rather than re-implementing is deliberate: a SECOND parser for
+    one header is how the two tools would drift a third time. The header's
+    tricky shapes (pointer-returning slots, nested callback parameters) already
+    cost that parser two rounds of fixes; they are not worth relearning here.
+    """
+    spec = _util.spec_from_file_location(
+        "_rmw_abi_shape", os.path.join(ROOT, "scripts", "rmw-abi-shape.py")
+    )
+    mod = _util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    slots, _rets = mod.vtable_slots()
+    return set(slots), getattr(mod, "GROUPED_SYMBOLS", {}), getattr(mod, "ABI_FUNCTIONS", {})
+
+
+def check_against_vtable():
+    """[(symbol, complaint)] — MAP claims that the header contradicts."""
+    slots, grouped, abi_fns = vtable_slot_names()
+    bad = []
+    for sym, (bucket, detail) in sorted(MAP.items()):
+        named = re.split(r"[ ,(]", detail.strip())[0]
+        if bucket == "vtable":
+            if named not in slots:
+                bad.append((sym, f"detail names {named!r}, which is no slot in rmw_vtable.h"))
+            continue
+        # The other direction: a slot EXISTS and the MAP still says we do not
+        # answer it there. `gap` is the one that matters — it is the bucket
+        # people read as a to-do list.
+        if sym in abi_fns:
+            # A plain exported ABI function is legitimately `layer`: it is not
+            # a slot BECAUSE its answer must not vary by backend.
+            continue
+        slot = sym[4:] if sym.startswith("rmw_") else sym
+        if slot in slots or sym in grouped:
+            bad.append((sym, f"bucket {bucket!r}, but slot {slot!r} exists in rmw_vtable.h"))
+    return bad
 
 
 def read_contract():
@@ -329,6 +391,11 @@ def self_test():
         bad.append(f"unclassified detection broken: {unclassified}")
     if counts["vtable"] != 1:
         bad.append(f"expected the mapped symbol counted: {counts}")
+    # The header cross-check, in both directions, against the real header —
+    # a self-test over a fixture would not have caught either drift, because
+    # both were the fixture and the header diverging.
+    for sym, complaint in check_against_vtable():
+        bad.append(f"{sym}: {complaint}")
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-parity --self-test: " + b + "\n")
@@ -387,6 +454,19 @@ def main(argv):
         print()
 
     rc = 0
+    drift = check_against_vtable()
+    if drift:
+        sys.stderr.write(
+            f"rmw-api-parity: {len(drift)} mapping(s) contradict nros/rmw_vtable.h:\n"
+        )
+        for sym, complaint in drift:
+            sys.stderr.write(f"  {sym:52s} {complaint}\n")
+        sys.stderr.write(
+            "\n  A slot was renamed or landed and this table did not follow. Fix the\n"
+            "  MAP entry — the report above is what people quote for \"what do we\n"
+            "  answer?\", and a stale one is worse than no table at all.\n"
+        )
+        rc = 1 if args.check else rc
     if unclassified:
         sys.stderr.write(
             f"rmw-api-parity: {len(unclassified)} contract symbol(s) with no classification:\n"

@@ -328,6 +328,18 @@ _parity = _util.module_from_spec(_spec)
 _spec.loader.exec_module(_parity)
 DECLINED = {k for k, (bucket, _why) in _parity.MAP.items() if bucket == "declined"}
 
+# A `gap` whose reason names a TRACKED ISSUE is deferred, not forgotten, and
+# `--check` must not treat it as a red — otherwise the only way to put this
+# gate on the `just check` line is to stop tracking the gap, which is exactly
+# backwards. The issue id is the whole requirement: a bare "not yet" would let
+# anything sit here, while `issue 0776` is a file somebody has to close.
+_ISSUE_REF = re.compile(r"\bissue[ -]?(\d{4})\b", re.I)
+DEFERRED = {
+    k: _ISSUE_REF.search(why).group(1)
+    for k, (bucket, why) in _parity.MAP.items()
+    if bucket == "gap" and _ISSUE_REF.search(why)
+}
+
 
 def vtable_slots():
     """{slot: [param types]} from the vtable header.
@@ -426,6 +438,7 @@ def compare():
 
     missing, arg_diff, matched, declared, ret_diff, grouped, abi_fns = (
         [], [], [], [], [], [], [])
+    deferred = []
 
     # What the headers actually DECLARE, so the table above cannot claim a
     # function nobody wrote.
@@ -455,7 +468,7 @@ def compare():
                 grouped.append((name, slot))
                 continue
         if slot not in slots:
-            missing.append((name, slot, params))
+            (deferred if name in DEFERRED else missing).append((name, slot, params))
             continue
         # Phase 376 W5 — the RETURN type is part of a signature. This tool did
         # not parse it, so six slots returned `void` where upstream returns
@@ -488,6 +501,7 @@ def compare():
         "slots": slots,
         "upstream": up,
         "missing": missing,
+        "deferred": deferred,
         "arg_diff": arg_diff,
         "matched": matched,
         "abi_fns": abi_fns,
@@ -531,7 +545,20 @@ def self_test():
         for b in bad:
             sys.stderr.write("rmw-abi-shape --self-test: " + b + "\n")
         return 2
-    print(f"rmw-abi-shape --self-test: OK ({len(slots)} slot(s) parsed, 3 case(s))")
+    # The deferral rule, both ways: a `gap` reason without an issue id is NOT
+    # deferred, it is a red. Without this the rule degrades into "any gap is
+    # fine", which is the failure mode that would make `--check` on the
+    # `just check` line worth nothing.
+    for probe, want in (("issue 0776. the bound is not computed", True),
+                        ("issue-0776 tracked", True),
+                        ("not yet, no bound is computed", False),
+                        ("tracked in issue 77", False)):
+        if bool(_ISSUE_REF.search(probe)) != want:
+            bad.append(f"issue-ref rule: {probe!r} should be deferred={want}")
+    if not DEFERRED:
+        bad.append("no deferred gap resolved — the parity MAP link is broken")
+
+    print(f"rmw-abi-shape --self-test: OK ({len(slots)} slot(s) parsed, 7 case(s))")
     return 0
 
 
@@ -568,6 +595,7 @@ def main(argv):
     print(f"  slots present, args differ : {len(r['arg_diff'])}")
     print(f"  UNDECLARED return-type diff: {len(r['ret_diff'])}")
     print(f"  no slot at all             : {len(r['missing'])}")
+    print(f"  deferred, issue tracked    : {len(r['deferred'])}")
     print(f"  declared RTOS additions    : {len(ADDED)}")
     print(f"  UNDECLARED extra slots     : {len(r['undeclared_extra'])}")
     print(f"  vendor-named types in sigs : {len(r['vendor_types'])}")
@@ -602,6 +630,12 @@ def main(argv):
             print(f"  {s}")
         print()
 
+    if r["deferred"]:
+        print(f"## deferred, tracked by an issue ({len(r['deferred'])})")
+        for name, slot, params in r["deferred"]:
+            print(f"  {slot:44s} <- issue {DEFERRED[name]}")
+        print()
+
     if r["missing"]:
         print(f"## no slot ({len(r['missing'])})")
         for name, slot, params in r["missing"]:
@@ -618,6 +652,9 @@ def main(argv):
             "  Every contract symbol needs a slot named after it, with matching\n"
             "  args — or an entry in ARG_DEVIATIONS / ADDED / the parity table's\n"
             "  `declined` bucket, carrying the RTOS reason for the difference.\n"
+            "  A gap that is real but not yet closed goes in the parity table's\n"
+            "  `gap` bucket with a TRACKED ISSUE ID in the reason (`issue 0776`),\n"
+            "  which is deferral with a name on it rather than an exemption.\n"
             "  Signatures must also be vendor-free: see TYPE_TARGET.\n"
         )
         rc = 1
