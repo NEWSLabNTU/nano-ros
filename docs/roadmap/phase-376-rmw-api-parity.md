@@ -429,6 +429,69 @@ vtable `wait` sits UNDER it and the executor becomes its caller) and the
 **graph** group (a full cache costs RAM a 128 KiB target does not have, so the
 answer is an optional slot with `UNSUPPORTED`, not an unconditional one).
 
+### W4 decisions as landed (2026-08-23/24)
+
+The table above is the PLAN. What follows is what was decided, per group, once
+each was actually looked at — the two differ, and where they differ the reason
+is recorded rather than the table quietly edited.
+
+| group | planned | landed |
+| --- | --- | --- |
+| identity / introspection | 3 slots | **3 slots**, exact parity |
+| graph + matched counts | 15 slots | **12 slots** — `get_node_names` answers two upstream names |
+| QoS read-back | 6 slots | **6 slots**, exact parity |
+| clean shutdown | 1 slot | **1 slot** |
+| with-info takes | 3 slots | **2 slots** + 1 grouped |
+| wake callbacks | 2 slots | **3 slots** — the subscription one was recorded as covered and was not |
+| session / node lifecycle | 8 slots | **2 slots**, 3 grouped, 3 declined |
+| wait set + guard conditions | 6 slots | **0 slots**, all 6 declined |
+| serialization | 6 slots | **0 slots**, 2 declined, 3 grouped, 1 reclassified as a gap |
+| pure functions | 2 slots | **open** — see below |
+
+#### Serialization: no slots, and the reason is that our seam already carries CDR
+
+`publish` and `take` take and yield BYTES, and those bytes are CDR — written by
+`nros-serdes` above the vtable. So:
+
+* **`serialize` / `deserialize` are declined.** CDR for an IDL type is fixed by
+  ROS interop, so a per-backend answer would be a DEFECT rather than a feature —
+  two backends disagreeing about how a `std_msgs/String` encodes is a bug with
+  three places to fix it. Both upstream signatures also name two things this ABI
+  has already declined: a `rosidl_message_type_support_t *`, and
+  `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an
+  ALLOCATOR, at a seam with no allocator.
+
+* **`publish_serialized_message`, `take_serialized_message` and
+  `take_serialized_message_with_info` are GROUPED** onto `publish`, `take` and
+  `take_with_info`. A separate slot could only ever forward to the same one, and
+  a slot whose only possible body is a forward is a null decision. The
+  mechanical name rule attached our slots to the wrong namesake — semantically
+  ours ARE the serialized variants — and renaming them would be worse than
+  recording the grouping.
+
+* **`get_serialized_message_size` moved from `layer` to `gap`.** Its stated
+  reason, "generated per type; the bound is baked", was false and was checked:
+  `nros-serdes` declares only `serialize` / `deserialize` /
+  `deserialize_borrowed`, no generated crate emits a size constant, and buffers
+  are sized by env knobs (`NROS_SUBSCRIPTION_BUFFER_SIZE`). `report_dropped_take`
+  says outright that it cannot name the size that would have worked. A real
+  bound would let a dropped take say how much room it needed.
+
+The ABI-wide deviation this exposes, previously written down nowhere: **a
+backend cannot choose its own wire representation**, because the encapsulation
+header is written above the seam. That is a genuine constraint of this design,
+not an oversight, and it is why the grouping above is honest rather than a
+convenience.
+
+#### The grouping mechanism, and its guard
+
+`GROUPED_SYMBOLS` in `scripts/rmw-abi-shape.py` is the one deliberate exception
+to the mechanical name rule, so it carries the same burden as any declared
+deviation: a reason per entry, and a `--self-test` assertion that every alias
+TARGET is really a slot. Without that last part an alias is a way to make a
+MISSING slot invisible, which is the opposite of what the tool exists for.
+Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
+
 ### W5 — RTOS correctness audit (open)
 
 | item | state |
