@@ -88,9 +88,26 @@
 // `std::atomic<int64_t>`, while `NROS_PLATFORM_THREADX` skipped `<atomic>`.
 // Spelling the predicate once is what makes the three sites unable to drift
 // apart again.
-#if defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8)
+// TWO independent facts, and using `std::atomic<int64_t>` needs BOTH:
+//
+//   1. the target has an 8-byte atomic INSTRUCTION
+//      (`__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8`) — without it GCC lowers to
+//      `__atomic_*_8` libatomic calls no embedded toolchain links, and the
+//      failure is a link error a long way from here;
+//   2. the toolchain actually ships the `<atomic>` HEADER — a freestanding
+//      libstdc++ does not, and then the include itself is fatal.
+//
+// threadx_riscv64 is the case that separates them: riscv64 HAS the instruction
+// and has NO header, so a capability-only test compiles on threadx_linux and
+// dies with `fatal error: atomic: No such file or directory`. The old
+// platform-name test got this right by accident — `!THREADX` covered both — and
+// a test on either fact alone is wrong on one target or the other.
+#if defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8) && defined(__has_include)
+#if __has_include(<atomic>)
 #define NROS_CYCLONE_HAS_STD_ATOMIC_I64 1
-#else
+#endif
+#endif
+#ifndef NROS_CYCLONE_HAS_STD_ATOMIC_I64
 #define NROS_CYCLONE_HAS_STD_ATOMIC_I64 0
 #endif
 
