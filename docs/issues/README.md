@@ -123,7 +123,8 @@ Recently resolved (2026-08-24): **#0773** (rmw/cyclonedds) — the "1005-byte pa
 and six count-or-status helpers still tested `< 0`. See `archived/0773-*`.
 which one it loads is the LOADER's choice, not the resolver's. `<prefix>/opt/zenoh_cpp_vendor/lib` is on
 `LD_LIBRARY_PATH` only when `setup.bash`/`activate.sh` was sourced; without it a stray `/lib/libzenohc.so`
-(owned by no package) won, and a zenoh the router was not built against does not fail to load — it SEGVs
+(the `libzenohc` package, upstream zenoh-c, legitimately installed) won, and a zenoh the router was not
+built against does not fail to load — it SEGVs
 mid-startup. 13 of the 20 `check-required-features-tests` went red on a host that HAS ROS, with a message
 naming only `signal: 11`. Finding a router and being able to RUN one are different properties and only the
 first was checked — RFC-0075's drift arriving through the loader instead of a pin (cf. #0609). The fixture

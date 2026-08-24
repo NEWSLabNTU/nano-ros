@@ -37,10 +37,31 @@ by the loader, not by which router the fixture resolved. ROS ships its own at
 `activate.sh`, which adds the same entry.
 
 Without it, any other `libzenohc.so` on the default search path wins. On the
-host this was found, a stray `/lib/libzenohc.so` (17 MB, owned by no dpkg
-package, four months older than the ROS one) took precedence. A zenoh C library
+host this was found, `/usr/lib/libzenohc.so` took precedence. A zenoh C library
 the router was not built against does not fail to load — it SEGVs partway
 through startup.
+
+**Correction (2026-08-25).** This issue first described that file as "a stray,
+owned by no dpkg package". Both halves were wrong, and the mistake is worth
+keeping because it is easy to repeat: `dpkg -S /lib/libzenohc.so` reports *no
+path found* on a merged-`/usr` system, because `/lib` is a symlink to `usr/lib`
+and dpkg records the canonical path. Query the resolved path.
+
+It is a deliberately installed package:
+
+| path | package |
+| --- | --- |
+| `/usr/lib/libzenohc.so` | **`libzenohc` 1.9.0** — ZettaScale's Eclipse Zenoh Debian repo, ships this one file |
+| `/opt/ros/humble/opt/zenoh_cpp_vendor/lib/libzenohc.so` | `ros-humble-zenoh-cpp-vendor` |
+
+So this is not debris to sweep up — it is upstream zenoh-c, installed on purpose
+(`libzenohc-dev` depends on it), and it is entitled to sit on the default
+loader path. Which makes the pairing the fixture's job, not the host's: two
+legitimately installed zenoh-c builds coexisting is a supported state, and only
+the caller knows which one a given `rmw_zenohd` was built against. It also
+sharpens the version story RFC-0075 and issue 0609 are about — 1.9.0 here
+against whatever `rmw_zenoh_cpp` 0.1.9 vendored, an ABI difference between two
+current, correctly installed packages.
 
 So the fixture's own rule ("a host with no ROS router SKIPS; a router that is
 present and will not start is a real fault") classified this correctly as a
