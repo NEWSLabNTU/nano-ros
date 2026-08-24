@@ -752,4 +752,105 @@ config NROS_CODEGEN_TOOL
       automatically when set. Without this (and without the binary
       on PATH), configure errors out with a Hint.
 
+# =============================================================================
+# RMW resource sizing -- OVERRIDABLE defaults
+# =============================================================================
+#
+# These used to be hard assignments in the RMW snippets' .conf fragments. A
+# snippet is applied as EXTRA_CONF_FILE, which comes AFTER the board's CONF_FILE
+# in Zephyr's merge order, so a snippet value BEAT the board that had to live
+# with it. The Cyclone fragment asked for a 16 MiB malloc arena, a 4 MiB kernel
+# heap and a 512 KiB main stack -- reasonable on native_sim, and larger than the
+# entire 320 KiB SRAM of an S32K344. The board could not say otherwise from its
+# own conf; the only way out was -D on the command line, which is why the
+# safety-island justfile carries a column of them.
+#
+# `configdefault` inserts these into each symbol's DEFAULT list instead, so a
+# board conf, a prj.conf or a -D now wins, and the snippet only supplies a value
+# when nobody else did. Same numbers, opposite precedence.
+#
+# The numbers below are the historical snippet values, unchanged on purpose:
+# this commit moves WHERE they are decided, not WHAT they are, so an existing
+# native_sim or QEMU build resolves exactly as before.
+
+if NROS_RMW_CYCLONEDDS
+
+configdefault MAIN_STACK_SIZE
+    default 524288
+
+configdefault HEAP_MEM_POOL_SIZE
+    default 4194304
+
+configdefault COMMON_LIBC_MALLOC_ARENA_SIZE
+    default 16777216
+
+configdefault SYSTEM_WORKQUEUE_STACK_SIZE
+    default 8192
+
+configdefault DYNAMIC_THREAD_STACK_SIZE
+    default 32768
+
+configdefault NET_PKT_RX_COUNT
+    default 64
+
+configdefault NET_PKT_TX_COUNT
+    default 64
+
+configdefault NET_BUF_RX_COUNT
+    default 128
+
+configdefault NET_BUF_TX_COUNT
+    default 128
+
+configdefault NET_TCP_WORKQ_STACK_SIZE
+    default 4096
+
+configdefault MAX_PTHREAD_MUTEX_COUNT
+    default 1024
+
+configdefault MAX_PTHREAD_COND_COUNT
+    default 512
+
+configdefault POSIX_THREAD_THREADS_MAX
+    default 16
+
+endif # NROS_RMW_CYCLONEDDS
+
+if NROS_RMW_ZENOH
+
+configdefault MAIN_STACK_SIZE
+    default 16384
+
+configdefault HEAP_MEM_POOL_SIZE
+    default 65536
+
+configdefault SYSTEM_WORKQUEUE_STACK_SIZE
+    default 4096
+
+configdefault NET_PKT_RX_COUNT
+    default 32
+
+configdefault NET_PKT_TX_COUNT
+    default 32
+
+configdefault NET_BUF_RX_COUNT
+    default 64
+
+configdefault NET_BUF_TX_COUNT
+    default 64
+
+configdefault NET_TCP_WORKQ_STACK_SIZE
+    default 4096
+
+configdefault MAX_PTHREAD_MUTEX_COUNT
+    default 32
+
+configdefault MAX_PTHREAD_COND_COUNT
+    default 16
+
+configdefault POSIX_THREAD_THREADS_MAX
+    default 16
+
+endif # NROS_RMW_ZENOH
+
 endif # NROS
