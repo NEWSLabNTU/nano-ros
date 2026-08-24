@@ -1,7 +1,15 @@
 # Phase 378 — `ros-launch-manifest` v0.1.11: timing fields carry their unit
 
-**Status (2026-08-24). Not started. Measured, and far smaller than a grep
-suggests.**
+**Status (2026-08-24). W1–W4 landed; phase complete.** Measured before it was
+planned, and far smaller than a grep suggested — the estimate held: 12 errors in
+one file where a grep reported 687.
+
+Landed as `4ad76cc59` (W2), `2d7bc591a` (W4 + the blocker below), and the W1
+commit. **Those first two commits say `phase-374` in their subject and that is
+wrong** — they inherited the number from `phase-374-duration-type-migration.md`,
+which this doc supersedes and which is now deleted. Phase 374 is
+`phase-374-test-suite-speedup.md`, unrelated. Recorded here rather than
+rewritten, since the commits are on `main`.
 
 Every number below comes from bumping the pins in this repo and reading the
 compiler, not from estimating. The headline: **12 errors in one file, inside a
@@ -146,6 +154,36 @@ rather than half-apply.
 **Acceptance:** running it with a bogus tag changes nothing; running it with a
 real one leaves `cargo tree` showing a single `ros-launch-manifest-*` revision.
 
+**Landed** as `scripts/bump-manifest.sh` + `just bump-manifest <tag> [--dry-run]`.
+
+The manifest list is **discovered**, not hardcoded to the four above, so a fifth
+pin cannot drift in unnoticed — the exact way play_launch's own manifest sat four
+tags behind. Discovery keys on a dependency KEY at line start
+(`^ros-launch-manifest... =`): two manifests mention this crate only in prose and
+must not be rewritten. Workspaces come from `cargo locate-project --workspace`,
+never a path-prefix test, because `packages/cli` is a separate workspace inside
+this repo (issue 0616).
+
+Verified, each behaviour actually exercised rather than argued:
+
+| behaviour | result |
+| --- | --- |
+| bogus tag | refuses, lists the real tags, changes nothing |
+| `--dry-run` | reports the plan, changes nothing |
+| real move (v0.1.11 -> v0.1.10) | 4 manifests + 2 locks move together, one revision each |
+| round trip back | tree byte-identical to where it started |
+| mid-run failure (unwritable dir) | restores every file; no half-bump |
+
+The failure case had to be injected with an unwritable DIRECTORY: `sed -i` writes
+a temp file and renames, so a read-only file does not stop it — a first attempt at
+this test passed while proving nothing.
+
+It also reports, without failing, any other tracked lock holding a different rlm
+revision. `packages/cli/nros-launch-resolve` reaches rlm transitively through
+play_launch's layer 2 and keeps its own lock deliberately, so it is out of scope
+for a rewrite — but a silent omission there would let a "single revision" verdict
+coexist with a second revision in the tree.
+
 ### W2 — bump to v0.1.11 and fix the seam
 
 All four manifests together, then the 12 reads in
@@ -165,10 +203,36 @@ before scoping.
 
 **Acceptance:** full workspace green, tests included.
 
+**Outcome: empty, and the doc's own advice is why.** "Count it with the compiler
+before scoping" — the compiler counts ZERO. The predicted first site,
+`PathContract { max_latency_ms: Some(5.0) }` at `model_ingest.rs:857`, still
+compiles because `ros_launch_manifest_model::PathContract` **still declares**
+`max_latency_ms: Option<f64>` at v0.1.11. The contract fields moved in the
+`types` crate; the `model` crate's mirror of them did not. `cargo check
+--all-targets` is clean in the `packages/cli` workspace. The 96 candidate sites
+were 96 non-events.
+
 ### W4 — adopt the units in this repo's own data
 
-Optional and last. Both spellings parse, so this is readability, not
-correctness: platform files and contracts shipped here can move to
+**Correction, found by doing it: "both spellings parse" was FALSE here, so W4
+was not optional and not readability.** It is true of rlm's parsers. It is not
+true of ours. `system.toml` `[tiers.*]` has TWO parsers — the resolver's
+`ros_launch_manifest_sched::TierPlatformSpec` (renamed, aliased) and this repo's
+`nros_orchestration_ir::TierDef`, which parses the SAME block with
+`#[serde(deny_unknown_fields)]` and knew only `_us`. The documented new spelling
+was therefore accepted by one mirror and REJECTED by the other, so migrating the
+data broke every file until `TierDef`/`TierRtosSpec` learned the new names as
+aliases (delegating to rlm's own `compat::opt_micros`, so there is no second
+duration parser here).
+
+That is issue 0380's shape exactly — two mirrors of one block, the narrower one
+silently defining what a user may write — and the comment already on
+`TierRtosSpec` warns about this very pair. Nothing exercised that schema before:
+other tests construct the structs directly or read keys off a `toml::Value`.
+`tests/system_toml_tiers_parse.rs` now parses every tracked `system.toml`
+through the real type.
+
+The rest of the item stands as written: platform files and contracts shipped here can move to
 `budget: 8ms`. Upstream's own acceptance criterion is the one to reuse — a
 migration must show up as *"a unit suffix appearing, never a value moving"*.
 It verified that by resolving the same launch under both spellings and diffing
@@ -185,6 +249,16 @@ reports the old spellings, so this wave has a checklist rather than a grep.
   the IR takes microseconds. That is the existing contract — the fields were
   already `_us` — but a contract written as `500ns` would now truncate to 0
   where before it could not be expressed at all. Worth one test.
+
+  **Confirmed and closed.** Measured, not reasoned about: `deadline = "500ns"`
+  gave `deadline_us = Some(0)` and `"1500ns"` gave `Some(1)`. A deadline of ZERO
+  is a different statement from no deadline, arrived at silently — the very
+  "a written value becomes a different value" class this upstream change exists
+  to remove, so reintroducing it at the seam that adopts it would be perverse.
+  `opt_micros_u64` now REFUSES anything that is not a whole number of
+  microseconds (and anything negative, which `as_micros()` clamps to the same
+  zero), naming the value and what it would have become. Test:
+  `durations_finer_than_a_microsecond_are_refused_not_floored`.
 - **Do not migrate this repo's own vocabulary.** The 687 grep hits are mostly
   nano-ros types. Renaming them is a much larger change that this upstream bump
   does not require and should not be bundled with.

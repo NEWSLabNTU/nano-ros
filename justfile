@@ -936,6 +936,18 @@ check-issue-ids:
 phase-new slug="":
     @scripts/reserve-phase-id.sh {{slug}}
 
+# Phase 378 W1 — move every `ros-launch-manifest` pin to one tag, atomically.
+#
+# Four manifests across TWO workspaces pin this crate. Bumping a subset does not
+# fail informatively: two revisions resolve as two same-named, incompatible
+# types and the compiler blames a type mismatch, not the pin. So this validates
+# the tag on the REMOTE first, rewrites every discovered manifest, refreshes both
+# locks, and verifies each names exactly one revision — restoring everything if
+# any step fails. A bogus tag changes nothing.
+[group("main")]
+bump-manifest tag="" flag="":
+    @bash scripts/bump-manifest.sh {{tag}} {{flag}}
+
 # Reserve the next free issue id ATOMICALLY across parallel sessions, and print
 # it. Use this instead of eyeballing the highest existing number: that is a
 # check-then-act race, and it has produced six id collisions (see

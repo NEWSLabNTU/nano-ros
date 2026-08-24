@@ -8,8 +8,8 @@
 # cannot be shadowed, and we never shadow a user's real `play_launch`.
 #
 # Its OWN workspace on purpose. It links layer 2 from the `play_launch` repo,
-# whose `ros-launch-resolve` git-deps `ros-launch-manifest` by tag (v0.1.1);
-# `nros-cli-core` deps the SAME rlm tag. Both resolve to one rev, but keeping
+# whose `ros-launch-resolve` git-deps `ros-launch-manifest` by tag (v0.1.11, in
+# the submodule's own workspace manifest); `nros-cli-core` deps the SAME rlm tag. Both resolve to one rev, but keeping
 # this crate excluded from the `packages/cli` workspace (its own lock) preserves
 # the separation the old two-copies layout needed and stays robust if the two
 # ever diverge on a pin.

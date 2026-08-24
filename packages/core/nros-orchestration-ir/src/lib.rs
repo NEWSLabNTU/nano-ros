@@ -188,7 +188,36 @@ fn opt_micros_u64<'de, D>(d: D) -> Result<Option<u64>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    Ok(ros_launch_manifest_types::duration::compat::opt_micros(d)?.map(|v| v.as_micros()))
+    let Some(v) = ros_launch_manifest_types::duration::compat::opt_micros(d)? else {
+        return Ok(None);
+    };
+    // REJECT what this IR cannot represent, rather than truncating it.
+    //
+    // `Duration` holds nanoseconds; every field here is µs, and `as_micros()`
+    // floors. Before v0.1.11 that gap was unreachable — the field NAME was the
+    // unit, so sub-µs could not be written. Now it can: `deadline = "500ns"`
+    // floors to `Some(0)`, and a deadline of ZERO is not the same statement as
+    // no deadline at all. `"1500ns"` lands on 1 µs, off by a third.
+    //
+    // Silently turning a written value into a different one is the exact class
+    // the unit-in-the-value change exists to remove, so it would be perverse to
+    // reintroduce it at the seam that adopts it. A value this IR cannot carry
+    // is a value the author should hear about.
+    let exact = v.as_micros_f64();
+    if exact < 0.0 {
+        return Err(serde::de::Error::custom(format!(
+            "`{v}` is negative; scheduling durations must be >= 0"
+        )));
+    }
+    if exact.fract() != 0.0 {
+        return Err(serde::de::Error::custom(format!(
+            "`{v}` is not a whole number of microseconds — this field is baked \
+             into the RTOS task as µs, so it would silently become `{}us`. \
+             Write it in µs or coarser (`us`, `ms`, `s`).",
+            v.as_micros()
+        )));
+    }
+    Ok(Some(v.as_micros()))
 }
 
 /// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
@@ -950,6 +979,50 @@ mod tests {
         assert_eq!(t.deadline_us, Some(18000));
         assert_eq!(t.deadline_policy.as_deref(), Some("fault"));
         assert_eq!(t.core, Some(1));
+    }
+
+    /// A duration this IR cannot represent must be REFUSED, not floored.
+    ///
+    /// `Duration` is nanoseconds and every field here is µs, so `as_micros()`
+    /// floors. v0.1.11 is what made that gap reachable: before it, the field
+    /// NAME carried the unit, so sub-µs could not be written at all. Now
+    /// `deadline = "500ns"` is expressible and would floor to `Some(0)` — a
+    /// deadline of ZERO, which is a different statement from no deadline, and
+    /// arrived at silently. That is the same "a written value becomes a
+    /// different value" class the unit-in-the-value change exists to remove.
+    ///
+    /// Both spellings of a representable value must still be accepted, or this
+    /// guard would be a migration blocker rather than a truncation guard.
+    #[test]
+    fn durations_finer_than_a_microsecond_are_refused_not_floored() {
+        let parse = |src: &str| toml::from_str::<TierDef>(src);
+
+        for src in [
+            r#"deadline = "500ns""#,  // would floor to 0
+            r#"deadline = "1500ns""#, // would floor to 1, off by a third
+            r#"spin_period = "1ns""#,
+        ] {
+            let err = parse(src).expect_err(&format!("{src} must be refused"));
+            let msg = err.to_string();
+            assert!(
+                msg.contains("not a whole number of microseconds"),
+                "the error must name the reason, got: {msg}"
+            );
+        }
+
+        // Negative is the other unrepresentable case: `as_micros()` clamps at 0,
+        // so it would land on the same silently-wrong zero.
+        let err = parse(r#"deadline = "-5us""#).expect_err("negative must be refused");
+        assert!(err.to_string().contains("negative"), "got: {err}");
+
+        // Representable values keep working, in every spelling.
+        assert_eq!(parse(r#"deadline = "1us""#).unwrap().deadline_us, Some(1));
+        assert_eq!(parse("deadline_us = 1000").unwrap().deadline_us, Some(1000));
+        assert_eq!(
+            parse(r#"deadline = "2ms""#).unwrap().deadline_us,
+            Some(2000)
+        );
+        assert_eq!(parse(r#"deadline = "0us""#).unwrap().deadline_us, Some(0));
     }
 
     /// Both spellings of every `[tiers.*]` duration key must parse, and to the
