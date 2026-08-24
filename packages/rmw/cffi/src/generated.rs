@@ -148,6 +148,19 @@ pub struct rmw_session_t {
     #[doc = " Opaque backend state. NULL for an uninitialised session."]
     pub backend_data: *mut core::ffi::c_void,
 }
+#[doc = " A graph node — upstream `rmw_node_t`, minus what an image has no use for.\n\n  Phase 376 W4. Storage is CALLER-OWNED, like every other entity here: the\n  runtime hands `create_node` a zero-initialised shell and the backend writes\n  its `backend_data` into it.\n\n  **Why a node exists at all when an image opens ONE session.** The session\n  half of that statement holds; the node half does not, and our own code says\n  so. `Executor` keeps a node table, and `CffiSession::entity_view` exists\n  SOLELY to fabricate a per-call session carrying the entity's owning-node\n  identity — its own comment reads \"one session can host N graph nodes\". The\n  zenoh backend then re-derives a node registry from that string by\n  linear-scanning declared tokens. So node identity already reaches the\n  backend, through a side channel, in every image.\n\n  **Booked, not done — and the booking is the point.** The right end state is\n  `create_publisher` / `create_subscription` / `create_service` /\n  `create_client` taking `rmw_node_t *` the way upstream does, which RETIRES\n  the `entity_view` fabrication and retires the W3.c \"session not node\"\n  deviation rather than adding to it. Landing these two slots without booking\n  that leaves node identity arriving two ways at once, which is the shape that\n  has already cost this tree three FFI-mirror bugs. Tracked in\n  `docs/roadmap/phase-376-rmw-api-parity.md` under W5.\n\n  Not carried from upstream: `context`, `implementation_identifier` and\n  `data`. A node reaches its session because the runtime knows which session\n  it opened on, and one image links one backend per session."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_node_t {
+    #[doc = " Node name. Borrowed; outlives the node."]
+    pub name: *const core::ffi::c_char,
+    #[doc = " Node namespace. Borrowed; outlives the node."]
+    pub namespace_: *const core::ffi::c_char,
+    #[doc = " Reserved; must be zero."]
+    pub _reserved: [u8; 8usize],
+    #[doc = " Opaque backend state. NULL until `create_node` succeeds."]
+    pub backend_data: *mut core::ffi::c_void,
+}
 #[doc = " Publisher entity.\n\n Created by `vtable->create_publisher`; destroyed by\n `vtable->destroy_publisher`. The runtime owns the storage; the\n runtime fills `topic_name` / `type_name` / `qos` before the\n create call. The backend writes `can_loan_messages` and\n `backend_data`.\n\n `can_loan_messages` matches upstream `rmw_publisher_t`'s field of\n the same name — `true` means the backend exposes the\n `loan_publish` / `commit_publish` primitive (Phase 99). The\n runtime reads it once at create time and picks the publish path\n accordingly; no per-call probe."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -715,6 +728,18 @@ pub struct nros_rmw_vtable_t {
             user_data: *const core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
+    #[doc = " Upstream `rmw_create_node`.\n\n  Declares a node on the graph. NULL slot is the expected implementation\n  in a static image: the runtime still tracks the node, the backend simply\n  has nothing to declare.\n\n  Deviations from upstream, declared: no `rmw_context_t *` (an image has\n  one session and reaches it directly), and the node is an OUT parameter\n  rather than a returned pointer — no runtime allocation, the caller owns\n  the storage, exactly as `create_publisher` does.\n\n  The runtime calls this once per distinct `(name, namespace_)`."]
+    pub create_node: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *mut rmw_session_t,
+            name: *const core::ffi::c_char,
+            namespace_: *const core::ffi::c_char,
+            out: *mut rmw_node_t,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_destroy_node`.\n\n  Releases the backend's `backend_data`; the shell stays valid until its\n  owner drops it."]
+    pub destroy_node:
+        ::core::option::Option<unsafe extern "C" fn(node: *mut rmw_node_t) -> rmw_ret_t>,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]

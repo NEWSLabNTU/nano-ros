@@ -378,6 +378,44 @@ typedef struct rmw_session_t {
     void       *backend_data;
 } rmw_session_t;
 
+/** A graph node — upstream `rmw_node_t`, minus what an image has no use for.
+ *
+ *  Phase 376 W4. Storage is CALLER-OWNED, like every other entity here: the
+ *  runtime hands `create_node` a zero-initialised shell and the backend writes
+ *  its `backend_data` into it.
+ *
+ *  **Why a node exists at all when an image opens ONE session.** The session
+ *  half of that statement holds; the node half does not, and our own code says
+ *  so. `Executor` keeps a node table, and `CffiSession::entity_view` exists
+ *  SOLELY to fabricate a per-call session carrying the entity's owning-node
+ *  identity — its own comment reads "one session can host N graph nodes". The
+ *  zenoh backend then re-derives a node registry from that string by
+ *  linear-scanning declared tokens. So node identity already reaches the
+ *  backend, through a side channel, in every image.
+ *
+ *  **Booked, not done — and the booking is the point.** The right end state is
+ *  `create_publisher` / `create_subscription` / `create_service` /
+ *  `create_client` taking `rmw_node_t *` the way upstream does, which RETIRES
+ *  the `entity_view` fabrication and retires the W3.c "session not node"
+ *  deviation rather than adding to it. Landing these two slots without booking
+ *  that leaves node identity arriving two ways at once, which is the shape that
+ *  has already cost this tree three FFI-mirror bugs. Tracked in
+ *  `docs/roadmap/phase-376-rmw-api-parity.md` under W5.
+ *
+ *  Not carried from upstream: `context`, `implementation_identifier` and
+ *  `data`. A node reaches its session because the runtime knows which session
+ *  it opened on, and one image links one backend per session. */
+typedef struct rmw_node_t {
+    /** Node name. Borrowed; outlives the node. */
+    const char *name;
+    /** Node namespace. Borrowed; outlives the node. */
+    const char *namespace_;
+    /** Reserved; must be zero. */
+    uint8_t _reserved[8];
+    /** Opaque backend state. NULL until `create_node` succeeds. */
+    void *backend_data;
+} rmw_node_t;
+
 /**
  * Publisher entity.
  *

@@ -112,6 +112,7 @@ RET_DEVIATIONS = {
         "registers a callback and returns a status, where upstream returns the guard "
         "condition itself — see the ARG_DEVIATIONS entry"
     ),
+    "create_node": "node is an OUT parameter; the return carries the status (no runtime allocation) — as create_publisher",
     "create_publisher": "entity is an OUT parameter; the return carries the status (no runtime allocation)",
     "create_subscription": "as create_publisher",
     "create_service": "as create_publisher",
@@ -156,6 +157,10 @@ ARG_DEVIATIONS = {
     # applied consistently, described in the phase doc: an image opens ONE
     # session, there is no typesupport indirection on target, and nothing is
     # allocated at create time.
+    "create_node": (
+        "no `rmw_context_t *`: an image has one session and reaches it directly. "
+        "Node is an OUT parameter, as every other create here"
+    ),
     "create_publisher": ("session not node; baked pkg/type strings not typesupport; entity is an OUT parameter (no runtime allocation)"),
     "create_subscription": ("as create_publisher"),
     "create_service": ("as create_publisher"),

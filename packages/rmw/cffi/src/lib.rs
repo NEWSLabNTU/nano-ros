@@ -277,6 +277,8 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     count_publishers: None,
     count_subscribers: None,
     node_get_graph_guard_condition: None,
+    create_node: None,
+    destroy_node: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.

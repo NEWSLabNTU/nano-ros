@@ -827,6 +827,58 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
         rmw_event_callback_t callback, const void *user_data);
 
+    /* ---- Phase 376 W4 — graph node lifecycle (optional) ----
+     *
+     * The rest of upstream's lifecycle group is deliberately absent, and the
+     * absences are decisions rather than omissions:
+     *
+     *  - `rmw_init` / `rmw_shutdown` / `rmw_context_fini` are
+     *    `create_session` / `destroy_session`. There is no second teardown
+     *    phase: the session shell is caller-owned, so there is nothing left to
+     *    free after the backend releases `backend_data`.
+     *
+     *  - `rmw_init_options_{init,copy,fini}` have nothing to do here. Upstream
+     *    needs the trio because its options OWN heap and carry an
+     *    `rcutils_allocator_t`, which cannot cross this seam; ours is a
+     *    build-time POD, so "copy" is `=` and "fini" is nothing. (This does NOT
+     *    decide `security_options` / `discovery_options`, which we answer
+     *    nowhere — see the phase doc.)
+     *
+     *  - `rmw_wait`, the wait set, and the guard conditions are declined
+     *    together, because `has_data` / `has_request` + `drive_io` +
+     *    `set_wake_callback` + `next_deadline_ms` ARE upstream's `rmw_wait`,
+     *    decomposed. What a vtable `wait` would add is only the BLOCK, moved
+     *    from the platform into the backend — and the block cannot live there:
+     *    one executor drives sessions from several backends at once
+     *    (`create_node_on(name, rmw)`), timers fire off the platform clock, and
+     *    guard conditions fire from another thread or an ISR. A backend can
+     *    only block on its own handles. `next_deadline_ms` is exactly the piece
+     *    of `rmw_wait` that CANNOT be answered above the seam, and it is
+     *    already a slot; that is the decomposition working, not a gap.
+     */
+
+    /** Upstream `rmw_create_node`.
+     *
+     *  Declares a node on the graph. NULL slot is the expected implementation
+     *  in a static image: the runtime still tracks the node, the backend simply
+     *  has nothing to declare.
+     *
+     *  Deviations from upstream, declared: no `rmw_context_t *` (an image has
+     *  one session and reaches it directly), and the node is an OUT parameter
+     *  rather than a returned pointer — no runtime allocation, the caller owns
+     *  the storage, exactly as `create_publisher` does.
+     *
+     *  The runtime calls this once per distinct `(name, namespace_)`. */
+    rmw_ret_t (*create_node)(rmw_session_t *session,
+        const char *name, const char *namespace_,
+        rmw_node_t *out);
+
+    /** Upstream `rmw_destroy_node`.
+     *
+     *  Releases the backend's `backend_data`; the shell stays valid until its
+     *  owner drops it. */
+    rmw_ret_t (*destroy_node)(rmw_node_t *node);
+
 } nros_rmw_vtable_t;
 
 /**

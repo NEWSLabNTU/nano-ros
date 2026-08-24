@@ -100,17 +100,41 @@ MAP = {
     "rmw_init": ("layer", "nros-node session open — create_session"),
     "rmw_shutdown": ("layer", "destroy_session"),
     "rmw_context_fini": ("layer", "destroy_session"),
-    "rmw_init_options_init": ("layer", "BootConfig / nros_rmw_session_config_t"),
-    "rmw_init_options_copy": ("layer", "BootConfig is Copy"),
-    "rmw_init_options_fini": ("layer", "BootConfig is POD"),
-    "rmw_create_node": ("layer", "nros-node Node over a shared session"),
-    "rmw_destroy_node": ("layer", "nros-node Node drop"),
-    "rmw_wait": ("layer", "Executor::spin_once — the readiness scan IS the wait"),
-    "rmw_create_wait_set": ("layer", "Executor owns its entry table; no separate set"),
-    "rmw_destroy_wait_set": ("layer", "as above"),
-    "rmw_create_guard_condition": ("layer", "Executor guard conditions (EntryKind::GuardCondition)"),
-    "rmw_destroy_guard_condition": ("layer", "as above"),
-    "rmw_trigger_guard_condition": ("layer", "as above"),
+    "rmw_init_options_init": (
+        "declined",
+        "upstream needs the init/copy/fini trio because its options OWN heap and carry "
+        "an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. "
+        "Does NOT decide security_options / discovery_options, which we answer nowhere",
+    ),
+    "rmw_init_options_copy": ("declined", "as rmw_init_options_init — \"copy\" is `=`"),
+    "rmw_init_options_fini": ("declined", "as rmw_init_options_init — \"fini\" is nothing"),
+    "rmw_create_node": ("vtable", "create_node"),
+    "rmw_destroy_node": ("vtable", "destroy_node"),
+    "rmw_wait": (
+        "declined",
+        "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms ARE "
+        "this, decomposed. A vtable `wait` would add only the BLOCK, moved from the "
+        "platform into a backend that can only block on its own handles — while one "
+        "executor drives sessions from several backends, timers fire off the platform "
+        "clock, and guard conditions fire from an ISR",
+    ),
+    "rmw_create_wait_set": (
+        "declined",
+        "the executor's arena entry table IS the set, allocated once; a per-wait set "
+        "would be heap on the spin path",
+    ),
+    "rmw_destroy_wait_set": ("declined", "as rmw_create_wait_set"),
+    "rmw_create_guard_condition": (
+        "declined",
+        "EntryKind::GuardCondition; no transport variation, and once `wait` is "
+        "declined there is no backend consumer",
+    ),
+    "rmw_destroy_guard_condition": ("declined", "as rmw_create_guard_condition"),
+    "rmw_trigger_guard_condition": (
+        "declined",
+        "GuardConditionHandle::trigger -> the platform wake primitive; ISR-safety is a "
+        "platform-ABI guarantee no backend makes",
+    ),
     "rmw_serialize": ("layer", "nros-serdes, generated per message type (RFC-0023)"),
     "rmw_deserialize": ("layer", "nros-serdes"),
     "rmw_get_serialized_message_size": ("layer", "generated per type; the bound is baked"),

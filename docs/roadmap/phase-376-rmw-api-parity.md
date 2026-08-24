@@ -246,6 +246,52 @@ Status line above stays a measurement rather than a claim.
 6. **`publisher_wait_for_all_acked`** (1) — an image that publishes and halts
    cannot currently know whether anything left the box.
 
+## Booked by W4, owed by W5
+
+Two commitments made when a slot landed. Both are the kind of debt that is only
+visible at the moment it is incurred, so they are written down here rather than
+left to be rediscovered.
+
+### `rmw_node_t *` on the four `create_*` slots
+
+`create_node` / `destroy_node` landed in W4 on the strength of a finding: the
+W3.c deviation reason "an image opens ONE session; upstream's context/node split
+has no target-side meaning" is HALF FALSE. The session half holds. The node half
+is contradicted by our own code — `Executor` keeps a node table, and
+`CffiSession::entity_view` exists solely to fabricate a per-call session
+carrying the entity's owning-node identity ("one session can host N graph
+nodes", its own comment), from which the zenoh backend re-derives a node
+registry by linear-scanning declared tokens.
+
+So node identity ALREADY reaches the backend, by a side channel. The end state
+is `create_publisher` / `create_subscription` / `create_service` /
+`create_client` taking `rmw_node_t *` as upstream does, which RETIRES the
+`entity_view` fabrication and retires the W3.c deviation rather than adding to
+it. Until then node identity arrives two ways at once, which is the shape that
+has cost this tree three FFI-mirror bugs.
+
+**Prerequisite, not a tidy-up:** plain `Executor::create_node(name)` registers
+nothing in `self.nodes` (only `create_node_on_with_domain` dedups), so it can
+hand out two handles of one name. The `create_node` slot's contract says the
+runtime calls it once per distinct `(name, namespace_)`; without this the
+backend gets duplicate declarations and must keep the per-backend dedup registry
+the slot exists to delete.
+
+### `rmw_qos_profile_t` needs an UNKNOWN encoding
+
+The six `*_get_actual_qos` slots are ALL-OR-NOTHING: a backend that can
+determine four policies and not the fifth returns `UNSUPPORTED` and writes
+nothing. That is the honest contract given the struct we have — there is no
+`UNKNOWN` / `SYSTEM_DEFAULT` value, so a partial answer would be
+indistinguishable from a confident one. Adding those sentinels would let a
+backend report what it knows, and would also make upstream's
+`RMW_QOS_COMPATIBILITY_WARNING` reachable.
+
+### Residue, so it is not mistaken for decided
+
+`rmw_init_options_t` also carries `security_options` and `discovery_options`. We
+answer neither. "Init options: declined" is about the init/copy/fini trio only.
+
 ## W5 — RTOS correctness: audit the declarations
 
 Feature completeness makes the deviations the only thing left, so the last wave
