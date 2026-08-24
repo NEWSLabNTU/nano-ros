@@ -97,9 +97,9 @@ MAP = {
     "rmw_event_set_callback": ("vtable", "register_*_event takes the callback directly"),
     "rmw_subscription_set_on_new_message_callback": ("vtable", "set_wake_callback"),
     # ---- Answered a layer up or down ----
-    "rmw_init": ("layer", "nros-node session open — create_session"),
-    "rmw_shutdown": ("layer", "destroy_session"),
-    "rmw_context_fini": ("layer", "destroy_session"),
+    "rmw_init": ("vtable", "create_session — grouped"),
+    "rmw_shutdown": ("vtable", "destroy_session — grouped"),
+    "rmw_context_fini": ("vtable", "destroy_session — grouped; no second teardown phase"),
     "rmw_init_options_init": (
         "declined",
         "upstream needs the init/copy/fini trio because its options OWN heap and carry "
@@ -135,12 +135,26 @@ MAP = {
         "GuardConditionHandle::trigger -> the platform wake primitive; ISR-safety is a "
         "platform-ABI guarantee no backend makes",
     ),
-    "rmw_serialize": ("layer", "nros-serdes, generated per message type (RFC-0023)"),
-    "rmw_deserialize": ("layer", "nros-serdes"),
-    "rmw_get_serialized_message_size": ("layer", "generated per type; the bound is baked"),
-    "rmw_publish_serialized_message": ("layer", "publish_raw already takes bytes"),
-    "rmw_take_serialized_message": ("layer", "try_recv_raw already yields bytes"),
-    "rmw_take_serialized_message_with_info": ("layer", "try_recv_raw + MESSAGE_INFO_TABLE"),
+    "rmw_serialize": (
+        "declined",
+        "codegen, not a backend concern: CDR for an IDL type is fixed by ROS interop, "
+        "so a per-backend answer would be a defect. Upstream's parameters are also two "
+        "things this ABI already declined — a typesupport pointer and an "
+        "`rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an "
+        "ALLOCATOR, at a seam with no allocator",
+    ),
+    "rmw_deserialize": ("declined", "as rmw_serialize"),
+    "rmw_get_serialized_message_size": (
+        "gap",
+        "the old reason — \"generated per type; the bound is baked\" — was FALSE: "
+        "nros-serdes declares only serialize/deserialize/deserialize_borrowed, no "
+        "generated crate emits a size constant, and buffers are sized by env knobs "
+        "(NROS_SUBSCRIPTION_BUFFER_SIZE). `report_dropped_take` says outright that it "
+        "cannot name the size that would have worked",
+    ),
+    "rmw_publish_serialized_message": ("vtable", "publish — grouped; our payload IS CDR"),
+    "rmw_take_serialized_message": ("vtable", "take — grouped; our payload IS CDR"),
+    "rmw_take_serialized_message_with_info": ("vtable", "take_with_info — grouped"),
     "rmw_get_serialization_format": ("layer", "CDR, fixed per build"),
     "rmw_get_implementation_identifier": ("layer", "nros_rmw_descriptor_t (check-rmw-descriptors)"),
     "rmw_feature_supported": ("layer", "a NULL vtable slot IS the feature probe"),

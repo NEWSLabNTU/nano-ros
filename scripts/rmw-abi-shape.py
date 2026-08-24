@@ -84,13 +84,53 @@ TYPE_TARGET = {
 VENDOR_PREFIX = "nros_"
 
 
+# One slot answering SEVERAL upstream names.
+#
+# The name rule is mechanical (`rmw_take` -> `take`) precisely so no authored
+# mapping has to be kept true, and this table is the one deliberate exception —
+# so it carries the same burden as any declared deviation: a reason, and a
+# self-test proving the target slot actually exists. Without that last part an
+# alias becomes a way to make a MISSING slot invisible, which is the opposite of
+# what this tool is for.
+GROUPED_SYMBOLS = {
+    # Upstream split `_with_enclaves` off `rmw_get_node_names` only because
+    # appending to a fixed out-parameter list would have broken its ABI. A
+    # visitor has no such list, so the enclave is a fourth argument, NULL where
+    # untracked.
+    "rmw_get_node_names_with_enclaves": "get_node_names",
+    # Our `publish` and `take` ALREADY deal in serialized bytes — the payload
+    # crossing this seam is CDR, written by `nros-serdes` above it. So these
+    # three upstream names describe what our slots do; a separate slot could
+    # only ever forward to the same one. The mechanical name rule attached our
+    # slots to the wrong namesake, and renaming them `publish_serialized_message`
+    # would be worse than recording the grouping.
+    "rmw_publish_serialized_message": "publish",
+    "rmw_take_serialized_message": "take",
+    "rmw_take_serialized_message_with_info": "take_with_info",
+    # `create_session` / `destroy_session` ARE upstream's init/shutdown, in the
+    # shape an image that opens exactly one session needs. Recorded here rather
+    # than left in ADDED as "no upstream equivalent", which the sibling parity
+    # file contradicted by naming these very slots as our answers.
+    "rmw_init": "create_session",
+    "rmw_shutdown": "destroy_session",
+    "rmw_context_fini": "destroy_session",
+}
+
 # Slots we add that upstream has no equivalent for.
 ADDED = {
-    "create_session": "upstream splits context/init/node; an RTOS image has ONE session and opens it once",
-    "destroy_session": "pair of the above",
+    "create_session": (
+        "upstream's `rmw_init` + context, in the shape an image that opens exactly ONE "
+        "session needs — grouped onto it in GROUPED_SYMBOLS rather than claimed as "
+        "having no upstream equivalent"
+    ),
+    "destroy_session": "upstream's `rmw_shutdown` + `rmw_context_fini`; there is no second teardown phase because the session shell is caller-owned",
     "drive_io": "no background transport thread is assumed; the caller donates the CPU that does I/O",
     "next_deadline_ms": "lets a caller-driven loop sleep exactly until the backend's next internal event",
-    "set_wake_callback": "wake the executor from the transport's own thread or ISR, without a wait-set",
+    "set_wake_callback": (
+        "wake the executor from the transport's own thread or ISR, without a wait-set. "
+        "SESSION-scoped: the per-entity `*_set_on_new_*_callback` slots are the upstream "
+        "family, and this is not a substitute for them"
+    ),
     "ping_session": "liveness of the SESSION, which upstream expresses through a context that cannot fail",
     "has_data": "a poll that allocates nothing, for a loop with no wait-set",
     "has_request": "as above, service side",
@@ -283,8 +323,21 @@ def vtable_slots():
 
     slots = {}
     rets = {}
-    for m in re.finditer(r"([A-Za-z_][A-Za-z0-9_ ]*?)\s*\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(", body):
-        ret = " ".join(m.group(1).split())
+    # `[*\s]*` after the type name: a slot may RETURN a pointer
+    # (`const char *(*get_implementation_identifier)(void)`). Without it the
+    # regex silently skipped every pointer-returning slot, so two slots that had
+    # already landed were reported as MISSING — a tool defect that reads as a
+    # gap in the ABI.
+    for m in re.finditer(r"([A-Za-z_][A-Za-z0-9_ ]*?[\w])[*\s]*\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(", body):
+        # Keep the pointer in the return type: the capture group deliberately
+        # stops at the last word so `const char *(*slot)(…)` parses at all, so
+        # the `*`s have to be put back or every pointer-returning slot reports a
+        # spurious `const char` vs `const char *` difference.
+        # Between the type's last word and the opening `(` of `(*slot)` — the
+        # slot's OWN `*` lives after that paren and must not be counted.
+        gap = m.group(0)[m.end(1) - m.start(0) :]
+        gap = gap[: gap.index("(")]
+        ret = " ".join((m.group(1) + " " + "*" * gap.count("*")).split())
         name = m.group(2)
         depth = 1
         params = ""
@@ -345,11 +398,17 @@ def compare():
     for probably_a_param in ("cb", "chunk_cb", "size_cb"):
         slots.pop(probably_a_param, None)
 
-    missing, arg_diff, matched, declared, ret_diff = [], [], [], [], []
+    missing, arg_diff, matched, declared, ret_diff, grouped = [], [], [], [], [], []
     for name, (up_ret, params) in sorted(up.items()):
         if name in DECLINED:
             continue
-        slot = name[len("rmw_"):]
+        slot = GROUPED_SYMBOLS.get(name) or name[len("rmw_"):]
+        if name in GROUPED_SYMBOLS:
+            # An alias is satisfied by its target existing; the target's own
+            # entry is what checks the signature.
+            if slot in slots:
+                grouped.append((name, slot))
+                continue
         if slot not in slots:
             missing.append((name, slot, params))
             continue
@@ -386,6 +445,7 @@ def compare():
         "missing": missing,
         "arg_diff": arg_diff,
         "matched": matched,
+        "grouped": grouped,
         "declared": declared,
         "ret_diff": ret_diff,
         "undeclared_extra": undeclared_extra,
@@ -409,6 +469,13 @@ def self_test():
         for tname in r["vendor_types"]:
             if tname not in TYPE_TARGET:
                 bad.append(f"{tname}: in a signature with no target spelling in TYPE_TARGET")
+    slots_now, _r = vtable_slots()
+    for sym, target in GROUPED_SYMBOLS.items():
+        if target not in slots_now:
+            bad.append(
+                f"{sym}: grouped onto {target!r}, which is NOT a slot — an alias to a "
+                "missing slot hides the gap it should report"
+            )
     if not ADDED:
         bad.append("ADDED is empty — every RTOS-only slot must carry its reason")
     for slot, why in ADDED.items():
@@ -450,6 +517,7 @@ def main(argv):
     # answer the question the campaign is actually asking.
     print(f"  slots identical to upstream : {len(r['matched'])}")
     print(f"  name matches, args DECLARED : {len(r['declared'])}")
+    print(f"  answered by a GROUPED slot  : {len(r['grouped'])}")
     print(f"  slots present, args differ : {len(r['arg_diff'])}")
     print(f"  UNDECLARED return-type diff: {len(r['ret_diff'])}")
     print(f"  no slot at all             : {len(r['missing'])}")
