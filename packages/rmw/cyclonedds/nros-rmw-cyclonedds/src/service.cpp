@@ -75,12 +75,39 @@
 // cannot be relied on across the cross libcs this builds for.
 #include <stdlib.h>
 #include <new>
-#if !defined(NROS_PLATFORM_FREERTOS) && !defined(NROS_PLATFORM_THREADX)
+// ONE predicate for all three atomic-related sites in this file: this include,
+// the `std::memory_order` fallback below, and the `ServiceAtomicI64` selection
+// further down. They must agree, and when they did not, nothing here failed —
+// the build died 1000 lines later on `ClientState has no member named
+// pending_seq`, because an undefined type takes its members down with it.
+//
+// That is what happened on 2026-08-24: the type selection moved from platform
+// names to this capability, and the include and the enum fallback stayed on the
+// platform names. On threadx_linux the two disagree by construction — a 64-bit
+// host build HAS the 8-byte atomic, so the capability test picks
+// `std::atomic<int64_t>`, while `NROS_PLATFORM_THREADX` skipped `<atomic>`.
+// Spelling the predicate once is what makes the three sites unable to drift
+// apart again.
+#if defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8)
+#define NROS_CYCLONE_HAS_STD_ATOMIC_I64 1
+#else
+#define NROS_CYCLONE_HAS_STD_ATOMIC_I64 0
+#endif
+
+#if NROS_CYCLONE_HAS_STD_ATOMIC_I64
 #include <atomic>
+#endif
+
+// `<random>` is NOT part of that predicate — it is about hosted-ness, not about
+// atomics, and it pairs with the `std::random_device` fallback near `env_u64`.
+// Those two keep the platform test on purpose.
+#if !defined(NROS_PLATFORM_FREERTOS) && !defined(NROS_PLATFORM_THREADX)
 #include <random>
 #endif
 
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+// Without `<atomic>` there is no `std::memory_order` either, and the non-atomic
+// `ServiceAtomicI64` below still takes one in every signature.
+#if !NROS_CYCLONE_HAS_STD_ATOMIC_I64
 namespace std {
 enum memory_order {
     memory_order_relaxed,
@@ -168,7 +195,7 @@ constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
 // `pending_request_len` sit beside these counters as PLAIN members and are
 // mutated in the same calls. A caller that genuinely raced would be tearing a
 // 64 KiB buffer long before the sequence number mattered.
-#if !defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8)
+#if !NROS_CYCLONE_HAS_STD_ATOMIC_I64
 struct ServiceAtomicI64 {
     int64_t value;
 
