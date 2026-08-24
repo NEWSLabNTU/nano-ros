@@ -112,6 +112,8 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
 **#0770** (testing, open 2026-08-24) — tier-2 runs the native interop cells against fixtures its build lane never refreshed (the #482 exists-vs-fresh split, resurfaced for `interop::CELLS`); ~8 one-cause reds per sweep on a stale native lane. See `0770-*`.
 
+**#0773** (rmw/cyclonedds, open 2026-08-24) — Cyclone `take_request` reports a length larger than the buffer it was handed and the CFFI shim slices on it (`1005` into `256`): six cyclone service/action e2e reds on main, pre-existing. See `0773-*`.
+
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
 the spawned `low` tier printed nothing in a full 12 s). Fixed by `boot_tier_index`: the session owner is now
