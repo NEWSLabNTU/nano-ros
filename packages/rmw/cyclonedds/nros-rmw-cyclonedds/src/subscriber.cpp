@@ -218,14 +218,14 @@ static int32_t subscription_take_sequence_count(rmw_subscription_t* subscriber, 
                                                size_t per_msg_cap, size_t max_msgs,
                                                size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
+        return -static_cast<int32_t>(NROS_RMW_RET_INVALID_ARGUMENT);  // issue 0773 — statuses travel NEGATED
     }
     if (per_msg_cap == 0 || max_msgs == 0) {
         return 0;
     }
     SubState* state = as_state(subscriber);
     if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
-        return NROS_RMW_RET_ERROR;
+        return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
     }
 
     // Stack-cap the per-call slot budget; Cyclone happily takes
@@ -239,7 +239,7 @@ static int32_t subscription_take_sequence_count(rmw_subscription_t* subscriber, 
 
     dds_return_t taken = dds_take(state->reader, samples, si, take_n, take_n);
     if (taken < 0) {
-        return NROS_RMW_RET_ERROR;
+        return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
     }
     if (taken == 0) {
         return 0;
@@ -306,7 +306,10 @@ rmw_ret_t subscription_take_sequence(rmw_subscription_t* subscriber, uint8_t* bu
     }
     int32_t n = subscription_take_sequence_count(subscriber, buf, per_msg_cap, max_msgs, out_lens);
     if (n < 0) {
-        return static_cast<rmw_ret_t>(n);
+        // issue 0773 — the helper returns a COUNT (>= 0) or a negated status.
+        // Testing `< 0` only works because of that negation: every
+        // `nros_rmw_ret_t` value is non-negative since phase-376 W3.d step B.
+        return static_cast<rmw_ret_t>(-n);
     }
     *taken = static_cast<size_t>(n);
     return NROS_RMW_RET_OK;

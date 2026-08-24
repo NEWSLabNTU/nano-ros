@@ -3,7 +3,7 @@ id: 773
 title: "Cyclone service/action e2e red on main — `take_request` reports a
   length larger than the buffer it was given, and the CFFI shim slices on it
   (`range end index 1005 out of range for slice of length 256`)"
-status: open
+status: resolved
 type: bug
 area: rmw, cyclonedds
 related: [phase-376]
@@ -144,3 +144,65 @@ no-op.
 The shim half of this issue's Direction landed in `b58eb11e0`: `checked_take_len`
 rejects `out_len > buf.len()` at all three copying-take sites, so the six cells
 now fail at their own assertions instead of killing the server process.
+
+## Root cause + fix (2026-08-24) — the "length" was a RETURN CODE
+
+Measured with a probe on the take: the oversize hits carry
+`matched publications: 0` (nothing is even connected), the scratch
+buffer is untouched (all-zero on the first hit, stack pointers later),
+and `[0773t]` — a probe on `take_typed_wire`'s branch decision — never
+fires for the cancel reader at all. So no sample was ever taken.
+
+The numbers name themselves:
+
+```
+NROS_RMW_RET_EXTENSION_BASE   1000
+NROS_RMW_RET_NO_DATA          1003     <- the reported "wire length"
+NROS_RMW_RET_BUFFER_TOO_SMALL 1005     <- the reported "payload length"
+```
+
+Phase-376 W3.d step B renumbered `nros_rmw_ret_t` to upstream rmw's
+values, which are all **non-negative** (`ERROR` = 1,
+`INVALID_ARGUMENT` = 11, extensions 1000+). Six helpers in the Cyclone
+backend return "byte count **or** status" in one `int32_t`, and every
+consumer tested `< 0` / `<= 0` for the status — a test that stopped
+firing the moment the codes went positive. An EMPTY queue therefore
+read as a 1003-byte sample: `taken = true`, `out_len = 1003`, and the
+shim sliced `1005` out of a 256-byte buffer.
+
+That retires both earlier readings recorded above:
+
+* The length was never real, so nothing was being "copied from a
+  reader matched to a topic it should not be matched to" — there was
+  no writer at all on the first hit.
+* Raising `CANCEL_BUF` 256 -> 1024 "passed" only because 1003 then
+  FITS: the code would have deserialized an empty scratch buffer as a
+  cancel request nobody sent. The `ActionServerCore` footprint that
+  change would have cost every C/C++ image is not needed.
+
+**Fix (the class, not the site).** `service.cpp` gains one explicit
+encoding — `wire_status()` / `wire_is_status()` / `wire_status_code()`
+— so "is this a status?" is a property of the value rather than a
+coincidence of the numbering; all 19 status returns inside the six
+length-returning helpers travel negated, and every consumer uses the
+named predicate. Two adjacent defects fell out on the way:
+
+* the `take_request` / `take_response` vtable adapters leaked
+  `WOULD_BLOCK` as a failure; both now report `taken = false` + OK,
+  matching the shim's contract;
+* `subscription_take_sequence_count` (`subscriber.cpp`) had the
+  identical defect one TU over — an `ERROR` (= 1) would have been read
+  as "1 message taken".
+
+**Verified** on the host where these were deterministic reds: 7/7 pass
+(`test_native_cyclonedds_rust_action`,
+`test_native_cyclonedds_service_callback` C + C++,
+`case_06_cpp_cyclone_service`, `case_13/14/15` cyclone actions), and a
+manual action run completes end to end
+(`Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`).
+
+**Worth a gate.** The hazard is generic: any function returning
+"count-or-status" in one signed integer is now unsafe by default in
+this tree. A checker for `int32_t`-returning functions that `return
+NROS_RMW_RET_*` un-negated would catch the next one — noted for
+phase-376's own follow-up rather than added here.

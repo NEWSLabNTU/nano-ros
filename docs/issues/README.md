@@ -104,6 +104,10 @@ application code, different behaviour per transport. Recorded as a deviation by 
 wearing a deviation's clothes. See `0778-*`. (2026-08-24)
 
 Recently resolved (2026-08-24): **#0774** (testing) — `rmw_zenohd` links `libzenohc.so` by SONAME, so
+
+Recently resolved (2026-08-24): **#0773** (rmw/cyclonedds) — the "1005-byte payload" was
+`NROS_RMW_RET_BUFFER_TOO_SMALL` read as a length: phase-376 made every ret code non-negative
+and six count-or-status helpers still tested `< 0`. See `archived/0773-*`.
 which one it loads is the LOADER's choice, not the resolver's. `<prefix>/opt/zenoh_cpp_vendor/lib` is on
 `LD_LIBRARY_PATH` only when `setup.bash`/`activate.sh` was sourced; without it a stray `/lib/libzenohc.so`
 (owned by no package) won, and a zenoh the router was not built against does not fail to load — it SEGVs
@@ -156,7 +160,6 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
 **#0770** (testing, open 2026-08-24) — tier-2 runs the native interop cells against fixtures its build lane never refreshed (the #482 exists-vs-fresh split, resurfaced for `interop::CELLS`); ~8 one-cause reds per sweep on a stale native lane. See `0770-*`.
 
-**#0773** (rmw/cyclonedds, open 2026-08-24) — Cyclone `take_request` reports a length larger than the buffer it was handed and the CFFI shim slices on it (`1005` into `256`): six cyclone service/action e2e reds on main, pre-existing. See `0773-*`.
 
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;

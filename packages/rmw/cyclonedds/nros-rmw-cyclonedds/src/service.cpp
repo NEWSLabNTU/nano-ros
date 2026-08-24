@@ -92,6 +92,26 @@ enum memory_order {
 
 namespace nros_rmw_cyclonedds {
 
+// ---------------------------------------------------------------------------
+// issue 0773 — length-or-status in ONE int32_t, after the codes went positive.
+//
+// Phase 376 W3.d step B renumbered `nros_rmw_ret_t` to upstream rmw's values,
+// which are all NON-NEGATIVE (`ERROR` = 1, `INVALID_ARGUMENT` = 11, the
+// extensions 1000+). Every helper below returns "byte count, or a status" in a
+// single `int32_t`, and every caller tested `< 0` / `<= 0` for the status —
+// a test that no longer fires. `NO_DATA` (1003) was therefore read as a
+// 1003-byte sample on an EMPTY queue: the scratch buffer was never written,
+// `taken` was set, and the shim sliced 1005 (`BUFFER_TOO_SMALL`, read as a
+// length) out of a 256-byte buffer.
+//
+// The encoding is now explicit: a status travels NEGATED, so "is this a
+// status?" is a property of the value rather than a coincidence of the code
+// numbering. One spelling, used by every helper and every caller in this file.
+static inline int32_t wire_status(rmw_ret_t r) { return -static_cast<int32_t>(r); }
+static inline bool wire_is_status(int32_t v) { return v < 0; }
+static inline rmw_ret_t wire_status_code(int32_t v) { return static_cast<rmw_ret_t>(-v); }
+
+
 namespace {
 
 // Phase 192.4 — read a uint64 from the environment, falling back to a baked
@@ -422,7 +442,7 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
                                                 const dds_topic_descriptor_t* desc,
                                                 uint8_t* out_buf, size_t out_cap) {
     if (sample == nullptr || desc == nullptr || desc->m_ops == nullptr || out_buf == nullptr) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
+        return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
     const uint32_t* ops = desc->m_ops;
     const auto* bytes = static_cast<const uint8_t*>(sample);
@@ -437,7 +457,7 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
     constexpr size_t count_off_wire = status_off_wire + kStatusFieldLen;
     constexpr size_t data_off_wire = count_off_wire + kCdrLenPrefix;
     const size_t total = data_off_wire + count * sizeof(int32_t);
-    if (out_cap < total) return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    if (out_cap < total) return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
 
     std::memcpy(out_buf, kCdrLeHeader, sizeof(kCdrLeHeader));
     std::memcpy(out_buf + kEncapLen, bytes + guid_off, kGuidBytes);
@@ -448,7 +468,7 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
     out_buf[status_off_wire + 3] = 0;
     std::memcpy(out_buf + count_off_wire, &count, sizeof(count));
     if (count > 0) {
-        if (sequence->_buffer == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+        if (sequence->_buffer == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
         std::memcpy(out_buf + data_off_wire, sequence->_buffer, count * sizeof(int32_t));
     }
     return static_cast<int32_t>(total);
@@ -469,9 +489,9 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
 // Returns total wire byte count, or negative on error.
 int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const RequestId& id,
                                uint8_t* wire_cdr, size_t wire_cap) {
-    if (user_len < kEncapLen) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (user_len < kEncapLen) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     size_t total = user_len + kHeaderBytes;
-    if (total > wire_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    if (total > wire_cap) return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     // Encap copied verbatim.
     std::memcpy(wire_cdr, user_bytes, kEncapLen);
     // Little-endian guid.
@@ -493,13 +513,13 @@ int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const
 int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
                           const dds_topic_descriptor_t* payload_desc, RequestId* out_id,
                           uint8_t* user_out, size_t user_cap) {
-    if (wire_len < kEncapLen + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (wire_len < kEncapLen + kHeaderBytes) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     if (out_id != nullptr) {
         out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + kEncapLen));
         out_id->seq = get_le64(wire_cdr + kEncapLen + kGuidBytes);
     }
     size_t user_len = wire_len - kHeaderBytes; // (encap stays + user fields)
-    if (user_len > user_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    if (user_len > user_cap) return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     // Encap.
     std::memcpy(user_out, wire_cdr, kEncapLen);
     // User fields.
@@ -591,10 +611,10 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
     void* samples[1] = {nullptr};
     dds_sample_info_t si[1];
     dds_return_t taken = dds_take(reader, samples, si, 1, 1);
-    if (taken < 0) return NROS_RMW_RET_ERROR;
+    if (taken < 0) return wire_status(NROS_RMW_RET_ERROR);
     if (taken == 0 || !si[0].valid_data) {
         if (taken > 0) (void)dds_return_loan(reader, samples, taken);
-        return NROS_RMW_RET_NO_DATA;
+        return wire_status(NROS_RMW_RET_NO_DATA);
     }
 
     if (type_contains(st->descriptor(), "Fibonacci_GetResult_Response_")) {
@@ -614,7 +634,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
         if (out_cap < total) {
             (void)dds_return_loan(reader, samples, taken);
             dds_ostream_fini(&os);
-            return NROS_RMW_RET_BUFFER_TOO_SMALL;
+            return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
         }
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
         out_buf[0] = 0x00;
@@ -633,7 +653,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
     (void)dds_return_loan(reader, samples, taken);
     if (!ok) {
         dds_ostream_fini(&os);
-        return NROS_RMW_RET_ERROR;
+        return wire_status(NROS_RMW_RET_ERROR);
     }
 
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
@@ -646,7 +666,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
     uint32_t total = paylen + kEncapLen;
     if (out_cap < total) {
         dds_ostream_fini(&os);
-        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+        return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     }
     out_buf[0] = kEncId[0];
     out_buf[1] = kEncId[1];
@@ -885,18 +905,18 @@ void service_destroy(rmw_service_t* server) {
 static int32_t service_try_recv_request_len(rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                  int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
+        return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
     auto* state = static_cast<ServerState*>(server->backend_data);
 
     uint8_t wire[kWireScratch];
     int32_t wire_len = take_typed_wire(state->reader, state->req_st, wire, sizeof(wire));
-    if (wire_len <= 0) return wire_len;
+    if (wire_is_status(wire_len) || wire_len == 0) return wire_len;
 
     RequestId id{};
     int32_t user_len =
         split_wire_header(wire, static_cast<size_t>(wire_len), state->req_desc, &id, buf, buf_len);
-    if (user_len < 0) return user_len;
+    if (wire_is_status(user_len)) return user_len;
 
     // Allocate a slot to remember the (writer_guid, seq) pair so the
     // matching `service_send_reply` can echo it back.
@@ -908,7 +928,7 @@ static int32_t service_try_recv_request_len(rmw_service_t* server, uint8_t* buf,
             return user_len;
         }
     }
-    return NROS_RMW_RET_WOULD_BLOCK;
+    return wire_status(NROS_RMW_RET_WOULD_BLOCK);
 }
 
 /* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
@@ -923,12 +943,15 @@ rmw_ret_t service_take_request(rmw_service_t* server, uint8_t* buf, size_t buf_l
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     int32_t n = service_try_recv_request_len(server, buf, buf_len, seq_out);
-    if (n == NROS_RMW_RET_NO_DATA) {
-        *taken = false;
-        return NROS_RMW_RET_OK;
-    }
-    if (n < 0) {
-        return (rmw_ret_t)n;
+    if (wire_is_status(n)) {
+        const rmw_ret_t st = wire_status_code(n);
+        // An empty queue and a would-block are NOT failures: report
+        // `taken = false` with OK, which is what the shim's contract says.
+        if (st == NROS_RMW_RET_NO_DATA || st == NROS_RMW_RET_WOULD_BLOCK) {
+            *taken = false;
+            return NROS_RMW_RET_OK;
+        }
+        return st;
     }
     *out_len = (size_t)n;
     *taken = true;
@@ -996,8 +1019,8 @@ rmw_ret_t service_send_reply(rmw_service_t* server, int64_t seq,
     uint8_t wire[kWireScratch];
     int32_t wire_len = build_wire_with_header(data, len, slot.id, wire, sizeof(wire));
     rmw_ret_t r;
-    if (wire_len < 0) {
-        r = static_cast<rmw_ret_t>(wire_len);
+    if (wire_is_status(wire_len)) {
+        r = wire_status_code(wire_len);
     } else {
         r = write_typed(state->writer, state->rep_desc, state->rep_st, wire,
                         static_cast<size_t>(wire_len));
@@ -1143,13 +1166,13 @@ rmw_ret_t service_send_request_raw(rmw_client_t* client, const uint8_t* request,
 
     uint8_t wire_req[kWireScratch];
     int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
-    if (wire_len < 0) return wire_len;
+    if (wire_is_status(wire_len)) return wire_status_code(wire_len);
 
     std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
     state->pending_request_len = static_cast<size_t>(wire_len);
     state->pending_seq.store(my_id.seq, std::memory_order_release);
     rmw_ret_t pr = maybe_flush_request(state);
-    if (pr < 0 && pr != NROS_RMW_RET_NO_DATA) {
+    if (pr != NROS_RMW_RET_OK && pr != NROS_RMW_RET_NO_DATA) {
         state->pending_request_len = 0;
         state->pending_seq.store(-1, std::memory_order_release);
         return pr;
@@ -1160,39 +1183,38 @@ rmw_ret_t service_send_request_raw(rmw_client_t* client, const uint8_t* request,
 static int32_t service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* reply_buf,
                                    size_t reply_buf_len) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
+        return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
 
     int64_t pending = state->pending_seq.load(std::memory_order_acquire);
     if (pending < 0) {
-        return NROS_RMW_RET_NO_DATA;
+        return wire_status(NROS_RMW_RET_NO_DATA);
     }
 
     rmw_ret_t flush = maybe_flush_request(state);
-    if (flush < 0) {
+    if (flush != NROS_RMW_RET_OK) {
         if (flush != NROS_RMW_RET_NO_DATA) {
             state->pending_request_len = 0;
             state->pending_seq.store(-1, std::memory_order_release);
         }
-        return flush;
+        return wire_status(flush);
     }
 
     uint32_t status = 0;
     if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK ||
         !(status & DDS_DATA_AVAILABLE_STATUS)) {
-        return NROS_RMW_RET_NO_DATA;
+        return wire_status(NROS_RMW_RET_NO_DATA);
     }
 
     uint8_t wire_rep[kWireScratch];
     int32_t wlen = take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
-    if (wlen == NROS_RMW_RET_NO_DATA) return NROS_RMW_RET_NO_DATA;
-    if (wlen < 0) return wlen;
+    if (wire_is_status(wlen)) return wlen;
 
     RequestId got_id{};
     int32_t user_len = split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc,
                                          &got_id, reply_buf, reply_buf_len);
-    if (user_len < 0) return user_len;
+    if (wire_is_status(user_len)) return user_len;
 
     if (got_id.seq == pending && got_id.guid == state->my_guid) {
         state->pending_seq.store(-1, std::memory_order_release);
@@ -1201,7 +1223,7 @@ static int32_t service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* rep
     // Reply for a different in-flight call (impossible in single-
     // shot tests; defensive). Drop, surface as NoData so the
     // executor retries on the next spin tick.
-    return NROS_RMW_RET_NO_DATA;
+    return wire_status(NROS_RMW_RET_NO_DATA);
 }
 
 /* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
@@ -1216,12 +1238,15 @@ rmw_ret_t service_take_response(rmw_client_t* client, uint8_t* reply_buf,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     int32_t n = service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len);
-    if (n == NROS_RMW_RET_NO_DATA) {
-        *taken = false;
-        return NROS_RMW_RET_OK;
-    }
-    if (n < 0) {
-        return (rmw_ret_t)n;
+    if (wire_is_status(n)) {
+        const rmw_ret_t st = wire_status_code(n);
+        // An empty queue and a would-block are NOT failures: report
+        // `taken = false` with OK, which is what the shim's contract says.
+        if (st == NROS_RMW_RET_NO_DATA || st == NROS_RMW_RET_WOULD_BLOCK) {
+            *taken = false;
+            return NROS_RMW_RET_OK;
+        }
+        return st;
     }
     *out_len = (size_t)n;
     *taken = true;
