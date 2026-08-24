@@ -15,6 +15,7 @@ does not correspond.
     scripts/api-parity.py --lang cpp      # one language
     scripts/api-parity.py --show same     # include the matching rows too
     scripts/api-parity.py --suggest-renames   # pair up look-alike unmatched names
+    scripts/api-parity.py --include-internal  # do not filter the ROS 2 side to public API
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --refresh       # re-derive the ROS 2 side from source
     scripts/api-parity.py --self-test
@@ -35,6 +36,14 @@ checkout and no rclrs workspace, or it runs on one host and rots everywhere else
           Comparing against rclc alone would score our publish and take entry
           points as inventions when they are the ROS 2 C API doing its job.
   rclrs   a `ros2_rust` workspace checkout (`--rclrs <path>`); not packaged at all.
+
+# Only PUBLIC ROS 2 items are compared
+
+nano-ros aligns to the API a ROS 2 user writes, not to rclcpp's callback type
+erasure, rcl's wait-set plumbing, or the generated accessors of
+`rcl_interfaces`. `public_surface.py` drops those, keyed on the file each
+declaration came from rather than on its name, and the report says how many
+each tier removed. `--include-internal` compares everything.
 
 # What a verdict means
 
@@ -70,6 +79,8 @@ sys.path.insert(0, os.path.join(HERE, "api_parity"))
 import correlate  # noqa: E402
 import extract_cxx  # noqa: E402
 import extract_rust  # noqa: E402
+import public_surface  # noqa: E402
+import signature_rules  # noqa: E402
 
 SURFACE_DIR = os.path.join(ROOT, "docs", "reference", "api-surface")
 LEDGER = os.path.join(ROOT, "docs", "reference", "api-parity-ledger.json")
@@ -283,22 +294,28 @@ def ledger_key(lang, key):
 # --------------------------------------------------------------------------
 
 
-def run_lang(lang, tmpdir):
+def run_lang(lang, tmpdir, include_internal=False):
     ours_records = {"c": ours_c, "cpp": ours_cpp, "rust": ours_rust}[lang](tmpdir)
     payload = load_theirs(lang)
     theirs_records = payload["records"]
+    removed = {}
+    if not include_internal:
+        # Filtered at REPORT time, not at --refresh time: the recorded surface
+        # stays complete, so tightening or loosening the public-API rule is a
+        # code change rather than a re-derivation on a host with ROS installed.
+        theirs_records, removed = public_surface.filter_records(theirs_records)
     clang = {"c": "c", "cpp": "c++", "rust": "rust"}[lang]
     ours = correlate.flatten(ours_records, clang, "ours")
     theirs = correlate.flatten(theirs_records, clang, "theirs")
-    return correlate.compare(ours, theirs, clang), payload.get("provenance", {})
+    return correlate.compare(ours, theirs, clang), payload.get("provenance", {}), removed
 
 
-def report(langs, show, check, suggest):
+def report(langs, show, check, suggest, include_internal):
     ledger = load_ledger()
     unledgered = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
-            rows, prov = run_lang(lang, tmpdir)
+            rows, prov, removed = run_lang(lang, tmpdir, include_internal)
             counts = {}
             for r in rows:
                 counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
@@ -308,14 +325,24 @@ def report(langs, show, check, suggest):
                 bits = [f"{k}={v}" for k, v in sorted(prov.items()) if v]
                 print("    " + "  ".join(bits))
             print(
-                "    same %d   differs %d   ours-only %d   theirs-only %d"
+                "    same %d   systematic %d   differs %d   ours-only %d   theirs-only %d"
                 % (
                     counts.get("same", 0),
+                    counts.get("systematic", 0),
                     counts.get("differs", 0),
                     counts.get("ours-only", 0),
                     counts.get("theirs-only", 0),
                 )
             )
+            if removed:
+                # Never silent: a filter that shrinks a number without saying
+                # what it took reads exactly like progress.
+                print(
+                    "    not public API, excluded: "
+                    + "  ".join("%s %d" % (t, n) for t, n in sorted(removed.items()))
+                )
+            elif include_internal:
+                print("    --include-internal: comparing the whole ROS 2 surface")
 
             for r in rows:
                 bucket = r["bucket"]
@@ -326,12 +353,18 @@ def report(langs, show, check, suggest):
                         continue
                 entry = ledger.get(ledger_key(lang, r["key"]))
                 verdict = entry["verdict"] if entry else ""
-                if bucket != "same" and entry is None:
+                if bucket == "systematic":
+                    # The rule IS the explanation. Requiring a ledger row too
+                    # would restate one sentence once per site, which is how the
+                    # sentence stops being read.
+                    verdict = "rule:" + ",".join(r["detail"]["rules"])
+                elif bucket != "same" and entry is None:
                     unledgered.append((lang, bucket, r["key"]))
-                mark = {"same": " ", "differs": "!", "ours-only": "+", "theirs-only": "-"}[bucket]
+                mark = {"same": " ", "systematic": "=", "differs": "!",
+                        "ours-only": "+", "theirs-only": "-"}[bucket]
                 line = "  %s %-52s %-12s %s" % (mark, r["key"], verdict or "UNLEDGERED", bucket)
                 print(line)
-                if bucket == "differs" and r.get("detail"):
+                if bucket in ("differs", "systematic") and r.get("detail"):
                     print(
                         "      ours   %s\n      theirs %s"
                         % (
@@ -551,6 +584,9 @@ def self_test():
         if lang not in LANGS:
             failures.append("ledger %s: unknown language %r" % (k, lang))
 
+    failures.extend(public_surface.self_test())
+    failures.extend(signature_rules.self_test())
+
     for f in failures:
         print("FAIL " + f, file=sys.stderr)
     print("self-test: %d checks failed" % len(failures))
@@ -561,10 +597,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--lang", action="append", choices=LANGS, help="default: all three")
     ap.add_argument("--show", action="append", default=None,
-                    help="buckets to list: same, differs, ours-only, theirs-only, all")
+                    help="buckets to list: same, systematic, differs, ours-only, theirs-only, all")
     ap.add_argument("--check", action="store_true", help="exit non-zero on an unledgered difference")
     ap.add_argument("--suggest-renames", action="store_true",
                     help="pair unmatched names by similarity (suggestions, never findings)")
+    ap.add_argument("--include-internal", action="store_true",
+                    help="do not filter the ROS 2 side down to public API")
     ap.add_argument("--refresh", action="store_true", help="re-derive the ROS 2 side and record it")
     ap.add_argument("--ros-prefix", default=os.environ.get("ROS_PREFIX", "/opt/ros/humble"))
     ap.add_argument("--rclc", help="path to a ros2/rclc checkout (for --refresh --lang c)")
@@ -580,8 +618,8 @@ def main():
         refresh(langs, args.ros_prefix, args.rclc, args.rclrs)
         return 0
 
-    show = set(args.show or ["differs", "ours-only", "theirs-only"])
-    return report(langs, show, args.check, args.suggest_renames)
+    show = set(args.show or ["differs", "systematic", "ours-only", "theirs-only"])
+    return report(langs, show, args.check, args.suggest_renames, args.include_internal)
 
 
 if __name__ == "__main__":

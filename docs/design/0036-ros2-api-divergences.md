@@ -106,7 +106,16 @@ note correcting itself. Issue 0338 is the same failure one level down:
 person reading found it, once. A catalog of API divergences that only a reader
 can check will drift, because the API moves and the prose does not.
 
-Each divergence below is therefore expected to have a row in
+Two things are compared, and two are deliberately not. The comparison is against
+the **public** ROS 2 API only — not rclcpp's callback type erasure, rcl's
+wait-set plumbing, or the generated accessors of `rcl_interfaces`, which are
+codegen output on both sides and belong to RFC-0023/0033. And a divergence
+applied SYSTEMATICALLY is stated once as a signature rule rather than repeated
+per site: `rcl` threads an `rcl_allocator_t *` through six entry points and
+nano-ros has one global allocator, so it appears in none of them — one sentence,
+not six rows.
+
+Everything the rules do not cover is expected to have a row in
 `docs/reference/api-parity-ledger.json` naming the platform constraint that
 justifies it. The ledger's verdicts are deliberately narrow — `divergence`
 requires naming a constraint (`no_std`, no exceptions, no allocator, no runtime
@@ -115,11 +124,16 @@ recorded as one.
 
 **The first run also corrected the reading of where we stand.** Against rclcpp
 there are ZERO argument divergences among shared names; what differs is
-coverage. Against rclc+rcl there are 32 argument divergences, none of which had
-ever been argued in writing. Against rclrs the `nros` facade exports 709 items
-rclrs has no equivalent for. Phase 379 W2–W5 classify and settle these; until
-then this RFC's catalog is accurate about the divergences it lists and silent
-about a much larger set it never enumerated.
+coverage. Against rclc+rcl there are 32, of which 24 are five systematic
+decisions (no allocator, compile-time options, no argv, callbacks bound at
+creation, handles that carry their node) and 8 are open. Against rclrs the
+`nros` facade exports 709 items rclrs has no equivalent for. Phase 379 W2–W5
+classify and settle these; until then this RFC's catalog is accurate about the
+divergences it lists and silent about a much larger set it never enumerated.
+
+The five systematic rules belong in this RFC's tables once W4 has checked each
+constraint still holds; they live in `scripts/api_parity/signature_rules.py`
+meanwhile, where deleting one re-opens every row it covers.
 
 ## Alternatives considered
 

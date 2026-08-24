@@ -39,6 +39,7 @@ sources, line them up, and report every item that does not correspond.
     scripts/api-parity.py --lang cpp      # one language
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --suggest-renames   # pair look-alike unmatched names
+    scripts/api-parity.py --include-internal  # compare the whole ROS 2 surface
     scripts/api-parity.py --refresh …     # re-derive the ROS 2 side
     scripts/api-parity.py --self-test
 
@@ -77,6 +78,61 @@ must run on a host with no ROS, no rclc checkout and no rclrs workspace, or it
 runs on one host and rots everywhere else. Each file records its provenance
 (distro, git ref, crate version). OUR side is never cached — caching it would
 defeat the tool, which exists to notice when an edit moves us away from ROS 2.
+
+### Only PUBLIC ROS 2 items are compared
+
+nano-ros aligns to the API a ROS 2 user writes. It does not align to rclcpp's
+callback type erasure, rcl's wait-set plumbing, or the generated accessors of
+`rcl_interfaces`, and counting those as gaps manufactures work that should never
+be done.
+
+`public_surface.py` decides on the DECLARING FILE, not the name — a path is a
+fact about the library's own organisation, a name is a guess about intent.
+`AnyExecutable` looks internal and is; `Waitable` does not and is; their headers
+say so either way. Three tiers, in order of how much judgement each needs:
+generated message packages (`*_msgs`, `*_interfaces`, `rosidl_*`), `detail/`
+directories (upstream's own marker), and a short enumerated list of plumbing
+headers each carrying the reason a user never writes it.
+
+The first tier alone is **216 of the C lane's 632** `theirs-only` rows — every
+`rcl_interfaces__srv__GetParameters_Request__init` and its family. Those are
+codegen output on BOTH sides, governed by RFC-0023/0033; comparing them compares
+two code generators, not two APIs.
+
+The report always prints what each tier removed. A filter that quietly shrinks a
+number is indistinguishable from progress. `--include-internal` turns it off.
+
+### Systematic signature changes are stated once, not per site
+
+Some divergences are not per-item decisions — they are one decision applied
+everywhere. `rcl` threads an `rcl_allocator_t *` through six entry points;
+nano-ros has one global allocator, so it appears in none of them. That is one
+sentence, and writing it into six ledger rows is how the sentence stops being
+read.
+
+`signature_rules.py` holds those rules, each with the constraint it answers and
+the entry points it covers. A divergence a rule explains is bucketed
+**`systematic`** and inherits the rule's constraint; only what NO rule explains
+stays `differs` and needs a ledger row. The five rules, all read off the first
+report rather than guessed:
+
+| rule | constraint |
+| --- | --- |
+| `no-allocator` | one global allocator (`nros_platform_alloc`, gated by `check-no-direct-kernel-alloc`) — a per-call allocator argument could only be passed the same value or a wrong one |
+| `compile-time-options` | QoS and entity options are selected at compile time (RFC-0036, RFC-0045); accepting an options struct would promise a negotiation the backends do not perform |
+| `no-argv` | an embedded image has no argc/argv; boot config is baked |
+| `executor-owns-no-entity-storage` | the callback and message buffer bind to the ENTITY at creation (RFC-0041), so the executor has no per-entity storage to be told the size of |
+| `handle-owns-node` | our entity handles retain their node, so teardown does not ask the caller to still hold it — one pointer per entity against a lifetime the caller would otherwise enforce with no allocator and no ownership types |
+
+Matching drops the FEWEST parameters that explain the difference, in priority
+order, stopping the moment the arities overlap. Applying every rule at once
+over-explains: `rcl_publisher_init` takes both an options struct and a node,
+ours takes the node and not the options, and dropping both leaves theirs one
+parameter shorter than ours — a difference invented by the explanation. The
+report names the rules actually needed.
+
+Deleting a rule re-opens every row it covers, which is the intended way to
+challenge one.
 
 ### What the tool refuses to do
 
@@ -133,16 +189,24 @@ it, zero. All eleven were the tool's. Defect 4 then moved 7 more rows into
 
 ## The first report
 
-    same    both sides have the name and their arities overlap
-    differs both sides have the name and the arities do NOT overlap
-    +       ours only
-    -       theirs only
+    same       both sides have the name and their arities overlap
+    systematic they do not, and a signature rule explains it
+    differs    they do not, and NOTHING explains it
+    +          ours only
+    -          theirs only
 
-| lane | reference | same | differs | ours-only | theirs-only |
-| --- | --- | ---: | ---: | ---: | ---: |
-| C++ | rclcpp (humble) | 61 | **0** | 217 | 804 |
-| C | rclc+rcl (humble) | 69 | **32** | 304 | 632 |
-| Rust | rclrs 0.5.1 | 44 | **0** | 709 | 329 |
+Against the PUBLIC ROS 2 surface only:
+
+| lane | reference | same | systematic | differs | ours-only | theirs-only | excluded as not-API |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| C++ | rclcpp (humble) | 61 | 0 | **0** | 217 | 766 | 2 message, 12 plumbing |
+| C | rclc+rcl (humble) | 67 | 24 | **8** | 306 | 385 | 216 message, 33 plumbing |
+| Rust | rclrs 0.5.1 | 44 | 0 | **0** | 709 | 327 | 2 plumbing |
+
+The C++ and Rust lanes show 0 `systematic` because they show 0 `differs` — no
+rule is ever consulted. The out-parameter rule (`status-return-out-param`) is
+carried for when a C++ row does diverge; it fires nowhere today, and the phase
+doc says so rather than implying the rule earned its place.
 
 Each language has a different problem, and none of them is the one the campaign
 was opened to fix.
@@ -157,13 +221,24 @@ The 804 includes rclcpp internals a user never writes (`AnyExecutable`,
 `GenericRate`, the memory strategies), so it is an upper bound, not a work list
 — W2 turns it into one.
 
-**C — the naming and arguments genuinely diverge, 32 ways.** The dominant
-pattern is that our handles carry their node and rcl's do not:
-`nros_client_fini(client)` against `rcl_client_fini(client, node)`,
-`nros_action_server_fini(server)` against `rcl_action_server_fini(server, node)`.
-That may be a defensible RTOS divergence (one less pointer to keep alive on a
-device with no allocator) or it may be gratuitous. It has never been argued
-either way in writing, which is the actual defect.
+**C — 32 argument divergences, of which 24 are five decisions and 8 are open.**
+The rules above cover the allocator, the options structs, argv, the
+executor's entity storage and the node-carrying handles. What remains is the
+real work list, and it is specific:
+
+* `timer_get_period` — ours RETURNS the period, rcl writes it through an
+  `int64_t *`. The inversion is ours and has no stated reason.
+* five `lifecycle_*` entry points — ours take
+  `struct Option_LifecycleCallbackFnCtx` plus a `void *` context where rclc
+  takes a bare `int (*)(void)`. A Rust `Option<...>` type name reaching the C
+  ABI is its own finding, separate from the arity.
+* `lifecycle_change_state` — rclc takes a trailing `bool`; we do not.
+* `make_node_a_lifecycle_node` — ours takes 2 parameters against rclc's 5.
+* `action_publish_feedback` — ours `(server, goal, buf, len)` against
+  `(goal_handle, void *)`.
+
+Eight rows, each needing one decision. That is a tractable W4, where 32 was a
+survey.
 
 **Rust — we EXPORT far too much.** 709 items the `nros` facade makes public that
 rclrs has no equivalent for: `BOOT_SET_DOMAIN`, `BakedBootConfig`, `BoardConfig`,
@@ -218,12 +293,16 @@ against `is_canceled` — a spelling. The QoS accessors (`deadline_ms`,
 encodes that we take an integer where rclcpp takes a `Duration`, so the name
 follows whatever W3 decides about `Duration`, not the other way round.
 
-## W4 — settle the C divergences
+## W4 — settle the eight open C divergences
 
-Each of the 32 gets argued once: either the handle-carries-node shape is a
-platform decision (then it is a `divergence` row naming the constraint, and
-RFC-0036 gains it) or it is not (then it is a `rename`/signature change and the
-C API moves). No row survives as "that is just how it is".
+The 24 systematic rows are already argued, in `signature_rules.py`; W4's job
+there is only to check each constraint still holds and move the text into
+RFC-0036. The eight above each need a decision: a `divergence` row naming a
+constraint, or a signature change. No row survives as "that is just how it is".
+
+`Option_LifecycleCallbackFnCtx` is the one to look at first — a generated Rust
+type name in the C ABI is a leak regardless of what the arity comparison says
+about it.
 
 ## W5 — the Rust facade, and which rclrs we mirror
 
@@ -254,8 +333,12 @@ Two decisions, neither of them mechanical:
 * Re-derive before believing a stale count: `scripts/api-parity.py --refresh
   --rclc <checkout> --rclrs <crate dir>`. The recorded surfaces carry their
   provenance so a mismatch with your ROS install is visible.
-* The 804 / 632 / 329 `theirs-only` counts are upper bounds that include library
-  internals. Do not quote them as gaps.
+* The 766 / 385 / 327 `theirs-only` counts are the PUBLIC surface we do not
+  have. They are still upper bounds — a row can be a legitimate `declined` —
+  but they no longer contain generated messages or library plumbing.
+* `--include-internal` restores the unfiltered comparison. Use it when checking
+  whether the public-surface rule dropped something it should not have; do not
+  quote its numbers.
 * `--suggest-renames` pairs unmatched names by SIMILARITY. It is the fastest
   route into W2 (it finds `send_reply` -> `send_response`, `try_recv_request`
   -> `take_request`, `try_recv` -> `take`, `make_publisher` ->

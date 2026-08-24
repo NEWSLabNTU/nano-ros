@@ -202,6 +202,11 @@ def _bound(b):
     return "?"
 
 
+def _span(item):
+    """The source file an item was declared in, for the public-surface filter."""
+    return ((item or {}).get("span") or {}).get("filename", "")
+
+
 def _fn_record(name, inner, path):
     sig = inner.get("sig") or inner.get("decl") or {}
     inputs = sig.get("inputs") or []
@@ -221,6 +226,11 @@ def _fn_record(name, inner, path):
         "params": params,
         "ret": ret,
     }
+
+
+def _with_span(record, item):
+    record["header"] = _span(item)
+    return record
 
 
 def _item_name(idx, item_id):
@@ -298,7 +308,7 @@ def surface(docs, doc, crate_prefix):
             return
 
         if kind == "function":
-            out.append(_fn_record(name, inner["function"], qual))
+            out.append(_with_span(_fn_record(name, inner["function"], qual), it))
             return
 
         if kind in ("struct", "enum", "trait", "union"):
@@ -351,6 +361,7 @@ def surface(docs, doc, crate_prefix):
                 "qual": qual,
                 "name": name,
                 "template": [],
+                "header": _span(it),
                 "members": members,
             }
             if kind == "enum":
@@ -367,17 +378,18 @@ def surface(docs, doc, crate_prefix):
                     "kind": "alias",
                     "qual": qual,
                     "name": name,
+                    "header": _span(it),
                     "type": _fmt_type(inner[kind].get("type")),
                 }
             )
             return
 
         if kind in ("constant", "static"):
-            out.append({"kind": "const", "qual": qual, "name": name})
+            out.append({"kind": "const", "qual": qual, "name": name, "header": _span(it)})
             return
 
         if kind == "macro":
-            out.append({"kind": "macro", "qual": qual, "name": name})
+            out.append({"kind": "macro", "qual": qual, "name": name, "header": _span(it)})
             return
 
     walk_module(doc, root, crate_prefix)

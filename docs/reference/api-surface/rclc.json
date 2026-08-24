@@ -6,42 +6,49 @@
  },
  "records": [
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/allocator.h",
    "kind": "alias",
    "name": "rcl_allocator_t",
    "qual": "rcl_allocator_t",
    "type": "rcutils_allocator_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/types.h",
    "kind": "alias",
    "name": "rcl_ret_t",
    "qual": "rcl_ret_t",
    "type": "rmw_ret_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/types.h",
    "kind": "alias",
    "name": "rcl_serialized_message_t",
    "qual": "rcl_serialized_message_t",
    "type": "rmw_serialized_message_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "alias",
    "name": "rcl_log_severity_t",
    "qual": "rcl_log_severity_t",
    "type": "enum RCUTILS_LOG_SEVERITY"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "alias",
    "name": "rcl_logger_setting_t",
    "qual": "rcl_logger_setting_t",
    "type": "struct rcl_logger_setting_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "alias",
    "name": "rcl_log_levels_t",
    "qual": "rcl_log_levels_t",
    "type": "struct rcl_log_levels_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_log_levels",
    "params": [],
@@ -50,6 +57,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_log_levels_init",
    "params": [
@@ -74,6 +82,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_log_levels_copy",
    "params": [
@@ -93,6 +102,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_log_levels_fini",
    "params": [
@@ -107,6 +117,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_log_levels_shrink_to_size",
    "params": [
@@ -121,6 +132,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/log_level.h",
    "kind": "function",
    "name": "rcl_log_levels_add_logger_setting",
    "params": [
@@ -145,60 +157,70 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_bool_array_t",
    "qual": "rcl_bool_array_t",
    "type": "struct rcl_bool_array_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_int64_array_t",
    "qual": "rcl_int64_array_t",
    "type": "struct rcl_int64_array_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_double_array_t",
    "qual": "rcl_double_array_t",
    "type": "struct rcl_double_array_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_byte_array_t",
    "qual": "rcl_byte_array_t",
    "type": "struct rcl_byte_array_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_variant_t",
    "qual": "rcl_variant_t",
    "type": "struct rcl_variant_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_node_params_t",
    "qual": "rcl_node_params_t",
    "type": "struct rcl_node_params_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
    "kind": "alias",
    "name": "rcl_params_t",
    "qual": "rcl_params_t",
    "type": "struct rcl_params_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "alias",
    "name": "rcl_arguments_impl_t",
    "qual": "rcl_arguments_impl_t",
    "type": "struct rcl_arguments_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "alias",
    "name": "rcl_arguments_t",
    "qual": "rcl_arguments_t",
    "type": "struct rcl_arguments_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_arguments",
    "params": [],
@@ -207,6 +229,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_parse_arguments",
    "params": [
@@ -236,6 +259,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_count_unparsed",
    "params": [
@@ -250,6 +274,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_unparsed",
    "params": [
@@ -274,6 +299,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_count_unparsed_ros",
    "params": [
@@ -288,6 +314,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_unparsed_ros",
    "params": [
@@ -312,6 +339,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_param_files_count",
    "params": [
@@ -326,6 +354,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_param_files",
    "params": [
@@ -350,6 +379,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_param_overrides",
    "params": [
@@ -369,6 +399,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_remove_ros_arguments",
    "params": [
@@ -403,6 +434,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_get_log_levels",
    "params": [
@@ -422,6 +454,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_copy",
    "params": [
@@ -441,6 +474,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/arguments.h",
    "kind": "function",
    "name": "rcl_arguments_fini",
    "params": [
@@ -455,18 +489,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "alias",
    "name": "rcl_init_options_impl_t",
    "qual": "rcl_init_options_impl_t",
    "type": "struct rcl_init_options_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "alias",
    "name": "rcl_init_options_t",
    "qual": "rcl_init_options_t",
    "type": "struct rcl_init_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_init_options",
    "params": [],
@@ -475,6 +512,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_init",
    "params": [
@@ -494,6 +532,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_copy",
    "params": [
@@ -513,6 +552,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_fini",
    "params": [
@@ -527,6 +567,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_get_domain_id",
    "params": [
@@ -546,6 +587,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_set_domain_id",
    "params": [
@@ -565,6 +607,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_get_rmw_init_options",
    "params": [
@@ -579,6 +622,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init_options.h",
    "kind": "function",
    "name": "rcl_init_options_get_allocator",
    "params": [
@@ -593,24 +637,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "alias",
    "name": "rcl_context_instance_id_t",
    "qual": "rcl_context_instance_id_t",
    "type": "uint64_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "alias",
    "name": "rcl_context_impl_t",
    "qual": "rcl_context_impl_t",
    "type": "struct rcl_context_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "alias",
    "name": "rcl_context_t",
    "qual": "rcl_context_t",
    "type": "struct rcl_context_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_context",
    "params": [],
@@ -619,6 +667,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_fini",
    "params": [
@@ -633,6 +682,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_get_init_options",
    "params": [
@@ -647,6 +697,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_get_instance_id",
    "params": [
@@ -661,6 +712,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_get_domain_id",
    "params": [
@@ -680,6 +732,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_is_valid",
    "params": [
@@ -694,6 +747,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/context.h",
    "kind": "function",
    "name": "rcl_context_get_rmw_context",
    "params": [
@@ -708,6 +762,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init.h",
    "kind": "function",
    "name": "rcl_init",
    "params": [
@@ -737,6 +792,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/init.h",
    "kind": "function",
    "name": "rcl_shutdown",
    "params": [
@@ -751,24 +807,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "alias",
    "name": "rcl_guard_condition_impl_t",
    "qual": "rcl_guard_condition_impl_t",
    "type": "struct rcl_guard_condition_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "alias",
    "name": "rcl_guard_condition_t",
    "qual": "rcl_guard_condition_t",
    "type": "struct rcl_guard_condition_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "alias",
    "name": "rcl_guard_condition_options_t",
    "qual": "rcl_guard_condition_options_t",
    "type": "struct rcl_guard_condition_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_guard_condition",
    "params": [],
@@ -777,6 +837,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_init",
    "params": [
@@ -801,6 +862,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_init_from_rmw",
    "params": [
@@ -830,6 +892,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_fini",
    "params": [
@@ -844,6 +907,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_get_default_options",
    "params": [],
@@ -852,6 +916,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_trigger_guard_condition",
    "params": [
@@ -866,6 +931,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_get_options",
    "params": [
@@ -880,6 +946,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/guard_condition.h",
    "kind": "function",
    "name": "rcl_guard_condition_get_rmw_handle",
    "params": [
@@ -894,6 +961,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/domain_id.h",
    "kind": "function",
    "name": "rcl_get_default_domain_id",
    "params": [
@@ -908,12 +976,14 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node_options.h",
    "kind": "alias",
    "name": "rcl_node_options_t",
    "qual": "rcl_node_options_t",
    "type": "struct rcl_node_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node_options.h",
    "kind": "function",
    "name": "rcl_node_get_default_options",
    "params": [],
@@ -922,6 +992,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node_options.h",
    "kind": "function",
    "name": "rcl_node_options_copy",
    "params": [
@@ -941,6 +1012,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node_options.h",
    "kind": "function",
    "name": "rcl_node_options_fini",
    "params": [
@@ -955,18 +1027,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "alias",
    "name": "rcl_node_impl_t",
    "qual": "rcl_node_impl_t",
    "type": "struct rcl_node_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "alias",
    "name": "rcl_node_t",
    "qual": "rcl_node_t",
    "type": "struct rcl_node_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_node",
    "params": [],
@@ -975,6 +1050,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_init",
    "params": [
@@ -1009,6 +1085,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_fini",
    "params": [
@@ -1023,6 +1100,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_is_valid",
    "params": [
@@ -1037,6 +1115,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_is_valid_except_context",
    "params": [
@@ -1051,6 +1130,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_name",
    "params": [
@@ -1065,6 +1145,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_namespace",
    "params": [
@@ -1079,6 +1160,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_fully_qualified_name",
    "params": [
@@ -1093,6 +1175,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_options",
    "params": [
@@ -1107,6 +1190,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_domain_id",
    "params": [
@@ -1126,6 +1210,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_rmw_handle",
    "params": [
@@ -1140,6 +1225,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_rcl_instance_id",
    "params": [
@@ -1154,6 +1240,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_graph_guard_condition",
    "params": [
@@ -1168,6 +1255,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_get_logger_name",
    "params": [
@@ -1182,6 +1270,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_node_resolve_name",
    "params": [
@@ -1221,6 +1310,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
    "name": "rcl_get_disable_loaned_message",
    "params": [
@@ -1235,18 +1325,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_time_point_value_t",
    "qual": "rcl_time_point_value_t",
    "type": "rcutils_time_point_value_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_duration_value_t",
    "qual": "rcl_duration_value_t",
    "type": "rcutils_duration_value_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "enum",
    "name": "rcl_clock_type_e",
    "qual": "rcl_clock_type_e",
@@ -1258,18 +1351,21 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_clock_type_t",
    "qual": "rcl_clock_type_t",
    "type": "enum rcl_clock_type_e"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_duration_t",
    "qual": "rcl_duration_t",
    "type": "struct rcl_duration_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "enum",
    "name": "rcl_clock_change_e",
    "qual": "rcl_clock_change_e",
@@ -1281,48 +1377,56 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_clock_change_t",
    "qual": "rcl_clock_change_t",
    "type": "enum rcl_clock_change_e"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_time_jump_t",
    "qual": "rcl_time_jump_t",
    "type": "struct rcl_time_jump_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_jump_callback_t",
    "qual": "rcl_jump_callback_t",
    "type": "void (*)(const rcl_time_jump_t *, bool, void *)"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_jump_threshold_t",
    "qual": "rcl_jump_threshold_t",
    "type": "struct rcl_jump_threshold_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_jump_callback_info_t",
    "qual": "rcl_jump_callback_info_t",
    "type": "struct rcl_jump_callback_info_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_clock_t",
    "qual": "rcl_clock_t",
    "type": "struct rcl_clock_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "alias",
    "name": "rcl_time_point_t",
    "qual": "rcl_time_point_t",
    "type": "struct rcl_time_point_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_time_started",
    "params": [
@@ -1337,6 +1441,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_valid",
    "params": [
@@ -1351,6 +1456,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_init",
    "params": [
@@ -1375,6 +1481,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_fini",
    "params": [
@@ -1389,6 +1496,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_ros_clock_init",
    "params": [
@@ -1408,6 +1516,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_ros_clock_fini",
    "params": [
@@ -1422,6 +1531,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_steady_clock_init",
    "params": [
@@ -1441,6 +1551,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_steady_clock_fini",
    "params": [
@@ -1455,6 +1566,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_system_clock_init",
    "params": [
@@ -1474,6 +1586,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_system_clock_fini",
    "params": [
@@ -1488,6 +1601,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_difference_times",
    "params": [
@@ -1512,6 +1626,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_get_now",
    "params": [
@@ -1531,6 +1646,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_enable_ros_time_override",
    "params": [
@@ -1545,6 +1661,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_disable_ros_time_override",
    "params": [
@@ -1559,6 +1676,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_is_enabled_ros_time_override",
    "params": [
@@ -1578,6 +1696,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_set_ros_time_override",
    "params": [
@@ -1597,6 +1716,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_add_jump_callback",
    "params": [
@@ -1626,6 +1746,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
    "name": "rcl_clock_remove_jump_callback",
    "params": [
@@ -1650,24 +1771,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "alias",
    "name": "rcl_publisher_impl_t",
    "qual": "rcl_publisher_impl_t",
    "type": "struct rcl_publisher_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "alias",
    "name": "rcl_publisher_t",
    "qual": "rcl_publisher_t",
    "type": "struct rcl_publisher_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "alias",
    "name": "rcl_publisher_options_t",
    "qual": "rcl_publisher_options_t",
    "type": "struct rcl_publisher_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_publisher",
    "params": [],
@@ -1676,6 +1801,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_init",
    "params": [
@@ -1710,6 +1836,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_fini",
    "params": [
@@ -1729,6 +1856,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_default_options",
    "params": [],
@@ -1737,6 +1865,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_borrow_loaned_message",
    "params": [
@@ -1761,6 +1890,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_return_loaned_message_from_publisher",
    "params": [
@@ -1780,6 +1910,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publish",
    "params": [
@@ -1804,6 +1935,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publish_serialized_message",
    "params": [
@@ -1828,6 +1960,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publish_loaned_message",
    "params": [
@@ -1852,6 +1985,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_assert_liveliness",
    "params": [
@@ -1866,6 +2000,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_wait_for_all_acked",
    "params": [
@@ -1885,6 +2020,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_topic_name",
    "params": [
@@ -1899,6 +2035,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_options",
    "params": [
@@ -1913,6 +2050,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_rmw_handle",
    "params": [
@@ -1927,6 +2065,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_context",
    "params": [
@@ -1941,6 +2080,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_is_valid",
    "params": [
@@ -1955,6 +2095,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_is_valid_except_context",
    "params": [
@@ -1969,6 +2110,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_subscription_count",
    "params": [
@@ -1988,6 +2130,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_get_actual_qos",
    "params": [
@@ -2002,6 +2145,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
    "name": "rcl_publisher_can_loan_messages",
    "params": [
@@ -2016,36 +2160,42 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event_callback.h",
    "kind": "alias",
    "name": "rcl_event_callback_t",
    "qual": "rcl_event_callback_t",
    "type": "rmw_event_callback_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "alias",
    "name": "rcl_subscription_impl_t",
    "qual": "rcl_subscription_impl_t",
    "type": "struct rcl_subscription_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "alias",
    "name": "rcl_subscription_t",
    "qual": "rcl_subscription_t",
    "type": "struct rcl_subscription_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "alias",
    "name": "rcl_subscription_options_t",
    "qual": "rcl_subscription_options_t",
    "type": "struct rcl_subscription_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "alias",
    "name": "rcl_subscription_content_filter_options_t",
    "qual": "rcl_subscription_content_filter_options_t",
    "type": "struct rcl_subscription_content_filter_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_subscription",
    "params": [],
@@ -2054,6 +2204,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_init",
    "params": [
@@ -2088,6 +2239,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_fini",
    "params": [
@@ -2107,6 +2259,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_default_options",
    "params": [],
@@ -2115,6 +2268,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_options_fini",
    "params": [
@@ -2129,6 +2283,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_options_set_content_filter_options",
    "params": [
@@ -2158,6 +2313,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_subscription_content_filter_options",
    "params": [],
@@ -2166,6 +2322,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_content_filter_options_init",
    "params": [
@@ -2200,6 +2357,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_content_filter_options_set",
    "params": [
@@ -2234,6 +2392,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_content_filter_options_fini",
    "params": [
@@ -2253,6 +2412,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_is_cft_enabled",
    "params": [
@@ -2267,6 +2427,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_set_content_filter",
    "params": [
@@ -2286,6 +2447,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_content_filter",
    "params": [
@@ -2305,6 +2467,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_take",
    "params": [
@@ -2334,6 +2497,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_take_sequence",
    "params": [
@@ -2368,6 +2532,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_take_serialized_message",
    "params": [
@@ -2397,6 +2562,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_take_loaned_message",
    "params": [
@@ -2426,6 +2592,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_return_loaned_message_from_subscription",
    "params": [
@@ -2445,6 +2612,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_topic_name",
    "params": [
@@ -2459,6 +2627,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_options",
    "params": [
@@ -2473,6 +2642,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_rmw_handle",
    "params": [
@@ -2487,6 +2657,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_is_valid",
    "params": [
@@ -2501,6 +2672,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_publisher_count",
    "params": [
@@ -2520,6 +2692,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_get_actual_qos",
    "params": [
@@ -2534,6 +2707,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_can_loan_messages",
    "params": [
@@ -2548,6 +2722,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
    "name": "rcl_subscription_set_on_new_message_callback",
    "params": [
@@ -2572,24 +2747,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "alias",
    "name": "rcl_client_impl_t",
    "qual": "rcl_client_impl_t",
    "type": "struct rcl_client_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "alias",
    "name": "rcl_client_t",
    "qual": "rcl_client_t",
    "type": "struct rcl_client_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "alias",
    "name": "rcl_client_options_t",
    "qual": "rcl_client_options_t",
    "type": "struct rcl_client_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_client",
    "params": [],
@@ -2598,6 +2777,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_init",
    "params": [
@@ -2632,6 +2812,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_fini",
    "params": [
@@ -2651,6 +2832,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_get_default_options",
    "params": [],
@@ -2659,6 +2841,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_send_request",
    "params": [
@@ -2683,6 +2866,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_take_response_with_info",
    "params": [
@@ -2707,6 +2891,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_take_response",
    "params": [
@@ -2731,6 +2916,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_get_service_name",
    "params": [
@@ -2745,6 +2931,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_get_options",
    "params": [
@@ -2759,6 +2946,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_get_rmw_handle",
    "params": [
@@ -2773,6 +2961,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_is_valid",
    "params": [
@@ -2787,6 +2976,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_request_publisher_get_actual_qos",
    "params": [
@@ -2801,6 +2991,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_response_subscription_get_actual_qos",
    "params": [
@@ -2815,6 +3006,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/client.h",
    "kind": "function",
    "name": "rcl_client_set_on_new_response_callback",
    "params": [
@@ -2839,24 +3031,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "alias",
    "name": "rcl_service_impl_t",
    "qual": "rcl_service_impl_t",
    "type": "struct rcl_service_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "alias",
    "name": "rcl_service_t",
    "qual": "rcl_service_t",
    "type": "struct rcl_service_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "alias",
    "name": "rcl_service_options_t",
    "qual": "rcl_service_options_t",
    "type": "struct rcl_service_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_service",
    "params": [],
@@ -2865,6 +3061,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_init",
    "params": [
@@ -2899,6 +3096,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_fini",
    "params": [
@@ -2918,6 +3116,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_get_default_options",
    "params": [],
@@ -2926,6 +3125,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_take_request_with_info",
    "params": [
@@ -2950,6 +3150,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_take_request",
    "params": [
@@ -2974,6 +3175,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_send_response",
    "params": [
@@ -2998,6 +3200,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_get_service_name",
    "params": [
@@ -3012,6 +3215,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_get_options",
    "params": [
@@ -3026,6 +3230,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_get_rmw_handle",
    "params": [
@@ -3040,6 +3245,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_is_valid",
    "params": [
@@ -3054,6 +3260,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_request_subscription_get_actual_qos",
    "params": [
@@ -3068,6 +3275,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_response_publisher_get_actual_qos",
    "params": [
@@ -3082,6 +3290,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/service.h",
    "kind": "function",
    "name": "rcl_service_set_on_new_request_callback",
    "params": [
@@ -3106,24 +3315,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "alias",
    "name": "rcl_timer_impl_t",
    "qual": "rcl_timer_impl_t",
    "type": "struct rcl_timer_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "alias",
    "name": "rcl_timer_t",
    "qual": "rcl_timer_t",
    "type": "struct rcl_timer_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "alias",
    "name": "rcl_timer_callback_t",
    "qual": "rcl_timer_callback_t",
    "type": "void (*)(rcl_timer_t *, int64_t)"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_timer",
    "params": [],
@@ -3132,6 +3345,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_init",
    "params": [
@@ -3171,6 +3385,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_fini",
    "params": [
@@ -3185,6 +3400,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_call",
    "params": [
@@ -3199,6 +3415,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_clock",
    "params": [
@@ -3218,6 +3435,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_is_ready",
    "params": [
@@ -3237,6 +3455,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_time_until_next_call",
    "params": [
@@ -3256,6 +3475,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_next_call_time",
    "params": [
@@ -3275,6 +3495,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_time_since_last_call",
    "params": [
@@ -3294,6 +3515,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_period",
    "params": [
@@ -3313,6 +3535,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_exchange_period",
    "params": [
@@ -3337,6 +3560,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_callback",
    "params": [
@@ -3351,6 +3575,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_exchange_callback",
    "params": [
@@ -3370,6 +3595,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_cancel",
    "params": [
@@ -3384,6 +3610,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_is_canceled",
    "params": [
@@ -3403,6 +3630,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_reset",
    "params": [
@@ -3417,6 +3645,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_allocator",
    "params": [
@@ -3431,6 +3660,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
    "name": "rcl_timer_get_guard_condition",
    "params": [
@@ -3445,6 +3675,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "enum",
    "name": "rcl_publisher_event_type_e",
    "qual": "rcl_publisher_event_type_e",
@@ -3455,12 +3686,14 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "alias",
    "name": "rcl_publisher_event_type_t",
    "qual": "rcl_publisher_event_type_t",
    "type": "enum rcl_publisher_event_type_e"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "enum",
    "name": "rcl_subscription_event_type_e",
    "qual": "rcl_subscription_event_type_e",
@@ -3472,24 +3705,28 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "alias",
    "name": "rcl_subscription_event_type_t",
    "qual": "rcl_subscription_event_type_t",
    "type": "enum rcl_subscription_event_type_e"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "alias",
    "name": "rcl_event_impl_t",
    "qual": "rcl_event_impl_t",
    "type": "struct rcl_event_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "alias",
    "name": "rcl_event_t",
    "qual": "rcl_event_t",
    "type": "struct rcl_event_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_event",
    "params": [],
@@ -3498,6 +3735,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_publisher_event_init",
    "params": [
@@ -3522,6 +3760,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_subscription_event_init",
    "params": [
@@ -3546,6 +3785,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_take_event",
    "params": [
@@ -3565,6 +3805,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_event_fini",
    "params": [
@@ -3579,6 +3820,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_event_get_rmw_handle",
    "params": [
@@ -3593,6 +3835,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_event_is_valid",
    "params": [
@@ -3607,6 +3850,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/event.h",
    "kind": "function",
    "name": "rcl_event_set_callback",
    "params": [
@@ -3631,18 +3875,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "alias",
    "name": "rcl_wait_set_impl_t",
    "qual": "rcl_wait_set_impl_t",
    "type": "struct rcl_wait_set_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "alias",
    "name": "rcl_wait_set_t",
    "qual": "rcl_wait_set_t",
    "type": "struct rcl_wait_set_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_get_zero_initialized_wait_set",
    "params": [],
@@ -3651,6 +3898,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_init",
    "params": [
@@ -3705,6 +3953,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_fini",
    "params": [
@@ -3719,6 +3968,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_get_allocator",
    "params": [
@@ -3738,6 +3988,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_subscription",
    "params": [
@@ -3762,6 +4013,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_clear",
    "params": [
@@ -3776,6 +4028,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_resize",
    "params": [
@@ -3820,6 +4073,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_guard_condition",
    "params": [
@@ -3844,6 +4098,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_timer",
    "params": [
@@ -3868,6 +4123,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_client",
    "params": [
@@ -3892,6 +4148,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_service",
    "params": [
@@ -3916,6 +4173,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_add_event",
    "params": [
@@ -3940,6 +4198,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait",
    "params": [
@@ -3959,6 +4218,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/wait.h",
    "kind": "function",
    "name": "rcl_wait_set_is_valid",
    "params": [
@@ -3973,42 +4233,49 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_goal_info_t",
    "qual": "rcl_action_goal_info_t",
    "type": "action_msgs__msg__GoalInfo"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_goal_status_t",
    "qual": "rcl_action_goal_status_t",
    "type": "action_msgs__msg__GoalStatus"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_goal_status_array_t",
    "qual": "rcl_action_goal_status_array_t",
    "type": "struct rcl_action_goal_status_array_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_cancel_request_t",
    "qual": "rcl_action_cancel_request_t",
    "type": "action_msgs__srv__CancelGoal_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_cancel_response_t",
    "qual": "rcl_action_cancel_response_t",
    "type": "struct rcl_action_cancel_response_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_goal_state_t",
    "qual": "rcl_action_goal_state_t",
    "type": "int8_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "enum",
    "name": "rcl_action_goal_event_e",
    "qual": "rcl_action_goal_event_e",
@@ -4022,12 +4289,14 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "alias",
    "name": "rcl_action_goal_event_t",
    "qual": "rcl_action_goal_event_t",
    "type": "enum rcl_action_goal_event_e"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_goal_info",
    "params": [],
@@ -4036,6 +4305,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_goal_status_array",
    "params": [],
@@ -4044,6 +4314,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_cancel_request",
    "params": [],
@@ -4052,6 +4323,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_cancel_response",
    "params": [],
@@ -4060,6 +4332,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_goal_status_array_init",
    "params": [
@@ -4084,6 +4357,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_goal_status_array_fini",
    "params": [
@@ -4098,6 +4372,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_cancel_response_init",
    "params": [
@@ -4122,6 +4397,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/types.h",
    "kind": "function",
    "name": "rcl_action_cancel_response_fini",
    "params": [
@@ -4136,24 +4412,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "alias",
    "name": "rcl_action_client_impl_t",
    "qual": "rcl_action_client_impl_t",
    "type": "struct rcl_action_client_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "alias",
    "name": "rcl_action_client_t",
    "qual": "rcl_action_client_t",
    "type": "struct rcl_action_client_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "alias",
    "name": "rcl_action_client_options_t",
    "qual": "rcl_action_client_options_t",
    "type": "struct rcl_action_client_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_client",
    "params": [],
@@ -4162,6 +4442,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_init",
    "params": [
@@ -4196,6 +4477,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_fini",
    "params": [
@@ -4215,6 +4497,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_get_default_options",
    "params": [],
@@ -4223,6 +4506,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_server_is_available",
    "params": [
@@ -4247,6 +4531,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_send_goal_request",
    "params": [
@@ -4271,6 +4556,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_take_goal_response",
    "params": [
@@ -4295,6 +4581,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_take_feedback",
    "params": [
@@ -4314,6 +4601,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_take_status",
    "params": [
@@ -4333,6 +4621,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_send_result_request",
    "params": [
@@ -4357,6 +4646,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_take_result_response",
    "params": [
@@ -4381,6 +4671,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_send_cancel_request",
    "params": [
@@ -4405,6 +4696,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_take_cancel_response",
    "params": [
@@ -4429,6 +4721,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_get_action_name",
    "params": [
@@ -4443,6 +4736,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_get_options",
    "params": [
@@ -4457,6 +4751,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_is_valid",
    "params": [
@@ -4471,6 +4766,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_set_goal_client_callback",
    "params": [
@@ -4495,6 +4791,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_set_cancel_client_callback",
    "params": [
@@ -4519,6 +4816,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_set_result_client_callback",
    "params": [
@@ -4543,6 +4841,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_set_feedback_subscription_callback",
    "params": [
@@ -4567,6 +4866,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_client.h",
    "kind": "function",
    "name": "rcl_action_client_set_status_subscription_callback",
    "params": [
@@ -4591,6 +4891,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_state_machine.h",
    "kind": "function",
    "name": "rcl_action_transition_goal_state",
    "params": [
@@ -4610,18 +4911,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "alias",
    "name": "rcl_action_goal_handle_impl_t",
    "qual": "rcl_action_goal_handle_impl_t",
    "type": "struct rcl_action_goal_handle_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "alias",
    "name": "rcl_action_goal_handle_t",
    "qual": "rcl_action_goal_handle_t",
    "type": "struct rcl_action_goal_handle_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_goal_handle",
    "params": [],
@@ -4630,6 +4934,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_init",
    "params": [
@@ -4654,6 +4959,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_fini",
    "params": [
@@ -4668,6 +4974,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_update_goal_state",
    "params": [
@@ -4687,6 +4994,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_get_info",
    "params": [
@@ -4706,6 +5014,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_get_status",
    "params": [
@@ -4725,6 +5034,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_is_active",
    "params": [
@@ -4739,6 +5049,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_is_cancelable",
    "params": [
@@ -4753,6 +5064,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/goal_handle.h",
    "kind": "function",
    "name": "rcl_action_goal_handle_is_valid",
    "params": [
@@ -4767,24 +5079,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "alias",
    "name": "rcl_action_server_impl_t",
    "qual": "rcl_action_server_impl_t",
    "type": "struct rcl_action_server_impl_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "alias",
    "name": "rcl_action_server_t",
    "qual": "rcl_action_server_t",
    "type": "struct rcl_action_server_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "alias",
    "name": "rcl_action_server_options_t",
    "qual": "rcl_action_server_options_t",
    "type": "struct rcl_action_server_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_get_zero_initialized_server",
    "params": [],
@@ -4793,6 +5109,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_init",
    "params": [
@@ -4832,6 +5149,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_fini",
    "params": [
@@ -4851,6 +5169,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_get_default_options",
    "params": [],
@@ -4859,6 +5178,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_take_goal_request",
    "params": [
@@ -4883,6 +5203,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_send_goal_response",
    "params": [
@@ -4907,6 +5228,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_accept_new_goal",
    "params": [
@@ -4926,6 +5248,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_publish_feedback",
    "params": [
@@ -4945,6 +5268,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_get_goal_status_array",
    "params": [
@@ -4964,6 +5288,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_publish_status",
    "params": [
@@ -4983,6 +5308,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_take_result_request",
    "params": [
@@ -5007,6 +5333,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_send_result_response",
    "params": [
@@ -5031,6 +5358,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_expire_goals",
    "params": [
@@ -5060,6 +5388,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_notify_goal_done",
    "params": [
@@ -5074,6 +5403,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_take_cancel_request",
    "params": [
@@ -5098,6 +5428,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_process_cancel_request",
    "params": [
@@ -5122,6 +5453,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_send_cancel_response",
    "params": [
@@ -5146,6 +5478,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_get_action_name",
    "params": [
@@ -5160,6 +5493,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_get_options",
    "params": [
@@ -5174,6 +5508,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_get_goal_handles",
    "params": [
@@ -5198,6 +5533,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_goal_exists",
    "params": [
@@ -5217,6 +5553,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_is_valid",
    "params": [
@@ -5231,6 +5568,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_is_valid_except_context",
    "params": [
@@ -5245,6 +5583,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_set_goal_service_callback",
    "params": [
@@ -5269,6 +5608,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_set_cancel_service_callback",
    "params": [
@@ -5293,6 +5633,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
    "name": "rcl_action_server_set_result_service_callback",
    "params": [
@@ -5317,24 +5658,28 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "alias",
    "name": "rcl_names_and_types_t",
    "qual": "rcl_names_and_types_t",
    "type": "rmw_names_and_types_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "alias",
    "name": "rcl_topic_endpoint_info_t",
    "qual": "rcl_topic_endpoint_info_t",
    "type": "rmw_topic_endpoint_info_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "alias",
    "name": "rcl_topic_endpoint_info_array_t",
    "qual": "rcl_topic_endpoint_info_array_t",
    "type": "rmw_topic_endpoint_info_array_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_publisher_names_and_types_by_node",
    "params": [
@@ -5374,6 +5719,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_subscriber_names_and_types_by_node",
    "params": [
@@ -5413,6 +5759,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_service_names_and_types_by_node",
    "params": [
@@ -5447,6 +5794,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_client_names_and_types_by_node",
    "params": [
@@ -5481,6 +5829,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_topic_names_and_types",
    "params": [
@@ -5510,6 +5859,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_service_names_and_types",
    "params": [
@@ -5534,6 +5884,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_names_and_types_init",
    "params": [
@@ -5558,6 +5909,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_names_and_types_fini",
    "params": [
@@ -5572,6 +5924,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_node_names",
    "params": [
@@ -5601,6 +5954,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_node_names_with_enclaves",
    "params": [
@@ -5635,6 +5989,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_count_publishers",
    "params": [
@@ -5659,6 +6014,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_count_subscribers",
    "params": [
@@ -5683,6 +6039,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_wait_for_publishers",
    "params": [
@@ -5722,6 +6079,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_wait_for_subscribers",
    "params": [
@@ -5761,6 +6119,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_publishers_info_by_topic",
    "params": [
@@ -5795,6 +6154,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_get_subscriptions_info_by_topic",
    "params": [
@@ -5829,6 +6189,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/graph.h",
    "kind": "function",
    "name": "rcl_service_server_is_available",
    "params": [
@@ -5853,6 +6214,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/graph.h",
    "kind": "function",
    "name": "rcl_action_get_client_names_and_types_by_node",
    "params": [
@@ -5887,6 +6249,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/graph.h",
    "kind": "function",
    "name": "rcl_action_get_server_names_and_types_by_node",
    "params": [
@@ -5921,6 +6284,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/graph.h",
    "kind": "function",
    "name": "rcl_action_get_names_and_types",
    "params": [
@@ -5945,6 +6309,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_wait_set_add_action_client",
    "params": [
@@ -5974,6 +6339,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_wait_set_add_action_server",
    "params": [
@@ -5998,6 +6364,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_client_wait_set_get_num_entities",
    "params": [
@@ -6037,6 +6404,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_server_wait_set_get_num_entities",
    "params": [
@@ -6076,6 +6444,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_client_wait_set_get_entities_ready",
    "params": [
@@ -6120,6 +6489,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_action/rcl_action/wait.h",
    "kind": "function",
    "name": "rcl_action_server_wait_set_get_entities_ready",
    "params": [
@@ -6159,12 +6529,14 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "alias",
    "name": "rcl_logging_output_handler_t",
    "qual": "rcl_logging_output_handler_t",
    "type": "rcutils_logging_output_handler_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "function",
    "name": "rcl_logging_configure",
    "params": [
@@ -6184,6 +6556,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "function",
    "name": "rcl_logging_configure_with_output_handler",
    "params": [
@@ -6208,6 +6581,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "function",
    "name": "rcl_logging_fini",
    "params": [],
@@ -6216,6 +6590,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "function",
    "name": "rcl_logging_rosout_enabled",
    "params": [],
@@ -6224,6 +6599,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/logging.h",
    "kind": "function",
    "name": "rcl_logging_multiple_output_handler",
    "params": [
@@ -6263,12 +6639,14 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/types.h",
    "kind": "alias",
    "name": "rclc_support_t",
    "qual": "rclc_support_t",
    "type": "struct rclc_support_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/init.h",
    "kind": "function",
    "name": "rclc_support_init",
    "params": [
@@ -6298,6 +6676,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/init.h",
    "kind": "function",
    "name": "rclc_support_init_with_options",
    "params": [
@@ -6332,6 +6711,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/init.h",
    "kind": "function",
    "name": "rclc_support_fini",
    "params": [
@@ -6346,6 +6726,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/node.h",
    "kind": "function",
    "name": "rclc_node_init_default",
    "params": [
@@ -6375,6 +6756,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/node.h",
    "kind": "function",
    "name": "rclc_node_init_with_options",
    "params": [
@@ -6409,6 +6791,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/publisher.h",
    "kind": "function",
    "name": "rclc_publisher_init_default",
    "params": [
@@ -6438,6 +6821,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/publisher.h",
    "kind": "function",
    "name": "rclc_publisher_init_best_effort",
    "params": [
@@ -6467,6 +6851,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/publisher.h",
    "kind": "function",
    "name": "rclc_publisher_init",
    "params": [
@@ -6501,6 +6886,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/subscription.h",
    "kind": "function",
    "name": "rclc_subscription_init_default",
    "params": [
@@ -6530,6 +6916,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/subscription.h",
    "kind": "function",
    "name": "rclc_subscription_init_best_effort",
    "params": [
@@ -6559,6 +6946,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/subscription.h",
    "kind": "function",
    "name": "rclc_subscription_init",
    "params": [
@@ -6593,6 +6981,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/timer.h",
    "kind": "function",
    "name": "rclc_timer_init_default",
    "params": [
@@ -6622,6 +7011,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/client.h",
    "kind": "function",
    "name": "rclc_client_init_default",
    "params": [
@@ -6651,6 +7041,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/client.h",
    "kind": "function",
    "name": "rclc_client_init_best_effort",
    "params": [
@@ -6680,6 +7071,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/client.h",
    "kind": "function",
    "name": "rclc_client_init",
    "params": [
@@ -6714,6 +7106,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/service.h",
    "kind": "function",
    "name": "rclc_service_init_default",
    "params": [
@@ -6743,6 +7136,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/service.h",
    "kind": "function",
    "name": "rclc_service_init_best_effort",
    "params": [
@@ -6772,6 +7166,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/service.h",
    "kind": "function",
    "name": "rclc_service_init",
    "params": [
@@ -6806,42 +7201,49 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_goal_handle.h",
    "kind": "alias",
    "name": "rclc_action_goal_handle_t",
    "qual": "rclc_action_goal_handle_t",
    "type": "struct rclc_action_goal_handle_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "alias",
    "name": "rclc_action_client_goal_callback_t",
    "qual": "rclc_action_client_goal_callback_t",
    "type": "void (*)(rclc_action_goal_handle_t *, bool, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "alias",
    "name": "rclc_action_client_feedback_callback_t",
    "qual": "rclc_action_client_feedback_callback_t",
    "type": "void (*)(rclc_action_goal_handle_t *, void *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "alias",
    "name": "rclc_action_client_result_callback_t",
    "qual": "rclc_action_client_result_callback_t",
    "type": "void (*)(rclc_action_goal_handle_t *, void *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "alias",
    "name": "rclc_action_client_cancel_callback_t",
    "qual": "rclc_action_client_cancel_callback_t",
    "type": "void (*)(rclc_action_goal_handle_t *, bool, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "alias",
    "name": "rclc_action_client_t",
    "qual": "rclc_action_client_t",
    "type": "struct rclc_action_client_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "function",
    "name": "rclc_action_client_init_default",
    "params": [
@@ -6871,6 +7273,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "function",
    "name": "rclc_action_send_goal_request",
    "params": [
@@ -6895,6 +7298,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "function",
    "name": "rclc_action_send_cancel_request",
    "params": [
@@ -6909,6 +7313,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_client.h",
    "kind": "function",
    "name": "rclc_action_client_fini",
    "params": [
@@ -6928,24 +7333,28 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "alias",
    "name": "rclc_action_server_handle_goal_callback_t",
    "qual": "rclc_action_server_handle_goal_callback_t",
    "type": "rcl_ret_t (*)(rclc_action_goal_handle_t *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "alias",
    "name": "rclc_action_server_handle_cancel_callback_t",
    "qual": "rclc_action_server_handle_cancel_callback_t",
    "type": "bool (*)(rclc_action_goal_handle_t *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "alias",
    "name": "rclc_action_server_t",
    "qual": "rclc_action_server_t",
    "type": "struct rclc_action_server_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "function",
    "name": "rclc_action_server_init_default",
    "params": [
@@ -6980,6 +7389,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "function",
    "name": "rclc_action_send_result",
    "params": [
@@ -7004,6 +7414,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "function",
    "name": "rclc_action_publish_feedback",
    "params": [
@@ -7023,6 +7434,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "function",
    "name": "rclc_action_server_fini",
    "params": [
@@ -7042,96 +7454,112 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/error_handling.h",
    "kind": "alias",
    "name": "rcl_error_state_t",
    "qual": "rcl_error_state_t",
    "type": "rcutils_error_state_t"
   },
   {
+   "header": "/opt/ros/humble/include/rcl/rcl/error_handling.h",
    "kind": "alias",
    "name": "rcl_error_string_t",
    "qual": "rcl_error_string_t",
    "type": "rcutils_error_string_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_executor_handle_type_t",
    "qual": "rclc_executor_handle_type_t",
    "type": "enum rclc_executor_handle_type_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_executor_handle_invocation_t",
    "qual": "rclc_executor_handle_invocation_t",
    "type": "enum rclc_executor_handle_invocation_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_subscription_callback_t",
    "qual": "rclc_subscription_callback_t",
    "type": "void (*)(const void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_callback_t",
    "qual": "rclc_callback_t",
    "type": "rclc_subscription_callback_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_subscription_callback_with_context_t",
    "qual": "rclc_subscription_callback_with_context_t",
    "type": "void (*)(const void *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_service_callback_t",
    "qual": "rclc_service_callback_t",
    "type": "void (*)(const void *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_service_callback_with_request_id_t",
    "qual": "rclc_service_callback_with_request_id_t",
    "type": "void (*)(const void *, rmw_request_id_t *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_service_callback_with_context_t",
    "qual": "rclc_service_callback_with_context_t",
    "type": "void (*)(const void *, void *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_client_callback_t",
    "qual": "rclc_client_callback_t",
    "type": "void (*)(const void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_client_callback_with_request_id_t",
    "qual": "rclc_client_callback_with_request_id_t",
    "type": "void (*)(const void *, rmw_request_id_t *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_gc_callback_t",
    "qual": "rclc_gc_callback_t",
    "type": "void (*)()"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_executor_handle_t",
    "qual": "rclc_executor_handle_t",
    "type": "struct rclc_executor_handle_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
    "name": "rclc_executor_handle_counters_t",
    "qual": "rclc_executor_handle_counters_t",
    "type": "struct rclc_executor_handle_counters_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "function",
    "name": "rclc_executor_handle_counters_zero_init",
    "params": [
@@ -7146,6 +7574,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "function",
    "name": "rclc_executor_handle_init",
    "params": [
@@ -7165,6 +7594,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "function",
    "name": "rclc_executor_handle_clear",
    "params": [
@@ -7184,6 +7614,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "function",
    "name": "rclc_executor_handle_print",
    "params": [
@@ -7198,6 +7629,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "function",
    "name": "rclc_executor_handle_get_ptr",
    "params": [
@@ -7212,6 +7644,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/sleep.h",
    "kind": "function",
    "name": "rclc_sleep_ms",
    "params": [
@@ -7226,24 +7659,28 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "alias",
    "name": "rclc_executor_semantics_t",
    "qual": "rclc_executor_semantics_t",
    "type": "enum rclc_executor_semantics_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "alias",
    "name": "rclc_executor_trigger_t",
    "qual": "rclc_executor_trigger_t",
    "type": "bool (*)(rclc_executor_handle_t *, unsigned int, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "alias",
    "name": "rclc_executor_t",
    "qual": "rclc_executor_t",
    "type": "struct rclc_executor_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_get_zero_initialized_executor",
    "params": [],
@@ -7252,6 +7689,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_init",
    "params": [
@@ -7281,6 +7719,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_set_timeout",
    "params": [
@@ -7300,6 +7739,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_set_semantics",
    "params": [
@@ -7319,6 +7759,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_fini",
    "params": [
@@ -7333,6 +7774,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_subscription",
    "params": [
@@ -7367,6 +7809,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_subscription_with_context",
    "params": [
@@ -7406,6 +7849,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_timer",
    "params": [
@@ -7425,6 +7869,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_client",
    "params": [
@@ -7454,6 +7899,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_client_with_request_id",
    "params": [
@@ -7483,6 +7929,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_service",
    "params": [
@@ -7517,6 +7964,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_action_client",
    "params": [
@@ -7576,6 +8024,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_action_server",
    "params": [
@@ -7625,6 +8074,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_service_with_request_id",
    "params": [
@@ -7659,6 +8109,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_service_with_context",
    "params": [
@@ -7698,6 +8149,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_add_guard_condition",
    "params": [
@@ -7722,6 +8174,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_remove_subscription",
    "params": [
@@ -7741,6 +8194,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_remove_timer",
    "params": [
@@ -7760,6 +8214,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_remove_client",
    "params": [
@@ -7779,6 +8234,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_remove_service",
    "params": [
@@ -7798,6 +8254,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_remove_guard_condition",
    "params": [
@@ -7817,6 +8274,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_prepare",
    "params": [
@@ -7831,6 +8289,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_spin_some",
    "params": [
@@ -7850,6 +8309,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_spin",
    "params": [
@@ -7864,6 +8324,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_spin_period",
    "params": [
@@ -7883,6 +8344,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_spin_one_period",
    "params": [
@@ -7902,6 +8364,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_set_trigger",
    "params": [
@@ -7926,6 +8389,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_trigger_all",
    "params": [
@@ -7950,6 +8414,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_trigger_any",
    "params": [
@@ -7974,6 +8439,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_trigger_always",
    "params": [
@@ -7998,6 +8464,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
    "name": "rclc_executor_trigger_one",
    "params": [
@@ -8022,48 +8489,56 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_transition_t",
    "qual": "rcl_lifecycle_transition_t",
    "type": "struct rcl_lifecycle_transition_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_state_t",
    "qual": "rcl_lifecycle_state_t",
    "type": "struct rcl_lifecycle_state_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_transition_t",
    "qual": "rcl_lifecycle_transition_t",
    "type": "struct rcl_lifecycle_transition_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_transition_map_t",
    "qual": "rcl_lifecycle_transition_map_t",
    "type": "struct rcl_lifecycle_transition_map_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_com_interface_t",
    "qual": "rcl_lifecycle_com_interface_t",
    "type": "struct rcl_lifecycle_com_interface_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_state_machine_options_t",
    "qual": "rcl_lifecycle_state_machine_options_t",
    "type": "struct rcl_lifecycle_state_machine_options_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/data_types.h",
    "kind": "alias",
    "name": "rcl_lifecycle_state_machine_t",
    "qual": "rcl_lifecycle_state_machine_t",
    "type": "struct rcl_lifecycle_state_machine_s"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/default_state_machine.h",
    "kind": "function",
    "name": "rcl_lifecycle_init_default_state_machine",
    "params": [
@@ -8083,6 +8558,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_zero_initialized_state",
    "params": [],
@@ -8091,6 +8567,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_state_init",
    "params": [
@@ -8120,6 +8597,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_state_fini",
    "params": [
@@ -8139,6 +8617,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_zero_initialized_transition",
    "params": [],
@@ -8147,6 +8626,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_transition_init",
    "params": [
@@ -8186,6 +8666,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_transition_fini",
    "params": [
@@ -8205,6 +8686,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_default_state_machine_options",
    "params": [],
@@ -8213,6 +8695,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_zero_initialized_state_machine",
    "params": [],
@@ -8221,6 +8704,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_state_machine_init",
    "params": [
@@ -8275,6 +8759,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_state_machine_fini",
    "params": [
@@ -8294,6 +8779,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_state_machine_is_initialized",
    "params": [
@@ -8308,6 +8794,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_transition_by_id",
    "params": [
@@ -8327,6 +8814,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_get_transition_by_label",
    "params": [
@@ -8346,6 +8834,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_trigger_transition_by_id",
    "params": [
@@ -8370,6 +8859,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_lifecycle_trigger_transition_by_label",
    "params": [
@@ -8394,6 +8884,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_lifecycle/rcl_lifecycle/rcl_lifecycle.h",
    "kind": "function",
    "name": "rcl_print_state_machine",
    "params": [
@@ -8408,24 +8899,28 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "alias",
    "name": "rclc_lifecycle_callback_map_t",
    "qual": "rclc_lifecycle_callback_map_t",
    "type": "struct rclc_lifecycle_callback_map_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "alias",
    "name": "rclc_lifecycle_node_t",
    "qual": "rclc_lifecycle_node_t",
    "type": "struct rclc_lifecycle_node_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "alias",
    "name": "rclc_lifecycle_service_context_t",
    "qual": "rclc_lifecycle_service_context_t",
    "type": "struct rclc_lifecycle_service_context_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_init_get_state_server",
    "params": [
@@ -8445,6 +8940,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_init_get_available_states_server",
    "params": [
@@ -8464,6 +8960,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_init_change_state_server",
    "params": [
@@ -8483,6 +8980,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_get_state_callback",
    "params": [
@@ -8507,6 +9005,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_get_available_states_callback",
    "params": [
@@ -8531,6 +9030,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_change_state_callback",
    "params": [
@@ -8555,6 +9055,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_make_node_a_lifecycle_node",
    "params": [
@@ -8589,6 +9090,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_change_state",
    "params": [
@@ -8613,6 +9115,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_register_callback",
    "params": [
@@ -8637,6 +9140,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_register_on_configure",
    "params": [
@@ -8656,6 +9160,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_register_on_activate",
    "params": [
@@ -8675,6 +9180,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_register_on_deactivate",
    "params": [
@@ -8694,6 +9200,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_register_on_cleanup",
    "params": [
@@ -8713,6 +9220,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_execute_callback",
    "params": [
@@ -8732,6 +9240,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_lifecycle/include/rclc_lifecycle/rclc_lifecycle.h",
    "kind": "function",
    "name": "rclc_lifecycle_node_fini",
    "params": [
@@ -8751,30 +9260,35 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterValue",
    "qual": "rcl_interfaces__msg__ParameterValue",
    "type": "struct rcl_interfaces__msg__ParameterValue"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence",
    "qual": "rcl_interfaces__msg__ParameterValue__Sequence",
    "type": "struct rcl_interfaces__msg__ParameterValue__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__Parameter",
    "qual": "rcl_interfaces__msg__Parameter",
    "type": "struct rcl_interfaces__msg__Parameter"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__Parameter__Sequence",
    "qual": "rcl_interfaces__msg__Parameter__Sequence",
    "type": "struct rcl_interfaces__msg__Parameter__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__init",
    "params": [
@@ -8789,6 +9303,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__fini",
    "params": [
@@ -8803,6 +9318,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__create",
    "params": [],
@@ -8811,6 +9327,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__destroy",
    "params": [
@@ -8825,6 +9342,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__are_equal",
    "params": [
@@ -8844,6 +9362,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__copy",
    "params": [
@@ -8863,6 +9382,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__init",
    "params": [
@@ -8882,6 +9402,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__fini",
    "params": [
@@ -8896,6 +9417,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__create",
    "params": [
@@ -8910,6 +9432,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__destroy",
    "params": [
@@ -8924,6 +9447,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__are_equal",
    "params": [
@@ -8943,6 +9467,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__Parameter__Sequence__copy",
    "params": [
@@ -8962,6 +9487,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__init",
    "params": [
@@ -8976,6 +9502,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__fini",
    "params": [
@@ -8990,6 +9517,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__create",
    "params": [],
@@ -8998,6 +9526,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__destroy",
    "params": [
@@ -9012,6 +9541,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__are_equal",
    "params": [
@@ -9031,6 +9561,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__copy",
    "params": [
@@ -9050,6 +9581,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__init",
    "params": [
@@ -9069,6 +9601,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__fini",
    "params": [
@@ -9083,6 +9616,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__create",
    "params": [
@@ -9097,6 +9631,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__destroy",
    "params": [
@@ -9111,6 +9646,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__are_equal",
    "params": [
@@ -9130,6 +9666,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_value__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterValue__Sequence__copy",
    "params": [
@@ -9149,18 +9686,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterEvent",
    "qual": "rcl_interfaces__msg__ParameterEvent",
    "type": "struct rcl_interfaces__msg__ParameterEvent"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence",
    "qual": "rcl_interfaces__msg__ParameterEvent__Sequence",
    "type": "struct rcl_interfaces__msg__ParameterEvent__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__init",
    "params": [
@@ -9175,6 +9715,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__fini",
    "params": [
@@ -9189,6 +9730,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__create",
    "params": [],
@@ -9197,6 +9739,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__destroy",
    "params": [
@@ -9211,6 +9754,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__are_equal",
    "params": [
@@ -9230,6 +9774,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__copy",
    "params": [
@@ -9249,6 +9794,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__init",
    "params": [
@@ -9268,6 +9814,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__fini",
    "params": [
@@ -9282,6 +9829,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__create",
    "params": [
@@ -9296,6 +9844,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__destroy",
    "params": [
@@ -9310,6 +9859,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__are_equal",
    "params": [
@@ -9329,6 +9879,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_event__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterEvent__Sequence__copy",
    "params": [
@@ -9348,30 +9899,35 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request",
    "qual": "rcl_interfaces__srv__GetParameterTypes_Request",
    "type": "struct rcl_interfaces__srv__GetParameterTypes_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence",
    "qual": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence",
    "type": "struct rcl_interfaces__srv__GetParameterTypes_Request__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response",
    "qual": "rcl_interfaces__srv__GetParameterTypes_Response",
    "type": "struct rcl_interfaces__srv__GetParameterTypes_Response"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence",
    "qual": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence",
    "type": "struct rcl_interfaces__srv__GetParameterTypes_Response__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__init",
    "params": [
@@ -9386,6 +9942,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__fini",
    "params": [
@@ -9400,6 +9957,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__create",
    "params": [],
@@ -9408,6 +9966,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__destroy",
    "params": [
@@ -9422,6 +9981,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__are_equal",
    "params": [
@@ -9441,6 +10001,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__copy",
    "params": [
@@ -9460,6 +10021,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__init",
    "params": [
@@ -9479,6 +10041,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__fini",
    "params": [
@@ -9493,6 +10056,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__create",
    "params": [
@@ -9507,6 +10071,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__destroy",
    "params": [
@@ -9521,6 +10086,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__are_equal",
    "params": [
@@ -9540,6 +10106,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Request__Sequence__copy",
    "params": [
@@ -9559,6 +10126,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__init",
    "params": [
@@ -9573,6 +10141,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__fini",
    "params": [
@@ -9587,6 +10156,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__create",
    "params": [],
@@ -9595,6 +10165,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__destroy",
    "params": [
@@ -9609,6 +10180,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__are_equal",
    "params": [
@@ -9628,6 +10200,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__copy",
    "params": [
@@ -9647,6 +10220,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__init",
    "params": [
@@ -9666,6 +10240,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__fini",
    "params": [
@@ -9680,6 +10255,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__create",
    "params": [
@@ -9694,6 +10270,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__destroy",
    "params": [
@@ -9708,6 +10285,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__are_equal",
    "params": [
@@ -9727,6 +10305,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameter_types__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameterTypes_Response__Sequence__copy",
    "params": [
@@ -9746,30 +10325,35 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameters_Request",
    "qual": "rcl_interfaces__srv__GetParameters_Request",
    "type": "struct rcl_interfaces__srv__GetParameters_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence",
    "qual": "rcl_interfaces__srv__GetParameters_Request__Sequence",
    "type": "struct rcl_interfaces__srv__GetParameters_Request__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameters_Response",
    "qual": "rcl_interfaces__srv__GetParameters_Response",
    "type": "struct rcl_interfaces__srv__GetParameters_Response"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence",
    "qual": "rcl_interfaces__srv__GetParameters_Response__Sequence",
    "type": "struct rcl_interfaces__srv__GetParameters_Response__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__init",
    "params": [
@@ -9784,6 +10368,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__fini",
    "params": [
@@ -9798,6 +10383,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__create",
    "params": [],
@@ -9806,6 +10392,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__destroy",
    "params": [
@@ -9820,6 +10407,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__are_equal",
    "params": [
@@ -9839,6 +10427,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__copy",
    "params": [
@@ -9858,6 +10447,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__init",
    "params": [
@@ -9877,6 +10467,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__fini",
    "params": [
@@ -9891,6 +10482,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__create",
    "params": [
@@ -9905,6 +10497,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__destroy",
    "params": [
@@ -9919,6 +10512,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__are_equal",
    "params": [
@@ -9938,6 +10532,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Request__Sequence__copy",
    "params": [
@@ -9957,6 +10552,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__init",
    "params": [
@@ -9971,6 +10567,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__fini",
    "params": [
@@ -9985,6 +10582,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__create",
    "params": [],
@@ -9993,6 +10591,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__destroy",
    "params": [
@@ -10007,6 +10606,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__are_equal",
    "params": [
@@ -10026,6 +10626,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__copy",
    "params": [
@@ -10045,6 +10646,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__init",
    "params": [
@@ -10064,6 +10666,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__fini",
    "params": [
@@ -10078,6 +10681,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__create",
    "params": [
@@ -10092,6 +10696,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__destroy",
    "params": [
@@ -10106,6 +10711,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__are_equal",
    "params": [
@@ -10125,6 +10731,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/get_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__GetParameters_Response__Sequence__copy",
    "params": [
@@ -10144,18 +10751,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__SetParametersResult",
    "qual": "rcl_interfaces__msg__SetParametersResult",
    "type": "struct rcl_interfaces__msg__SetParametersResult"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence",
    "qual": "rcl_interfaces__msg__SetParametersResult__Sequence",
    "type": "struct rcl_interfaces__msg__SetParametersResult__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__init",
    "params": [
@@ -10170,6 +10780,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__fini",
    "params": [
@@ -10184,6 +10795,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__create",
    "params": [],
@@ -10192,6 +10804,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__destroy",
    "params": [
@@ -10206,6 +10819,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__are_equal",
    "params": [
@@ -10225,6 +10839,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__copy",
    "params": [
@@ -10244,6 +10859,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__init",
    "params": [
@@ -10263,6 +10879,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__fini",
    "params": [
@@ -10277,6 +10894,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__create",
    "params": [
@@ -10291,6 +10909,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__destroy",
    "params": [
@@ -10305,6 +10924,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__are_equal",
    "params": [
@@ -10324,6 +10944,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/set_parameters_result__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__SetParametersResult__Sequence__copy",
    "params": [
@@ -10343,42 +10964,49 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__ListParameters_Request",
    "qual": "rcl_interfaces__srv__ListParameters_Request",
    "type": "struct rcl_interfaces__srv__ListParameters_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence",
    "qual": "rcl_interfaces__srv__ListParameters_Request__Sequence",
    "type": "struct rcl_interfaces__srv__ListParameters_Request__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/list_parameters_result__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ListParametersResult",
    "qual": "rcl_interfaces__msg__ListParametersResult",
    "type": "struct rcl_interfaces__msg__ListParametersResult"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/list_parameters_result__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ListParametersResult__Sequence",
    "qual": "rcl_interfaces__msg__ListParametersResult__Sequence",
    "type": "struct rcl_interfaces__msg__ListParametersResult__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__ListParameters_Response",
    "qual": "rcl_interfaces__srv__ListParameters_Response",
    "type": "struct rcl_interfaces__srv__ListParameters_Response"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence",
    "qual": "rcl_interfaces__srv__ListParameters_Response__Sequence",
    "type": "struct rcl_interfaces__srv__ListParameters_Response__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__init",
    "params": [
@@ -10393,6 +11021,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__fini",
    "params": [
@@ -10407,6 +11036,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__create",
    "params": [],
@@ -10415,6 +11045,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__destroy",
    "params": [
@@ -10429,6 +11060,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__are_equal",
    "params": [
@@ -10448,6 +11080,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__copy",
    "params": [
@@ -10467,6 +11100,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__init",
    "params": [
@@ -10486,6 +11120,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__fini",
    "params": [
@@ -10500,6 +11135,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__create",
    "params": [
@@ -10514,6 +11150,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__destroy",
    "params": [
@@ -10528,6 +11165,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__are_equal",
    "params": [
@@ -10547,6 +11185,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Request__Sequence__copy",
    "params": [
@@ -10566,6 +11205,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__init",
    "params": [
@@ -10580,6 +11220,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__fini",
    "params": [
@@ -10594,6 +11235,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__create",
    "params": [],
@@ -10602,6 +11244,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__destroy",
    "params": [
@@ -10616,6 +11259,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__are_equal",
    "params": [
@@ -10635,6 +11279,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__copy",
    "params": [
@@ -10654,6 +11299,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__init",
    "params": [
@@ -10673,6 +11319,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__fini",
    "params": [
@@ -10687,6 +11334,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__create",
    "params": [
@@ -10701,6 +11349,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__destroy",
    "params": [
@@ -10715,6 +11364,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__are_equal",
    "params": [
@@ -10734,6 +11384,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/list_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__ListParameters_Response__Sequence__copy",
    "params": [
@@ -10753,30 +11404,35 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__SetParameters_Request",
    "qual": "rcl_interfaces__srv__SetParameters_Request",
    "type": "struct rcl_interfaces__srv__SetParameters_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence",
    "qual": "rcl_interfaces__srv__SetParameters_Request__Sequence",
    "type": "struct rcl_interfaces__srv__SetParameters_Request__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__SetParameters_Response",
    "qual": "rcl_interfaces__srv__SetParameters_Response",
    "type": "struct rcl_interfaces__srv__SetParameters_Response"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence",
    "qual": "rcl_interfaces__srv__SetParameters_Response__Sequence",
    "type": "struct rcl_interfaces__srv__SetParameters_Response__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__init",
    "params": [
@@ -10791,6 +11447,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__fini",
    "params": [
@@ -10805,6 +11462,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__create",
    "params": [],
@@ -10813,6 +11471,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__destroy",
    "params": [
@@ -10827,6 +11486,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__are_equal",
    "params": [
@@ -10846,6 +11506,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__copy",
    "params": [
@@ -10865,6 +11526,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__init",
    "params": [
@@ -10884,6 +11546,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__fini",
    "params": [
@@ -10898,6 +11561,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__create",
    "params": [
@@ -10912,6 +11576,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__destroy",
    "params": [
@@ -10926,6 +11591,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__are_equal",
    "params": [
@@ -10945,6 +11611,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Request__Sequence__copy",
    "params": [
@@ -10964,6 +11631,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__init",
    "params": [
@@ -10978,6 +11646,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__fini",
    "params": [
@@ -10992,6 +11661,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__create",
    "params": [],
@@ -11000,6 +11670,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__destroy",
    "params": [
@@ -11014,6 +11685,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__are_equal",
    "params": [
@@ -11033,6 +11705,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__copy",
    "params": [
@@ -11052,6 +11725,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__init",
    "params": [
@@ -11071,6 +11745,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__fini",
    "params": [
@@ -11085,6 +11760,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__create",
    "params": [
@@ -11099,6 +11775,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__destroy",
    "params": [
@@ -11113,6 +11790,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__are_equal",
    "params": [
@@ -11132,6 +11810,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/set_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__SetParameters_Response__Sequence__copy",
    "params": [
@@ -11151,66 +11830,77 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__DescribeParameters_Request",
    "qual": "rcl_interfaces__srv__DescribeParameters_Request",
    "type": "struct rcl_interfaces__srv__DescribeParameters_Request"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence",
    "qual": "rcl_interfaces__srv__DescribeParameters_Request__Sequence",
    "type": "struct rcl_interfaces__srv__DescribeParameters_Request__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/floating_point_range__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__FloatingPointRange",
    "qual": "rcl_interfaces__msg__FloatingPointRange",
    "type": "struct rcl_interfaces__msg__FloatingPointRange"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/floating_point_range__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__FloatingPointRange__Sequence",
    "qual": "rcl_interfaces__msg__FloatingPointRange__Sequence",
    "type": "struct rcl_interfaces__msg__FloatingPointRange__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/integer_range__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__IntegerRange",
    "qual": "rcl_interfaces__msg__IntegerRange",
    "type": "struct rcl_interfaces__msg__IntegerRange"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/integer_range__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__IntegerRange__Sequence",
    "qual": "rcl_interfaces__msg__IntegerRange__Sequence",
    "type": "struct rcl_interfaces__msg__IntegerRange__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterDescriptor",
    "qual": "rcl_interfaces__msg__ParameterDescriptor",
    "type": "struct rcl_interfaces__msg__ParameterDescriptor"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence",
    "qual": "rcl_interfaces__msg__ParameterDescriptor__Sequence",
    "type": "struct rcl_interfaces__msg__ParameterDescriptor__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__DescribeParameters_Response",
    "qual": "rcl_interfaces__srv__DescribeParameters_Response",
    "type": "struct rcl_interfaces__srv__DescribeParameters_Response"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__struct.h",
    "kind": "alias",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence",
    "qual": "rcl_interfaces__srv__DescribeParameters_Response__Sequence",
    "type": "struct rcl_interfaces__srv__DescribeParameters_Response__Sequence"
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__init",
    "params": [
@@ -11225,6 +11915,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__fini",
    "params": [
@@ -11239,6 +11930,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__create",
    "params": [],
@@ -11247,6 +11939,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__destroy",
    "params": [
@@ -11261,6 +11954,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__are_equal",
    "params": [
@@ -11280,6 +11974,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__copy",
    "params": [
@@ -11299,6 +11994,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__init",
    "params": [
@@ -11318,6 +12014,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__fini",
    "params": [
@@ -11332,6 +12029,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__create",
    "params": [
@@ -11346,6 +12044,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__destroy",
    "params": [
@@ -11360,6 +12059,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__are_equal",
    "params": [
@@ -11379,6 +12079,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Request__Sequence__copy",
    "params": [
@@ -11398,6 +12099,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__init",
    "params": [
@@ -11412,6 +12114,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__fini",
    "params": [
@@ -11426,6 +12129,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__create",
    "params": [],
@@ -11434,6 +12138,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__destroy",
    "params": [
@@ -11448,6 +12153,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__are_equal",
    "params": [
@@ -11467,6 +12173,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__copy",
    "params": [
@@ -11486,6 +12193,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__init",
    "params": [
@@ -11505,6 +12213,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__fini",
    "params": [
@@ -11519,6 +12228,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__create",
    "params": [
@@ -11533,6 +12243,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__destroy",
    "params": [
@@ -11547,6 +12258,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__are_equal",
    "params": [
@@ -11566,6 +12278,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/srv/detail/describe_parameters__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__srv__DescribeParameters_Response__Sequence__copy",
    "params": [
@@ -11585,6 +12298,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__init",
    "params": [
@@ -11599,6 +12313,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__fini",
    "params": [
@@ -11613,6 +12328,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__create",
    "params": [],
@@ -11621,6 +12337,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__destroy",
    "params": [
@@ -11635,6 +12352,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__are_equal",
    "params": [
@@ -11654,6 +12372,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__copy",
    "params": [
@@ -11673,6 +12392,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__init",
    "params": [
@@ -11692,6 +12412,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__fini",
    "params": [
@@ -11706,6 +12427,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__create",
    "params": [
@@ -11720,6 +12442,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__destroy",
    "params": [
@@ -11734,6 +12457,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__are_equal",
    "params": [
@@ -11753,6 +12477,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rcl_interfaces/rcl_interfaces/msg/detail/parameter_descriptor__functions.h",
    "kind": "function",
    "name": "rcl_interfaces__msg__ParameterDescriptor__Sequence__copy",
    "params": [
@@ -11772,12 +12497,14 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "alias",
    "name": "rclc_parameter_callback_t",
    "qual": "rclc_parameter_callback_t",
    "type": "bool (*)(const Parameter *, const Parameter *, void *)"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "enum",
    "name": "rclc_parameter_type_t",
    "qual": "rclc_parameter_type_t",
@@ -11789,24 +12516,28 @@
    ]
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "alias",
    "name": "rclc_parameter_type_t",
    "qual": "rclc_parameter_type_t",
    "type": "enum rclc_parameter_type_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "alias",
    "name": "rclc_parameter_options_t",
    "qual": "rclc_parameter_options_t",
    "type": "struct rclc_parameter_options_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "alias",
    "name": "rclc_parameter_server_t",
    "qual": "rclc_parameter_server_t",
    "type": "struct rclc_parameter_server_t"
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_server_init_default",
    "params": [
@@ -11826,6 +12557,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_server_init_with_option",
    "params": [
@@ -11850,6 +12582,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_server_fini",
    "params": [
@@ -11869,6 +12602,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_executor_add_parameter_server",
    "params": [
@@ -11893,6 +12627,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_executor_add_parameter_server_with_context",
    "params": [
@@ -11922,6 +12657,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_add_parameter",
    "params": [
@@ -11946,6 +12682,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_delete_parameter",
    "params": [
@@ -11965,6 +12702,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_set_bool",
    "params": [
@@ -11989,6 +12727,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_set_int",
    "params": [
@@ -12013,6 +12752,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_set_double",
    "params": [
@@ -12037,6 +12777,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_get_bool",
    "params": [
@@ -12061,6 +12802,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_get_int",
    "params": [
@@ -12085,6 +12827,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_parameter_get_double",
    "params": [
@@ -12109,6 +12852,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_add_parameter_description",
    "params": [
@@ -12138,6 +12882,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_set_parameter_read_only",
    "params": [
@@ -12162,6 +12907,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_add_parameter_constraint_integer",
    "params": [
@@ -12196,6 +12942,7 @@
    "template": []
   },
   {
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc_parameter/include/rclc_parameter/rclc_parameter.h",
    "kind": "function",
    "name": "rclc_add_parameter_constraint_double",
    "params": [

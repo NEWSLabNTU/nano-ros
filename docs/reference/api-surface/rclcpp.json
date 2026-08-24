@@ -5,6 +5,7 @@
  },
  "records": [
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/init_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -102,6 +103,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "type",
    "members": [
     {
@@ -116,6 +118,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "type",
    "members": [],
    "name": "ShutdownCallbackHandle",
@@ -123,18 +126,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "alias",
    "name": "OnShutdownCallbackHandle",
    "qual": "rclcpp::OnShutdownCallbackHandle",
    "type": "rclcpp::ShutdownCallbackHandle"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "alias",
    "name": "PreShutdownCallbackHandle",
    "qual": "rclcpp::PreShutdownCallbackHandle",
    "type": "rclcpp::ShutdownCallbackHandle"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "type",
    "members": [
     {
@@ -352,6 +358,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/context.hpp",
    "kind": "function",
    "name": "get_contexts",
    "params": [],
@@ -360,6 +367,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/guard_condition.hpp",
    "kind": "type",
    "members": [
     {
@@ -459,6 +467,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/expand_topic_or_service_name.hpp",
    "kind": "function",
    "name": "expand_topic_or_service_name",
    "params": [
@@ -488,6 +497,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/logger.hpp",
    "kind": "function",
    "name": "get_logger",
    "params": [
@@ -502,6 +512,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/logger.hpp",
    "kind": "function",
    "name": "get_node_logger",
    "params": [
@@ -516,6 +527,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/logger.hpp",
    "kind": "function",
    "name": "get_logging_directory",
    "params": [],
@@ -524,6 +536,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/logger.hpp",
    "kind": "type",
    "members": [
     {
@@ -574,6 +587,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "enum",
    "name": "SignalHandlerOptions",
    "qual": "rclcpp::SignalHandlerOptions",
@@ -585,6 +599,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "init",
    "params": [
@@ -614,6 +629,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "install_signal_handlers",
    "params": [
@@ -628,6 +644,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "signal_handlers_installed",
    "params": [],
@@ -636,6 +653,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "get_current_signal_handler_options",
    "params": [],
@@ -644,6 +662,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "uninstall_signal_handlers",
    "params": [],
@@ -652,6 +671,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "init_and_remove_ros_arguments",
    "params": [
@@ -676,6 +696,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "remove_ros_arguments",
    "params": [
@@ -695,6 +716,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "ok",
    "params": [
@@ -709,6 +731,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "shutdown",
    "params": [
@@ -728,6 +751,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "on_shutdown",
    "params": [
@@ -747,6 +771,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "sleep_for",
    "params": [
@@ -766,6 +791,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "add_will_overflow",
    "params": [
@@ -787,6 +813,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "add_will_underflow",
    "params": [
@@ -808,6 +835,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "sub_will_overflow",
    "params": [
@@ -829,6 +857,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "sub_will_underflow",
    "params": [
@@ -850,6 +879,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "get_c_string",
    "params": [
@@ -864,6 +894,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "get_c_string",
    "params": [
@@ -878,6 +909,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/utilities.hpp",
    "kind": "function",
    "name": "get_c_vector_string",
    "params": [
@@ -892,6 +924,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/event.hpp",
    "kind": "type",
    "members": [
     {
@@ -938,6 +971,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/duration.hpp",
    "kind": "type",
    "members": [
     {
@@ -1094,6 +1128,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "function",
    "name": "qos_policy_name_from_kind",
    "params": [
@@ -1108,6 +1143,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "enum",
    "name": "HistoryPolicy",
    "qual": "rclcpp::HistoryPolicy",
@@ -1119,6 +1155,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "enum",
    "name": "ReliabilityPolicy",
    "qual": "rclcpp::ReliabilityPolicy",
@@ -1130,6 +1167,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "enum",
    "name": "DurabilityPolicy",
    "qual": "rclcpp::DurabilityPolicy",
@@ -1141,6 +1179,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "enum",
    "name": "LivelinessPolicy",
    "qual": "rclcpp::LivelinessPolicy",
@@ -1152,6 +1191,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "enum",
    "name": "QoSCompatibility",
    "qual": "rclcpp::QoSCompatibility",
@@ -1162,6 +1202,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1209,6 +1250,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1223,6 +1265,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1243,6 +1286,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1568,6 +1612,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "function",
    "name": "operator==",
    "params": [
@@ -1587,6 +1632,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "function",
    "name": "operator!=",
    "params": [
@@ -1606,6 +1652,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1624,6 +1671,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "function",
    "name": "qos_check_compatible",
    "params": [
@@ -1643,6 +1691,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1663,6 +1712,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1683,6 +1733,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1703,6 +1754,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1723,6 +1775,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1743,6 +1796,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1763,6 +1817,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos.hpp",
    "kind": "type",
    "members": [
     {
@@ -1783,6 +1838,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/node_interfaces/node_graph_interface.hpp",
    "kind": "enum",
    "name": "EndpointType",
    "qual": "rclcpp::EndpointType",
@@ -1793,6 +1849,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/node_interfaces/node_graph_interface.hpp",
    "kind": "type",
    "members": [
     {
@@ -1885,6 +1942,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/client.hpp",
    "kind": "type",
    "members": [
     {
@@ -2051,6 +2109,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/client.hpp",
    "kind": "type",
    "members": [
     {
@@ -2287,6 +2346,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/network_flow_endpoint.hpp",
    "kind": "function",
    "name": "operator==",
    "params": [
@@ -2306,6 +2366,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/network_flow_endpoint.hpp",
    "kind": "function",
    "name": "operator!=",
    "params": [
@@ -2325,6 +2386,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/network_flow_endpoint.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -2344,6 +2406,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/network_flow_endpoint.hpp",
    "kind": "type",
    "members": [
     {
@@ -2400,6 +2463,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/waitable.hpp",
    "kind": "type",
    "members": [
     {
@@ -2542,90 +2606,105 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSDeadlineRequestedInfo",
    "qual": "rclcpp::QOSDeadlineRequestedInfo",
    "type": "rmw_requested_deadline_missed_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSDeadlineOfferedInfo",
    "qual": "rclcpp::QOSDeadlineOfferedInfo",
    "type": "rmw_offered_deadline_missed_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSLivelinessChangedInfo",
    "qual": "rclcpp::QOSLivelinessChangedInfo",
    "type": "rmw_liveliness_changed_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSLivelinessLostInfo",
    "qual": "rclcpp::QOSLivelinessLostInfo",
    "type": "rmw_liveliness_lost_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSMessageLostInfo",
    "qual": "rclcpp::QOSMessageLostInfo",
    "type": "rmw_message_lost_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSOfferedIncompatibleQoSInfo",
    "qual": "rclcpp::QOSOfferedIncompatibleQoSInfo",
    "type": "rmw_offered_qos_incompatible_event_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSRequestedIncompatibleQoSInfo",
    "qual": "rclcpp::QOSRequestedIncompatibleQoSInfo",
    "type": "rmw_requested_qos_incompatible_event_status_t"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSDeadlineRequestedCallbackType",
    "qual": "rclcpp::QOSDeadlineRequestedCallbackType",
    "type": "std::function<void (QOSDeadlineRequestedInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSDeadlineOfferedCallbackType",
    "qual": "rclcpp::QOSDeadlineOfferedCallbackType",
    "type": "std::function<void (QOSDeadlineOfferedInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSLivelinessChangedCallbackType",
    "qual": "rclcpp::QOSLivelinessChangedCallbackType",
    "type": "std::function<void (QOSLivelinessChangedInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSLivelinessLostCallbackType",
    "qual": "rclcpp::QOSLivelinessLostCallbackType",
    "type": "std::function<void (QOSLivelinessLostInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSMessageLostCallbackType",
    "qual": "rclcpp::QOSMessageLostCallbackType",
    "type": "std::function<void (QOSMessageLostInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSOfferedIncompatibleQoSCallbackType",
    "qual": "rclcpp::QOSOfferedIncompatibleQoSCallbackType",
    "type": "std::function<void (QOSOfferedIncompatibleQoSInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "alias",
    "name": "QOSRequestedIncompatibleQoSCallbackType",
    "qual": "rclcpp::QOSRequestedIncompatibleQoSCallbackType",
    "type": "std::function<void (QOSRequestedIncompatibleQoSInfo &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "type",
    "members": [
     {
@@ -2649,6 +2728,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "type",
    "members": [
     {
@@ -2677,6 +2757,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "type",
    "members": [
     {
@@ -2724,6 +2805,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "type",
    "members": [
     {
@@ -2780,6 +2862,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_event.hpp",
    "kind": "type",
    "members": [
     {
@@ -2851,6 +2934,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_base.hpp",
    "kind": "type",
    "members": [
     {
@@ -3047,6 +3131,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/any_service_callback.hpp",
    "kind": "type",
    "members": [
     {
@@ -3121,6 +3206,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/service.hpp",
    "kind": "type",
    "members": [
     {
@@ -3261,6 +3347,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/service.hpp",
    "kind": "type",
    "members": [
     {
@@ -3439,6 +3526,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/message_info.hpp",
    "kind": "type",
    "members": [
     {
@@ -3477,6 +3565,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/serialized_message.hpp",
    "kind": "type",
    "members": [
     {
@@ -3604,6 +3693,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/type_adapter.hpp",
    "kind": "type",
    "members": [],
    "name": "TypeAdapter",
@@ -3615,6 +3705,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/type_adapter.hpp",
    "kind": "type",
    "members": [],
    "name": "is_type_adapter",
@@ -3624,6 +3715,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/type_adapter.hpp",
    "kind": "type",
    "members": [],
    "name": "adapt_type",
@@ -3633,6 +3725,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/type_adapter.hpp",
    "kind": "type",
    "members": [],
    "name": "ImplicitTypeAdapter",
@@ -3642,6 +3735,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/any_subscription_callback.hpp",
    "kind": "type",
    "members": [
     {
@@ -3877,6 +3971,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/intra_process_buffer_type.hpp",
    "kind": "enum",
    "name": "IntraProcessBufferType",
    "qual": "rclcpp::IntraProcessBufferType",
@@ -3887,6 +3982,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_content_filter_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -3905,6 +4001,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_base.hpp",
    "kind": "type",
    "members": [
     {
@@ -4274,6 +4371,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/time.hpp",
    "kind": "type",
    "members": [
     {
@@ -4386,6 +4484,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/time.hpp",
    "kind": "function",
    "name": "operator+",
    "params": [
@@ -4405,6 +4504,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/clock.hpp",
    "kind": "type",
    "members": [
     {
@@ -4478,6 +4578,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/clock.hpp",
    "kind": "type",
    "members": [
     {
@@ -4652,6 +4753,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/rate.hpp",
    "kind": "type",
    "members": [
     {
@@ -4692,6 +4794,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/rate.hpp",
    "kind": "type",
    "members": [
     {
@@ -4778,18 +4881,21 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/rate.hpp",
    "kind": "alias",
    "name": "Rate",
    "qual": "rclcpp::Rate",
    "type": "GenericRate<std::chrono::system_clock>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/rate.hpp",
    "kind": "alias",
    "name": "WallRate",
    "qual": "rclcpp::WallRate",
    "type": "GenericRate<std::chrono::steady_clock>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/timer.hpp",
    "kind": "type",
    "members": [
     {
@@ -4900,18 +5006,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/timer.hpp",
    "kind": "alias",
    "name": "VoidCallbackType",
    "qual": "rclcpp::VoidCallbackType",
    "type": "std::function<void ()>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/timer.hpp",
    "kind": "alias",
    "name": "TimerCallbackType",
    "qual": "rclcpp::TimerCallbackType",
    "type": "std::function<void (TimerBase &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/timer.hpp",
    "kind": "type",
    "members": [
     {
@@ -5014,6 +5123,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/timer.hpp",
    "kind": "type",
    "members": [
     {
@@ -5075,6 +5185,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp",
    "kind": "enum",
    "name": "CallbackGroupType",
    "qual": "rclcpp::CallbackGroupType",
@@ -5084,6 +5195,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp",
    "kind": "type",
    "members": [
     {
@@ -5281,6 +5393,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/intra_process_setting.hpp",
    "kind": "enum",
    "name": "IntraProcessSetting",
    "qual": "rclcpp::IntraProcessSetting",
@@ -5291,6 +5404,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "enum",
    "name": "QosPolicyKind",
    "qual": "rclcpp::QosPolicyKind",
@@ -5308,6 +5422,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "function",
    "name": "qos_policy_kind_to_cstr",
    "params": [
@@ -5322,6 +5437,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -5341,18 +5457,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "alias",
    "name": "QosCallbackResult",
    "qual": "rclcpp::QosCallbackResult",
    "type": "rcl_interfaces::msg::SetParametersResult"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "alias",
    "name": "QosCallback",
    "qual": "rclcpp::QosCallback",
    "type": "std::function<QosCallbackResult (const rclcpp::QoS &)>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/qos_overriding_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -5424,6 +5543,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/topic_statistics_state.hpp",
    "kind": "enum",
    "name": "TopicStatisticsState",
    "qual": "rclcpp::TopicStatisticsState",
@@ -5434,6 +5554,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -5497,6 +5618,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -5550,12 +5672,14 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_options.hpp",
    "kind": "alias",
    "name": "SubscriptionOptions",
    "qual": "rclcpp::SubscriptionOptions",
    "type": "SubscriptionOptionsWithAllocator<std::allocator<void>>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/get_message_type_support_handle.hpp",
    "kind": "function",
    "name": "get_message_type_support_handle",
    "params": [],
@@ -5566,6 +5690,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/get_message_type_support_handle.hpp",
    "kind": "function",
    "name": "get_message_type_support_handle",
    "params": [],
@@ -5576,6 +5701,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/get_message_type_support_handle.hpp",
    "kind": "function",
    "name": "get_message_type_support_handle",
    "params": [],
@@ -5586,6 +5712,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/is_ros_compatible_type.hpp",
    "kind": "type",
    "members": [],
    "name": "is_ros_compatible_type",
@@ -5595,6 +5722,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/loaned_message.hpp",
    "kind": "type",
    "members": [
     {
@@ -5670,6 +5798,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -5713,6 +5842,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -5766,12 +5896,14 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_options.hpp",
    "kind": "alias",
    "name": "PublisherOptions",
    "qual": "rclcpp::PublisherOptions",
    "type": "PublisherOptionsWithAllocator<std::allocator<void>>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher.hpp",
    "kind": "type",
    "members": [
     {
@@ -5981,6 +6113,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription.hpp",
    "kind": "type",
    "members": [
     {
@@ -6221,6 +6354,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp",
    "kind": "type",
    "members": [
     {
@@ -6275,6 +6409,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -6304,6 +6439,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/future_return_code.hpp",
    "kind": "enum",
    "name": "FutureReturnCode",
    "qual": "rclcpp::FutureReturnCode",
@@ -6314,6 +6450,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/future_return_code.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -6333,6 +6470,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/future_return_code.hpp",
    "kind": "function",
    "name": "to_string",
    "params": [
@@ -6347,12 +6485,14 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp",
    "kind": "alias",
    "name": "WeakCallbackGroupsToNodesMap",
    "qual": "rclcpp::WeakCallbackGroupsToNodesMap",
    "type": "std::map<rclcpp::CallbackGroup::WeakPtr, rclcpp::node_interfaces::NodeBaseInterface::WeakPtr, std::owner_less<rclcpp::CallbackGroup::WeakPtr>>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp",
    "kind": "type",
    "members": [
     {
@@ -6664,6 +6804,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_factory.hpp",
    "kind": "type",
    "members": [
     {
@@ -6677,6 +6818,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/publisher_factory.hpp",
    "kind": "function",
    "name": "create_publisher_factory",
    "params": [
@@ -6695,6 +6837,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_factory.hpp",
    "kind": "type",
    "members": [
     {
@@ -6708,6 +6851,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_factory.hpp",
    "kind": "function",
    "name": "create_subscription_factory",
    "params": [
@@ -6744,6 +6888,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/typesupport_helpers.hpp",
    "kind": "function",
    "name": "get_typesupport_library",
    "params": [
@@ -6763,6 +6908,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/typesupport_helpers.hpp",
    "kind": "function",
    "name": "get_typesupport_handle",
    "params": [
@@ -6787,6 +6933,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/generic_publisher.hpp",
    "kind": "type",
    "members": [
     {
@@ -6886,6 +7033,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/generic_subscription.hpp",
    "kind": "type",
    "members": [
     {
@@ -7053,6 +7201,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "enum",
    "name": "ParameterType",
    "qual": "rclcpp::ParameterType",
@@ -7070,6 +7219,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "function",
    "name": "to_string",
    "params": [
@@ -7084,6 +7234,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -7103,6 +7254,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "type",
    "members": [
     {
@@ -7128,6 +7280,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "type",
    "members": [
     {
@@ -7494,6 +7647,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_value.hpp",
    "kind": "function",
    "name": "to_string",
    "params": [
@@ -7508,6 +7662,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter.hpp",
    "kind": "type",
    "members": [
     {
@@ -7706,6 +7861,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter.hpp",
    "kind": "function",
    "name": "_to_json_dict_entry",
    "params": [
@@ -7720,6 +7876,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -7739,6 +7896,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter.hpp",
    "kind": "function",
    "name": "operator<<",
    "params": [
@@ -7758,6 +7916,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/node_options.hpp",
    "kind": "type",
    "members": [
     {
@@ -8127,6 +8286,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/node.hpp",
    "kind": "type",
    "members": [
     {
@@ -9100,6 +9260,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_client.hpp",
    "kind": "function",
    "name": "create_client",
    "params": [
@@ -9141,6 +9302,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_generic_publisher.hpp",
    "kind": "function",
    "name": "create_generic_publisher",
    "params": [
@@ -9177,6 +9339,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_generic_subscription.hpp",
    "kind": "function",
    "name": "create_generic_subscription",
    "params": [
@@ -9218,6 +9381,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_publisher.hpp",
    "kind": "function",
    "name": "create_publisher",
    "params": [
@@ -9252,6 +9416,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_publisher.hpp",
    "kind": "function",
    "name": "create_publisher",
    "params": [
@@ -9290,6 +9455,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_service.hpp",
    "kind": "function",
    "name": "create_service",
    "params": [
@@ -9332,6 +9498,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_timer.hpp",
    "kind": "function",
    "name": "create_timer",
    "params": [
@@ -9373,6 +9540,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_timer.hpp",
    "kind": "function",
    "name": "create_timer",
    "params": [
@@ -9410,6 +9578,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_timer.hpp",
    "kind": "function",
    "name": "create_wall_timer",
    "params": [
@@ -9448,6 +9617,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_subscription.hpp",
    "kind": "function",
    "name": "create_subscription",
    "params": [
@@ -9494,6 +9664,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/create_subscription.hpp",
    "kind": "function",
    "name": "create_subscription",
    "params": [
@@ -9544,6 +9715,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/node_impl.hpp",
    "kind": "function",
    "name": "extend_name_with_sub_namespace",
    "params": [
@@ -9563,6 +9735,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin_some",
    "params": [
@@ -9577,6 +9750,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin_some",
    "params": [
@@ -9591,6 +9765,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin",
    "params": [
@@ -9605,6 +9780,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin",
    "params": [
@@ -9619,6 +9795,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin_until_future_complete",
    "params": [
@@ -9647,6 +9824,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp",
    "kind": "function",
    "name": "spin_until_future_complete",
    "params": [
@@ -9676,12 +9854,14 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_map.hpp",
    "kind": "alias",
    "name": "ParameterMap",
    "qual": "rclcpp::ParameterMap",
    "type": "std::unordered_map<std::string, std::vector<Parameter>>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_map.hpp",
    "kind": "function",
    "name": "parameter_map_from",
    "params": [
@@ -9696,6 +9876,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_map.hpp",
    "kind": "function",
    "name": "parameter_map_from",
    "params": [
@@ -9715,6 +9896,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_map.hpp",
    "kind": "function",
    "name": "parameter_value_from",
    "params": [
@@ -9729,6 +9911,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_map.hpp",
    "kind": "function",
    "name": "parameter_map_from_yaml_file",
    "params": [
@@ -9743,6 +9926,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_client.hpp",
    "kind": "type",
    "members": [
     {
@@ -10099,6 +10283,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_client.hpp",
    "kind": "type",
    "members": [
     {
@@ -10567,6 +10752,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_event_handler.hpp",
    "kind": "type",
    "members": [
     {
@@ -10618,6 +10804,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_event_handler.hpp",
    "kind": "type",
    "members": [
     {
@@ -10659,6 +10846,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_event_handler.hpp",
    "kind": "type",
    "members": [
     {
@@ -10805,6 +10993,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/parameter_service.hpp",
    "kind": "type",
    "members": [
     {
@@ -10868,6 +11057,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/subscription_wait_set_mask.hpp",
    "kind": "type",
    "members": [
     {
@@ -10891,6 +11081,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_result_kind.hpp",
    "kind": "enum",
    "name": "WaitResultKind",
    "qual": "rclcpp::WaitResultKind",
@@ -10901,6 +11092,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_result.hpp",
    "kind": "type",
    "members": [
     {
@@ -10965,6 +11157,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_set_template.hpp",
    "kind": "type",
    "members": [
     {
@@ -11218,42 +11411,49 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_set.hpp",
    "kind": "alias",
    "name": "WaitSet",
    "qual": "rclcpp::WaitSet",
    "type": "rclcpp::WaitSetTemplate<rclcpp::wait_set_policies::SequentialSynchronization, rclcpp::wait_set_policies::DynamicStorage>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_set.hpp",
    "kind": "alias",
    "name": "StaticWaitSet",
    "qual": "rclcpp::StaticWaitSet",
    "type": ""
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp/rclcpp/wait_set.hpp",
    "kind": "alias",
    "name": "ThreadSafeWaitSet",
    "qual": "rclcpp::ThreadSafeWaitSet",
    "type": "rclcpp::WaitSetTemplate<rclcpp::wait_set_policies::ThreadSafeSynchronization, rclcpp::wait_set_policies::DynamicStorage>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "alias",
    "name": "GoalUUID",
    "qual": "rclcpp_action::GoalUUID",
    "type": "std::array<uint8_t, 16>"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "alias",
    "name": "GoalStatus",
    "qual": "rclcpp_action::GoalStatus",
    "type": "action_msgs::msg::GoalStatus"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "alias",
    "name": "GoalInfo",
    "qual": "rclcpp_action::GoalInfo",
    "type": "action_msgs::msg::GoalInfo"
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "function",
    "name": "to_string",
    "params": [
@@ -11268,6 +11468,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "function",
    "name": "convert",
    "params": [
@@ -11287,6 +11488,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/types.hpp",
    "kind": "function",
    "name": "convert",
    "params": [
@@ -11306,6 +11508,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/client_goal_handle.hpp",
    "kind": "enum",
    "name": "ResultCode",
    "qual": "rclcpp_action::ResultCode",
@@ -11317,6 +11520,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/client_goal_handle.hpp",
    "kind": "type",
    "members": [
     {
@@ -11371,6 +11575,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/client.hpp",
    "kind": "type",
    "members": [
     {
@@ -11502,6 +11707,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/client.hpp",
    "kind": "type",
    "members": [
     {
@@ -11638,6 +11844,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/create_client.hpp",
    "kind": "function",
    "name": "create_client",
    "params": [
@@ -11684,6 +11891,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/create_client.hpp",
    "kind": "function",
    "name": "create_client",
    "params": [
@@ -11716,6 +11924,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server_goal_handle.hpp",
    "kind": "type",
    "members": [
     {
@@ -11742,6 +11951,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server_goal_handle.hpp",
    "kind": "type",
    "members": [
     {
@@ -11818,6 +12028,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server.hpp",
    "kind": "enum",
    "name": "GoalResponse",
    "qual": "rclcpp_action::GoalResponse",
@@ -11828,6 +12039,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server.hpp",
    "kind": "enum",
    "name": "CancelResponse",
    "qual": "rclcpp_action::CancelResponse",
@@ -11837,6 +12049,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server.hpp",
    "kind": "type",
    "members": [
     {
@@ -11947,6 +12160,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/server.hpp",
    "kind": "type",
    "members": [
     {
@@ -12018,6 +12232,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/create_server.hpp",
    "kind": "function",
    "name": "create_server",
    "params": [
@@ -12079,6 +12294,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_action/rclcpp_action/create_server.hpp",
    "kind": "function",
    "name": "create_server",
    "params": [
@@ -12126,6 +12342,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/state.hpp",
    "kind": "type",
    "members": [
     {
@@ -12209,6 +12426,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/managed_entity.hpp",
    "kind": "type",
    "members": [
     {
@@ -12229,6 +12447,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/managed_entity.hpp",
    "kind": "type",
    "members": [
     {
@@ -12255,6 +12474,7 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_publisher.hpp",
    "kind": "type",
    "members": [
     {
@@ -12351,6 +12571,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/transition.hpp",
    "kind": "type",
    "members": [
     {
@@ -12472,18 +12693,21 @@
    "template": []
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_node.hpp",
    "kind": "alias",
    "name": "PublisherOptionsWithAllocator",
    "qual": "rclcpp_lifecycle::PublisherOptionsWithAllocator",
    "type": ""
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_node.hpp",
    "kind": "alias",
    "name": "SubscriptionOptionsWithAllocator",
    "qual": "rclcpp_lifecycle::SubscriptionOptionsWithAllocator",
    "type": ""
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_node.hpp",
    "kind": "function",
    "name": "create_default_publisher_options",
    "params": [],
@@ -12494,6 +12718,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_node.hpp",
    "kind": "function",
    "name": "create_default_subscription_options",
    "params": [],
@@ -12504,6 +12729,7 @@
    ]
   },
   {
+   "header": "/opt/ros/humble/include/rclcpp_lifecycle/rclcpp_lifecycle/lifecycle_node.hpp",
    "kind": "type",
    "members": [
     {

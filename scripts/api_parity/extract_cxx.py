@@ -98,6 +98,48 @@ def dump_ast(source_text, lang, extra_args, tmpdir):
     return json.loads(proc.stdout)
 
 
+def annotate_files(node, state=None):
+    """Stamp every node with the source file it came from.
+
+    clang prints `loc.file` only when it CHANGES from the previously printed
+    location, so the file of any given node is "the last one printed at or
+    before it in the dump". Recovering it therefore needs a STRICT PRE-ORDER
+    walk that visits every node -- including ones the surface walk skips, and
+    including the insides of class bodies. Updating the state only where the
+    surface walk happens to look is how an earlier version of this attributed
+    `std::shared_mutex` to rclcpp: the state was whatever the last inspected
+    node had set, not the last printed one.
+
+    Runs once over the AST before extraction; the AST for all of rclcpp is
+    ~400 MB, which is a second or two and a few GB.
+    """
+    # Iterative: an rclcpp AST nests far deeper than Python's recursion limit,
+    # and raising the limit to survive one input is not a fix.
+    current = (state or {}).get("file")
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n is None:
+            continue
+        loc = n.get("loc")
+        if isinstance(loc, dict) and loc.get("file"):
+            current = loc["file"]
+        rng = n.get("range")
+        if isinstance(rng, dict):
+            begin = rng.get("begin")
+            if isinstance(begin, dict) and begin.get("file"):
+                current = begin["file"]
+        if current:
+            n["_file"] = current
+        inner = n.get("inner")
+        if inner:
+            # Reversed, so popping yields the children in source order -- the
+            # order clang printed them, which is what the omission is relative
+            # to.
+            stack.extend(reversed(inner))
+    return node
+
+
 def _type(node):
     t = node.get("type") or {}
     return t.get("qualType", "")
@@ -193,6 +235,7 @@ def walk(node, roots, ns="", out=None, prefixes=None):
                     "qual": ns + name,
                     "name": name,
                     "template": tparams,
+                    "header": child.get("_file", ""),
                     "members": _members(record),
                 }
             )
@@ -216,6 +259,7 @@ def walk(node, roots, ns="", out=None, prefixes=None):
                     "qual": ns + name,
                     "name": name,
                     "template": tparams,
+                    "header": child.get("_file", ""),
                     "params": params,
                     "ret": ret,
                 }
@@ -228,6 +272,7 @@ def walk(node, roots, ns="", out=None, prefixes=None):
                     "kind": "enum",
                     "qual": ns + name,
                     "name": name,
+                    "header": child.get("_file", ""),
                     "values": [
                         c.get("name", "")
                         for c in child.get("inner", [])
@@ -239,7 +284,13 @@ def walk(node, roots, ns="", out=None, prefixes=None):
 
         if kind in ("TypedefDecl", "TypeAliasDecl", "TypeAliasTemplateDecl") and name:
             out.append(
-                {"kind": "alias", "qual": ns + name, "name": name, "type": _type(child)}
+                {
+                    "kind": "alias",
+                    "qual": ns + name,
+                    "name": name,
+                    "header": child.get("_file", ""),
+                    "type": _type(child),
+                }
             )
             continue
 
@@ -294,5 +345,5 @@ def extract(source_text, lang, extra_args, roots, tmpdir, prefixes=None):
     For C pass `roots={""}` (file scope) plus `prefixes={"rclc_", ...}` -- see
     `_named` for why the prefix is not optional there.
     """
-    ast = dump_ast(source_text, lang, extra_args, tmpdir)
+    ast = annotate_files(dump_ast(source_text, lang, extra_args, tmpdir))
     return walk(ast, set(roots), prefixes=prefixes)

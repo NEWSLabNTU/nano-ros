@@ -6,42 +6,50 @@
  },
  "records": [
   {
+   "header": "/home/aeon/repos/LCTK/src/ros2_rust_ws/src/ros2_rust/rclrs/src/rcl_bindings_generated_humble.rs",
    "kind": "alias",
    "name": "rmw_request_id_t",
    "qual": "rclrs::rmw_request_id_t",
    "type": "rmw_request_id_s"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log",
    "qual": "rclrs::log"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log_debug",
    "qual": "rclrs::log_debug"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log_info",
    "qual": "rclrs::log_info"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log_warn",
    "qual": "rclrs::log_warn"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log_error",
    "qual": "rclrs::log_error"
   },
   {
+   "header": "rclrs/src/logging.rs",
    "kind": "macro",
    "name": "log_fatal",
    "qual": "rclrs::log_fatal"
   },
   {
+   "header": "rclrs/src/arguments.rs",
    "kind": "function",
    "name": "extract_non_ros_args",
    "params": [
@@ -58,12 +66,14 @@
    ]
   },
   {
+   "header": "rclrs/src/client.rs",
    "kind": "alias",
    "name": "Client",
    "qual": "rclrs::Client",
    "type": "std::sync::Arc<ClientState<T>>"
   },
   {
+   "header": "rclrs/src/client.rs",
    "kind": "type",
    "members": [
     {
@@ -180,6 +190,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/client.rs",
    "kind": "type",
    "members": [
     {
@@ -200,6 +211,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/client/client_async_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -230,6 +242,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/client/client_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -260,6 +273,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/client/client_output.rs",
    "kind": "type",
    "members": [
     {
@@ -274,6 +288,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/client/client_output.rs",
    "kind": "enum",
    "members": [],
    "name": "AnyClientOutputSender",
@@ -286,6 +301,7 @@
    ]
   },
   {
+   "header": "rclrs/src/clock.rs",
    "kind": "enum",
    "members": [],
    "name": "ClockType",
@@ -298,6 +314,7 @@
    ]
   },
   {
+   "header": "rclrs/src/clock.rs",
    "kind": "type",
    "members": [
     {
@@ -360,6 +377,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/clock.rs",
    "kind": "type",
    "members": [
     {
@@ -385,6 +403,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/context.rs",
    "kind": "type",
    "members": [
     {
@@ -473,6 +492,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/context.rs",
    "kind": "type",
    "members": [
     {
@@ -533,6 +553,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/error.rs",
    "kind": "enum",
    "members": [
     {
@@ -576,6 +597,7 @@
    ]
   },
   {
+   "header": "rclrs/src/error.rs",
    "kind": "type",
    "members": [],
    "name": "RclErrorMsg",
@@ -583,6 +605,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/error.rs",
    "kind": "enum",
    "members": [],
    "name": "RclReturnCode",
@@ -630,6 +653,7 @@
    ]
   },
   {
+   "header": "rclrs/src/error.rs",
    "kind": "type",
    "members": [
     {
@@ -686,6 +710,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -759,6 +784,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -867,6 +893,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -943,12 +970,14 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "alias",
    "name": "PayloadTask",
    "qual": "rclrs::PayloadTask",
    "type": "Box<dyn ? + ?>"
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [],
    "name": "ExecutorWorkerOptions",
@@ -956,6 +985,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -993,6 +1023,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -1047,6 +1078,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -1113,6 +1145,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -1133,6 +1166,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor.rs",
    "kind": "type",
    "members": [
     {
@@ -1153,6 +1187,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/executor/basic_executor.rs",
    "kind": "type",
    "members": [],
    "name": "BasicExecutorRuntime",
@@ -1160,6 +1195,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/logging/log_params.rs",
    "kind": "type",
    "members": [
     {
@@ -1252,6 +1288,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/logging/log_params.rs",
    "kind": "type",
    "members": [
     {
@@ -1441,6 +1478,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/logging/log_params.rs",
    "kind": "enum",
    "members": [],
    "name": "LoggerName",
@@ -1452,6 +1490,7 @@
    ]
   },
   {
+   "header": "rclrs/src/logging/log_params.rs",
    "kind": "enum",
    "members": [],
    "name": "LogOccurrence",
@@ -1464,6 +1503,7 @@
    ]
   },
   {
+   "header": "rclrs/src/logging/log_params.rs",
    "kind": "enum",
    "members": [],
    "name": "ThrottleClock",
@@ -1476,6 +1516,7 @@
    ]
   },
   {
+   "header": "rclrs/src/logging/logger.rs",
    "kind": "type",
    "members": [
     {
@@ -1558,12 +1599,14 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node.rs",
    "kind": "alias",
    "name": "Node",
    "qual": "rclrs::Node",
    "type": "std::sync::Arc<NodeState>"
   },
   {
+   "header": "rclrs/src/node.rs",
    "kind": "type",
    "members": [
     {
@@ -2103,6 +2146,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/node_options.rs",
    "kind": "type",
    "members": [
     {
@@ -2244,6 +2288,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/node_options.rs",
    "kind": "type",
    "members": [
     {
@@ -2264,6 +2309,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/primitive_options.rs",
    "kind": "type",
    "members": [
     {
@@ -2301,6 +2347,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/primitive_options.rs",
    "kind": "type",
    "members": [
     {
@@ -2693,12 +2740,14 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/graph.rs",
    "kind": "alias",
    "name": "TopicNamesAndTypes",
    "qual": "rclrs::TopicNamesAndTypes",
    "type": "std::collections::HashMap<String, Vec<String>>"
   },
   {
+   "header": "rclrs/src/node/graph.rs",
    "kind": "type",
    "members": [],
    "name": "NodeNameInfo",
@@ -2706,6 +2755,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/node/graph.rs",
    "kind": "type",
    "members": [],
    "name": "TopicEndpointInfo",
@@ -2713,6 +2763,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [],
    "name": "ParameterOptions",
@@ -2720,6 +2771,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [
     {
@@ -2917,6 +2969,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [],
    "name": "AvailableValues",
@@ -2924,6 +2977,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "function",
    "name": "default_initial_value_discriminator",
    "params": [
@@ -2940,6 +2994,7 @@
    ]
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [
     {
@@ -2979,6 +3034,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [
     {
@@ -3030,6 +3086,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [
     {
@@ -3050,6 +3107,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "type",
    "members": [
     {
@@ -3102,6 +3160,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "enum",
    "members": [],
    "name": "ParameterValueError",
@@ -3114,6 +3173,7 @@
    ]
   },
   {
+   "header": "rclrs/src/parameter.rs",
    "kind": "enum",
    "members": [],
    "name": "DeclarationError",
@@ -3129,6 +3189,7 @@
    ]
   },
   {
+   "header": "rclrs/src/parameter/range.rs",
    "kind": "type",
    "members": [],
    "name": "ParameterRanges",
@@ -3136,6 +3197,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter/range.rs",
    "kind": "type",
    "members": [],
    "name": "ParameterRange",
@@ -3143,6 +3205,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter/value.rs",
    "kind": "enum",
    "members": [],
    "name": "ParameterValue",
@@ -3161,6 +3224,7 @@
    ]
   },
   {
+   "header": "rclrs/src/parameter/value.rs",
    "kind": "enum",
    "members": [],
    "name": "ParameterKind",
@@ -3180,6 +3244,7 @@
    ]
   },
   {
+   "header": "rclrs/src/parameter/value.rs",
    "kind": "type",
    "members": [
     {
@@ -3194,6 +3259,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/parameter/value.rs",
    "kind": "enum",
    "members": [],
    "name": "RmwParameterConversionError",
@@ -3204,12 +3270,14 @@
    ]
   },
   {
+   "header": "rclrs/src/publisher.rs",
    "kind": "alias",
    "name": "Publisher",
    "qual": "rclrs::Publisher",
    "type": "std::sync::Arc<PublisherState<T>>"
   },
   {
+   "header": "rclrs/src/publisher.rs",
    "kind": "type",
    "members": [
     {
@@ -3297,6 +3365,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/publisher.rs",
    "kind": "type",
    "members": [
     {
@@ -3317,6 +3386,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/publisher.rs",
    "kind": "type",
    "members": [
     {
@@ -3337,6 +3407,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/publisher/loaned_message.rs",
    "kind": "type",
    "members": [
     {
@@ -3357,6 +3428,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "enum",
    "members": [],
    "name": "QoSHistoryPolicy",
@@ -3369,6 +3441,7 @@
    ]
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "enum",
    "members": [],
    "name": "QoSReliabilityPolicy",
@@ -3381,6 +3454,7 @@
    ]
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "enum",
    "members": [],
    "name": "QoSDurabilityPolicy",
@@ -3393,6 +3467,7 @@
    ]
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "enum",
    "members": [],
    "name": "QoSLivelinessPolicy",
@@ -3405,6 +3480,7 @@
    ]
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "enum",
    "members": [],
    "name": "QoSDuration",
@@ -3417,6 +3493,7 @@
    ]
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "type",
    "members": [
     {
@@ -3589,53 +3666,63 @@
    "template": []
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_SENSOR_DATA",
    "qual": "rclrs::QOS_PROFILE_SENSOR_DATA"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_CLOCK",
    "qual": "rclrs::QOS_PROFILE_CLOCK"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_PARAMETERS",
    "qual": "rclrs::QOS_PROFILE_PARAMETERS"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_DEFAULT",
    "qual": "rclrs::QOS_PROFILE_DEFAULT"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_SERVICES_DEFAULT",
    "qual": "rclrs::QOS_PROFILE_SERVICES_DEFAULT"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_PARAMETER_EVENTS",
    "qual": "rclrs::QOS_PROFILE_PARAMETER_EVENTS"
   },
   {
+   "header": "rclrs/src/qos.rs",
    "kind": "const",
    "name": "QOS_PROFILE_SYSTEM_DEFAULT",
    "qual": "rclrs::QOS_PROFILE_SYSTEM_DEFAULT"
   },
   {
+   "header": "rclrs/src/service.rs",
    "kind": "alias",
    "name": "Service",
    "qual": "rclrs::Service",
    "type": "std::sync::Arc<ServiceState<T, crate::Node>>"
   },
   {
+   "header": "rclrs/src/service.rs",
    "kind": "alias",
    "name": "WorkerService",
    "qual": "rclrs::WorkerService",
    "type": "std::sync::Arc<ServiceState<T, crate::Worker<Payload>>>"
   },
   {
+   "header": "rclrs/src/service.rs",
    "kind": "type",
    "members": [
     {
@@ -3716,6 +3803,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service.rs",
    "kind": "type",
    "members": [
     {
@@ -3736,6 +3824,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service.rs",
    "kind": "type",
    "members": [],
    "name": "ServiceHandle",
@@ -3743,6 +3832,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/any_service_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "AnyServiceCallback",
@@ -3754,6 +3844,7 @@
    ]
   },
   {
+   "header": "rclrs/src/service/node_service_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "NodeServiceCallback",
@@ -3766,6 +3857,7 @@
    ]
   },
   {
+   "header": "rclrs/src/service/into_async_service_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -3786,6 +3878,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/into_node_service_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -3806,6 +3899,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/into_worker_service_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -3826,6 +3920,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/service_info.rs",
    "kind": "type",
    "members": [],
    "name": "ServiceInfo",
@@ -3833,6 +3928,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/service_info.rs",
    "kind": "type",
    "members": [],
    "name": "RequestId",
@@ -3840,6 +3936,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/service/worker_service_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "WorkerServiceCallback",
@@ -3852,18 +3949,21 @@
    ]
   },
   {
+   "header": "rclrs/src/subscription.rs",
    "kind": "alias",
    "name": "Subscription",
    "qual": "rclrs::Subscription",
    "type": "std::sync::Arc<SubscriptionState<T, crate::Node>>"
   },
   {
+   "header": "rclrs/src/subscription.rs",
    "kind": "alias",
    "name": "WorkerSubscription",
    "qual": "rclrs::WorkerSubscription",
    "type": "std::sync::Arc<SubscriptionState<T, crate::Worker<Payload>>>"
   },
   {
+   "header": "rclrs/src/subscription.rs",
    "kind": "type",
    "members": [
     {
@@ -3944,6 +4044,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription.rs",
    "kind": "type",
    "members": [
     {
@@ -3964,6 +4065,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/any_subscription_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "AnySubscriptionCallback",
@@ -3975,6 +4077,7 @@
    ]
   },
   {
+   "header": "rclrs/src/subscription/node_subscription_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "NodeSubscriptionCallback",
@@ -3990,6 +4093,7 @@
    ]
   },
   {
+   "header": "rclrs/src/subscription/into_async_subscription_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -4010,6 +4114,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/into_node_subscription_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -4030,6 +4135,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/into_worker_subscription_callback.rs",
    "kind": "type",
    "members": [
     {
@@ -4050,6 +4156,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/message_info.rs",
    "kind": "type",
    "members": [],
    "name": "PublisherGid",
@@ -4057,6 +4164,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/message_info.rs",
    "kind": "type",
    "members": [],
    "name": "MessageInfo",
@@ -4064,6 +4172,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/readonly_loaned_message.rs",
    "kind": "type",
    "members": [],
    "name": "ReadOnlyLoanedMessage",
@@ -4071,6 +4180,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/subscription/worker_subscription_callback.rs",
    "kind": "enum",
    "members": [],
    "name": "WorkerSubscriptionCallback",
@@ -4086,6 +4196,7 @@
    ]
   },
   {
+   "header": "rclrs/src/time.rs",
    "kind": "type",
    "members": [
     {
@@ -4131,6 +4242,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set.rs",
    "kind": "type",
    "members": [
     {
@@ -4218,6 +4330,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/guard_condition.rs",
    "kind": "type",
    "members": [
     {
@@ -4238,6 +4351,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/guard_condition.rs",
    "kind": "enum",
    "members": [
     {
@@ -4294,6 +4408,7 @@
    ]
   },
   {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
    "kind": "type",
    "members": [
     {
@@ -4343,6 +4458,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
    "kind": "enum",
    "members": [],
    "name": "RclPrimitiveKind",
@@ -4358,6 +4474,7 @@
    ]
   },
   {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
    "kind": "enum",
    "members": [],
    "name": "RclPrimitiveHandle",
@@ -4373,6 +4490,7 @@
    ]
   },
   {
+   "header": "rclrs/src/wait_set/waitable.rs",
    "kind": "type",
    "members": [
     {
@@ -4398,6 +4516,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/waitable.rs",
    "kind": "type",
    "members": [],
    "name": "WaitableLifecycle",
@@ -4405,6 +4524,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/waitable.rs",
    "kind": "type",
    "members": [
     {
@@ -4419,6 +4539,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/wait_set_runner.rs",
    "kind": "type",
    "members": [
     {
@@ -4521,6 +4642,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/wait_set/wait_set_runner.rs",
    "kind": "type",
    "members": [],
    "name": "WaitSetRunConditions",
@@ -4528,12 +4650,14 @@
    "template": []
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "alias",
    "name": "Worker",
    "qual": "rclrs::Worker",
    "type": "std::sync::Arc<WorkerState<Payload>>"
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "type",
    "members": [
     {
@@ -4675,6 +4799,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "type",
    "members": [
     {
@@ -4695,6 +4820,7 @@
    "template": []
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "type",
    "members": [
     {
@@ -4734,12 +4860,14 @@
    "template": []
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "alias",
    "name": "WeakActivityListener",
    "qual": "rclrs::WeakActivityListener",
    "type": "std::sync::Weak<std::sync::Mutex<Option<ActivityListenerCallback>>>"
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "enum",
    "members": [],
    "name": "ActivityListenerCallback",
@@ -4751,6 +4879,7 @@
    ]
   },
   {
+   "header": "rclrs/src/worker.rs",
    "kind": "type",
    "members": [],
    "name": "WorkScope",

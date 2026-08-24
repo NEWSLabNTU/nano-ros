@@ -11,8 +11,13 @@ item on either side has been ACCOUNTED FOR -- matched, or classified with a
 reason. So this produces four buckets and no fifth:
 
   same       -- names correspond and the arguments agree
-  differs    -- names correspond and the arguments do NOT (the campaign's work
-                list; each needs a decision, not a shrug)
+  systematic -- names correspond, the arguments differ, and a SIGNATURE RULE
+                explains it: one platform decision applied everywhere (no
+                allocator, compile-time QoS, callback bound at creation). The
+                rule is stated once in `signature_rules.py`; the row inherits
+                its constraint instead of needing a ledger entry of its own.
+  differs    -- names correspond, the arguments differ, and NO rule explains it
+                (the campaign's work list; each needs a decision, not a shrug)
   ours-only  -- we ship it and ROS 2 does not (an RTOS extension, or a name we
                 invented where ROS 2 already had one)
   theirs-only-- ROS 2 ships it and we do not (a gap, or a deliberate decline)
@@ -47,6 +52,8 @@ explicit pair; those are matched before normalisation is tried.
 
 import difflib
 import re
+
+import signature_rules
 
 
 # rclrs 0.5 split every handle into `X` (an `Arc<XState>` alias) and `XState`
@@ -242,7 +249,11 @@ def arity_set(item):
 
 
 def compare(ours, theirs, lang):
-    """Bucket every key present on either side."""
+    """Bucket every key present on either side.
+
+    `signature_rules` is consulted only after a plain arity comparison fails, so
+    a rule can never turn an agreement into an explanation.
+    """
     rows = []
     for key in sorted(set(ours) | set(theirs)):
         o = ours.get(key)
@@ -258,8 +269,13 @@ def compare(ours, theirs, lang):
                     bucket = "same"
                     detail = None
                 else:
-                    bucket = "differs"
-                    detail = {"ours_arity": sorted(oa), "theirs_arity": sorted(ta)}
+                    rules = signature_rules.explain(key, o, t)
+                    bucket = "systematic" if rules else "differs"
+                    detail = {
+                        "ours_arity": sorted(oa),
+                        "theirs_arity": sorted(ta),
+                        "rules": rules,
+                    }
             else:
                 bucket = "same"
                 detail = None
