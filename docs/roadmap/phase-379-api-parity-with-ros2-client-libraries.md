@@ -1,9 +1,9 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
 **Status (2026-08-24). W1 LANDED — the correlator runs on all three languages
-and its first report is below. W2 is READY FOR A PARALLEL RUN: 1707 decisions,
-packeted by (language, topic), each packet owning one ledger shard so no two
-collide.** No API has been corrected yet; W1 exists to make the corrections
+and its first report is below. W2 is READY: 1682 decisions across 16 stages,
+one stage per feature, each stage covering C, C++ and Rust together and owning
+one ledger shard so no two collide.** No API has been corrected yet; W1 exists to make the corrections
 findable and to stop the next one being invisible. W3–W5 are the corrections
 and are not started; W3 and W4 depend on W2's classification, W5 on a decision
 recorded below.
@@ -43,7 +43,8 @@ sources, line them up, and report every item that does not correspond.
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --suggest-renames   # pair look-alike unmatched names
     scripts/api-parity.py --include-internal  # compare the whole ROS 2 surface
-    scripts/api-parity.py --lang cpp --grep '^Node'   # one work packet's rows
+    scripts/api-parity.py --topic pubsub              # one stage, all languages
+    scripts/api-parity.py --by-topic                  # what each stage owes
     scripts/api-parity.py --refresh …     # re-derive the ROS 2 side
     scripts/api-parity.py --self-test
 
@@ -258,34 +259,77 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
-**1707 decisions**, and they parallelise cleanly because a decision is a sentence
-about one item and touches nothing else. This section is written so several
-agents can run at once without meeting.
+**1682 decisions across 16 stages.** They parallelise cleanly because a decision
+is a sentence about one item and touches nothing else. This section is written
+so several agents can run at once without meeting — but the ORDER matters more
+than the parallelism: the campaign closes one feature at a time, in every
+language, and a stage is done only when all three lanes are.
 
-### The unit of work is a (language, topic) packet
+### The unit of work is a TOPIC, in all three languages at once
 
-Each packet owns exactly one file, `docs/reference/api-parity-ledger/<lang>-<topic>.json`,
-and nothing else. Two packets never touch the same file, so no packet can lose
-another's work to a rebase. The loader merges every `*.json` in that directory;
-the lane is the filename up to the first `-`, and a row filed under the wrong
-lane fails `--self-test` rather than quietly skewing two lanes' counts.
+A stage is a feature — node, pubsub, service — and it is finished when it is
+finished in C, C++ **and** Rust. Splitting by language instead would let C++
+pubsub land while C pubsub sits unexamined, and the drop-in claim is made per
+language: a feature that works in one is not a feature.
 
-Get your rows:
+Each stage owns exactly one file, `docs/reference/api-parity-ledger/<topic>.json`,
+holding that topic's rows in every language. Two stages never touch the same
+file, so no stage can lose another's work to a rebase. The loader merges every
+`*.json` in that directory, and `--self-test` rejects a row whose item belongs
+to a different stage — using the same `topics.topic_of` the report groups by, so
+a shard cannot disagree with the taxonomy.
 
-    scripts/api-parity.py --lang cpp --grep '^Node'
+Get a stage's rows, and see what is left:
 
-The summary line stays whole-lane on purpose — a packet should be able to see
-that it is 146 of 545, not mistake its slice for the total.
+    scripts/api-parity.py --topic pubsub    # one stage, all three languages
+    scripts/api-parity.py --by-topic        # what every stage still owes
 
-| lane | decisions | packets, by rows |
-| --- | ---: | --- |
-| cpp | 545 | node 146, pubsub 97, service 76, exec 46, qos 45, timer 24, param 12, action 6, other 87 |
-| rust | 439 | node 70, param 43, pubsub 39, timer 31, log 30, service 27, exec 14, other 158 |
-| c | 723 | action 112, service 93, pubsub 78, param 75, timer 54, lifecycle 50, exec 40, node 29, other 174 |
+    stage             c      cpp     rust    total
+    types            44        5        2       51
+    init             12       10        4       26
+    node             14       17       25       56
+    pubsub           89      125       51      265
+    service          53       72       35      160
+    timer            58       33       33      124
+    qos               7       42        9       58
+    param            72       48       46      166
+    action          148       18       11      177
+    exec             44       56       18      118
+    lifecycle        52       36       10       98
+    log              17        5       33       55
+    graph            17       21       13       51
+    serde            32        0        5       37
+    boot              2        0       10       12
+    other            38       56      134      228
+                                              1682
 
-`other` is the residue each lane's regexes did not claim; whoever takes it
-should expect it to be less coherent than the rest and may split it further by
-adding another `<lang>-<topic>.json`.
+`--by-topic` counts DECISIONS, not rows: a member whose type already carries a
+verdict is answered, so counting rows would report the same work several times
+and make a finished stage look unfinished.
+
+**Stage order** is `topics.STAGE_ORDER`, and it is not arbitrary: nothing can be
+complete before the entry point that creates it, and every entity is created on
+a node. `types` first because every other stage's signatures are written in its
+vocabulary (`nros_ret_t`, `Result`, `Expected`, the callback typedefs); then
+`init`, `node`, and the entities.
+
+**Which topic an item belongs to is decided by "which feature is incomplete
+without this?"**, not by which type declares it. So `Node::create_publisher` is
+pubsub — the verb exists to produce a publisher, and an audit of the publisher
+API needs the way you obtain one — while `Node::get_name` is node.
+`Node::declare_parameter` is param, `Node::create_wall_timer` is timer,
+`count_publishers` is graph. Each of those is a test in `topics.py`, so
+reordering the patterns breaks the tests rather than silently re-filing hundreds
+of rows.
+
+**`other` is 228 and reported, not hidden.** A large `other` means the taxonomy
+is wrong for part of the surface. The first pass had 316 and it turned out to be
+three nameable things — `serde` (the CDR primitives), `types` (error, result and
+callback vocabulary) and `boot` (baked boot/board config) — which are now stages
+of their own. What is left is mostly the RUST lane's 134, and that is not a
+taxonomy failure: it is the facade over-export this phase already identified,
+and W5 owns it. Whoever takes `other` should expect to split it again rather
+than classify it as it stands.
 
 ### One row per DECISION, not per symbol
 
@@ -306,6 +350,8 @@ exercise whose fiftieth reader stops reading. So:
   would absorb a gap, an extension and an unexplained signature change alike —
   three claims under one sentence, which is the failure a ledger exists to
   prevent. The most specific pattern wins, and an exact row always beats a glob.
+  This is why the C column is the tall one — 148 action decisions, 89 pubsub —
+  and also why it collapses fastest once the families are named.
 
 ### The verdicts
 
@@ -323,7 +369,7 @@ exercise whose fiftieth reader stops reading. So:
   reason costs the drop-in claim for nothing.
 
 `--suggest-renames` pairs unmatched names by similarity and is the fastest way
-into a packet. It is a guess: it finds `send_reply` → `send_response` and it also
+into a stage. It is a guess: it finds `send_reply` → `send_response` and it also
 pairs `Timer` with `Time`. Confirm each before writing the row.
 
 ### Rules of engagement for a parallel run
@@ -332,20 +378,25 @@ pairs `Timer` with `Time`. Confirm each before writing the row.
   identifies are W3/W4/W5's work, on a tree where the classification is already
   agreed. An agent that starts renaming while four others classify produces a
   report nobody can reconcile.
-* **`signature_rules.py` and `public_surface.py` are SHARED.** If a packet finds
+* **A stage is not done when one language is done.** `--topic <name>` prints all
+  three lanes for a reason; finishing cpp and leaving c is how the drop-in claim
+  ends up true in one language and false in another.
+* **`signature_rules.py`, `public_surface.py` and `topics.py` are SHARED.** If a stage finds
   a systematic pattern or a mis-filtered internal, do not edit those files —
-  say so in the packet's report and let one person land it. A rule change moves
+  say so in the stage's report and let one person land it. A rule change moves
   rows in every lane at once.
 * **Do not run `--refresh`.** It rewrites the recorded ROS 2 surfaces, which
-  every other packet is reading.
+  every other stage is reading.
 * **Reserve issue ids with `just issue-new <slug>`**, never by reading the
   highest number — parallel sessions collide on this and have seven times.
 * **Gate before finishing:** `just check-api-parity-ledger` (buildless, seconds).
 
 ### Acceptance
 
-Per packet: every row its `--grep` selects carries a verdict, directly or
-inherited, and `just check-api-parity-ledger` is green.
+Per stage: every row `--topic <name>` selects, **in all three languages**,
+carries a verdict — directly, inherited from its type, or from a declared glob —
+and `just check-api-parity-ledger` is green. `--by-topic` shows the stage at
+`0 0 0`.
 
 For W2 as a whole: `scripts/api-parity.py --check` is green and joins the
 `just check` fast lane. Until then the gate stays out — one that fails on 1707
@@ -394,7 +445,7 @@ Two decisions, neither of them mechanical:
 
 ## Blocking decisions (not an agent's to make)
 
-Two, and they change what later packets conclude rather than how they work, so
+Two, and they change what later stages conclude rather than how they work, so
 W2 does not wait on either:
 
 1. **Which rclrs do we mirror** — RFC-0036 says 0.7.0, the recorded surface is

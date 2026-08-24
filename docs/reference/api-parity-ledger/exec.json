@@ -26,13 +26,21 @@
     "a gate that fails on ~2000 rows from the day it lands is one somebody",
     "switches off. Keys beginning with '_' are documentation and are skipped.",
     "",
-    "SHARDED BY LANGUAGE so parallel work does not collide: this file holds only",
     "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
     "shard in this directory. One agent per lane can write without a rebase",
-    "conflict against the others."
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
   ],
   "cpp:AnyExecutable": {
     "verdict": "declined",
     "why": "An rclcpp internal, not user API -- it is the wait-set result type its executors pass between themselves. A user writes neither the type nor its fields. RFC-0002's executor is not built from it."
+  },
+  "rust:Executor::spin_async": {
+    "verdict": "declined",
+    "why": "rclrs drives spin_async on an async runtime (async-std/tokio). no_std targets have neither, and RFC-0002 puts one executor per RTOS task rather than a task-stealing runtime. The blocking `spin` is the whole model here."
   }
 }

@@ -16,7 +16,8 @@ does not correspond.
     scripts/api-parity.py --show same     # include the matching rows too
     scripts/api-parity.py --suggest-renames   # pair up look-alike unmatched names
     scripts/api-parity.py --include-internal  # do not filter the ROS 2 side to public API
-    scripts/api-parity.py --lang cpp --grep '^Node' # one work packet's rows
+    scripts/api-parity.py --topic pubsub   # one stage, all three languages
+    scripts/api-parity.py --by-topic      # what is left, per stage
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --refresh       # re-derive the ROS 2 side from source
     scripts/api-parity.py --self-test
@@ -84,6 +85,7 @@ import extract_cxx  # noqa: E402
 import extract_rust  # noqa: E402
 import public_surface  # noqa: E402
 import signature_rules  # noqa: E402
+import topics  # noqa: E402
 
 SURFACE_DIR = os.path.join(ROOT, "docs", "reference", "api-surface")
 LEDGER_DIR = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
@@ -288,13 +290,18 @@ def load_ledger():
     JSON has no comments, so each shard explains itself in `_doc`. Keys
     beginning with `_` are documentation and are never entries.
 
-    A shard file is named `<lang>[-<topic>].json`, so one lane can be split
-    further -- `cpp-node.json`, `cpp-qos.json` -- and several people can work
-    the same lane at once. The lane is the part before the first `-`.
+    A shard is named after a TOPIC -- `node.json`, `pubsub.json` -- and holds
+    that topic's rows in ALL THREE languages. The campaign closes a feature at a
+    time across every language, so the topic is what an agent owns and what
+    "complete" is asserted about. Sharding by language instead would let C++
+    pubsub land while C pubsub sits unexamined, and the drop-in claim is made
+    per language: a feature that works in one is not a feature.
 
-    A row filed in the wrong shard is a real error, not a harmless one: the
-    shard is the lane's inventory, and a `cpp:` row hiding in `rust.json` makes
-    both lanes' counts wrong. `--self-test` rejects it.
+    A row filed in the wrong shard is a real error, not a harmless one -- the
+    shard is the topic's inventory, and a `qos` row hiding in `node.json` makes
+    both stages' counts wrong. `--self-test` rejects it, using the same
+    `topics.topic_of` the report groups by, so a shard cannot disagree with the
+    taxonomy.
     """
     merged = {}
     if not os.path.isdir(LEDGER_DIR):
@@ -302,14 +309,14 @@ def load_ledger():
     for name in sorted(os.listdir(LEDGER_DIR)):
         if not name.endswith(".json"):
             continue
-        lane = name[: -len(".json")].split("-", 1)[0]
+        shard_topic = name[: -len(".json")]
         with open(os.path.join(LEDGER_DIR, name)) as fh:
             raw = json.load(fh)
         for key, value in raw.items():
             if key.startswith("_"):
                 continue
             value = dict(value)
-            value["_shard"] = lane
+            value["_shard"] = shard_topic
             # The lane is what correctness turns on; the FILENAME is what the
             # person fixing it has to open. A message naming `cpp.json` when the
             # row sits in `cpp-node.json` sends them to a file that need not
@@ -397,13 +404,14 @@ def validate_ledger(entries):
         lang = key.split(":", 1)[0]
         if lang not in LANGS:
             problems.append("ledger %s: unknown language %r" % (key, lang))
-        elif "_shard" in value and value["_shard"] != lang:
-            problems.append(
-                "ledger %s: filed in %s, which is the %s lane; move it to a "
-                "%s-*.json shard"
-                % (key, value.get("_file", value["_shard"] + ".json"),
-                   value["_shard"], lang)
-            )
+        if "_shard" in value:
+            item = key.partition(":")[2]
+            want = topics.topic_of(item.replace("*", ""))
+            if value["_shard"] != want:
+                problems.append(
+                    "ledger %s: filed in %s, but it is a %s item; move it to "
+                    "%s.json" % (key, value.get("_file", "?"), want, want)
+                )
     return problems
 
 
@@ -428,7 +436,51 @@ def run_lang(lang, tmpdir, include_internal=False):
     return correlate.compare(ours, theirs, clang), payload.get("provenance", {}), removed
 
 
-def report(langs, show, check, suggest, include_internal, grep=None):
+def by_topic(langs, tmpdir):
+    """Per stage, per language, how many DECISIONS are still unledgered.
+
+    A decision, not a row: a member whose type carries the verdict is already
+    answered, so counting rows would report the same work several times and make
+    a finished stage look unfinished.
+    """
+    ledger = load_ledger()
+    table = {}
+    for lang in langs:
+        rows, _prov, _removed = run_lang(lang, tmpdir)
+        buckets = {r["key"]: r["bucket"] for r in rows}
+        for r in rows:
+            if r["bucket"] == "same":
+                continue
+            entry, _inh = lookup(ledger, lang, r["key"], r["bucket"], buckets)
+            if entry is not None or r["bucket"] == "systematic":
+                continue
+            if "::" in r["key"]:
+                owner = r["key"].rsplit("::", 1)[0]
+                if buckets.get(owner) == r["bucket"]:
+                    # Answered by whatever answers its type.
+                    continue
+            topic = topics.topic_of(r["key"])
+            table.setdefault(topic, {}).setdefault(lang, 0)
+            table[topic][lang] += 1
+
+    print("\ndecisions still open, by stage (in the order STAGE_ORDER gives):\n")
+    print("    %-10s %8s %8s %8s %8s" % ("stage", *langs, "total"))
+    grand = 0
+    for topic in topics.STAGE_ORDER:
+        counts = table.get(topic, {})
+        total = sum(counts.values())
+        grand += total
+        if not total:
+            print("    %-10s %8s %8s %8s %8s   done" % (topic, *(
+                counts.get(l, 0) for l in langs), total))
+            continue
+        print("    %-10s %8d %8d %8d %8d" % (
+            topic, *(counts.get(l, 0) for l in langs), total))
+    print("    %-10s %8s %8s %8s %8d" % ("", "", "", "", grand))
+    return 0
+
+
+def report(langs, show, check, suggest, include_internal, grep=None, topic=None):
     ledger = load_ledger()
     unledgered = []
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -467,6 +519,8 @@ def report(langs, show, check, suggest, include_internal, grep=None):
             for r in rows:
                 bucket = r["bucket"]
                 if grep is not None and not grep.search(r["key"]):
+                    continue
+                if topic is not None and topics.topic_of(r["key"]) != topic:
                     continue
                 if bucket == "same" and "same" not in show:
                     continue
@@ -706,11 +760,13 @@ def self_test():
     bad = {
         "cpp:A": {"verdict": "typo", "why": "x", "_shard": "cpp"},
         "cpp:B": {"verdict": "gap", "why": "  ", "_shard": "cpp"},
-        "cpp:C": {"verdict": "gap", "why": "x", "_shard": "rust", "_file": "rust-exec.json"},
+        "cpp:QoS::reliability": {"verdict": "gap", "why": "x", "_shard": "node",
+                                 "_file": "node.json"},
         "go:D": {"verdict": "gap", "why": "x", "_shard": "go"},
     }
     caught = validate_ledger(bad)
-    for needle in ("unknown verdict", "empty reason", "rust-exec.json", "unknown language"):
+    for needle in ("unknown verdict", "empty reason", "move it to qos.json",
+                   "unknown language"):
         if not any(needle in c for c in caught):
             failures.append("validate_ledger missed %r" % needle)
 
@@ -750,6 +806,7 @@ def self_test():
 
     failures.extend(public_surface.self_test())
     failures.extend(signature_rules.self_test())
+    failures.extend(topics.self_test())
 
     for f in failures:
         print("FAIL " + f, file=sys.stderr)
@@ -769,6 +826,10 @@ def main():
                     help="do not filter the ROS 2 side down to public API")
     ap.add_argument("--grep", metavar="REGEX",
                     help="list only rows whose key matches; the summary counts stay whole-lane")
+    ap.add_argument("--topic", choices=topics.NAMES,
+                    help="one stage's rows, in every language")
+    ap.add_argument("--by-topic", action="store_true",
+                    help="how many decisions each stage still needs, per language")
     ap.add_argument("--refresh", action="store_true", help="re-derive the ROS 2 side and record it")
     ap.add_argument("--ros-prefix", default=os.environ.get("ROS_PREFIX", "/opt/ros/humble"))
     ap.add_argument("--rclc", help="path to a ros2/rclc checkout (for --refresh --lang c)")
@@ -785,8 +846,13 @@ def main():
         return 0
 
     show = set(args.show or ["differs", "systematic", "ours-only", "theirs-only"])
+    if args.by_topic:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            return by_topic(langs, tmpdir)
+
     grep = re.compile(args.grep) if args.grep else None
-    return report(langs, show, args.check, args.suggest_renames, args.include_internal, grep)
+    return report(langs, show, args.check, args.suggest_renames,
+                  args.include_internal, grep, args.topic)
 
 
 if __name__ == "__main__":
