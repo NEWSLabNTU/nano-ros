@@ -131,7 +131,24 @@ uint64_t env_u64(const char* name, uint64_t fallback) {
 // via NROS_CYCLONE_MATCH_TIMEOUT_MS without recompiling.
 constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
 
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+// Selected by CAPABILITY, not by platform name. The constraint is that the
+// target has no 8-byte atomic instruction: GCC then lowers std::atomic<int64_t>
+// to __atomic_load_8 / __atomic_store_8 / __atomic_fetch_add_8 libatomic calls,
+// which no embedded toolchain links, and the failure is a link error a long way
+// from this line. Every 32-bit MCU target is in this set -- it is what the
+// FreeRTOS and ThreadX names here used to stand in for, and Zephyr on Cortex-M
+// is the same case that the name-based test missed (thumbv7em, 2026-08-24).
+//
+// Doing it by capability also keeps real atomics wherever they exist, including
+// Zephyr on native_sim and a 64-bit ThreadX cross, which a platform-name test
+// would have thrown away.
+//
+// Dropping the ordering is sound here because this struct is single-threaded by
+// construction, not merely by convention: `pending_request[kWireScratch]` and
+// `pending_request_len` sit beside these counters as PLAIN members and are
+// mutated in the same calls. A caller that genuinely raced would be tearing a
+// 64 KiB buffer long before the sequence number mattered.
+#if !defined(__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8)
 struct ServiceAtomicI64 {
     int64_t value;
 
