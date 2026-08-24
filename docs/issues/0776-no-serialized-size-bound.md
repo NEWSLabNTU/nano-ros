@@ -78,3 +78,48 @@ Filed from phase-376 W4, which is where the false claim was found. Not part of
 that campaign's remaining work: the ABI question ("is there a slot?") is
 answered — there is not, and should not be. This is the capability the answer
 leaves open.
+
+## Upstream is not a reference implementation — it is a stub (checked 2026-08-24)
+
+Before designing ours against upstream's, I went and looked at what ROS 2 Humble
+actually ships. It is worth knowing, because it inverts the "just copy upstream"
+instinct:
+
+| implementation | what `rmw_get_serialized_message_size` does |
+| --- | --- |
+| `librmw_cyclonedds_cpp.so` | sets the error string `"rmw_get_serialized_message_size: unimplemented"` and returns `RMW_RET_UNSUPPORTED` (`mov $0x3`) |
+| `librmw_fastrtps_cpp.so` | same shape, same `"unimplemented"`, same `RMW_RET_UNSUPPORTED` |
+| `librmw_zenoh_cpp.so` | has a real body |
+
+And, more telling: **nothing in the whole installation calls it.** Scanning every
+`lib*.so` under `/opt/ros/humble/lib` for an undefined reference to the symbol
+finds zero callers — not rcl, not rclcpp, not the typesupport libraries.
+
+### Why upstream can afford that, and we cannot
+
+Upstream's serialized take writes into an `rmw_serialized_message_t`, which is
+an `rcutils_uint8_array_t` — and it RESIZES. `rmw_take_serialized_message`'s own
+documentation describes `rmw_get_serialized_message_size` as a way to pre-size
+the buffer "to prevent byte stream resizing on take". So upstream's bound is a
+PERFORMANCE HINT: skipping it costs a realloc, and that is why two of three
+implementations never bothered and nobody calls it.
+
+We have no resize. A subscription buffer is baked, and a sample that does not fit
+is DROPPED after the transport has already ACKed it. The same number that is an
+optimisation upstream is load-bearing here — which is the actual argument for
+building this, and it is stronger than "upstream has it and we do not".
+
+### What that means for the design
+
+* **Do not mirror the signature.** It takes a
+  `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`,
+  neither of which crosses this ABI — and mirroring an interface whose reference
+  implementations return `UNSUPPORTED` would buy nothing anyway.
+* **Do take one idea from it:** the `message_bounds` parameter exists because an
+  unbounded sequence has no size until someone names a limit. Upstream makes
+  that the caller's problem at runtime. Ours can be better placed — codegen sees
+  the IDL, so `string<=N` and `sequence<T, N>` give a real bound, and only a
+  genuinely unbounded field needs an explicit marker.
+* **The verdict for phase-376 stands and is now better supported:** this is not
+  a vtable slot. Two of three upstream implementations prove it does not vary by
+  backend in any way worth dispatching on — they do not vary at all.
