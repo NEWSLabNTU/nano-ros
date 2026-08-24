@@ -182,3 +182,140 @@ For those the honest answer stays `None`, and the runtime keeps whatever
 knob-sized buffer the integrator chose. The bound helps the messages that HAVE
 one, which on a real embedded graph is most of the sensor and control traffic
 but not all of it.
+
+## Design (2026-08-24) — studied against Fast-CDR, Fast-DDS and rosidl
+
+### What the references actually do
+
+**Fast-CDR's alignment primitive** (`fastcdr/Cdr.h`) is the whole trick in one
+line:
+
+```cpp
+inline static size_t alignment(size_t current_alignment, size_t dataSize) {
+    return (dataSize - (current_alignment % dataSize)) & (dataSize - 1);
+}
+```
+
+The padding a field costs is a function of WHERE it starts. So a size
+calculation threads a running offset through the walk instead of summing field
+maxima — which is exactly the positional-padding problem noted above, solved by
+carrying `current_alignment` rather than by conservative worst-casing.
+
+**rosidl's generated Fast-RTPS support** is the closest analogue to what we
+need, and its signature is the design:
+
+```cpp
+size_t max_serialized_size_String(
+    bool & full_bounded,
+    bool & is_plain,
+    size_t current_alignment);
+```
+
+Three things worth taking:
+
+1. **`current_alignment` in, size out.** Composition falls out — a nested struct
+   is the same function called at the parent's current offset. No special case.
+2. **`full_bounded` as an OUT flag**, set false the moment an unbounded member is
+   reached. The returned number is only a BOUND if the flag survived. This is
+   upstream's answer to "report no bound for unbounded types", and in Rust it is
+   simply `Option<usize>`.
+3. **`is_plain`** — the same walk also answers "is this type fixed-layout with no
+   padding surprises", which is the property that decides loan / zero-copy
+   eligibility. We have slots that care (`borrow_loaned_message`,
+   `subscription_supports_in_place`), so this falls out of work we are doing
+   anyway.
+
+**Fast-DDS's runtime path is instance-based, not type-based.**
+`rmw_fastrtps_shared_cpp`'s `TypeSupport` exposes
+`getEstimatedSerializedSize(const void * ros_message, const void * impl)` — the
+size of THIS message, not a bound on the type. Worth knowing because it
+separates two questions we should not conflate:
+
+| question | who asks | shape |
+| --- | --- | --- |
+| "how large can this TYPE ever be?" | build-time buffer sizing | `const MAX_SERIALIZED_SIZE: Option<usize>` |
+| "how large is THIS message?" | a publisher before publishing, a drop report | `fn serialized_size(&self) -> usize` |
+
+The second is the honest answer for unbounded types, which have no first answer.
+Both are the same walk with different inputs, so they should share one
+implementation.
+
+**rosidl introspection carries the same information our schema does** —
+`MessageMember` has `type_id_`, `string_upper_bound_`, `is_array_`,
+`array_size_`, `is_upper_bound_`, `members_`. Our `FieldType` is a peer of it,
+which is the evidence that `Message::FIELDS` is sufficient input.
+
+### The shape for nros-serdes
+
+```rust
+/// What one walk of a schema can say about size.
+pub struct SizeBound {
+    /// Bytes, given the starting offset the walk was handed.
+    pub bytes: usize,
+    /// False once an unbounded String / WString / Sequence is reached —
+    /// `bytes` is then a floor, not a bound.
+    pub bounded: bool,
+    /// No variable-length member anywhere: layout is fixed, so this is an
+    /// EXACT size and the type is loan-eligible.
+    pub plain: bool,
+}
+
+pub const fn size_bound(
+    fields: &'static [Field],
+    version: EncodingVersion,
+    current_alignment: usize,
+) -> SizeBound;
+```
+
+with the public per-type constant derived from it:
+
+```rust
+pub trait Message {
+    const MAX_SERIALIZED_SIZE: Option<usize>;   // None when !bounded
+}
+```
+
+Per-field contribution, all of it a pure function of `FieldType`:
+
+| `FieldType` | alignment | bytes |
+| --- | --- | --- |
+| `Bool`, `Uint8`, `Int8` | 1 | 1 |
+| `Uint16`, `Int16` | 2 | 2 |
+| `Uint32`, `Int32`, `Float32` | 4 | 4 |
+| `Uint64`, `Int64`, `Float64` | 8 (XCDR1) / 4 (XCDR2) | 8 |
+| `BoundedString(n)` | 4 | 4 + n + 1 — `write_string` writes `len+1` then the NUL |
+| `BoundedWString(n)` | 4 | 4 + 2n |
+| `String`, `WString` | 4 | unbounded → `bounded = false` |
+| `Array(n, t)` | t's | n × t, each aligned in turn |
+| `BoundedSequence(n, t)` | 4 | 4 + (n × t, each aligned) |
+| `Sequence(t)` | 4 | unbounded → `bounded = false` |
+| `Nested(ty)` | recurse | recurse at the current offset |
+
+### Three things that are easy to get wrong
+
+1. **Encoding version changes the answer.** `CdrWriter::align` caps alignment at
+   4 under XCDR2 while XCDR1 aligns 8-byte primitives to 8. A message containing
+   an `int64` therefore has TWO different bounds, and a single constant would be
+   silently wrong for one encoding. `version` is a parameter, not an assumption.
+
+2. **XCDR2 adds a 4-byte DHEADER per appendable struct.** The bound must add it
+   per nested struct under XCDR2, and not under XCDR1. Missing this
+   under-reports, which is the dangerous direction — an under-reported bound
+   sizes a buffer too small and reintroduces exactly the drop this issue is
+   about.
+
+3. **`+ 4` for the encapsulation header** at the top level only, not per nested
+   struct. The payload crossing our vtable is header plus body, which is why the
+   Cyclone backend computes `total = paylen + 4`.
+
+### Testing it honestly
+
+The calculation is worthless if it disagrees with the writer, and the tree
+already has the means to check that rather than assert it: `compat_tests.rs`
+serializes known values and asserts byte offsets. So the test is a PROPERTY —
+for every type in `packages/interfaces`, serialize a maximal instance and assert
+`buf.len() <= MAX_SERIALIZED_SIZE`, and for `plain` types assert equality. A
+bound that is merely self-consistent proves nothing; one checked against the
+writer that produced the bytes is worth having.
+
+Both encodings must be covered, or defect (1) above passes the suite.
