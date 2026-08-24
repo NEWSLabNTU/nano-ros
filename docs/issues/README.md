@@ -98,7 +98,10 @@ baked", which was false in both clauses — `nros-serdes` declares only serializ
 crate emits a size constant, and buffers are sized by env knobs the integrator GUESSES. The cost is met in
 `report_dropped_take`, whose only possible advice is "raise the knob", because the runtime cannot name the
 value that would have worked — on targets where that knob is static RAM nobody can spare. Not a vtable slot
-(nothing about a size bound varies by backend) but a CODEGEN capability. Checked what ROS 2 actually ships:
+(nothing about a size bound varies by backend) but a `nros-serdes` capability — its `Message::FIELDS` schema already carries the type info, and
+`FieldType` already distinguishes fixed / bounded / unbounded, so the bound is arithmetic over data that
+EXISTS (padding is positional, and it is one bound per encoding version, not one number). Checked what
+ROS 2 actually ships:
 cyclonedds and fastrtps BOTH return `RMW_RET_UNSUPPORTED` with the error string "unimplemented", and NOTHING
 in the install calls the symbol — because upstream's serialized buffer RESIZES, making the bound a perf hint
 there. Ours cannot resize: a sample that does not fit is dropped after the transport ACKed it, so the same

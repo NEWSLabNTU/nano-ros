@@ -123,3 +123,62 @@ building this, and it is stronger than "upstream has it and we do not".
 * **The verdict for phase-376 stands and is now better supported:** this is not
   a vtable slot. Two of three upstream implementations prove it does not vary by
   backend in any way worth dispatching on — they do not vary at all.
+
+## The mechanism is smaller than this issue first said (2026-08-24)
+
+The text above calls this "a CODEGEN capability". That is wrong, or at least
+much less true than it claimed, and the correction shrinks the work
+considerably: **`nros-serdes` already holds the type information, so the bound
+is arithmetic over data that exists today.**
+
+`nros-serdes::schema` gives every generated message a
+`Message::FIELDS: &'static [Field]`, emitted so backends can build runtime type
+descriptors (Cyclone dynamic types, FastRTPS DynamicTypeBuilder). It is
+`&'static`, `Copy`, allocation-free — usable on a `no_std` target — and verified
+populated in the generated crates, not merely promised by a doc comment.
+
+And `FieldType` already draws exactly the distinction the bound needs:
+
+| schema shape | what can be said |
+| --- | --- |
+| primitives, `Array(N, T)`, fixed `Nested` | **EXACT size** — every offset is static, so every pad is static |
+| `BoundedString(N)`, `BoundedWString(N)`, `BoundedSequence(N, T)` | **UPPER BOUND** — the IDL declared the maximum |
+| `String`, `WString`, `Sequence(T)` | **none** — genuinely unbounded, and no number exists |
+
+So the shape is `const MAX_SERIALIZED_SIZE: Option<usize>` computed from
+`FIELDS`, and nothing has to reach into codegen: codegen already emitted the
+schema.
+
+### Two things that make it not a naive sum
+
+**1. Padding is positional, so the maxima cannot simply be added.**
+`CdrWriter::align` pads relative to the stream ORIGIN
+(`padding = (align - (pos - origin) % align) % align`), so a variable-length
+field shifts the alignment of every field after it — and the worst case is not
+the all-maximum case. The tractable rule: the calculation is EXACT up to the
+first variable-length field, and adds worst-case padding (`align - 1`) per
+aligned field after it. Tighter than blanket worst-case, still a pure function
+of the schema.
+
+**2. It is not one number — it is one per encoding version.** `CdrWriter::align`
+caps alignment at 4 under XCDR2 while XCDR1 aligns 8-byte primitives to 8. A
+message containing an `int64` therefore has two different bounds. The constant
+has to be per-version (or a `const fn` of it); a single `MAX_SERIALIZED_SIZE`
+would silently be wrong for one of the two.
+
+Also `+ 4` for the encapsulation header: the payload crossing our vtable is
+header plus CDR body, which is why the Cyclone backend computes
+`total = paylen + 4`.
+
+### What this buys, and what it still does not
+
+A `const fn` over `FIELDS` makes the bound a COMPILE-TIME constant, so a
+subscription whose buffer cannot hold its own message type can fail the build
+rather than drop samples in the field. That is the check worth having.
+
+Still unsolved, and not solvable this way: an unbounded message has no number,
+and that includes common ROS types — `std_msgs/String` is `FieldType::String`.
+For those the honest answer stays `None`, and the runtime keeps whatever
+knob-sized buffer the integrator chose. The bound helps the messages that HAVE
+one, which on a real embedded graph is most of the sensor and control traffic
+but not all of it.
