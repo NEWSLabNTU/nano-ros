@@ -1158,27 +1158,13 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * the defect this is fixing — do not reintroduce it one layer down.
  *
  * A raw 0 means "unset": keep whatever the port would have done. */
-#if defined(__NuttX__)
-static void zpico_nuttx_set_priority(pthread_attr_t *attr, uint32_t raw) {
-    if (raw == 0u) {
-        return;
-    }
-    int lo = sched_get_priority_min(SCHED_FIFO);
-    int hi = sched_get_priority_max(SCHED_FIFO);
-    int p = (int)raw;
-    if (p < lo) {
-        p = lo;
-    }
-    if (p > hi) {
-        p = hi;
-    }
-    struct sched_param sp;
-    sp.sched_priority = p;
-    (void)pthread_attr_setschedpolicy(attr, SCHED_FIFO);
-    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
-    (void)pthread_attr_setschedparam(attr, &sp);
-}
-#endif
+/* issue 0765 — the guard is not NuttX-only any more.
+ *
+ * Linux and macOS speak the same raw SCHED_FIFO priorities NuttX does, and the
+ * hosted "may not be allowed to request it" concern is about the RESULT, not
+ * about the vocabulary: the call either succeeds or returns EPERM, and both are
+ * reportable. Writing a second, Linux-flavoured copy of this would be the
+ * two-spellings failure issue 0623 already charged the tree for. */
 
 static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) {
 #if !defined(CONFIG_PREEMPT_ENABLED)
@@ -1225,6 +1211,86 @@ static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) 
 #endif /* CONFIG_PREEMPT_ENABLED */
 }
 #endif /* ZENOH_ZEPHYR */
+
+/* issue 0765 — OUTSIDE the ZENOH_ZEPHYR block below.
+ *
+ * This first landed inside `#if defined(ZENOH_ZEPHYR) && ...`, which meant it
+ * compiled ONLY on Zephyr while its callers are the NuttX and Linux/macOS arms
+ * of `zpico_set_task_config` — the two platforms where it therefore did not
+ * exist. A helper defined under a guard narrower than its call sites is a
+ * link-time hole with a compile-time smell; keep it beside the function that
+ * uses it. */
+/* Guarded on the COMPILER's own macros, not on `ZENOH_LINUX` / `ZENOH_MACOS`.
+ * Those come from a zenoh-pico header included further down this file, so at
+ * THIS point they are not yet defined — the helper would vanish while its
+ * call sites two hundred lines below still compiled, which is exactly the
+ * implicit-declaration error the first attempt produced. `__linux__` and
+ * `__APPLE__` are predefined and order-independent. */
+#if defined(__NuttX__) || defined(__linux__) || defined(__APPLE__)
+/* issue 0765 — is SCHED_FIFO actually permitted for this process?
+ *
+ * This must be asked BEFORE the policy goes into a pthread ATTRIBUTE, because
+ * an attribute is not best-effort the way a post-create `pthread_setschedparam`
+ * is: with `PTHREAD_EXPLICIT_SCHED` set, `pthread_create` itself returns EPERM
+ * and the thread is never created. Measured the hard way — setting the
+ * transport band on an unprivileged host made the zenoh session fail to open
+ * at all (`RMW session open failed — Backend("rmw_ret error")`), turning a
+ * scheduling preference into a total outage.
+ *
+ * Probed by asking on THIS thread and putting it back, once per process. A
+ * request that is refused changes nothing; one that succeeds is undone
+ * immediately, so the probe cannot leave the caller on a policy it did not
+ * choose. */
+static int zpico_posix_rt_permitted(void) {
+    static int cached = -1;
+    if (cached >= 0) {
+        return cached;
+    }
+    int old_policy;
+    struct sched_param old_param;
+    if (pthread_getschedparam(pthread_self(), &old_policy, &old_param) != 0) {
+        cached = 0;
+        return cached;
+    }
+    struct sched_param probe;
+    memset(&probe, 0, sizeof(probe));
+    probe.sched_priority = sched_get_priority_min(SCHED_FIFO);
+    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &probe) == 0) {
+        (void)pthread_setschedparam(pthread_self(), old_policy, &old_param);
+        cached = 1;
+    } else {
+        cached = 0;
+    }
+    return cached;
+}
+
+static void zpico_posix_fifo_set_priority(pthread_attr_t *attr, uint32_t raw) {
+    if (raw == 0u) {
+        return;
+    }
+    if (!zpico_posix_rt_permitted()) {
+        /* Leave the attribute alone: the tasks inherit, exactly as before this
+         * arm existed. The tier path has already printed the one line naming
+         * `setcap cap_sys_nice+ep`, so saying it again per task would be noise
+         * about a fact the operator has been told. */
+        return;
+    }
+    int lo = sched_get_priority_min(SCHED_FIFO);
+    int hi = sched_get_priority_max(SCHED_FIFO);
+    int p = (int)raw;
+    if (p < lo) {
+        p = lo;
+    }
+    if (p > hi) {
+        p = hi;
+    }
+    struct sched_param sp;
+    sp.sched_priority = p;
+    (void)pthread_attr_setschedpolicy(attr, SCHED_FIFO);
+    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
+    (void)pthread_attr_setschedparam(attr, &sp);
+}
+#endif
 
 void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
                            uint32_t lease_priority, uint32_t lease_stack_bytes) {
@@ -1302,13 +1368,26 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     // inherited 100, and every publish failing with
     // `_Z_ERR_TRANSPORT_TX_FAILED`. Exactly issue 0626's finding for Zephyr,
     // left behind in the same `#else` when that one was fixed.
-    zpico_nuttx_set_priority(&g_default_read_task_attr, read_priority);
-    zpico_nuttx_set_priority(&g_default_lease_task_attr, lease_priority);
+    zpico_posix_fifo_set_priority(&g_default_read_task_attr, read_priority);
+    zpico_posix_fifo_set_priority(&g_default_lease_task_attr, lease_priority);
 #else
-    // Linux / macOS: priority needs a policy this process may not be
-    // allowed to request. Stack size only, as before.
-    (void)read_priority;
-    (void)lease_priority;
+    // issue 0765 — Linux / macOS place the transport too.
+    //
+    // This arm used to discard the priority, on the grounds that RT scheduling
+    // "needs a policy this process may not be allowed to request". True, and
+    // not a reason to refuse to ASK: `setcap cap_sys_nice+ep` is exactly how
+    // play_launch does this without root, and where the capability is absent
+    // the attribute is simply ignored at spawn — the same best-effort contract
+    // every other port here already has.
+    //
+    // Refusing to ask had a cost that only appeared once TIER priorities became
+    // real (issue 0765): the tiers run SCHED_FIFO while the read and lease
+    // tasks stay on SCHED_OTHER, and a SCHED_FIFO thread outranks every
+    // SCHED_OTHER thread unconditionally. So the app preempted the link it
+    // publishes over, with no way for an operator to state otherwise — issue
+    // 0623's inversion, on the one platform that could not express the fix.
+    zpico_posix_fifo_set_priority(&g_default_read_task_attr, read_priority);
+    zpico_posix_fifo_set_priority(&g_default_lease_task_attr, lease_priority);
 #endif
     g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
     g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;

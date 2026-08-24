@@ -759,3 +759,26 @@ reported, not silently absorbed into a 0.2 % dispatch rate."
 
 `zephyr/rust` re-verified after the core change: 17 rows ran, and it is not
 among the skips.
+
+## RETRACTION 2026-08-24 — the transport-priority experiment had no control
+
+The section above ("The priority hypothesis is REFUTED, by controlled
+experiment") argued that the 46-vs-69 spread between `transport_prio = 111` and
+`transport_prio = 1` proved the knob reached the threads, and therefore that
+"no effect on the failures" was a finding rather than a no-op.
+
+**The knob reaches nothing on NuttX.** `zpico_set_task_config`'s NuttX arm is
+guarded on `__NuttX__`, which this repo's build never defines — proven in issue
+0775 with an `#error` in the arm (fixture builds rc=0) against an unconditional
+`#error` control (rc=101, seen 4x). Both arms of that experiment compiled to the
+SAME image, so 69 vs 46 is run-to-run noise on a cell already known to be flaky.
+
+What survives, on evidence gathered later and independently:
+
+* the publish failures were 3 against 75 deliveries — never the limiter;
+* the rate shortfall isolates to the KERNEL sporadic server, by disabling
+  `apply_tier_sporadic` alone: 4/4 FAIL with it, 3/3 PASS without.
+
+So the conclusion ("this is not priority ordering") still stands; the paragraph
+that claimed to have controlled for it does not. A reader reaching that section
+should discount its table and take the kernel-isolation result instead.

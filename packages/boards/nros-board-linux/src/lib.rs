@@ -413,6 +413,48 @@ impl LinuxBoard {
             <Self as BoardExit>::exit_failure();
         }
 
+        // RFC-0079 / issue 0765 — place the transport ABOVE every tier, BEFORE
+        // the session opens. The read/lease tasks are created during open and
+        // `zpico_set_task_config` is a process-wide default consulted at that
+        // moment; after open it changes nothing.
+        //
+        // Necessary here in a way it is not on the RTOSes. Once tier priorities
+        // became real (issue 0765) the tiers run SCHED_FIFO while the read and
+        // lease tasks stay on SCHED_OTHER, and a SCHED_FIFO thread outranks
+        // every SCHED_OTHER thread unconditionally — so the app preempted the
+        // link it publishes over, always, with no arrangement in which it did
+        // not. That is not one of the two legitimate orderings issue 0623
+        // describes; it is the absence of a choice.
+        //
+        // DERIVED, not a literal: the right value depends on the tier table
+        // this entry was generated with, and a constant that stops being above
+        // the tiers when someone edits `system.toml` is worse than no constant.
+        // Best-effort like every other priority on this port — without
+        // `CAP_SYS_NICE` the attribute is ignored at spawn and the tiers'
+        // own refusal line has already said why.
+        #[cfg(unix)]
+        {
+            let max_tier = tiers.iter().map(|t| t.priority).max().unwrap_or(0);
+            if max_tier > 0 {
+                let transport = max_tier.clamp(0, i64::from(u32::MAX) - 1) as u32 + 1;
+                unsafe extern "C" {
+                    fn zpico_set_task_config(
+                        read_priority: u32,
+                        read_stack_bytes: u32,
+                        lease_priority: u32,
+                        lease_stack_bytes: u32,
+                    );
+                }
+                // 0 stack bytes = "leave the port's default alone" — this
+                // states a PRIORITY, not a stack size.
+                unsafe { zpico_set_task_config(transport, 0, transport, 0) };
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: transport tasks at SCHED_FIFO {} (one above the most urgent tier, {})",
+                    transport, max_tier
+                ));
+            }
+        }
+
         // Open the one session on the boot task; it owns the session for
         // the program's life (the boot tier's spin loop never returns).
         // issue 0687 — `from_env` is an extension trait now (the environment is
