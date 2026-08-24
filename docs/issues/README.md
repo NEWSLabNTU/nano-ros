@@ -51,6 +51,8 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0772** (platform/boards, open 2026-08-24) — FreeRTOS/lwIP has no wall-clock epoch, so an image there stamps from its BOOT epoch and a validating peer rejects it — the same defect #0758 fixed on Zephyr. The demand is the SAME consumer, not a speculative one: `board-support.toml` records `nros-board-s32z270-freertos` (Cortex-R52) as the "ASI phase-4 W5.b consumer", and 0758's closing note that "no FreeRTOS consumer has asked" was read off the Zephyr side alone. NOT a port of the Zephyr code: lwIP ships SNTP but our build compiles no `src/apps/*`, and its API is a background daemon with a compile-time callback macro — there is no synchronous `sntp_simple` equivalent, so 0758 W4's "acquired before the first stamp" guarantee does not carry and the clock flips mid-run. Verification is hardware-only (no emulator models the S32Z270 RTU); prove the mechanism on an mps2-an385 lwIP image instead. See `0772-*`. (2026-08-24)
+
 **#0760** (orchestration/rmw, open 2026-08-23) — RFC-0074's `ingress = { rate_hz, burst }` declaration is a
 **ros-launch-manifest** schema change, not a nano-ros one: `[[subscription]]` and its field set are defined
 by that repo, consumed here as a TAG-pinned dep (`v0.1.8`), so deciding it unilaterally in an nano-ros RFC
