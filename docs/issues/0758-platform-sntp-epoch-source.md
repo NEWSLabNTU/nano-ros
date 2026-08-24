@@ -112,3 +112,57 @@ wants, or the next stamped-message bug is someone reaching for the wrong one.
 
 Steps 1–3 are small, land green on their own, and give ASI something to call
 before any SNTP code exists. The rest of the Direction stands unchanged.
+
+## FreeRTOS / lwIP checked (2026-08-24) — feasible, but a DIFFERENT SHAPE
+
+Checked rather than assumed, because the Direction lists lwIP beside Zephyr as
+though the two were symmetric ports of one design. They are not, and someone
+implementing the FreeRTOS half by analogy with the Zephyr one would build the
+wrong thing.
+
+### Available: yes
+
+`third-party/freertos/lwip/src/apps/sntp/sntp.c` is vendored. Our FreeRTOS build
+does not compile it — `nros-board-freertos/build.rs` carries an EXPLICIT lwIP
+source list (core, ipv4+igmp, api/sockets, netif, the FreeRTOS `sys_arch`) and
+no `src/apps/*`. Adding it is one line there plus `SNTP_*` defines in
+`lwipopts.h`.
+
+### The API is asynchronous, and lwIP has no synchronous one-shot
+
+Zephyr's `sntp_simple(server, timeout, &ts)` BLOCKS and returns the time, which
+is why W2 could acquire an offset inline at boot. lwIP offers no such call
+(`grep -c 'sntp_simple\|sntp_request_sync' sntp.c` = 0). It is a background
+daemon:
+
+```c
+void sntp_setservername(u8_t idx, const char *server);
+void sntp_init(void);          /* starts polling; returns immediately */
+```
+
+and the time arrives through a COMPILE-TIME macro the port defines —
+`SNTP_SET_SYSTEM_TIME(sec)`, or `SNTP_SET_SYSTEM_TIME_US(sec, us)` for the
+precision this ABI wants.
+
+### Why that is fine, and what it changes
+
+The returns-0 sentinel absorbs it natively: `epoch_us()` answers 0 until the
+first callback lands, then non-zero. No new convention is needed, and arguably
+it is the BETTER fit — boot does not stall on a network round trip.
+
+But one guarantee W4 makes on Zephyr does NOT carry over. There, the epoch is
+acquired between netif-up and the first component, so no message is ever stamped
+boot-relative. With lwIP the time arrives whenever the daemon gets a reply, so
+early messages carry boot-relative stamps and the clock flips mid-run. A peer
+that validates stamps will reject that opening window. Any FreeRTOS consumer has
+to either tolerate it or wait for `epoch_us() != 0` before publishing — a
+consumer-visible difference that belongs in the port's documentation, not
+discovered at a `vehicle_cmd_gate`.
+
+### Not implemented, for the reason #0750 was closed
+
+No FreeRTOS consumer has asked. The named demander is a Zephyr island
+(`nano_ros_use_board(fvp-aemv8r-smp)`); the plausible-but-unasked FreeRTOS case
+is S32Z270 (phase-372, Cortex-R52 automotive), which stamps nothing today. The
+port stays at `0` — correct, not unfinished — until someone needs it, and this
+section is what they should read first.
