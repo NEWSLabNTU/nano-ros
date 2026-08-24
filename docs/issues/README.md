@@ -478,16 +478,18 @@ CONSUMER (`0 => derived_arena`): a guard that depends on a variable being absent
 reader that goes and finds it. ARENA_SIZE 0 → 74240; `zephyr/rust` runs and passes over four suite
 runs. See `archived/0768-*`. (2026-08-23)
 
-**#0775** (rmw/boards/build, open 2026-08-24) — `zpico_set_task_config`'s NuttX arm NEVER COMPILES:
-`__NuttX__` is used four times in `zpico.c` and defined nowhere in this repo's build (it is a NuttX
-header macro this TU never pulls). Proven with `#error` in the arm (nuttx fixture built rc=0) plus the
-control that makes that reading valid — `#error` unconditionally → rc=101, seen 4x — because
-`cargo:warning` is not surfaced by that lane at all, so the first `#warning` probe showed nothing.
-RETRACTS a claim of mine in #0736: "the knob demonstrably reaches the threads" was false, both arms of
-that experiment compiled to the same image, and 69-vs-46 was noise. 0736's conclusion survives on later
-independent evidence (3-6 publish failures against 75 deliveries; kernel-sporadic isolation 4/4 vs 3/3),
-not on that spread. Also records the sibling defect already fixed: the helper was DEFINED inside a
-`ZENOH_ZEPHYR` block while its callers were the NuttX and Linux arms. See `0775-*`. (2026-08-24)
+Recently resolved (2026-08-25): **#0775** (rmw/boards/build) — `zpico_set_task_config`'s NuttX arm
+never compiled. Not a missing macro: `nros-zpico-build` has always defined `ZENOH_NUTTX`, and `zpico.c`
+simply never tested it — the NuttX lane compiles with `-DZENOH_NUTTX -DZENOH_GENERIC` and NO
+`-DZENOH_LINUX`, so BOTH the inner `#elif defined(__NuttX__)` and the outer POSIX-family gate were false
+and NuttX fell through to the generic arm that discards the attributes. Fixed by adding `ZENOH_NUTTX` to
+both outer conditions and merging the dead arm into the Linux/macOS branch. Proven with `#error` in the
+branch (rc=0 before, rc=101 after) against an `#error` control in the function body — the control being
+what separates "arm not selected" from "file not rebuilt", which the first `#warning` probe could not do
+because this lane surfaces zero `cargo:warning` lines. Discharged #0736's retracted experiment too: with
+a knob that varies something, transport band 1 vs 120 gives 2.6/2.6/2.9/1.7 against 1.7/2.9/2.8/2.6 — no
+separation, so transport priority genuinely is not what throttles that tier. See `archived/0775-*`.
+(2026-08-25)
 
 **#0765** (boards/orchestration, open 2026-08-23) — `[tiers.*.posix] priority` is ADVISORY: 11 pins
 across the bringups reach no kernel at all (`nros-board-linux` prints "advisory (not applied

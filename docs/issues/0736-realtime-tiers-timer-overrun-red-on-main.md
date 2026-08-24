@@ -782,3 +782,20 @@ What survives, on evidence gathered later and independently:
 So the conclusion ("this is not priority ordering") still stands; the paragraph
 that claimed to have controlled for it does not. A reader reaching that section
 should discount its table and take the kernel-isolation result instead.
+
+## The retracted experiment, re-run for real (2026-08-25)
+
+Issue 0775 fixed the reason the transport knob did nothing on NuttX
+(`zpico.c` tested `__NuttX__`, which this build never defines, while
+`nros-zpico-build` has always defined `ZENOH_NUTTX`). With a knob that varies
+something, the experiment above could be performed rather than assumed:
+
+| transport band | `/ctrl` vs `/telem` (ratio) |
+| --- | --- |
+| **1** — below both tiers | 2.6, 2.6, 2.9, 1.7 |
+| **120** — above both tiers | 1.7, 2.9, 2.8, 2.6 |
+
+No separation, against a 3x bar. **The conclusion stands and is now measured:**
+transport priority is not what holds this tier to a fraction of its rate. The
+kernel sporadic isolation (4/4 FAIL with `apply_tier_sporadic`, 3/3 PASS
+without) remains the explanation.

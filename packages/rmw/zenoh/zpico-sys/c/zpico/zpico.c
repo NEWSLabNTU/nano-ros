@@ -1220,13 +1220,17 @@ static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) 
  * exist. A helper defined under a guard narrower than its call sites is a
  * link-time hole with a compile-time smell; keep it beside the function that
  * uses it. */
-/* Guarded on the COMPILER's own macros, not on `ZENOH_LINUX` / `ZENOH_MACOS`.
- * Those come from a zenoh-pico header included further down this file, so at
- * THIS point they are not yet defined — the helper would vanish while its
- * call sites two hundred lines below still compiled, which is exactly the
- * implicit-declaration error the first attempt produced. `__linux__` and
- * `__APPLE__` are predefined and order-independent. */
-#if defined(__NuttX__) || defined(__linux__) || defined(__APPLE__)
+/* Guarded on the macros THIS BUILD defines (`nros-zpico-build`'s
+ * `build.define(...)`), not on compiler/OS macros.
+ *
+ * An earlier revision of this comment claimed `ZENOH_LINUX` was "not yet
+ * defined at this point" because it came from a header further down. That was
+ * wrong: these are `-D` flags and are set for the whole TU. The real reason the
+ * first attempt failed to compile was that this helper sat INSIDE the
+ * `ZENOH_ZEPHYR` block above — a helper guarded more narrowly than its call
+ * sites (issue 0775). Recorded because the wrong explanation was plausible and
+ * would have sent the next reader to the include order. */
+#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
 /* issue 0765 — is SCHED_FIFO actually permitted for this process?
  *
  * This must be asked BEFORE the policy goes into a pthread ATTRIBUTE, because
@@ -1313,8 +1317,15 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
     g_default_read_task_configured = true;
     g_default_lease_task_configured = true;
-#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
-       defined(ZENOH_ZEPHYR)) &&                                                                   \
+/* issue 0775 — `ZENOH_NUTTX`, not `__NuttX__`.
+ *
+ * `__NuttX__` is a NuttX HEADER macro and this TU never pulls the header, so
+ * this condition has never been true on NuttX. Measured from the build's own
+ * flags: the NuttX lane compiles with `-DZENOH_NUTTX -DZENOH_GENERIC` and NO
+ * `-DZENOH_LINUX`, so every arm below keyed on that list fell through to the
+ * generic one — which discards the attributes these arms exist to set. */
+#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_NUTTX) ||                     \
+       defined(__NuttX__) || defined(ZENOH_ZEPHYR)) &&                                             \
     !defined(ZENOH_THREADX)
     // POSIX: stack size via pthread_attr. A ZERO means "leave the port's
     // default alone" (the convention `nros_platform_task_attr_t.stack_bytes`
@@ -1354,24 +1365,17 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     (void)read_priority;
     (void)lease_priority;
 #endif
-#elif defined(__NuttX__)
-    // issue 0736 — NuttX is an RTOS and its priority IS settable; it was in the
-    // Linux bucket below, whose reason ("a policy this process may not be
-    // allowed to request") is a HOSTED concern about SCHED_FIFO needing
-    // privilege. NuttX has no such gate — the board's own tier spawn sets
-    // SCHED_FIFO priorities through this very API a few files over.
-    //
-    // The consequence of being in the wrong bucket: the read and lease tasks
-    // inherited whatever thread opened the session, so no NuttX image could
-    // state where its transport sits relative to its tiers. Measured on
-    // realtime-rust: tiers at FIFO 110/100 against transport threads at the
-    // inherited 100, and every publish failing with
-    // `_Z_ERR_TRANSPORT_TX_FAILED`. Exactly issue 0626's finding for Zephyr,
-    // left behind in the same `#else` when that one was fixed.
-    zpico_posix_fifo_set_priority(&g_default_read_task_attr, read_priority);
-    zpico_posix_fifo_set_priority(&g_default_lease_task_attr, lease_priority);
 #else
-    // issue 0765 — Linux / macOS place the transport too.
+    // issue 0765 / 0775 — Linux, macOS AND NuttX place the transport here.
+    //
+    // NuttX had its own `#elif defined(__NuttX__)` arm for a while. It never
+    // compiled: `__NuttX__` is a NuttX HEADER macro and this TU never pulls the
+    // header, while `nros-zpico-build` defines `ZENOH_NUTTX` AND `ZENOH_LINUX`
+    // for that target — so NuttX has always fallen through to this branch,
+    // which used to discard the priority. The arm is merged away rather than
+    // re-guarded: all three ports want the identical raw-SCHED_FIFO call, and
+    // a separate arm that agrees with this one is just somewhere for them to
+    // drift apart (issue 0775).
     //
     // This arm used to discard the priority, on the grounds that RT scheduling
     // "needs a policy this process may not be allowed to request". True, and
@@ -1447,8 +1451,15 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
     g_default_flush_task_attr.priority = (UBaseType_t)priority;
     g_default_flush_task_attr.stack_depth = stack_bytes / sizeof(StackType_t);
     g_default_flush_task_configured = true;
-#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) ||                       \
-       defined(ZENOH_ZEPHYR)) &&                                                                   \
+/* issue 0775 — `ZENOH_NUTTX`, not `__NuttX__`.
+ *
+ * `__NuttX__` is a NuttX HEADER macro and this TU never pulls the header, so
+ * this condition has never been true on NuttX. Measured from the build's own
+ * flags: the NuttX lane compiles with `-DZENOH_NUTTX -DZENOH_GENERIC` and NO
+ * `-DZENOH_LINUX`, so every arm below keyed on that list fell through to the
+ * generic one — which discards the attributes these arms exist to set. */
+#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_NUTTX) ||                     \
+       defined(__NuttX__) || defined(ZENOH_ZEPHYR)) &&                                             \
     !defined(ZENOH_THREADX)
     /* POSIX: stack size via pthread_attr; priority needs SCHED_FIFO (root),
      * so only the stack size is applied — mirrors zpico_set_task_config. */

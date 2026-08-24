@@ -1,7 +1,7 @@
 ---
 id: 775
 title: "`zpico_set_task_config`'s NuttX arm never compiles — `__NuttX__` is not defined in that TU, so the transport band I added in issue 0736 has never run"
-status: open
+status: resolved
 type: bug
 area: rmw, boards, build
 related: [issue-0736, issue-0765, issue-0766, rfc-0079]
@@ -87,3 +87,58 @@ Linux arm compile at all.
 3. A gate would help more than either: nothing catches a `#elif defined(X)` arm
    whose `X` no build defines. The `#error`-plus-control technique above is the
    cheap manual version.
+
+
+## Fixed 2026-08-25 — and the macro was already there
+
+The build was not missing a NuttX macro. `nros-zpico-build` has defined
+`ZENOH_NUTTX` all along (`runner.rs`, the `use_nuttx` branch). `zpico.c` simply
+never tested it.
+
+Read off the compiler's own flags rather than inferred — the NuttX lane
+compiles with:
+
+```
+-DZENOH_NUTTX -DZENOH_GENERIC -DZ_FEATURE_MULTI_THREAD=1
+```
+
+and **no `-DZENOH_LINUX`**, which the `runner.rs` line right beside the
+`ZENOH_NUTTX` one appears to set. So both the inner `#elif defined(__NuttX__)`
+arm AND the outer `#elif (ZENOH_LINUX || ZENOH_MACOS || __NuttX__ ||
+ZENOH_ZEPHYR)` gate were false on NuttX: the whole POSIX-family section was
+skipped and NuttX fell through to the generic arm, which discards the
+attributes those arms exist to set.
+
+Fix: add `ZENOH_NUTTX` to both outer conditions, and merge the dead
+`__NuttX__` arm into the Linux/macOS branch — all three ports want the identical
+raw-SCHED_FIFO call, and a separate arm that agrees with its neighbour is just
+somewhere for them to drift apart.
+
+Verified by the same `#error`-plus-control technique that found it:
+
+| probe | before | after |
+| --- | --- | --- |
+| `#error` in the branch | nuttx builds **rc=0** (not compiled) | **rc=101**, seen 4x |
+| `#error` in the function body (control) | rc=101 — the body always compiled | — |
+
+The control matters: it separates "this arm is not selected" from "this file was
+not rebuilt", and the first `#warning` attempt could distinguish neither,
+because this lane surfaces zero `cargo:warning` lines.
+
+## Item 2 discharged — 0736's transport experiment, run for real
+
+With the knob working, the experiment that was retracted could finally be
+performed. Same fixture, same host, band set through
+`zpico_set_task_config` and confirmed live in the guest console
+(`TEMP transport band = N`):
+
+| transport band | `/ctrl` vs `/telem` (ratio) |
+| --- | --- |
+| **1** — below both tiers (98, 99) | 67/26 (2.6), 65/25 (2.6), 63/22 (2.9), 41/24 (1.7) |
+| **120** — above both tiers | 51/30 (1.7), 92/32 (2.9), 64/23 (2.8), 67/26 (2.6) |
+
+Both arms span the same 1.7–2.9 range with no separation, against a 3x bar. So
+**transport priority makes no measurable difference to issue 0736's cell** —
+the conclusion the retracted experiment reached, now supported by a control
+that actually varies something. The cell stays dominated by the kernel sporadic
+throttle, which is where 0736's own isolation put it.
