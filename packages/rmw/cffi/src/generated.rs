@@ -829,6 +829,23 @@ pub mod rmw_liveliness_kind_t {
     #[doc = " Application calls `assert_liveliness()` at the node level."]
     pub const NROS_RMW_LIVELINESS_MANUAL_BY_NODE: Type = 3;
 }
+pub mod rmw_qos_compatibility_type_t {
+    #[doc = " Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,\n  values included.\n\n  `WARNING` is currently unreachable here: it means \"compatible, but a policy\n  could not be determined\", and our profile has no UNKNOWN encoding to express\n  an undetermined policy. Defined anyway so the value cannot be reused, and\n  booked in the phase doc with the UNKNOWN work."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_QOS_COMPATIBILITY_OK: Type = 0;
+    pub const RMW_QOS_COMPATIBILITY_WARNING: Type = 1;
+    pub const RMW_QOS_COMPATIBILITY_ERROR: Type = 2;
+}
+pub mod nros_rmw_qos_clash_t {
+    #[doc = " Which policies clashed, as a bitmask. A nano-ros extension: upstream reports\n  the reason only as prose, which a target cannot act on."]
+    pub type Type = core::ffi::c_uint;
+    pub const NROS_RMW_QOS_CLASH_NONE: Type = 0;
+    pub const NROS_RMW_QOS_CLASH_RELIABILITY: Type = 1;
+    pub const NROS_RMW_QOS_CLASH_DURABILITY: Type = 2;
+    pub const NROS_RMW_QOS_CLASH_DEADLINE: Type = 4;
+    pub const NROS_RMW_QOS_CLASH_LIVELINESS_KIND: Type = 8;
+    pub const NROS_RMW_QOS_CLASH_LIVELINESS_LEASE: Type = 16;
+}
 pub mod rmw_endpoint_type_t {
     #[doc = " Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`."]
     pub type Type = core::ffi::c_uint;
@@ -857,6 +874,33 @@ pub mod nros_rmw_session_mode_t {
     pub const NROS_RMW_SESSION_MODE_CLIENT: Type = 0;
     #[doc = " Peer-to-peer, no router. Backends without a peer mode ignore this."]
     pub const NROS_RMW_SESSION_MODE_PEER: Type = 1;
+}
+unsafe extern "C" {
+    #[doc = " Which policies of `offered` (a publisher's) and `requested` (a\n  subscription's) are incompatible, as a bitmask — no strings, so an image\n  that only needs the verdict never links the reason table.\n\n  Argument order is upstream's: publisher profile first.\n\n  Writes `*compatibility` and `*clash_mask` on `NROS_RMW_RET_OK`;\n  `NROS_RMW_RET_INVALID_ARGUMENT` if either out-parameter is NULL."]
+    pub fn nros_rmw_qos_incompatibility_mask(
+        offered: rmw_qos_profile_t,
+        requested: rmw_qos_profile_t,
+        compatibility: *mut rmw_qos_compatibility_type_t::Type,
+        clash_mask: *mut u32,
+    ) -> rmw_ret_t;
+}
+unsafe extern "C" {
+    #[doc = " Upstream `rmw_qos_profile_check_compatible`. Exact parity.\n\n  `reason` may be NULL with `reason_size` 0 — the create-time path, which\n  wants the verdict and nothing else.\n\n  The reason is SELECTED, never FORMATTED: each clash bit maps to one\n  `static const char[]` and they are appended by a bounded copy. Upstream's\n  implementations use `snprintf`, which would drag the printf engine into\n  images that deliberately excluded it.\n\n  Truncation is NOT failure: the buffer is always NUL-terminated and the\n  verdict is still written. Returning `BUFFER_TOO_SMALL` would make a\n  small-buffer caller lose the load-bearing half of the answer."]
+    pub fn rmw_qos_profile_check_compatible(
+        publisher_profile: rmw_qos_profile_t,
+        subscription_profile: rmw_qos_profile_t,
+        compatibility: *mut rmw_qos_compatibility_type_t::Type,
+        reason: *mut core::ffi::c_char,
+        reason_size: usize,
+    ) -> rmw_ret_t;
+}
+unsafe extern "C" {
+    #[doc = " Upstream `rmw_compare_gids_equal`. Exact parity.\n\n  Equal means the same `implementation_identifier` AND the same 24 bytes. Gids\n  from different backends are never equal — which matters more here than\n  upstream, because `nros_rmw_cffi_register_named` admits several backends in\n  one image.\n\n  Comparison is over the WHOLE array, so a producer must zero-pad; see\n  `rmw_gid_t`."]
+    pub fn rmw_compare_gids_equal(
+        gid1: *const rmw_gid_t,
+        gid2: *const rmw_gid_t,
+        result: *mut bool,
+    ) -> rmw_ret_t;
 }
 unsafe extern "C" {
     #[doc = " Register a custom RMW backend under the implicit name \"default\".\n  Legacy single-arg form retained for source compatibility with\n  backend ctors authored before the named registry (Phase 104.B.2).\n\n  Deprecated (Phase 128.B.5): every in-tree backend now calls\n  `nros_rmw_cffi_register_named` with its canonical name. The\n  unnamed shim will be removed in a follow-up phase.\n  Returns NROS_RMW_RET_OK."]

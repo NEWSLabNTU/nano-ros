@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "nros/rmw_ret.h"   /* the two pure functions below return rmw_ret_t */
 
 /**
  * @file rmw_entity.h
@@ -218,6 +219,105 @@ typedef struct rmw_qos_profile_t {
     uint8_t  avoid_ros_namespace_conventions;
     uint8_t  _reserved1[3];   /**< Reserved; must be zero. */
 } rmw_qos_profile_t;
+
+
+/* ====================================================================
+ * Phase 376 W4 — the two PURE functions.
+ *
+ * Plain exported C functions, deliberately NOT vtable slots, and the reason is
+ * the campaign's own rule read the other way round: a vtable slot is the
+ * mechanism for letting backends DIFFER, and these two must not. Both compute
+ * over types this header defines; if two backends disagreed about whether a QoS
+ * pair is compatible, or whether two gids name the same entity, that is a
+ * DEFECT with as many places to fix it as there are backends.
+ *
+ * Three supporting reasons:
+ *
+ *  - The useful call sites have no vtable to dispatch through. QoS
+ *    compatibility is wanted at `create_*` time (that is what produces
+ *    `NROS_RMW_RET_INCOMPATIBLE_QOS`), in codegen'd validation, and in host
+ *    tooling with no session. Neither function takes an entity, so a slot would
+ *    force a caller to invent a session — and neither could be called BEFORE a
+ *    backend registers, which is exactly when create-time validation runs.
+ *
+ *  - Upstream is not evidence for a slot. `rmw_qos_profile_check_compatible`
+ *    lives in `rmw/qos_profiles.h` and is defined by librmw ITSELF; it appears
+ *    in the implementation contract only because each `librmw_*_cpp.so`
+ *    statically links librmw and re-exports it. That is plugin packaging, not
+ *    semantics, and we load no plugin.
+ *
+ *  - Precedent: `nros_rmw_cffi_register_named` and friends are declared here
+ *    and defined once in Rust with `#[no_mangle]`, so `nros-rmw-abi` stays a
+ *    header-only INTERFACE target — no new compiled TU, no new link edge.
+ *    (`static inline` was the alternative and is worse: bindgen does not emit
+ *    it, so RFC-0054 would force a SECOND Rust implementation, which is the
+ *    first reason again.)
+ * ==================================================================== */
+
+/** Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,
+ *  values included.
+ *
+ *  `WARNING` is currently unreachable here: it means "compatible, but a policy
+ *  could not be determined", and our profile has no UNKNOWN encoding to express
+ *  an undetermined policy. Defined anyway so the value cannot be reused, and
+ *  booked in the phase doc with the UNKNOWN work. */
+typedef enum rmw_qos_compatibility_type_t {
+    RMW_QOS_COMPATIBILITY_OK      = 0,
+    RMW_QOS_COMPATIBILITY_WARNING = 1,
+    RMW_QOS_COMPATIBILITY_ERROR   = 2,
+} rmw_qos_compatibility_type_t;
+
+/** Which policies clashed, as a bitmask. A nano-ros extension: upstream reports
+ *  the reason only as prose, which a target cannot act on. */
+typedef enum nros_rmw_qos_clash_t {
+    NROS_RMW_QOS_CLASH_NONE             = 0,
+    NROS_RMW_QOS_CLASH_RELIABILITY      = 1u << 0,
+    NROS_RMW_QOS_CLASH_DURABILITY       = 1u << 1,
+    NROS_RMW_QOS_CLASH_DEADLINE         = 1u << 2,
+    NROS_RMW_QOS_CLASH_LIVELINESS_KIND  = 1u << 3,
+    NROS_RMW_QOS_CLASH_LIVELINESS_LEASE = 1u << 4,
+} nros_rmw_qos_clash_t;
+
+/** Which policies of `offered` (a publisher's) and `requested` (a
+ *  subscription's) are incompatible, as a bitmask — no strings, so an image
+ *  that only needs the verdict never links the reason table.
+ *
+ *  Argument order is upstream's: publisher profile first.
+ *
+ *  Writes `*compatibility` and `*clash_mask` on `NROS_RMW_RET_OK`;
+ *  `NROS_RMW_RET_INVALID_ARGUMENT` if either out-parameter is NULL. */
+rmw_ret_t nros_rmw_qos_incompatibility_mask(
+    rmw_qos_profile_t offered, rmw_qos_profile_t requested,
+    rmw_qos_compatibility_type_t *compatibility, uint32_t *clash_mask);
+
+/** Upstream `rmw_qos_profile_check_compatible`. Exact parity.
+ *
+ *  `reason` may be NULL with `reason_size` 0 — the create-time path, which
+ *  wants the verdict and nothing else.
+ *
+ *  The reason is SELECTED, never FORMATTED: each clash bit maps to one
+ *  `static const char[]` and they are appended by a bounded copy. Upstream's
+ *  implementations use `snprintf`, which would drag the printf engine into
+ *  images that deliberately excluded it.
+ *
+ *  Truncation is NOT failure: the buffer is always NUL-terminated and the
+ *  verdict is still written. Returning `BUFFER_TOO_SMALL` would make a
+ *  small-buffer caller lose the load-bearing half of the answer. */
+rmw_ret_t rmw_qos_profile_check_compatible(
+    rmw_qos_profile_t publisher_profile, rmw_qos_profile_t subscription_profile,
+    rmw_qos_compatibility_type_t *compatibility, char *reason, size_t reason_size);
+
+/** Upstream `rmw_compare_gids_equal`. Exact parity.
+ *
+ *  Equal means the same `implementation_identifier` AND the same 24 bytes. Gids
+ *  from different backends are never equal — which matters more here than
+ *  upstream, because `nros_rmw_cffi_register_named` admits several backends in
+ *  one image.
+ *
+ *  Comparison is over the WHOLE array, so a producer must zero-pad; see
+ *  `rmw_gid_t`. */
+rmw_ret_t rmw_compare_gids_equal(const rmw_gid_t *gid1, const rmw_gid_t *gid2,
+    bool *result);
 
 /** Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`. */
 typedef enum rmw_endpoint_type_t {

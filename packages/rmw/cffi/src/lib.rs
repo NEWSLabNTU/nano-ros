@@ -3431,3 +3431,208 @@ mod tests {
         assert_eq!(rc, NROS_RMW_RET_INVALID_ARGUMENT);
     }
 }
+
+// ============================================================================
+// Phase 376 W4 — the two PURE functions, defined ONCE
+// ============================================================================
+//
+// Declared in `nros/rmw_entity.h`, which explains at length why they are plain
+// exported functions rather than vtable slots. The one-line version: a vtable
+// slot is the mechanism for letting backends DIFFER, and these two must not.
+// They compute over types the ABI defines, they take no entity, and they are
+// wanted at create time before any backend has registered.
+//
+// Defined here for the same reason `nros_rmw_cffi_register_named` is: it keeps
+// `nros-rmw-abi` a header-only INTERFACE target, with no compiled TU and no new
+// link edge, and it keeps the implementation in ONE place — which is the whole
+// point.
+
+/// Reason strings, one per clash bit. SELECTED, never formatted: upstream's
+/// implementations `snprintf` their reason, which would pull the printf engine
+/// into images that deliberately excluded it.
+const CLASH_REASONS: &[(u32, &str)] = &[
+    (
+        generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_RELIABILITY,
+        "reliability: publisher is best-effort, subscription requires reliable; ",
+    ),
+    (
+        generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_DURABILITY,
+        "durability: publisher is volatile, subscription requires transient-local; ",
+    ),
+    (
+        generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_DEADLINE,
+        "deadline: publisher's period is longer than the subscription requires; ",
+    ),
+    (
+        generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_LIVELINESS_KIND,
+        "liveliness: publisher's kind is weaker than the subscription requires; ",
+    ),
+    (
+        generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_LIVELINESS_LEASE,
+        "liveliness lease: publisher's lease is longer than the subscription requires; ",
+    ),
+];
+
+/// `0` means "unset/no check", and `NROS_RMW_DURATION_INFINITE_MS` means
+/// explicit infinity — so neither can be compared as a plain number. Map both to
+/// "infinitely lax" for an OFFERED duration and "infinitely tolerant" for a
+/// REQUESTED one, which is the same thing: `u64::MAX`.
+fn duration_or_infinite(ms: u32) -> u64 {
+    if ms == 0 || u64::from(ms) == generated::NROS_RMW_DURATION_INFINITE_MS as u64 {
+        u64::MAX
+    } else {
+        u64::from(ms)
+    }
+}
+
+/// How strict a liveliness kind is. A publisher must assert at least as
+/// strongly as the subscription asks.
+fn liveliness_strength(kind: u8) -> u8 {
+    match u32::from(kind) {
+        generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => 3,
+        generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_NODE => 2,
+        generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC => 1,
+        _ => 0,
+    }
+}
+
+/// The DDS request-offered rules, in one place.
+fn qos_clash_mask(offered: &NrosRmwQos, requested: &NrosRmwQos) -> u32 {
+    let mut mask = 0u32;
+    if requested.reliability == generated::NROS_RMW_RELIABILITY_RELIABLE as u8
+        && offered.reliability == generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8
+    {
+        mask |= generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_RELIABILITY;
+    }
+    if requested.durability == generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
+        && offered.durability == generated::NROS_RMW_DURABILITY_VOLATILE as u8
+    {
+        mask |= generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_DURABILITY;
+    }
+    // A publisher promising samples no more often than every N ms cannot
+    // satisfy a subscription that demands one at least every M ms when N > M.
+    if duration_or_infinite(offered.deadline_ms) > duration_or_infinite(requested.deadline_ms) {
+        mask |= generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_DEADLINE;
+    }
+    if liveliness_strength(offered.liveliness_kind) < liveliness_strength(requested.liveliness_kind)
+    {
+        mask |= generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_LIVELINESS_KIND;
+    }
+    if duration_or_infinite(offered.liveliness_lease_ms)
+        > duration_or_infinite(requested.liveliness_lease_ms)
+    {
+        mask |= generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_LIVELINESS_LEASE;
+    }
+    mask
+}
+
+/// See `nros/rmw_entity.h`.
+///
+/// # Safety
+/// `compatibility` and `clash_mask` must be valid for writes when non-NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_rmw_qos_incompatibility_mask(
+    offered: NrosRmwQos,
+    requested: NrosRmwQos,
+    compatibility: *mut generated::rmw_qos_compatibility_type_t::Type,
+    clash_mask: *mut u32,
+) -> NrosRmwRet {
+    if compatibility.is_null() || clash_mask.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let mask = qos_clash_mask(&offered, &requested);
+    // SAFETY: both checked non-null above.
+    unsafe {
+        *clash_mask = mask;
+        *compatibility = if mask == 0 {
+            generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_OK
+        } else {
+            generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_ERROR
+        };
+    }
+    NROS_RMW_RET_OK
+}
+
+/// See `nros/rmw_entity.h`.
+///
+/// # Safety
+/// `compatibility` must be valid for writes; `reason` must be valid for
+/// `reason_size` bytes when non-NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rmw_qos_profile_check_compatible(
+    publisher_profile: NrosRmwQos,
+    subscription_profile: NrosRmwQos,
+    compatibility: *mut generated::rmw_qos_compatibility_type_t::Type,
+    reason: *mut core::ffi::c_char,
+    reason_size: usize,
+) -> NrosRmwRet {
+    let mut mask = 0u32;
+    // SAFETY: forwarding the caller's `compatibility` pointer, which the callee
+    // null-checks; `mask` is a local.
+    let rc = unsafe {
+        nros_rmw_qos_incompatibility_mask(
+            publisher_profile,
+            subscription_profile,
+            compatibility,
+            &mut mask,
+        )
+    };
+    if rc != NROS_RMW_RET_OK {
+        return rc;
+    }
+    if reason.is_null() || reason_size == 0 {
+        // The create-time path: the verdict is the whole answer.
+        return NROS_RMW_RET_OK;
+    }
+    // Bounded copy, always NUL-terminated. Truncation is NOT an error: a
+    // `BUFFER_TOO_SMALL` here would cost the caller the verdict, which is the
+    // half that matters.
+    let mut written = 0usize;
+    for (bit, text) in CLASH_REASONS {
+        if mask & bit == 0 {
+            continue;
+        }
+        for byte in text.as_bytes() {
+            if written + 1 >= reason_size {
+                break;
+            }
+            // SAFETY: `written + 1 < reason_size`, so this and the NUL below are
+            // both inside the caller's buffer.
+            unsafe { *reason.add(written) = *byte as core::ffi::c_char };
+            written += 1;
+        }
+    }
+    // SAFETY: `written < reason_size` by the bound above.
+    unsafe { *reason.add(written) = 0 };
+    NROS_RMW_RET_OK
+}
+
+/// See `nros/rmw_entity.h`.
+///
+/// # Safety
+/// Both gids must be valid for reads and `result` valid for writes when
+/// non-NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rmw_compare_gids_equal(
+    gid1: *const generated::rmw_gid_t,
+    gid2: *const generated::rmw_gid_t,
+    result: *mut bool,
+) -> NrosRmwRet {
+    if gid1.is_null() || gid2.is_null() || result.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: all three checked non-null above.
+    let (a, b) = unsafe { (&*gid1, &*gid2) };
+    // Identity first: gids from two backends are never equal, whatever their
+    // bytes say. `register_named` admits several backends in one image, so this
+    // is reachable here in a way it is not upstream.
+    let same_impl = match (a.implementation_identifier, b.implementation_identifier) {
+        (x, y) if x == y => true,
+        (x, y) if x.is_null() || y.is_null() => false,
+        // SAFETY: both non-null, and a backend's identifier is a static C string.
+        (x, y) => unsafe { core::ffi::CStr::from_ptr(x) == core::ffi::CStr::from_ptr(y) },
+    };
+    // SAFETY: checked non-null above.
+    unsafe { *result = same_impl && a.data == b.data };
+    NROS_RMW_RET_OK
+}

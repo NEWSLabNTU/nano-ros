@@ -84,6 +84,25 @@ TYPE_TARGET = {
 VENDOR_PREFIX = "nros_"
 
 
+# Contract symbols answered by a plain exported C FUNCTION rather than a vtable
+# slot, because their answer must not vary by backend.
+#
+# This table VERIFIES rather than records: `compare()` greps the ABI headers for
+# each declaration, so an entry whose function was never declared is reported as
+# missing. A table that only recorded intent would be the vacuous-test failure
+# one level up — a claim of coverage with nothing behind it.
+ABI_FUNCTIONS = {
+    "rmw_qos_profile_check_compatible": (
+        "computes over two `rmw_qos_profile_t` values with no entity, no session and "
+        "no transport. A per-backend answer would be a DEFECT, and the useful call "
+        "sites (create-time validation, codegen, host tooling) have no vtable to "
+        "dispatch through — some run before any backend has registered"
+    ),
+    "rmw_compare_gids_equal": (
+        "a comparison of two values this ABI defines; see qos_profile_check_compatible"
+    ),
+}
+
 # One slot answering SEVERAL upstream names.
 #
 # The name rule is mechanical (`rmw_take` -> `take`) precisely so no authored
@@ -398,9 +417,28 @@ def compare():
     for probably_a_param in ("cb", "chunk_cb", "size_cb"):
         slots.pop(probably_a_param, None)
 
-    missing, arg_diff, matched, declared, ret_diff, grouped = [], [], [], [], [], []
+    missing, arg_diff, matched, declared, ret_diff, grouped, abi_fns = (
+        [], [], [], [], [], [], [])
+
+    # What the headers actually DECLARE, so the table above cannot claim a
+    # function nobody wrote.
+    hdr = ""
+    inc = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nros")
+    for fn in sorted(os.listdir(inc)):
+        if fn.endswith(".h"):
+            hdr += open(os.path.join(inc, fn), encoding="utf-8").read()
+    hdr = re.sub(r"/\*.*?\*/", " ", hdr, flags=re.S)
+    declared_fns = {
+        n for n in ABI_FUNCTIONS if re.search(r"\b%s\s*\(" % re.escape(n), hdr)
+    }
     for name, (up_ret, params) in sorted(up.items()):
         if name in DECLINED:
+            continue
+        if name in ABI_FUNCTIONS:
+            if name in declared_fns:
+                abi_fns.append(name)
+            else:
+                missing.append((name, name, params))
             continue
         slot = GROUPED_SYMBOLS.get(name) or name[len("rmw_"):]
         if name in GROUPED_SYMBOLS:
@@ -445,6 +483,7 @@ def compare():
         "missing": missing,
         "arg_diff": arg_diff,
         "matched": matched,
+        "abi_fns": abi_fns,
         "grouped": grouped,
         "declared": declared,
         "ret_diff": ret_diff,
@@ -518,6 +557,7 @@ def main(argv):
     print(f"  slots identical to upstream : {len(r['matched'])}")
     print(f"  name matches, args DECLARED : {len(r['declared'])}")
     print(f"  answered by a GROUPED slot  : {len(r['grouped'])}")
+    print(f"  plain ABI functions         : {len(r['abi_fns'])}")
     print(f"  slots present, args differ : {len(r['arg_diff'])}")
     print(f"  UNDECLARED return-type diff: {len(r['ret_diff'])}")
     print(f"  no slot at all             : {len(r['missing'])}")

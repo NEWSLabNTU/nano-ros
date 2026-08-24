@@ -483,6 +483,57 @@ header is written above the seam. That is a genuine constraint of this design,
 not an oversight, and it is why the grouping above is honest rather than a
 convenience.
 
+#### The pure functions: plain C, not slots
+
+`rmw_qos_profile_check_compatible` and `rmw_compare_gids_equal` are declared in
+`nros/rmw_entity.h` and defined once in `nros-rmw-cffi`. They are NOT vtable
+slots, which contradicts the campaign's "all RMW functions go into the vtable"
+and is worth the exception because the rule's own purpose says so: a slot is the
+mechanism for letting backends DIFFER, and these two must not.
+
+Maintainer's framing, which is the constraint recorded here: *they must be
+independent from RMW choices and behave the same regardless of the backends.*
+
+Four reasons, strongest first:
+
+1. **A per-backend answer would be a defect.** Both compute over types this ABI
+   defines. Two backends disagreeing about whether a QoS pair is compatible, or
+   whether two gids name the same entity, is a bug with as many places to fix it
+   as there are backends.
+2. **The useful call sites have no vtable.** QoS compatibility is wanted at
+   `create_*` time — that is what produces `INCOMPATIBLE_QOS` — and in codegen'd
+   validation and host tooling with no session. Neither function takes an
+   entity, so a slot would force a caller to invent a session, and neither could
+   be called BEFORE a backend registers, which is when create-time validation
+   runs.
+3. **Upstream is not evidence for a slot.** `rmw_qos_profile_check_compatible`
+   lives in `rmw/qos_profiles.h` and is defined by librmw itself; it is in the
+   implementation contract only because each `librmw_*_cpp.so` statically links
+   librmw and re-exports it. Plugin packaging, not semantics — and we load no
+   plugin.
+4. **Precedent:** `nros_rmw_cffi_register_named` is declared here and defined in
+   Rust with `#[no_mangle]`, so `nros-rmw-abi` stays a header-only INTERFACE
+   target. (`static inline` is worse: bindgen does not emit it, so RFC-0054
+   would force a SECOND implementation — reason 1 again.)
+
+**The reason string, with no allocator.** Upstream solved ownership (caller's
+`char *` plus size, copied verbatim, so no arg deviation) but not FORMATTING:
+its implementations `snprintf`, which drags the printf engine into images that
+excluded it. So the reason is SELECTED, never formatted — one
+`static const char[]` per clash bit, appended by a bounded copy. It splits in
+two so the flash cost is opt-in: `nros_rmw_qos_incompatibility_mask` returns the
+verdict plus a machine-readable bitmask and references no strings;
+`rmw_qos_profile_check_compatible` is mask plus render. Truncation is NOT
+failure — always NUL-terminate and still write the verdict, because
+`BUFFER_TOO_SMALL` would cost a small-buffer caller the half of the answer that
+matters.
+
+**`ABI_FUNCTIONS` verifies rather than records.** `rmw-abi-shape.py` greps the
+ABI headers for each declaration, so an entry whose function was never declared
+is reported as MISSING — a table that only recorded intent would be the
+vacuous-test failure one level up. Mutation-checked: renaming an entry to a
+function nobody declares puts the symbol straight back in the gap list.
+
 #### The grouping mechanism, and its guard
 
 `GROUPED_SYMBOLS` in `scripts/rmw-abi-shape.py` is the one deliberate exception

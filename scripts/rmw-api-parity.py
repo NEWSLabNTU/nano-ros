@@ -185,10 +185,16 @@ MAP = {
     "rmw_client_response_subscription_get_actual_qos": ("gap", "as above"),
     "rmw_service_request_subscription_get_actual_qos": ("gap", "as above"),
     "rmw_service_response_publisher_get_actual_qos": ("gap", "as above"),
-    "rmw_qos_profile_check_compatible": ("gap", "pure function over two profiles — no transport needed"),
+    "rmw_qos_profile_check_compatible": (
+        "layer",
+        "a plain exported ABI function, not a vtable slot: its answer must not vary "
+        "by backend, and the useful call sites (create-time validation, codegen, host "
+        "tooling) have no vtable and may run before a backend registers. Declared in "
+        "nros/rmw_entity.h, defined once in nros-rmw-cffi",
+    ),
     # ---- Identity ----
     "rmw_get_gid_for_publisher": ("gap", "cyclone graph.cpp has GIDs; not exposed portably"),
-    "rmw_compare_gids_equal": ("gap", "pure function; blocked on GIDs being exposed at all"),
+    "rmw_compare_gids_equal": ("layer", "a plain exported ABI function; see rmw_qos_profile_check_compatible"),
     # ---- Declined: RTOS design ----
     "rmw_publisher_get_network_flow_endpoints": (
         "declined",
