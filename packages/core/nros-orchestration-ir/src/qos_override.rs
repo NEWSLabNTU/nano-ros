@@ -303,7 +303,11 @@ mod tests {
                 "manual_by_topic",
                 0,
                 qos_override_policy::LIVELINESS,
-                2,
+                // Named, for the same reason the lowering above is: W5/B2
+                // renumbered this enum to upstream's ordering and a literal
+                // `2` here kept asserting the OTHER policy. A test that
+                // hardcodes a discriminant cannot notice it moved.
+                nros_rmw::QosLivelinessPolicy::ManualByTopic as u32,
             ),
             (
                 "qos_overrides./chatter.publisher.liveliness_lease_duration",
