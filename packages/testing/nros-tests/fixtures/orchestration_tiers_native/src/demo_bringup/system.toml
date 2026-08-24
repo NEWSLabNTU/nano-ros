@@ -26,11 +26,11 @@ group_tiers = { telem = "low" }
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
 [tiers.high]
-spin_period_us = 1000
+spin_period = "1000us"
 [tiers.high.posix]
 priority = 80
 
 [tiers.low]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.low.posix]
 priority = 10

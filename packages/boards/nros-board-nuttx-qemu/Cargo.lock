@@ -464,6 +464,7 @@ dependencies = [
  "nros-rmw",
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
+ "ros-launch-manifest-types",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

@@ -39,7 +39,7 @@ group_tiers = { telem = "low" }
 [tiers.high]
 # phase-330 W2 (RFC-0063) — authored HERE, not in the generated model.
 class = "real_time"
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.high.posix]
 priority = 80
 # phase-281 W3b — RAW Zephyr priority (preemptive; lower number = higher priority).
@@ -54,7 +54,7 @@ priority = 80
 #   python3 scripts/check-tier-priority-plan-image.py <build>/zephyr/.config
 priority = 9
 # ZEPHYR-SCOPED: kernel EDF here, lowers to None (Fifo) elsewhere.
-deadline_us = 10000
+deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
 # C++ codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
@@ -76,15 +76,15 @@ priority = 3
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 99
 # NUTTX-SCOPED sporadic policy (both fields required).
-budget_us = 5000
-period_us = 10000
+budget = "5000us"
+period = "10000us"
 
 # issue 0395 — the mid tier came back with aux_node above; W6 dropped both when
 # it folded ws-realtime-cpp-mps2 in, and the two-tier reading looked right only
 # because the fixture row's comment was stale (it said 2-tier while the row
 # pointed at the 3-node mps2 bringup).
 [tiers.mid]
-spin_period_us = 50000
+spin_period = "50000us"
 [tiers.mid.posix]
 priority = 40
 [tiers.mid.freertos]
@@ -95,7 +95,7 @@ priority = 40
 priority = 2
 
 [tiers.low]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.low.posix]
 priority = 10
 # FREERTOS-SCOPED SMP core pin. `tests/freertos_core_pin_applied.rs` asserts

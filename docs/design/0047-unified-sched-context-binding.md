@@ -87,8 +87,8 @@ pkg = "ctrl_pkg"
 name = "control_node"
 group_tiers = { ctrl = "high", telem = "low" }   # a group with no entry → the default tier
 
-[tiers.high]  spin_period_us = 1000   [tiers.high.posix]  priority = 80
-[tiers.low]   spin_period_us = 10000  [tiers.low.posix]   priority = 10
+[tiers.high]  spin_period = "1000us"   [tiers.high.posix]  priority = 80
+[tiers.low]   spin_period = "10000us"  [tiers.low.posix]   priority = 10
 ```
 
 A group named in code but absent from `group_tiers` runs on the default tier — harmless, exactly like

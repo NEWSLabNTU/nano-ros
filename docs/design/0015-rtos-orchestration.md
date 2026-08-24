@@ -283,7 +283,7 @@ target_rtos = "freertos"         # selects which [tiers.<X>.<rtos>] sub-table is
 
 # Symbolic tier table. Each tier MUST have a sub-table for the active target_rtos.
 [tiers.high]
-spin_period_us = 1000
+spin_period = "1000us"
 [tiers.high.freertos]
 priority = 5                     # FreeRTOS: higher = higher
 stack_bytes = 8192
@@ -303,14 +303,14 @@ priority = 80
 sched_class = "SCHED_FIFO"
 
 [tiers.normal]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.normal.freertos]
 priority = 3
 stack_bytes = 4096
 # ... (other RTOS sub-tables analogous)
 
 [tiers.low]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.low.freertos]
 priority = 1
 stack_bytes = 4096

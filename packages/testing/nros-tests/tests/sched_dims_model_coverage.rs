@@ -73,19 +73,48 @@ fn rtos_key(p: PlatformId) -> &'static str {
     }
 }
 
-/// The `system.toml` key(s) that DECLARE a dim. All must be present for the dim
-/// to count as declared (SporadicBudget needs both budget + period).
-fn dim_keys(d: SchedDim) -> &'static [&'static str] {
+/// The `system.toml` key(s) that DECLARE a dim.
+///
+/// Two nesting levels, and they mean different things: the OUTER slice is
+/// ALL-OF (every group must be satisfied — `SporadicBudget` needs both a budget
+/// and a period), the INNER slice is ANY-OF (the accepted spellings of one
+/// field, canonical first).
+///
+/// ## Why both spellings, and why this gate would go QUIET without them
+///
+/// `ros-launch-manifest` v0.1.11 moved the unit out of the field NAME and into
+/// the VALUE — `deadline_us = 10000` became `deadline = "10000us"` — because
+/// `budget_us = 8` written by an author who meant 8 ms is a thousandfold error
+/// that type-checks. rlm keeps the old names as serde ALIASES through the
+/// deprecation window (`check/src/rules/deprecated_unit_suffix.rs` carries the
+/// authoritative rename table this mirrors), so both spellings parse and an
+/// un-migrated `system.toml` behaves identically.
+///
+/// This gate must mirror that leniency, and the reason is the exact failure
+/// class it was built for (issue 0380). It asks "is this dim DECLARED?". A
+/// name-only lookup does not ERROR when the data migrates ahead of it — it
+/// answers "absent", the dim reads as uncovered, and the report blames the
+/// authored file for a rename that happened in the consumer. The mirror image
+/// is worse: pin this to the NEW names only and every not-yet-migrated file
+/// reads as a stripped model. Either way a gate that should be describing the
+/// data starts describing its own staleness. A gate that goes quiet — or that
+/// goes red about the wrong thing — is worse than one that goes red honestly,
+/// so both spellings count, exactly as rlm counts them.
+///
+/// Note this gate tests key PRESENCE only; it never reads the value, so the new
+/// `us`/`ms` suffix on the value is not its concern (a malformed value fails
+/// loudly in `toml::from_str` at load, which is the right place for it).
+fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
     match d {
-        SchedDim::CorePin => &["core"],
+        SchedDim::CorePin => &[&["core"]],
         // issue 0260 — same `core` key; the difference is the IMAGE (multi-core)
         // and therefore what the runtime assert can claim, not the declaration.
-        SchedDim::CorePinPlacement => &["core"],
-        SchedDim::EdfDeadline => &["deadline_us"],
-        SchedDim::PreemptThreshold => &["preempt_threshold"],
-        SchedDim::TimeSlice => &["time_slice_us"],
-        SchedDim::SporadicBudget => &["budget_us", "period_us"],
-        SchedDim::TierPriority => &["priority"],
+        SchedDim::CorePinPlacement => &[&["core"]],
+        SchedDim::EdfDeadline => &[&["deadline", "deadline_us"]],
+        SchedDim::PreemptThreshold => &[&["preempt_threshold"]],
+        SchedDim::TimeSlice => &[&["time_slice", "time_slice_us"]],
+        SchedDim::SporadicBudget => &[&["budget", "budget_us"], &["period", "period_us"]],
+        SchedDim::TierPriority => &[&["priority"]],
     }
 }
 
@@ -117,6 +146,13 @@ fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
     false
 }
 
+/// Is ANY accepted spelling of one field declared? `aliases` is one inner group
+/// from [`dim_keys`] — canonical name first, deprecated names after — mirroring
+/// rlm's serde `alias` on the same field.
+fn any_alias_declared(doc: &toml::Value, rtos: &str, aliases: &[&str]) -> bool {
+    aliases.iter().any(|key| key_declared(doc, rtos, key))
+}
+
 #[test]
 fn sched_dims_are_declared_in_authored_system_toml() {
     // Parse each referenced workspace system.toml once.
@@ -144,10 +180,18 @@ fn sched_dims_are_declared_in_authored_system_toml() {
             .or_insert_with(|| load(&path))
             .clone();
         let rtos = rtos_key(cell.platform);
-        for key in dim_keys(cell.dim) {
-            if !key_declared(&doc, rtos, key) {
+        for aliases in dim_keys(cell.dim) {
+            if !any_alias_declared(&doc, rtos, aliases) {
+                // Name every spelling that would have satisfied it, so a reader
+                // of the failure can tell "the dim was stripped" from "the dim
+                // is spelled a way this gate does not know about".
+                let spellings = aliases
+                    .iter()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(" or ");
                 missing.push(format!(
-                    "  - {:?}/{:?}/{:?}: dim {:?} needs `{key}` under \
+                    "  - {:?}/{:?}/{:?}: dim {:?} needs {spellings} under \
                      [tiers.*.{rtos}] (or a generic [tiers.*]) in ws-realtime-{} — \
                      it is ABSENT (stripped model? issue 0380)",
                     cell.dim, cell.platform, cell.lang, cell.dim, ws

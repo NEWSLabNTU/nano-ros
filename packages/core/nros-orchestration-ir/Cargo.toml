@@ -38,6 +38,9 @@ thiserror = { workspace = true }
 # drift). Path crosses into the cli sub-workspace's vendored submodule — fine,
 # a path dep groups by lockfile, not visibility (same rationale as nros-macros
 # depping nros-pkg-index / nros-launch-parser).
+# `[tiers.*]` duration keys accept both the canonical and the deprecated
+# `_us` spelling; the parser is rlm's own, never a second one here.
+ros-launch-manifest-types = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.11" }
 ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.11" }
 # W5.13 follow-up — `mapper_input` adapts a resolved `SystemModel` into the
 # `MapperInput` the realizer ranks; the model types live in the sibling crate.

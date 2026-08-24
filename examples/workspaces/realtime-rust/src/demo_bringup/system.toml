@@ -31,19 +31,19 @@ group_tiers = { telem = "low" }
 # possible: the dims lived only in the generated-and-regenerable model, so
 # regenerating deleted them.
 #
-# W1.a added `core`/`deadline_us`/`budget_us`/`period_us` to that struct
+# W1.a added `core`/`deadline`/`budget`/`period` to that struct
 # (the shared `ros_launch_manifest_sched::TierPlatformSpec` the RESOLVER parses
 # this same block into always had them — the two mirrors had drifted). The
 # model is now reproducible from launch + this file alone.
 #
 # SCOPING IS THE POINT. A dim on `[tiers.high]` applies to EVERY platform; the
 # same dim in `[tiers.high.<rtos>]` engages one kernel's mechanism and lowers to
-# None elsewhere. A generic `budget_us` flips every executor into cooperative
-# sporadic gating, while `[tiers.high.nuttx].budget_us` engages only NuttX's
+# None elsewhere. A generic `budget` flips every executor into cooperative
+# sporadic gating, while `[tiers.high.nuttx].budget` engages only NuttX's
 # SCHED_SPORADIC.
 [tiers.high]
 class = "real_time"
-spin_period_us = 1000
+spin_period = "1000us"
 [tiers.high.posix]
 priority = 80
 core = 0
@@ -66,7 +66,7 @@ priority = 9
 core = 0
 # ZEPHYR-SCOPED: fires the kernel-EDF path (k_thread_deadline_set) here and
 # lowers to None (Fifo, unchanged) on posix/nuttx/threadx.
-deadline_us = 10000
+deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority). `[tiers.*.nuttx]` flips the macro's generic OwnedSpin arm onto
 # `<QemuArmVirt>::run_tiers` (RFC-0015 Model 1), one std::thread (NuttX pthread)
@@ -79,8 +79,8 @@ deadline_us = 10000
 priority = 99
 # NUTTX-SCOPED sporadic policy (both fields required): engages NuttX
 # SCHED_SPORADIC without flipping other platforms into cooperative gating.
-budget_us = 5000
-period_us = 10000
+budget = "5000us"
+period = "10000us"
 # phase-297 W5 — RAW ThreadX priority (lower number = higher priority), near
 # the app thread priority (4). Mirrors config/system_model.yaml (the entries
 # read the model; this file feeds `play_launch resolve --system`).
@@ -104,7 +104,7 @@ priority = 15
 priority = 3
 
 [tiers.low]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.low.posix]
 priority = 10
 [tiers.low.zephyr]
@@ -144,4 +144,4 @@ priority = 16
 # seam ignores it there).
 preempt_threshold = 10
 core = 0
-time_slice_us = 5000
+time_slice = "5000us"

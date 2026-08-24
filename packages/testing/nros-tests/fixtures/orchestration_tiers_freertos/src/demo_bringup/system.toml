@@ -29,13 +29,13 @@ group_tiers = { telem = "low" }
 # connected (a #46-class overflow, previously masked because the inert deploy
 # config never let `Executor::open` succeed). 64 KiB boots + runs both tiers.
 [tiers.high]
-spin_period_us = 1000
+spin_period = "1000us"
 [tiers.high.freertos]
 priority = 5
 stack_bytes = 65536
 
 [tiers.low]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.low.freertos]
 priority = 2
 stack_bytes = 65536

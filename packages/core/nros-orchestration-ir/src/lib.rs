@@ -169,13 +169,40 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
 // system.toml schema (tier subset)
 // =============================================================================
 
+/// Accept BOTH spellings of a µs-valued duration key: the canonical
+/// `spin_period = "1000us"` and the deprecated `spin_period_us = 1000`.
+///
+/// `system.toml` `[tiers.*]` has TWO parsers — this struct and the resolver's
+/// `ros_launch_manifest_sched::TierPlatformSpec` (see the drift note on
+/// `TierRtosSpec`). rlm v0.1.11 renamed these keys and kept the old names as
+/// serde aliases so it can retire them later; until this mirror accepts the
+/// new spelling too, the narrower one again defines what a user may write.
+///
+/// Parsing delegates to rlm's own `compat::opt_micros` — a duration string,
+/// or a bare number read as µs — so this crate never grows a SECOND duration
+/// parser that could disagree with the resolver's. The value is still stored
+/// as µs, like every other field here: the rename governs what a user WRITES,
+/// not our internal IR, and the model→IR boundary already converts the same
+/// way (`as_micros`, `tier_from_model`).
+fn opt_micros_u64<'de, D>(d: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(ros_launch_manifest_types::duration::compat::opt_micros(d)?.map(|v| v.as_micros()))
+}
+
 /// `[tiers.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
 /// RTOS-agnostic `spin_period_us` plus a per-RTOS sub-table
 /// (`[tiers.<name>.<rtos>]`) giving the concrete priority/stack for each target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TierDef {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "spin_period",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub spin_period_us: Option<u64>,
     // Phase 256 W4 (decision A) — the RTOS-AGNOSTIC real-time policy a callback
     // group runs under (absorbed from the retired `[[scheduling.contexts]]`
@@ -188,13 +215,28 @@ pub struct TierDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<String>,
     /// Callback period (µs) for `periodic` / `time_triggered`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "period",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub period_us: Option<u64>,
     /// Execution-time budget (µs) — EDF/sporadic.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "budget",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub budget_us: Option<u64>,
     /// Relative deadline (µs) — EDF.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "deadline",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deadline_us: Option<u64>,
     /// On deadline miss — the plan's `DeadlinePolicy` (snake_case): `"ignore"`
     /// (default) | `"warn"` | `"skip"` | `"fault"`.
@@ -228,7 +270,12 @@ pub struct TierRtosSpec {
     pub preempt_threshold: Option<i64>,
     /// Round-robin time slice in µs (#0266): time-slicing among same-priority
     /// tiers. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "time_slice",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub time_slice_us: Option<u64>,
     /// POSIX scheduler class (e.g. `"SCHED_FIFO"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -255,13 +302,28 @@ pub struct TierRtosSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<u32>,
     /// Relative deadline (µs) on THIS platform, tighter than the generic head.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "deadline",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub deadline_us: Option<u64>,
     /// Sporadic execution budget (µs) on THIS platform; pairs with `period_us`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "budget",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub budget_us: Option<u64>,
     /// Sporadic replenishment period (µs) on THIS platform.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "period",
+        deserialize_with = "opt_micros_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub period_us: Option<u64>,
 }
 
@@ -629,7 +691,7 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         priority: spec.priority,
         stack_bytes: spec.stack_bytes,
         preempt_threshold: spec.preempt_threshold,
-        time_slice_us: spec.time_slice.map(|d| d.as_micros() as u64),
+        time_slice_us: spec.time_slice.map(|d| d.as_micros()),
         sched_class: spec.sched_class.clone(),
         // phase-330 W1.a — these four were DROPPED here, because this crate's
         // `TierRtosSpec` had nowhere to put them. This is the ONE conversion
@@ -637,9 +699,9 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         // `codegen-system` consume, so a field missing here is a scoped dim
         // that silently never reaches the runtime.
         core: spec.core,
-        deadline_us: spec.deadline.map(|d| d.as_micros() as u64),
-        budget_us: spec.budget.map(|d| d.as_micros() as u64),
-        period_us: spec.period.map(|d| d.as_micros() as u64),
+        deadline_us: spec.deadline.map(|d| d.as_micros()),
+        budget_us: spec.budget.map(|d| d.as_micros()),
+        period_us: spec.period.map(|d| d.as_micros()),
     }
 }
 
@@ -654,20 +716,20 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
 pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str) -> TierDef {
     let selected = t.platform(target_rtos);
     TierDef {
-        spin_period_us: t.spin_period.map(|d| d.as_micros() as u64),
+        spin_period_us: t.spin_period.map(|d| d.as_micros()),
         class: t.class.clone(),
         period_us: selected
             .and_then(|sp| sp.period)
             .or(t.period)
-            .map(|d| d.as_micros() as u64),
+            .map(|d| d.as_micros()),
         budget_us: selected
             .and_then(|sp| sp.budget)
             .or(t.budget)
-            .map(|d| d.as_micros() as u64),
+            .map(|d| d.as_micros()),
         deadline_us: selected
             .and_then(|s| s.deadline)
             .or(t.deadline)
-            .map(|d| d.as_micros() as u64),
+            .map(|d| d.as_micros()),
         // phase-296 W5.9 — per-platform sporadic override (NuttX
         // SCHED_SPORADIC): the SELECTED platform's budget/period hoist into
         // this bake's head, so one platform's kernel sporadic server engages
@@ -693,23 +755,24 @@ mod tests {
     #[test]
     fn tier_from_model_covers_every_field() {
         use ros_launch_manifest_sched::{TierDef as ModelTierDef, TierPlatformSpec};
+        use ros_launch_manifest_types::duration::Duration;
         let model_tier = ModelTierDef {
             class: Some("real_time".to_string()),
-            deadline_us: Some(2000),
-            period_us: Some(1000),
-            budget_us: Some(500),
+            deadline: Some(Duration::from_micros(2000)),
+            period: Some(Duration::from_micros(1000)),
+            budget: Some(Duration::from_micros(500)),
             deadline_policy: Some("skip".to_string()),
-            spin_period_us: Some(250),
+            spin_period: Some(Duration::from_micros(250)),
             posix: Some(TierPlatformSpec {
                 priority: 80,
                 stack_bytes: Some(65536),
                 core: Some(2),
                 sched_class: Some("SCHED_FIFO".to_string()),
                 preempt_threshold: None,
-                deadline_us: Some(1500), // per-platform tighten
-                budget_us: Some(400),    // per-platform sporadic override
-                period_us: Some(900),
-                time_slice_us: None,
+                deadline: Some(Duration::from_micros(1500)), // per-platform tighten
+                budget: Some(Duration::from_micros(400)),    // per-platform sporadic override
+                period: Some(Duration::from_micros(900)),
+                time_slice: None,
             }),
             freertos: Some(TierPlatformSpec {
                 priority: 5,
@@ -717,10 +780,10 @@ mod tests {
                 core: None,
                 sched_class: None,
                 preempt_threshold: None,
-                deadline_us: None,
-                budget_us: None,
-                period_us: None,
-                time_slice_us: None,
+                deadline: None,
+                budget: None,
+                period: None,
+                time_slice: None,
             }),
             zephyr: None,
             threadx: Some(TierPlatformSpec {
@@ -729,10 +792,10 @@ mod tests {
                 core: Some(1),
                 sched_class: None,
                 preempt_threshold: Some(4),
-                deadline_us: None,
-                budget_us: None,
-                period_us: None,
-                time_slice_us: Some(2000),
+                deadline: None,
+                budget: None,
+                period: None,
+                time_slice: Some(Duration::from_micros(2000)),
             }),
             nuttx: None,
         };
@@ -887,6 +950,67 @@ mod tests {
         assert_eq!(t.deadline_us, Some(18000));
         assert_eq!(t.deadline_policy.as_deref(), Some("fault"));
         assert_eq!(t.core, Some(1));
+    }
+
+    /// Both spellings of every `[tiers.*]` duration key must parse, and to the
+    /// SAME µs value: the canonical `spin_period = "1000us"` (rlm v0.1.11) and
+    /// the deprecated `spin_period_us = 1000` it kept as a serde alias.
+    ///
+    /// This is the drift guard for the OTHER mirror. `system.toml` `[tiers.*]`
+    /// is parsed twice — here, and by the resolver's
+    /// `ros_launch_manifest_sched::TierPlatformSpec`. When rlm renamed these
+    /// keys, only the resolver learned the new spelling, so a user writing the
+    /// documented form hit `unknown field` from THIS parser (its
+    /// `deny_unknown_fields`) while the resolver accepted it — the narrower
+    /// mirror once again defining what a user may write. Asserting equality of
+    /// the two parses, rather than merely that the new one parses, is what
+    /// keeps the alias from being wired to the wrong unit: a bare number is
+    /// µs here, and reading it as ms would be a silent 1000x.
+    #[test]
+    fn tier_duration_keys_accept_both_spellings() {
+        let canonical: TierDef = toml::from_str(
+            r#"
+            spin_period = "250us"
+            deadline = "2000us"
+            period = "1000us"
+            budget = "500us"
+            [posix]
+            priority = 80
+            time_slice = "2000us"
+            deadline = "1500us"
+            budget = "400us"
+            period = "900us"
+            "#,
+        )
+        .expect("canonical spelling must parse");
+
+        let deprecated: TierDef = toml::from_str(
+            r#"
+            spin_period_us = 250
+            deadline_us = 2000
+            period_us = 1000
+            budget_us = 500
+            [posix]
+            priority = 80
+            time_slice_us = 2000
+            deadline_us = 1500
+            budget_us = 400
+            period_us = 900
+            "#,
+        )
+        .expect("deprecated spelling must still parse");
+
+        assert_eq!(
+            canonical, deprecated,
+            "the two spellings must denote the same tier"
+        );
+        // Spot-check the absolute values too: `canonical == deprecated` alone
+        // would also hold if BOTH sides silently parsed to None.
+        assert_eq!(canonical.spin_period_us, Some(250));
+        assert_eq!(canonical.deadline_us, Some(2000));
+        let posix = canonical.posix.as_ref().expect("posix sub-table");
+        assert_eq!(posix.time_slice_us, Some(2000));
+        assert_eq!(posix.period_us, Some(900));
     }
 
     #[test]

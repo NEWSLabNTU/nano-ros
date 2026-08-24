@@ -25,13 +25,13 @@ group_tiers = { telem = "low" }
 
 [tiers.high]
 # phase-330 / issue 0380 — authored HERE, not in the generated model. Commit
-# 15a72db8e restored `class` and the Zephyr `deadline_us` into
+# 15a72db8e restored `class` and the Zephyr `deadline` into
 # config/system_model.yaml after a re-resolve stripped them, but the model is
 # GENERATED: nothing declared them in the inputs, so the next regeneration would
 # have stripped them again. Declaring them closes that loop (W1 made both
 # expressible).
 class = "real_time"
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.high.posix]
 priority = 80
 # phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
@@ -67,7 +67,7 @@ priority = 9
 core = 1
 # ZEPHYR-SCOPED: kernel EDF here (k_thread_deadline_set); lowers to None (Fifo)
 # on posix/nuttx, so the other bakes are byte-identical.
-deadline_us = 10000
+deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
 # C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
@@ -88,7 +88,7 @@ priority = 3
 priority = 99
 
 [tiers.low]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.low.posix]
 priority = 10
 [tiers.low.freertos]

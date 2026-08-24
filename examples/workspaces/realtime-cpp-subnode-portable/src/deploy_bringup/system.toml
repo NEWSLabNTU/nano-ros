@@ -16,12 +16,12 @@ name = "sub_node"
 group_tiers = { ctrl = "fast", telem = "bulk" }
 
 [tiers.fast]
-spin_period_us = 10000
+spin_period = "10000us"
 [tiers.fast.posix]
 priority = 80
 
 [tiers.bulk]
-spin_period_us = 100000
+spin_period = "100000us"
 [tiers.bulk.posix]
 priority = 10
 

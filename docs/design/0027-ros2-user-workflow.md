@@ -597,7 +597,7 @@ The ROS launch manifest supplies requirements: rates, QoS, freshness, latency,
 drop tolerance, and causal paths. It should not contain RTOS scheduling knobs.
 `nros` config supplies the scheduling policy: `SchedContext` class, period,
 budget, deadline, task priority, stack, and core. `nros check` verifies the
-policy is compatible with the requirements. For example, a `deadline_us = 20000`
+policy is compatible with the requirements. For example, a `deadline = "20000us"`
 binding is invalid for a manifest path requiring `max_latency_ms = 10` unless a
 more specific analysis proves the path can still meet the requirement.
 
@@ -1184,7 +1184,7 @@ launch = "launch/system.launch.py"
 manifest_dir = "manifests"
 
 [tiers.high]
-spin_period_us = 1000
+spin_period = "1000us"
 
 [tiers.high.freertos]
 priority = 5
@@ -1279,9 +1279,9 @@ overlay = "config/freertos.toml"
 id = "control_loop"
 class = "Edf"
 priority = "Critical"
-period_us = 10000
-budget_us = 800
-deadline_us = 10000
+period = "10000us"
+budget = "800us"
+deadline = "10000us"
 
 [[component_bindings]]
 component = "control_pkg/control_node"
@@ -1349,16 +1349,16 @@ platform_overlay = "config/freertos.toml"
 
 [tiers.control]
 executor = "control_exec"
-spin_period_us = 1000
+spin_period = "1000us"
 
 [[sched_contexts]]
 id = "control_loop"
 tier = "control"
 class = "Edf"
 priority = "Critical"
-period_us = 10000
-budget_us = 800
-deadline_us = 10000
+period = "10000us"
+budget = "800us"
+deadline = "10000us"
 deadline_policy = "SkipLate"
 
 [[bindings]]

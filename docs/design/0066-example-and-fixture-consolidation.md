@@ -274,7 +274,7 @@ on a low tier — and projects it onto each RTOS's native scheduler:
 
 ```toml
 [[component]] group_tiers = { ctrl = "high" }
-[tiers.high]        spin_period_us = 10000
+[tiers.high]        spin_period = "10000us"
 [tiers.high.posix]  priority = 80        # POSIX priority
 [tiers.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per tier
 [tiers.high.nuttx]  ...                  # SCHED_FIFO
