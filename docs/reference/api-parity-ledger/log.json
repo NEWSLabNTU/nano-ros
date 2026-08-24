@@ -39,6 +39,22 @@
     "verdict": "declined",
     "why": "rcl's zero-init idiom for a type we do not have; see `c:log_levels_*`. Same shape as `c:get_zero_initialized_init_options` in the init stage."
   },
+  "c:log_default_logger": {
+    "verdict": "extension",
+    "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`nros.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
+  },
+  "c:log_emit": {
+    "verdict": "extension",
+    "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`nros.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
+  },
+  "c:log_emit_fmt": {
+    "verdict": "extension",
+    "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`nros.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
+  },
+  "c:log_init": {
+    "verdict": "extension",
+    "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`nros.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
+  },
   "c:log_levels_*": {
     "verdict": "divergence",
     "bucket": "theirs-only",
@@ -55,6 +71,10 @@
   "c:logger_setting_t": {
     "verdict": "divergence",
     "why": "the (name, severity) pair `rcl_log_levels_t` holds an array of. Ours is the `Logger` object itself -- name plus `AtomicU8` threshold, `const`-constructible as a `static`. See `c:log_levels_*`."
+  },
+  "c:logger_t": {
+    "verdict": "extension",
+    "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`nros.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
   },
   "c:logging_configure": {
     "verdict": "divergence",

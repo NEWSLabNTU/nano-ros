@@ -178,8 +178,15 @@ template <typename A> class ActionServer {
             storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
-    /// Complete a goal with a result.
-    Result complete_goal(const uint8_t goal_id[16], const ResultType& result) {
+    /// Terminate a goal with a result and the status it terminated in.
+    ///
+    /// Issue 0796 — `status` used to be hardcoded `Succeeded` inside the shim,
+    /// so a server that aborted a goal reported success to the client. The
+    /// parameter order matches `PollingActionServer::complete_goal` and the C
+    /// API's `nros_action_server_complete_goal_raw`, so the three surfaces
+    /// agree; `Succeeded` is defaulted because it is the common case and
+    /// because that keeps existing two-argument calls compiling.
+    Result complete_goal(const uint8_t goal_id[16], GoalStatus status, const ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
         uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
@@ -188,7 +195,14 @@ template <typename A> class ActionServer {
             return Result(ErrorCode::Error);
         }
         return Result(nros_cpp_action_server_complete_goal(
-            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id),
+            static_cast<int32_t>(status), buf, len));
+    }
+
+    /// Terminate a goal as SUCCEEDED. Equivalent to
+    /// `complete_goal(goal_id, GoalStatus::Succeeded, result)`.
+    Result complete_goal(const uint8_t goal_id[16], const ResultType& result) {
+        return complete_goal(goal_id, GoalStatus::Succeeded, result);
     }
 
     /// Iterate over every currently live goal and invoke `f(uuid, status)`.

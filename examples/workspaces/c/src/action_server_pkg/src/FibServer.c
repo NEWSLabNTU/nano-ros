@@ -96,8 +96,8 @@ static void on_tick(void* ctx) {
     if (n_rc != 0) {
         return;
     }
-    if (nros_cpp_action_server_complete_goal(self->server, self->executor, &self->goal_id, buf,
-                                             n) == 0) {
+    if (nros_cpp_action_server_complete_goal(self->server, self->executor, &self->goal_id,
+                                             NROS_GOAL_STATUS_SUCCEEDED, buf, n) == 0) {
         self->has_pending = false;
         self->goal_count++;
         printf("[action_server_pkg] completed last=%d\n",

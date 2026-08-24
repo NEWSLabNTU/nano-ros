@@ -39,6 +39,14 @@
     "verdict": "declined",
     "why": "rcl passes an `rcl_allocator_t` by value through most of its API so a caller can supply its own. nano-ros has ONE allocator, `nros_platform_alloc`, enforced by check-no-direct-kernel-alloc, so the type would only ever hold the same value. This is the `no-allocator` signature rule (signature_rules.py) one level up: the rule removes the parameter, this removes the type it would carry."
   },
+  "c:borrowed_bytes_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:borrowed_str_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
   "c:error_state_t": {
     "verdict": "declined",
     "why": "rcl keeps a thread-local error state with a formatted message, file and line, read back with rcl_get_error_string(). nano-ros returns `nros_ret_t` and nothing else -- there is no nros_error_string() and no per-thread error slot. What a C user loses is real and should be said plainly: a code, never a message. The constraint is thread-local storage plus a formatted-string buffer per thread, on targets where a task stack is measured in kilobytes."
@@ -50,6 +58,38 @@
   "c:integrity_status_t": {
     "verdict": "extension",
     "why": "end-to-end safety telemetry per received sample -- sequence gap, duplicate flag, and a CRC verdict that distinguishes `no CRC on the wire` from `CRC mismatch`. RFC-0028. ROS 2 has no equivalent because a desktop DDS link is not treated as a safety channel; on a vehicle bus it is, and a receiver that cannot tell corruption from absence cannot implement a fail-silent reaction."
+  },
+  "c:le_slice_view_f32_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_f64_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i16_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i32_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i64_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u16_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u32_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u64_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
   },
   "c:transport_ops_t": {
     "verdict": "extension",

@@ -1785,6 +1785,7 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void *handle,
 nros_cpp_ret_t nros_cpp_action_server_complete_goal(void *handle,
                                                     void *executor_handle,
                                                     const uint8_t (*goal_id)[16],
+                                                    int32_t status,
                                                     const uint8_t *result_buf,
                                                     size_t result_len);
 

@@ -134,6 +134,8 @@ satisfies — one carries a comment describing issue 0215, the same defect in 20
 zenoh image hung identically, and one bug in two backends is usually one binary nobody rebuilt.
 See `archived/0786-*`. (2026-08-25)
 
+Recently resolved (2026-08-25): **#0795** (api) — `nros/nros.h` omitted `log.h` and `borrowed.h`, so the C logging surface and the whole RFC-0033 zero-copy reader were unreachable from the umbrella header and invisible to the parity tool. Two includes; surfaced 33 previously-hidden C declarations, now ledgered. See `archived/0795-*`. (2026-08-25)
+
 Recently resolved (2026-08-24): **#0774** (testing) — `rmw_zenohd` links `libzenohc.so` by SONAME, so
 
 Recently resolved (2026-08-24): **#0773** (rmw/cyclonedds) — the "1005-byte payload" was
@@ -190,9 +192,7 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 **#0784** (api, open 2026-08-24) — `nros::` publishes three audiences under one namespace: the component API a user writes (`Node`, `ExecutableNode`, `CallbackCtx`), the machinery `nros::node!` expands into, and four types with zero consumers anywhere. `nros::Node` is the TRAIT, not the handle — the handle is `NodeCtx`, which the facade never exports. Found by phase-379's `node` stage. See `0784-*`.
 **#0794** (build/codegen, open 2026-08-25) — the baked boot config defines four fields and the C/C++ emitter sets ONE: `domain_id`, `locator` and `namespace_` are emitted as `0`/`""`/`""` with their bits clear, and `BOOT_SET_NAMESPACE` is set by nothing anywhere, so a launch-declared namespace reaches no rung of the RFC-0045 ladder while the reader that would honour it exists. See `0794-*`.
 
-**#0795** (api, open 2026-08-25) — `nros/nros.h` includes 18 of 30 siblings and omits `log.h` and `borrowed.h`, so the C logging surface and the whole RFC-0033 zero-copy reader are unreachable from the umbrella header (`nros.hpp` includes its C++ twin). A C author who finds no logger writes `printf`, which issue 0589 makes fatal on Zephyr native_sim. Also makes the C lane read as missing capabilities it has. See `0795-*`.
-
-**#0796** (core/api, open 2026-08-25) — the action server's result slab only ever grows (`result_slab_used` is set to 0 once and thereafter only assigned `end`), so once it fills every result is silently dropped, pending `get_result` requesters wait forever, and `complete_goal_raw` returns `()`. Separately, the C++ callback tier hardcodes `GoalStatus::Succeeded`, so an aborted goal is reported to the client as succeeded. See `0796-*`.
+**#0796** (core/api, open 2026-08-25) — the action server's result slab only ever grows (`result_slab_used` is set to 0 once and thereafter only assigned `end`), so once it fills every result is silently dropped, pending `get_result` requesters wait forever, and `complete_goal_raw` returns `()`. Separately, the C++ callback tier hardcoded `GoalStatus::Succeeded`, so an aborted goal was reported to the client as succeeded — FIXED 2026-08-25. The slab remains. See `0796-*`.
 
 **#0791** (api/rmw, open 2026-08-25) — we are VISIBLE in the ROS graph and cannot read it: `rmw_vtable.h` has carried 12 graph slots since phase-376 W4, all `None`, while the zenoh shim already declares and queries `@ros2_lv` liveliness tokens and Cyclone publishes `ros_discovery_info`. 37 of the graph stage's 68 rows are gaps, not declines; RFC-0036's "no dynamic discovery" line needs narrowing. See `0791-*`.
 

@@ -271,8 +271,12 @@ int32_t nros_cpp_action_server_register(void* storage, void* executor_handle,
                                         const char* type_hash, uint8_t sched_context);
 int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_t goal_cb,
                                              nros_c_cancel_callback_t cancel_cb, void* ctx);
+/* issue 0796 — `status` was hardcoded `Succeeded` in the shim, so an aborted
+ * goal reached the client as succeeded. THIRD mirror of this declaration
+ * (nros_cpp_ffi.h and action_server.hpp are the others); the cross-include TU
+ * in `just check-c` is what caught the two that were left behind. */
 int32_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
-                                             const uint8_t (*goal_id)[16],
+                                             const uint8_t (*goal_id)[16], int32_t status,
                                              const uint8_t* result_buf, size_t result_len);
 
 /* --- Timer (executor-scoped) -------------------------------------------- */

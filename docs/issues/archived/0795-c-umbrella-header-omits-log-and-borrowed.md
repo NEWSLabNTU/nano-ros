@@ -3,7 +3,7 @@ id: 795
 title: "`nros/nros.h` omits `log.h` and `borrowed.h`, so two whole C capability
   surfaces are unreachable from the umbrella header — and invisible to every
   tool that reads it"
-status: open
+status: resolved
 type: bug
 area: api
 related: [rfc-0033, phase-379, issue-0589]
@@ -46,11 +46,22 @@ That second half is the more expensive one: the campaign's premise is that the
 umbrella header IS the surface. Where that is false, every downstream number is
 wrong in the same direction.
 
-## Fix
+## Fixed 2026-08-25
 
-Two lines in `nros/nros.h`, matching what `nros.hpp` already does. Then re-run
-`scripts/api-parity.py --topic log` and `--topic serde` and re-verdict the rows
-that were written around the omission — they are marked.
+Two includes added to `nros/nros.h`, each with the reason inline. Verified by
+compiling `nros_log_default_logger()` through the umbrella header (it did not
+resolve before), and by `just check-c`.
+
+The correlator immediately surfaced **33 C declarations that had been invisible
+to it** — the whole `nros_cdr_borrow_*` / `nros_le_slice_view_*` family and the
+five logging entry points — and `just check-api-parity` failed until they were
+classified, which is the loop working as intended. They are now `extension` rows
+in `serde.json`, `types.json`, `log.json` and `other.json`.
+
+`main.h` was left out: its seven symbols are board entry points
+(`nros_board_freertos_run_tiers`, …), platform-specific and not part of a
+portable surface. That is a judgement, so it is now written in `nros.h` rather
+than inferred from absence.
 
 ## The audit nobody had run
 

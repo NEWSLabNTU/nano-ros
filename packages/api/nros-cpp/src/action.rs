@@ -418,6 +418,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     handle: *mut c_void,
     executor_handle: *mut c_void,
     goal_id: *const [u8; 16],
+    status: i32,
     result_buf: *const u8,
     result_len: usize,
 ) -> nros_cpp_ret_t {
@@ -441,12 +442,14 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
         Some(h) => h,
         None => return NROS_CPP_RET_ERROR,
     };
-    h.complete_goal_raw(
-        &mut ctx.executor,
-        &id,
-        nros::GoalStatus::Succeeded,
-        result_fields,
-    );
+    // issue 0796 — this used to pass `Succeeded` unconditionally, so a C++
+    // callback-tier server that aborted a goal reported it to the client as
+    // succeeded. Every other surface (C, the C++ polling tier, both Rust
+    // servers) takes a status; this one now does too.
+    let Some(status) = nros::GoalStatus::from_i8(status as i8) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    h.complete_goal_raw(&mut ctx.executor, &id, status, result_fields);
     NROS_CPP_RET_OK
 }
 

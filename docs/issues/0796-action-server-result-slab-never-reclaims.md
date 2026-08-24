@@ -50,7 +50,7 @@ been collected or has aged out. We have **neither the timeout nor the
 reclamation** — recorded in the action stage as a `gap` on
 `c:action_expire_goals`.
 
-## Problem 2 — the C++ callback tier cannot abort or cancel a goal
+## Problem 2 — the C++ callback tier cannot abort or cancel a goal (FIXED 2026-08-25)
 
 `packages/api/nros-cpp/src/action.rs:445`:
 
@@ -71,6 +71,22 @@ succeeded.**
 Every other surface takes a status: C has `nros_action_abort` and
 `nros_action_canceled`, the C++ *polling* tier takes one, and both Rust servers
 take one. This is the C++ callback tier alone.
+
+**Fixed.** The shim takes an `int32_t status` and validates it through
+`GoalStatus::from_i8`; `ActionServer::complete_goal(goal_id, status, result)`
+matches `PollingActionServer::complete_goal` and the C API's
+`nros_action_server_complete_goal_raw`, so the three surfaces now agree on the
+parameter order. A two-argument overload forwards `Succeeded`, so existing calls
+keep compiling.
+
+Worth recording how the mirrors were found: the declaration existed in **three**
+places — `nros_cpp_ffi.h`, `nros-c/component.h` and `action_server.hpp` — and
+editing two of them compiled fine. `just check-c`'s cross-include TU (the gate
+CLAUDE.md describes for exactly this drift class) caught the third with
+`conflicting types`. Six example call sites used the raw FFI directly and were
+updated. `just check-c` and `just check-cpp` are green.
+
+**Problem 1 — the slab — is NOT fixed** and remains the substance of this issue.
 
 ## Related, from the same stage
 

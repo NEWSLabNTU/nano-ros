@@ -59,8 +59,9 @@ void FibServer::on_tick() {
     if (Action::Result::ffi_serialize(&result, buf, sizeof(buf), &written) != 0) {
         return;
     }
-    if (nros_cpp_action_server_complete_goal(storage_.bytes, executor_, &goal_id_, buf, written) ==
-        0) {
+    if (nros_cpp_action_server_complete_goal(storage_.bytes, executor_, &goal_id_,
+                                             static_cast<int32_t>(nros::GoalStatus::Succeeded), buf,
+                                             written) == 0) {
         has_pending_ = false;
         goal_count_++;
         std::printf("[action_server_pkg] completed last=%d\n",

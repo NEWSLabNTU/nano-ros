@@ -80,8 +80,8 @@ void FibonacciServer::on_tick() {
     size_t result_len = 8 + 4 * static_cast<size_t>(n);
 
     nros_cpp_ret_t rc = nros_cpp_action_server_complete_goal(
-        storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_), buf,
-        result_len);
+        storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_),
+        static_cast<int32_t>(nros::GoalStatus::Succeeded), buf, result_len);
     if (rc == 0) {
         std::printf("Goal succeeded\n");
     } else {

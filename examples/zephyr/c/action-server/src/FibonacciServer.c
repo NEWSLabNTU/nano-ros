@@ -84,8 +84,9 @@ static void on_tick(void* ctx) {
     }
     size_t result_len = 8 + 4 * (size_t)n;
 
-    int32_t rc = nros_cpp_action_server_complete_goal(
-        self->storage, self->executor, (const uint8_t(*)[16])self->goal_id, buf, result_len);
+    int32_t rc = nros_cpp_action_server_complete_goal(self->storage, self->executor,
+                                                      (const uint8_t(*)[16])self->goal_id,
+                                                      NROS_GOAL_STATUS_SUCCEEDED, buf, result_len);
     if (rc == 0) {
         printf("Goal succeeded\n");
     } else {
