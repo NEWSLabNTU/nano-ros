@@ -511,6 +511,10 @@
     "verdict": "divergence",
     "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
+  "rust:QOS_PROFILE_ACTION_STATUS_DEFAULT": {
+    "verdict": "rename",
+    "why": "the action-status QoS preset. Ours is `QosSettings::action_status_default`; see the qos stage for the `QosSettings`/`QoSProfile` type rename this rides on."
+  },
   "rust:QOS_PROFILE_CLOCK": {
     "verdict": "rename",
     "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."

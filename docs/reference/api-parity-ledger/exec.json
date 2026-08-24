@@ -473,6 +473,14 @@
     "verdict": "declined",
     "why": "the free form of `cpp:Executor::spin_until_future_complete`; see that row and RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`."
   },
+  "rust:ActionClientReady": {
+    "verdict": "divergence",
+    "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
+  },
+  "rust:ActionServerReady": {
+    "verdict": "divergence",
+    "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
+  },
   "rust:ActivityListener": {
     "verdict": "declined",
     "why": "part of rclrs 0.5's async executor machine: an `ExecutorRuntime` behind the `Executor`, an `ExecutorChannel` carrying work to it, `Worker`s with their own payloads, `ActivityListener`s, and `Waitable`s wrapping each rcl primitive. Three constraints refuse the whole layer at once. RFC-0021: no futures and no async runtime -- rclrs drives `spin_async` on async-std/tokio, and a no_std image has neither. RFC-0002: one executor per RTOS task, dispatching FIFO from a fixed arena, so there is no work to send anywhere and no second thread to send it from. no allocator -- the channels, the `Vec<Waitable>` and the boxed tasks all allocate per item on the dispatch path."
@@ -804,6 +812,18 @@
   "rust:ReadinessSnapshot::total": {
     "verdict": "extension",
     "why": "see `rust:ReadinessSnapshot`."
+  },
+  "rust:ReadyKind": {
+    "verdict": "divergence",
+    "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
+  },
+  "rust:ReadyKind::for_basic": {
+    "verdict": "divergence",
+    "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
+  },
+  "rust:ReadyKind::from_ptr": {
+    "verdict": "divergence",
+    "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
   },
   "rust:SchedClass": {
     "verdict": "extension",

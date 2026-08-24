@@ -871,6 +871,34 @@
     "verdict": "extension",
     "why": "see `c:client_try_recv_response`."
   },
+  "rust:DynamicPublisher": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicPublisher::get_subscription_count": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicPublisher::publish": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicPublisher::topic_name": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSubscription": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSubscription::structure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSubscription::topic_name": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
   "rust:EmbeddedPublisher": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
@@ -1051,9 +1079,21 @@
     "verdict": "extension",
     "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
   },
+  "rust:Node::create_async_dynamic_subscription": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
   "rust:Node::create_async_subscription": {
     "verdict": "declined",
     "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. Needs a runtime to await on."
+  },
+  "rust:Node::create_dynamic_publisher": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:Node::create_dynamic_subscription": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:Node::create_subscription": {
     "verdict": "rename",
@@ -1355,6 +1395,10 @@
     "verdict": "extension",
     "why": "see `rust:Subscription::process_raw_in_place`."
   },
+  "rust:Subscription::qos": {
+    "verdict": "gap",
+    "why": "reads back the QoS a subscription was created with. We have no such accessor in any language -- the pubsub stage's `get_actual_qos` decline says actual equals requested by construction, which makes this MORE answerable here, not less. Phase 379 W3."
+  },
   "rust:Subscription::recv": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
@@ -1434,6 +1478,10 @@
   "rust:Worker::create_subscription": {
     "verdict": "declined",
     "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:WorkerDynamicSubscription": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker` -- a worker needs a runtime and an allocator."
   },
   "rust:WorkerSubscription": {
     "verdict": "declined",

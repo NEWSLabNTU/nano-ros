@@ -13,7 +13,8 @@ superseded-by: null
 
 ## Summary
 
-nano-ros deliberately mirrors the ROS 2 client libraries — Rust ≈ rclrs 0.7.0,
+nano-ros deliberately mirrors the ROS 2 client libraries — Rust ≈ rclrs 0.7.0
+(settled 2026-08-25; the recorded surface is the `v0.7.0` release tag),
 C ≈ rclc, C++ ≈ rclcpp — so a ROS 2 developer can read and write nano-ros code.
 But `no_std` / embedded / no-allocator / no-exceptions constraints force a set of
 **deliberate divergences**. Today they are scattered across RFC-0018/0021/0022/
@@ -149,10 +150,23 @@ meanwhile, where deleting one re-opens every row it covers.
    here; put runnable side-by-sides in `book/`.
 2. Track convergence opportunities (e.g. a hosted-only `std`-backed mode closer
    to rclrs)? Proposed: out of scope; note if it arises.
-3. **Which rclrs do we mirror?** This RFC says 0.7.0; the correlator's recorded
-   surface is 0.5.1, which is the version reachable here. They differ in the
-   `Node = Arc<NodeState>` split, so the answer changes what "matching rclrs"
-   means. Phase 379 W5 decides and records it.
+3. ~~**Which rclrs do we mirror?**~~ **Settled 2026-08-25: the latest release,
+   `v0.7.0`**, which is what this RFC already claimed. The correlator's recorded
+   surface was 0.5.1 until then and is now derived from the `v0.7.0` tag
+   (`docs/reference/api-surface/rclrs.json` carries the commit). The bump grew
+   the reference surface from 129 records to 213 and produced two findings worth
+   keeping:
+   - **rclrs gained ACTIONS**, which 0.5.1 did not have, and modelled them as a
+     TYPESTATE chain (`RequestedGoal` → `AcceptedGoal` → `ExecutingGoal` →
+     `TerminatedGoal`). rclcpp_action uses `async_send_goal` with a shared
+     `ClientGoalHandle`. **ROS 2 does not agree with itself here**, so "match
+     ROS 2" has no single answer for actions and W5 has to pick a side and say
+     which.
+   - **rclrs converged on our timer model.** 0.7.0 has
+     `create_timer_inert`/`_oneshot`/`_repeating` — the same three modes our
+     `TimerMode` carries, arrived at independently. Several rows this campaign
+     recorded as divergences against 0.5.1 are now shape agreements with
+     different placement.
 
 ## Changelog
 

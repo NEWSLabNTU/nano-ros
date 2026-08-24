@@ -575,6 +575,18 @@
     "verdict": "declined",
     "why": "see `rust:ClientOutput`."
   },
+  "rust:CancellationClient": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:CancellationClient::cancel": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:CancellationClient::try_cancel": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
   "rust:Client": {
     "verdict": "divergence",
     "why": "rclrs's `Client` is a handle a node hands back. Ours splits in two: `ServiceClient`, the entity a component DECLARES, and `ClientTrait`, the RMW seam a backend implements. entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
@@ -847,6 +859,10 @@
     "verdict": "divergence",
     "why": "rclrs wraps `rmw_request_id_t` -- a writer GUID plus a sequence number -- so a reply can be correlated across a restart. Ours is a bare `i64` sequence number scoped to the entity, because the entity table is static and a request cannot outlive its client. Cheaper, and it cannot express a reply to a client that has been recreated."
   },
+  "rust:ResultClient": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
   "rust:RmwServiceClient": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
@@ -982,6 +998,14 @@
   "rust:Session::create_service": {
     "verdict": "divergence",
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:StatusClient": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:StatusClient::watch": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
   },
   "rust:Worker::create_service": {
     "verdict": "declined",

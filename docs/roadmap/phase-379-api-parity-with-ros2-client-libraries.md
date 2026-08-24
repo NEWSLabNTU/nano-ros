@@ -1,9 +1,10 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
 **Status (2026-08-25). W1 AND W2 COMPLETE.** The correlator runs on all three
-languages; every one of the 2158 items where the nano-ros user API does not
+languages; every one of the 2397 items where the nano-ros user API does not
 correspond to rclc/rclcpp/rclrs carries a written verdict, in 17 topic shards
-under `docs/reference/api-parity-ledger/`. `just check-api-parity` is green and
+under `docs/reference/api-parity-ledger/`. The Rust reference is **rclrs
+v0.7.0** — the version question W5 was holding is settled, see below. `just check-api-parity` is green and
 wired into `just check`. W3–W5 are the corrections and are not started; W5 has
 one decision recorded below that is not an implementer's to make.
 
@@ -58,7 +59,7 @@ macro-expanded visibility attributes (`RCLCPP_PUBLIC`) all defeat it.
 | --- | --- | --- |
 | C++ | `nros/nros.hpp` via clang JSON AST | `rclcpp` + `rclcpp_action` + `rclcpp_lifecycle` from `/opt/ros/<distro>` |
 | C | `nros/nros.h` via clang JSON AST | `rclc` checkout **plus `rcl`** |
-| Rust | rustdoc JSON over the `nros` facade | rustdoc JSON over `rclrs` |
+| Rust | rustdoc JSON over the `nros` facade, with the runtime features enabled | rustdoc JSON over `rclrs` **v0.7.0** |
 
 Three things about that table are decisions rather than mechanics:
 
@@ -302,7 +303,10 @@ one per topic, each owning one ledger shard.
 | serde | 0 | 5 | 0 | 37 | 1 | 43 |
 | boot | 1 | 1 | 0 | 11 | 0 | 13 |
 | other | 1 | 1 | 16 | 122 | 24 | 164 |
-| **total** | **197** | **154** | **586** | **634** | **587** | **2158** |
+| **total** | **198** | **155** | **732** | **634** | **678** | **2397** |
+
+(Totals are post-`v0.7.0`; the per-stage rows above were counted against 0.5.1
+and the bump added 239 Rust rows, mostly to `action`.)
 
 ### What the campaign was for, and what it actually found
 
@@ -455,14 +459,36 @@ Two decisions, neither of them mechanical:
   explicit second tier for the RTOS-specific machinery — but that is RFC work,
   not a rename sweep.
 
-## Blocking decisions (not an agent's to make)
+## Blocking decisions
 
-Two, and they change what later stages conclude rather than how they work, so
-W2 does not wait on either:
+### Settled: the Rust reference is rclrs v0.7.0 (2026-08-25)
 
-1. **Which rclrs do we mirror** — RFC-0036 says 0.7.0, the recorded surface is
-   0.5.1, and they differ in the `Node = Arc<NodeState>` split. W5.
-2. **Does the C `handle-owns-node` shape stay** — it is currently a signature
+The latest release, which is what RFC-0036 already claimed. The recorded surface
+was 0.5.1 until then; the bump took it from 129 records to 213 and produced two
+findings that outlive the version question:
+
+* **rclrs gained ACTIONS**, which 0.5.1 did not have, and modelled a goal's life
+  as a TYPESTATE chain — `RequestedGoal` → `AcceptedGoal` → `ExecutingGoal` →
+  `TerminatedGoal`, each a type whose methods are only the transitions legal
+  from that state. rclcpp_action uses `async_send_goal` with a shared
+  `ClientGoalHandle`. **ROS 2 does not agree with itself**, so "match ROS 2" has
+  no single answer for actions and W5 must pick a side and record which. Ours is
+  neither: goals live in a static arena addressed by UUID, because a typestate
+  chain hands the application an owning handle per goal and with a
+  fixed-capacity arena the storage cannot follow the handle.
+* **rclrs converged on our timer model.** 0.7.0 has `create_timer_inert` /
+  `create_timer_oneshot` / `create_timer_repeating` — the same three modes our
+  `TimerMode` carries, arrived at independently. Rows this campaign recorded as
+  divergences against 0.5.1 are now shape agreements with different placement
+  (ours sets a mode on an entity in the static table; rclrs constructs one per
+  mode), and they say so. `cpp:Node::create_timer_oneshot` is still an extension
+  against rclcpp, but no longer an invention.
+
+The lesson worth keeping: **the reference moves.** A prose catalog would have
+gone on describing 0.5.1; `--refresh` re-derived the surface and the ledger's own
+gate found the 124 rows that needed re-deciding.
+
+### Open: does the C `handle-owns-node` shape stay — it is currently a signature
    rule covering six `*_fini` entry points, which asserts it is a platform
    decision. If it is not, those six become signature changes. W4.
 

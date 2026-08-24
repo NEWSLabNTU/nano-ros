@@ -1,12 +1,12 @@
 {
  "provenance": {
   "package": "rclrs",
-  "ref": "ceb5fbc30923064c4030f301f7ff909cdadec1cd",
-  "version": "0.5.1"
+  "ref": "0c62d768c8ad3ea62b02c8b67e4c5f0977f0735e",
+  "version": "0.7.0"
  },
  "records": [
   {
-   "header": "/home/aeon/repos/LCTK/src/ros2_rust_ws/src/ros2_rust/rclrs/src/rcl_bindings_generated_humble.rs",
+   "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/ros2_rust/rclrs/src/rcl_bindings_generated_humble.rs",
    "kind": "alias",
    "name": "rmw_request_id_t",
    "qual": "rclrs::rmw_request_id_t",
@@ -47,6 +47,1295 @@
    "kind": "macro",
    "name": "log_fatal",
    "qual": "rclrs::log_fatal"
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "type",
+   "members": [],
+   "name": "GoalUuid",
+   "qual": "rclrs::GoalUuid",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "enum",
+   "members": [
+    {
+     "name": "is_accepted",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    },
+    {
+     "name": "is_rejected",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "CancelResponseCode",
+   "qual": "rclrs::CancelResponseCode",
+   "template": [],
+   "values": [
+    "Accept",
+    "Reject",
+    "UnknownGoal",
+    "GoalTerminated"
+   ]
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "is_accepted",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    },
+    {
+     "name": "is_rejected",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "CancelResponse",
+   "qual": "rclrs::CancelResponse",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "is_accepted",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    },
+    {
+     "name": "is_rejected",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "MultiCancelResponse",
+   "qual": "rclrs::MultiCancelResponse",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "enum",
+   "members": [
+    {
+     "name": "is_terminated",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "GoalStatusCode",
+   "qual": "rclrs::GoalStatusCode",
+   "template": [],
+   "values": [
+    "Unknown",
+    "Accepted",
+    "Executing",
+    "Cancelling",
+    "Succeeded",
+    "Cancelled",
+    "Aborted"
+   ]
+  },
+  {
+   "header": "rclrs/src/action.rs",
+   "kind": "type",
+   "members": [],
+   "name": "GoalStatus",
+   "qual": "rclrs::GoalStatus",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "action_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "ActionClientOptions",
+   "qual": "rclrs::ActionClientOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_action_client_options",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    },
+    {
+     "name": "goal_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    },
+    {
+     "name": "result_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    },
+    {
+     "name": "cancel_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    },
+    {
+     "name": "feedback_topic_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    },
+    {
+     "name": "status_topic_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionClientOptions",
+     "template": []
+    }
+   ],
+   "name": "IntoActionClientOptions",
+   "qual": "rclrs::IntoActionClientOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client.rs",
+   "kind": "alias",
+   "name": "ActionClient",
+   "qual": "rclrs::ActionClient",
+   "type": "std::sync::Arc<ActionClientState<A>>"
+  },
+  {
+   "header": "rclrs/src/action/action_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "request_goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal",
+       "type": "A::Goal"
+      }
+     ],
+     "ret": "RequestedGoalClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_request_goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal",
+       "type": "A::Goal"
+      }
+     ],
+     "ret": "Result<RequestedGoalClient<A>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "receive_feedback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "FeedbackClient<A>",
+     "template": []
+    },
+    {
+     "name": "receive_status",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "StatusClient<A>",
+     "template": []
+    },
+    {
+     "name": "watch_status",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "StatusWatcher<A>",
+     "template": []
+    },
+    {
+     "name": "receive_result",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "ResultClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_receive_result",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "Result<ResultClient<A>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "cancel_goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "CancelResponseClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_cancel_goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "goal_id",
+       "type": "GoalUuid"
+      }
+     ],
+     "ret": "Result<CancelResponseClient<A>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "cancel_all_goals",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      }
+     ],
+     "ret": "MultiCancelResponseClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_cancel_all_goals",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      }
+     ],
+     "ret": "Result<MultiCancelResponseClient<A>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "cancel_goals_prior_to",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "time",
+       "type": "Time"
+      }
+     ],
+     "ret": "MultiCancelResponseClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_cancel_goals_prior_to",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "time",
+       "type": "Time"
+      }
+     ],
+     "ret": "Result<MultiCancelResponseClient<A>, RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "ActionClientState",
+   "qual": "rclrs::ActionClientState",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "ActionClientHandle",
+   "qual": "rclrs::ActionClientHandle",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/cancellation_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "cancel",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "CancelResponseClient<A>",
+     "template": []
+    },
+    {
+     "name": "try_cancel",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<CancelResponseClient<A>, RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "CancellationClient",
+   "qual": "rclrs::CancellationClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/cancellation_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "CancelResponseClient",
+   "qual": "rclrs::CancelResponseClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/cancellation_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "MultiCancelResponseClient",
+   "qual": "rclrs::MultiCancelResponseClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/feedback_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "FeedbackClient",
+   "qual": "rclrs::FeedbackClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/goal_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "stream",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "GoalClientStream<A>",
+     "template": []
+    }
+   ],
+   "name": "GoalClient",
+   "qual": "rclrs::GoalClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/goal_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "GoalClientStream",
+   "qual": "rclrs::GoalClientStream",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/goal_client.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "GoalEvent",
+   "qual": "rclrs::GoalEvent",
+   "template": [],
+   "values": [
+    "Feedback",
+    "Status",
+    "Result"
+   ]
+  },
+  {
+   "header": "rclrs/src/action/action_client/status_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "watch",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "StatusWatcher<A>",
+     "template": []
+    }
+   ],
+   "name": "StatusClient",
+   "qual": "rclrs::StatusClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/status_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "StatusWatcher",
+   "qual": "rclrs::StatusWatcher",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/result_client.rs",
+   "kind": "type",
+   "members": [],
+   "name": "ResultClient",
+   "qual": "rclrs::ResultClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_client/requested_goal_client.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "goal_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&GoalUuid",
+     "template": []
+    }
+   ],
+   "name": "RequestedGoalClient",
+   "qual": "rclrs::RequestedGoalClient",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_goal_receiver.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_action_server",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ? + ? + ? + ?"
+      }
+     ],
+     "ret": "ActionServer<A>",
+     "template": [
+      "Task",
+      "impl FnMut(RequestedGoal<A>) -> Task + Send + Sync + 'static"
+     ]
+    }
+   ],
+   "name": "ActionGoalReceiver",
+   "qual": "rclrs::ActionGoalReceiver",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "action_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "ActionServerOptions",
+   "qual": "rclrs::ActionServerOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_action_server_options",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "goal_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "result_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "cancel_service_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "feedback_topic_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "status_topic_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    },
+    {
+     "name": "goal_expiration_timeout",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "duration",
+       "type": "Duration"
+      }
+     ],
+     "ret": "ActionServerOptions",
+     "template": []
+    }
+   ],
+   "name": "IntoActionServerOptions",
+   "qual": "rclrs::IntoActionServerOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server.rs",
+   "kind": "alias",
+   "name": "ActionServer",
+   "qual": "rclrs::ActionServer",
+   "type": "std::sync::Arc<ActionServerState<A>>"
+  },
+  {
+   "header": "rclrs/src/action/action_server.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "set_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ? + ? + ? + ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Task",
+      "impl FnMut(RequestedGoal<A>) -> Task + Send + Sync + 'static"
+     ]
+    },
+    {
+     "name": "into_goal_receiver",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "ActionGoalReceiver<A>",
+     "template": []
+    }
+   ],
+   "name": "ActionServerState",
+   "qual": "rclrs::ActionServerState",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server/accepted_goal.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<A::Goal>",
+     "template": []
+    },
+    {
+     "name": "execute",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "ExecutingGoal<A>",
+     "template": []
+    },
+    {
+     "name": "until_cancel_requested",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<F::Output, F>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "unless_cancel_requested",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<F::Output, ()>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "begin_cancelling",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "CancellingGoal<A>",
+     "template": []
+    },
+    {
+     "name": "reject_cancellation",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "begin",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "BeginAcceptedGoal<A>",
+     "template": []
+    },
+    {
+     "name": "publish_feedback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "feedback",
+       "type": "A::Feedback"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "feedback_publisher",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "FeedbackPublisher<A>",
+     "template": []
+    }
+   ],
+   "name": "AcceptedGoal",
+   "qual": "rclrs::AcceptedGoal",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server/accepted_goal.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "BeginAcceptedGoal",
+   "qual": "rclrs::BeginAcceptedGoal",
+   "template": [],
+   "values": [
+    "Execute",
+    "Cancel"
+   ]
+  },
+  {
+   "header": "rclrs/src/action/action_server/executing_goal.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<A::Goal>",
+     "template": []
+    },
+    {
+     "name": "succeeded_with",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "result",
+       "type": "A::Result"
+      }
+     ],
+     "ret": "TerminatedGoal",
+     "template": []
+    },
+    {
+     "name": "until_cancel_requested",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<F::Output, F>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "unless_cancel_requested",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<F::Output, ()>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "begin_cancelling",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "CancellingGoal<A>",
+     "template": []
+    },
+    {
+     "name": "reject_cancellation",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "aborted_with",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "result",
+       "type": "A::Result"
+      }
+     ],
+     "ret": "TerminatedGoal",
+     "template": []
+    },
+    {
+     "name": "publish_feedback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "feedback",
+       "type": "A::Feedback"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "feedback_publisher",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "FeedbackPublisher<A>",
+     "template": []
+    }
+   ],
+   "name": "ExecutingGoal",
+   "qual": "rclrs::ExecutingGoal",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server/feedback_publisher.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "publish",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "feedback",
+       "type": "A::Feedback"
+      }
+     ],
+     "ret": "Result<(), A::Feedback>",
+     "template": []
+    }
+   ],
+   "name": "FeedbackPublisher",
+   "qual": "rclrs::FeedbackPublisher",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server/requested_goal.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "goal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<A::Goal>",
+     "template": []
+    },
+    {
+     "name": "accept",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AcceptedGoal<A>",
+     "template": []
+    },
+    {
+     "name": "try_accept",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<AcceptedGoal<A>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "reject",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "TerminatedGoal",
+     "template": []
+    }
+   ],
+   "name": "RequestedGoal",
+   "qual": "rclrs::RequestedGoal",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/action/action_server/terminated_goal.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "uuid",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&GoalUuid",
+     "template": []
+    }
+   ],
+   "name": "TerminatedGoal",
+   "qual": "rclrs::TerminatedGoal",
+   "template": []
   },
   {
    "header": "rclrs/src/arguments.rs",
@@ -553,6 +1842,1156 @@
    "template": []
   },
   {
+   "header": "rclrs/src/dynamic_message.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "get_or_load",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "package_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<Arc<libloading::Library>, DynamicMessageError>",
+     "template": []
+    },
+    {
+     "name": "unload",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "package_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "DynamicMessageLibraryCache",
+   "qual": "rclrs::DynamicMessageLibraryCache",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message.rs",
+   "kind": "function",
+   "name": "get_dynamic_message_package_cache",
+   "params": [],
+   "qual": "rclrs::get_dynamic_message_package_cache",
+   "ret": "&std::sync::Mutex<DynamicMessageLibraryCache>",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message.rs",
+   "kind": "type",
+   "members": [],
+   "name": "MessageTypeName",
+   "qual": "rclrs::MessageTypeName",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "message_type",
+       "type": "MessageTypeName"
+      }
+     ],
+     "ret": "Result<Self, DynamicMessageError>",
+     "template": []
+    },
+    {
+     "name": "create",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<DynamicMessage, DynamicMessageError>",
+     "template": []
+    },
+    {
+     "name": "structure",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&MessageStructure",
+     "template": []
+    }
+   ],
+   "name": "DynamicMessageMetadata",
+   "qual": "rclrs::DynamicMessageMetadata",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "message_type",
+       "type": "MessageTypeName"
+      }
+     ],
+     "ret": "Result<Self, DynamicMessageError>",
+     "template": []
+    },
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<Value>",
+     "template": []
+    },
+    {
+     "name": "get_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<ValueMut>",
+     "template": []
+    },
+    {
+     "name": "structure",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&MessageStructure",
+     "template": []
+    },
+    {
+     "name": "iter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "impl ? + ?",
+     "template": []
+    },
+    {
+     "name": "iter_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "impl ? + ?",
+     "template": []
+    },
+    {
+     "name": "view",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "DynamicMessageView",
+     "template": []
+    },
+    {
+     "name": "view_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "DynamicMessageViewMut",
+     "template": []
+    },
+    {
+     "name": "convert_from_rmw_message",
+     "params": [
+      {
+       "default": false,
+       "name": "msg",
+       "type": "T"
+      }
+     ],
+     "ret": "Result<Self, DynamicMessageError>",
+     "template": [
+      "T"
+     ]
+    },
+    {
+     "name": "convert_into_rmw_message",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<T, Self>",
+     "template": [
+      "T"
+     ]
+    }
+   ],
+   "name": "DynamicMessage",
+   "qual": "rclrs::DynamicMessage",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/dynamic_publisher.rs",
+   "kind": "alias",
+   "name": "DynamicPublisher",
+   "qual": "rclrs::DynamicPublisher",
+   "type": "std::sync::Arc<DynamicPublisherState>"
+  },
+  {
+   "header": "rclrs/src/dynamic_message/dynamic_publisher.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "topic_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "get_subscription_count",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<usize, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "publish",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "message",
+       "type": "DynamicMessage"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "DynamicPublisherState",
+   "qual": "rclrs::DynamicPublisherState",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/dynamic_subscription.rs",
+   "kind": "alias",
+   "name": "DynamicSubscription",
+   "qual": "rclrs::DynamicSubscription",
+   "type": "std::sync::Arc<DynamicSubscriptionState<crate::Node>>"
+  },
+  {
+   "header": "rclrs/src/dynamic_message/dynamic_subscription.rs",
+   "kind": "alias",
+   "name": "WorkerDynamicSubscription",
+   "qual": "rclrs::WorkerDynamicSubscription",
+   "type": "std::sync::Arc<DynamicSubscriptionState<crate::Worker<Payload>>>"
+  },
+  {
+   "header": "rclrs/src/dynamic_message/dynamic_subscription.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "topic_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "structure",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&MessageStructure",
+     "template": []
+    }
+   ],
+   "name": "DynamicSubscriptionState",
+   "qual": "rclrs::DynamicSubscriptionState",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/error.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "DynamicMessageError",
+   "qual": "rclrs::DynamicMessageError",
+   "template": [],
+   "values": [
+    "RequiredPrefixNotSourced",
+    "InvalidMessageTypeSyntax",
+    "InvalidMessageType",
+    "MessageTypeMismatch",
+    "LibraryLoadingError"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "ArrayValue",
+   "qual": "rclrs::ArrayValue",
+   "template": [],
+   "values": [
+    "FloatArray",
+    "DoubleArray",
+    "LongDoubleArray",
+    "CharArray",
+    "WCharArray",
+    "BooleanArray",
+    "OctetArray",
+    "Uint8Array",
+    "Int8Array",
+    "Uint16Array",
+    "Int16Array",
+    "Uint32Array",
+    "Int32Array",
+    "Uint64Array",
+    "Int64Array",
+    "StringArray",
+    "BoundedStringArray",
+    "WStringArray",
+    "BoundedWStringArray",
+    "MessageArray"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "BoundedSequenceValue",
+   "qual": "rclrs::BoundedSequenceValue",
+   "template": [],
+   "values": [
+    "FloatBoundedSequence",
+    "DoubleBoundedSequence",
+    "LongDoubleBoundedSequence",
+    "CharBoundedSequence",
+    "WCharBoundedSequence",
+    "BooleanBoundedSequence",
+    "OctetBoundedSequence",
+    "Uint8BoundedSequence",
+    "Int8BoundedSequence",
+    "Uint16BoundedSequence",
+    "Int16BoundedSequence",
+    "Uint32BoundedSequence",
+    "Int32BoundedSequence",
+    "Uint64BoundedSequence",
+    "Int64BoundedSequence",
+    "StringBoundedSequence",
+    "BoundedStringBoundedSequence",
+    "WStringBoundedSequence",
+    "BoundedWStringBoundedSequence",
+    "MessageBoundedSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "SequenceValue",
+   "qual": "rclrs::SequenceValue",
+   "template": [],
+   "values": [
+    "FloatSequence",
+    "DoubleSequence",
+    "LongDoubleSequence",
+    "CharSequence",
+    "WCharSequence",
+    "BooleanSequence",
+    "OctetSequence",
+    "Uint8Sequence",
+    "Int8Sequence",
+    "Uint16Sequence",
+    "Int16Sequence",
+    "Uint32Sequence",
+    "Int32Sequence",
+    "Uint64Sequence",
+    "Int64Sequence",
+    "StringSequence",
+    "BoundedStringSequence",
+    "WStringSequence",
+    "BoundedWStringSequence",
+    "MessageSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "SimpleValue",
+   "qual": "rclrs::SimpleValue",
+   "template": [],
+   "values": [
+    "Float",
+    "Double",
+    "LongDouble",
+    "Char",
+    "WChar",
+    "Boolean",
+    "Octet",
+    "Uint8",
+    "Int8",
+    "Uint16",
+    "Int16",
+    "Uint32",
+    "Int32",
+    "Uint64",
+    "Int64",
+    "String",
+    "BoundedString",
+    "WString",
+    "BoundedWString",
+    "Message"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "Value",
+   "qual": "rclrs::Value",
+   "template": [],
+   "values": [
+    "Simple",
+    "Array",
+    "Sequence",
+    "BoundedSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "ArrayValue",
+   "qual": "rclrs::ArrayValue",
+   "template": [],
+   "values": [
+    "FloatArray",
+    "DoubleArray",
+    "LongDoubleArray",
+    "CharArray",
+    "WCharArray",
+    "BooleanArray",
+    "OctetArray",
+    "Uint8Array",
+    "Int8Array",
+    "Uint16Array",
+    "Int16Array",
+    "Uint32Array",
+    "Int32Array",
+    "Uint64Array",
+    "Int64Array",
+    "StringArray",
+    "BoundedStringArray",
+    "WStringArray",
+    "BoundedWStringArray",
+    "MessageArray"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "BoundedSequenceValue",
+   "qual": "rclrs::BoundedSequenceValue",
+   "template": [],
+   "values": [
+    "FloatBoundedSequence",
+    "DoubleBoundedSequence",
+    "LongDoubleBoundedSequence",
+    "CharBoundedSequence",
+    "WCharBoundedSequence",
+    "BooleanBoundedSequence",
+    "OctetBoundedSequence",
+    "Uint8BoundedSequence",
+    "Int8BoundedSequence",
+    "Uint16BoundedSequence",
+    "Int16BoundedSequence",
+    "Uint32BoundedSequence",
+    "Int32BoundedSequence",
+    "Uint64BoundedSequence",
+    "Int64BoundedSequence",
+    "StringBoundedSequence",
+    "BoundedStringBoundedSequence",
+    "WStringBoundedSequence",
+    "BoundedWStringBoundedSequence",
+    "MessageBoundedSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "SequenceValue",
+   "qual": "rclrs::SequenceValue",
+   "template": [],
+   "values": [
+    "FloatSequence",
+    "DoubleSequence",
+    "LongDoubleSequence",
+    "CharSequence",
+    "WCharSequence",
+    "BooleanSequence",
+    "OctetSequence",
+    "Uint8Sequence",
+    "Int8Sequence",
+    "Uint16Sequence",
+    "Int16Sequence",
+    "Uint32Sequence",
+    "Int32Sequence",
+    "Uint64Sequence",
+    "Int64Sequence",
+    "StringSequence",
+    "BoundedStringSequence",
+    "WStringSequence",
+    "BoundedWStringSequence",
+    "MessageSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "SimpleValue",
+   "qual": "rclrs::SimpleValue",
+   "template": [],
+   "values": [
+    "Float",
+    "Double",
+    "LongDouble",
+    "Char",
+    "WChar",
+    "Boolean",
+    "Octet",
+    "Uint8",
+    "Int8",
+    "Uint16",
+    "Int16",
+    "Uint32",
+    "Int32",
+    "Uint64",
+    "Int64",
+    "String",
+    "BoundedString",
+    "WString",
+    "BoundedWString",
+    "Message"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "ValueMut",
+   "qual": "rclrs::ValueMut",
+   "template": [],
+   "values": [
+    "Simple",
+    "Array",
+    "Sequence",
+    "BoundedSequence"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_bounded_string.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "NonZeroUsize",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedString",
+   "qual": "rclrs::DynamicBoundedString",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_bounded_string.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "NonZeroUsize",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedWString",
+   "qual": "rclrs::DynamicBoundedWString",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_bounded_string.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "NonZeroUsize",
+     "template": []
+    },
+    {
+     "name": "try_assign",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "s",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<(), StringExceedsBoundsError>",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedStringMut",
+   "qual": "rclrs::DynamicBoundedStringMut",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_bounded_string.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "NonZeroUsize",
+     "template": []
+    },
+    {
+     "name": "try_assign",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "s",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<(), StringExceedsBoundsError>",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedWStringMut",
+   "qual": "rclrs::DynamicBoundedWStringMut",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_message_view.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<Value>",
+     "template": []
+    },
+    {
+     "name": "structure",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&MessageStructure",
+     "template": []
+    },
+    {
+     "name": "iter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "impl ? + ?",
+     "template": []
+    }
+   ],
+   "name": "DynamicMessageView",
+   "qual": "rclrs::DynamicMessageView",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_message_view.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<Value>",
+     "template": []
+    },
+    {
+     "name": "get_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<ValueMut>",
+     "template": []
+    },
+    {
+     "name": "structure",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&MessageStructure",
+     "template": []
+    },
+    {
+     "name": "iter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "impl ? + ?",
+     "template": []
+    },
+    {
+     "name": "iter_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "impl ? + ?",
+     "template": []
+    }
+   ],
+   "name": "DynamicMessageViewMut",
+   "qual": "rclrs::DynamicMessageViewMut",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_sequence.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "as_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&[T]",
+     "template": []
+    }
+   ],
+   "name": "DynamicSequence",
+   "qual": "rclrs::DynamicSequence",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_sequence.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "as_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&[T]",
+     "template": []
+    },
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "usize",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedSequence",
+   "qual": "rclrs::DynamicBoundedSequence",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_sequence.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "as_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&[T]",
+     "template": []
+    },
+    {
+     "name": "as_mut_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "&mut [T]",
+     "template": []
+    },
+    {
+     "name": "clear",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "reset",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "len",
+       "type": "usize"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "DynamicSequenceMut",
+   "qual": "rclrs::DynamicSequenceMut",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/field_access/dynamic_sequence.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "as_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&[T]",
+     "template": []
+    },
+    {
+     "name": "as_mut_slice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "&mut [T]",
+     "template": []
+    },
+    {
+     "name": "upper_bound",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "usize",
+     "template": []
+    },
+    {
+     "name": "clear",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "try_reset",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "len",
+       "type": "usize"
+      }
+     ],
+     "ret": "Result<(), SequenceExceedsBoundsError>",
+     "template": []
+    }
+   ],
+   "name": "DynamicBoundedSequenceMut",
+   "qual": "rclrs::DynamicBoundedSequenceMut",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/message_structure.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "BaseType",
+   "qual": "rclrs::BaseType",
+   "template": [],
+   "values": [
+    "Float",
+    "Double",
+    "LongDouble",
+    "Char",
+    "WChar",
+    "Boolean",
+    "Octet",
+    "Uint8",
+    "Int8",
+    "Uint16",
+    "Int16",
+    "Uint32",
+    "Int32",
+    "Uint64",
+    "Int64",
+    "String",
+    "BoundedString",
+    "WString",
+    "BoundedWString",
+    "Message"
+   ]
+  },
+  {
+   "header": "rclrs/src/dynamic_message/message_structure.rs",
+   "kind": "type",
+   "members": [],
+   "name": "MessageFieldInfo",
+   "qual": "rclrs::MessageFieldInfo",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/message_structure.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "get_field_info",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "field_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<&MessageFieldInfo>",
+     "template": []
+    }
+   ],
+   "name": "MessageStructure",
+   "qual": "rclrs::MessageStructure",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/dynamic_message/message_structure.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "ValueKind",
+   "qual": "rclrs::ValueKind",
+   "template": [],
+   "values": [
+    "Simple",
+    "Array",
+    "Sequence",
+    "BoundedSequence"
+   ]
+  },
+  {
    "header": "rclrs/src/error.rs",
    "kind": "enum",
    "members": [
@@ -589,11 +3028,14 @@
     "UnknownRclError",
     "StringContainsNul",
     "AlreadyAddedToWaitSet",
+    "DynamicMessageError",
     "NegativeDuration",
     "UnownedGuardCondition",
     "InvalidPayload",
     "ParameterDeclarationError",
-    "PoisonedMutex"
+    "PoisonedMutex",
+    "InvalidReadyInformation",
+    "GoalAcceptanceError"
    ]
   },
   {
@@ -648,6 +3090,14 @@
     "InvalidLogLevelRule",
     "EventInvalid",
     "EventTakeFailed",
+    "ActionGoalAccepted",
+    "ActionGoalRejected",
+    "ActionClientInvalid",
+    "ActionClientTakeFailed",
+    "ActionServerInvalid",
+    "ActionServerTakeFailed",
+    "ActionGoalHandleInvalid",
+    "ActionGoalEventInvalid",
     "LifecycleStateRegistered",
     "LifecycleStateNotRegistered"
    ]
@@ -707,6 +3157,27 @@
    ],
    "name": "RclrsErrorFilter",
    "qual": "rclrs::RclrsErrorFilter",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/error.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "take_failed_as_none",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<Option<Self::T>, RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "TakeFailedAsNone",
+   "qual": "rclrs::TakeFailedAsNone",
    "template": []
   },
   {
@@ -1902,6 +4373,73 @@
      ]
     },
     {
+     "name": "create_action_client",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<ActionClient<A>, RclrsError>",
+     "template": [
+      "A",
+      "impl IntoActionClientOptions<'a>"
+     ]
+    },
+    {
+     "name": "create_action_server",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ? + ? + ? + ?"
+      }
+     ],
+     "ret": "Result<ActionServer<A>, RclrsError>",
+     "template": [
+      "A",
+      "Task",
+      "impl IntoActionServerOptions<'a>",
+      "impl FnMut(RequestedGoal<A>) -> Task + Send + Sync + 'static"
+     ]
+    },
+    {
+     "name": "create_goal_receiver",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<ActionGoalReceiver<A>, RclrsError>",
+     "template": [
+      "A",
+      "impl IntoActionServerOptions<'a>"
+     ]
+    },
+    {
      "name": "create_publisher",
      "params": [
       {
@@ -1918,6 +4456,30 @@
      "ret": "Result<Publisher<T>, RclrsError>",
      "template": [
       "T",
+      "impl Into<PublisherOptions<'a>>"
+     ]
+    },
+    {
+     "name": "create_dynamic_publisher",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "topic_type",
+       "type": "MessageTypeName"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<DynamicPublisher, RclrsError>",
+     "template": [
       "impl Into<PublisherOptions<'a>>"
      ]
     },
@@ -2003,6 +4565,66 @@
      ]
     },
     {
+     "name": "create_dynamic_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic_type",
+       "type": "MessageTypeName"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<DynamicSubscription, RclrsError>",
+     "template": [
+      "F",
+      "impl Into<SubscriptionOptions<'a>>"
+     ]
+    },
+    {
+     "name": "create_async_dynamic_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic_type",
+       "type": "MessageTypeName"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<DynamicSubscription, RclrsError>",
+     "template": [
+      "F",
+      "impl Into<SubscriptionOptions<'a>>"
+     ]
+    },
+    {
      "name": "create_async_subscription",
      "params": [
       {
@@ -2027,6 +4649,77 @@
       "Args",
       "impl Into<SubscriptionOptions<'a>>",
       "impl IntoAsyncSubscriptionCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "create_timer_repeating",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Timer, RclrsError>",
+     "template": [
+      "Args",
+      "impl IntoTimerOptions<'a>",
+      "impl IntoNodeTimerRepeatingCallback<Args>"
+     ]
+    },
+    {
+     "name": "create_timer_oneshot",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Timer, RclrsError>",
+     "template": [
+      "Args",
+      "impl IntoTimerOptions<'a>",
+      "impl IntoNodeTimerOneshotCallback<Args>"
+     ]
+    },
+    {
+     "name": "create_timer_inert",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Timer, RclrsError>",
+     "template": [
+      "impl IntoTimerOptions<'a>"
      ]
     },
     {
@@ -3659,6 +6352,12 @@
      "params": [],
      "ret": "Self",
      "template": []
+    },
+    {
+     "name": "action_status_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
     }
    ],
    "name": "QoSProfile",
@@ -3706,6 +6405,12 @@
    "kind": "const",
    "name": "QOS_PROFILE_SYSTEM_DEFAULT",
    "qual": "rclrs::QOS_PROFILE_SYSTEM_DEFAULT"
+  },
+  {
+   "header": "rclrs/src/qos.rs",
+   "kind": "const",
+   "name": "QOS_PROFILE_ACTION_STATUS_DEFAULT",
+   "qual": "rclrs::QOS_PROFILE_ACTION_STATUS_DEFAULT"
   },
   {
    "header": "rclrs/src/service.rs",
@@ -3979,6 +6684,18 @@
      "template": []
     },
     {
+     "name": "qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "QoSProfile",
+     "template": []
+    },
+    {
      "name": "set_callback",
      "params": [
       {
@@ -4235,10 +6952,493 @@
      ],
      "ret": "Result<builtin_interfaces::msg::Time, TryFromIntError>",
      "template": []
+    },
+    {
+     "name": "to_rcl",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<builtin_interfaces__msg__Time, TryFromIntError>",
+     "template": []
+    },
+    {
+     "name": "to_sec_nanosec",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<(i32, u32), TryFromIntError>",
+     "template": []
     }
    ],
    "name": "Time",
    "qual": "rclrs::Time",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer.rs",
+   "kind": "alias",
+   "name": "Timer",
+   "qual": "rclrs::Timer",
+   "type": "std::sync::Arc<TimerState<crate::Node>>"
+  },
+  {
+   "header": "rclrs/src/timer.rs",
+   "kind": "alias",
+   "name": "WorkerTimer",
+   "qual": "rclrs::WorkerTimer",
+   "type": "std::sync::Arc<TimerState<crate::Worker<Payload>>>"
+  },
+  {
+   "header": "rclrs/src/timer.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "get_timer_period",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<Duration, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "cancel",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "is_canceled",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<bool, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "last_elapse",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Duration",
+     "template": []
+    },
+    {
+     "name": "time_since_last_call",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<Duration, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "time_until_next_call",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<Duration, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "reset",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "is_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<bool, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "clock",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Clock",
+     "template": []
+    },
+    {
+     "name": "set_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "AnyTimerCallback<Scope>"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Scope>>",
+     "template": []
+    },
+    {
+     "name": "set_inert",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Scope>>",
+     "template": []
+    },
+    {
+     "name": "set_repeating",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Node>>",
+     "template": [
+      "Args",
+      "impl IntoNodeTimerRepeatingCallback<Args>"
+     ]
+    },
+    {
+     "name": "set_oneshot",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Node>>",
+     "template": [
+      "Args",
+      "impl IntoNodeTimerOneshotCallback<Args>"
+     ]
+    },
+    {
+     "name": "set_worker_repeating",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Worker<Payload>>>",
+     "template": [
+      "Args",
+      "impl IntoWorkerTimerRepeatingCallback<Worker<Payload>, Args>"
+     ]
+    },
+    {
+     "name": "set_worker_oneshot",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Option<AnyTimerCallback<Worker<Payload>>>",
+     "template": [
+      "Args",
+      "impl IntoWorkerTimerOneshotCallback<Worker<Payload>, Args>"
+     ]
+    }
+   ],
+   "name": "TimerState",
+   "qual": "rclrs::TimerState",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/any_timer_callback.rs",
+   "kind": "enum",
+   "members": [],
+   "name": "AnyTimerCallback",
+   "qual": "rclrs::AnyTimerCallback",
+   "template": [],
+   "values": [
+    "Repeating",
+    "OneShot",
+    "Inert"
+   ]
+  },
+  {
+   "header": "rclrs/src/timer/timer_options.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "period",
+       "type": "Duration"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "TimerOptions",
+   "qual": "rclrs::TimerOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/timer_options.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_timer_options",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "TimerOptions",
+     "template": []
+    },
+    {
+     "name": "steady_time",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "TimerOptions",
+     "template": []
+    },
+    {
+     "name": "system_time",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "TimerOptions",
+     "template": []
+    },
+    {
+     "name": "node_time",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "TimerOptions",
+     "template": []
+    },
+    {
+     "name": "clock",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "clock",
+       "type": "&Clock"
+      }
+     ],
+     "ret": "TimerOptions",
+     "template": []
+    }
+   ],
+   "name": "IntoTimerOptions",
+   "qual": "rclrs::IntoTimerOptions",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/timer_options.rs",
+   "kind": "enum",
+   "members": [
+    {
+     "name": "is_node_time",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "TimerClock",
+   "qual": "rclrs::TimerClock",
+   "template": [],
+   "values": [
+    "SteadyTime",
+    "SystemTime",
+    "NodeTime",
+    "Clock"
+   ]
+  },
+  {
+   "header": "rclrs/src/timer/into_node_timer_callback.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_node_timer_repeating_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyTimerCallback<Node>",
+     "template": []
+    }
+   ],
+   "name": "IntoNodeTimerRepeatingCallback",
+   "qual": "rclrs::IntoNodeTimerRepeatingCallback",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/into_node_timer_callback.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_node_timer_oneshot_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyTimerCallback<Node>",
+     "template": []
+    }
+   ],
+   "name": "IntoNodeTimerOneshotCallback",
+   "qual": "rclrs::IntoNodeTimerOneshotCallback",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/into_worker_timer_callback.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_worker_timer_repeating_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyTimerCallback<Scope>",
+     "template": []
+    }
+   ],
+   "name": "IntoWorkerTimerRepeatingCallback",
+   "qual": "rclrs::IntoWorkerTimerRepeatingCallback",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/timer/into_worker_timer_callback.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_worker_timer_oneshot_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyTimerCallback<Scope>",
+     "template": []
+    }
+   ],
+   "name": "IntoWorkerTimerOneshotCallback",
+   "qual": "rclrs::IntoWorkerTimerOneshotCallback",
    "template": []
   },
   {
@@ -4309,7 +7509,7 @@
      ],
      "ret": "Result<(), RclrsError>",
      "template": [
-      "impl FnMut(&mut dyn RclPrimitive) -> Result<(), RclrsError>"
+      "impl FnMut(ReadyKind, &mut dyn RclPrimitive) -> Result<(), RclrsError>"
      ]
     },
     {
@@ -4421,6 +7621,11 @@
       },
       {
        "default": false,
+       "name": "ready",
+       "type": "ReadyKind"
+      },
+      {
+       "default": false,
        "name": "payload",
        "type": "&mut dyn ?"
       }
@@ -4470,7 +7675,9 @@
     "Timer",
     "Client",
     "Service",
-    "Event"
+    "Event",
+    "ActionServer",
+    "ActionClient"
    ]
   },
   {
@@ -4486,8 +7693,116 @@
     "Timer",
     "Client",
     "Service",
-    "Event"
+    "Event",
+    "ActionServer",
+    "ActionClient"
    ]
+  },
+  {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
+   "kind": "enum",
+   "members": [
+    {
+     "name": "from_ptr",
+     "params": [
+      {
+       "default": false,
+       "name": "ptr",
+       "type": "*const T"
+      }
+     ],
+     "ret": "Option<Self>",
+     "template": [
+      "T"
+     ]
+    },
+    {
+     "name": "for_basic",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "for_action_server",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<ActionServerReady, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "for_action_client",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<ActionClientReady, RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "ReadyKind",
+   "qual": "rclrs::ReadyKind",
+   "template": [],
+   "values": [
+    "Basic",
+    "ActionServer",
+    "ActionClient"
+   ]
+  },
+  {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "any_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "ActionServerReady",
+   "qual": "rclrs::ActionServerReady",
+   "template": []
+  },
+  {
+   "header": "rclrs/src/wait_set/rcl_primitive.rs",
+   "kind": "type",
+   "members": [
+    {
+     "name": "any_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "ActionClientReady",
+   "qual": "rclrs::ActionClientReady",
+   "template": []
   },
   {
    "header": "rclrs/src/wait_set/waitable.rs",
@@ -4767,6 +8082,36 @@
      ]
     },
     {
+     "name": "create_dynamic_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic_type",
+       "type": "MessageTypeName"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "F"
+      }
+     ],
+     "ret": "Result<WorkerDynamicSubscription<Payload>, RclrsError>",
+     "template": [
+      "F",
+      "impl Into<SubscriptionOptions<'a>>"
+     ]
+    },
+    {
      "name": "create_service",
      "params": [
       {
@@ -4791,6 +8136,77 @@
       "Args",
       "impl Into<ServiceOptions<'a>>",
       "impl IntoWorkerServiceCallback<T, Payload, Args>"
+     ]
+    },
+    {
+     "name": "create_timer_repeating",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<WorkerTimer<Payload>, RclrsError>",
+     "template": [
+      "Args",
+      "impl IntoTimerOptions<'a>",
+      "impl IntoWorkerTimerRepeatingCallback<Worker<Payload>, Args>"
+     ]
+    },
+    {
+     "name": "create_timer_oneshot",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<WorkerTimer<Payload>, RclrsError>",
+     "template": [
+      "Args",
+      "impl IntoTimerOptions<'a>",
+      "impl IntoWorkerTimerOneshotCallback<Worker<Payload>, Args>"
+     ]
+    },
+    {
+     "name": "create_timer_inert",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<WorkerTimer<Payload>, RclrsError>",
+     "template": [
+      "impl IntoTimerOptions<'a>"
      ]
     }
    ],

@@ -51,6 +51,22 @@
     "verdict": "extension",
     "why": "see `rust:CallbackSlot`."
   },
+  "rust:DynamicMessageMetadata": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageMetadata::create": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageMetadata::new": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageMetadata::structure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
   "rust:EntityMetadata": {
     "verdict": "extension",
     "why": "one recorded entity declaration -- kind, stable id, owning node, source name, type, QoS. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage."

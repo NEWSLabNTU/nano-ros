@@ -477,7 +477,7 @@
   },
   "cpp:Node::create_timer_oneshot": {
     "verdict": "extension",
-    "why": "a timer that fires once. rclcpp expresses this by cancelling from inside the callback, which needs the timer to be capturable -- ours is a mode on the entity. See `rust:Timer::set_oneshot`."
+    "why": "a timer that fires once. rclcpp expresses this by cancelling from inside the callback, which needs the timer to be capturable. Still an extension against rclcpp -- but NOT an invention: rclrs 0.7.0 added `create_timer_oneshot` under exactly this name, so ROS 2 has since agreed. See `rust:Node::create_timer_oneshot`."
   },
   "cpp:Node::create_wall_timer": {
     "verdict": "rename",
@@ -667,6 +667,10 @@
     "verdict": "declined",
     "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
   },
+  "rust:AnyTimerCallback": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+  },
   "rust:Clock::clear_ros_time_override": {
     "verdict": "divergence",
     "why": "ROS time. rclrs models it as a `ClockSource` a `Clock` is built `with_source`, so the override is driven by whoever owns the source. Ours are methods on `Clock` itself, because with no allocator the source cannot be a separately-owned object shared between clocks -- an image has one clock and one owner of it."
@@ -815,6 +819,22 @@
     "verdict": "extension",
     "why": "the executor's clock tick in microseconds -- the resolution at which timer deadlines are evaluated (RFC-0073). rclcpp reads the OS clock at whatever resolution it offers."
   },
+  "rust:IntoNodeTimerOneshotCallback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
+  "rust:IntoNodeTimerOneshotCallback::into_node_timer_oneshot_callback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
+  "rust:IntoNodeTimerRepeatingCallback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
+  "rust:IntoNodeTimerRepeatingCallback::into_node_timer_repeating_callback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
   "rust:IntoPrimitiveOptions::deadline_duration": {
     "verdict": "declined",
     "why": "rclrs's builder shorthand for applying a QoS duration to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`."
@@ -827,9 +847,61 @@
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions::deadline_duration`."
   },
+  "rust:IntoTimerOptions": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoTimerOptions::clock": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoTimerOptions::into_timer_options": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoTimerOptions::node_time": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoTimerOptions::steady_time": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoTimerOptions::system_time": {
+    "verdict": "declined",
+    "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+  },
+  "rust:IntoWorkerTimerOneshotCallback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
+  "rust:IntoWorkerTimerOneshotCallback::into_worker_timer_oneshot_callback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker` -- a worker needs a runtime and an allocator."
+  },
+  "rust:IntoWorkerTimerRepeatingCallback": {
+    "verdict": "declined",
+    "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+  },
+  "rust:IntoWorkerTimerRepeatingCallback::into_worker_timer_repeating_callback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker` -- a worker needs a runtime and an allocator."
+  },
   "rust:LogParams::get_throttle_clock": {
     "verdict": "declined",
     "why": "rclrs's throttled logging reads a clock to decide whether enough time has passed. See the log stage -- our throttle macros degrade to plain logs (RFC-0036)."
+  },
+  "rust:Node::create_timer_inert": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+  },
+  "rust:Node::create_timer_oneshot": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+  },
+  "rust:Node::create_timer_repeating": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
   },
   "rust:Node::get_clock": {
     "verdict": "gap",
@@ -883,9 +955,17 @@
     "verdict": "divergence",
     "why": "our C++ ships no clock/time/duration surface; see `cpp:Clock::now`. These are the RUST members of types C++ lacks entirely, so they have no rclrs counterpart only because the two libraries carve the same information differently."
   },
+  "rust:Time::to_rcl": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
   "rust:Time::to_ros_msg": {
     "verdict": "gap",
     "why": "converts to `builtin_interfaces/Time` for putting in a message header. Ours has `to_nanos` and the caller fills the message by hand, which is the single most common thing a publisher does. Phase 379 W3."
+  },
+  "rust:Time::to_sec_nanosec": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
   },
   "rust:Time::to_secs_f64": {
     "verdict": "divergence",
@@ -903,6 +983,14 @@
     "verdict": "extension",
     "why": "rclrs has no timer cancel; rclcpp does (`TimerBase::cancel`), which the correlator folds onto ours in the C++ lane."
   },
+  "rust:Timer::clock": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+  },
+  "rust:Timer::get_timer_period": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+  },
   "rust:Timer::is_canceled": {
     "verdict": "extension",
     "why": "see `rust:Timer::cancel`; note this is the spelling `cpp:Timer::is_cancelled` should move to."
@@ -911,13 +999,17 @@
     "verdict": "extension",
     "why": "the ours-only half of `cpp:Timer::is_ready`."
   },
+  "rust:Timer::last_elapse": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+  },
   "rust:Timer::mode": {
     "verdict": "divergence",
     "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
   },
   "rust:Timer::new_inert": {
     "verdict": "divergence",
-    "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+    "why": "**rclrs 0.7.0 CONVERGED ON THIS SHAPE.** 0.5.1 had one `create_timer`, which is what the first pass of this stage compared against and why it recorded a divergence; 0.7.0 has `create_timer_inert`/`create_timer_oneshot`/`create_timer_repeating` -- the same three modes, arrived at independently. Ours is a mode SET ON an entity in the static table rather than a constructor per mode, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. Same model, different placement; W5 should consider matching the verb rather than treating this as a divergence to defend."
   },
   "rust:Timer::new_with_fn": {
     "verdict": "divergence",
@@ -931,21 +1023,33 @@
     "verdict": "extension",
     "why": "see `rust:Timer::cancel`."
   },
+  "rust:Timer::set_callback": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+  },
   "rust:Timer::set_callback_fn": {
     "verdict": "divergence",
     "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time. Unlike C, the Rust timer's callback IS swappable, because a re-armed one-shot in a static slot is how the mode changes."
   },
   "rust:Timer::set_inert": {
     "verdict": "divergence",
-    "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+    "why": "**rclrs 0.7.0 CONVERGED ON THIS SHAPE.** 0.5.1 had one `create_timer`, which is what the first pass of this stage compared against and why it recorded a divergence; 0.7.0 has `create_timer_inert`/`create_timer_oneshot`/`create_timer_repeating` -- the same three modes, arrived at independently. Ours is a mode SET ON an entity in the static table rather than a constructor per mode, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. Same model, different placement; W5 should consider matching the verb rather than treating this as a divergence to defend."
   },
   "rust:Timer::set_oneshot": {
     "verdict": "divergence",
-    "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+    "why": "**rclrs 0.7.0 CONVERGED ON THIS SHAPE.** 0.5.1 had one `create_timer`, which is what the first pass of this stage compared against and why it recorded a divergence; 0.7.0 has `create_timer_inert`/`create_timer_oneshot`/`create_timer_repeating` -- the same three modes, arrived at independently. Ours is a mode SET ON an entity in the static table rather than a constructor per mode, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. Same model, different placement; W5 should consider matching the verb rather than treating this as a divergence to defend."
   },
   "rust:Timer::set_repeating": {
     "verdict": "divergence",
-    "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+    "why": "**rclrs 0.7.0 CONVERGED ON THIS SHAPE.** 0.5.1 had one `create_timer`, which is what the first pass of this stage compared against and why it recorded a divergence; 0.7.0 has `create_timer_inert`/`create_timer_oneshot`/`create_timer_repeating` -- the same three modes, arrived at independently. Ours is a mode SET ON an entity in the static table rather than a constructor per mode, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. Same model, different placement; W5 should consider matching the verb rather than treating this as a divergence to defend."
+  },
+  "rust:Timer::set_worker_oneshot": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+  },
+  "rust:Timer::set_worker_repeating": {
+    "verdict": "divergence",
+    "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
   },
   "rust:Timer::time_since_last_call": {
     "verdict": "extension",
@@ -958,6 +1062,14 @@
   "rust:TimerCallbackFn": {
     "verdict": "divergence",
     "why": "a fn-pointer, not a boxed closure; see `cpp:TimerCallbackType`."
+  },
+  "rust:TimerClock": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+  },
+  "rust:TimerClock::is_node_time": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
   },
   "rust:TimerDuration": {
     "verdict": "divergence",
@@ -1009,11 +1121,23 @@
   },
   "rust:TimerMode": {
     "verdict": "divergence",
-    "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+    "why": "**rclrs 0.7.0 CONVERGED ON THIS SHAPE.** 0.5.1 had one `create_timer`, which is what the first pass of this stage compared against and why it recorded a divergence; 0.7.0 has `create_timer_inert`/`create_timer_oneshot`/`create_timer_repeating` -- the same three modes, arrived at independently. Ours is a mode SET ON an entity in the static table rather than a constructor per mode, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. Same model, different placement; W5 should consider matching the verb rather than treating this as a divergence to defend."
+  },
+  "rust:TimerOptions": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+  },
+  "rust:TimerOptions::new": {
+    "verdict": "divergence",
+    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
   },
   "rust:ToLogParams::throttle_clock": {
     "verdict": "declined",
     "why": "see `rust:LogParams::get_throttle_clock`."
+  },
+  "rust:WorkerTimer": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker` -- a worker needs a runtime and an allocator."
   },
   "rust:now": {
     "verdict": "extension",
