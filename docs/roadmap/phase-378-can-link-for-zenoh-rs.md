@@ -1,6 +1,16 @@
 # Phase 378 — A CAN link for zenoh-rs
 
-**Status (2026-08-25). PROPOSED — nothing started.**
+**Status (2026-08-25). W0-W3 DONE. W4 written and compiling, blocked on a
+`vcan0` interface. W5-W7 not started.**
+
+The link exists, registers, and builds: `cargo test -p zenoh-link-can` passes
+41 tests with no `vcan0` and no root, `cargo check -p zenoh --features
+transport_can` succeeds, default builds are unchanged, and clippy is clean. The
+golden frames are byte-exact against the zenoh-pico encoder, so the two
+implementations are pinned to one wire format before any socket was involved.
+
+Work landed on branch `feat/can-link` of the zenoh fork as
+`a6cc88f` "feat(link): add a CAN and CAN FD multicast link".
 
 Implements [RFC-0081](../design/0081-can-link-for-zenoh-rs.md), which is the
 host half of [RFC-0080](../design/0080-can-link-for-zenoh-pico.md). Phase-377
@@ -36,14 +46,14 @@ is pinned by tests before any socket exists**.
 
 | | What | Proves | State |
 | --- | --- | --- | --- |
-| **W0** | Crate skeleton; `frame.rs` encoding/decoding per RFC-0081 §2; unit tests for DLC steps, length prefix, MTU refusal, own-id and mask filtering | the wire format is executable, with no socket and no root | |
-| **W1** | Golden-frame tests: byte-exact buffers produced by the zenoh-pico encoder | the two implementations are one wire format, checked in CI | |
-| **W2** | `sys.rs` SocketCAN binding + `multicast.rs` link and manager | a Rust process opens a CAN link and moves datagrams | |
-| **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | |
-| **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | |
-| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | |
-| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | |
-| **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | |
+| **W0** | Crate skeleton; `frame.rs` encoding/decoding per RFC-0081 §2; unit tests for DLC steps, length prefix, MTU refusal, own-id and mask filtering | the wire format is executable, with no socket and no root | **done, 41 tests pass** |
+| **W1** | Golden-frame tests: byte-exact buffers produced by the zenoh-pico encoder | the two implementations are one wire format, checked in CI | **done** |
+| **W2** | `sys.rs` SocketCAN binding + `multicast.rs` link and manager | a Rust process opens a CAN link and moves datagrams | **done** |
+| **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | **done** |
+| **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **written, compiles, blocked on `vcan0`** |
+| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | blocked on W4 |
+| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | blocked, see below |
+| **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
 
 W1 is the gate that matters for interop. W4 is the gate that matters for the
 link being real. **W7 is a separate upstream PR** and must not be bundled into
@@ -55,6 +65,46 @@ Phase-377 learned the wire format by implementing it and then had to change
 `_cap._transport` after the fact. Here the format is already known, so the
 cheapest place to be wrong is a unit test. W1 costs an afternoon and removes
 "the two ends disagree about DLC rounding" from every later wave's diagnosis.
+
+### What W0-W3 actually produced
+
+```
+io/zenoh-links/zenoh-link-can/src/frame.rs      the wire format, no I/O, 24 tests
+io/zenoh-links/zenoh-link-can/src/lib.rs        endpoint grammar and inspector, 17 tests
+io/zenoh-links/zenoh-link-can/src/sys.rs        SocketCAN over tokio's AsyncFd
+io/zenoh-links/zenoh-link-can/src/multicast.rs  LinkMulticastCan + manager
+io/zenoh-transport/tests/multicast_can.rs       W4, three #[ignore]d tests
+```
+
+Three findings from building it, none of which were visible from the RFC:
+
+**A `Locator` cannot carry config.** `From<EndPoint> for Locator` truncates at
+the `#` separator (`locator.rs:81`), silently. The peer address the link reports
+through `read()` is a `Locator`, so an identifier written as config would vanish
+and every peer would look alike to the multicast transport. Peer and group
+locators therefore carry their identifiers in the locator **metadata**. The user
+facing endpoint grammar is unchanged — it is still `can/vcan0#id=0x100` — because
+that is an `EndPoint`, which does keep its config.
+
+**`InterceptorLink` is not optional.** Adding `LinkAuthId::Can` breaks two
+deliberately wildcard-free matches in `zenoh` (`interceptor/mod.rs:84`,
+`api/info.rs:338`), so `zenoh-config` needs an `InterceptorLink::Can` variant for
+`zenoh` to compile at all. A side benefit: `"can"` is now a valid ACL
+`link_protocols` value, which is exactly the lever RFC-0081 §3.2 would need if
+the bus turns out to flood.
+
+**Two deviations from zenoh-pico, both deliberate.** Identifiers above `0x7FF`
+are refused rather than silently truncated on the wire, and a malformed config
+value is an error rather than a quiet fall back to the default. Neither breaks a
+configuration that works today; both turn a silent priority misconfiguration
+into a startup error.
+
+### Why W6 cannot be done from this machine
+
+`zenoh-c` and `rmw_zenoh` are not checked out here, and neither is vendored into
+the ASI tree — the chain `zenoh → zenoh-c → zenoh-cpp → rmw_zenoh_cpp` needs at
+least the first of those cloned before the feature pass-through can be written or
+tested. This is the schedule risk §5 names, arriving on schedule.
 
 ## 3. Acceptance criteria
 
