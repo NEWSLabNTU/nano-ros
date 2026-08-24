@@ -497,3 +497,57 @@ the store must be cold, and it is, but nothing in this workflow pays for that.
 
 Note nightly is 1681 s and was NOT broken down. If CI time matters, nightly is
 8x pr-checks and is where the hours are.
+
+## The gate fan-out is REVERTED as the default (2026-08-24)
+
+Attempting item 1 of the CI plan — switch CI's `just check-fast` step to the
+fan-out — instead disproved the fan-out's premise, and it is no longer the
+default for `build-test-fixtures`.
+
+Measured on one tree, back to back:
+
+| | |
+| --- | --- |
+| serial `just check-fast` | **84 s** |
+| fan-out `-P32` | **>516 s** (killed) |
+| fan-out `-P2` (runner-scale) | **>600 s** (killed) |
+
+The four gates left running were the same every time:
+`check-core-only-predicate`, `check-deploy-board-resolves`,
+`check-example-leaf-target-dirs`, `check-site-config`. Timed alone,
+`check-core-only-predicate` took **250 s** — against 5 s earlier the same day.
+
+### Why: the fan-out defeats cargo's incremental sharing
+
+Those gates invoke cargo. Under serial `check-fast` they run as just
+DEPENDENCIES inside one process, so an earlier gate warms the shared target
+directory and later ones are nearly free. Invoked standalone as `just <gate>`,
+each pays the full cold cost, and the fan-out invokes all 111 that way.
+
+So the 45 s -> 7 s figure was never the fan-out being fast. It was measured when
+those cargo gates happened to be warm from a preceding serial run — the fan-out
+inherited a warm target dir it did not create, and reported the difference as its
+own win. `just` startup is not the cost (11 ms, 1.2 s across 111 gates); the
+cargo work is.
+
+That also explains the earlier "regression" I diagnosed as cold caches and the
+one before it I called a real regression: both were this, seen from different
+cache states.
+
+### Consequences
+
+* `build-test-fixtures` gates through serial `check-fast` again. The fan-out
+  remains available as `just check-fast-parallel` but should not be made the
+  default without solving the cargo-sharing problem.
+* **CI item 1 is dead as written.** `check-fast` at 144 s in CI cannot be fixed
+  by fanning it out; on a 2-core runner it would be far worse.
+* The three real bugs the fan-out surfaced (the `grep -q` error class, and two
+  gate reds) stay fixed and were worth the exercise. The speed claim was not.
+
+### The honest lesson
+
+This is the sixth retraction in this phase and the first where I had shipped the
+change before measuring it properly. The 45 s -> 7 s number was reproduced three
+times, which felt like enough — but all three runs shared the same warm
+precondition, so repetition confirmed nothing. **Repeating a measurement is not
+the same as varying its preconditions.**

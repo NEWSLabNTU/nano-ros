@@ -2416,7 +2416,7 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": check-fast-parallel _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
