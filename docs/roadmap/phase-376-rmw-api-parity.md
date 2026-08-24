@@ -85,19 +85,25 @@ a gate people learn to skip. It joins `check` at the end of W5.
 
 ### W3.a — types lose the vendor prefix (10 types, 45 uses)
 
-| ours | becomes | uses |
+> **Note (2026-08-24):** this table's left column had been clobbered — every
+> row read `` `rmw_x_t` -> `rmw_x_t` ``, because the tree-wide W3.a rename ran
+> over the doc as well as the code and rewrote the "ours" column into the
+> "becomes" column. A rename table whose two columns are equal records nothing.
+> The old spellings are restored below from `c7fdc1eb1~1`.
+
+| ours (pre-W3.a) | becomes | uses |
 | --- | --- | ---: |
-| `rmw_session_t` | `rmw_session_t` | 10 |
-| `rmw_subscription_t` | `rmw_subscription_t` | 10 |
-| `rmw_publisher_t` | `rmw_publisher_t` | 9 |
-| `rmw_service_t` | `rmw_service_t` | 5 |
-| `rmw_client_t` | `rmw_client_t` | 5 |
-| `rmw_qos_profile_t` | `rmw_qos_profile_t` | 4 |
-| `rmw_event_type_t` | `rmw_event_type_t` | 2 |
-| `rmw_event_callback_t` | `rmw_event_callback_t` | 2 |
-| `rmw_publisher_options_t` | `rmw_publisher_options_t` | 1 |
-| `rmw_subscription_options_t` | `rmw_subscription_options_t` | 1 |
-| `rmw_ret_t` | `rmw_ret_t` | every slot |
+| `nros_rmw_session_t` | `rmw_session_t` | 10 |
+| `nros_rmw_subscription_t` | `rmw_subscription_t` | 10 |
+| `nros_rmw_publisher_t` | `rmw_publisher_t` | 9 |
+| `nros_rmw_service_t` | `rmw_service_t` | 5 |
+| `nros_rmw_client_t` | `rmw_client_t` | 5 |
+| `nros_rmw_qos_t` | `rmw_qos_profile_t` | 4 |
+| `nros_rmw_event_kind_t` | `rmw_event_type_t` | 2 |
+| `nros_rmw_event_callback_t` | `rmw_event_callback_t` | 2 |
+| `nros_rmw_publisher_options_t` | `rmw_publisher_options_t` | 1 |
+| `nros_rmw_subscription_options_t` | `rmw_subscription_options_t` | 1 |
+| `nros_rmw_ret_t` | `rmw_ret_t` | every slot |
 
 Struct **tags** may stay ours; the typedef names are the surface a backend sees.
 
@@ -352,18 +358,24 @@ today.
 
 | item | state |
 | --- | --- |
-| `rmw_ret_t` -> `rmw_ret_t` | open |
-| `rmw_session_t` -> `rmw_session_t` (10 uses) | open |
-| `rmw_subscription_t` -> `rmw_subscription_t` (10) | open |
-| `rmw_publisher_t` -> `rmw_publisher_t` (9) | open |
-| `rmw_service_t` -> `rmw_service_t` (5) | open |
-| `rmw_client_t` -> `rmw_client_t` (5) | open |
-| `rmw_qos_profile_t` -> `rmw_qos_profile_t` (4) | open |
-| `rmw_event_type_t` -> `rmw_event_type_t` (2) | open |
-| `rmw_event_callback_t` -> `rmw_event_callback_t` (2) | open |
-| `nros_rmw_{publisher,subscription}_options_t` -> upstream names (2) | open |
-| `#error` guard on `RMW_RMW_H_` so our header and upstream's cannot share a TU | open |
-| the `NROS_RMW_RET_*` constant names follow their type | open |
+| `nros_rmw_ret_t` -> `rmw_ret_t` | **done** |
+| `nros_rmw_session_t` -> `rmw_session_t` (10 uses) | **done** |
+| `nros_rmw_subscription_t` -> `rmw_subscription_t` (10) | **done** |
+| `nros_rmw_publisher_t` -> `rmw_publisher_t` (9) | **done** |
+| `nros_rmw_service_t` -> `rmw_service_t` (5) | **done** |
+| `nros_rmw_client_t` -> `rmw_client_t` (5) | **done** |
+| `nros_rmw_qos_t` -> `rmw_qos_profile_t` (4) | **done** |
+| `nros_rmw_event_kind_t` -> `rmw_event_type_t` (2) | **done** |
+| `nros_rmw_event_callback_t` -> `rmw_event_callback_t` (2) | **done** |
+| `nros_rmw_{publisher,subscription}_options_t` -> upstream names (2) | **done** |
+| `#error` guard on `RMW_RMW_H_` so our header and upstream's cannot share a TU | **done** |
+| the `NROS_RMW_RET_*` constant names follow their type | **done** — the CONSTANTS keep the `NROS_` prefix deliberately: `rmw_ret_t` is upstream's type, but W3.d step B gave the values upstream's numbering plus 13 of our own above `NROS_RMW_RET_EXTENSION_BASE`, so an unprefixed spelling would claim a name upstream owns |
+
+Every row here read `` `rmw_x_t` -> `rmw_x_t` | open `` until 2026-08-24: the
+tree-wide rename edited this doc too, collapsing both columns onto the new
+spelling, and the `open` states were never flipped. The section header has said
+**COMPLETE** since the work landed, so the table contradicted its own heading —
+which is why nobody reading the heading noticed the rows.
 
 Verified by: `just rmw-abi-shape` -> `vendor-named types in sigs: 0`.
 
