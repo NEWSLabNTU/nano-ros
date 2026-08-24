@@ -103,6 +103,14 @@ cannot enforce and which is false for `send_goal` and `SetParameters`, both of w
 application code, different behaviour per transport. Recorded as a deviation by phase-376; it is a gap
 wearing a deviation's clothes. See `0778-*`. (2026-08-24)
 
+**#0786** (testing/threadx) — `test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub` boots, brings the
+virtio link UP, runs the C++ entry and prints its banner, then delivers nothing until a 30 s timeout.
+Reproduces SOLO, so not the sweep-flake class. Issue 0664 closed on 2026-08-17 with all four
+`threadx_riscv64_qemu` tests passing, so this is a regression inside a week, found by the first tier-2 run
+since — tier 1 is host-only and cannot see it. Candidates: the cyclonedds submodule bump (`5932f7233`) and
+phase-376 W3/W4's vtable ABI rework (16 slots renamed, 6 added, every backend touched). The
+`NROS_CYCLONE_HAS_STD_ATOMIC_I64` commits in the same window are ruled out in the issue. (2026-08-24)
+
 Recently resolved (2026-08-24): **#0774** (testing) — `rmw_zenohd` links `libzenohc.so` by SONAME, so
 
 Recently resolved (2026-08-24): **#0773** (rmw/cyclonedds) — the "1005-byte payload" was
