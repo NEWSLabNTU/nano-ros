@@ -121,37 +121,85 @@ struct nros_goal_uuid_t;
  */
 #define NROS_MAX_PARAM_STRING_LEN 128
 
+/**
+ * Lifecycle state: Unconfigured
+ */
+#define NROS_LIFECYCLE_STATE_UNCONFIGURED 1
 
+/**
+ * Lifecycle state: Inactive
+ */
+#define NROS_LIFECYCLE_STATE_INACTIVE 2
 
+/**
+ * Lifecycle state: Active
+ */
+#define NROS_LIFECYCLE_STATE_ACTIVE 3
 
+/**
+ * Lifecycle state: Finalized
+ */
+#define NROS_LIFECYCLE_STATE_FINALIZED 4
 
+/**
+ * Lifecycle state: ErrorProcessing
+ */
+#define NROS_LIFECYCLE_STATE_ERROR_PROCESSING 5
 
+/**
+ * Lifecycle transition: Configure
+ */
+#define NROS_LIFECYCLE_TRANSITION_CONFIGURE 1
 
+/**
+ * Lifecycle transition: Activate
+ */
+#define NROS_LIFECYCLE_TRANSITION_ACTIVATE 2
 
+/**
+ * Lifecycle transition: Deactivate
+ */
+#define NROS_LIFECYCLE_TRANSITION_DEACTIVATE 3
 
+/**
+ * Lifecycle transition: Cleanup
+ */
+#define NROS_LIFECYCLE_TRANSITION_CLEANUP 4
 
+/**
+ * Lifecycle transition: Shutdown (from Unconfigured)
+ */
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED 5
 
+/**
+ * Lifecycle transition: Shutdown (from Inactive)
+ */
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE 6
 
+/**
+ * Lifecycle transition: Shutdown (from Active)
+ */
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE 7
 
+/**
+ * Lifecycle transition: Error Recovery
+ */
+#define NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY 8
 
+/**
+ * Transition result: Success
+ */
+#define NROS_LIFECYCLE_RET_OK 0
 
+/**
+ * Transition result: Failure
+ */
+#define NROS_LIFECYCLE_RET_FAILURE 1
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/**
+ * Transition result: Error
+ */
+#define NROS_LIFECYCLE_RET_ERROR 2
 
 /**
  * Sentinel value for `domain_id_override`. When set, the support context's
@@ -765,8 +813,6 @@ typedef enum nros_deadline_policy_t nros_deadline_policy_t;
 typedef uint8_t nros_deadline_policy_t;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
-
-typedef struct Option_LifecycleCallbackFnCtx Option_LifecycleCallbackFnCtx;
 
 /**
  * Clock structure.
@@ -2257,6 +2303,33 @@ typedef struct nros_lifecycle_state_machine_t {
    */
   uint64_t storage[NROS_LIFECYCLE_CTX_OPAQUE_U64S];
 } nros_lifecycle_state_machine_t;
+
+/**
+ * C callback type for a lifecycle transition: `uint8_t callback(void *context)`.
+ *
+ * The return value is a REP-2002 `TransitionResult`
+ * ([`NROS_LIFECYCLE_RET_OK`] = 0, [`NROS_LIFECYCLE_RET_FAILURE`] = 1,
+ * [`NROS_LIFECYCLE_RET_ERROR`] = 2). `context` is the pointer most recently
+ * handed to a `nros_lifecycle_register_on_*` /
+ * `nros_executor_lifecycle_register_on_*` call — all six slots on one state
+ * machine share a single context.
+ *
+ * `NULL` clears the slot.
+ *
+ * Issue 0792: this alias is declared HERE rather than reusing
+ * `nros_node::lifecycle::LifecycleCallbackFnCtx` because cbindgen runs with
+ * `parse_deps = false`. A cross-crate `Option<LifecycleCallbackFnCtx>` in an
+ * `extern "C"` signature is unresolvable to it, so it emitted an OPAQUE
+ * `struct Option_LifecycleCallbackFnCtx` and passed it BY VALUE — a C
+ * translation unit could not form the argument, and all twelve
+ * `*_register_on_*` entry points were uncallable from C. A local
+ * `Option<fn>` alias renders as a plain nullable function pointer (the same
+ * shape `nros_guard_condition_callback_t` and `nros_timer_callback_t`
+ * already use, and the same one the C++ shim's
+ * `nros_cpp_lifecycle_callback_t` uses). The ABI is unchanged: a nullable
+ * `extern "C" fn` is one pointer either way.
+ */
+typedef uint8_t (*nros_lifecycle_callback_t)(void *context);
 
 /**
  * Phase 189.M3 — rclc-style named publisher options.
@@ -4396,11 +4469,27 @@ NROS_PUBLIC nros_ret_t nros_guard_condition_fini(struct nros_guard_condition_t *
 NROS_PUBLIC struct nros_lifecycle_state_machine_t nros_lifecycle_get_zero_initialized(void);
 
 /**
- * Initialize a lifecycle state machine for a node.
+ * Initialize a standalone lifecycle state machine.
+ *
+ * The machine starts in `Unconfigured` with no callbacks registered. It is
+ * self-contained: it drives the REP-2002 transition table and the six
+ * transition callbacks, and it is NOT bound to a node and registers no ROS 2
+ * services. A node that should answer `ros2 lifecycle set|get|list` uses the
+ * executor-scoped family instead — `nros_executor_register_lifecycle_services`
+ * plus `nros_executor_lifecycle_*`.
+ *
+ * Issue 0792: this took a `const nros_node_t *node` until it was noticed that
+ * the pointer was only NULL-checked and never stored. The parameter is gone
+ * rather than stored, because storing it would not have helped: the
+ * executor-scoped family does not reach its node through an `nros_node_t` at
+ * all. `Executor::register_lifecycle_services` builds the five servers on the
+ * executor's own session, keeps them in the executor's `LifecycleRuntimeState`,
+ * and relies on the executor's spin loop to poll them — none of which a
+ * caller-held `nros_lifecycle_state_machine_t` has access to or can be given
+ * by a node pointer. The removed `nros_make_node_a_lifecycle_node` alias went
+ * with it for the same reason: it could not do what its name said.
  */
-NROS_PUBLIC
-nros_ret_t nros_lifecycle_init(struct nros_lifecycle_state_machine_t *sm,
-                               const struct nros_node_t *node);
+NROS_PUBLIC nros_ret_t nros_lifecycle_init(struct nros_lifecycle_state_machine_t *sm);
 
 /**
  * Finalize a lifecycle state machine.
@@ -4424,7 +4513,7 @@ NROS_PUBLIC uint8_t nros_lifecycle_get_state(const struct nros_lifecycle_state_m
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_configure(struct nros_lifecycle_state_machine_t *sm,
-                                                struct Option_LifecycleCallbackFnCtx cb,
+                                                nros_lifecycle_callback_t cb,
                                                 void *context);
 
 /**
@@ -4432,7 +4521,7 @@ nros_ret_t nros_lifecycle_register_on_configure(struct nros_lifecycle_state_mach
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_activate(struct nros_lifecycle_state_machine_t *sm,
-                                               struct Option_LifecycleCallbackFnCtx cb,
+                                               nros_lifecycle_callback_t cb,
                                                void *context);
 
 /**
@@ -4440,7 +4529,7 @@ nros_ret_t nros_lifecycle_register_on_activate(struct nros_lifecycle_state_machi
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_deactivate(struct nros_lifecycle_state_machine_t *sm,
-                                                 struct Option_LifecycleCallbackFnCtx cb,
+                                                 nros_lifecycle_callback_t cb,
                                                  void *context);
 
 /**
@@ -4448,7 +4537,7 @@ nros_ret_t nros_lifecycle_register_on_deactivate(struct nros_lifecycle_state_mac
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_cleanup(struct nros_lifecycle_state_machine_t *sm,
-                                              struct Option_LifecycleCallbackFnCtx cb,
+                                              nros_lifecycle_callback_t cb,
                                               void *context);
 
 /**
@@ -4456,7 +4545,7 @@ nros_ret_t nros_lifecycle_register_on_cleanup(struct nros_lifecycle_state_machin
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_shutdown(struct nros_lifecycle_state_machine_t *sm,
-                                               struct Option_LifecycleCallbackFnCtx cb,
+                                               nros_lifecycle_callback_t cb,
                                                void *context);
 
 /**
@@ -4464,16 +4553,8 @@ nros_ret_t nros_lifecycle_register_on_shutdown(struct nros_lifecycle_state_machi
  */
 NROS_PUBLIC
 nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_t *sm,
-                                            struct Option_LifecycleCallbackFnCtx cb,
+                                            nros_lifecycle_callback_t cb,
                                             void *context);
-
-/**
- * Convenience: alias for `nros_lifecycle_init` matching rclc's
- * `rclc_make_node_a_lifecycle_node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_make_node_a_lifecycle_node(struct nros_lifecycle_state_machine_t *sm,
-                                           const struct nros_node_t *node);
 
 /**
  * Register the five REP-2002 lifecycle services on the executor's node.
@@ -4515,7 +4596,7 @@ nros_ret_t nros_executor_lifecycle_change_state(struct nros_executor_t *executor
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_configure(struct nros_executor_t *executor,
-                                                         struct Option_LifecycleCallbackFnCtx cb,
+                                                         nros_lifecycle_callback_t cb,
                                                          void *context);
 
 /**
@@ -4523,7 +4604,7 @@ nros_ret_t nros_executor_lifecycle_register_on_configure(struct nros_executor_t 
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_activate(struct nros_executor_t *executor,
-                                                        struct Option_LifecycleCallbackFnCtx cb,
+                                                        nros_lifecycle_callback_t cb,
                                                         void *context);
 
 /**
@@ -4531,7 +4612,7 @@ nros_ret_t nros_executor_lifecycle_register_on_activate(struct nros_executor_t *
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_deactivate(struct nros_executor_t *executor,
-                                                          struct Option_LifecycleCallbackFnCtx cb,
+                                                          nros_lifecycle_callback_t cb,
                                                           void *context);
 
 /**
@@ -4539,7 +4620,7 @@ nros_ret_t nros_executor_lifecycle_register_on_deactivate(struct nros_executor_t
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_cleanup(struct nros_executor_t *executor,
-                                                       struct Option_LifecycleCallbackFnCtx cb,
+                                                       nros_lifecycle_callback_t cb,
                                                        void *context);
 
 /**
@@ -4547,7 +4628,7 @@ nros_ret_t nros_executor_lifecycle_register_on_cleanup(struct nros_executor_t *e
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_shutdown(struct nros_executor_t *executor,
-                                                        struct Option_LifecycleCallbackFnCtx cb,
+                                                        nros_lifecycle_callback_t cb,
                                                         void *context);
 
 /**
@@ -4555,7 +4636,7 @@ nros_ret_t nros_executor_lifecycle_register_on_shutdown(struct nros_executor_t *
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_lifecycle_register_on_error(struct nros_executor_t *executor,
-                                                     struct Option_LifecycleCallbackFnCtx cb,
+                                                     nros_lifecycle_callback_t cb,
                                                      void *context);
 
 /**

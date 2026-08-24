@@ -9,57 +9,117 @@ use core::{ffi::c_void, mem::MaybeUninit};
 
 use nros_node::{
     LifecycleState, LifecycleTransition, TransitionResult,
-    lifecycle::{
-        LifecycleCallbackFnCtx, LifecycleCallbackSlot, LifecycleError, LifecyclePollingNodeCtx,
-    },
+    lifecycle::{LifecycleCallbackSlot, LifecycleError, LifecyclePollingNodeCtx},
 };
 
-use crate::{constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S, error::*, node::nros_node_t};
+use crate::{constants::NROS_LIFECYCLE_CTX_OPAQUE_U64S, error::*};
 
 // ============================================================================
 // Constants — exported to C via cbindgen
 // ============================================================================
+//
+// Issue 0792: these are spelled as LITERALS, not as `LifecycleState::X as u8`.
+// cbindgen runs with `parse_deps = false`, so it cannot see the `nros_core`
+// enums and cannot evaluate a cast through one — it silently DROPS such a
+// constant rather than failing. All fifteen were missing from
+// `nros_generated.h`, so a C caller had no name for a transition id or for a
+// callback's return value: the same cross-crate blind spot that made
+// `Option<LifecycleCallbackFnCtx>` an opaque struct, one item over. The
+// `const _` block below is what keeps the literals honest — a discriminant
+// change in `nros_core::lifecycle` is a compile error here, not a wrong number
+// in a header.
 
 /// Lifecycle state: Unconfigured
-pub const NROS_LIFECYCLE_STATE_UNCONFIGURED: u8 = LifecycleState::Unconfigured as u8;
+pub const NROS_LIFECYCLE_STATE_UNCONFIGURED: u8 = 1;
 /// Lifecycle state: Inactive
-pub const NROS_LIFECYCLE_STATE_INACTIVE: u8 = LifecycleState::Inactive as u8;
+pub const NROS_LIFECYCLE_STATE_INACTIVE: u8 = 2;
 /// Lifecycle state: Active
-pub const NROS_LIFECYCLE_STATE_ACTIVE: u8 = LifecycleState::Active as u8;
+pub const NROS_LIFECYCLE_STATE_ACTIVE: u8 = 3;
 /// Lifecycle state: Finalized
-pub const NROS_LIFECYCLE_STATE_FINALIZED: u8 = LifecycleState::Finalized as u8;
+pub const NROS_LIFECYCLE_STATE_FINALIZED: u8 = 4;
 /// Lifecycle state: ErrorProcessing
-pub const NROS_LIFECYCLE_STATE_ERROR_PROCESSING: u8 = LifecycleState::ErrorProcessing as u8;
+pub const NROS_LIFECYCLE_STATE_ERROR_PROCESSING: u8 = 5;
 
 /// Lifecycle transition: Configure
-pub const NROS_LIFECYCLE_TRANSITION_CONFIGURE: u8 = LifecycleTransition::Configure as u8;
+pub const NROS_LIFECYCLE_TRANSITION_CONFIGURE: u8 = 1;
 /// Lifecycle transition: Activate
-pub const NROS_LIFECYCLE_TRANSITION_ACTIVATE: u8 = LifecycleTransition::Activate as u8;
+pub const NROS_LIFECYCLE_TRANSITION_ACTIVATE: u8 = 2;
 /// Lifecycle transition: Deactivate
-pub const NROS_LIFECYCLE_TRANSITION_DEACTIVATE: u8 = LifecycleTransition::Deactivate as u8;
+pub const NROS_LIFECYCLE_TRANSITION_DEACTIVATE: u8 = 3;
 /// Lifecycle transition: Cleanup
-pub const NROS_LIFECYCLE_TRANSITION_CLEANUP: u8 = LifecycleTransition::Cleanup as u8;
+pub const NROS_LIFECYCLE_TRANSITION_CLEANUP: u8 = 4;
 /// Lifecycle transition: Shutdown (from Unconfigured)
-pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED: u8 =
-    LifecycleTransition::ShutdownUnconfigured as u8;
+pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED: u8 = 5;
 /// Lifecycle transition: Shutdown (from Inactive)
-pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE: u8 =
-    LifecycleTransition::ShutdownInactive as u8;
+pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE: u8 = 6;
 /// Lifecycle transition: Shutdown (from Active)
-pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE: u8 = LifecycleTransition::ShutdownActive as u8;
+pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE: u8 = 7;
 /// Lifecycle transition: Error Recovery
-pub const NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY: u8 = LifecycleTransition::ErrorRecovery as u8;
+pub const NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY: u8 = 8;
 
 /// Transition result: Success
-pub const NROS_LIFECYCLE_RET_OK: u8 = TransitionResult::Success as u8;
+pub const NROS_LIFECYCLE_RET_OK: u8 = 0;
 /// Transition result: Failure
-pub const NROS_LIFECYCLE_RET_FAILURE: u8 = TransitionResult::Failure as u8;
+pub const NROS_LIFECYCLE_RET_FAILURE: u8 = 1;
 /// Transition result: Error
-pub const NROS_LIFECYCLE_RET_ERROR: u8 = TransitionResult::Error as u8;
+pub const NROS_LIFECYCLE_RET_ERROR: u8 = 2;
+
+/// Issue 0792 — the literals above must equal the `nros_core::lifecycle`
+/// discriminants they mirror. This is the check cbindgen cannot do.
+const _: () = {
+    assert!(NROS_LIFECYCLE_STATE_UNCONFIGURED == LifecycleState::Unconfigured as u8);
+    assert!(NROS_LIFECYCLE_STATE_INACTIVE == LifecycleState::Inactive as u8);
+    assert!(NROS_LIFECYCLE_STATE_ACTIVE == LifecycleState::Active as u8);
+    assert!(NROS_LIFECYCLE_STATE_FINALIZED == LifecycleState::Finalized as u8);
+    assert!(NROS_LIFECYCLE_STATE_ERROR_PROCESSING == LifecycleState::ErrorProcessing as u8);
+
+    assert!(NROS_LIFECYCLE_TRANSITION_CONFIGURE == LifecycleTransition::Configure as u8);
+    assert!(NROS_LIFECYCLE_TRANSITION_ACTIVATE == LifecycleTransition::Activate as u8);
+    assert!(NROS_LIFECYCLE_TRANSITION_DEACTIVATE == LifecycleTransition::Deactivate as u8);
+    assert!(NROS_LIFECYCLE_TRANSITION_CLEANUP == LifecycleTransition::Cleanup as u8);
+    assert!(
+        NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED
+            == LifecycleTransition::ShutdownUnconfigured as u8
+    );
+    assert!(
+        NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE == LifecycleTransition::ShutdownInactive as u8
+    );
+    assert!(NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE == LifecycleTransition::ShutdownActive as u8);
+    assert!(NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY == LifecycleTransition::ErrorRecovery as u8);
+
+    assert!(NROS_LIFECYCLE_RET_OK == TransitionResult::Success as u8);
+    assert!(NROS_LIFECYCLE_RET_FAILURE == TransitionResult::Failure as u8);
+    assert!(NROS_LIFECYCLE_RET_ERROR == TransitionResult::Error as u8);
+};
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/// C callback type for a lifecycle transition: `uint8_t callback(void *context)`.
+///
+/// The return value is a REP-2002 `TransitionResult`
+/// ([`NROS_LIFECYCLE_RET_OK`] = 0, [`NROS_LIFECYCLE_RET_FAILURE`] = 1,
+/// [`NROS_LIFECYCLE_RET_ERROR`] = 2). `context` is the pointer most recently
+/// handed to a `nros_lifecycle_register_on_*` /
+/// `nros_executor_lifecycle_register_on_*` call — all six slots on one state
+/// machine share a single context.
+///
+/// `NULL` clears the slot.
+///
+/// Issue 0792: this alias is declared HERE rather than reusing
+/// `nros_node::lifecycle::LifecycleCallbackFnCtx` because cbindgen runs with
+/// `parse_deps = false`. A cross-crate `Option<LifecycleCallbackFnCtx>` in an
+/// `extern "C"` signature is unresolvable to it, so it emitted an OPAQUE
+/// `struct Option_LifecycleCallbackFnCtx` and passed it BY VALUE — a C
+/// translation unit could not form the argument, and all twelve
+/// `*_register_on_*` entry points were uncallable from C. A local
+/// `Option<fn>` alias renders as a plain nullable function pointer (the same
+/// shape `nros_guard_condition_callback_t` and `nros_timer_callback_t`
+/// already use, and the same one the C++ shim's
+/// `nros_cpp_lifecycle_callback_t` uses). The ABI is unchanged: a nullable
+/// `extern "C" fn` is one pointer either way.
+pub type nros_lifecycle_callback_t = Option<unsafe extern "C" fn(context: *mut c_void) -> u8>;
 
 /// Opaque lifecycle state machine storage.
 ///
@@ -115,13 +175,30 @@ pub extern "C" fn nros_lifecycle_get_zero_initialized() -> nros_lifecycle_state_
     nros_lifecycle_state_machine_t::default()
 }
 
-/// Initialize a lifecycle state machine for a node.
+/// Initialize a standalone lifecycle state machine.
+///
+/// The machine starts in `Unconfigured` with no callbacks registered. It is
+/// self-contained: it drives the REP-2002 transition table and the six
+/// transition callbacks, and it is NOT bound to a node and registers no ROS 2
+/// services. A node that should answer `ros2 lifecycle set|get|list` uses the
+/// executor-scoped family instead — `nros_executor_register_lifecycle_services`
+/// plus `nros_executor_lifecycle_*`.
+///
+/// Issue 0792: this took a `const nros_node_t *node` until it was noticed that
+/// the pointer was only NULL-checked and never stored. The parameter is gone
+/// rather than stored, because storing it would not have helped: the
+/// executor-scoped family does not reach its node through an `nros_node_t` at
+/// all. `Executor::register_lifecycle_services` builds the five servers on the
+/// executor's own session, keeps them in the executor's `LifecycleRuntimeState`,
+/// and relies on the executor's spin loop to poll them — none of which a
+/// caller-held `nros_lifecycle_state_machine_t` has access to or can be given
+/// by a node pointer. The removed `nros_make_node_a_lifecycle_node` alias went
+/// with it for the same reason: it could not do what its name said.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_init(
     sm: *mut nros_lifecycle_state_machine_t,
-    node: *const nros_node_t,
 ) -> nros_ret_t {
-    if sm.is_null() || node.is_null() {
+    if sm.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
     if (*sm).initialized {
@@ -193,7 +270,7 @@ pub unsafe extern "C" fn nros_lifecycle_get_state(sm: *const nros_lifecycle_stat
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_configure(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Configure, cb, context)
@@ -203,7 +280,7 @@ pub unsafe extern "C" fn nros_lifecycle_register_on_configure(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_activate(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Activate, cb, context)
@@ -213,7 +290,7 @@ pub unsafe extern "C" fn nros_lifecycle_register_on_activate(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_deactivate(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Deactivate, cb, context)
@@ -223,7 +300,7 @@ pub unsafe extern "C" fn nros_lifecycle_register_on_deactivate(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_cleanup(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Cleanup, cb, context)
@@ -233,7 +310,7 @@ pub unsafe extern "C" fn nros_lifecycle_register_on_cleanup(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_shutdown(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Shutdown, cb, context)
@@ -243,21 +320,19 @@ pub unsafe extern "C" fn nros_lifecycle_register_on_shutdown(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_lifecycle_register_on_error(
     sm: *mut nros_lifecycle_state_machine_t,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     register(sm, LifecycleCallbackSlot::Error, cb, context)
 }
 
-/// Convenience: alias for `nros_lifecycle_init` matching rclc's
-/// `rclc_make_node_a_lifecycle_node`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_make_node_a_lifecycle_node(
-    sm: *mut nros_lifecycle_state_machine_t,
-    node: *const nros_node_t,
-) -> nros_ret_t {
-    nros_lifecycle_init(sm, node)
-}
+// `nros_make_node_a_lifecycle_node` used to live here as a documented alias for
+// `nros_lifecycle_init`, matching rclc's `rclc_make_node_a_lifecycle_node`.
+// Issue 0792 removed it: it forwarded the node pointer to a function that only
+// NULL-checked it, so a function named "make node a lifecycle node" did not make
+// a node a lifecycle node. The capability it advertised is
+// `nros_executor_register_lifecycle_services` (below), which is where the node's
+// session and spin loop actually are.
 
 // ============================================================================
 // Internal helper
@@ -267,7 +342,7 @@ pub unsafe extern "C" fn nros_make_node_a_lifecycle_node(
 unsafe fn register(
     sm: *mut nros_lifecycle_state_machine_t,
     slot: LifecycleCallbackSlot,
-    cb: Option<LifecycleCallbackFnCtx>,
+    cb: nros_lifecycle_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     if sm.is_null() {
@@ -375,7 +450,7 @@ mod service_backed {
     unsafe fn register_exec(
         executor: *mut nros_executor_t,
         slot: LifecycleCallbackSlot,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         if executor.is_null() {
@@ -394,7 +469,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_configure(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Configure, cb, context) }
@@ -404,7 +479,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_activate(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Activate, cb, context) }
@@ -414,7 +489,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_deactivate(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Deactivate, cb, context) }
@@ -424,7 +499,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_cleanup(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Cleanup, cb, context) }
@@ -434,7 +509,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_shutdown(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Shutdown, cb, context) }
@@ -444,7 +519,7 @@ mod service_backed {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_lifecycle_register_on_error(
         executor: *mut nros_executor_t,
-        cb: Option<LifecycleCallbackFnCtx>,
+        cb: nros_lifecycle_callback_t,
         context: *mut c_void,
     ) -> nros_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Error, cb, context) }
@@ -466,9 +541,7 @@ mod tests {
             let mut sm = nros_lifecycle_get_zero_initialized();
             assert!(!sm.initialized);
 
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            assert_eq!(nros_lifecycle_init(&mut sm, node_ptr), NROS_RET_OK);
+            assert_eq!(nros_lifecycle_init(&mut sm), NROS_RET_OK);
             assert!(sm.initialized);
             assert_eq!(
                 nros_lifecycle_get_state(&sm),
@@ -476,10 +549,7 @@ mod tests {
             );
 
             // Double-init rejected
-            assert_eq!(
-                nros_lifecycle_init(&mut sm, node_ptr),
-                NROS_RET_BAD_SEQUENCE
-            );
+            assert_eq!(nros_lifecycle_init(&mut sm), NROS_RET_BAD_SEQUENCE);
 
             assert_eq!(nros_lifecycle_fini(&mut sm), NROS_RET_OK);
             assert!(!sm.initialized);
@@ -491,12 +561,7 @@ mod tests {
     fn test_null_checks() {
         unsafe {
             assert_eq!(
-                nros_lifecycle_init(core::ptr::null_mut(), core::ptr::null()),
-                NROS_RET_INVALID_ARGUMENT
-            );
-            let mut sm = nros_lifecycle_get_zero_initialized();
-            assert_eq!(
-                nros_lifecycle_init(&mut sm, core::ptr::null()),
+                nros_lifecycle_init(core::ptr::null_mut()),
                 NROS_RET_INVALID_ARGUMENT
             );
             assert_eq!(
@@ -522,9 +587,7 @@ mod tests {
     fn test_happy_path_through_ffi() {
         unsafe {
             let mut sm = nros_lifecycle_get_zero_initialized();
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm);
 
             nros_lifecycle_register_on_configure(&mut sm, Some(cb_success), core::ptr::null_mut());
             nros_lifecycle_register_on_activate(&mut sm, Some(cb_success), core::ptr::null_mut());
@@ -546,9 +609,7 @@ mod tests {
     fn test_callback_failure_rolls_back() {
         unsafe {
             let mut sm = nros_lifecycle_get_zero_initialized();
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm);
 
             nros_lifecycle_register_on_configure(&mut sm, Some(cb_failure), core::ptr::null_mut());
             assert_eq!(
@@ -566,9 +627,7 @@ mod tests {
     fn test_invalid_transition_id() {
         unsafe {
             let mut sm = nros_lifecycle_get_zero_initialized();
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm);
 
             assert_eq!(
                 nros_lifecycle_change_state(&mut sm, 99),
@@ -588,9 +647,7 @@ mod tests {
 
         unsafe {
             let mut sm = nros_lifecycle_get_zero_initialized();
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm);
 
             nros_lifecycle_register_on_configure(&mut sm, Some(cb), 0xDEAD as *mut c_void);
             nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
@@ -598,17 +655,28 @@ mod tests {
         }
     }
 
+    /// Issue 0792 — a NULL callback clears the slot rather than being rejected,
+    /// which is what makes `nros_lifecycle_callback_t` a *nullable* pointer
+    /// rather than a plain one.
     #[test]
-    fn test_make_node_a_lifecycle_node_alias() {
+    fn test_null_callback_clears_slot() {
         unsafe {
             let mut sm = nros_lifecycle_get_zero_initialized();
-            let dummy_node = 1u8;
-            let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
+            nros_lifecycle_init(&mut sm);
+
+            nros_lifecycle_register_on_configure(&mut sm, Some(cb_failure), core::ptr::null_mut());
             assert_eq!(
-                nros_make_node_a_lifecycle_node(&mut sm, node_ptr),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
+                NROS_RET_ERROR
+            );
+
+            // NULL == no callback == the transition succeeds by default.
+            nros_lifecycle_register_on_configure(&mut sm, None, core::ptr::null_mut());
+            assert_eq!(
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_OK
             );
-            assert!(sm.initialized);
+            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_INACTIVE);
         }
     }
 }

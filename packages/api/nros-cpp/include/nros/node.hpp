@@ -42,6 +42,10 @@
 // and pay for only the light entities (timer, guard_condition,
 // executor) below.
 #include "nros/timer.hpp"
+// Issue 0789 — `Node::get_clock()` / `Node::now()`. `clock.hpp` pulls in
+// `time.hpp` and `duration.hpp`, so a node that stamps a header needs no
+// further include.
+#include "nros/clock.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
 // Phase 273 (RFC-0047) — callback-group token (value type, no heap).
@@ -187,7 +191,8 @@ inline Result shutdown();
 class Node {
   public:
     /// Default constructor — creates an uninitialized node.
-    Node() : handle_(), initialized_(false), executor_handle_(nullptr) {}
+    Node()
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME) {}
 
     /// Create a new node.
     ///
@@ -230,6 +235,29 @@ class Node {
         if (!initialized_) return nullptr;
         return nros_cpp_node_get_logger(&handle_);
     }
+
+    /// The node's clock — `rclcpp::Node::get_clock()`.
+    ///
+    /// rclcpp hands back a `rclcpp::Clock::SharedPtr`. There is no allocator
+    /// and no `shared_ptr` here (RFC-0022), so the clock is a member of the
+    /// node and this returns a pointer to it: `node.get_clock()->now()` and
+    /// `node->get_clock()->now()` both keep their rclcpp spelling. The pointer
+    /// is valid for as long as the node is.
+    ///
+    /// The clock is ROS time, as rclcpp's node clock is. See `nros::Clock` for
+    /// what ROS time does and does not yet do here (issue 0789).
+    Clock* get_clock() { return &clock_; }
+    /// Const overload of `get_clock()`.
+    const Clock* get_clock() const { return &clock_; }
+
+    /// The current time on the node's clock — `rclcpp::Node::now()`.
+    ///
+    /// Shorthand for `get_clock()->now()`, and the call a ported publisher
+    /// makes to stamp a header:
+    /// ```cpp
+    /// node.now().to_msg(msg.header.stamp);
+    /// ```
+    Time now() const { return clock_.now(); }
 
     /// Check if the node is initialized and valid.
     bool is_valid() const { return initialized_; }
@@ -636,7 +664,7 @@ class Node {
     // Move semantics (non-copyable)
     Node(Node&& other)
         : handle_(other.handle_), initialized_(other.initialized_),
-          executor_handle_(other.executor_handle_) {
+          executor_handle_(other.executor_handle_), clock_(other.clock_) {
         other.initialized_ = false;
         other.executor_handle_ = nullptr;
     }
@@ -649,6 +677,7 @@ class Node {
             handle_ = other.handle_;
             initialized_ = other.initialized_;
             executor_handle_ = other.executor_handle_;
+            clock_ = other.clock_;
             other.initialized_ = false;
             other.executor_handle_ = nullptr;
         }
@@ -662,6 +691,10 @@ class Node {
     nros_cpp_node_t handle_;
     bool initialized_;
     void* executor_handle_; // Set by nros::init() via friendship
+    // Issue 0789 — the node's own clock, ROS time as in rclcpp. Constructing
+    // it touches no platform service (only a steady clock records an epoch),
+    // so a Node in static storage stays as cheap to create as it was.
+    Clock clock_;
 
     friend class Executor;
     friend class NodeBuilder;

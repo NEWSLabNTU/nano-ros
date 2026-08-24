@@ -45,27 +45,27 @@
   },
   "c:executor_lifecycle_register_on_activate": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:executor_lifecycle_register_on_cleanup": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:executor_lifecycle_register_on_configure": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:executor_lifecycle_register_on_deactivate": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:executor_lifecycle_register_on_error": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:executor_lifecycle_register_on_shutdown": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+    "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:lifecycle_callback_map_t": {
     "verdict": "divergence",
@@ -133,7 +133,7 @@
   },
   "c:lifecycle_init": {
     "verdict": "extension",
-    "why": "the ours-only half of `c:lifecycle_state_machine_init`; see that row."
+    "why": "`nros_lifecycle_init(sm)` -- initialise a STANDALONE REP-2002 state machine: the transition table plus the six callback slots, bound to no node and registering no services. The ours-only half of `c:lifecycle_state_machine_init`; see that row. Issue 0792 removed its second parameter (`const nros_node_t *node`), which was only NULL-checked and never stored -- see `c:make_node_a_lifecycle_node` for why storing it would not have helped. A node that must answer `ros2 lifecycle set|get|list` uses the executor-scoped family instead (`c:executor_lifecycle_change_state`)."
   },
   "c:lifecycle_init_change_state_server": {
     "verdict": "declined",
@@ -164,28 +164,28 @@
     "why": "rclc's generic form, keyed on a goal STATE id into the 100-slot map. We ship the six named entry points instead (`nros_lifecycle_register_on_*`), which is also what rclcpp does; a generic slot-index form would only re-open the unbounded map (`c:lifecycle_callback_map_t`)."
   },
   "c:lifecycle_register_on_activate": {
-    "verdict": "gap",
-    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+    "verdict": "divergence",
+    "why": "see `c:lifecycle_register_on_configure` -- same handle, same `nros_lifecycle_callback_t` shape, same fixed declaration (issue 0792)."
   },
   "c:lifecycle_register_on_cleanup": {
-    "verdict": "gap",
-    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+    "verdict": "divergence",
+    "why": "see `c:lifecycle_register_on_configure` -- same handle, same `nros_lifecycle_callback_t` shape, same fixed declaration (issue 0792)."
   },
   "c:lifecycle_register_on_configure": {
-    "verdict": "gap",
-    "why": "**BROKEN C DECLARATION, not a design -- this needs an issue.** The Rust parameter is `Option<LifecycleCallbackFnCtx>`, and cbindgen renders the generated Rust type name straight into the C ABI: `nros_generated.h:769` emits `typedef struct Option_LifecycleCallbackFnCtx Option_LifecycleCallbackFnCtx;` -- an OPAQUE forward declaration -- and then passes it BY VALUE. C rejects that outright ('type of formal parameter 1 is incomplete'), so **no C translation unit can compile a call to any of these twelve entry points**: the six `nros_lifecycle_register_on_*` and the six `nros_executor_lifecycle_register_on_*`. Nothing in the tree does -- every in-tree caller is Rust or goes through the C++ shim, which is why it has stayed latent. Nothing about an RTOS asks for a Rust type name in a C header. The underlying ABI is fine (a nullable `extern \"C\" fn` is just a function pointer), and OUR OWN C++ SHIM already spells the same thing correctly -- `nros_cpp_lifecycle_callback_t`, a plain fn-ptr typedef in `nros-cpp/src/lifecycle_shim.rs`. Fix: a named `nros_lifecycle_callback_t` typedef and a plain (nullable) pointer parameter, so the header declares what the symbol actually is. Separately, the callback SHAPE is a real divergence: rclc's is `int (*)(void)` with no context, ours is `uint8_t (*)(void* ctx)` -- `callback-bound-at-creation` (no allocator, so a callback cannot capture; the context travels beside the pointer). Phase 379 W4."
+    "verdict": "divergence",
+    "why": "ours `(lifecycle_state_machine_t*, nros_lifecycle_callback_t, void*)`, theirs `(lifecycle_node_t*, int (*)(void))`. Two differences, both accounted for. (1) The handle: theirs takes `rclc_lifecycle_node_t*`, ours `nros_lifecycle_state_machine_t*` -- one handle instead of two, see `c:lifecycle_node_t`. (2) The callback SHAPE: rclc's is `int (*)(void)` with no context, ours is `uint8_t (*)(void *context)` -- `callback-bound-at-creation`. Constraint: no allocator, so a callback cannot capture; the context travels beside the pointer, exactly as it does for every other nros callback (`nros_timer_callback_t`, `nros_subscription_callback_t`).\n\nHISTORY (issue 0792, FIXED): this row was a `gap` because the C DECLARATION was broken, not because of the shape. The Rust parameter was the cross-crate `Option<LifecycleCallbackFnCtx>`, and cbindgen -- which runs with `parse_deps = false` -- rendered it as an OPAQUE `typedef struct Option_LifecycleCallbackFnCtx Option_LifecycleCallbackFnCtx;` passed BY VALUE, so no C translation unit could form the argument to any of the twelve `*_register_on_*` entry points. A local `Option<fn>` alias, `nros_lifecycle_callback_t`, now renders as a plain nullable function pointer -- the same shape `nros_guard_condition_callback_t` already used and the same one the C++ shim's `nros_cpp_lifecycle_callback_t` always had. The ABI never changed; only the spelling did. The same cbindgen blind spot had also silently DROPPED all fifteen `NROS_LIFECYCLE_{STATE,TRANSITION,RET}_*` constants (each defined as a cast through an `nros_core` enum), so C had no name for a transition id or a callback return value either; they are now literals guarded by a `const _` assertion block against the Rust discriminants."
   },
   "c:lifecycle_register_on_deactivate": {
-    "verdict": "gap",
-    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+    "verdict": "divergence",
+    "why": "see `c:lifecycle_register_on_configure` -- same handle, same `nros_lifecycle_callback_t` shape, same fixed declaration (issue 0792)."
   },
   "c:lifecycle_register_on_error": {
     "verdict": "extension",
-    "why": "see `c:lifecycle_register_on_shutdown`; `on_error` is REP-2002's error-processing hook, which rclc has no registration slot for. Carries the `c:lifecycle_register_on_configure` defect too."
+    "why": "see `c:lifecycle_register_on_shutdown`; `on_error` is REP-2002's error-processing hook, which rclc has no registration slot for. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:lifecycle_register_on_shutdown": {
     "verdict": "extension",
-    "why": "rclc registers only four transitions (configure/activate/deactivate/cleanup); we register all six, matching rclcpp's `LifecycleNodeInterface`. An embedded node needs `on_shutdown` most of all -- it is where a device parks an actuator before the image stops. NOTE this entry point carries the `c:lifecycle_register_on_configure` defect too."
+    "why": "rclc registers only four transitions (configure/activate/deactivate/cleanup); we register all six, matching rclcpp's `LifecycleNodeInterface`. An embedded node needs `on_shutdown` most of all -- it is where a device parks an actuator before the image stops. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `nros_lifecycle_callback_t` typedef."
   },
   "c:lifecycle_service_context_t": {
     "verdict": "declined",
@@ -205,7 +205,7 @@
   },
   "c:lifecycle_state_machine_init": {
     "verdict": "declined",
-    "why": "rcl's lower-layer constructor: `(state_machine, node, six typesupports, options)`. `nros_lifecycle_init(sm, node)` is this function -- the typesupports come from the compile-time type registry rather than the caller, and the options struct is covered by the `compile-time-options` rule. The rclc-shaped name a user actually writes is also shipped (`nros_make_node_a_lifecycle_node`), so nothing is lost but the rcl spelling."
+    "why": "rcl's lower-layer constructor: `(state_machine, node, six typesupports, options)`. `nros_lifecycle_init(sm)` is this function -- the typesupports come from the compile-time type registry rather than the caller, and the options struct is covered by the `compile-time-options` rule. rcl's `node` argument has no counterpart on ours: rcl's state machine owns the REP-2002 communication interface and so needs the node to build it, while ours is a pure state machine and the services live on the executor (`c:executor_register_lifecycle_services`). Issue 0792 removed the vestigial `node` parameter, and with it the rclc-shaped `nros_make_node_a_lifecycle_node` alias -- see that row."
   },
   "c:lifecycle_state_machine_is_initialized": {
     "verdict": "declined",
@@ -244,8 +244,8 @@
     "why": "label-keyed transition lookup. The label mapping does exist here -- `from_msg_transition_label` in `nros-node/src/lifecycle_services.rs` resolves the label a `ChangeState` request carries, including the generic `\"shutdown\"` -- but only inside the service layer, where a label actually arrives on the wire. A C caller has `NROS_LIFECYCLE_TRANSITION_*` constants and needs no string compare."
   },
   "c:make_node_a_lifecycle_node": {
-    "verdict": "divergence",
-    "why": "theirs `(lifecycle_node_t*, node_t*, lifecycle_state_machine_t*, allocator_t*, bool)`, ours `(lifecycle_state_machine_t*, node_t*)`. Three of theirs are accounted for: `allocator_t*` by the `no-allocator` rule (which already names this entry point); `lifecycle_state_machine_t*` because rclc keeps the wrapper and the rcl state machine as two objects while our one handle IS the state machine (see `c:lifecycle_node_t`); and `bool enable_communication_interface` because we do not fold service registration into construction -- `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. **Defect found while classifying this row, needs an issue:** `nros_lifecycle_init` (which this is a documented alias for) accepts `node` and then only NULL-CHECKS it -- the pointer is never stored, so the standalone `nros_lifecycle_state_machine_t` family cannot reach the node and cannot register the REP-2002 services. A function called `nros_make_node_a_lifecycle_node` does not, today, make a node a lifecycle node; only the executor-scoped family (`nros_executor_lifecycle_*`) does. Phase 379 W4."
+    "verdict": "declined",
+    "why": "theirs `(lifecycle_node_t*, node_t*, lifecycle_state_machine_t*, allocator_t*, bool)`. We shipped a two-argument `nros_make_node_a_lifecycle_node(sm, node)` until issue 0792 REMOVED it. It forwarded to `nros_lifecycle_init`, which only NULL-CHECKED the node and never stored it -- a function named \"make node a lifecycle node\" that did not make a node a lifecycle node. It was removed rather than repaired because storing the node would not have repaired it: rclc's version can bind a node because its state machine OWNS the communication interface, whereas ours is reached the other way round. `Executor::register_lifecycle_services` builds the five REP-2002 servers on the EXECUTOR's session, keeps them in the executor's `LifecycleRuntimeState`, and depends on the executor's spin loop to poll them -- none of which a caller-held `nros_lifecycle_state_machine_t` can obtain from an `nros_node_t *`. So the capability rclc folds into construction (its `bool enable_communication_interface`) is `nros_executor_register_lifecycle_services` here: one explicit call registering all five servers, explicit because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. The `allocator_t*` is covered by the `no-allocator` rule, and the separate `lifecycle_state_machine_t*` by `c:lifecycle_node_t` (rclc keeps the wrapper and the rcl state machine as two objects; our one handle IS the state machine)."
   },
   "c:print_state_machine": {
     "verdict": "declined",
@@ -289,7 +289,7 @@
   },
   "cpp:LifecycleNode::get_clock": {
     "verdict": "gap",
-    "why": "see the timer stage's `cpp:Node::get_clock`: our C++ ships no clock/time/duration surface at all, while C and Rust both do. Not a lifecycle decision -- the lifecycle mixin inherits the hole. Phase 379 W3."
+    "why": "issue 0789 gave `nros::Node` a clock (`get_clock()` / `now()`) and this row did not close with it: our `LifecycleNode` is not a Node. It wraps the executor's REP-2002 state machine and holds no node handle, so there is nothing for the accessor to reach. Closing it means deciding whether `LifecycleNode` owns a node -- a lifecycle question, not a clock one. Phase 379 W3."
   },
   "cpp:LifecycleNode::get_current_state": {
     "verdict": "rename",
@@ -357,7 +357,7 @@
   },
   "cpp:LifecycleNode::now": {
     "verdict": "gap",
-    "why": "see the node stage's `cpp:Node::now` and `cpp:LifecycleNode::get_clock`. Phase 379 W3."
+    "why": "see `cpp:LifecycleNode::get_clock`. `nros::Node::now()` exists since issue 0789; the lifecycle mixin has no node to ask."
   },
   "cpp:LifecycleNode::on_activate": {
     "verdict": "divergence",
@@ -541,5 +541,9 @@
   "rust:on_shutdown": {
     "verdict": "extension",
     "why": "`lifecycle::trampolines::on_shutdown::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_shutdown`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "c:lifecycle_callback_t": {
+    "verdict": "extension",
+    "why": "`uint8_t (*nros_lifecycle_callback_t)(void *context)` -- the named typedef for a lifecycle transition callback, added by issue 0792. rclc has no counterpart because it spells its callback inline as `int (*)(void)` at each of its four `rclc_lifecycle_register_on_*` declarations and never names the type. We name it for two reasons: it is the shape ALL TWELVE of our entry points share (the six standalone and the six executor-scoped), and naming it is what makes it expressible in C at all -- the unnamed cross-crate `Option<LifecycleCallbackFnCtx>` it replaced reached the header as an opaque struct passed by value. Same convention as `nros_timer_callback_t` and `nros_guard_condition_callback_t`. The `void *context` parameter itself is the `callback-bound-at-creation` divergence recorded on `c:lifecycle_register_on_configure`."
   }
 }

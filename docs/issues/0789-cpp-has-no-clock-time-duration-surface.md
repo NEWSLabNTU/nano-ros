@@ -1,7 +1,7 @@
 ---
 id: 789
-title: "nros-cpp ships no clock, time or duration surface — a ported rclcpp node
-  cannot stamp a message header; and ROS time exists in Rust but not in C"
+title: "ROS time exists in Rust and not in C, so a C image cannot be driven by a
+  simulator's /clock (the C++ clock surface half is fixed)"
 status: open
 type: bug
 area: api
@@ -67,15 +67,56 @@ three languages.
 * The types stage recorded `cpp:Clock` and `cpp:Duration` as gaps first and
   deferred the argument here — see `docs/reference/api-parity-ledger/types.json`.
 
-## Direction
+## Fixed 2026-08-25 — the C++ half
 
-Not decided here; phase 379 W3 owns the coverage work. The pieces are separable
-and the first is much the largest:
+`nros/duration.hpp`, `nros/time.hpp` and `nros/clock.hpp` added over the C
+surface that already existed, plus `Node::get_clock()` / `Node::now()` and all
+three in the `nros.hpp` umbrella. `node->now()` compiles. **19 ledger `gap` rows
+closed** — the C++ lane's `same` count went 54 → 63.
 
-* A C++ `Clock`/`Time`/`Duration` over the C surface that already exists. The
-  values are there; what is missing is the C++ face. RFC-0073 defines the
-  platform clock contract the C layer already implements.
-* `Node::get_clock()` and `Node::now()`, which is what ported source actually
-  calls.
-* ROS time in C, or a written decision that C images are not simulatable — but
-  written down, because today the absence is silent.
+Matched exactly where rclcpp's names are the point: `Duration::{max,
+nanoseconds, seconds, from_seconds, from_nanoseconds}`, `Time::{max,
+nanoseconds, seconds, get_clock_type}`, `Clock::{now, get_clock_type}`,
+`Node::{get_clock, now}`, and the arithmetic/comparison operators.
+
+Deliberately not matched, each already declined in the ledger: `to_chrono` (no
+`<chrono>` freestanding), the `rmw_time_t` conversions (the RMW seam is not
+user-facing), `make_shared`/`make_unique`/`sleep_*` (no allocator, RFC-0021),
+and the jump callbacks. `get_clock()` returns `Clock*` into a node-owned member
+rather than a `shared_ptr`, so `node->get_clock()->now()` keeps its spelling.
+
+`Time::to_msg(MsgT&)` / `Duration::to_msg(MsgT&)` supply what
+`rust:Time::to_ros_msg` was recorded as a gap for. rclcpp spells it as an
+implicit conversion operator, which a header-only library cannot provide for a
+per-user generated type.
+
+**Two corrections to this issue's own text**, both found by building the thing:
+
+* This issue said `nros_clock_get_now_ns` returns nanoseconds directly. It does
+  not — it takes an out-pointer and returns `nros_ret_t`. The C++ face is
+  infallible anyway (an invalid clock reads 0; `is_valid()` is the report) and
+  says so in its doc comment.
+* `Duration::to_msg` does NOT delegate to `nros_time_from_nanoseconds`, because
+  that function is wrong for negative spans — **issue 0799**, found here.
+
+`Clock::{started, ros_time_is_active}` stay gaps for a different reason than
+before: ROS time is real only in Rust, so the predicate would be a constant. See
+`c:enable_ros_time_override`.
+
+## The other half — ROS time in C — is NOT fixed
+
+Rust's `Clock` can be driven by a simulator's `/clock`; C still has none of the
+override switches, so a C image cannot be simulated while a Rust one can. That
+remains open and is the substance of what is left here.
+
+## Direction (for the remaining half)
+
+ROS time in C, or a written decision that C images are not simulatable — but
+written down, because today the absence is silent. The Rust side
+(`Clock::set_ros_time_override`, `clear_ros_time_override`,
+`is_ros_time_override_active`, `get_ros_time_override`) is the shape to mirror;
+the C clock is opaque, so the switches would be entry points rather than fields.
+
+Also still open from this family, and cheap now that the C++ types exist:
+`Clock::{started, ros_time_is_active}` — both would be constants until the
+override switches exist, which is why they were not supplied with the rest.

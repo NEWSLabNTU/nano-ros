@@ -5,7 +5,7 @@ title: "We are visible in the ROS graph and cannot read it — 12 rmw vtable gra
 status: open
 type: bug
 area: api, rmw
-related: [rfc-0035, rfc-0036, phase-376, phase-379]
+related: [rfc-0035, rfc-0036, phase-376, phase-379, phase-381]
 ---
 
 ## Problem
@@ -73,17 +73,52 @@ citing it, and those had to be re-verdicted once the vtable was read.
 blocking wait that does not drive the executor) and rclrs's
 `notify_on_graph_change` (future + runtime).
 
+## Scope, measured 2026-08-25 — this is a PHASE, not a W3 item
+
+Phase 379 W3 was going to take this alongside the other coverage gaps. It is
+several times their size, and the reason is specific: **the zenoh backend has a
+boolean liveliness CHECK, not an enumeration.**
+
+`packages/rmw/zenoh/nros-rmw-zenoh/src/zpico.rs:920-940` gives
+`liveliness_get_start(keyexpr, timeout_ms)` / `liveliness_get_check(handle)` —
+"does anything match this keyexpr", used for peer-alive detection. It collects
+no replies and there is no keyexpr parser anywhere in the crate. So the earlier
+reading that "zenoh already queries the tokens, only the reading half is
+missing" is right about the protocol and wrong about the distance: what exists
+answers a yes/no question, and the graph needs the reply set.
+
+Filling one slot for zenoh therefore needs, in order:
+
+1. a new zpico C shim entry point that COLLECTS liveliness reply keyexprs
+   rather than counting them (the shim is `packages/rmw/zenoh/zpico-sys/`, and
+   its config is ABI-coupled to the library — see CLAUDE.md's zpico shim rule);
+2. a parser for the `@ros2_lv/<domain>/<zid>/<nid>/<eid>/…/<namespace>/<node>`
+   keyexpr grammar, which is `rmw_zenoh_cpp`'s and must match it exactly or the
+   answers are wrong rather than absent;
+3. the vtable slot itself, which is the easy part — the visitor contract is
+   already designed and needs no allocator;
+4. a runtime wrapper above the vtable, then user entry points in three
+   languages;
+5. live verification against `ros2 node list` / `ros2 topic info`, because a
+   graph query that returns a plausible wrong answer is worse than one that
+   returns none.
+
+Cyclone would need a READER for `ros_discovery_info`, which it currently only
+writes. XRCE has no graph at all, so whatever lands must degrade per backend —
+which is what the optional slots are for.
+
+That is a phase with its own acceptance, not a gap to close in a sitting — filed
+as **phase-381**, which carries the work items and the acceptance. The 37 `gap`
+rows in `graph.json` stay accurate; what changed is where the work is tracked.
+
 ## Direction
 
-Not decided here; phase 379 W3 owns the coverage. What the stage established
-that a planner should start from:
+What the stage established that a planner should start from:
 
 * The seam exists and is the right shape — this is filling slots, not designing
   an API.
-* zenoh can answer the whole family from liveliness tokens it already queries.
-  Cyclone would need a reader for `ros_discovery_info` it currently only writes.
-  XRCE has no graph at all, so whatever lands must degrade per backend, which is
-  what the optional slots are for.
+* zenoh already SPEAKS the protocol but only asks it a yes/no question today —
+  see the scope section above for what stands between that and an enumeration.
 * The result carriers are the real design question, not the queries. rcl returns
   `rcl_names_and_types_t` and `rcl_topic_endpoint_info_array_t`, both allocated;
   `graph.json` records three visitor typedefs as the committed replacement shape.
