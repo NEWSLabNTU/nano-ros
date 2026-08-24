@@ -371,10 +371,16 @@ pub enum QosLivelinessPolicy {
     None = 0,
     /// Backend's keepalive task asserts liveliness automatically.
     Automatic = 1,
-    /// Application calls `assert_liveliness()` per topic explicitly.
-    ManualByTopic = 2,
     /// Application calls `assert_liveliness()` at the node level.
-    ManualByNode = 3,
+    ///
+    /// Phase 376 W5/B2 — this was 3 and `ManualByTopic` was 2, the opposite of
+    /// upstream. The discriminant IS the C ABI value (`liveliness_kind` is
+    /// written with `as u8`), and the cyclonedds backend turns it into a real
+    /// DDS liveliness kind that a ROS peer matches on, so the swap was visible
+    /// on the wire and nowhere else.
+    ManualByNode = 2,
+    /// Application calls `assert_liveliness()` per topic explicitly.
+    ManualByTopic = 3,
 }
 
 /// Phase 211.H — which side of a topic a [`QosOverride`] targets.
@@ -519,11 +525,16 @@ pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QosOverrideVa
         qos_override_policy::DEPTH => QosOverrideValue::Depth(value),
         qos_override_policy::DEADLINE => QosOverrideValue::Deadline(value),
         qos_override_policy::LIFESPAN => QosOverrideValue::Lifespan(value),
+        // The encoder is `nros_orchestration_ir::qos_override`; both ends name
+        // the variant rather than its number, so W5/B2's renumbering moved them
+        // together instead of silently swapping two policies.
         qos_override_policy::LIVELINESS => QosOverrideValue::Liveliness(match value {
-            0 => QosLivelinessPolicy::None,
-            1 => QosLivelinessPolicy::Automatic,
-            2 => QosLivelinessPolicy::ManualByTopic,
-            3 => QosLivelinessPolicy::ManualByNode,
+            v if v == QosLivelinessPolicy::None as u32 => QosLivelinessPolicy::None,
+            v if v == QosLivelinessPolicy::Automatic as u32 => QosLivelinessPolicy::Automatic,
+            v if v == QosLivelinessPolicy::ManualByNode as u32 => QosLivelinessPolicy::ManualByNode,
+            v if v == QosLivelinessPolicy::ManualByTopic as u32 => {
+                QosLivelinessPolicy::ManualByTopic
+            }
             _ => return None,
         }),
         qos_override_policy::LIVELINESS_LEASE => QosOverrideValue::LivelinessLease(value),

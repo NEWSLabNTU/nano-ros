@@ -304,15 +304,60 @@ the same reason, with the slots released on `close`. Bounded by
 about a node the way a C one now is. The slot and the table both exist; only
 that trait hop is missing.
 
-### `rmw_qos_profile_t` needs an UNKNOWN encoding
+### `rmw_qos_profile_t` needs an UNKNOWN encoding — **LANDED 2026-08-24**
 
-The six `*_get_actual_qos` slots are ALL-OR-NOTHING: a backend that can
-determine four policies and not the fifth returns `UNSUPPORTED` and writes
-nothing. That is the honest contract given the struct we have — there is no
-`UNKNOWN` / `SYSTEM_DEFAULT` value, so a partial answer would be
-indistinguishable from a confident one. Adding those sentinels would let a
-backend report what it knows, and would also make upstream's
-`RMW_QOS_COMPATIBILITY_WARNING` reachable.
+The booked item was a sentinel so the six `*_get_actual_qos` could stop being
+all-or-nothing. Adding one meant looking at what the policy values actually
+are, and they were **not upstream's**:
+
+| value | upstream | ours (before) |
+| --- | --- | --- |
+| 0 | `*_SYSTEM_DEFAULT` | BEST_EFFORT / VOLATILE / KEEP_LAST |
+| 1 | RELIABLE / TRANSIENT_LOCAL / **KEEP_LAST** | RELIABLE / TRANSIENT_LOCAL / **KEEP_ALL** |
+
+`history == 1` meant KEEP_LAST to upstream and KEEP_ALL to us — the two
+opposite answers to one question. Liveliness was worse: `MANUAL_BY_NODE` and
+`MANUAL_BY_TOPIC` were **swapped** (2 and 3).
+
+These values cross the ABI. `rmw_qos_profile_check_compatible` is a name
+upstream owns and we export, and cyclonedds translates this struct into real
+DDS QoS that a ROS peer matches against — so the swap was visible on the wire
+and nowhere else. Same argument as W3.d step B made for the return codes:
+where a value crosses the boundary, upstream's numbering is the only one that
+cannot be wrong.
+
+So B2 adopted upstream's numbering, which yields `SYSTEM_DEFAULT` and
+`UNKNOWN` for free, and then spent them:
+
+* the six `*_get_actual_qos` may now write `*_UNKNOWN` for a policy they cannot
+  determine and return OK. `UNSUPPORTED` narrows to its literal meaning — no
+  read-back at all.
+* `RMW_QOS_COMPATIBILITY_WARNING` becomes REACHABLE. It was defined and
+  unreachable because there was no undetermined policy to trigger it. An
+  unknown is an absence, not a value, so it warns; a real clash still ERRORs,
+  because softening that would hide something the caller can act on.
+
+**What the renumbering broke, and how it was found.** Nothing failed to
+compile. The Rust conversions were bare integers with the policy name in a
+trailing comment (`reliability: 1, // RELIABLE`), the `qos_from_cffi` decoders
+were `== 0` tests against a dense 0/1 encoding, and
+`nros_orchestration_ir::qos_override` encoded liveliness as literals under a
+comment reading "Discriminants of `nros_rmw::QosLivelinessPolicy`" — a comment
+is not a binding. Every one of those kept compiling and started meaning a
+different policy. They all name the constant or the variant now, and both ends
+of the IR wire name the variant so they move together.
+
+**Found on the way:** `node_metadata`'s `liveliness_json` mapped
+`ManualByNode` to the string `"manual_by_topic"` — both variants produced the
+same JSON, so node-level liveliness was reported as topic-level. Unrelated to
+the renumbering, fixed with it.
+
+**Deliberately NOT changed:** the user-facing C/C++ QoS enums
+(`nros_qos_liveliness_t`, `QoS::Liveliness`) keep `MANUAL_BY_TOPIC = 2`. They
+are our own API, not the RMW ABI, and `nros-c/src/qos.rs` maps them by NAME, so
+the renumbering passes through them untouched. It does mean the repo now has
+two enums where `2` names different policies — a trap, recorded here rather
+than half-fixed.
 
 ### Residue, so it is not mistaken for decided
 

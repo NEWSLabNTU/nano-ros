@@ -192,11 +192,19 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
         "liveliness" => (
             qos_override_policy::LIVELINESS,
             match v {
-                // Discriminants of `nros_rmw::QosLivelinessPolicy`.
-                "none" => 0,
-                "automatic" => 1,
-                "manual_by_topic" => 2,
-                "manual_by_node" => 3,
+                // The discriminants of `nros_rmw::QosLivelinessPolicy`, NAMED
+                // rather than written out. Phase 376 W5/B2 renumbered that enum
+                // to upstream's ordering (MANUAL_BY_NODE 3 -> 2,
+                // MANUAL_BY_TOPIC 2 -> 3) and these literals kept compiling
+                // while meaning the other policy. The decoder in
+                // `nros_rmw::traits` is the other half of this wire; naming the
+                // variant is what keeps the two ends from drifting apart, and
+                // the comment claiming they were discriminants was the only
+                // thing binding them before.
+                "none" => nros_rmw::QosLivelinessPolicy::None as u32,
+                "automatic" => nros_rmw::QosLivelinessPolicy::Automatic as u32,
+                "manual_by_topic" => nros_rmw::QosLivelinessPolicy::ManualByTopic as u32,
+                "manual_by_node" => nros_rmw::QosLivelinessPolicy::ManualByNode as u32,
                 _ => {
                     return Err(bad(
                         "`none`, `automatic`, `manual_by_topic` or `manual_by_node`",

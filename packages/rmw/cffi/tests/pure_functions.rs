@@ -208,3 +208,131 @@ fn a_null_gid_is_an_invalid_argument() {
         NROS_RMW_RET_INVALID_ARGUMENT
     );
 }
+
+// ============================================================================
+// Phase 376 W5/B2 — the policy VALUES are upstream's
+// ============================================================================
+
+/// These numbers cross the ABI: `rmw_qos_profile_check_compatible` is a name
+/// upstream owns and we export, and cyclonedds turns this struct into real DDS
+/// QoS that a ROS peer matches against.
+///
+/// They disagreed with upstream until 2026-08-24, and the disagreement was
+/// invisible: ours were a dense 0/1 pair per policy, so `history == 1` meant
+/// KEEP_LAST to upstream and KEEP_ALL to us — opposite answers to one question
+/// — and liveliness had MANUAL_BY_NODE and MANUAL_BY_TOPIC swapped. Nothing
+/// failed to compile then and nothing would fail to compile if they drifted
+/// again, which is what this test is for.
+///
+/// Values transcribed from Humble's `rmw/types.h`.
+#[test]
+fn policy_values_match_upstreams_numbering() {
+    use nros_rmw_cffi::generated::{self, rmw_liveliness_kind_t as lk};
+
+    // RMW_QOS_POLICY_RELIABILITY_{SYSTEM_DEFAULT,RELIABLE,BEST_EFFORT,UNKNOWN}
+    assert_eq!(generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT, 0);
+    assert_eq!(generated::NROS_RMW_RELIABILITY_RELIABLE, 1);
+    assert_eq!(generated::NROS_RMW_RELIABILITY_BEST_EFFORT, 2);
+    assert_eq!(generated::NROS_RMW_RELIABILITY_UNKNOWN, 3);
+
+    // RMW_QOS_POLICY_HISTORY_{SYSTEM_DEFAULT,KEEP_LAST,KEEP_ALL,UNKNOWN}
+    assert_eq!(generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT, 0);
+    assert_eq!(generated::NROS_RMW_HISTORY_KEEP_LAST, 1);
+    assert_eq!(generated::NROS_RMW_HISTORY_KEEP_ALL, 2);
+    assert_eq!(generated::NROS_RMW_HISTORY_UNKNOWN, 3);
+
+    // RMW_QOS_POLICY_DURABILITY_{SYSTEM_DEFAULT,TRANSIENT_LOCAL,VOLATILE,UNKNOWN}
+    assert_eq!(generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT, 0);
+    assert_eq!(generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL, 1);
+    assert_eq!(generated::NROS_RMW_DURABILITY_VOLATILE, 2);
+    assert_eq!(generated::NROS_RMW_DURABILITY_UNKNOWN, 3);
+
+    // RMW_QOS_POLICY_LIVELINESS_* — 2 and 3 are the pair that was swapped.
+    assert_eq!(lk::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT, 0);
+    assert_eq!(lk::NROS_RMW_LIVELINESS_AUTOMATIC, 1);
+    assert_eq!(lk::NROS_RMW_LIVELINESS_MANUAL_BY_NODE, 2);
+    assert_eq!(lk::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC, 3);
+    assert_eq!(lk::NROS_RMW_LIVELINESS_UNKNOWN, 4);
+}
+
+/// The Rust enum's discriminant IS the C ABI value — `liveliness_kind` is
+/// written with `as u8` — so the two cannot be checked separately.
+#[test]
+fn the_rust_liveliness_enum_carries_the_abi_values() {
+    use nros_rmw::QosLivelinessPolicy as P;
+    use nros_rmw_cffi::generated::rmw_liveliness_kind_t as lk;
+
+    assert_eq!(P::None as u32, lk::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT);
+    assert_eq!(P::Automatic as u32, lk::NROS_RMW_LIVELINESS_AUTOMATIC);
+    assert_eq!(
+        P::ManualByNode as u32,
+        lk::NROS_RMW_LIVELINESS_MANUAL_BY_NODE
+    );
+    assert_eq!(
+        P::ManualByTopic as u32,
+        lk::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC
+    );
+}
+
+/// An undetermined policy is an ABSENCE, so it warns rather than passing or
+/// failing — upstream's `RMW_QOS_COMPATIBILITY_WARNING`, unreachable here until
+/// B2 gave the policies an UNKNOWN to report.
+#[test]
+fn an_unknown_policy_warns_but_a_real_clash_still_errors() {
+    use generated::rmw_qos_compatibility_type_t as C;
+    use nros_rmw_cffi::{
+        NROS_RMW_QOS_PROFILE_DEFAULT, generated, nros_rmw_qos_incompatibility_mask,
+    };
+
+    let mut verdict = C::RMW_QOS_COMPATIBILITY_OK;
+    let mut mask = 0u32;
+
+    // Baseline: two identical, fully-determined profiles are OK.
+    let rc = unsafe {
+        nros_rmw_qos_incompatibility_mask(
+            NROS_RMW_QOS_PROFILE_DEFAULT,
+            NROS_RMW_QOS_PROFILE_DEFAULT,
+            &mut verdict,
+            &mut mask,
+        )
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_OK);
+    assert_eq!(verdict, C::RMW_QOS_COMPATIBILITY_OK);
+    assert_eq!(mask, 0);
+
+    // One policy the backend could not read back: compatible so far as we can
+    // tell, and the caller is told we could not tell everything.
+    let mut undetermined = NROS_RMW_QOS_PROFILE_DEFAULT;
+    undetermined.durability = generated::NROS_RMW_DURABILITY_UNKNOWN as u8;
+    let rc = unsafe {
+        nros_rmw_qos_incompatibility_mask(
+            undetermined,
+            NROS_RMW_QOS_PROFILE_DEFAULT,
+            &mut verdict,
+            &mut mask,
+        )
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_OK);
+    assert_eq!(verdict, C::RMW_QOS_COMPATIBILITY_WARNING);
+    assert_eq!(mask, 0, "an unknown is not a clash");
+
+    // A real clash outranks the unknown — softening this to a warning would
+    // hide something the caller can act on.
+    let mut best_effort_pub = NROS_RMW_QOS_PROFILE_DEFAULT;
+    best_effort_pub.reliability = generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8;
+    best_effort_pub.durability = generated::NROS_RMW_DURABILITY_UNKNOWN as u8;
+    let rc = unsafe {
+        nros_rmw_qos_incompatibility_mask(
+            best_effort_pub,
+            NROS_RMW_QOS_PROFILE_DEFAULT,
+            &mut verdict,
+            &mut mask,
+        )
+    };
+    assert_eq!(rc, nros_rmw_cffi::NROS_RMW_RET_OK);
+    assert_eq!(verdict, C::RMW_QOS_COMPATIBILITY_ERROR);
+    assert_ne!(
+        mask & generated::nros_rmw_qos_clash_t::NROS_RMW_QOS_CLASH_RELIABILITY,
+        0
+    );
+}

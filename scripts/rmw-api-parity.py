@@ -233,7 +233,7 @@ MAP = {
     # ---- QoS introspection ----
     "rmw_publisher_get_actual_qos": (
         "vtable",
-        "publisher_get_actual_qos — W4. ALL-OR-NOTHING: a backend that can determine four policies and not the fifth returns UNSUPPORTED and writes nothing, because `rmw_qos_profile_t` has no UNKNOWN sentinel to report a partial answer with. Owed by W5",
+        "publisher_get_actual_qos — W4. PARTIAL ANSWERS ALLOWED since W5/B2: a backend that can determine four policies and not the fifth writes `*_UNKNOWN` for the fifth and returns OK. UNSUPPORTED now means only \"no read-back at all\"",
     ),
     "rmw_subscription_get_actual_qos": ("vtable", "subscription_get_actual_qos — as above"),
     "rmw_client_request_publisher_get_actual_qos": ("vtable", "client_request_publisher_get_actual_qos — as above"),

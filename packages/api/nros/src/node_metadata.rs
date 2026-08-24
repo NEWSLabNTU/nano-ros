@@ -1405,7 +1405,7 @@ fn liveliness_json(value: QosLivelinessPolicy) -> &'static str {
         QosLivelinessPolicy::None => "system_default",
         QosLivelinessPolicy::Automatic => "automatic",
         QosLivelinessPolicy::ManualByTopic => "manual_by_topic",
-        QosLivelinessPolicy::ManualByNode => "manual_by_topic",
+        QosLivelinessPolicy::ManualByNode => "manual_by_node",
     }
 }
 

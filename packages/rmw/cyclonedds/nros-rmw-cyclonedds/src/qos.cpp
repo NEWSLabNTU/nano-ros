@@ -59,7 +59,7 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
         dds_qset_lifespan(q, DDS_MSECS(src->lifespan_ms));
     }
 
-    if (src->liveliness_kind != NROS_RMW_LIVELINESS_NONE) {
+    if (src->liveliness_kind != NROS_RMW_LIVELINESS_SYSTEM_DEFAULT) {
         dds_liveliness_kind_t k = DDS_LIVELINESS_AUTOMATIC;
         switch (src->liveliness_kind) {
             case NROS_RMW_LIVELINESS_AUTOMATIC:

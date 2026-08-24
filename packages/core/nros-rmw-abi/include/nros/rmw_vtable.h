@@ -692,12 +692,22 @@ typedef struct nros_rmw_vtable_t {
      *  negotiate, and the difference is exactly what answers "why is nothing
      *  arriving" — so a consumer that cannot ask has to guess.
      *
-     *  ALL-OR-NOTHING on purpose: a backend that can determine four policies
-     *  and not the fifth returns `NROS_RMW_RET_UNSUPPORTED` and writes
-     *  NOTHING, rather than filling what it knows. Our `rmw_qos_profile_t` has
-     *  no `UNKNOWN`/`SYSTEM_DEFAULT` encoding, so a partial answer would be
-     *  indistinguishable from a confident one. Adding those sentinels is an
-     *  `rmw_entity.h` change and is booked for W5, not done here.
+     *  PARTIAL ANSWERS ARE ALLOWED (W5/B2). A backend that can determine four
+     *  policies and not the fifth writes the four it knows and
+     *  `*_UNKNOWN` for the fifth, then returns `NROS_RMW_RET_OK`. Until the
+     *  policy values took upstream's numbering there was no `UNKNOWN` to write,
+     *  so the contract had to be all-or-nothing — a partial answer would have
+     *  been indistinguishable from a confident one, and W4 chose
+     *  `NROS_RMW_RET_UNSUPPORTED` over lying.
+     *
+     *  `NROS_RMW_RET_UNSUPPORTED` now means what it says: this backend has no
+     *  read-back at all. It is NOT the answer for "I know some of it".
+     *
+     *  A caller that treats `UNKNOWN` as a value rather than as an absence gets
+     *  a wrong comparison, so `rmw_qos_profile_check_compatible` reports it as
+     *  a WARNING rather than an incompatibility — upstream's
+     *  `RMW_QOS_COMPATIBILITY_WARNING`, which was unreachable here until there
+     *  was a sentinel to trigger it.
      *
      *  Six upstream entry points, six slots, deliberately: the name rule is
      *  mechanical so that no alias table has to be authored and kept true.

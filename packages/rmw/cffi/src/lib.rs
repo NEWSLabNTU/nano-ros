@@ -316,12 +316,20 @@ impl Eq for rmw_qos_profile_t {}
 // The QoS profile constants below are `#define` struct-literal macros in the
 // C header; bindgen does not translate function-like/struct-literal macros,
 // so the Rust-side literals stay here (built from the generated types).
+//
+// Phase 376 W5/B2 — these used BARE INTEGERS with the policy name in a
+// trailing comment (`reliability: 1, // RELIABLE`). When the values took
+// upstream's numbering, every one of them kept compiling and started meaning a
+// different policy: `history: 0` went from KEEP_LAST to SYSTEM_DEFAULT and
+// `reliability: 0` from BEST_EFFORT to SYSTEM_DEFAULT. A comment is not a
+// binding. They name the generated constant now, so the next renumbering is a
+// compile error or nothing at all.
 
 /// Standard `rmw_qos_profile_default`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
-    reliability: 1, // RELIABLE
-    durability: 0,  // VOLATILE
-    history: 0,     // KEEP_LAST
+    reliability: generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
+    durability: generated::NROS_RMW_DURABILITY_VOLATILE as u8,
+    history: generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
     liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 10,
     _reserved0: 0,
@@ -334,9 +342,9 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
 
 /// Standard `rmw_qos_profile_sensor_data`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
-    reliability: 0, // BEST_EFFORT
-    durability: 0,  // VOLATILE
-    history: 0,     // KEEP_LAST
+    reliability: generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8,
+    durability: generated::NROS_RMW_DURABILITY_VOLATILE as u8,
+    history: generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
     liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC as u8,
     depth: 5,
     _reserved0: 0,
@@ -375,16 +383,20 @@ impl TryFrom<QosSettings> for NrosRmwQos {
         }
         Ok(Self {
             reliability: match qos.reliability {
-                QosReliabilityPolicy::BestEffort => 0,
-                QosReliabilityPolicy::Reliable => 1,
+                QosReliabilityPolicy::BestEffort => {
+                    generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8
+                }
+                QosReliabilityPolicy::Reliable => generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
             },
             durability: match qos.durability {
-                QosDurabilityPolicy::Volatile => 0,
-                QosDurabilityPolicy::TransientLocal => 1,
+                QosDurabilityPolicy::Volatile => generated::NROS_RMW_DURABILITY_VOLATILE as u8,
+                QosDurabilityPolicy::TransientLocal => {
+                    generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
+                }
             },
             history: match qos.history {
-                QosHistoryPolicy::KeepLast => 0,
-                QosHistoryPolicy::KeepAll => 1,
+                QosHistoryPolicy::KeepLast => generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
+                QosHistoryPolicy::KeepAll => generated::NROS_RMW_HISTORY_KEEP_ALL as u8,
             },
             liveliness_kind: qos.liveliness_kind as u8,
             depth: qos.depth as u16,
@@ -3368,6 +3380,22 @@ fn liveliness_strength(kind: u8) -> u8 {
 }
 
 /// The DDS request-offered rules, in one place.
+/// Does this profile leave any policy UNDETERMINED?
+///
+/// Phase 376 W5/B2. `*_UNKNOWN` means "the backend could not read this back",
+/// which is an ABSENCE, not a value: comparing it as if it were one produces a
+/// confident wrong verdict. Upstream's answer to that is
+/// `RMW_QOS_COMPATIBILITY_WARNING` — "these look compatible, but I could not
+/// check everything" — which was unreachable here until there was a sentinel
+/// that could trigger it.
+fn qos_has_unknown(q: &NrosRmwQos) -> bool {
+    i32::from(q.reliability) == generated::NROS_RMW_RELIABILITY_UNKNOWN
+        || i32::from(q.durability) == generated::NROS_RMW_DURABILITY_UNKNOWN
+        || i32::from(q.history) == generated::NROS_RMW_HISTORY_UNKNOWN
+        || u32::from(q.liveliness_kind)
+            == generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_UNKNOWN
+}
+
 fn qos_clash_mask(offered: &NrosRmwQos, requested: &NrosRmwQos) -> u32 {
     let mut mask = 0u32;
     if requested.reliability == generated::NROS_RMW_RELIABILITY_RELIABLE as u8
@@ -3412,13 +3440,19 @@ pub unsafe extern "C" fn nros_rmw_qos_incompatibility_mask(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let mask = qos_clash_mask(&offered, &requested);
+    let undetermined = qos_has_unknown(&offered) || qos_has_unknown(&requested);
     // SAFETY: both checked non-null above.
     unsafe {
         *clash_mask = mask;
-        *compatibility = if mask == 0 {
-            generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_OK
-        } else {
+        // A definite clash outranks an unknown: policies we COULD compare are
+        // already incompatible, and reporting that as a warning would soften a
+        // verdict the caller can act on.
+        *compatibility = if mask != 0 {
             generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_ERROR
+        } else if undetermined {
+            generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_WARNING
+        } else {
+            generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_OK
         };
     }
     NROS_RMW_RET_OK

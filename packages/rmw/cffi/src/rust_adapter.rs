@@ -232,24 +232,30 @@ unsafe fn cstr_to_str<'a>(ptr: *const core::ffi::c_char) -> &'a str {
 /// adapter trampolines call this when forwarding `create_publisher` /
 /// `create_subscription` into the Rust trait.
 fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
+    use crate::generated;
     use nros_rmw::{
         QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
     };
+    // Phase 376 W5/B2 — these were `== 0` tests against a dense 0/1 encoding.
+    // Under upstream's numbering 0 is SYSTEM_DEFAULT for every policy, so each
+    // test now has three cases, not two, and the third one is the default the
+    // profile constants already use. Written as a match on the named constants
+    // so an unrecognised value is visible rather than folded into one arm.
     QosSettings {
-        reliability: if q.reliability == 0 {
-            QosReliabilityPolicy::BestEffort
-        } else {
-            QosReliabilityPolicy::Reliable
+        reliability: match q.reliability as i32 {
+            generated::NROS_RMW_RELIABILITY_BEST_EFFORT => QosReliabilityPolicy::BestEffort,
+            generated::NROS_RMW_RELIABILITY_RELIABLE => QosReliabilityPolicy::Reliable,
+            // SYSTEM_DEFAULT and UNKNOWN both mean "the caller did not pin
+            // this"; RELIABLE is the ROS default and the safer of the two.
+            _ => QosReliabilityPolicy::Reliable,
         },
-        durability: if q.durability == 0 {
-            QosDurabilityPolicy::Volatile
-        } else {
-            QosDurabilityPolicy::TransientLocal
+        durability: match q.durability as i32 {
+            generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QosDurabilityPolicy::TransientLocal,
+            _ => QosDurabilityPolicy::Volatile,
         },
-        history: if q.history == 0 {
-            QosHistoryPolicy::KeepLast
-        } else {
-            QosHistoryPolicy::KeepAll
+        history: match q.history as i32 {
+            generated::NROS_RMW_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
+            _ => QosHistoryPolicy::KeepLast,
         },
         depth: q.depth as u32,
         // phase-301 (issue 0240): the express hint left the QoS struct; the
@@ -257,10 +263,16 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
         tx_express: false,
         deadline_ms: q.deadline_ms,
         lifespan_ms: q.lifespan_ms,
-        liveliness_kind: match q.liveliness_kind {
-            1 => QosLivelinessPolicy::Automatic,
-            2 => QosLivelinessPolicy::ManualByTopic,
-            3 => QosLivelinessPolicy::ManualByNode,
+        liveliness_kind: match q.liveliness_kind as u32 {
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC => {
+                QosLivelinessPolicy::Automatic
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_NODE => {
+                QosLivelinessPolicy::ManualByNode
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => {
+                QosLivelinessPolicy::ManualByTopic
+            }
             _ => QosLivelinessPolicy::None,
         },
         liveliness_lease_ms: q.liveliness_lease_ms,

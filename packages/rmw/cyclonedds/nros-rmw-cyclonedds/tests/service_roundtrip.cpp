@@ -98,7 +98,7 @@ int main() {
     qos.reliability     = NROS_RMW_RELIABILITY_RELIABLE;
     qos.durability      = NROS_RMW_DURABILITY_VOLATILE;
     qos.history         = NROS_RMW_HISTORY_KEEP_LAST;
-    qos.liveliness_kind = NROS_RMW_LIVELINESS_NONE;
+    qos.liveliness_kind = NROS_RMW_LIVELINESS_SYSTEM_DEFAULT;
     qos.depth           = 5;
 
     rmw_service_t srv{};

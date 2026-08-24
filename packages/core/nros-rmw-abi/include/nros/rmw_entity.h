@@ -40,17 +40,51 @@
 /* QoS profile — full DDS shape (matches `rmw_qos_profile_t`)          */
 /* ------------------------------------------------------------------ */
 
+/* Policy values carry UPSTREAM's numbering — phase-376 W5/B2.
+ *
+ * They did not until 2026-08-24, and the disagreement was not academic. Ours
+ * were a dense 0/1 pair per policy, which put a DIFFERENT meaning on the same
+ * integer:
+ *
+ *     value | upstream                          | ours (before)
+ *     ------|-----------------------------------|-------------------
+ *       0   | *_SYSTEM_DEFAULT                  | BEST_EFFORT / VOLATILE / KEEP_LAST
+ *       1   | RELIABLE / TRANSIENT_LOCAL / KEEP_LAST | RELIABLE / TRANSIENT_LOCAL / KEEP_ALL
+ *
+ * so `HISTORY == 1` meant KEEP_LAST to upstream and KEEP_ALL to us — the two
+ * opposite answers to the question. Liveliness was worse: MANUAL_BY_NODE and
+ * MANUAL_BY_TOPIC were SWAPPED (2 and 3).
+ *
+ * These values cross the ABI. `rmw_qos_profile_check_compatible` is a name
+ * upstream owns and we export, and the cyclonedds backend translates this
+ * struct into real DDS QoS that a ROS peer matches against. A caller reasoning
+ * in upstream's vocabulary got silently wrong policies. Same argument as W3.d
+ * step B for the return codes: where a value crosses the boundary, upstream's
+ * numbering is the only one that cannot be wrong.
+ *
+ * The names keep the `NROS_RMW_` prefix — as the return codes do — because the
+ * set is ours to extend, not upstream's to define.
+ */
+
 /** Reliability policy values for `rmw_qos_profile_t::reliability`. */
-#define NROS_RMW_RELIABILITY_BEST_EFFORT 0
-#define NROS_RMW_RELIABILITY_RELIABLE    1
+#define NROS_RMW_RELIABILITY_SYSTEM_DEFAULT 0
+#define NROS_RMW_RELIABILITY_RELIABLE       1
+#define NROS_RMW_RELIABILITY_BEST_EFFORT    2
+/** The backend could not determine this policy. See the note on
+ *  `rmw_qos_profile_t` about partial answers. */
+#define NROS_RMW_RELIABILITY_UNKNOWN        3
 
 /** Durability policy values for `rmw_qos_profile_t::durability`. */
-#define NROS_RMW_DURABILITY_VOLATILE         0
+#define NROS_RMW_DURABILITY_SYSTEM_DEFAULT   0
 #define NROS_RMW_DURABILITY_TRANSIENT_LOCAL  1
+#define NROS_RMW_DURABILITY_VOLATILE         2
+#define NROS_RMW_DURABILITY_UNKNOWN          3
 
 /** History policy values for `rmw_qos_profile_t::history`. */
-#define NROS_RMW_HISTORY_KEEP_LAST 0
-#define NROS_RMW_HISTORY_KEEP_ALL  1
+#define NROS_RMW_HISTORY_SYSTEM_DEFAULT 0
+#define NROS_RMW_HISTORY_KEEP_LAST      1
+#define NROS_RMW_HISTORY_KEEP_ALL       2
+#define NROS_RMW_HISTORY_UNKNOWN        3
 
 /** Upstream `rmw_feature_t` — an optional piece of CONTENT a backend may or may
  *  not populate. Upstream defines exactly these two, both about whether
@@ -133,17 +167,25 @@ typedef struct rmw_message_info_t {
     bool from_intra_process;
 } rmw_message_info_t;
 
-/** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`. */
+/** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`.
+ *
+ *  Upstream's numbering (W5/B2). `MANUAL_BY_NODE` and `MANUAL_BY_TOPIC` were
+ *  SWAPPED here until 2026-08-24 — 2 meant BY_TOPIC to us and BY_NODE to
+ *  upstream — which the cyclonedds backend then translated into a real DDS
+ *  liveliness kind a ROS peer matches on. */
 typedef enum rmw_liveliness_kind_t {
-    /** No liveliness assertion or tracking. Default for entities
-     *  that don't care about liveliness. */
-    NROS_RMW_LIVELINESS_NONE              = 0,
+    /** Let the middleware choose. Spelled `NONE` before W5/B2 and used the same
+     *  way: nothing is asserted and nothing is tracked. Upstream has no
+     *  separate `NONE`, so the two collapse onto value 0. */
+    NROS_RMW_LIVELINESS_SYSTEM_DEFAULT    = 0,
     /** Backend's keepalive task asserts liveliness automatically. */
     NROS_RMW_LIVELINESS_AUTOMATIC         = 1,
-    /** Application calls `assert_liveliness()` per topic explicitly. */
-    NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 2,
     /** Application calls `assert_liveliness()` at the node level. */
-    NROS_RMW_LIVELINESS_MANUAL_BY_NODE    = 3,
+    NROS_RMW_LIVELINESS_MANUAL_BY_NODE    = 2,
+    /** Application calls `assert_liveliness()` per topic explicitly. */
+    NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 3,
+    /** The backend could not determine this policy. */
+    NROS_RMW_LIVELINESS_UNKNOWN           = 4,
 } rmw_liveliness_kind_t;
 
 /**
@@ -257,10 +299,15 @@ typedef struct rmw_qos_profile_t {
 /** Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,
  *  values included.
  *
- *  `WARNING` is currently unreachable here: it means "compatible, but a policy
- *  could not be determined", and our profile has no UNKNOWN encoding to express
- *  an undetermined policy. Defined anyway so the value cannot be reused, and
- *  booked in the phase doc with the UNKNOWN work. */
+ *  `WARNING` means "compatible as far as could be checked, but at least one
+ *  policy on one side is `*_UNKNOWN`" — the backend could not read it back.
+ *  Reachable since W5/B2 gave the policies an UNKNOWN encoding; it was defined
+ *  and unreachable before that, so the value could not be reused for anything
+ *  else in the meantime.
+ *
+ *  A definite clash OUTRANKS an unknown: if the policies that COULD be compared
+ *  are already incompatible the verdict is `ERROR`, because softening it to a
+ *  warning would hide something the caller can act on. */
 typedef enum rmw_qos_compatibility_type_t {
     RMW_QOS_COMPATIBILITY_OK      = 0,
     RMW_QOS_COMPATIBILITY_WARNING = 1,

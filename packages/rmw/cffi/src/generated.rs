@@ -571,7 +571,7 @@ pub struct nros_rmw_vtable_t {
             publisher_count: *mut usize,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Upstream `rmw_publisher_get_actual_qos`. Exact parity.\n\n  We bake the REQUESTED profile and, until now, never read back the\n  GRANTED one. On DDS the two differ whenever a writer and reader\n  negotiate, and the difference is exactly what answers \"why is nothing\n  arriving\" — so a consumer that cannot ask has to guess.\n\n  ALL-OR-NOTHING on purpose: a backend that can determine four policies\n  and not the fifth returns `NROS_RMW_RET_UNSUPPORTED` and writes\n  NOTHING, rather than filling what it knows. Our `rmw_qos_profile_t` has\n  no `UNKNOWN`/`SYSTEM_DEFAULT` encoding, so a partial answer would be\n  indistinguishable from a confident one. Adding those sentinels is an\n  `rmw_entity.h` change and is booked for W5, not done here.\n\n  Six upstream entry points, six slots, deliberately: the name rule is\n  mechanical so that no alias table has to be authored and kept true.\n  Backends share ONE helper and write six one-line thunks — sharing an\n  implementation is free, sharing an ABI slot is not."]
+    #[doc = " Upstream `rmw_publisher_get_actual_qos`. Exact parity.\n\n  We bake the REQUESTED profile and, until now, never read back the\n  GRANTED one. On DDS the two differ whenever a writer and reader\n  negotiate, and the difference is exactly what answers \"why is nothing\n  arriving\" — so a consumer that cannot ask has to guess.\n\n  PARTIAL ANSWERS ARE ALLOWED (W5/B2). A backend that can determine four\n  policies and not the fifth writes the four it knows and\n  `*_UNKNOWN` for the fifth, then returns `NROS_RMW_RET_OK`. Until the\n  policy values took upstream's numbering there was no `UNKNOWN` to write,\n  so the contract had to be all-or-nothing — a partial answer would have\n  been indistinguishable from a confident one, and W4 chose\n  `NROS_RMW_RET_UNSUPPORTED` over lying.\n\n  `NROS_RMW_RET_UNSUPPORTED` now means what it says: this backend has no\n  read-back at all. It is NOT the answer for \"I know some of it\".\n\n  A caller that treats `UNKNOWN` as a value rather than as an absence gets\n  a wrong comparison, so `rmw_qos_profile_check_compatible` reports it as\n  a WARNING rather than an incompatibility — upstream's\n  `RMW_QOS_COMPATIBILITY_WARNING`, which was unreachable here until there\n  was a sentinel to trigger it.\n\n  Six upstream entry points, six slots, deliberately: the name rule is\n  mechanical so that no alias table has to be authored and kept true.\n  Backends share ONE helper and write six one-line thunks — sharing an\n  implementation is free, sharing an ABI slot is not."]
     pub publisher_get_actual_qos: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
@@ -873,12 +873,18 @@ pub const NROS_RMW_RET_UNKNOWN_BACKEND: i32 = 1010;
 pub const NROS_RMW_RET_CONNECTION_FAILED: i32 = 1011;
 pub const NROS_RMW_RET_INVALID_CONFIG: i32 = 1012;
 pub const NROS_RMW_RET_INCORRECT_RMW_IMPLEMENTATION: i32 = 12;
-pub const NROS_RMW_RELIABILITY_BEST_EFFORT: i32 = 0;
+pub const NROS_RMW_RELIABILITY_SYSTEM_DEFAULT: i32 = 0;
 pub const NROS_RMW_RELIABILITY_RELIABLE: i32 = 1;
-pub const NROS_RMW_DURABILITY_VOLATILE: i32 = 0;
+pub const NROS_RMW_RELIABILITY_BEST_EFFORT: i32 = 2;
+pub const NROS_RMW_RELIABILITY_UNKNOWN: i32 = 3;
+pub const NROS_RMW_DURABILITY_SYSTEM_DEFAULT: i32 = 0;
 pub const NROS_RMW_DURABILITY_TRANSIENT_LOCAL: i32 = 1;
-pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 0;
-pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 1;
+pub const NROS_RMW_DURABILITY_VOLATILE: i32 = 2;
+pub const NROS_RMW_DURABILITY_UNKNOWN: i32 = 3;
+pub const NROS_RMW_HISTORY_SYSTEM_DEFAULT: i32 = 0;
+pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 1;
+pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 2;
+pub const NROS_RMW_HISTORY_UNKNOWN: i32 = 3;
 pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
@@ -896,19 +902,21 @@ pub mod rmw_feature_t {
     pub const RMW_FEATURE_MESSAGE_INFO_RECEPTION_SEQUENCE_NUMBER: Type = 1;
 }
 pub mod rmw_liveliness_kind_t {
-    #[doc = " Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`."]
+    #[doc = " Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`.\n\n  Upstream's numbering (W5/B2). `MANUAL_BY_NODE` and `MANUAL_BY_TOPIC` were\n  SWAPPED here until 2026-08-24 — 2 meant BY_TOPIC to us and BY_NODE to\n  upstream — which the cyclonedds backend then translated into a real DDS\n  liveliness kind a ROS peer matches on."]
     pub type Type = core::ffi::c_uint;
-    #[doc = " No liveliness assertion or tracking. Default for entities\n  that don't care about liveliness."]
-    pub const NROS_RMW_LIVELINESS_NONE: Type = 0;
+    #[doc = " Let the middleware choose. Spelled `NONE` before W5/B2 and used the same\n  way: nothing is asserted and nothing is tracked. Upstream has no\n  separate `NONE`, so the two collapse onto value 0."]
+    pub const NROS_RMW_LIVELINESS_SYSTEM_DEFAULT: Type = 0;
     #[doc = " Backend's keepalive task asserts liveliness automatically."]
     pub const NROS_RMW_LIVELINESS_AUTOMATIC: Type = 1;
-    #[doc = " Application calls `assert_liveliness()` per topic explicitly."]
-    pub const NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC: Type = 2;
     #[doc = " Application calls `assert_liveliness()` at the node level."]
-    pub const NROS_RMW_LIVELINESS_MANUAL_BY_NODE: Type = 3;
+    pub const NROS_RMW_LIVELINESS_MANUAL_BY_NODE: Type = 2;
+    #[doc = " Application calls `assert_liveliness()` per topic explicitly."]
+    pub const NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC: Type = 3;
+    #[doc = " The backend could not determine this policy."]
+    pub const NROS_RMW_LIVELINESS_UNKNOWN: Type = 4;
 }
 pub mod rmw_qos_compatibility_type_t {
-    #[doc = " Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,\n  values included.\n\n  `WARNING` is currently unreachable here: it means \"compatible, but a policy\n  could not be determined\", and our profile has no UNKNOWN encoding to express\n  an undetermined policy. Defined anyway so the value cannot be reused, and\n  booked in the phase doc with the UNKNOWN work."]
+    #[doc = " Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,\n  values included.\n\n  `WARNING` means \"compatible as far as could be checked, but at least one\n  policy on one side is `*_UNKNOWN`\" — the backend could not read it back.\n  Reachable since W5/B2 gave the policies an UNKNOWN encoding; it was defined\n  and unreachable before that, so the value could not be reused for anything\n  else in the meantime.\n\n  A definite clash OUTRANKS an unknown: if the policies that COULD be compared\n  are already incompatible the verdict is `ERROR`, because softening it to a\n  warning would hide something the caller can act on."]
     pub type Type = core::ffi::c_uint;
     pub const RMW_QOS_COMPATIBILITY_OK: Type = 0;
     pub const RMW_QOS_COMPATIBILITY_WARNING: Type = 1;
