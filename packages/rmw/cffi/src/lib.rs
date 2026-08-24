@@ -2472,6 +2472,28 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
     }
 }
 
+/// A take reported more bytes than the buffer it was handed — issue 0771.
+///
+/// Every copying take passes the vtable BOTH a pointer and the capacity, so an
+/// `out_len` above that capacity is an ABI violation by the backend: it was
+/// told how much room there was. The Rust side used to take the number on
+/// faith, and a Cyclone service reply of 1005 bytes into a 256-byte buffer
+/// panicked the SERVER process with `range end index 1005 out of range for
+/// slice of length 256`.
+///
+/// It fails rather than truncating. `&buf[..cap]` would hand the caller a
+/// silently short message — a corrupted payload presented as a good one, which
+/// is worse than a loud stop and is the shape issue 0757 spent a phase
+/// removing. `BufferTooSmall` is already this crate's word for it (the batch
+/// take pre-checks with the same variant), and a caller that wants the sample
+/// raises its buffer knob.
+fn checked_take_len(out_len: usize, cap: usize) -> Result<usize, TransportError> {
+    if out_len > cap {
+        return Err(TransportError::BufferTooSmall);
+    }
+    Ok(out_len)
+}
+
 impl nros_rmw::Subscription for CffiSubscription {
     type Error = TransportError;
 
@@ -2528,7 +2550,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         if !taken {
             return Ok(None);
         }
-        Ok(Some(out_len))
+        Ok(Some(checked_take_len(out_len, buf.len())?))
     }
 
     fn try_recv_raw_with_info(
@@ -2752,7 +2774,7 @@ impl ServiceTrait for CffiService {
         if !taken {
             return Ok(None);
         }
-        let len = out_len;
+        let len = checked_take_len(out_len, buf.len())?;
         Ok(Some(ServiceRequest {
             data: &buf[..len],
             sequence_number: seq,
@@ -2872,7 +2894,7 @@ impl ClientTrait for CffiClient {
         if !taken {
             return Ok(None);
         }
-        Ok(Some(out_len))
+        Ok(Some(checked_take_len(out_len, reply_buf.len())?))
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {
