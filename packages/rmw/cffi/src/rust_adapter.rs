@@ -602,7 +602,7 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
             static_subscriber_storage::take::<R::Subscription>(*slot as *mut R::Subscription)
         } {
             *slot = core::ptr::null_mut();
-            return;
+            return NROS_RMW_RET_OK;
         }
     }
     let _ = unsafe { take_box::<R::Subscription>(slot) };
