@@ -390,20 +390,22 @@ pub struct nros_rmw_vtable_t {
     >,
     pub destroy_client:
         ::core::option::Option<unsafe extern "C" fn(client: *mut rmw_client_t) -> rmw_ret_t>,
-    #[doc = " Phase 130.4 — non-blocking send_request_raw. Phase-301: the\n  deprecated blocking `call_raw` slot is DELETED (rmw has no\n  blocking call); this + `try_recv_reply_raw` is the ONE\n  request/reply path and both slots are now REQUIRED for a backend\n  that supports services.\n\n  Sends the request to the backend without blocking for a\n  reply. Returns immediately."]
+    #[doc = " Phase 130.4 — non-blocking send_request_raw. Phase-301: the\n  deprecated blocking `call_raw` slot is DELETED (rmw has no\n  blocking call); this + `try_recv_reply_raw` is the ONE\n  request/reply path and both slots are now REQUIRED for a backend\n  that supports services.\n\n  Sends the request to the backend without blocking for a\n  reply. Returns immediately.\n\n  `*sequence_id` is the id the backend assigned, written only on\n  `NROS_RMW_RET_OK`. Upstream returns it for one reason and it is the\n  same reason here: a client with two calls outstanding has nothing else\n  to match a reply against.\n\n  Issue 0778 — this out-parameter was ABSENT until 2026-08-25, and every\n  backend computed the id and threw it away (cyclonedds a\n  `RequestId{guid, seq}`, zenoh a `fetch_add` into the rmw attachment,\n  xrce `uxr_buffer_request`'s id). With nothing to correlate BY, each\n  invented a policy: cyclonedds ABANDONED the first request when a second\n  was sent, zenoh took FIRST REPLY WINS on the grounds that \"a queryable\n  is idempotent at the application layer\" — which this ABI cannot\n  enforce and which is false for `send_goal` and `SetParameters`, both of\n  which travel this path. Same application code, different behaviour per\n  transport. The id is what deletes both policies."]
     pub send_request: ::core::option::Option<
         unsafe extern "C" fn(
             client: *const rmw_client_t,
             request: *const u8,
             req_len: usize,
+            sequence_id: *mut i64,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. Paired with\n  `send_request_raw` — backends implement both or neither. */\n/** Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`."]
+    #[doc = " Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`.\n\n  `*seq_out` is the `sequence_id` of the request this reply answers,\n  written only when `*taken` is true. It is the other half of issue\n  0778: handing the id out at send time is useless if it does not come\n  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has\n  always had — the asymmetry was the tell.\n\n  (The paragraph that used to sit here described `>= 0` = bytes and\n  \"other negative = backend error\", the pre-W3.d shape, three phases\n  after step A moved the count to an out-parameter and step B made the\n  errors positive.)"]
     pub take_response: ::core::option::Option<
         unsafe extern "C" fn(
             client: *const rmw_client_t,
             reply_buf: *mut u8,
             reply_buf_len: usize,
+            seq_out: *mut i64,
             out_len: *mut usize,
             taken: *mut bool,
         ) -> rmw_ret_t,

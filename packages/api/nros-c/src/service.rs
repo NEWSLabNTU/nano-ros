@@ -1735,8 +1735,10 @@ pub unsafe extern "C" fn nros_client_send_request_async(
         entry
             .reply_ready
             .store(false, core::sync::atomic::Ordering::Release);
+        // Issue 0778 — the C client API is one-call-in-flight; the sequence
+        // id is dropped here deliberately, not lost.
         match entry.handle.send_request_raw(request) {
-            Ok(()) => {
+            Ok(_seq) => {
                 entry.pending = true;
                 // Register a waker that sets reply_ready when the
                 // transport delivers the reply. This replaces blind
@@ -1808,7 +1810,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
 
         let buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
         match entry.handle.try_recv_reply_raw(buf) {
-            Ok(Some(len)) => {
+            Ok(Some((len, _seq))) => {
                 entry.pending = false;
                 *response_len = len;
                 NROS_RET_OK

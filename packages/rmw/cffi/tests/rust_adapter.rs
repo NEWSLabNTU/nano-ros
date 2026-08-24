@@ -368,11 +368,12 @@ impl ServiceTrait for NoopServer {
 
 impl ClientTrait for NoopClient {
     type Error = TransportError;
-    fn send_request_raw(&mut self, _data: &[u8]) -> Result<(), Self::Error> {
-        SEND_REQUEST_HITS.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    fn send_request_raw(&mut self, _data: &[u8]) -> Result<i64, Self::Error> {
+        // Issue 0778 — the id the backend assigned. Counting hits, so the
+        // count doubles as a monotonic id here.
+        Ok(SEND_REQUEST_HITS.fetch_add(1, Ordering::SeqCst) as i64)
     }
-    fn try_recv_reply_raw(&mut self, _buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+    fn try_recv_reply_raw(&mut self, _buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error> {
         TRY_RECV_REPLY_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(None)
     }

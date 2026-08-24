@@ -939,6 +939,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         self.send_goal_client
             .send_request_raw(&self.goal_buffer[..req_len])
+            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)?;
 
         Ok(goal_id)
@@ -983,6 +984,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         self.cancel_goal_client
             .send_request_raw(&self.goal_buffer[..req_len])
+            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
@@ -1000,6 +1002,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         self.get_result_client
             .send_request_raw(&self.goal_buffer[..req_len])
+            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
@@ -1037,7 +1040,11 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .cancel_goal_client
             .try_recv_reply_raw(&mut self.result_buffer)
         {
-            Ok(opt) => Ok(opt),
+            // Issue 0778 — the sequence id is discarded HERE, not missing:
+            // an action's cancel / get_result client keeps one call in flight
+            // at a time, so the id adds nothing the caller can use yet. It is
+            // available the moment that changes.
+            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
@@ -1057,7 +1064,11 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .get_result_client
             .try_recv_reply_raw(&mut self.result_buffer)
         {
-            Ok(opt) => Ok(opt),
+            // Issue 0778 — the sequence id is discarded HERE, not missing:
+            // an action's cancel / get_result client keeps one call in flight
+            // at a time, so the id adds nothing the caller can use yet. It is
+            // available the moment that changes.
+            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
@@ -1075,7 +1086,11 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .send_goal_client
             .try_recv_reply_raw(&mut self.result_buffer)
         {
-            Ok(opt) => Ok(opt),
+            // Issue 0778 — the sequence id is discarded HERE, not missing:
+            // an action's cancel / get_result client keeps one call in flight
+            // at a time, so the id adds nothing the caller can use yet. It is
+            // available the moment that changes.
+            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }

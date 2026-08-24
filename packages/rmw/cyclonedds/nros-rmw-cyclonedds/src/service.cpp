@@ -1207,15 +1207,25 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
 // blocking `call_raw` slot was deleted from the vtable; this pair
 // is the one request/reply path.
 rmw_ret_t service_send_request_raw(const rmw_client_t* client, const uint8_t* request,
-                                        size_t req_len) {
+                                        size_t req_len, int64_t* sequence_id) {
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
     if (state->pending_seq.load(std::memory_order_acquire) >= 0) {
-        // The upper layers clear their own in-flight guard on timeout before
-        // retrying. Mirror that abandon here so a slow first request doesn't
-        // wedge every later call; stale late replies are filtered by seq/guid.
+        // Issue 0778 — this backend holds ONE outstanding request: a single
+        // `pending_seq` and a single staging buffer. Sending a second while
+        // the first is unanswered ABANDONS the first. That is a real
+        // limitation and it stays for now, but it is no longer SILENT: the
+        // caller gets the sequence id of every send, so it can see that the
+        // reply it eventually receives belongs to the newer request and that
+        // the older one will never be answered. Making it genuinely
+        // multi-outstanding means a pending TABLE here, like the server side's
+        // `slots` — tracked in issue 0778.
+        //
+        // The abandon is also what the upper layers already do: they clear
+        // their in-flight guard on timeout before retrying, and a stale late
+        // reply is filtered below by (seq, guid).
         state->pending_request_len = 0;
         state->pending_seq.store(-1, std::memory_order_release);
     }
@@ -1237,11 +1247,12 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, const uint8_t* re
         state->pending_seq.store(-1, std::memory_order_release);
         return pr;
     }
+    if (sequence_id != nullptr) *sequence_id = my_id.seq;
     return NROS_RMW_RET_OK;
 }
 
 static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                   size_t reply_buf_len) {
+                                   size_t reply_buf_len, int64_t* seq_out) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -1278,6 +1289,9 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
 
     if (got_id.seq == pending && got_id.guid == state->my_guid) {
         state->pending_seq.store(-1, std::memory_order_release);
+        // Issue 0778 — say WHICH request this answers. The match above already
+        // knew; it simply had nowhere to report it.
+        if (seq_out != nullptr) *seq_out = got_id.seq;
         return user_len;
     }
     // Reply for a different in-flight call (impossible in single-
@@ -1293,11 +1307,12 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
 rmw_ret_t service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                     size_t reply_buf_len, size_t* out_len, bool* taken) {
+                                     size_t reply_buf_len, int64_t* seq_out, size_t* out_len,
+                                     bool* taken) {
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len);
+    int32_t n = service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, seq_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
         // An empty queue and a would-block are NOT failures: report

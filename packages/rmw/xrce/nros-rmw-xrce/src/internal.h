@@ -207,6 +207,10 @@ typedef struct xrce_service_client_slot {
     bool has_reply;
     bool overflow;
     uint16_t requester_id;
+    /* Issue 0778 — the XRCE request id the buffered reply answers, recorded
+     * by `xrce_reply_callback` (which used to `(void)request_id` it away) and
+     * reported out of `take_response` as the sequence id. */
+    uint16_t reply_request_id;
     bool active;
 } xrce_service_client_slot;
 
@@ -379,9 +383,11 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client);
  * `call_raw` slot was deleted from the vtable; this pair is the one
  * request/reply path). */
 rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
-                                             const uint8_t* request, size_t req_len);
+                                             const uint8_t* request, size_t req_len,
+                                             int64_t* sequence_id);
 rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                          size_t reply_buf_len, size_t* out_len, bool* taken);
+                                          size_t reply_buf_len, int64_t* seq_out,
+                                          size_t* out_len, bool* taken);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                            SampleIdentity* sample_id, struct ucdrBuffer* ub, uint16_t length,

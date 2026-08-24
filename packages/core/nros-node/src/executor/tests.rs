@@ -1780,9 +1780,8 @@ fn from_session_with_installs_the_callers_clock() {
         executor.clock_us_fn.is_some(),
         "from_session_with must install the config's clock"
     );
-    assert_eq!(
+    assert!(
         executor.clock_us_fn.map(|c| c()).is_some(),
-        true,
         "and it must be callable"
     );
 }

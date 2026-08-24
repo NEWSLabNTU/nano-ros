@@ -1700,8 +1700,12 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// Send a raw CDR request. Non-blocking; the reply arrives via
     /// [`try_recv_reply_raw`](Self::try_recv_reply_raw).
     pub fn send_request_raw(&mut self, request: &[u8]) -> Result<(), NodeError> {
+        // Issue 0778 — the backend now hands back a sequence id. This raw
+        // handle keeps one call in flight (`in_flight_flag`), so it has no use
+        // for the id yet and drops it explicitly rather than by omission.
         self.handle
             .send_request_raw(request)
+            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
@@ -1719,6 +1723,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     pub fn try_recv_reply_raw(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
             .try_recv_reply_raw(&mut self.reply_buffer)
+            .map(|opt| opt.map(|(len, _seq)| len))
             .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))
     }
 
@@ -2203,7 +2208,7 @@ impl<T> Promise<'_, T> {
             Err(TransportError::NoData) => return Ok(None),
             Err(e) => return Err(NodeError::Transport(e)),
         } {
-            Some(len) => {
+            Some((len, _seq)) => {
                 let reply = (self.parse)(&self.reply_buffer[..len])?;
                 // Reply consumed — allow the client to issue another call.
                 *self.in_flight_flag = false;

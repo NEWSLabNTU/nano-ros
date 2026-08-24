@@ -76,7 +76,6 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
 void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                          uint16_t reply_id, struct ucdrBuffer* ub, uint16_t length, void* args) {
     (void)session;
-    (void)request_id;
     (void)reply_id;
     if (args == NULL || ub == NULL) {
         return;
@@ -88,6 +87,8 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
         if (!slot->active || slot->requester_id != object_id.id) {
             continue;
         }
+        /* Issue 0778 — remember WHICH request this answers. */
+        slot->reply_request_id = request_id;
         /* XRCE-DDS interop: re-prepend the CDR encapsulation header stripped on
          * the wire (mirrors the request inbox + `xrce_topic_callback`). */
         if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
@@ -406,7 +407,8 @@ rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
 rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
-                                             const uint8_t* request, size_t req_len) {
+                                             const uint8_t* request, size_t req_len,
+                                             int64_t* sequence_id) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -436,6 +438,12 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }
+    /* Issue 0778 — XRCE's own request id IS the sequence. It was read here
+     * only to test it for validity and then discarded, which is what left a
+     * client unable to tell two replies apart. */
+    if (sequence_id != NULL) {
+        *sequence_id = (int64_t)req;
+    }
     /* Flush the reliable output stream so the request actually
      * leaves the session — matches the publisher / send_reply
      * paths' explicit flush. Subsequent `drive_io` calls drive
@@ -445,7 +453,7 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
 }
 
 static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                                     size_t reply_buf_len,
+                                                     size_t reply_buf_len, int64_t* seq_out,
                                                      size_t* out_len) {
     if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
@@ -474,6 +482,11 @@ static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client,
         memcpy(reply_buf, slot->data, len);
     }
     slot->has_reply = false;
+    /* Issue 0778 — the slot holds one reply for one outstanding request, so
+     * the id it answers is the one the slot recorded at send time. */
+    if (seq_out != NULL) {
+        *seq_out = (int64_t)slot->reply_request_id;
+    }
     *out_len = len;
     return NROS_RMW_RET_OK;
 }
@@ -485,14 +498,16 @@ static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client,
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
 rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                          size_t reply_buf_len, size_t* out_len, bool* taken) {
+                                          size_t reply_buf_len, int64_t* seq_out,
+                                          size_t* out_len, bool* taken) {
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     *out_len = 0;
     *taken = false;
     size_t n = 0;
-    rmw_ret_t rc = xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, &n);
+    rmw_ret_t rc =
+        xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, seq_out, &n);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }

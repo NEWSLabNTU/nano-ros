@@ -43,7 +43,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
                         size_t rep_cap, size_t *out_len) {
     if (out_len == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
-    rmw_ret_t sr = g_vt->send_request(cli, req, req_len);
+    rmw_ret_t sr = g_vt->send_request(cli, req, req_len, nullptr);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -54,7 +54,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
          * loop, which is what `!= NO_DATA` used to mean. */
         size_t n = 0;
         bool took = false;
-        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, &n, &took);
+        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, nullptr, &n, &took);
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }

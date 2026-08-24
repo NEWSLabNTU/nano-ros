@@ -193,9 +193,10 @@ rmw_ret_t           client_destroy(rmw_client_t *client);
 // one request/reply path).
 rmw_ret_t service_send_request_raw(const rmw_client_t *client,
                                         const uint8_t *request,
-                                        size_t req_len);
+                                        size_t req_len, int64_t *sequence_id);
 rmw_ret_t service_take_response(const rmw_client_t *client, uint8_t *reply_buf,
-                                     size_t reply_buf_len, size_t *out_len, bool *taken);
+                                     size_t reply_buf_len, int64_t *seq_out,
+                                     size_t *out_len, bool *taken);
 
 } // namespace nros_rmw_cyclonedds
 

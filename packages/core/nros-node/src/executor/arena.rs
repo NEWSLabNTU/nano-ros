@@ -1626,8 +1626,11 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     // Clear the waker flag if set (consumed by this check).
     entry.reply_ready.store(false, Ordering::Release);
 
+    // Issue 0778 — one call per arena entry today, so the sequence id is
+    // discarded rather than absent. Correlating here means keying entries by
+    // it, which is the follow-up that issue tracks.
     match entry.handle.try_recv_reply_raw(&mut entry.reply_buffer) {
-        Ok(Some(len)) => {
+        Ok(Some((len, _seq))) => {
             entry.pending = false;
             if let Some(cb) = entry.callback {
                 unsafe { cb(entry.reply_buffer.as_ptr(), len, entry.context) };
@@ -1698,7 +1701,7 @@ where
         .handle
         .try_recv_reply_raw(&mut entry.hdr.reply_buffer)
     {
-        Ok(Some(len)) => {
+        Ok(Some((len, _seq))) => {
             entry.hdr.pending = false;
             let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;

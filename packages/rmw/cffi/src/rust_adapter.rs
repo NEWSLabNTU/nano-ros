@@ -944,6 +944,7 @@ unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
     client: *const NrosRmwClient,
     request: *const u8,
     req_len: usize,
+    sequence_id: *mut i64,
 ) -> NrosRmwRet {
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -953,7 +954,15 @@ unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
     }
     let req = unsafe { core::slice::from_raw_parts(request, req_len) };
     match ClientTrait::send_request_raw(c, req) {
-        Ok(()) => NROS_RMW_RET_OK,
+        Ok(seq) => {
+            // Issue 0778 — hand the id back. NULL is tolerated for a caller
+            // that genuinely has one call in flight and does not want it.
+            if !sequence_id.is_null() {
+                // SAFETY: checked non-null.
+                unsafe { *sequence_id = seq };
+            }
+            NROS_RMW_RET_OK
+        }
         Err(e) => ret_from_error(&e),
     }
 }
@@ -962,6 +971,7 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
     client: *const NrosRmwClient,
     reply_buf: *mut u8,
     reply_buf_len: usize,
+    seq_out: *mut i64,
     out_len: *mut usize,
     taken: *mut bool,
 ) -> NrosRmwRet {
@@ -977,11 +987,14 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
     }
     let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
     match ClientTrait::try_recv_reply_raw(c, reply) {
-        Ok(Some(n)) => {
+        Ok(Some((n, seq))) => {
             // SAFETY: both checked non-null above.
             unsafe {
                 *out_len = n;
                 *taken = true;
+                if !seq_out.is_null() {
+                    *seq_out = seq;
+                }
             }
             NROS_RMW_RET_OK
         }

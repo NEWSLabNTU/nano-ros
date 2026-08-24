@@ -82,3 +82,53 @@ deviations were TRUE. This one was recorded as a deviation — "ours is a
 fire-and-forget publish whose reply is matched by `take_response`" — and is
 better described as a gap wearing a deviation's clothes: nothing matches the
 reply, because there is nothing to match it BY.
+
+## Landed 2026-08-25: the ABI carries the id, both ways
+
+```c
+rmw_ret_t (*send_request)(const rmw_client_t *client,
+    const uint8_t *request, size_t req_len, int64_t *sequence_id);
+
+rmw_ret_t (*take_response)(const rmw_client_t *client,
+    uint8_t *reply_buf, size_t reply_buf_len,
+    int64_t *seq_out, size_t *out_len, bool *taken);
+```
+
+Both halves, because handing the id out at send time is useless if it does not
+come back. The Rust `ClientTrait` matches: `send_request_raw` returns `i64` and
+`try_recv_reply_raw` returns `Option<(usize, i64)>`.
+
+Each backend now reports the id it was already computing:
+
+* **cyclonedds** — the `RequestId{guid, seq}` it builds, and `take_response`
+  reports `got_id.seq`. The match against the pending id already existed; it
+  simply had nowhere to report the answer.
+* **zenoh** — the `fetch_add` it puts in the rmw attachment. `pending_handles`
+  became `(handle, seq)` pairs, and **first-reply-wins is gone**: a reply
+  retires only the generations sharing its sequence id, so a second in-flight
+  request no longer disappears when the first one answers.
+* **xrce** — `uxr_buffer_request`'s id, which was read only to test it for
+  validity. `xrce_reply_callback` had the same discard one layer down
+  (`(void)request_id;`) and now records it on the slot.
+
+## Still open, and now explicit rather than silent
+
+**cyclonedds holds ONE outstanding request.** `ClientState` has a single
+`pending_seq` and a single staging buffer, so sending a second request while
+the first is unanswered still abandons the first. Making it genuinely
+multi-outstanding means a pending TABLE, mirroring the server side's `slots`.
+
+What changed is that the caller can now SEE it: every send returns its id, so
+the reply that arrives names the request it belongs to and the abandoned one is
+identifiable rather than merely absent.
+
+**The user-facing APIs discard the id.** Every caller in the tree keeps one
+call in flight (`in_flight_flag` on the raw handle, one arena entry per client,
+the blocking C/C++ paths), so each drops the id at a named site with a comment
+rather than by omission. Exposing it is a follow-up; the ABI no longer prevents
+it.
+
+**The adjacent finding in this issue is untouched:** `take_request` /
+`send_response`'s `int64_t` is a slot INDEX on cyclonedds, not a sequence
+number, and a request taken but never answered leaks a slot permanently.
+

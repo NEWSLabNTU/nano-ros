@@ -250,21 +250,42 @@ typedef struct nros_rmw_vtable_t {
      *  that supports services.
      *
      *  Sends the request to the backend without blocking for a
-     *  reply. Returns immediately. */
-    rmw_ret_t (*send_request)(const rmw_client_t *client,
-        const uint8_t *request, size_t req_len);
-
-    /** Phase 130.4 — non-blocking try_recv_reply_raw.
+     *  reply. Returns immediately.
      *
-     *  Polls the backend for a reply. `>= 0` = reply bytes copied
-     *  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.
-     *  Other negative = backend error. Paired with
-     *  `send_request_raw` — backends implement both or neither. */
+     *  `*sequence_id` is the id the backend assigned, written only on
+     *  `NROS_RMW_RET_OK`. Upstream returns it for one reason and it is the
+     *  same reason here: a client with two calls outstanding has nothing else
+     *  to match a reply against.
+     *
+     *  Issue 0778 — this out-parameter was ABSENT until 2026-08-25, and every
+     *  backend computed the id and threw it away (cyclonedds a
+     *  `RequestId{guid, seq}`, zenoh a `fetch_add` into the rmw attachment,
+     *  xrce `uxr_buffer_request`'s id). With nothing to correlate BY, each
+     *  invented a policy: cyclonedds ABANDONED the first request when a second
+     *  was sent, zenoh took FIRST REPLY WINS on the grounds that "a queryable
+     *  is idempotent at the application layer" — which this ABI cannot
+     *  enforce and which is false for `send_goal` and `SetParameters`, both of
+     *  which travel this path. Same application code, different behaviour per
+     *  transport. The id is what deletes both policies. */
+    rmw_ret_t (*send_request)(const rmw_client_t *client,
+        const uint8_t *request, size_t req_len, int64_t *sequence_id);
+
     /** Upstream `rmw_take_response`. Same shape and the same
-     *  declared deviations as `take_request`. */
+     *  declared deviations as `take_request`.
+     *
+     *  `*seq_out` is the `sequence_id` of the request this reply answers,
+     *  written only when `*taken` is true. It is the other half of issue
+     *  0778: handing the id out at send time is useless if it does not come
+     *  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has
+     *  always had — the asymmetry was the tell.
+     *
+     *  (The paragraph that used to sit here described `>= 0` = bytes and
+     *  "other negative = backend error", the pre-W3.d shape, three phases
+     *  after step A moved the count to an out-parameter and step B made the
+     *  errors positive.) */
     rmw_ret_t (*take_response)(const rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len,
-        size_t *out_len, bool *taken);
+        int64_t *seq_out, size_t *out_len, bool *taken);
 
     /* ---- Phase 108 — status events (optional) ---- */
     /** Register a callback for a subscription-side event. NULL function

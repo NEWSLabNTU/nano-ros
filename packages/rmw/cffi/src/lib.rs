@@ -3077,7 +3077,7 @@ impl CffiClient {
 impl ClientTrait for CffiClient {
     type Error = TransportError;
 
-    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, TransportError> {
         // Phase-301 (issue 0240) — `send_request_raw` +
         // `try_recv_reply_raw` is the ONE request/reply path (the
         // blocking `call_raw` slot is gone from the vtable). Backends
@@ -3087,17 +3087,21 @@ impl ClientTrait for CffiClient {
             return Err(TransportError::Unsupported);
         };
         let view = self.make_view();
-        let rc = unsafe { f(&view, request.as_ptr(), request.len()) };
+        // Issue 0778 — the id the backend assigned. A backend that leaves it
+        // untouched reports 0, which is a legal id; nothing here treats it as
+        // a sentinel.
+        let mut sequence_id: i64 = 0;
+        let rc = unsafe { f(&view, request.as_ptr(), request.len(), &mut sequence_id) };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
-        Ok(())
+        Ok(sequence_id)
     }
 
     fn try_recv_reply_raw(
         &mut self,
         reply_buf: &mut [u8],
-    ) -> Result<Option<usize>, TransportError> {
+    ) -> Result<Option<(usize, i64)>, TransportError> {
         // Non-blocking poll only. NULL slot = backend doesn't implement
         // the service-client path; surface Unsupported.
         let Some(f) = self.vtable.take_response else {
@@ -3107,11 +3111,13 @@ impl ClientTrait for CffiClient {
         // Phase 376 W3.b/W3.d step A — see `take_request`.
         let mut out_len = 0usize;
         let mut taken = false;
+        let mut seq: i64 = 0;
         let rc = unsafe {
             f(
                 &view,
                 reply_buf.as_mut_ptr(),
                 reply_buf.len(),
+                &mut seq,
                 &mut out_len,
                 &mut taken,
             )
@@ -3122,7 +3128,7 @@ impl ClientTrait for CffiClient {
         if !taken {
             return Ok(None);
         }
-        Ok(Some(checked_take_len(out_len, reply_buf.len())?))
+        Ok(Some((checked_take_len(out_len, reply_buf.len())?, seq)))
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {

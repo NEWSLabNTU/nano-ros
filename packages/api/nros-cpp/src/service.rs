@@ -318,7 +318,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_send_reply_raw(
     let data_slice = unsafe { core::slice::from_raw_parts(data, len) };
 
     match server.send_reply(sequence_number, data_slice) {
-        Ok(()) => NROS_CPP_RET_OK,
+        Ok(_seq) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
 }
@@ -499,7 +499,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let mut waited_ms: u32 = 0;
     loop {
         match client.try_recv_reply_raw(resp_slice) {
-            Ok(Some(len)) => {
+            // Issue 0778 — one call in flight on this blocking path.
+            Ok(Some((len, _seq))) => {
                 unsafe {
                     *resp_len = len;
                 }
@@ -660,7 +661,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
         .reply_ready
         .store(false, core::sync::atomic::Ordering::Release);
     match entry.handle.send_request_raw(request) {
-        Ok(()) => {
+        Ok(_seq) => {
             // CRITICAL (RFC-0041 / Phase 239): `service_client_raw_try_process`
             // early-returns unless `pending` is set, so the reply would never be
             // dispatched to the response trampoline without this. Mirror the C
@@ -693,7 +694,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
     match client.send_request_raw(req_slice) {
-        Ok(()) => NROS_CPP_RET_OK,
+        Ok(_seq) => NROS_CPP_RET_OK,
         Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
@@ -719,7 +720,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
     match client.try_recv_reply_raw(resp_slice) {
-        Ok(Some(len)) => {
+        Ok(Some((len, _seq))) => {
             unsafe {
                 *resp_len = len;
             }

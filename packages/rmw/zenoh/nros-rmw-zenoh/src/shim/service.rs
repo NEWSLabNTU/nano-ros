@@ -595,7 +595,12 @@ pub struct ZenohServiceClient {
     /// regardless of which generation of resend produced it.
     /// Capacity matches the C-side slot pool so we can never lose a
     /// handle the C allocator successfully returned.
-    pending_handles: heapless::Vec<i32, ZPICO_MAX_PENDING_GETS>,
+    /// Issue 0778 — each outstanding get, PAIRED WITH THE SEQUENCE ID of the
+    /// request that produced it. It was a bare `Vec<i32>` of handles, which is
+    /// why the reply poll below could only take "first reply wins": with no id
+    /// on either side there was nothing to tell a retry generation of the
+    /// current request from a reply to a DIFFERENT one.
+    pending_handles: heapless::Vec<(i32, i64), ZPICO_MAX_PENDING_GETS>,
     /// Issue 0153 — client GID for the rmw request attachment. rmw_zenoh_cpp
     /// service servers REQUIRE the (sequence_number, source_timestamp, gid)
     /// attachment on the query — `service_take_request` errors without it and
@@ -695,12 +700,12 @@ impl ZenohServiceClient {
     /// In practice this only triggers when `nros_client_call`'s
     /// resend loop produces more than `ZPICO_MAX_PENDING_GETS`
     /// generations in a single user-visible call — unusual.
-    fn track_outstanding(&mut self, handle: i32) {
+    fn track_outstanding(&mut self, handle: i32, seq: i64) {
         if self.pending_handles.is_full() {
             self.pending_handles.remove(0);
         }
         // Cannot fail — we just made room above.
-        let _ = self.pending_handles.push(handle);
+        let _ = self.pending_handles.push((handle, seq));
     }
 }
 
@@ -711,7 +716,7 @@ impl ClientTrait for ZenohServiceClient {
         // Wake on any outstanding handle — `nros_client_call`'s resend
         // can leave several gens in flight; any of them could complete
         // first (see `pending_handles` docs).
-        for &handle in &self.pending_handles {
+        for &(handle, _seq) in &self.pending_handles {
             if (handle as usize) < ZPICO_MAX_PENDING_GETS {
                 // phase-328/#376 — session-scoped slot (matches reply_waker_callback).
                 let idx = self.session_index * ZPICO_MAX_PENDING_GETS + handle as usize;
@@ -720,7 +725,7 @@ impl ClientTrait for ZenohServiceClient {
         }
     }
 
-    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, Self::Error> {
         let context = unsafe { &*self.context };
 
         // Issue 0153 — rmw request attachment, same 33-byte layout as the
@@ -790,8 +795,8 @@ impl ClientTrait for ZenohServiceClient {
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {
-                        self.track_outstanding(handle);
-                        return Ok(());
+                        self.track_outstanding(handle, seq);
+                        return Ok(seq);
                     }
                     Err(e) => last_err = Some(e),
                 }
@@ -824,8 +829,8 @@ impl ClientTrait for ZenohServiceClient {
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {
-                        self.track_outstanding(handle);
-                        return Ok(());
+                        self.track_outstanding(handle, seq);
+                        return Ok(seq);
                     }
                     Err(e) => last_err = Some(e),
                 }
@@ -844,7 +849,10 @@ impl ClientTrait for ZenohServiceClient {
         Err(TransportError::from(last_err.unwrap()))
     }
 
-    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+    fn try_recv_reply_raw(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<(usize, i64)>, Self::Error> {
         if self.pending_handles.is_empty() {
             return Ok(None);
         }
@@ -856,24 +864,31 @@ impl ClientTrait for ZenohServiceClient {
             let _ = context.spin_once(0);
         }
 
-        // Poll every outstanding handle. First reply wins — the
-        // resend loop in the C-API blocking caller leaves multiple
-        // generations of the same logical request in flight, and any
-        // one of them is a valid response (queryable is idempotent at
-        // the application layer; the server logs request count but
-        // computes the same answer). See `pending_handles` docs.
+        // Poll every outstanding handle and REPORT WHICH REQUEST replied.
+        //
+        // Issue 0778 — this used to be "first reply wins", justified by
+        // "queryable is idempotent at the application layer". That is true of
+        // the resend loop in the C-API blocking caller, which leaves several
+        // generations of ONE logical request in flight — and false the moment
+        // two DIFFERENT requests are outstanding, which this list cannot
+        // distinguish on its own. `send_goal` and `SetParameters` both travel
+        // this path and neither is idempotent. Each handle now carries the
+        // sequence id of the request that produced it, so the caller can tell
+        // which one it got back instead of the ABI assuming it does not matter.
         //
         // Newest first matches the common case where the latest send
         // is what completed — most calls allocate only one slot, so
         // we get out in one iteration.
         let mut hit_idx: Option<usize> = None;
         let mut hit_len: usize = 0;
+        let mut hit_seq: i64 = 0;
         let mut hard_err: Option<Self::Error> = None;
-        for (idx, &handle) in self.pending_handles.iter().enumerate().rev() {
+        for (idx, &(handle, seq)) in self.pending_handles.iter().enumerate().rev() {
             match context.get_check(handle, reply_buf) {
                 Ok(Some(len)) => {
                     hit_idx = Some(idx);
                     hit_len = len;
+                    hit_seq = seq;
                     break;
                 }
                 Ok(None) => continue,
@@ -887,12 +902,14 @@ impl ClientTrait for ZenohServiceClient {
             }
         }
 
-        if hit_idx.is_some() {
-            // A reply landed — release every other outstanding slot.
-            // They'll drain via zenoh-pico's dropper on the query
-            // timeout; we just stop polling them.
-            self.pending_handles.clear();
-            return Ok(Some(hit_len));
+        if let Some(idx) = hit_idx {
+            // Issue 0778 — drop only the generations of the request that
+            // ANSWERED (everything sharing its sequence id), not every
+            // outstanding slot. Clearing the lot is what made a second
+            // in-flight request disappear when the first one replied.
+            let answered = self.pending_handles[idx].1;
+            self.pending_handles.retain(|&(_, seq)| seq != answered);
+            return Ok(Some((hit_len, hit_seq)));
         }
 
         if let Some(e) = hard_err {

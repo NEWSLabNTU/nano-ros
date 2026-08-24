@@ -2198,15 +2198,31 @@ pub trait ClientTrait {
 
     /// Send a service request without waiting for a reply (non-blocking).
     ///
-    /// The caller must subsequently poll [`try_recv_reply_raw`](Self::try_recv_reply_raw)
-    /// to retrieve the reply.
-    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error>;
-
-    /// Poll for a reply to the most recently sent request (non-blocking).
+    /// Returns the SEQUENCE ID the backend assigned. The caller must
+    /// subsequently poll [`try_recv_reply_raw`](Self::try_recv_reply_raw) and
+    /// match that id against the one the reply carries.
     ///
-    /// Returns `Ok(Some(len))` when a reply has arrived, `Ok(None)` if not yet
-    /// available, or `Err` on failure.
-    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+    /// Issue 0778 — this returned `()` until 2026-08-25, and every backend
+    /// computed an id and discarded it. With nothing to correlate by, a client
+    /// with two calls outstanding could not tell the replies apart, so each
+    /// backend picked a policy: cyclonedds abandoned the older request, zenoh
+    /// took the first reply. Both are wrong for `send_goal` and
+    /// `SetParameters`, which travel this path and are not idempotent.
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, Self::Error>;
+
+    /// Poll for a reply (non-blocking).
+    ///
+    /// Returns `Ok(Some((len, sequence_id)))` when a reply has arrived,
+    /// `Ok(None)` if not yet available, or `Err` on failure. The
+    /// `sequence_id` is the one [`send_request_raw`](Self::send_request_raw)
+    /// returned for the request this answers.
+    ///
+    /// It used to say "a reply to the MOST RECENTLY sent request", which was
+    /// the single-outstanding-call assumption written into the contract.
+    fn try_recv_reply_raw(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<(usize, i64)>, Self::Error>;
 
     /// Send a typed service request without waiting for a reply (non-blocking).
     ///
@@ -2228,7 +2244,7 @@ pub trait ClientTrait {
             .map_err(|_| TransportError::SerializationError)?;
         let req_len = writer.position();
 
-        self.send_request_raw(&req_buf[..req_len])
+        self.send_request_raw(&req_buf[..req_len]).map(|_seq| ())
     }
 
     /// Poll for a typed reply to the most recently sent request (non-blocking).
@@ -2244,7 +2260,7 @@ pub trait ClientTrait {
         use nros_core::CdrReader;
 
         match self.try_recv_reply_raw(reply_buf)? {
-            Some(len) => {
+            Some((len, _seq)) => {
                 let mut reader = CdrReader::new_with_header(&reply_buf[..len])
                     .map_err(|_| TransportError::DeserializationError)?;
                 let reply = S::Reply::deserialize(&mut reader)

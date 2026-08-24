@@ -17,13 +17,18 @@ use nros_rmw::{
 /// **queue** (not a single slot) so tests can inject a burst — several messages
 /// arriving before a `try_recv_raw`/spin — to exercise the QoS-depth ring
 /// (Phase 239.5/7). `load` pushes; `try_recv_raw` pops in FIFO order.
+/// One queued take: the bytes and their length, or the error the take reports.
+/// Named because `clippy::type_complexity` is right that the inline form was
+/// unreadable.
+type MockTake = Result<([u8; 256], usize), TransportError>;
+
 pub struct MockSubscriber {
     /// FIFO of canned OUTCOMES, not canned messages. A queue of `Ok` only
     /// cannot express the case issue 0757 is about — a take that FAILS — so
     /// every test written against it necessarily exercised the happy path, and
     /// the four copies of the drain loop that swallowed a non-`Ok` take were
     /// unreachable by the unit suite for as long as they existed.
-    queue: RefCell<heapless::Deque<Result<([u8; 256], usize), TransportError>, 8>>,
+    queue: RefCell<heapless::Deque<MockTake, 8>>,
 }
 
 impl MockSubscriber {
@@ -160,12 +165,18 @@ impl Publisher for MockPublisher {
 pub struct MockServiceClient {
     /// Pre-loaded reply data to return on next `try_recv_reply_raw` call.
     pub pending_reply: Cell<Option<([u8; 256], usize)>>,
+    /// Issue 0778 — the id handed to the next `send_request_raw`.
+    pub next_seq: Cell<i64>,
+    /// The id of the most recent send; what a reply is reported against.
+    pub last_sent_seq: Cell<Option<i64>>,
 }
 
 impl MockServiceClient {
     pub fn new() -> Self {
         Self {
             pending_reply: Cell::new(None),
+            next_seq: Cell::new(0),
+            last_sent_seq: Cell::new(None),
         }
     }
 
@@ -178,19 +189,26 @@ impl MockServiceClient {
 impl ClientTrait for MockServiceClient {
     type Error = TransportError;
 
-    fn send_request_raw(&mut self, _request: &[u8]) -> Result<(), TransportError> {
-        Ok(())
+    /// Issue 0778 — a monotonic id, so a test that cares can tell two calls
+    /// apart. A mock returning a constant would make the contract untestable
+    /// in exactly the direction the issue is about.
+    fn send_request_raw(&mut self, _request: &[u8]) -> Result<i64, TransportError> {
+        let seq = self.next_seq.get();
+        self.next_seq.set(seq + 1);
+        self.last_sent_seq.set(Some(seq));
+        Ok(seq)
     }
 
     fn try_recv_reply_raw(
         &mut self,
         reply_buf: &mut [u8],
-    ) -> Result<Option<usize>, TransportError> {
+    ) -> Result<Option<(usize, i64)>, TransportError> {
         match self.pending_reply.get() {
             Some((data, len)) => {
                 reply_buf[..len].copy_from_slice(&data[..len]);
                 self.pending_reply.set(None);
-                Ok(Some(len))
+                // The mock answers whatever it was last asked.
+                Ok(Some((len, self.last_sent_seq.get().unwrap_or(0))))
             }
             None => Ok(None),
         }

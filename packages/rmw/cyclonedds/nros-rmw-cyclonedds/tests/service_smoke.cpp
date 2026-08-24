@@ -78,7 +78,7 @@ int main() {
     }
     // send_request_raw with too-short request → invalid arg.
     if (g_vt->send_request(&cli,
-            reinterpret_cast<const uint8_t *>("x"), 1)
+            reinterpret_cast<const uint8_t *>("x"), 1, nullptr)
         != NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "send_request_raw too-short should be INVALID_ARGUMENT\n");
         return 7;
