@@ -10,7 +10,7 @@ Splitting by language instead would let C++ pubsub land while C pubsub sits
 unexamined, and the drop-in claim is made per language — a feature that works in
 one is not a feature.
 
-# The DECLARING HEADER decides first; the name is the fallback
+# The DECLARING HEADER decides first for a TYPE; the NAME decides for a MEMBER
 
 A C API spells everything `lower_snake_t`, so a name pattern broad enough to
 catch `nros_ret_t` also catches `rcl_bool_array_t`, `rcl_topic_endpoint_info_t`
@@ -304,6 +304,18 @@ def topic_of(key, header=None):
     override = KEY_OVERRIDES.get(key)
     if override:
         return override
+
+    # A member's own name outranks its type's header. See the module docstring.
+    #
+    # Matched against the WHOLE key, owning type included, not the member alone:
+    # `Executor::shutdown` is exec's shutdown and `LifecycleNode::on_shutdown` is
+    # a lifecycle transition, and the bare member name says `init` for both. The
+    # owner is the disambiguator the ordered patterns need.
+    if "::" in key:
+        for name, pattern in TOPICS:
+            if pattern.search(key):
+                return name
+
     if header:
         norm = header.replace("\\", "/")
         for fragment, topic in HEADER_DIRS:
@@ -331,6 +343,13 @@ def self_test():
         if got != want:
             failures.append("topic_of(%r) = %r, want %r" % (key, got, want))
 
+    def check2(key, header, want):
+        got = topic_of(key, header)
+        if got != want:
+            failures.append(
+                "topic_of(%r, %r) = %r, want %r" % (key, header, got, want)
+            )
+
     # The ordering decision, stated as tests so changing the order breaks here
     # rather than silently re-filing hundreds of rows.
     check("Node::create_publisher", "pubsub")
@@ -340,6 +359,21 @@ def self_test():
     check("Node::declare_parameter", "param")
     check("Node::get_name", "node")
     check("Node::get_namespace", "node")
+    # All four are declared in rclcpp/node.hpp; none of them is node's feature.
+    check2("Node::declare_parameter", "/x/rclcpp/rclcpp/node.hpp", "param")
+    check2("Node::count_publishers", "/x/rclcpp/rclcpp/node.hpp", "graph")
+    check2("Node::create_wall_timer", "/x/rclcpp/rclcpp/node.hpp", "timer")
+    check2("Node::get_clock", "/x/rclcpp/rclcpp/node.hpp", "timer")
+    check2("Node::create_publisher", "/x/rclcpp/rclcpp/node.hpp", "pubsub")
+    # ...but a member no pattern claims still falls back to its header.
+    check2("Node::ffi_handle", "/x/rclcpp/rclcpp/node.hpp", "node")
+    # The owning type disambiguates a member name that means different things on
+    # different types.
+    check("Executor::shutdown", "exec")
+    check("Executor::ok", "exec")
+    check("LifecycleNode::on_shutdown", "lifecycle")
+    check("LifecycleNode::register_on_shutdown", "lifecycle")
+    check("Subscription::get_message_type_support_handle", "pubsub")
     check("Node", "node")
 
     check("Publisher::publish", "pubsub")
@@ -385,11 +419,8 @@ def self_test():
             % (set(NAMES) ^ set(STAGE_ORDER),)
         )
 
-    # The header outranks the name, which is the whole point of having it.
-    check2 = lambda k, h, want: (
-        None if topic_of(k, h) == want
-        else failures.append("topic_of(%r, %r) = %r, want %r" % (k, h, topic_of(k, h), want))
-    )
+    # The header outranks the name for a TOP-LEVEL item, which is the whole
+    # point of having it.
     check2("bool_array_t",
            "/opt/ros/humble/include/rcl_yaml_param_parser/rcl_yaml_param_parser/types.h",
            "param")

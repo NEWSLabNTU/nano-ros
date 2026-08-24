@@ -281,9 +281,9 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
-**`types` and `init` are DONE (2026-08-24)** — 44 authored rows covering both
-stages in all three languages. Each corrected something the stage was standing
-on:
+**`types`, `init` and `node` are DONE (2026-08-24)** — 134 authored rows
+covering three stages in all three languages. Each corrected something the stage
+was standing on:
 
 * `types` found the taxonomy filing by NAME when the DECLARING HEADER was
   available and better (see below), and produced issue 0783 — the Rust facade
@@ -295,8 +295,43 @@ on:
   alignment rule (below), which between them reclassified 9 rows across the
   other stages as `systematic` rather than leaving them silently `same`.
 
-Counts taken before 2026-08-24 will not match: both fixes moved rows between
-stages and between buckets.
+* `node` found the header rule filing METHODS by their type. `rclcpp/node.hpp`
+  declares `Node::declare_parameter`, `Node::count_publishers`,
+  `Node::create_wall_timer` and `Node::get_clock`, and all four were in the node
+  stage — 70 rows in the wrong place. A member now asks the NAME first, matched
+  against the whole key so the owning type disambiguates (`Executor::shutdown`
+  is exec's, `LifecycleNode::on_shutdown` is a lifecycle transition, and the
+  bare member name says `init` for both).
+
+Counts taken before 2026-08-24 will not match: all three fixes moved rows
+between stages and between buckets.
+
+### What the `node` stage established, and a correction
+
+The Rust user API is **not rclrs-shaped**, and the first report's summary of it
+was too simple. It is a declarative component model (RFC-0043/0044): a user
+implements `Node` — which is a **trait** — and `ExecutableNode` for their own
+type, declares entities in `register`, and receives callbacks. rclrs holds an
+`Arc<Node>` and calls methods on it.
+
+    impl Node for Talker {
+        fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+            let mut node = ctx.create_node(NodeOptions::new("talker"))?;
+            let pub_chatter = node.create_publisher_for_topic::<StringMsg>("/chatter")?;
+            ...
+
+The constraint is static entity storage plus an executor that owns dispatch:
+with no allocator the entity set has to be known at declaration time, and with
+one executor per RTOS task the callback cannot be a closure the node keeps.
+
+So the earlier reading — "the facade exports 709 items rclrs has no equivalent
+for, many of them internals that reached `pub use`" — was half right. A large
+share is the component model, which is deliberate and correct. What IS a
+problem is that it is not distinguishable from the machinery beside it: issue
+0784 records that `nros::` publishes the component API, the machinery
+`nros::node!` expands into, and four types with zero consumers, under one
+namespace with nothing marking which is which. `nros::Node` is the trait; the
+handle is `NodeCtx`, which the facade never exports.
 
 **1682 decisions across 16 stages.** They parallelise cleanly because a decision
 is a sentence about one item and touches nothing else. This section is written
@@ -326,21 +361,21 @@ Get a stage's rows, and see what is left:
     stage             c      cpp     rust    total
     types             0        0        0        0   done
     init              0        0        0        0   done
-    node             20       75       73      168
-    pubsub           77       98       54      229
-    service          52       54       31      137
-    timer            60       26       29      115
-    qos              27       63       17      107
-    param            79       17       48      144
-    action          155       33        8      196
+    node              0        0        0        0   done
+    pubsub           77      121       61      259
+    service          52       69       34      155
+    timer            60       35       30      125
+    qos              27       62       17      106
+    param            79       51       50      180
+    action          155       22        8      185
     exec             61       59       34      154
-    lifecycle        54       83       16      153
-    log              16        4       37       57
-    graph            20        2        3       25
-    serde            31        0        5       36
+    lifecycle        54       46       16      116
+    log              16        5       38       59
+    graph            20       21       15       56
+    serde            31        0        7       38
     boot              2        0       10       12
     other            12       19       70      101
-                                              1634
+                                              1546
 
 `--by-topic` counts DECISIONS, not rows: a member whose type already carries a
 verdict is answered, so counting rows would report the same work several times
@@ -467,7 +502,17 @@ hook at all** — not `rclcpp::on_shutdown`, not `Context::add_on_shutdown_callb
 not the pre-shutdown variant that runs BEFORE entities are torn down. Nothing
 about `no_std` prevents a fixed-capacity callback array, and a node that must
 park an actuator or release a bus on the way down has nowhere to do it. That
-matters more on a device than on a desktop. Expected shape: `create_wall_timer` as a name
+matters more on a device than on a desktop.
+
+`node` added the first `rename` rows, and they are the cheapest work in the
+campaign: **`Node::create_subscriber` should be `create_subscription`.** rclrs,
+rclcpp and rclc all say subscription, and so do our own C
+(`nros_subscription_init`) and C++ (`Node::create_subscription`) — Rust is the
+odd one out among our three languages as well as against ROS 2.
+`subscriber_count` and `subscriber_topic_info` move with it. Also `Node::now`
+(the accessor a ported rclcpp publisher uses to stamp a header, tied to the
+`Clock` gap), `node_get_domain_id`, `node_get_fully_qualified_name`,
+`node_resolve_name` and `node_is_valid`. Expected shape: `create_wall_timer` as a name
 alongside `create_timer`, `declare_parameter` over the current parameter
 surface, `get_clock`/`Clock`/`Duration`, the QoS policy enums under their rclcpp
 names.
