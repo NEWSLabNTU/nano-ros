@@ -78,6 +78,11 @@ fn every_category_dispatches_through_cffi_platform() {
     // C/C++ sources, so a retired symbol in Rust is outside its reach.
     let _ = CffiPlatform::clock_ns();
     let _ = CffiPlatform::clock_resolution_ns();
+    // issue 0758 — the wall-clock epoch is a CLOCK-category op too, and this
+    // test's claim is that EVERY category dispatches through CffiPlatform. A
+    // new ABI fn that no case calls makes that claim quietly narrower than it
+    // reads.
+    let _ = CffiPlatform::epoch_us();
 
     // -- Alloc --
     let p = CffiPlatform::alloc(64);
@@ -143,17 +148,26 @@ fn every_category_dispatches_through_cffi_platform() {
 
     let counter = |c| unsafe { nros_platform_stub_counter(c) };
 
-    assert!(counter(StubCategory::Clock) >= 2, "clock dispatch");
+    assert!(counter(StubCategory::Clock) >= 3, "clock dispatch");
     assert!(counter(StubCategory::Alloc) >= 3, "alloc dispatch");
     assert!(counter(StubCategory::Sleep) >= 3, "sleep dispatch");
     assert!(counter(StubCategory::Yield) >= 1, "yield dispatch");
     assert!(counter(StubCategory::Random) >= 5, "random dispatch");
-    assert!(counter(StubCategory::Time) >= 3, "time dispatch");
+    // issue 0779 — was `>= 3`. `PlatformTime` has exactly ONE method
+    // (`time_now_ns`) and this test calls it once; the trait was reduced and the
+    // expectation was not. Nothing caught it because the whole file sits behind
+    // `#![cfg(feature = "c-stub-test")]`, which no recipe enabled — so this
+    // assertion had not run since the reduction. Derived from the call list
+    // above, not guessed.
+    assert!(counter(StubCategory::Time) >= 1, "time dispatch");
     assert!(counter(StubCategory::Task) >= 6, "task dispatch");
     assert!(counter(StubCategory::Mutex) >= 10, "mutex dispatch");
     assert!(counter(StubCategory::Condvar) >= 6, "condvar dispatch");
-    // 2 + 3 + 3 + 1 + 5 + 3 + 6 + 10 + 6 = 39
-    assert_eq!(counter(StubCategory::Total), 39, "total = 39 fn calls");
+    // clock 3 (ns, resolution, epoch) + alloc 3 + sleep 3 + yield 1 + random 5
+    // (4x random_u + random_fill) + time 1 + task 6 + mutex 10 + condvar 6 = 38.
+    // Each number is the count of DISTINCT calls in the body above; recount
+    // there before changing one here.
+    assert_eq!(counter(StubCategory::Total), 38, "total = 38 fn calls");
 
     IN_USE.store(false, Ordering::SeqCst);
 }

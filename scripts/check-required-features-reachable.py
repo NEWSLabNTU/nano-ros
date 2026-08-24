@@ -79,11 +79,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # loopback harness, `bridge-stub` and `link-custom` want link-time setups — so
 # they are a DATED BACKLOG with an issue on them, not an exemption. Delete a
 # row when its files join a lane, or when the files go.
-BASELINE: set[str] = {
-    "posix-c-port",   # 6 files, nros-platform-cffi   (issue 0779, 2026-08-24)
-    "c-stub-test",    # 2 files, platform-cffi + cffi (issue 0779, 2026-08-24)
-    "unix-mock",      # 1 file,  nvidia-ivc           (issue 0779, 2026-08-24)
-}
+# EMPTY since 2026-08-25 (issue 0779): every gating feature is now reachable
+# from a recipe. Keep it that way — a name added here is a test nobody runs.
+BASELINE: set[str] = set()
 
 # `--features a,b`, `--features "a b"`, `features = ["a"]`, `--all-features`.
 FEATURE_CONTEXT = re.compile(

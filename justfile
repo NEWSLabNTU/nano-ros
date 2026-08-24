@@ -761,6 +761,31 @@ check-required-features-tests:
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-zenoh --features platform-posix,link-custom \
         --test custom_transport
+    # Issue 0779 — the last three. BASELINE is now empty.
+    #
+    # `unix-mock` is the third conjunction in this set (`std` too), and the only
+    # one whose crate says so: nvidia-ivc carries a `compile_error!` naming the
+    # missing feature. The other two failed SILENTLY — a target that builds and
+    # runs zero tests — which is why they sat unnoticed while this one would have
+    # stopped anyone who tried.
+    #
+    # `c-stub-test` needed real repairs, not just a flag: its abi_layout_check.c
+    # had not compiled since phase-321 W2.e moved the crate (a stale `-I`), and
+    # c_stub_platform asserted a call count for a trait that had since shrunk.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-platform-cffi --features posix-c-port \
+        --test c_port_posix --test c_port_posix_critical_section \
+        --test c_port_posix_net --test c_port_posix_timer \
+        --test c_port_posix_wake --test wake_wrapper
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-platform-cffi --features c-stub-test \
+        --test c_stub_platform
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-cffi --features c-stub-test \
+        --test c_stub_transport
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nvidia-ivc --features std,unix-mock \
+        --test loopback
     echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on

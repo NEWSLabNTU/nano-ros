@@ -138,9 +138,20 @@ fn maybe_build_c_stub() {
     // mirror. Its Rust counterpart is the `abi_layout` const-assert
     // block in `src/lib.rs`. If either side's layout drifts, exactly
     // one guard fails the build. Compiled against the public headers.
+    // issue 0779 — `../../core/nros-rmw-abi`, the same correction the comment 30
+    // lines above already made for the `rerun-if-changed` spelling. 0490 fixed
+    // that site and left this one, and the two failed DIFFERENTLY, which is why
+    // only one was noticed: a missing `rerun-if-changed` input is silently
+    // always-dirty (the build still succeeds), while a missing `-I` is a hard
+    // `fatal error: nros/rmw_entity.h: No such file or directory`.
+    //
+    // The hard one stayed hidden because everything below is behind
+    // `CARGO_FEATURE_C_STUB_TEST`, which no recipe enabled — so the layout guard
+    // this file exists to run had not compiled since phase-321 W2.e moved the
+    // crate. A guard that cannot build is not a guard.
     nros_cc_flags::strict_decls(&mut cc::Build::new())
         .file("tests/c_stubs/abi_layout_check.c")
-        .include("../nros-rmw-abi/include")
+        .include("../../core/nros-rmw-abi/include")
         .warnings(true)
         .extra_warnings(true)
         .compile("nros_abi_layout_check");

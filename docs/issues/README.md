@@ -3710,13 +3710,7 @@ RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nr
 
 Recently resolved (2026-08-05 cycle) — #248, #382, #392, #398, #411, #412, #413, #416, #419, #420, #421, #423, #425, #426, #427, #428, #429, #430. Their summaries live in `docs/issues/archived/`.
 
-**#0779** (testing/ci, open 2026-08-24) — fifteen test files sit behind a crate-level
-`#![cfg(feature = "…")]` that no recipe enables. Unlike `required-features` (issue 0652) cargo BUILDS these,
-so nextest runs a binary with zero tests in it and reports green — a stronger false signal than a skipped
-target. `nros-rmw-cffi`'s two `lending` files had stopped COMPILING a phase earlier (W3.d's `has_data`
-out-parameter and named return codes) and nothing noticed. `lending` is now wired (48 tests vs 44);
-`posix-c-port`, `c-stub-test`, `bridge-stub`, `link-custom`, `unix-mock` are a dated shrinking backlog in
-`check-required-features-reachable`, which now scans both mechanisms. See `0779-*`. (2026-08-24)
+Recently resolved (2026-08-25): **#0779** — fifteen test files sat behind a crate-level `#![cfg(feature = "…")]` that no recipe enabled. Unlike `required-features` (#0652) cargo BUILDS these, so nextest ran a binary with zero tests and reported green — a stronger false signal than a skipped target; the two `lending` files had stopped COMPILING a phase earlier and nothing noticed. All six features are now wired, `check-required-features-tests` runs 73 tests with no suite reporting zero, and the gate's BASELINE is EMPTY. Two lessons recorded: (1) the issue's own one-feature-per-file table was a TRAP — three of the files need conjunctions (`platform-posix`+`link-custom`, `std`+`bridge-stub`, `std`+`unix-mock`), and a lane passing only the named feature builds the target, runs nothing and looks wired, so read each file's `#![cfg(...)]` and confirm the test COUNT moves; (2) `c-stub-test` needed repairs, not a flag — `abi_layout_check.c` had not compiled since phase-321 W2.e moved the crate (#0490 fixed the sibling `rerun-if-changed` spelling in the same file and left the `-I`), and `c_stub_platform` asserted a call count for a trait that had since shrunk. See `archived/0779-*`. (2026-08-25)
 
 **#0780** (rmw, open 2026-08-24) — `rmw_take_event` declined on two clauses that both fail. "A poll would be
 blind without a wait set" contradicts `has_data`, whose own doc calls a wait-set-free poll the model here;

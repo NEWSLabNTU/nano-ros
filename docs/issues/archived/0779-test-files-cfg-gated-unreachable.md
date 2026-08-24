@@ -2,7 +2,7 @@
 id: 779
 title: "15 test files sit behind a crate-level `#![cfg(feature)]` that no recipe
   enables — cargo builds an EMPTY binary and nextest reports it green"
-status: open
+status: resolved
 type: bug
 area: testing, ci
 related: [issue-0652, issue-0612, issue-0319, phase-376]
@@ -117,3 +117,55 @@ lane deliberately does not pass `--no-tests`, per the note already in the recipe
 
 Each still needs its lane or its files deleted. None is a `--features` flag
 alone, which is why they were not switched on blind with these two.
+
+## Resolved (2026-08-25) — BASELINE is empty; all 15 files run
+
+The remaining three are wired. `just check-required-features-tests` runs **73**
+tests across every suite, none reporting zero, and
+`check-required-features-reachable` reports `0 baselined backlog`.
+
+| feature | files | tests | what it needed |
+| --- | --- | --- | --- |
+| `posix-c-port` | 6 | 38 | wiring only |
+| `c-stub-test` | 2 | 3 | **repairs** — see below |
+| `unix-mock` | 1 | 1 | `std` too |
+
+### `c-stub-test` had rotted in two different ways
+
+Neither was a flag.
+
+**`c_stub_transport` did not COMPILE.** `build.rs` passed
+`-I ../nros-rmw-abi/include`, which from `packages/rmw/cffi` names a directory
+that does not exist; the header is at `packages/core/nros-rmw-abi/include`. Issue
+0490 already corrected the *other* spelling in the same file — the
+`rerun-if-changed` on line 122 — and left this one, with a comment 30 lines above
+this call stating the correct path.
+
+The two failed DIFFERENTLY, which is why only one was noticed: a missing
+`rerun-if-changed` input is silently always-dirty and the build still succeeds,
+while a missing `-I` is a hard `fatal error: nros/rmw_entity.h: No such file or
+directory`. The hard one hid behind the disabled feature. So the ABI layout guard
+this file exists to run had not compiled since phase-321 W2.e moved the crate — a
+guard that cannot build is not a guard.
+
+**`c_stub_platform` FAILED.** It asserted `counter(Time) >= 3`, but
+`PlatformTime` has exactly one method (`time_now_ns`) and the test calls it once.
+The trait was reduced and the expectation was not; `Total` was over by the same
+2. Both corrected from the call list in the test body, not guessed. Also added a
+`CffiPlatform::epoch_us()` call (issue 0758's new clock op) so the test's claim —
+that EVERY category dispatches — stays true as the ABI grows.
+
+### `unix-mock` was the third conjunction, and the only loud one
+
+`--features unix-mock` alone fails with a `compile_error!` naming the remedy:
+"`unix-mock` uses OS sockets: add \"std\" to this crate's features". Contrast
+`link-custom` and `bridge-stub`, which built a target, ran zero tests and
+reported green. A crate that refuses to compile without its companion feature
+costs one confused minute; one that silently runs nothing costs a phase. The
+fail-loud spelling is the better one and is worth copying.
+
+### Standing rule
+
+BASELINE is empty and should stay that way — a name added there is a test nobody
+runs. If a file cannot be wired, delete it; that is also an answer, and an honest
+one.
