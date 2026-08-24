@@ -1,6 +1,6 @@
 # Phase 363 — Measured inputs, not guessed ones
 
-**Status (2026-08-17). W1–W5 LANDED and each RE-SWEPT. The waves are closed; the CLASS is not — four more sites turned up AFTER they were, the most recent being issue 0596. Treat this phase as a standing sweep, not a finished list.** Every freshness check in
+**Status (2026-08-24). COMPLETE — W1–W5 LANDED and each RE-SWEPT; archived. The waves are closed; the CLASS is not — four more sites turned up AFTER they were, the most recent being issue 0596. Treat this phase as a standing sweep, not a finished list.** Every freshness check in
 this tree answers "was this built from the sources on disk right now?", and they
 split cleanly into two kinds: the ones that ASK the tool that owns the
 dependency graph, and the ones that GUESS an input set by hand. Every recurring
@@ -8,15 +8,15 @@ staleness bug this year came from the second kind. This phase converts guesses
 into measurements, one site at a time.
 
 **Owns:** the remaining half of
-[issue 0466](../issues/0466-tier1-setup-contract-unstated.md) (the compile-check
+[issue 0466](../../issues/archived/0466-tier1-setup-contract-unstated.md) (the compile-check
 signature's dependency closure) plus four sites found by surveying for the same
 shape.
 
-**Related:** [issue 0196](archived/) (build-side probes must watch the same
+**Related:** [issue 0196](../../issues/archived/0196-native-rust-fixture-stale-probe-misses-generated.md) (build-side probes must watch the same
 inputs as test-side gates — the rule this phase enforces mechanically),
-[issue 0491](../issues/) (a `rerun-if-env-changed` on a PATH variable — the same
-class in the env dimension), [phase-319](archived/) (`.inputsig`, which
-introduced the signature scripts), [phase-354](archived/phase-354-build-correctness-lane-seams.md)
+[issue 0491](../../issues/archived/0491-leaf-relative-env-strings-thrash-shared-cargo-group.md) (a `rerun-if-env-changed` on a PATH variable — the same
+class in the env dimension), [phase-319](phase-319-compile-check-lane-presence-to-truth.md) (`.inputsig`, which
+introduced the signature scripts), [phase-354](phase-354-build-correctness-lane-seams.md)
 W2 (#466's owner; this phase takes its last item).
 
 ## The thesis
