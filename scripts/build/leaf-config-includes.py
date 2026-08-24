@@ -27,7 +27,26 @@ A fresh clone cannot build these leaves in any case — their patches point at
 install. So the fix is not to make the include optional; it is to say
 "run `nros sync`" at the seam, once, instead of once per leaf in cargo's words.
 
-Exit 0 when every include resolves, 1 otherwise.
+A SECOND shape of the same failure
+----------------------------------
+An `include` target is not the only sync-produced path a manifest can name. A
+workspace member can path-dep a crate under `generated/` too:
+
+    freertos_realtime_entry_nros_selection = { path = "../../generated/nros-selection/..." }
+
+and cargo fails identically — during manifest parse, four frames deep, naming a
+path and never `nros sync`. Issue 0474 wired this guard ahead of `format` for
+exactly that reason, but the guard only read `include` targets, so
+`native::format` still died on an unsynced leaf while the guard reported "OK"
+(realtime-rust, 2026-08-24). A gate whose coverage is narrower than the rule it
+enforces reads as coverage — so both shapes are checked here, in ONE gate,
+rather than growing a second spelling elsewhere.
+
+Only path deps pointing INTO a `generated/` directory are checked: those have a
+known producer (`nros sync`) and a known remedy. A path dep that is merely typo'd
+is cargo's to report.
+
+Exit 0 when every include and every generated path dep resolves, 1 otherwise.
 """
 
 import re
@@ -42,6 +61,11 @@ ROOT = Path(__file__).resolve().parents[2]
 # from being mistaken for it.
 INCLUDE_RE = re.compile(r'^\s*include\s*=\s*(\[[^\]]*\])', re.M | re.S)
 STR_RE = re.compile(r'"([^"]*)"')
+
+# A path dep whose target lives under a `generated/` directory — the shape
+# `nros sync` produces. Matches `path = "…/generated/…"` in either the inline
+# table or the expanded form.
+GENERATED_PATH_RE = re.compile(r'path\s*=\s*"([^"]*\bgenerated/[^"]*)"')
 
 
 def includes(text: str):
@@ -73,9 +97,60 @@ def main() -> int:
             if not target.is_file():
                 missing.append((rel, entry))
 
-    if not missing:
-        print(f"leaf config includes OK ({checked} tracked configs)")
+    # Second shape: a manifest path-deps a crate under `generated/` that sync
+    # has not produced yet. Same seam, same remedy, same failure text from cargo.
+    gen_missing = []   # (manifest, unresolved_path)
+    # Scoped to `examples/**` — the leaves the lanes this guard fronts actually
+    # walk (`native::format` enumerates exactly this set). `packages/cli/
+    # testing_workspaces/**` also path-deps `generated/`, but those are CLI test
+    # fixtures that the tests using them sync on demand, so requiring them here
+    # would fail `just format` for trees that are not broken. Matching the gate
+    # to the RULE means matching it to the leaves the rule covers — widening it
+    # past them is the same defect in the other direction.
+    manifests = subprocess.run(
+        ["git", "ls-files", "examples/**/Cargo.toml"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    for rel in manifests:
+        man = ROOT / rel
+        try:
+            text = man.read_text()
+        except OSError:
+            continue
+        for dep_path in GENERATED_PATH_RE.findall(text):
+            target = (man.parent / dep_path / "Cargo.toml").resolve()
+            if not target.is_file():
+                gen_missing.append((rel, dep_path))
+
+    if not missing and not gen_missing:
+        print(
+            f"leaf config includes OK ({checked} tracked configs, "
+            f"{len(manifests)} manifests scanned for generated path deps)"
+        )
         return 0
+
+    if gen_missing and not missing:
+        leaves = sorted({m[0] for m in gen_missing})
+        print(
+            f"error: {len(gen_missing)} path dep(s) into `generated/` do not "
+            f"exist, across {len(leaves)} manifest(s).\n",
+            file=sys.stderr,
+        )
+        for rel, dep in gen_missing[:5]:
+            print(f"  {rel}\n      path -> {dep}  (absent)", file=sys.stderr)
+        if len(gen_missing) > 5:
+            print(f"  … and {len(gen_missing) - 5} more", file=sys.stderr)
+        print(
+            "\n`generated/` is produced by `nros sync` from the USER's own message "
+            "packages and is\nnever committed, so a clone never has it. Cargo "
+            "treats the missing manifest as a HARD\nerror during manifest parse — "
+            "`cargo metadata`, `cargo fmt` and every gate that reads\nthe leaf fail "
+            "before anything mentions sync.\n\n  source ./activate.sh && nros sync"
+            "\n\nBypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1.\nSee docs/issues/0463-* "
+            "and 0474.",
+            file=sys.stderr,
+        )
+        return 1
 
     leaves = sorted({m[0] for m in missing})
     print(
