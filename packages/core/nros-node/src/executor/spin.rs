@@ -5462,6 +5462,42 @@ impl<'s> Executor<'s> {
                         .unwrap_or(true),
                 };
                 if !has_budget {
+                    // issue 0736 — keep the TIMER'S CLOCK honest even while the
+                    // budget gates its dispatch.
+                    //
+                    // A timer's `elapsed_us` only advances inside
+                    // `timer_try_process`, which is reached only when the entry
+                    // is DISPATCHED, and each dispatch is handed just THIS
+                    // cycle's `delta_us`. So every cycle skipped here was
+                    // dropped from the timer's sense of time: it did not fire,
+                    // it did not learn that its period had passed, and — because
+                    // the overrun counter is driven by that same `elapsed_us` —
+                    // it did not count the activation it missed.
+                    //
+                    // That is why the throttle was invisible. Measured on
+                    // nuttx-arm/rust: ~238 activations lost against ~40
+                    // reported, so five in six missed firings were unaccounted
+                    // ANYWHERE. The tier ran at a quarter of its declared rate
+                    // and the only honest signal was the delivery count itself.
+                    //
+                    // Advancing the clock here does not dispatch anything and
+                    // does not defeat the budget. It makes the entry's own
+                    // accounting independent of whether the executor CHOSE to
+                    // run it, which is the property every "did this meet its
+                    // declaration?" question needs, and it lets the existing
+                    // `Skip` policy count the backlog and the existing
+                    // `timer-overrun-runtime` rule report it.
+                    if let Some(meta) = self.entries[i].as_ref()
+                        && matches!(meta.kind, EntryKind::Timer)
+                    {
+                        // SAFETY: a Timer entry's arena slot holds a
+                        // `TimerEntry<F>`, whose leading layout IS
+                        // `TimerHeader` — the same cast the overrun reporter
+                        // one screen up already relies on.
+                        let header =
+                            unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+                        header.elapsed_us = header.elapsed_us.saturating_add(delta_us);
+                    }
                     // issue 0736 — a budget skip used to be a bare `continue`,
                     // which is the silent-drop shape 0737 gated one layer out:
                     // the entry is simply not dispatched and nothing anywhere

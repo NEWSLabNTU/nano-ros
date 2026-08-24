@@ -683,3 +683,79 @@ DEAD CODE — it charges only `sporadic_atomic_states`, populated solely by
 image ran the wall-clock charge under a comment asserting per-callback
 accounting. Finding the gate was the easy half; finding that its replacement had
 never run anywhere is what made the fix possible.
+## The kernel-side gap, closed — a timer's clock no longer depends on being dispatched (2026-08-24)
+
+The previous section left this: the executor now reports when ITS budget gate
+throttles a tier, but NuttX's kernel sporadic server throttles silently and
+nothing in the image can see it. Closing that by introspecting NuttX would have
+covered one cause; the fix below covers every cause, including the ones nobody
+has met yet.
+
+### What was actually invisible, and it is not what the section above assumed
+
+A timer's `elapsed_us` advances only inside `timer_try_process`, which is
+reached only when the entry is DISPATCHED — and each dispatch is handed only
+THAT cycle's `delta_us`. So a cycle the budget gate skipped was dropped from the
+timer's sense of time entirely: it did not fire, it did not learn its period had
+passed, and — because the overrun counter is driven by that same `elapsed_us` —
+**it did not count the activation it missed.**
+
+That is a different defect from "the kernel is silent". The overrun machinery
+was already there and already wired to a report (`Skip` policy counts the
+backlog, `check_timer_overrun` emits `timer-overrun-runtime`); it was being fed
+a clock that stopped whenever the executor declined to run the entry.
+
+Worth correcting a misreading of my own on the way: `timer-overrun-runtime timer
+measured=4 declared=0` is FOUR DROPPED ACTIVATIONS, not a 4 ms callback. The
+section above read it as a runtime measurement and used it to argue the
+callbacks were small. They are small, but that line was never the evidence.
+
+### Fix
+
+At the budget-skip site, advance the timer's clock before `continue`:
+
+```rust
+if let Some(meta) = self.entries[i].as_ref()
+    && matches!(meta.kind, EntryKind::Timer)
+{
+    let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+    header.elapsed_us = header.elapsed_us.saturating_add(delta_us);
+}
+```
+
+It dispatches nothing and does not defeat the budget. It makes the entry's own
+accounting independent of whether the executor CHOSE to run it — the property
+every "did this meet its declaration?" question needs — and the existing `Skip`
+policy and `timer-overrun-runtime` rule do the rest.
+
+### Measured
+
+`nuttx-arm/rust`, same fixture, consecutive runs:
+
+| | reported dropped activations | share of the shortfall |
+| --- | --- | --- |
+| before | ~40 | ~17 % |
+| after | **105** | **56 %** |
+
+Delivery is unchanged (62 → 64), which is correct: this reports, it does not
+dispatch. Neither budget warning fires, which is also correct and is the point —
+the executor's gate is not what throttles this tier, and the timer-overrun path
+now catches the kernel's throttling anyway, without knowing that a kernel
+sporadic server exists.
+
+**The remaining 44 % is NOT explained.** The report emits a delta each pass and
+loses nothing, so the residue is most likely activations dropped after the
+harness stops reading, or an observation window slightly different from the one
+`/telem` implies. Recorded rather than rounded up: this issue has already had
+three explanations that fitted the data and were wrong.
+
+### Cell state
+
+Still flaky and still red on balance: 1 pass in 4 here, 1 in 6 before. Nothing
+in this change was expected to move delivery, and it did not. What changed is
+that the image now SAYS it is missing five activations in nine, which is the
+thing the issue asked for — "a declaration being unsatisfiable should be
+reported, not silently absorbed into a 0.2 % dispatch rate."
+
+`zephyr/rust` re-verified after the core change: 17 rows ran, and it is not
+among the skips.
