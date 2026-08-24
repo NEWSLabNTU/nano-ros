@@ -66,6 +66,34 @@ fn kill_listeners_on_port(port: u16) {
 /// config already sets it: the vendored router needed `--no-multicast-scouting`
 /// explicitly, and a default is a thing that can change under us. This is the
 /// one property these tests actually depend on.
+/// The `libzenohc.so` the resolved router was BUILT against.
+///
+/// `rmw_zenohd` links `libzenohc.so` by SONAME, so which one it actually loads
+/// is decided by the loader, not by which router we resolved. ROS ships its own
+/// under `<prefix>/opt/zenoh_cpp_vendor/lib`, and that directory is on
+/// `LD_LIBRARY_PATH` only if the caller sourced `setup.bash` (or this repo's
+/// `activate.sh`, which adds the same entry). Without it, any other
+/// `libzenohc.so` on the default search path wins — and a zenoh C library the
+/// router was not built against does not fail to load, it SEGVs partway through
+/// startup. On this host a stray `/lib/libzenohc.so` owned by no package did
+/// exactly that, and every router-backed test failed with `signal: 11` and no
+/// hint that the environment was the cause.
+///
+/// So the fixture pins the pairing itself instead of inheriting it. This is
+/// RFC-0075's drift concern one layer down: the RFC keeps us from running a
+/// router that disagrees with the ROS side, and this keeps that router from
+/// loading a zenoh that disagrees with IT. Finding a binary and being able to
+/// RUN it are different properties, and only the first was being checked.
+///
+/// Absent directory ⇒ `None` and the inherited environment stands: a layout
+/// without a vendored zenoh is not ours to second-guess.
+fn paired_zenoh_library_dir(router: &std::path::Path) -> Option<std::path::PathBuf> {
+    // <prefix>/lib/rmw_zenoh_cpp/rmw_zenohd -> <prefix>/opt/zenoh_cpp_vendor/lib
+    let prefix = router.parent()?.parent()?.parent()?;
+    let dir = prefix.join("opt").join("zenoh_cpp_vendor").join("lib");
+    dir.join("libzenohc.so").exists().then_some(dir)
+}
+
 fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
     let path = crate::process::ros_zenohd_path().ok_or_else(|| {
         TestError::RouterUnavailable(format!(
@@ -102,7 +130,18 @@ fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
         );
     }
 
-    let mut cmd = std::process::Command::new(path);
+    let mut cmd = std::process::Command::new(&path);
+    // Put the paired zenoh ahead of whatever the inherited environment would
+    // resolve; see `paired_zenoh_library_dir`.
+    if let Some(dir) = paired_zenoh_library_dir(&path) {
+        let mut search = vec![dir];
+        if let Some(inherited) = std::env::var_os("LD_LIBRARY_PATH") {
+            search.extend(std::env::split_paths(&inherited));
+        }
+        if let Ok(joined) = std::env::join_paths(search) {
+            cmd.env("LD_LIBRARY_PATH", joined);
+        }
+    }
     let mut all: Vec<String> = vec!["scouting/multicast/enabled=false".to_string()];
     all.extend_from_slice(overrides);
     cmd.env("ZENOH_CONFIG_OVERRIDE", all.join(";"));
@@ -479,6 +518,36 @@ pub fn or_skip(res: TestResult<ZenohRouter>) -> ZenohRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `paired_zenoh_library_dir` must derive the vendored zenoh dir from the
+    /// router path alone, and must yield `None` when there is nothing to pair
+    /// with — the two behaviours the SEGV fix rests on. Driven over a synthetic
+    /// prefix rather than the host's ROS install, so it asserts the DERIVATION
+    /// and not "this machine happens to have one".
+    #[test]
+    fn paired_zenoh_library_dir_derives_from_the_router_path() {
+        let tmp = std::env::temp_dir().join(format!("nros-pairing-{}", std::process::id()));
+        let router = tmp.join("lib/rmw_zenoh_cpp/rmw_zenohd");
+        let libdir = tmp.join("opt/zenoh_cpp_vendor/lib");
+        std::fs::create_dir_all(router.parent().unwrap()).unwrap();
+
+        // No vendored zenoh next to the router -> inherit the environment.
+        assert_eq!(
+            paired_zenoh_library_dir(&router),
+            None,
+            "must not invent a directory that does not exist"
+        );
+
+        std::fs::create_dir_all(&libdir).unwrap();
+        std::fs::write(libdir.join("libzenohc.so"), b"").unwrap();
+        assert_eq!(
+            paired_zenoh_library_dir(&router).as_deref(),
+            Some(libdir.as_path()),
+            "must pair the router with the zenoh shipped beside it"
+        );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
 
     #[test]
     fn test_zenoh_router_locator() {

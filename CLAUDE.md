@@ -376,6 +376,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `/opt/ros/*` glob are deliberately NOT searched, because both return a router nobody chose.
   zenoh-pico stays pinned 1.7.2 at `packages/rmw/zenoh/zpico-sys/zenoh-pico/` — its wire is
   proto-stable across 1.x, so it interops with a newer ROS zenoh (issue 0291).
+- **A router that RESOLVES is not a router that RUNS — `rmw_zenohd` loads whatever
+  `libzenohc.so` the LOADER finds** (issue 0774). It links by SONAME, and
+  `<prefix>/opt/zenoh_cpp_vendor/lib` is on `LD_LIBRARY_PATH` only when `setup.bash` (or
+  `activate.sh`) was sourced; otherwise any stray `libzenohc.so` wins and a zenoh the
+  router was not built against SEGVs mid-startup rather than failing to load. That took
+  13 of 20 `check-required-features-tests` red on a host that HAS ROS, reporting only
+  `signal: 11`. RFC-0075's drift through the loader instead of a pin. The fixture now
+  pins the pairing itself (`paired_zenoh_library_dir`), so this no longer depends on the
+  caller's env — but a bare `rmw_zenohd` you start BY HAND still does.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

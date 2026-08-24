@@ -83,6 +83,16 @@ cmake links stayed at 08:24, `cpp_action_server` never relinked; 16 tier-1 tests
 misdiagnose because a `touch` that produces no relink is evidence the build is CORRECT, while a semantic
 change does propagate — verified by symbol. See `0764-*`.
 
+Recently resolved (2026-08-24): **#0774** (testing) — `rmw_zenohd` links `libzenohc.so` by SONAME, so
+which one it loads is the LOADER's choice, not the resolver's. `<prefix>/opt/zenoh_cpp_vendor/lib` is on
+`LD_LIBRARY_PATH` only when `setup.bash`/`activate.sh` was sourced; without it a stray `/lib/libzenohc.so`
+(owned by no package) won, and a zenoh the router was not built against does not fail to load — it SEGVs
+mid-startup. 13 of the 20 `check-required-features-tests` went red on a host that HAS ROS, with a message
+naming only `signal: 11`. Finding a router and being able to RUN one are different properties and only the
+first was checked — RFC-0075's drift arriving through the loader instead of a pin (cf. #0609). The fixture
+now derives the paired zenoh dir from the router path and pins it for the child. Verified from a shell that
+never sourced `activate.sh`: 20/20. See `archived/0774-*`. (2026-08-24)
+
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
 
 Recently resolved (2026-08-24): **#0754** (cmake/zephyr) — the idlc store rung (and two siblings)
