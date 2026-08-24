@@ -5,7 +5,7 @@ title: "Nothing computes a message's serialized size bound, so a dropped take
 status: open
 type: gap
 area: rmw, codegen
-related: [issue-0757, rfc-0023, rfc-0054]
+related: [issue-0757, rfc-0023, rfc-0054, phase-380]
 ---
 
 ## Problem
@@ -184,6 +184,11 @@ one, which on a real embedded graph is most of the sensor and control traffic
 but not all of it.
 
 ## Design (2026-08-24) — studied against Fast-CDR, Fast-DDS and rosidl
+
+> **Planned as [phase-380](../roadmap/phase-380-serialized-size-bound.md).**
+> Deferred deliberately: the ABI question phase-376 asked is settled (no slot),
+> and the remaining work is a `nros-serdes` calculator plus the places that
+> consult it, which is its own phase rather than a tail of that campaign.
 
 ### What the references actually do
 
