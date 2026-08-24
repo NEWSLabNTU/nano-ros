@@ -859,10 +859,7 @@ claim; each is a thing the audit FOUND while checking it.
 | 0779 | fifteen test files behind a `#![cfg(feature)]` no lane enables; `lending` wired, five features baselined | testing |
 | 0767 | `publish_streamed`'s two tests share process globals | testing |
 
-Owed on top of those, and not an issue because it is a process step: **the xrce
-and uORB backends have no host lane.** Several W5 changes edit their C sources
-and were verified by reading and by the C ABI's own type checking, never by a
-compiler. They land in tier 2.
+| 0787 | **the xrce and uORB backends have no host lane** — cyclonedds compiles on the fast line, those two only in tier 2 fixture builds. Five W5 signature changes crossed their C ABI seam having been verified by reading, never by a compiler | testing/ci |
 
 ## Running it
 

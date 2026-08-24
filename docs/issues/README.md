@@ -3746,3 +3746,11 @@ the visitor's `enclave` argument is structurally always NULL. `security_options`
 reason (filesystem keystore + DDS security plugin). Also fixed two header comments that listed the init
 fields as "domain_id, enclave, security_options and discovery_options": `discovery_options` is an IRON
 field, not Humble, and the list omitted five of eight. See `0785-*`. (2026-08-24)
+
+**#0787** (ci/rmw, open 2026-08-25) — cyclonedds has a host lane (`check-rmw-cyclonedds`, fast line, skips
+cleanly without the submodule); xrce and uORB have NONE, so their C sources are only ever compiled by tier 2
+fixture builds. Phase-376 W5 changed both backends five times across a C ABI seam (const handles, void →
+`rmw_ret_t`, `create_*` taking a node, the length-or-status class, `send_request`'s sequence id) and
+cyclonedds caught real mistakes in several of them that the other two could not have caught. 0319's pattern
+(a gate nobody runs) and 0652's (a target no lane builds), applied to a whole backend. See `0787-*`.
+(2026-08-25)
