@@ -1,20 +1,42 @@
 # Phase 376 — the RMW ABI campaign: generic naming, feature completeness, RTOS correctness
 
-**Status (2026-08-24). W4 IS COMPLETE — every symbol of the 88-symbol contract
-is a slot, a grouped slot, a plain ABI function, a declined decision with its
-RTOS reason, or (exactly once) a filed gap: issue 0776. What remains of the
-campaign is W5, the audit of whether those declared reasons are TRUE.
-W3 IS COMPLETE — 24 of 79 slots match upstream's name
-AND argument list, 0 undeclared extras, 0 vendor-named types, every remaining
-difference declared with its RTOS reason. What is left of the campaign is W4
-(55 slots upstream has that we do not) and W5 (auditing the deviations).
-W3.d is COMPLETE — no vtable slot multiplexes a count
-with a status, and the return VALUES are upstream's. W1 and W2 landed as
-MEASUREMENT: the contract is derived
-from real implementations, and three automated checks report how far the vtable
-is from mirroring it. Today: 0 of 79 slots match name and args, 10 vendor-named
-types in signatures, 71 contract symbols with no slot. W3+ (the migration) is
-not started.**
+**Status (2026-08-25). ALL FIVE WAVES COMPLETE.** W1/W2 (measurement),
+W3 (naming, argument declarations, the return-code question), W4 (feature
+completeness), W5 (the RTOS-correctness audit) have all landed. What is left is
+FOLLOW-UP work, filed as issues and listed at the bottom of this doc — not
+campaign waves.
+
+Measured, by the two checkers on the `just check` line:
+
+| | |
+| --- | ---: |
+| contract symbols to mirror | 72 |
+| slots identical to upstream | 20 |
+| name matches, arguments DECLARED | 41 |
+| answered by a grouped slot | 8 |
+| plain ABI functions | 2 |
+| answered at another layer | 2 |
+| **slots present but args differ, undeclared** | **0** |
+| **undeclared return-type differences** | **0** |
+| **contract symbols with no slot** | **0** |
+| deferred, with a tracked issue | 1 (0776) |
+| declared RTOS additions | 9 |
+| **undeclared extra slots** | **0** |
+| **vendor-named types in signatures** | **0** |
+
+`rmw-api-parity`: 88 contract symbols — vtable 69, layer 4, declined 14, gap 1.
+
+Every number above is re-derived per run from the committed contract snapshot
+and the header; none is a constant in a doc. The three zeroes in bold are what
+"generic RMW ABI" means operationally: nothing differs from upstream that is
+not written down where the difference is.
+
+**This status block was itself a casualty of the campaign it describes.** Until
+2026-08-25 it carried four contradictory paragraphs appended over successive
+waves — "W4 IS COMPLETE" above "what is left of the campaign is W4", and a
+closing "Today: 0 of 79 slots match name and args ... W3+ is not started" that
+had been false for three waves. A status line that is appended to rather than
+rewritten stops being a status line.
 
 ## The campaign, in one rule
 
@@ -536,7 +558,7 @@ makes the executor sleep longer. It now has an error channel it never had.
 
 Verified by: `just rmw-ret-sign` -> both counts 0 (it is).
 
-### W4 — feature completeness (open, 70 slots with no slot today)
+### W4 — feature completeness (**COMPLETE 2026-08-24**; the table below is the PLAN, 70 slots missing when it was written)
 
 | group | count | slots |
 | --- | ---: | --- |
@@ -674,7 +696,7 @@ TARGET is really a slot. Without that last part an alias is a way to make a
 MISSING slot invisible, which is the opposite of what the tool exists for.
 Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 
-### W5 — RTOS correctness audit (open)
+### W5 — RTOS correctness audit (**COMPLETE 2026-08-25**)
 
 | item | state |
 | --- | --- |
@@ -819,13 +841,40 @@ and does not fail. A bare "not yet" still reds. Self-tested both ways.
 | run `just check`, not a per-crate command | `check-test-targets` runs clippy over test targets with `-D warnings`; `cargo test -p <crate>` does not, and that is how `(0) != 0` reached a commit |
 | per-site edits for stub bodies | a regex pass mangled a multi-statement stub into a file that would not parse, and emitted `(0) != 0` in 13 places |
 
+## What the campaign left behind, and who owns it
+
+All five waves are complete. These are follow-ups, filed as issues so they do
+not live only in a phase doc nobody re-reads. None of them blocks the parity
+claim; each is a thing the audit FOUND while checking it.
+
+| issue | what | size |
+| --- | --- | --- |
+| 0776 | no serialized-size bound — the one contract symbol with no slot, deferred with its issue id so `--check` can be honest about it. Design + work items in phase-380 | large |
+| 0778 | cyclonedds still holds ONE outstanding request; the abandon is now visible rather than silent. Needs a pending TABLE mirroring the server's `slots`. Also: `take_request`/`send_response`'s `int64_t` is a slot INDEX there, and an unanswered request leaks one | medium |
+| 0780 | `take_event` declined on two clauses that both fail; cyclonedds cannot deliver a QoS status event at all | medium |
+| 0781 | one in-place-dispatch capability spread over five slots; a probe that re-encodes what slot nullity already says | medium |
+| 0782 | `publish_streamed` exists to avoid a `.bss` staging buffer and XRCE `malloc`s the whole payload | medium |
+| 0785 | `create_session` carries one of Humble's eight `rmw_init_options_t` fields; `localhost_only` and `enclave` are gaps, and the second makes a GROUPED answer hollow | medium |
+| 0777 | the "pools are baked" clause and its first replacement were both false; the CAPABILITY question (cyclone allocates twice per message with a knowable size) stays open | small + a design question |
+| 0779 | fifteen test files behind a `#![cfg(feature)]` no lane enables; `lending` wired, five features baselined | testing |
+| 0767 | `publish_streamed`'s two tests share process globals | testing |
+
+Owed on top of those, and not an issue because it is a process step: **the xrce
+and uORB backends have no host lane.** Several W5 changes edit their C sources
+and were verified by reading and by the C ABI's own type checking, never by a
+compiler. They land in tier 2.
+
 ## Running it
 
-
-
 ```
-just check-rmw-api-parity                  # classification (gates today)
-just rmw-abi-shape                         # name / args / vendor-prefix report
-scripts/rmw-abi-shape.py --check           # the future gate
-scripts/rmw-api-inventory.py --signatures  # regenerate the recorded upstream data (in the box)
+just check-rmw-api-parity     # is every contract symbol CLASSIFIED?
+just check-rmw-abi-shape      # does the vtable MIRROR it — name, args, return?
+just check-rmw-ret-sign       # does anything still multiplex a length with a status?
+just rmw-abi-shape            # the same report, without the gate
+
+# Regenerate the recorded upstream data (needs ROS — run in the distrobox):
+scripts/rmw-api-inventory.py --signatures > docs/reference/rmw-implementation-signatures.txt
+scripts/rmw-api-parity.py --contract      > docs/reference/rmw-implementation-contract.txt
 ```
+
+All three checks are on the `just check` fast line and all three self-test.
