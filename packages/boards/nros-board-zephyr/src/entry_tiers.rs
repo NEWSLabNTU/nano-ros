@@ -362,6 +362,24 @@ impl ZephyrBoard {
         // silently dropped on Zephyr multi-tier entries.
         ::nros_platform_cffi::log::init_default();
 
+        // issue 0758 W4 — acquire the wall-clock epoch before ANY executor
+        // opens, mirroring the C arm (`zephyr_run_tiers.c`) call at the same
+        // point. Until this runs `nros_platform_epoch_us()` answers 0, which
+        // nano-ros defines as "no wall clock"; after it, stamps are absolute and
+        // a validating peer accepts them.
+        //
+        // The shim decides whether there is anything to do — this arm CANNOT,
+        // because `CONFIG_NROS_SNTP_EPOCH` is a Kconfig symbol and Kconfig knobs
+        // reach the Zephyr C lane but not the cargo one (issue 0460). Calling
+        // unconditionally into C is what keeps the two tier arms from drifting;
+        // an image without the knob gets an empty function.
+        unsafe {
+            unsafe extern "C" {
+                fn nros_zephyr_epoch_acquire_configured();
+            }
+            nros_zephyr_epoch_acquire_configured();
+        }
+
         if tiers.is_empty() {
             ::log::error!("nros: run_tiers called with no tiers");
             return Err(RuntimeError::Spin);

@@ -116,6 +116,58 @@ config NROS_RMW_CYCLONEDDS
 endchoice
 
 # =============================================================================
+# Wall-clock epoch (issue 0758)
+# =============================================================================
+
+config NROS_SNTP_EPOCH
+    bool "Acquire a wall-clock epoch over SNTP at boot"
+    depends on NETWORKING
+    select SNTP
+    select DNS_RESOLVER
+    help
+      Acquire an absolute UNIX epoch once at boot, after the network is up,
+      so `nros_platform_epoch_us()` can answer and messages carry stamps a
+      peer will accept.
+
+      Without this the platform answers 0, which nano-ros defines as "this
+      image has no wall clock" — callers then stamp boot-relative time
+      KNOWINGLY rather than publishing a confidently wrong absolute one.
+      That is a safe default, not a broken one, and it is why this is opt-in.
+
+      Why you would turn it on: a peer that validates stamps rejects
+      boot-relative ones. The case this exists for is an embedded island
+      whose control commands Autoware's vehicle_cmd_gate refused as stale,
+      so autonomous mode could never actuate.
+
+      One acquisition, no continuous discipline. The reading is converted to
+      a fixed offset against the monotonic clock, so later reads cost no
+      network traffic and cannot fail; the clock jumps exactly once, when
+      the offset is installed.
+
+config NROS_SNTP_SERVER
+    string "SNTP server (host or IP)"
+    depends on NROS_SNTP_EPOCH
+    default "10.0.2.2"
+    help
+      Server to query at boot. The default is the QEMU/slirp host address,
+      which is what an emulated board reaches a host-side time source on —
+      the same address the baked zenoh locators use.
+
+      This is a BOARD/DEPLOY fact, not application configuration: it belongs
+      to where the image runs, so it rides the same rung as the locator
+      rather than a consumer #define.
+
+config NROS_SNTP_TIMEOUT_MS
+    int "SNTP timeout (ms)"
+    depends on NROS_SNTP_EPOCH
+    default 3000
+    range 100 60000
+    help
+      How long to wait for the reply before giving up. On timeout the
+      platform keeps answering 0 and boot continues — an image that cannot
+      reach a time source still runs, it just cannot stamp absolute time.
+
+# =============================================================================
 # Cyclone DDS tuning
 # =============================================================================
 

@@ -52,6 +52,8 @@
  * construction: `arch_proc_id()` is declared inside `#ifdef CONFIG_SMP`, and
  * the posix arch (native_sim) does not provide it at all. */
 extern uint32_t nros_zephyr_current_cpu(void);
+/* issue 0758 W4 — see zephyr/nros_platform_zephyr_shims.c. */
+extern void nros_zephyr_epoch_acquire_configured(void);
 
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes,
@@ -483,6 +485,20 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
     /* Weak network-readiness gate (no-op on the canonical Zephyr
      * auto-init path; a board/app may provide a strong override). */
     nros_board_network_wait();
+
+    /* issue 0758 W4 — acquire the wall-clock epoch HERE, in the one window
+     * where both halves of the ordering hold: the network is up (the gate
+     * above just returned) and no component has constructed yet, so nothing
+     * has stamped a message. Acquiring earlier cannot reach a server;
+     * acquiring later means the first stamps carry boot-relative time and a
+     * validating peer rejects exactly the messages a system emits at startup.
+     *
+     * Unconditional on purpose — the shim decides. The Rust tier arm
+     * (`entry_tiers.rs`) makes the same call at the same point, and it cannot
+     * hold a `#ifdef CONFIG_NROS_SNTP_EPOCH` because Kconfig knobs do not reach
+     * the cargo lane (issue 0460). One decision in C is the only shape in which
+     * the two arms cannot drift. */
+    nros_zephyr_epoch_acquire_configured();
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";

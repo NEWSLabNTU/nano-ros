@@ -129,6 +129,36 @@ uint32_t nros_zephyr_current_cpu(void) {
 #endif
 }
 
+/* issue 0758 W4 — acquire the wall-clock epoch, if this image asked for one.
+ *
+ * WHY THE DECISION LIVES IN C. Zephyr has TWO tier arms — `zephyr_run_tiers.c`
+ * for C/C++ and `entry_tiers.rs` for Rust — and they must not drift. Putting
+ * `#ifdef CONFIG_NROS_SNTP_EPOCH` in each would guarantee they eventually do,
+ * and the Rust one CANNOT hold that ifdef anyway: Kconfig knobs reach the
+ * Zephyr C lane and not the cargo lane (issue 0460), so `entry_tiers.rs` has no
+ * way to see the symbol without a build-script knob read.
+ *
+ * So both arms call this unconditionally and the C side decides. An image
+ * without the knob gets an empty function the linker keeps or drops; nothing
+ * upstream has to know.
+ *
+ * Non-fatal by construction: a time server that is down leaves
+ * `nros_platform_epoch_us()` answering 0, callers keep stamping boot-relative
+ * time knowingly, and the image boots. Refusing to start a control island
+ * because NTP is unreachable would be the wrong trade. */
+void nros_zephyr_epoch_acquire_configured(void) {
+#ifdef CONFIG_NROS_SNTP_EPOCH
+    extern int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
+    int rc = nros_platform_epoch_acquire_sntp(CONFIG_NROS_SNTP_SERVER, CONFIG_NROS_SNTP_TIMEOUT_MS);
+    if (rc == 0) {
+        printk("nros: wall-clock epoch acquired from %s\n", CONFIG_NROS_SNTP_SERVER);
+    } else {
+        printk("nros: SNTP epoch unavailable from %s (rc=%d) — stamps stay boot-relative\n",
+               CONFIG_NROS_SNTP_SERVER, rc);
+    }
+#endif
+}
+
 /* Phase 110.E.b — periodic timer for Sporadic-server budget refill.
  * Wraps `k_timer_*` (static inlines) plus a per-timer bridge struct
  * holding (callback, user_data) so the Rust side can pass an

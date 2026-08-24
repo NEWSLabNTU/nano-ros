@@ -72,17 +72,88 @@ uint64_t nros_platform_clock_resolution_ns(void) {
     return (uint64_t) k_ticks_to_ns_floor64(1);
 }
 
-/* issue 0758 — no wall-clock source on this platform, so `0` is the honest
- * answer, not a placeholder. The header makes `0` mean "no epoch here", which
- * lets a caller keep stamping boot-relative time knowingly instead of
- * publishing a confidently wrong absolute one.
+/* issue 0758 — the Zephyr wall-clock epoch, acquired once over SNTP.
  *
- * A port gains a real epoch by acquiring one (SNTP, an RTC handoff) and
- * returning it here; until then this is correct rather than unfinished.
- * Monotonic time is `nros_platform_clock_ns` and is unaffected. */
+ * WHY AN OFFSET AND NOT A QUERY PER CALL. `epoch_us` is on the message-stamp
+ * path, so a network round trip per call is not an option — and SNTP's own
+ * accuracy is worse than the monotonic clock's between acquisitions anyway. We
+ * take ONE reading, subtract the monotonic clock at that instant to get a fixed
+ * offset, and derive every later answer from `nros_platform_clock_ns()`. That
+ * makes reads cheap, monotonic between acquisitions, and free of any failure
+ * mode the network has.
+ *
+ * The jump the header warns about happens exactly once, when the offset is
+ * installed: before it, callers get `0` (no wall clock) and stamp boot-relative
+ * time knowingly; after it, absolute time. There is no window where a wrong
+ * absolute value is published.
+ *
+ * Gated on CONFIG_SNTP so an image that does not want a network clock does not
+ * link one, and answers `0` — which the header defines as "no wall clock here"
+ * rather than an error. */
+#ifdef CONFIG_SNTP
+#include <zephyr/net/sntp.h>
+
+/* Microseconds to add to `nros_platform_clock_ns()/1000` to get UNIX time.
+ * Zero means "not acquired"; written once by the acquirer, read by every
+ * `epoch_us` caller. `atomic` because the acquirer runs on the boot thread
+ * while tiers may already be stamping. */
+static atomic_t nros_zephyr_epoch_offset_lo = ATOMIC_INIT(0);
+static atomic_t nros_zephyr_epoch_offset_hi = ATOMIC_INIT(0);
+
+static uint64_t nros_zephyr_epoch_offset_get(void) {
+    /* Read hi/lo twice and retry on a torn pair. A 64-bit offset does not fit
+     * one atomic_t on 32-bit targets, and the value is written exactly once, so
+     * a single retry is sufficient — this is not a general seqlock. */
+    for (int attempt = 0; attempt < 2; attempt++) {
+        uint32_t hi1 = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_hi);
+        uint32_t lo = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_lo);
+        uint32_t hi2 = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_hi);
+        if (hi1 == hi2) {
+            return ((uint64_t) hi1 << 32) | (uint64_t) lo;
+        }
+    }
+    return 0;
+}
+
+int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
+int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms) {
+    if (server == NULL || server[0] == '\0') {
+        return -EINVAL;
+    }
+    struct sntp_time ts;
+    int rc = sntp_simple(server, timeout_ms, &ts);
+    if (rc != 0) {
+        /* Leave the offset unset: the caller keeps getting 0 and keeps
+         * stamping boot-relative time, which is the honest degradation. */
+        return rc;
+    }
+    /* `fraction` is a 32-bit binary fraction of a second. Scale to us via a
+     * 64-bit intermediate; >> 32 rather than / 2^32 so no division is emitted
+     * on targets without one. */
+    uint64_t frac_us = ((uint64_t) ts.fraction * 1000000ULL) >> 32;
+    uint64_t now_us = ts.seconds * 1000000ULL + frac_us;
+    uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
+    uint64_t offset = now_us - mono_us;
+    atomic_set(&nros_zephyr_epoch_offset_lo, (atomic_val_t) (uint32_t) offset);
+    atomic_set(&nros_zephyr_epoch_offset_hi, (atomic_val_t) (uint32_t) (offset >> 32));
+    return 0;
+}
+
+uint64_t nros_platform_epoch_us(void) {
+    uint64_t offset = nros_zephyr_epoch_offset_get();
+    if (offset == 0ULL) {
+        return 0ULL; /* not acquired — no wall clock */
+    }
+    return offset + nros_platform_clock_ns() / 1000ULL;
+}
+#else  /* !CONFIG_SNTP */
+/* No network clock compiled in. `0` is the honest answer, not a placeholder:
+ * the header makes it mean "no epoch here", so a caller keeps stamping
+ * boot-relative time knowingly rather than publishing a wrong absolute one. */
 uint64_t nros_platform_epoch_us(void) {
     return 0;
 }
+#endif /* CONFIG_SNTP */
 
 /* ---- Allocation ---- */
 
