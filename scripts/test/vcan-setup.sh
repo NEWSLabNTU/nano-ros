@@ -38,7 +38,26 @@ done
 
 have_dev() { ip link show "$DEV" >/dev/null 2>&1; }
 
-is_up() { ip -br link show "$DEV" 2>/dev/null | nros_grep_q '\b\(UP\|UNKNOWN\)\b'; }
+# `nros_grep_q` ends a tool failure with `exit 2` — but the right-hand side of a
+# PIPE runs in a subshell, so that exits only the subshell and the caller gets a
+# plain non-zero it cannot tell from "no match". Every use here is a pipeline,
+# so each one reads `$?` explicitly; `if ! … | nros_grep_q …` would restore the
+# very conflation issue 0726 is about while leaving the gate green.
+#
+# The `exit 2` below DOES end the script: `is_up` is called from the main shell,
+# not from a pipeline.
+is_up() {
+    ip -br link show "$DEV" 2>/dev/null | nros_grep_q '\b\(UP\|UNKNOWN\)\b'
+    case $? in
+        0) return 0 ;;
+        1) return 1 ;;
+        *)
+            echo "[vcan-setup] could not read the link state of $DEV — refusing" >&2
+            echo "             to report it DOWN on a grep that did not run" >&2
+            exit 2
+            ;;
+    esac
+}
 
 status() {
     if ! have_dev; then
@@ -90,14 +109,36 @@ case "$ACTION" in
 
         need_root "$@"
 
-        if ! lsmod 2>/dev/null | nros_grep_q '^vcan\b'; then
-            # Not fatal if it is built in rather than a module.
-            modprobe vcan 2>/dev/null || true
-        fi
-        if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | nros_grep_q '^vcan\b'; then
-            echo "[vcan-setup] the vcan module is not available on this kernel" >&2
-            echo "             (Debian/Ubuntu: linux-modules-extra-\$(uname -r))" >&2
-            exit 1
+        lsmod 2>/dev/null | nros_grep_q '^vcan\b'
+        case $? in
+            0) ;;  # already loaded
+            1)
+                # Not fatal if it is built in rather than a module.
+                modprobe vcan 2>/dev/null || true
+                ;;
+            *)
+                echo "[vcan-setup] could not read the module list — refusing to" >&2
+                echo "             guess whether vcan is loaded" >&2
+                exit 2
+                ;;
+        esac
+        if ! modinfo vcan >/dev/null 2>&1; then
+            # `modinfo` failing means there is no such MODULE; vcan may still be
+            # built INTO the kernel, and then the module list is what settles it.
+            lsmod 2>/dev/null | nros_grep_q '^vcan\b'
+            case $? in
+                0) ;;  # built in / already inserted
+                1)
+                    echo "[vcan-setup] the vcan module is not available on this kernel" >&2
+                    echo "             (Debian/Ubuntu: linux-modules-extra-\$(uname -r))" >&2
+                    exit 1
+                    ;;
+                *)
+                    echo "[vcan-setup] could not read the module list — refusing to" >&2
+                    echo "             report vcan missing on a grep that did not run" >&2
+                    exit 2
+                    ;;
+            esac
         fi
 
         have_dev || ip link add dev "$DEV" type vcan
