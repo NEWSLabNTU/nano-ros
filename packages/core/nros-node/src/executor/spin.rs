@@ -2818,6 +2818,30 @@ impl<'s> Executor<'s> {
     }
 
     /// Create a node on this executor.
+    ///
+    /// Registers the node in the executor's table, deduplicating on
+    /// `(name, namespace)` — phase-376 W5/B1.
+    ///
+    /// Until 2026-08-24 this path registered NOTHING. It built a `NodeHandle`
+    /// and returned it, so `node_id_by_name` could not find a node the caller
+    /// had just created, and two calls with one name handed out two handles the
+    /// executor had never heard of. `create_node_on_with_domain` had the dedup
+    /// (phase-267 added it there when N bridge endpoints overflowed the table);
+    /// the plain path never got it.
+    ///
+    /// That is a prerequisite for the `create_node` vtable slot, whose contract
+    /// is that the runtime calls it ONCE per distinct `(name, namespace)`:
+    /// without a registry to check, the runtime would call it once per
+    /// `create_node` and every backend would need its own dedup — which is the
+    /// registry the slot exists to delete (zenoh's `ensure_node_liveliness`
+    /// linear-scans `per_node_liveliness` for exactly this reason).
+    ///
+    /// The table is bounded by `MAX_NODES` (`NROS_EXECUTOR_MAX_NODES`, default
+    /// 4), so a caller creating a fifth DISTINCT node now gets
+    /// `NodeError::NodeTableFull` where it previously got a handle. That is the
+    /// bound doing its job: a node the executor does not know about cannot
+    /// carry a sched context, a QoS override, or a graph identity. Repeated
+    /// calls with the SAME name are free.
     pub fn create_node(&mut self, name: &str) -> Result<NodeHandle<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
@@ -2827,6 +2851,16 @@ impl<'s> Executor<'s> {
         node_name
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
+
+        // Dedup against the executor's own namespace — the one this handle
+        // will carry. `node_builder` resolves the session slot to 0 (primary)
+        // when no rmw name is given, which is what this path has always used.
+        if self
+            .node_id_by_name(node_name.as_str(), self.namespace.as_str())
+            .is_none()
+        {
+            self.node_builder(name).build()?;
+        }
 
         let mut node = NodeHandle::new(node_name, self.namespace.clone(), &mut self.session, 0);
         node.set_monitors(self.monitor_table);

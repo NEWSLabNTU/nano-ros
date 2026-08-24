@@ -4202,3 +4202,47 @@ fn empty_subscription_is_not_an_error() {
     );
     assert!(!result.any_errors(), "an idle spin is a clean spin");
 }
+
+/// Phase 376 W5/B1 — `create_node` REGISTERS, and deduplicates by name.
+///
+/// Until 2026-08-24 it registered nothing: it built a `NodeHandle` and returned
+/// it, so the executor had never heard of a node the caller had just created.
+/// The `create_node` VTABLE slot's contract is that the runtime calls it once
+/// per distinct `(name, namespace)`, and with no registry to consult there is
+/// nothing to make that true — every backend would need its own dedup, which is
+/// the registry the slot exists to delete.
+#[test]
+fn create_node_registers_and_dedups_by_name() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+
+    assert!(
+        executor
+            .node_id_by_name("talker", executor.namespace.as_str())
+            .is_none(),
+        "precondition: the table starts without this node"
+    );
+
+    let ns: heapless::String<64> = executor.namespace.clone();
+    drop(executor.create_node("talker").unwrap());
+    let first = executor
+        .node_id_by_name("talker", ns.as_str())
+        .expect("create_node must put the node in the table");
+
+    // The second call is the one that used to hand out an unregistered
+    // duplicate. It must reuse the record, not push a second one.
+    drop(executor.create_node("talker").unwrap());
+    let second = executor
+        .node_id_by_name("talker", ns.as_str())
+        .expect("still registered");
+    assert_eq!(
+        first, second,
+        "a repeated name must reuse its record, not create a second"
+    );
+
+    // A DIFFERENT name is a different node and does get its own record.
+    drop(executor.create_node("listener").unwrap());
+    let other = executor
+        .node_id_by_name("listener", ns.as_str())
+        .expect("a distinct name registers separately");
+    assert_ne!(first, other, "distinct names are distinct nodes");
+}
