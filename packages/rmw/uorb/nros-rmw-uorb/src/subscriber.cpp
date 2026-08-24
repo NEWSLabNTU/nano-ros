@@ -119,21 +119,25 @@ rmw_ret_t subscription_create(rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void subscription_destroy(rmw_subscription_t *subscriber) {
+rmw_ret_t subscription_destroy(rmw_subscription_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
-    if (state->callback_active) {
-        (void)nros_orb_unregister_callback(state->sub_handle);
+    int rc = 0;
+    if (state->callback_active && nros_orb_unregister_callback(state->sub_handle) != 0) {
+        rc = -1;
     }
-    (void)orb_unsubscribe(state->sub_handle);
+    if (orb_unsubscribe(state->sub_handle) != 0) {
+        rc = -1;
+    }
     state->~SubscriberState();
     std::free(state);
     subscriber->backend_data = nullptr;
+    return rc == 0 ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-rmw_ret_t subscription_take(rmw_subscription_t *subscriber,
+rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
                                  uint8_t *buf, size_t buf_len,
                                  size_t *out_len, bool *taken) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {

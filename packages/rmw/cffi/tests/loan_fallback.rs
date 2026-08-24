@@ -14,9 +14,9 @@ use core::{
 
 use nros_rmw::{QosSettings, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
 use nros_rmw_cffi::{
-    CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
-    NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
-    NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
+    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     nros_rmw_cffi_register_named,
 };
 
@@ -73,9 +73,11 @@ unsafe extern "C" fn create_publisher(
     }
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn destroy_publisher(_: *mut NrosRmwPublisher) {}
+unsafe extern "C" fn destroy_publisher(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn publish_raw(
-    _: *mut NrosRmwPublisher,
+    _: *const NrosRmwPublisher,
     data: *const u8,
     len: usize,
 ) -> NrosRmwRet {
@@ -99,9 +101,11 @@ unsafe extern "C" fn noop_csub(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_recv(
-    _: *mut NrosRmwSubscription,
+    _: *const NrosRmwSubscription,
     _: *mut u8,
     _: usize,
     _: *mut usize,
@@ -111,8 +115,9 @@ unsafe extern "C" fn noop_recv(
     // now as a named status rather than a negative number.
     NROS_RMW_RET_ERROR
 }
-unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription) -> i32 {
-    0
+unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription, has: *mut bool) -> NrosRmwRet {
+    unsafe { *has = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_csrv(
     _: *mut NrosRmwSession,
@@ -125,9 +130,11 @@ unsafe extern "C" fn noop_csrv(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwService) {}
+unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwService) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_recvreq(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
@@ -137,11 +144,12 @@ unsafe extern "C" fn noop_recvreq(
     // Phase 376 W3.d step A — this stub always FAILED; still does, named.
     NROS_RMW_RET_ERROR
 }
-unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService) -> i32 {
-    0
+unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService, has: *mut bool) -> NrosRmwRet {
+    unsafe { *has = false };
+    NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_reply(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
@@ -159,7 +167,9 @@ unsafe extern "C" fn noop_ccli(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_dcli(_: *mut NrosRmwClient) {}
+unsafe extern "C" fn noop_dcli(_: *mut NrosRmwClient) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_regsubev(
     _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
@@ -178,7 +188,7 @@ unsafe extern "C" fn noop_regpubev(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_alv(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+unsafe extern "C" fn noop_alv(_: *const NrosRmwPublisher) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 

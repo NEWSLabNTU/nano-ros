@@ -93,6 +93,21 @@ typedef bool (*rmw_names_and_types_visit_fn)(void *ctx, const char *name,
 typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
     const rmw_topic_endpoint_info_t *info);
 
+/* Phase 376 W5 — teardown and loan-return REPORT.
+ *
+ * These six returned `void`. That was never a target constraint: upstream
+ * returns `rmw_ret_t` from all of them, and a backend that cannot release a
+ * handle — a queue still draining, a token from another publisher, a
+ * double-destroy — had no way to say so. The runtime then reported success it
+ * had not verified, which on an RTOS is the difference between a leak that
+ * shows up in a log and a leak that shows up as an allocation failure an hour
+ * later with no provenance.
+ *
+ * A caller that genuinely has nothing to do with the status may ignore it;
+ * `void` denied it the choice. Backends that cannot fail return
+ * `NROS_RMW_RET_OK` unconditionally, which costs one instruction and keeps the
+ * signature honest for the ones that can.
+ */
 typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
     /** Create a session (phase-301: renamed from `open` to the table's
@@ -122,8 +137,8 @@ typedef struct nros_rmw_vtable_t {
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_publisher_options_t *options,
         rmw_publisher_t *out);
-    void (*destroy_publisher)(rmw_publisher_t *publisher);
-    rmw_ret_t (*publish)(rmw_publisher_t *publisher,
+    rmw_ret_t (*destroy_publisher)(rmw_publisher_t *publisher);
+    rmw_ret_t (*publish)(const rmw_publisher_t *publisher,
         const uint8_t *data, size_t len);
 
     /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
@@ -134,7 +149,7 @@ typedef struct nros_rmw_vtable_t {
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_subscription_options_t *options,
         rmw_subscription_t *out);
-    void (*destroy_subscription)(rmw_subscription_t *subscription);
+    rmw_ret_t (*destroy_subscription)(rmw_subscription_t *subscription);
     /** Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.
      *
      *  `*taken` says whether a message was copied; `*out_len` is
@@ -154,7 +169,7 @@ typedef struct nros_rmw_vtable_t {
      *    there is nothing to pre-size (the matching
      *    `rmw_init_subscription_allocation` is declined for the
      *    same reason). */
-    rmw_ret_t (*take)(rmw_subscription_t *subscription,
+    rmw_ret_t (*take)(const rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len,
         size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the
@@ -177,7 +192,7 @@ typedef struct nros_rmw_vtable_t {
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_service_t *out);
-    void (*destroy_service)(rmw_service_t *server);
+    rmw_ret_t (*destroy_service)(rmw_service_t *server);
     /** Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.
      *
      *  `*taken` says whether a request was copied, `*out_len` how
@@ -189,14 +204,14 @@ typedef struct nros_rmw_vtable_t {
      *  `void *ros_request`, and `*seq_out` stands in for
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
      *  and nothing else in that struct. */
-    rmw_ret_t (*take_request)(rmw_service_t *server,
+    rmw_ret_t (*take_request)(const rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out,
         size_t *out_len, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of
      *  `has_data`; same contract, same reason. */
     rmw_ret_t (*has_request)(rmw_service_t *server,
         bool *out_has_request);
-    rmw_ret_t (*send_response)(rmw_service_t *server,
+    rmw_ret_t (*send_response)(const rmw_service_t *server,
         int64_t seq, const uint8_t *data, size_t len);
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
@@ -204,7 +219,7 @@ typedef struct nros_rmw_vtable_t {
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_client_t *out);
-    void (*destroy_client)(rmw_client_t *client);
+    rmw_ret_t (*destroy_client)(rmw_client_t *client);
 
     /** Phase 130.4 — non-blocking send_request_raw. Phase-301: the
      *  deprecated blocking `call_raw` slot is DELETED (rmw has no
@@ -214,7 +229,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Sends the request to the backend without blocking for a
      *  reply. Returns immediately. */
-    rmw_ret_t (*send_request)(rmw_client_t *client,
+    rmw_ret_t (*send_request)(const rmw_client_t *client,
         const uint8_t *request, size_t req_len);
 
     /** Phase 130.4 — non-blocking try_recv_reply_raw.
@@ -225,7 +240,7 @@ typedef struct nros_rmw_vtable_t {
      *  `send_request_raw` — backends implement both or neither. */
     /** Upstream `rmw_take_response`. Same shape and the same
      *  declared deviations as `take_request`. */
-    rmw_ret_t (*take_response)(rmw_client_t *client,
+    rmw_ret_t (*take_response)(const rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len,
         size_t *out_len, bool *taken);
 
@@ -283,7 +298,7 @@ typedef struct nros_rmw_vtable_t {
      *  liveliness; runtime returns `NROS_RMW_RET_OK` for AUTOMATIC /
      *  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*. */
     rmw_ret_t (*publisher_assert_liveliness)(
-        rmw_publisher_t *publisher);
+        const rmw_publisher_t *publisher);
 
     /** Phase 110.0 — backend's next internal-event deadline in
      *  milliseconds from now (lease keepalive, heartbeat, reader
@@ -350,7 +365,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend doesn't natively lend; the
      *  runtime falls back to a per-publisher staging arena and emits
      *  a single memcpy on commit. */
-    rmw_ret_t (*borrow_loaned_message)(rmw_publisher_t *publisher,
+    rmw_ret_t (*borrow_loaned_message)(const rmw_publisher_t *publisher,
                                 size_t                requested_len,
                                 uint8_t             **out_buf,
                                 size_t               *out_cap,
@@ -364,7 +379,7 @@ typedef struct nros_rmw_vtable_t {
      *  wire send.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    rmw_ret_t (*publish_loaned_message)(rmw_publisher_t *publisher,
+    rmw_ret_t (*publish_loaned_message)(const rmw_publisher_t *publisher,
                                   void                 *token,
                                   size_t                actual_len);
 
@@ -374,7 +389,7 @@ typedef struct nros_rmw_vtable_t {
      *  returned from a prior `pub_loan` on the same publisher.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    void (*return_loaned_message_from_publisher)(rmw_publisher_t *publisher, void *token);
+    rmw_ret_t (*return_loaned_message_from_publisher)(const rmw_publisher_t *publisher, void *token);
 
     /** Phase 124.A — zero-copy subscription borrow.
      *
@@ -406,7 +421,7 @@ typedef struct nros_rmw_vtable_t {
      *  `void **loaned_message`; ours is a byte view plus an opaque
      *  token to release, because there is no typesupport on target
      *  and the backend owns the buffer until `sub_release`. */
-    rmw_ret_t (*take_loaned_message)(rmw_subscription_t *subscription,
+    rmw_ret_t (*take_loaned_message)(const rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
                            void                 **out_token,
@@ -419,7 +434,7 @@ typedef struct nros_rmw_vtable_t {
      *  the buffer.
      *
      *  NULL = paired NULL with `sub_borrow`. */
-    void (*return_loaned_message_from_subscription)(rmw_subscription_t *subscription, void *token);
+    rmw_ret_t (*return_loaned_message_from_subscription)(const rmw_subscription_t *subscription, void *token);
 
     /** Phase 124.C.1 — service-server availability probe.
      *
@@ -492,7 +507,7 @@ typedef struct nros_rmw_vtable_t {
      *  `size_t *taken`, and the return carries only a status.
      *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
      *  drain reports what it got rather than erroring. */
-    rmw_ret_t (*take_sequence)(rmw_subscription_t *subscription,
+    rmw_ret_t (*take_sequence)(const rmw_subscription_t *subscription,
                                   uint8_t              *buf,
                                   size_t                per_msg_cap,
                                   size_t                max_msgs,
@@ -724,7 +739,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL slot: the runtime falls back to `take`, and the caller gets no
      *  metadata — which is exactly today's behaviour for every C backend. */
-    rmw_ret_t (*take_with_info)(rmw_subscription_t *subscription,
+    rmw_ret_t (*take_with_info)(const rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len,
         size_t *out_len, bool *taken, rmw_message_info_t *message_info);
 
@@ -732,7 +747,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  `take_loaned_message` plus metadata; same deviations as that slot (a
      *  byte view and an opaque release token rather than a typed loan). */
-    rmw_ret_t (*take_loaned_message_with_info)(rmw_subscription_t *subscription,
+    rmw_ret_t (*take_loaned_message_with_info)(const rmw_subscription_t *subscription,
         const uint8_t **out_buf, size_t *out_len, void **out_token,
         bool *taken, rmw_message_info_t *message_info);
 

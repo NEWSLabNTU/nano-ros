@@ -62,7 +62,7 @@ unsafe extern "C" fn a_create_publisher(
 }
 
 unsafe extern "C" fn a_publish_raw(
-    publisher: *mut NrosRmwPublisher,
+    publisher: *const NrosRmwPublisher,
     _data: *const u8,
     _len: usize,
 ) -> NrosRmwRet {
@@ -113,7 +113,7 @@ unsafe extern "C" fn b_create_publisher(
 }
 
 unsafe extern "C" fn b_publish_raw(
-    publisher: *mut NrosRmwPublisher,
+    publisher: *const NrosRmwPublisher,
     _data: *const u8,
     _len: usize,
 ) -> NrosRmwRet {
@@ -127,7 +127,9 @@ unsafe extern "C" fn b_publish_raw(
 unsafe extern "C" fn noop_close(_session: *mut NrosRmwSession) -> NrosRmwRet {
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn noop_destroy_pub(_p: *mut NrosRmwPublisher) {}
+unsafe extern "C" fn noop_destroy_pub(_p: *mut NrosRmwPublisher) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_create_sub(
     _: *mut NrosRmwSession,
     _: *const core::ffi::c_char,
@@ -140,9 +142,11 @@ unsafe extern "C" fn noop_create_sub(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_take(
-    _: *mut NrosRmwSubscription,
+    _: *const NrosRmwSubscription,
     _: *mut u8,
     _: usize,
     _: *mut usize,
@@ -169,9 +173,11 @@ unsafe extern "C" fn noop_create_srv(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwService) {}
+unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwService) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_take_request(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
@@ -190,7 +196,7 @@ unsafe extern "C" fn noop_has_request(
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_send_reply(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
@@ -208,7 +214,9 @@ unsafe extern "C" fn noop_create_client(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_destroy_client(_: *mut NrosRmwClient) {}
+unsafe extern "C" fn noop_destroy_client(_: *mut NrosRmwClient) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn noop_reg_sub_event(
     _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
@@ -227,7 +235,7 @@ unsafe extern "C" fn noop_reg_pub_event(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn noop_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+unsafe extern "C" fn noop_assert_liveliness(_: *const NrosRmwPublisher) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 

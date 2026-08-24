@@ -52,8 +52,10 @@ mod stub {
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
-    pub unsafe extern "C" fn dpub(_: *mut rmw_publisher_t) {}
-    pub unsafe extern "C" fn pubr(_: *mut rmw_publisher_t, _: *const u8, _: usize) -> rmw_ret_t {
+    pub unsafe extern "C" fn dpub(_: *mut rmw_publisher_t) -> rmw_ret_t {
+        NROS_RMW_RET_OK
+    }
+    pub unsafe extern "C" fn pubr(_: *const rmw_publisher_t, _: *const u8, _: usize) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
     #[allow(clippy::too_many_arguments)]
@@ -69,13 +71,15 @@ mod stub {
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
-    pub unsafe extern "C" fn dsub(_: *mut rmw_subscription_t) {}
+    pub unsafe extern "C" fn dsub(_: *mut rmw_subscription_t) -> rmw_ret_t {
+        NROS_RMW_RET_OK
+    }
     pub unsafe extern "C" fn hasd(_: *mut rmw_subscription_t, taken: *mut bool) -> rmw_ret_t {
         unsafe { *taken = false };
         NROS_RMW_RET_OK
     }
     pub unsafe extern "C" fn take(
-        _: *mut rmw_subscription_t,
+        _: *const rmw_subscription_t,
         _: *mut u8,
         _: usize,
         _: *mut usize,
@@ -95,7 +99,9 @@ mod stub {
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
-    pub unsafe extern "C" fn dsrv(_: *mut rmw_service_t) {}
+    pub unsafe extern "C" fn dsrv(_: *mut rmw_service_t) -> rmw_ret_t {
+        NROS_RMW_RET_OK
+    }
     pub unsafe extern "C" fn ccli(
         _: *mut rmw_session_t,
         _: *const c_char,
@@ -107,9 +113,11 @@ mod stub {
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
-    pub unsafe extern "C" fn dcli(_: *mut rmw_client_t) {}
+    pub unsafe extern "C" fn dcli(_: *mut rmw_client_t) -> rmw_ret_t {
+        NROS_RMW_RET_OK
+    }
     pub unsafe extern "C" fn sresp(
-        _: *mut rmw_service_t,
+        _: *const rmw_service_t,
         _: i64,
         _: *const u8,
         _: usize,
@@ -121,7 +129,7 @@ mod stub {
         NROS_RMW_RET_OK
     }
     pub unsafe extern "C" fn takereq(
-        _: *mut rmw_service_t,
+        _: *const rmw_service_t,
         _: *mut u8,
         _: usize,
         _: *mut i64,

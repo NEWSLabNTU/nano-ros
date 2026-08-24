@@ -269,10 +269,10 @@ pub struct nros_rmw_vtable_t {
         ) -> rmw_ret_t,
     >,
     pub destroy_publisher:
-        ::core::option::Option<unsafe extern "C" fn(publisher: *mut rmw_publisher_t)>,
+        ::core::option::Option<unsafe extern "C" fn(publisher: *mut rmw_publisher_t) -> rmw_ret_t>,
     pub publish: ::core::option::Option<
         unsafe extern "C" fn(
-            publisher: *mut rmw_publisher_t,
+            publisher: *const rmw_publisher_t,
             data: *const u8,
             len: usize,
         ) -> rmw_ret_t,
@@ -290,12 +290,13 @@ pub struct nros_rmw_vtable_t {
             out: *mut rmw_subscription_t,
         ) -> rmw_ret_t,
     >,
-    pub destroy_subscription:
-        ::core::option::Option<unsafe extern "C" fn(subscription: *mut rmw_subscription_t)>,
+    pub destroy_subscription: ::core::option::Option<
+        unsafe extern "C" fn(subscription: *mut rmw_subscription_t) -> rmw_ret_t,
+    >,
     #[doc = " Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a message was copied; `*out_len` is\n  how many bytes, meaningful only when taken. Both are\n  written only on `NROS_RMW_RET_OK`.\n\n  Second slot to retire `NROS_RMW_RET_NO_DATA`: an empty\n  subscription is `taken = false` with OK, which is what\n  upstream's `taken` out-parameter means.\n\n  Deviations from upstream, declared:\n  - `buf` / `buf_len` / `*out_len` replace upstream's typed\n    `void *ros_message`. There is no typesupport indirection\n    on target — the payload is bytes and the caller owns the\n    buffer, so it needs the length back.\n  - no `rmw_subscription_allocation_t *`: pools are baked, so\n    there is nothing to pre-size (the matching\n    `rmw_init_subscription_allocation` is declined for the\n    same reason)."]
     pub take: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             buf: *mut u8,
             buf_len: usize,
             out_len: *mut usize,
@@ -320,11 +321,12 @@ pub struct nros_rmw_vtable_t {
             out: *mut rmw_service_t,
         ) -> rmw_ret_t,
     >,
-    pub destroy_service: ::core::option::Option<unsafe extern "C" fn(server: *mut rmw_service_t)>,
+    pub destroy_service:
+        ::core::option::Option<unsafe extern "C" fn(server: *mut rmw_service_t) -> rmw_ret_t>,
     #[doc = " Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a request was copied, `*out_len` how\n  many bytes, `*seq_out` the sequence number to reply against.\n  All three are written only on `NROS_RMW_RET_OK`.\n\n  Deviations from upstream, declared: the payload is bytes\n  (`buf` / `buf_len` / `*out_len`) rather than a typed\n  `void *ros_request`, and `*seq_out` stands in for\n  `rmw_service_info_t *` — an RTOS reply needs the sequence\n  and nothing else in that struct."]
     pub take_request: ::core::option::Option<
         unsafe extern "C" fn(
-            server: *mut rmw_service_t,
+            server: *const rmw_service_t,
             buf: *mut u8,
             buf_len: usize,
             seq_out: *mut i64,
@@ -338,7 +340,7 @@ pub struct nros_rmw_vtable_t {
     >,
     pub send_response: ::core::option::Option<
         unsafe extern "C" fn(
-            server: *mut rmw_service_t,
+            server: *const rmw_service_t,
             seq: i64,
             data: *const u8,
             len: usize,
@@ -355,11 +357,12 @@ pub struct nros_rmw_vtable_t {
             out: *mut rmw_client_t,
         ) -> rmw_ret_t,
     >,
-    pub destroy_client: ::core::option::Option<unsafe extern "C" fn(client: *mut rmw_client_t)>,
+    pub destroy_client:
+        ::core::option::Option<unsafe extern "C" fn(client: *mut rmw_client_t) -> rmw_ret_t>,
     #[doc = " Phase 130.4 — non-blocking send_request_raw. Phase-301: the\n  deprecated blocking `call_raw` slot is DELETED (rmw has no\n  blocking call); this + `try_recv_reply_raw` is the ONE\n  request/reply path and both slots are now REQUIRED for a backend\n  that supports services.\n\n  Sends the request to the backend without blocking for a\n  reply. Returns immediately."]
     pub send_request: ::core::option::Option<
         unsafe extern "C" fn(
-            client: *mut rmw_client_t,
+            client: *const rmw_client_t,
             request: *const u8,
             req_len: usize,
         ) -> rmw_ret_t,
@@ -367,7 +370,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Phase 130.4 — non-blocking try_recv_reply_raw.\n\n  Polls the backend for a reply. `>= 0` = reply bytes copied\n  into `reply_buf`. `NROS_RMW_RET_NO_DATA` = no reply yet.\n  Other negative = backend error. Paired with\n  `send_request_raw` — backends implement both or neither. */\n/** Upstream `rmw_take_response`. Same shape and the same\n  declared deviations as `take_request`."]
     pub take_response: ::core::option::Option<
         unsafe extern "C" fn(
-            client: *mut rmw_client_t,
+            client: *const rmw_client_t,
             reply_buf: *mut u8,
             reply_buf_len: usize,
             out_len: *mut usize,
@@ -394,8 +397,9 @@ pub struct nros_rmw_vtable_t {
         ) -> rmw_ret_t,
     >,
     #[doc = " Phase 108.B — manually assert this publisher's liveliness.\n  Required for `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness\n  kinds; no-op (return `NROS_RMW_RET_OK`) for other kinds.\n  NULL function pointer = backend doesn't support manual\n  liveliness; runtime returns `NROS_RMW_RET_OK` for AUTOMATIC /\n  NONE callers and `NROS_RMW_RET_UNSUPPORTED` for MANUAL_*."]
-    pub publisher_assert_liveliness:
-        ::core::option::Option<unsafe extern "C" fn(publisher: *mut rmw_publisher_t) -> rmw_ret_t>,
+    pub publisher_assert_liveliness: ::core::option::Option<
+        unsafe extern "C" fn(publisher: *const rmw_publisher_t) -> rmw_ret_t,
+    >,
     #[doc = " Phase 110.0 — backend's next internal-event deadline in\n  milliseconds from now (lease keepalive, heartbeat, reader\n  ACK-NACK timeout, etc.). The runtime caps its `drive_io`\n  timeout against `min(user_timeout, timer_deadline, this)` so\n  quiet links don't wake early, see no user-visible work, and\n  round-trip back into `drive_io`.\n\n  Phase 376 W3.d step A — `*out_ms` carries the value and\n  `*has_deadline` whether there is one; both are written only\n  on `NROS_RMW_RET_OK`.\n\n  This slot was the ONE member of the eleven that step B's\n  renumbering did not force: its old negative return was a\n  \"no deadline\" SENTINEL, not an error code, so nothing would\n  have collided. It is converted anyway because it had the\n  shape every other conversion found a silent failure in — a\n  backend that FAILED to compute its deadline returned `-1`\n  and was read as \"quiet link\", which is exactly the reading\n  that makes the executor sleep longer. It now has an error\n  channel it never had.\n\n  NULL function pointer is permitted — the runtime treats it\n  the same as `*has_deadline = false`."]
     pub next_deadline_ms: ::core::option::Option<
         unsafe extern "C" fn(
@@ -415,7 +419,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Phase 124.A — zero-copy publisher loan.\n\n  Reserve a writable slot of at least `requested_len` bytes inside\n  the backend's outbound buffer. Returns:\n    * `NROS_RMW_RET_OK` + writes `*out_buf` / `*out_cap` / `*out_token`.\n    * `NROS_RMW_RET_TRY_AGAIN` if the backend has no slot\n      available (caller may retry or fall back to a copy path).\n    * `NROS_RMW_RET_INVALID_ARGUMENT` on bad pointers / size.\n\n  `*out_cap` may exceed `requested_len`. The slot's bytes are\n  valid until the matching `pub_commit` or `pub_discard` runs.\n  `*out_token` is an opaque per-loan handle the backend uses to\n  match commit / discard back to the right slot.\n\n  NULL function pointer = backend doesn't natively lend; the\n  runtime falls back to a per-publisher staging arena and emits\n  a single memcpy on commit."]
     pub borrow_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
-            publisher: *mut rmw_publisher_t,
+            publisher: *const rmw_publisher_t,
             requested_len: usize,
             out_buf: *mut *mut u8,
             out_cap: *mut usize,
@@ -425,19 +429,22 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Phase 124.A — commit a previously loaned slot.\n\n  `token` MUST be a value returned from a prior `pub_loan` on the\n  same publisher. `actual_len` is the byte count actually\n  written into the slot (≤ the loan's `out_cap`). Triggers the\n  wire send.\n\n  NULL = paired NULL with `pub_loan`."]
     pub publish_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
-            publisher: *mut rmw_publisher_t,
+            publisher: *const rmw_publisher_t,
             token: *mut core::ffi::c_void,
             actual_len: usize,
         ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.A — abandon a previously loaned slot.\n\n  Releases the slot without sending. `token` MUST be a value\n  returned from a prior `pub_loan` on the same publisher.\n\n  NULL = paired NULL with `pub_loan`."]
     pub return_loaned_message_from_publisher: ::core::option::Option<
-        unsafe extern "C" fn(publisher: *mut rmw_publisher_t, token: *mut core::ffi::c_void),
+        unsafe extern "C" fn(
+            publisher: *const rmw_publisher_t,
+            token: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.A — zero-copy subscription borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscription empty).\n    * `< 0` — error (see `rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscription at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer. */\n/** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a view was handed out; `*out_buf`,\n  `*out_len` and `*out_token` describe it and are meaningful\n  only when taken. All are written only on\n  `NROS_RMW_RET_OK`.\n\n  Before this, the length was returned AND written to\n  `*out_len`, and the runtime used the return — so a backend\n  that disagreed with itself had one of its two answers\n  silently ignored. There is now one length.\n\n  Deviation from upstream, declared: upstream loans a typed\n  `void **loaned_message`; ours is a byte view plus an opaque\n  token to release, because there is no typesupport on target\n  and the backend owns the buffer until `sub_release`."]
     pub take_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             out_buf: *mut *const u8,
             out_len: *mut usize,
             out_token: *mut *mut core::ffi::c_void,
@@ -446,7 +453,10 @@ pub struct nros_rmw_vtable_t {
     >,
     #[doc = " Phase 124.A — release a previously borrowed view.\n\n  `token` MUST be a value returned from a prior `sub_borrow`\n  on the same subscription. Lets the next message advance into\n  the buffer.\n\n  NULL = paired NULL with `sub_borrow`."]
     pub return_loaned_message_from_subscription: ::core::option::Option<
-        unsafe extern "C" fn(subscription: *mut rmw_subscription_t, token: *mut core::ffi::c_void),
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            token: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.C.1 — service-server availability probe.\n\n  Returns `1` if ≥ 1 matching server has been discovered on the\n  RMW graph, `0` if none yet, or a negative `rmw_ret_t`\n  constant on backend error. The runtime exposes this to user\n  code as `nros_client_server_available()` /\n  `Client<S>::server_available()` — clients use it to gate the\n  first request so a startup-ordering race doesn't surface as\n  a request-side timeout.\n\n  Implementation notes per backend:\n  - **Zenoh**: `z_session` tracks matched queryables via\n    interest declarations.\n  - **Cyclone DDS / dust-DDS**: built-in topic readers expose\n    matched-pub counts.\n  - **XRCE**: agent has no participant enumeration; return\n    `NROS_RMW_RET_UNSUPPORTED`.\n\n  NULL function pointer = backend cannot answer; the runtime\n  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller.\n\n  Phase 376 W3.d step A — upstream's shape: the STATUS is the\n  return value and the answer is an out-parameter. Previously\n  this slot multiplexed both through one `int32_t` (1 = yes,\n  0 = no, negative = error), which is what makes upstream's\n  positive `RMW_RET_ERROR = 1` unadoptable — `1` would mean\n  both \"available\" and \"failed\". Splitting them is what lets\n  step B renumber at all.\n\n  A backend writes `*out_available` only on\n  `NROS_RMW_RET_OK`; on any error the caller's value is\n  untouched. The old contract's tolerance for \"any positive\n  value other than 1 means available\" is gone with the int:\n  a `bool` has no non-spec value to be lenient about.\n\n  Deviation from upstream, declared: no `node` parameter.\n  `rmw_service_server_is_available` takes both a node and a\n  client; an image has no node object to pass — the client\n  reaches its session directly."]
     pub service_server_is_available: ::core::option::Option<
@@ -455,7 +465,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscription catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API. */\n/** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —\n  the COUNT moves to `*taken`, matching upstream's\n  `size_t *taken`, and the return carries only a status.\n  `*taken` is written only on `NROS_RMW_RET_OK`; a partial\n  drain reports what it got rather than erroring."]
     pub take_sequence: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             buf: *mut u8,
             per_msg_cap: usize,
             max_msgs: usize,
@@ -573,7 +583,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Upstream `rmw_take_with_info`.\n\n  `take` plus the sample's metadata, written to caller-owned storage. See\n  `rmw_message_info_t` for why this is a pointer parameter rather than the\n  side table the runtime uses today.\n\n  Deviations from upstream, declared: the same two `take` declares —\n  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because\n  there is no typesupport on target; and no allocation argument, because\n  pools are baked.\n\n  NULL slot: the runtime falls back to `take`, and the caller gets no\n  metadata — which is exactly today's behaviour for every C backend."]
     pub take_with_info: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             buf: *mut u8,
             buf_len: usize,
             out_len: *mut usize,
@@ -584,7 +594,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Upstream `rmw_take_loaned_message_with_info`.\n\n  `take_loaned_message` plus metadata; same deviations as that slot (a\n  byte view and an opaque release token rather than a typed loan)."]
     pub take_loaned_message_with_info: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             out_buf: *mut *const u8,
             out_len: *mut usize,
             out_token: *mut *mut core::ffi::c_void,

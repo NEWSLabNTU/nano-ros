@@ -222,7 +222,7 @@ mod loan_trampolines {
     type StaticSlot = ZenohSlot<'static>;
 
     unsafe extern "C" fn zenoh_pub_loan(
-        publisher: *mut NrosRmwPublisher,
+        publisher: *const NrosRmwPublisher,
         requested_len: usize,
         out_buf: *mut *mut u8,
         out_cap: *mut usize,
@@ -263,7 +263,7 @@ mod loan_trampolines {
     }
 
     unsafe extern "C" fn zenoh_pub_commit(
-        publisher: *mut NrosRmwPublisher,
+        publisher: *const NrosRmwPublisher,
         token: *mut c_void,
         actual_len: usize,
     ) -> NrosRmwRet {
@@ -283,14 +283,20 @@ mod loan_trampolines {
         }
     }
 
-    unsafe extern "C" fn zenoh_pub_discard(_publisher: *mut NrosRmwPublisher, token: *mut c_void) {
+    unsafe extern "C" fn zenoh_pub_discard(
+        _publisher: *const NrosRmwPublisher,
+        token: *mut c_void,
+    ) -> NrosRmwRet {
         if token.is_null() {
-            return;
+            // A null token is a caller bug, not a no-op: the loan it names
+            // was never granted. `void` could only shrug; say so.
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
         }
         // SAFETY: token came from `Box::into_raw(Box<StaticSlot>)` in
         // `zenoh_pub_loan`. Reconstitute and drop — ZenohSlot::drop
         // releases the arena.
         let _slot: Box<StaticSlot> = unsafe { Box::from_raw(token as *mut StaticSlot) };
+        NROS_RMW_RET_OK
     }
 
     /// Customised zenoh vtable: base = generic `RustBackendAdapter`

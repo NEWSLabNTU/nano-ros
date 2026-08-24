@@ -52,7 +52,7 @@ struct PubState {
     SertypeMin* st{nullptr};
 };
 
-inline PubState* as_state(rmw_publisher_t* p) {
+inline PubState* as_state(const rmw_publisher_t* p) {
     return static_cast<PubState*>(p->backend_data);
 }
 
@@ -172,18 +172,27 @@ rmw_ret_t publisher_create(rmw_session_t* session, const char* topic_name,
     return NROS_RMW_RET_OK;
 }
 
-void publisher_destroy(rmw_publisher_t* publisher) {
-    if (publisher == nullptr) return;
+rmw_ret_t publisher_destroy(rmw_publisher_t* publisher) {
+    if (publisher == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     PubState* state = as_state(publisher);
-    if (state == nullptr) return;
-    if (state->writer > 0) (void)dds_delete(state->writer);
-    if (state->topic > 0) (void)dds_delete(state->topic);
+    // No backend state: never created, or destroyed once already. Upstream
+    // calls a handle it does not recognise INVALID_ARGUMENT, and a silent
+    // second destroy is exactly the bug this return type exists to surface.
+    if (state == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    // Phase 376 W5 — these were `(void)`-cast. A writer or topic that Cyclone
+    // refuses to delete is the leak the caller now gets to hear about; the
+    // teardown still runs to completion either way, because leaving the C++
+    // state behind would turn one leak into two.
+    dds_return_t writer_rc = state->writer > 0 ? dds_delete(state->writer) : DDS_RETCODE_OK;
+    dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
     delete state->st;
     delete state;
     publisher->backend_data = nullptr;
+    if (writer_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
+    return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t publisher_publish_raw(rmw_publisher_t* publisher, const uint8_t* data,
+rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
                                      size_t len) {
     if (publisher == nullptr || data == nullptr || len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

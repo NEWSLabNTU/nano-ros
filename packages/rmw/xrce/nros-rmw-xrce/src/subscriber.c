@@ -191,9 +191,9 @@ rmw_ret_t xrce_subscription_create(rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_subscription_destroy(rmw_subscription_t *subscriber) {
+rmw_ret_t xrce_subscription_destroy(rmw_subscription_t *subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
     xrce_session_state_t *st = ss->session_state;
@@ -204,15 +204,21 @@ void xrce_subscription_destroy(rmw_subscription_t *subscriber) {
         ss->slot->write_idx = 0;
         ss->slot->read_idx = 0;
     }
-    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable,
-                                   ss->datareader_oid);
+    /* Phase 376 W5 — the slot reports now, but XRCE cannot know. The delete is
+     * deliberately fire-and-forget (close-time teardown must not block on
+     * agent acks), so the only failure this frame can see is a request that
+     * would not BUFFER. That is worth reporting; the agent's own verdict is
+     * not available at any price this path is willing to pay. */
+    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable,
+                                            ss->datareader_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
     free(ss);
     subscriber->backend_data = NULL;
+    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_subscription_take(rmw_subscription_t *subscriber, uint8_t *buf,
+rmw_ret_t xrce_subscription_take(const rmw_subscription_t *subscriber, uint8_t *buf,
                                       size_t buf_len, size_t *out_len, bool *taken) {
     /* Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. */
     if (subscriber == NULL || subscriber->backend_data == NULL || out_len == NULL ||

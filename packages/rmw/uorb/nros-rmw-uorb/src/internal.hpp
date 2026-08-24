@@ -23,8 +23,8 @@ rmw_ret_t publisher_create(rmw_session_t* session, const char* topic_name,
                                 const rmw_qos_profile_t* qos,
                                 const rmw_publisher_options_t* options,
                                 rmw_publisher_t* out);
-void publisher_destroy(rmw_publisher_t* publisher);
-rmw_ret_t publisher_publish_raw(rmw_publisher_t* publisher, const uint8_t* data,
+rmw_ret_t publisher_destroy(rmw_publisher_t* publisher);
+rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
                                      size_t len);
 
 /* ---- subscriber.cpp ---- */
@@ -33,8 +33,8 @@ rmw_ret_t subscription_create(rmw_session_t* session, const char* topic_name,
                                  const rmw_qos_profile_t* qos,
                                  const rmw_subscription_options_t* options,
                                  rmw_subscription_t* out);
-void subscription_destroy(rmw_subscription_t* subscriber);
-rmw_ret_t subscription_take(rmw_subscription_t* subscriber, uint8_t* buf,
+rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber);
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf,
                                  size_t buf_len, size_t* out_len, bool* taken);
 rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data);
 
@@ -43,19 +43,19 @@ rmw_ret_t service_create(rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* type_hash,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      rmw_service_t* out);
-void service_destroy(rmw_service_t* server);
-rmw_ret_t service_take_request(rmw_service_t* server, uint8_t* buf,
+rmw_ret_t service_destroy(rmw_service_t* server);
+rmw_ret_t service_take_request(const rmw_service_t* server, uint8_t* buf,
                                     size_t buf_len, int64_t* seq_out, size_t* out_len,
                                     bool* taken);
 rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request);
-rmw_ret_t service_send_reply(rmw_service_t* server, int64_t seq,
+rmw_ret_t service_send_reply(const rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len);
 
 rmw_ret_t client_create(rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* type_hash,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      rmw_client_t* out);
-void client_destroy(rmw_client_t* client);
+rmw_ret_t client_destroy(rmw_client_t* client);
 /* Phase-301: the deprecated blocking `call_raw` slot was deleted from the
  * vtable; the non-blocking `send_request_raw` / `try_recv_reply_raw` pair
  * stays NULL on this backend (services unsupported). */

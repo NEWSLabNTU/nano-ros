@@ -1992,7 +1992,7 @@ impl<'a> Drop for CffiSlot<'a> {
             // Re-materialise the publisher view so the backend sees
             // the same `NrosRmwPublisher` shape it created the loan
             // against.
-            let mut view = NrosRmwPublisher {
+            let view = NrosRmwPublisher {
                 topic_name: p.topic_name_buf.as_ptr().cast(),
                 type_name: p.type_name_buf.as_ptr().cast(),
                 qos: p.qos,
@@ -2003,7 +2003,14 @@ impl<'a> Drop for CffiSlot<'a> {
             // SAFETY: `token` came from a paired `pub_loan` on this
             // publisher and the publisher is still alive (lifetime
             // `'a` borrows it).
-            unsafe { discard(&mut view, self.token) };
+            let ret = unsafe { discard(&view, self.token) };
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "return_loaned_message_from_publisher failed with {}; the loan slot may be stranded",
+                    ret
+                );
+            }
         }
     }
 }
@@ -2042,7 +2049,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
                 return Ok(None);
             }
         };
-        let mut view = NrosRmwPublisher {
+        let view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             qos: self.qos,
@@ -2055,7 +2062,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         let mut out_token: *mut c_void = core::ptr::null_mut();
         // SAFETY: vtable contract — slot pointers stay valid until
         // commit / discard.
-        let ret = unsafe { loan(&mut view, len, &mut out_buf, &mut out_cap, &mut out_token) };
+        let ret = unsafe { loan(&view, len, &mut out_buf, &mut out_cap, &mut out_token) };
         if ret == NROS_RMW_RET_WOULD_BLOCK || ret == NROS_RMW_RET_NO_DATA {
             return Ok(None);
         }
@@ -2066,7 +2073,17 @@ impl nros_rmw::SlotLending for CffiPublisher {
             // Defensive: a buggy backend returned OK with a too-small
             // slot. Treat as transient.
             if let Some(discard) = self.vtable.return_loaned_message_from_publisher {
-                unsafe { discard(&mut view, out_token) };
+                // The loan is already being abandoned; a failure to hand it back
+                // does not change what this function returns, but it is the
+                // second fault in a row and worth a line.
+                let ret = unsafe { discard(&view, out_token) };
+                if ret != NROS_RMW_RET_OK {
+                    nros_log::nros_error!(
+                        nros_log::get_logger("nros_rmw_cffi"),
+                        "discarding an undersized loan also failed with {}",
+                        ret
+                    );
+                }
             }
             return Ok(None);
         }
@@ -2109,7 +2126,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
             .vtable
             .publish_loaned_message
             .ok_or(TransportError::Unsupported)?;
-        let mut view = NrosRmwPublisher {
+        let view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             qos: self.qos,
@@ -2121,7 +2138,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         let token = slot.token;
         // `slot` drops here without firing `pub_discard` because
         // `publisher` is `None`.
-        let ret = unsafe { commit(&mut view, token, len) };
+        let ret = unsafe { commit(&view, token, len) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2273,14 +2290,14 @@ impl Publisher for CffiPublisher {
         // runtime caller (Node) gates the call by liveliness_kind so
         // we just delegate.
         let view_ptr = self as *const _ as *mut Self;
-        let mut view = unsafe { (*view_ptr).make_view() };
+        let view = unsafe { (*view_ptr).make_view() };
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
         let Some(assert_liveliness) = self.vtable.publisher_assert_liveliness else {
             return Err(TransportError::Unsupported);
         };
-        let ret = unsafe { assert_liveliness(&mut view) };
+        let ret = unsafe { assert_liveliness(&view) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2292,12 +2309,24 @@ impl Drop for CffiPublisher {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
-            unsafe {
+            let ret = unsafe {
                 (self
                     .vtable
                     .destroy_publisher
                     .expect("rmw vtable: destroy_publisher"))(&mut view)
             };
+            // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
+            // that cannot propagate. Logging is not a consolation prize: a
+            // teardown that failed is a leak, and a leak with no message
+            // surfaces later as an allocation failure with no provenance.
+            // `nros_log`, never std stdio — issue 0589.
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "destroy_publisher failed with {}; the backend may have leaked the publisher",
+                    ret
+                );
+            }
         }
     }
 }
@@ -2417,10 +2446,17 @@ impl<'a> Drop for CffiView<'a> {
         if let Some(sub) = self.subscriber.take()
             && let Some(release) = sub.vtable.return_loaned_message_from_subscription
         {
-            let mut view = sub.make_view();
+            let view = sub.make_view();
             // SAFETY: `token` paired with a prior `sub_borrow` on
             // this subscriber and the subscriber is still alive.
-            unsafe { release(&mut view, self.token) };
+            let ret = unsafe { release(&view, self.token) };
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "return_loaned_message_from_subscription failed with {}; the sample may stay checked out",
+                    ret
+                );
+            }
         }
     }
 }
@@ -2436,7 +2472,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
             // (124.A.3). `None` lets the caller use the slow path.
             return Ok(None);
         };
-        let mut view = self.make_view();
+        let view = self.make_view();
         let mut out_buf: *const u8 = core::ptr::null();
         let mut out_len: usize = 0;
         let mut out_token: *mut c_void = core::ptr::null_mut();
@@ -2450,7 +2486,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
         let mut taken = false;
         let rc = unsafe {
             borrow(
-                &mut view,
+                &view,
                 &mut out_buf,
                 &mut out_len,
                 &mut out_token,
@@ -2605,12 +2641,12 @@ impl nros_rmw::Subscription for CffiSubscription {
             if buf.len() < limit.saturating_mul(per_msg_cap) {
                 return Err(TransportError::BufferTooSmall);
             }
-            let mut view = self.make_view();
+            let view = self.make_view();
             // Phase 376 W3.b/W3.d step A — the count arrives in `taken`.
             let mut taken = 0usize;
             let rc = unsafe {
                 f(
-                    &mut view,
+                    &view,
                     buf.as_mut_ptr(),
                     per_msg_cap,
                     limit,
@@ -2691,12 +2727,24 @@ impl Drop for CffiSubscription {
         if !self.backend_data.is_null() {
             clear_cffi_message_info(self.backend_data as usize);
             let mut view = self.make_view();
-            unsafe {
+            let ret = unsafe {
                 (self
                     .vtable
                     .destroy_subscription
                     .expect("rmw vtable: destroy_subscription"))(&mut view)
             };
+            // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
+            // that cannot propagate. Logging is not a consolation prize: a
+            // teardown that failed is a leak, and a leak with no message
+            // surfaces later as an allocation failure with no provenance.
+            // `nros_log`, never std stdio — issue 0589.
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "destroy_subscription failed with {}; the backend may have leaked the subscription",
+                    ret
+                );
+            }
         }
     }
 }
@@ -2806,12 +2854,24 @@ impl Drop for CffiService {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
-            unsafe {
+            let ret = unsafe {
                 (self
                     .vtable
                     .destroy_service
                     .expect("rmw vtable: destroy_service"))(&mut view)
             };
+            // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
+            // that cannot propagate. Logging is not a consolation prize: a
+            // teardown that failed is a leak, and a leak with no message
+            // surfaces later as an allocation failure with no provenance.
+            // `nros_log`, never std stdio — issue 0589.
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "destroy_service failed with {}; the backend may have leaked the service",
+                    ret
+                );
+            }
         }
     }
 }
@@ -2859,8 +2919,8 @@ impl ClientTrait for CffiClient {
         let Some(f) = self.vtable.send_request else {
             return Err(TransportError::Unsupported);
         };
-        let mut view = self.make_view();
-        let rc = unsafe { f(&mut view, request.as_ptr(), request.len()) };
+        let view = self.make_view();
+        let rc = unsafe { f(&view, request.as_ptr(), request.len()) };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
@@ -2876,13 +2936,13 @@ impl ClientTrait for CffiClient {
         let Some(f) = self.vtable.take_response else {
             return Err(TransportError::Unsupported);
         };
-        let mut view = self.make_view();
+        let view = self.make_view();
         // Phase 376 W3.b/W3.d step A — see `take_request`.
         let mut out_len = 0usize;
         let mut taken = false;
         let rc = unsafe {
             f(
-                &mut view,
+                &view,
                 reply_buf.as_mut_ptr(),
                 reply_buf.len(),
                 &mut out_len,
@@ -2931,12 +2991,24 @@ impl Drop for CffiClient {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
             let mut view = self.make_view();
-            unsafe {
+            let ret = unsafe {
                 (self
                     .vtable
                     .destroy_client
                     .expect("rmw vtable: destroy_client"))(&mut view)
             };
+            // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
+            // that cannot propagate. Logging is not a consolation prize: a
+            // teardown that failed is a leak, and a leak with no message
+            // surfaces later as an allocation failure with no provenance.
+            // `nros_log`, never std stdio — issue 0589.
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "destroy_client failed with {}; the backend may have leaked the client",
+                    ret
+                );
+            }
         }
     }
 }
@@ -3371,10 +3443,12 @@ mod tests {
         NROS_RMW_RET_OK
     }
 
-    unsafe extern "C" fn stub_destroy_publisher(_publisher: *mut NrosRmwPublisher) {}
+    unsafe extern "C" fn stub_destroy_publisher(_publisher: *mut NrosRmwPublisher) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
 
     unsafe extern "C" fn stub_publish_raw(
-        publisher: *mut NrosRmwPublisher,
+        publisher: *const NrosRmwPublisher,
         _data: *const u8,
         _len: usize,
     ) -> NrosRmwRet {
@@ -3405,9 +3479,11 @@ mod tests {
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
+    unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
     unsafe extern "C" fn stub_take(
-        _: *mut NrosRmwSubscription,
+        _: *const NrosRmwSubscription,
         _: *mut u8,
         _: usize,
         _: *mut usize,
@@ -3441,9 +3517,11 @@ mod tests {
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
+    unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
     unsafe extern "C" fn stub_take_request(
-        _: *mut NrosRmwService,
+        _: *const NrosRmwService,
         _: *mut u8,
         _: usize,
         _: *mut i64,
@@ -3464,7 +3542,7 @@ mod tests {
         NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_send_reply(
-        _: *mut NrosRmwService,
+        _: *const NrosRmwService,
         _: i64,
         _: *const u8,
         _: usize,
@@ -3486,7 +3564,9 @@ mod tests {
         }
         NROS_RMW_RET_OK
     }
-    unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) {}
+    unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) -> NrosRmwRet {
+        NROS_RMW_RET_OK
+    }
     unsafe extern "C" fn stub_register_subscription_event(
         _: *mut NrosRmwSubscription,
         _: NrosRmwEventKind,
@@ -3505,7 +3585,9 @@ mod tests {
     ) -> NrosRmwRet {
         NROS_RMW_RET_UNSUPPORTED
     }
-    unsafe extern "C" fn stub_assert_publisher_liveliness(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+    unsafe extern "C" fn stub_assert_publisher_liveliness(
+        _: *const NrosRmwPublisher,
+    ) -> NrosRmwRet {
         NROS_RMW_RET_UNSUPPORTED
     }
 

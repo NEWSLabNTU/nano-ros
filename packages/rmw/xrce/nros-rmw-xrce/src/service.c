@@ -210,9 +210,9 @@ rmw_ret_t xrce_service_create(rmw_session_t* session, const char* service_name,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_service_destroy(rmw_service_t* server) {
+rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
     if (server == NULL || server->backend_data == NULL) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_service_server_state* ss = (xrce_service_server_state*)server->backend_data;
     xrce_session_state_t* st = ss->session_state;
@@ -221,14 +221,17 @@ void xrce_service_destroy(rmw_service_t* server) {
         ss->slot->active = false;
         ss->slot->req_count = 0;
     }
-    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
+    /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
+     * so a buffering failure is the only verdict this frame can have. */
+    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
     free(ss);
     server->backend_data = NULL;
+    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-static int32_t xrce_service_try_recv_request_len(rmw_service_t* server, uint8_t* buf,
+static int32_t xrce_service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf,
                                       size_t buf_len, int64_t* seq_out) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -292,7 +295,7 @@ static int32_t xrce_service_try_recv_request_len(rmw_service_t* server, uint8_t*
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_request(rmw_service_t* server, uint8_t* buf,
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf,
                                          size_t buf_len, int64_t* seq_out, size_t* out_len,
                                          bool* taken) {
     if (out_len == NULL || taken == NULL) {
@@ -328,7 +331,7 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_service_send_reply(rmw_service_t* server, int64_t seq,
+rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -379,7 +382,7 @@ rmw_ret_t xrce_service_send_reply(rmw_service_t* server, int64_t seq,
  * re-sending the request or sleeping in a never-signaled
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
-rmw_ret_t xrce_service_send_request_raw(rmw_client_t* client,
+rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
                                              const uint8_t* request, size_t req_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -418,7 +421,7 @@ rmw_ret_t xrce_service_send_request_raw(rmw_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-static int32_t xrce_service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* reply_buf,
+static int32_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
                                         size_t reply_buf_len) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -454,7 +457,7 @@ static int32_t xrce_service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_response(rmw_client_t* client, uint8_t* reply_buf,
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
                                           size_t reply_buf_len, size_t* out_len, bool* taken) {
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -563,9 +566,9 @@ rmw_ret_t xrce_client_create(rmw_session_t* session, const char* service_name,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_client_destroy(rmw_client_t* client) {
+rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
     if (client == NULL || client->backend_data == NULL) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_service_client_state* cs = (xrce_service_client_state*)client->backend_data;
     xrce_session_state_t* st = cs->session_state;
@@ -574,10 +577,13 @@ void xrce_client_destroy(rmw_client_t* client) {
         cs->slot->active = false;
         cs->slot->has_reply = false;
     }
-    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
+    /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
+     * so a buffering failure is the only verdict this frame can have. */
+    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
     free(cs);
     client->backend_data = NULL;
+    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 

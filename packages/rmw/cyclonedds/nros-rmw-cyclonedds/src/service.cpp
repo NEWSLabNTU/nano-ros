@@ -933,20 +933,24 @@ rmw_ret_t service_create(rmw_session_t* session, const char* service_name,
     return NROS_RMW_RET_OK;
 }
 
-void service_destroy(rmw_service_t* server) {
-    if (server == nullptr || server->backend_data == nullptr) return;
+rmw_ret_t service_destroy(rmw_service_t* server) {
+    if (server == nullptr || server->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     auto* state = static_cast<ServerState*>(server->backend_data);
-    if (state->reader > 0) (void)dds_delete(state->reader);
-    if (state->writer > 0) (void)dds_delete(state->writer);
-    if (state->request_topic > 0) (void)dds_delete(state->request_topic);
-    if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
+    dds_return_t rc = DDS_RETCODE_OK;
+    if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
     delete state->req_st;
     delete state->rep_st;
     delete state;
     server->backend_data = nullptr;
+    return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-static int32_t service_try_recv_request_len(rmw_service_t* server, uint8_t* buf, size_t buf_len,
+static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                  int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
@@ -981,7 +985,7 @@ static int32_t service_try_recv_request_len(rmw_service_t* server, uint8_t* buf,
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_request(rmw_service_t* server, uint8_t* buf, size_t buf_len,
+rmw_ret_t service_take_request(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                     int64_t* seq_out, size_t* out_len, bool* taken) {
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1019,7 +1023,7 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_send_reply(rmw_service_t* server, int64_t seq,
+rmw_ret_t service_send_reply(const rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len) {
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {
@@ -1170,17 +1174,21 @@ rmw_ret_t client_create(rmw_session_t* session, const char* service_name,
     return NROS_RMW_RET_OK;
 }
 
-void client_destroy(rmw_client_t* client) {
-    if (client == nullptr || client->backend_data == nullptr) return;
+rmw_ret_t client_destroy(rmw_client_t* client) {
+    if (client == nullptr || client->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
     auto* state = static_cast<ClientState*>(client->backend_data);
-    if (state->writer > 0) (void)dds_delete(state->writer);
-    if (state->reader > 0) (void)dds_delete(state->reader);
-    if (state->request_topic > 0) (void)dds_delete(state->request_topic);
-    if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
+    dds_return_t rc = DDS_RETCODE_OK;
+    if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
+    if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
     delete state->req_st;
     delete state->rep_st;
     delete state;
     client->backend_data = nullptr;
+    return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
 // Phase 130.8 — non-blocking send/recv split. Mirrors
@@ -1190,7 +1198,7 @@ void client_destroy(rmw_client_t* client) {
 // (Phase 127.C.4 root cause class). Phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair
 // is the one request/reply path.
-rmw_ret_t service_send_request_raw(rmw_client_t* client, const uint8_t* request,
+rmw_ret_t service_send_request_raw(const rmw_client_t* client, const uint8_t* request,
                                         size_t req_len) {
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1224,7 +1232,7 @@ rmw_ret_t service_send_request_raw(rmw_client_t* client, const uint8_t* request,
     return NROS_RMW_RET_OK;
 }
 
-static int32_t service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* reply_buf,
+static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
                                    size_t reply_buf_len) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
@@ -1276,7 +1284,7 @@ static int32_t service_try_recv_reply_raw_len(rmw_client_t* client, uint8_t* rep
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_response(rmw_client_t* client, uint8_t* reply_buf,
+rmw_ret_t service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
                                      size_t reply_buf_len, size_t* out_len, bool* taken) {
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

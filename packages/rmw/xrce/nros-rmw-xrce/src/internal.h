@@ -324,8 +324,8 @@ rmw_ret_t xrce_publisher_create(rmw_session_t* session, const char* topic_name,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      const rmw_publisher_options_t* options,
                                      rmw_publisher_t* out);
-void xrce_publisher_destroy(rmw_publisher_t* publisher);
-rmw_ret_t xrce_publisher_publish_raw(rmw_publisher_t* publisher, const uint8_t* data,
+rmw_ret_t xrce_publisher_destroy(rmw_publisher_t* publisher);
+rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
                                           size_t len);
 /* Phase 124.E.3 — streamed publish via `uxr_prepare_output_stream`. */
 rmw_ret_t xrce_publisher_publish_streamed(
@@ -339,8 +339,8 @@ rmw_ret_t xrce_subscription_create(rmw_session_t* session, const char* topic_nam
                                       uint32_t domain_id, const rmw_qos_profile_t* qos,
                                       const rmw_subscription_options_t* options,
                                       rmw_subscription_t* out);
-void xrce_subscription_destroy(rmw_subscription_t* subscriber);
-rmw_ret_t xrce_subscription_take(rmw_subscription_t* subscriber, uint8_t* buf,
+rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber);
+rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf,
                                       size_t buf_len, size_t* out_len, bool* taken);
 rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber,
                                           bool* out_has_data);
@@ -363,24 +363,24 @@ rmw_ret_t xrce_service_create(rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_service_t* out);
-void xrce_service_destroy(rmw_service_t* server);
-rmw_ret_t xrce_service_take_request(rmw_service_t* server, uint8_t* buf, size_t buf_len,
+rmw_ret_t xrce_service_destroy(rmw_service_t* server);
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                          int64_t* seq_out, size_t* out_len, bool* taken);
 rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request);
-rmw_ret_t xrce_service_send_reply(rmw_service_t* server, int64_t seq,
+rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
 
 rmw_ret_t xrce_client_create(rmw_session_t* session, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_client_t* out);
-void xrce_client_destroy(rmw_client_t* client);
+rmw_ret_t xrce_client_destroy(rmw_client_t* client);
 /* Phase 130.4 — non-blocking split (phase-301: the deprecated blocking
  * `call_raw` slot was deleted from the vtable; this pair is the one
  * request/reply path). */
-rmw_ret_t xrce_service_send_request_raw(rmw_client_t* client,
+rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
                                              const uint8_t* request, size_t req_len);
-rmw_ret_t xrce_service_take_response(rmw_client_t* client, uint8_t* reply_buf,
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
                                           size_t reply_buf_len, size_t* out_len, bool* taken);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,

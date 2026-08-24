@@ -474,12 +474,14 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn destroy_publisher_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
-) {
+) -> NrosRmwRet {
     let _ = unsafe { take_box::<R::Publisher>(publisher_data_mut(publisher)) };
+
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn publish_trampoline<R: RustBackend>(
-    publisher: *mut NrosRmwPublisher,
+    publisher: *const NrosRmwPublisher,
     data: *const u8,
     len: usize,
 ) -> NrosRmwRet {
@@ -560,7 +562,7 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
-) {
+) -> NrosRmwRet {
     let slot = unsafe { subscription_data_mut(subscriber) };
     #[cfg(all(target_os = "none", not(feature = "std")))]
     {
@@ -572,10 +574,12 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
         }
     }
     let _ = unsafe { take_box::<R::Subscription>(slot) };
+
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn take_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscription,
+    subscriber: *const NrosRmwSubscription,
     buf: *mut u8,
     buf_len: usize,
     out_len: *mut usize,
@@ -739,12 +743,16 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(server: *mut NrosRmwService) {
+unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(
+    server: *mut NrosRmwService,
+) -> NrosRmwRet {
     let _ = unsafe { take_box::<R::Service>(service_data_mut(server)) };
+
+    NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
-    server: *mut NrosRmwService,
+    server: *const NrosRmwService,
     buf: *mut u8,
     buf_len: usize,
     seq_out: *mut i64,
@@ -816,7 +824,7 @@ unsafe extern "C" fn has_request_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
-    server: *mut NrosRmwService,
+    server: *const NrosRmwService,
     seq: i64,
     data: *const u8,
     len: usize,
@@ -876,14 +884,18 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(client: *mut NrosRmwClient) {
+unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(
+    client: *mut NrosRmwClient,
+) -> NrosRmwRet {
     let _ = unsafe { take_box::<R::Client>(client_data_mut(client)) };
+
+    NROS_RMW_RET_OK
 }
 
 // Non-blocking send/recv trampolines — the one request/reply path
 // (phase-301: the blocking `call_raw` slot is deleted).
 unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
-    client: *mut NrosRmwClient,
+    client: *const NrosRmwClient,
     request: *const u8,
     req_len: usize,
 ) -> NrosRmwRet {
@@ -901,7 +913,7 @@ unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
-    client: *mut NrosRmwClient,
+    client: *const NrosRmwClient,
     reply_buf: *mut u8,
     reply_buf_len: usize,
     out_len: *mut usize,
@@ -1065,7 +1077,7 @@ unsafe extern "C" fn publisher_event_init_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn publisher_assert_liveliness_trampoline<R: RustBackend>(
-    publisher: *mut NrosRmwPublisher,
+    publisher: *const NrosRmwPublisher,
 ) -> NrosRmwRet {
     let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1203,7 +1215,7 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscription,
+    subscriber: *const NrosRmwSubscription,
     buf: *mut u8,
     per_msg_cap: usize,
     max_msgs: usize,
@@ -1311,7 +1323,7 @@ unsafe fn session_ref<'a, T>(session: *const NrosRmwSession) -> Option<&'a T> {
 }
 
 #[inline]
-unsafe fn publisher_ref<'a, T>(publisher: *mut NrosRmwPublisher) -> Option<&'a T> {
+unsafe fn publisher_ref<'a, T>(publisher: *const NrosRmwPublisher) -> Option<&'a T> {
     if publisher.is_null() {
         return None;
     }
@@ -1324,7 +1336,7 @@ unsafe fn publisher_ref<'a, T>(publisher: *mut NrosRmwPublisher) -> Option<&'a T
 }
 
 #[inline]
-unsafe fn subscription_mut<'a, T>(subscriber: *mut NrosRmwSubscription) -> Option<&'a mut T> {
+unsafe fn subscription_mut<'a, T>(subscriber: *const NrosRmwSubscription) -> Option<&'a mut T> {
     if subscriber.is_null() {
         return None;
     }
@@ -1337,7 +1349,7 @@ unsafe fn subscription_mut<'a, T>(subscriber: *mut NrosRmwSubscription) -> Optio
 }
 
 #[inline]
-unsafe fn subscription_ref<'a, T>(subscriber: *mut NrosRmwSubscription) -> Option<&'a T> {
+unsafe fn subscription_ref<'a, T>(subscriber: *const NrosRmwSubscription) -> Option<&'a T> {
     if subscriber.is_null() {
         return None;
     }
@@ -1350,7 +1362,7 @@ unsafe fn subscription_ref<'a, T>(subscriber: *mut NrosRmwSubscription) -> Optio
 }
 
 #[inline]
-unsafe fn service_mut<'a, T>(server: *mut NrosRmwService) -> Option<&'a mut T> {
+unsafe fn service_mut<'a, T>(server: *const NrosRmwService) -> Option<&'a mut T> {
     if server.is_null() {
         return None;
     }
@@ -1363,7 +1375,7 @@ unsafe fn service_mut<'a, T>(server: *mut NrosRmwService) -> Option<&'a mut T> {
 }
 
 #[inline]
-unsafe fn service_ref<'a, T>(server: *mut NrosRmwService) -> Option<&'a T> {
+unsafe fn service_ref<'a, T>(server: *const NrosRmwService) -> Option<&'a T> {
     if server.is_null() {
         return None;
     }
@@ -1376,7 +1388,7 @@ unsafe fn service_ref<'a, T>(server: *mut NrosRmwService) -> Option<&'a T> {
 }
 
 #[inline]
-unsafe fn client_mut<'a, T>(client: *mut NrosRmwClient) -> Option<&'a mut T> {
+unsafe fn client_mut<'a, T>(client: *const NrosRmwClient) -> Option<&'a mut T> {
     if client.is_null() {
         return None;
     }

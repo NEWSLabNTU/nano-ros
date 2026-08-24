@@ -31,7 +31,7 @@ struct SubState {
     SertypeMin* st{nullptr};
 };
 
-inline SubState* as_state(rmw_subscription_t* s) {
+inline SubState* as_state(const rmw_subscription_t* s) {
     return static_cast<SubState*>(s->backend_data);
 }
 
@@ -107,18 +107,20 @@ rmw_ret_t subscription_create(rmw_session_t* session, const char* topic_name,
     return NROS_RMW_RET_OK;
 }
 
-void subscription_destroy(rmw_subscription_t* subscriber) {
-    if (subscriber == nullptr) return;
+rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
+    if (subscriber == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     SubState* state = as_state(subscriber);
-    if (state == nullptr) return;
-    if (state->reader > 0) (void)dds_delete(state->reader);
-    if (state->topic > 0) (void)dds_delete(state->topic);
+    if (state == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    dds_return_t reader_rc = state->reader > 0 ? dds_delete(state->reader) : DDS_RETCODE_OK;
+    dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
     delete state->st;
     delete state;
     subscriber->backend_data = nullptr;
+    if (reader_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
+    return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t subscription_take(rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
                                  size_t* out_len, bool* out_taken) {
     // Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. The parameter
     // is `out_taken`, not upstream's `taken`: this function already has a
@@ -214,7 +216,7 @@ rmw_ret_t subscription_take(rmw_subscription_t* subscriber, uint8_t* buf, size_t
 // (reader, buf, info, count, maxs) and returns N samples in one
 // call. Serialise each typed sample back to CDR with the same
 // encoding-header convention as `subscription_try_recv_raw`.
-static int32_t subscription_take_sequence_count(rmw_subscription_t* subscriber, uint8_t* buf,
+static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscriber, uint8_t* buf,
                                                size_t per_msg_cap, size_t max_msgs,
                                                size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
@@ -298,7 +300,7 @@ static int32_t subscription_take_sequence_count(rmw_subscription_t* subscriber, 
  * paths got one: the body's partial-drain and loan-return logic is easy to
  * disturb, and only the reporting convention is changing. A count of 0 is a
  * legitimate OK here — an empty reader, not an error. */
-rmw_ret_t subscription_take_sequence(rmw_subscription_t* subscriber, uint8_t* buf,
+rmw_ret_t subscription_take_sequence(const rmw_subscription_t* subscriber, uint8_t* buf,
                                           size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
                                           size_t* taken) {
     if (taken == nullptr) {

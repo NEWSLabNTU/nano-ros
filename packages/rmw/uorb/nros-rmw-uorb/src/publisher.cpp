@@ -73,20 +73,25 @@ rmw_ret_t publisher_create(rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void publisher_destroy(rmw_publisher_t *publisher) {
+rmw_ret_t publisher_destroy(rmw_publisher_t *publisher) {
     if (publisher == nullptr || publisher->backend_data == nullptr) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<PublisherState *>(publisher->backend_data);
+    // Phase 376 W5 — uORB reports; we used to discard it. Teardown still
+    // completes: the advertisement is what leaks, and freeing the state
+    // regardless keeps one leak from becoming two.
+    int unadvertise_rc = 0;
     if (state->advert != nullptr) {
-        (void)orb_unadvertise(state->advert);
+        unadvertise_rc = orb_unadvertise(state->advert);
     }
     state->~PublisherState();
     std::free(state);
     publisher->backend_data = nullptr;
+    return unadvertise_rc == 0 ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-rmw_ret_t publisher_publish_raw(rmw_publisher_t *publisher,
+rmw_ret_t publisher_publish_raw(const rmw_publisher_t *publisher,
                                      const uint8_t *data, size_t len) {
     if (publisher == nullptr || publisher->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

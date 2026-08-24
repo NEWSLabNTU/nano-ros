@@ -3700,3 +3700,11 @@ RESOLVED 2026-08-05 — **#431** NuttX cells skipped on a host that ran only `nr
 
 
 Recently resolved (2026-08-05 cycle) — #248, #382, #392, #398, #411, #412, #413, #416, #419, #420, #421, #423, #425, #426, #427, #428, #429, #430. Their summaries live in `docs/issues/archived/`.
+
+**#0779** (testing/ci, open 2026-08-24) — fifteen test files sit behind a crate-level
+`#![cfg(feature = "…")]` that no recipe enables. Unlike `required-features` (issue 0652) cargo BUILDS these,
+so nextest runs a binary with zero tests in it and reports green — a stronger false signal than a skipped
+target. `nros-rmw-cffi`'s two `lending` files had stopped COMPILING a phase earlier (W3.d's `has_data`
+out-parameter and named return codes) and nothing noticed. `lending` is now wired (48 tests vs 44);
+`posix-c-port`, `c-stub-test`, `bridge-stub`, `link-custom`, `unix-mock` are a dated shrinking backlog in
+`check-required-features-reachable`, which now scans both mechanisms. See `0779-*`. (2026-08-24)

@@ -176,18 +176,12 @@ RET_DEVIATIONS = {
     "create_subscription": "as create_publisher",
     "create_service": "as create_publisher",
     "create_client": "as create_publisher",
-    # The six `void` slots. NOT a target constraint — flagged in W5 as a
-    # candidate to FIX rather than keep. Upstream returns `rmw_ret_t` from all
-    # six; ours return nothing, so a backend that fails to release a handle or a
-    # loan has no way to say so and the caller has no way to find out. The
-    # current contract calls this "best-effort cleanup", which describes the
-    # behaviour without justifying it.
-    "destroy_publisher": "returns void: cleanup is best-effort. NOT a target constraint — W5 candidate to change to rmw_ret_t",
-    "destroy_subscription": "as destroy_publisher",
-    "destroy_service": "as destroy_publisher",
-    "destroy_client": "as destroy_publisher",
-    "return_loaned_message_from_publisher": "as destroy_publisher — a rejected loan return is unreportable",
-    "return_loaned_message_from_subscription": "as destroy_publisher",
+    # The six `void` slots are GONE (2026-08-24). They are recorded here as a
+    # deleted entry rather than an absence, because the reason they carried was
+    # the shape a bad deviation takes: "cleanup is best-effort" described the
+    # behaviour without justifying it, and re-reading it in W5 is what settled
+    # that `void` was never a target constraint. All six now return `rmw_ret_t`
+    # like upstream.
 }
 
 # Parameter differences on slots that DO correspond to an upstream function.
@@ -226,14 +220,13 @@ ARG_DEVIATIONS = {
     "create_subscription": ("as create_publisher"),
     "create_service": ("as create_publisher"),
     "create_client": ("as create_publisher"),
-    # `const`-ONLY differences: ours take a non-const handle where upstream
-    # takes const. These are the cheapest deviations in the table to REMOVE
-    # rather than declare — adding `const` costs one signature change per
-    # backend and buys exact parity — and they are listed here so that stays
-    # visible instead of settling in as permanent.
-    "publisher_assert_liveliness": ("const-only: upstream takes `const rmw_publisher_t *`. Fixable, not fundamental"),
-    "return_loaned_message_from_publisher": ("const-only, as publisher_assert_liveliness"),
-    "return_loaned_message_from_subscription": ("const-only, as publisher_assert_liveliness"),
+    # The `const`-only deviations are GONE (2026-08-24). Fifteen slots took a
+    # NON-const handle where upstream takes `const`; W5 checked every backend
+    # for a write through that pointer and found none — all four `*_data_mut`
+    # uses in the Rust adapter are in `destroy_*`, and no C backend touches the
+    # struct — so the deviation described nothing. The entry stays as this
+    # comment because "listed so it stays visible instead of settling in as
+    # permanent" was the right instinct and it worked.
     # ---- No node object to destroy through ----
     "destroy_publisher": ("upstream takes (node, entity); an image has no node object, so the entity alone identifies it"),
     "destroy_subscription": ("as destroy_publisher"),
@@ -541,10 +534,6 @@ def self_test():
     for slot, why in ADDED.items():
         if not why.strip():
             bad.append(f"{slot}: an addition with no reason is prose")
-    if bad:
-        for b in bad:
-            sys.stderr.write("rmw-abi-shape --self-test: " + b + "\n")
-        return 2
     # The deferral rule, both ways: a `gap` reason without an issue id is NOT
     # deferred, it is a red. Without this the rule degrades into "any gap is
     # fine", which is the failure mode that would make `--check` on the
@@ -558,6 +547,43 @@ def self_test():
     if not DEFERRED:
         bad.append("no deferred gap resolved — the parity MAP link is broken")
 
+    # A deviation entry for a slot that no longer deviates is the same drift
+    # the parity MAP had (45 stale entries, two directions). Three ARG entries
+    # and six RET entries survived their own fix here, still explaining a
+    # difference the header had stopped having — and the RET ones read
+    # "NOT a target constraint, W5 candidate to change", which is a to-do
+    # item that had been done. Declarations are only worth reading if a stale
+    # one is impossible.
+    up = upstream_signatures()
+    if up is not None:
+        our_args, our_rets = vtable_slots()
+        # Per SLOT, not per bucket: a slot can legitimately hold an ARG entry
+        # and a stale RET entry at once (`destroy_publisher` did — it still
+        # drops upstream's node argument, which kept it in the "declared"
+        # bucket and hid that its return had stopped differing). So compare
+        # each axis against the header directly.
+        up_by_slot = {}
+        for name, (uret, uargs) in up.items():
+            up_by_slot[GROUPED_SYMBOLS.get(name) or name[len("rmw_"):]] = (uret, uargs)
+        for s in sorted(ARG_DEVIATIONS):
+            u = up_by_slot.get(s)
+            if u and s in our_args and our_args[s] == u[1]:
+                bad.append(
+                    f"ARG_DEVIATIONS[{s!r}] explains an argument difference the header "
+                    "no longer has"
+                )
+        for s in sorted(RET_DEVIATIONS):
+            u = up_by_slot.get(s)
+            if u and s in our_rets and our_rets[s] == u[0]:
+                bad.append(
+                    f"RET_DEVIATIONS[{s!r}] explains a return-type difference the header "
+                    "no longer has"
+                )
+
+    if bad:
+        for b in bad:
+            sys.stderr.write("rmw-abi-shape --self-test: " + b + "\n")
+        return 2
     print(f"rmw-abi-shape --self-test: OK ({len(slots)} slot(s) parsed, 7 case(s))")
     return 0
 

@@ -24,9 +24,13 @@ rmw_ret_t service_create(rmw_session_t* /*session*/, const char* /*service_name*
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void service_destroy(rmw_service_t* /*server*/) {}
+rmw_ret_t service_destroy(rmw_service_t* /*server*/) {
+    // uORB has no services; `create_service` never succeeds, so there is
+    // nothing here that can fail.
+    return NROS_RMW_RET_OK;
+}
 
-rmw_ret_t service_take_request(rmw_service_t* /*server*/, uint8_t* /*buf*/,
+rmw_ret_t service_take_request(const rmw_service_t* /*server*/, uint8_t* /*buf*/,
                                     size_t /*buf_len*/, int64_t* /*seq_out*/,
                                     size_t* /*out_len*/, bool* /*taken*/) {
     /* uORB has no service transport — see service_send_reply. */
@@ -41,7 +45,7 @@ rmw_ret_t service_has_request(rmw_service_t* /*server*/, bool* out_has_request) 
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_send_reply(rmw_service_t* /*server*/, int64_t /*seq*/,
+rmw_ret_t service_send_reply(const rmw_service_t* /*server*/, int64_t /*seq*/,
                                   const uint8_t* /*data*/, size_t /*len*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
@@ -53,7 +57,9 @@ rmw_ret_t client_create(rmw_session_t* /*session*/, const char* /*service_name*/
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
-void client_destroy(rmw_client_t* /*client*/) {}
+rmw_ret_t client_destroy(rmw_client_t* /*client*/) {
+    return NROS_RMW_RET_OK;
+}
 
 // Phase-301: the deprecated blocking `call_raw` slot was deleted from
 // the vtable; `send_request_raw` / `try_recv_reply_raw` stay NULL on

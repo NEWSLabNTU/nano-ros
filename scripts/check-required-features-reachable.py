@@ -68,7 +68,24 @@ ROOT = Path(__file__).resolve().parent.parent
 # row back without a dated reason and the lane it is waiting on: the promise
 # this file made when it went in with five was that the sixth could not appear
 # silently, and an empty set is the strongest form of that.
-BASELINE: set[str] = set()
+# The `required-features` half of this gate is EMPTY and stays that way.
+#
+# The FILE-CFG half arrived 2026-08-24 (issue 0779) with six unreachable
+# features covering fifteen files, and the same reasoning applies as when this
+# file went in with five: switching them all on in the commit that found them
+# fails on day one and gets bypassed. `lending` was wired immediately because
+# it needed only a lane (48 tests vs 44, green). The other five want more than
+# a flag — `posix-c-port` and `c-stub-test` build C stubs, `unix-mock` wants a
+# loopback harness, `bridge-stub` and `link-custom` want link-time setups — so
+# they are a DATED BACKLOG with an issue on them, not an exemption. Delete a
+# row when its files join a lane, or when the files go.
+BASELINE: set[str] = {
+    "posix-c-port",   # 6 files, nros-platform-cffi   (issue 0779, 2026-08-24)
+    "c-stub-test",    # 2 files, platform-cffi + cffi (issue 0779, 2026-08-24)
+    "bridge-stub",    # 2 files, nros-rmw-cyclonedds  (issue 0779, 2026-08-24)
+    "link-custom",    # 1 file,  nros-rmw-zenoh       (issue 0779, 2026-08-24)
+    "unix-mock",      # 1 file,  nvidia-ivc           (issue 0779, 2026-08-24)
+}
 
 # `--features a,b`, `--features "a b"`, `features = ["a"]`, `--all-features`.
 FEATURE_CONTEXT = re.compile(
@@ -93,6 +110,38 @@ def declared_required_features() -> dict[str, list[str]]:
             if stripped.startswith("#") or "required-features" not in stripped:
                 continue
             for feat in re.findall(r'"([^"]+)"', stripped):
+                out.setdefault(feat, []).append(rel)
+    return out
+
+
+# The SAME lie, a different mechanism: a test FILE whose first attribute is
+# `#![cfg(feature = "x")]` compiles to an empty binary when `x` is off. Cargo
+# builds it, nextest runs it, and it reports zero tests — greener than
+# `required-features`, which at least does not build. `nros-rmw-cffi`'s
+# `loan_fallback` / `loan_native` sat like that behind `lending`: 4 tests never
+# run, and by 2026-08-24 they no longer COMPILED (a W3.d rename left
+# `NROS_RMW_RET_ERROR` unimported and `has_data` at its old one-argument
+# shape), which nothing noticed because nothing built them.
+FILE_CFG = re.compile(r'#!\[cfg\((.*?)\)\]', re.S)
+
+
+def declared_file_cfg_features() -> dict[str, list[str]]:
+    """feature -> test files gated on it by a crate-level `#![cfg(...)]`."""
+    out: dict[str, list[str]] = {}
+    listing = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", "packages/*/tests/*.rs",
+         "packages/*/*/tests/*.rs", "packages/*/*/*/tests/*.rs"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    for rel in listing:
+        try:
+            text = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Only the crate-level attribute, which must precede any item.
+        head = text[:2000]
+        for m in FILE_CFG.finditer(head):
+            for feat in re.findall(r'feature\s*=\s*"([^"]+)"', m.group(1)):
                 out.setdefault(feat, []).append(rel)
     return out
 
@@ -126,11 +175,16 @@ def main() -> int:
         )
         return 1
 
+    file_gated = declared_file_cfg_features()
     enabled = features_enabled_by_recipes()
     wildcard = "*" in enabled
 
+    combined = dict(declared)
+    for feat, files in file_gated.items():
+        combined.setdefault(feat, []).extend(files)
+
     unreachable = {
-        f: m for f, m in declared.items() if not wildcard and f not in enabled
+        f: m for f, m in combined.items() if not wildcard and f not in enabled
     }
     new = {f: m for f, m in unreachable.items() if f not in BASELINE}
     fixed = sorted(BASELINE - set(unreachable))
@@ -158,11 +212,12 @@ def main() -> int:
         rc = 1
 
     if rc == 0:
-        n = len(declared)
+        n = len(combined)
         sys.stderr.write("")
         print(
-            f"required-features reachable: OK ({n} declared, "
-            f"{len(BASELINE)} baselined backlog)"
+            f"required-features reachable: OK ({n} gating feature(s): "
+            f"{len(declared)} via `required-features`, {len(file_gated)} via a "
+            f"test file's `#![cfg(feature)]`; {len(BASELINE)} baselined backlog)"
         )
     return rc
 

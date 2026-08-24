@@ -92,24 +92,28 @@ rmw_ret_t xrce_publisher_create(rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void xrce_publisher_destroy(rmw_publisher_t *publisher) {
+rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
     if (publisher == NULL || publisher->backend_data == NULL) {
-        return;
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
     xrce_session_state_t *st = ps->session_state;
 
-    /* Best-effort delete of the datawriter entity. We don't wait for
-     * status — close-time teardown should not block on agent acks. */
-    (void)uxr_buffer_delete_entity(&st->session, st->output_reliable,
-                                   ps->datawriter_oid);
+    /* Phase 376 W5 — the slot reports now, but XRCE cannot know. The delete is
+     * deliberately fire-and-forget (close-time teardown must not block on
+     * agent acks), so the only failure this frame can see is a request that
+     * would not BUFFER. That is worth reporting; the agent's own verdict is
+     * not available at any price this path is willing to pay. */
+    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable,
+                                            ps->datawriter_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
     free(ps);
     publisher->backend_data = NULL;
+    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_publisher_publish_raw(rmw_publisher_t *publisher,
+rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t *publisher,
                                           const uint8_t *data, size_t len) {
     if (publisher == NULL || publisher->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

@@ -727,6 +727,22 @@ check-required-features-tests:
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
         --test dispatch_strategy --test signal_fd_wake
+    # Issue 0779 — the FILE-CFG half. These are gated by a crate-level
+    # `#![cfg(feature = "lending")]` rather than a manifest `required-features`,
+    # which is worse: cargo BUILDS them with the feature off, so nextest runs a
+    # binary containing zero tests and calls it green. Both files had stopped
+    # compiling a phase earlier and nothing noticed.
+    #
+    # Plain `cargo nextest run`, not `_nextest-tolerant`: these need no router
+    # and no capability probe, so a red here is a red. And nextest's default
+    # "no tests to run" ERROR is doing real work — it is the signal that would
+    # have caught this class, so do not pass `--no-tests`.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-cffi --features alloc,lending \
+        --test loan_fallback --test loan_native
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-zenoh --features lending,platform-posix \
+        --test lending_traits
     echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on

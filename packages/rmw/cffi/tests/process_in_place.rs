@@ -67,9 +67,11 @@ unsafe extern "C" fn stub_create_publisher(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_destroy_publisher(_: *mut NrosRmwPublisher) {}
+unsafe extern "C" fn stub_destroy_publisher(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn stub_publish_raw(
-    _: *mut NrosRmwPublisher,
+    _: *const NrosRmwPublisher,
     _: *const u8,
     _: usize,
 ) -> NrosRmwRet {
@@ -90,9 +92,11 @@ unsafe extern "C" fn stub_create_subscription(
     }
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) {}
+unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn stub_take(
-    _: *mut NrosRmwSubscription,
+    _: *const NrosRmwSubscription,
     _: *mut u8,
     _: usize,
     _: *mut usize,
@@ -122,9 +126,11 @@ unsafe extern "C" fn stub_create_service(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) {}
+unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn stub_take_request(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: *mut u8,
     _: usize,
     _: *mut i64,
@@ -143,7 +149,7 @@ unsafe extern "C" fn stub_has_request(
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_send_reply(
-    _: *mut NrosRmwService,
+    _: *const NrosRmwService,
     _: i64,
     _: *const u8,
     _: usize,
@@ -161,7 +167,9 @@ unsafe extern "C" fn stub_create_client(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) {}
+unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) -> NrosRmwRet {
+    NROS_RMW_RET_OK
+}
 unsafe extern "C" fn stub_reg_sub_event(
     _: *mut NrosRmwSubscription,
     _: NrosRmwEventKind,
@@ -180,7 +188,7 @@ unsafe extern "C" fn stub_reg_pub_event(
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
-unsafe extern "C" fn stub_assert_liveliness(_: *mut NrosRmwPublisher) -> NrosRmwRet {
+unsafe extern "C" fn stub_assert_liveliness(_: *const NrosRmwPublisher) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 // ---- the slots under test ----

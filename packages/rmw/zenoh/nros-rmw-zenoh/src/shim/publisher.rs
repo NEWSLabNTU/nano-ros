@@ -507,6 +507,14 @@ mod lending {
             }
         }
 
+        // `clippy::mut_from_ref` is the right lint to raise here and the wrong
+        // verdict: the `&mut` is minted from a `&self` because the CAS above is
+        // what grants exclusivity, not the borrow. A caller that loses the CAS
+        // gets `WouldBlock` and never sees the slice, so at most one `&mut`
+        // exists at a time — which is the invariant the `unsafe impl Sync` is
+        // written against. Surfaced 2026-08-24 by issue 0779: no lane clippies
+        // `lending`, so this had never been raised at all.
+        #[allow(clippy::mut_from_ref)]
         pub(super) fn try_claim(&self, len: usize) -> Result<&mut [u8], TransportError> {
             if len > ZENOH_TX_BUF {
                 return Err(TransportError::TooLarge);

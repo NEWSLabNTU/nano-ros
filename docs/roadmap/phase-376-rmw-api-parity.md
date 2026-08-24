@@ -563,12 +563,45 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 | item | state |
 | --- | --- |
 | every `ADDED` slot's reason re-checked against the target constraint | open |
-| every `ARG_DEVIATIONS` reason re-checked | open |
+| every `ARG_DEVIATIONS` reason re-checked | **partly landed** — the `const`-only class (15 slots) and the `void`-return class (6 slots) are FIXED, not re-declared |
 | every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
 | re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
 | re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | open |
 | `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check-rmw-abi-shape`, self-test + check, on the fast line |
 | parity MAP cross-checked against the header, both directions | **landed** — the MAP was stale in two ways at once (see below) |
+
+### Two declared deviations were fixed rather than re-justified
+
+**`const` on the handle — 15 slots.** Ours took `rmw_publisher_t *` where
+upstream takes `const rmw_publisher_t *`, on `publish`, `take`,
+`take_request`, `take_response`, `take_sequence`, `take_with_info`,
+`send_request`, `send_response`, `publisher_assert_liveliness`, both loan
+borrows, both loan returns and `take_loaned_message{,_with_info}`. The
+deviation table already called this "the cheapest deviation to REMOVE rather
+than declare"; W5 checked whether any backend actually writes through that
+pointer. **None does** — every `*_data_mut` use in the Rust adapter is inside a
+`destroy_*` trampoline, and no C or C++ backend touches the struct. So the
+deviation described nothing. Now `const`, which is also what says out loud that
+the handle is RUNTIME-owned: a backend that writes it is corrupting state it
+does not own, and the compiler now says so.
+
+**`void` returns — 6 slots.** `destroy_{publisher,subscription,service,client}`
+and both `return_loaned_message_from_*` returned nothing. The recorded reason
+was "cleanup is best-effort", which describes the behaviour without justifying
+it; upstream returns `rmw_ret_t` from all six. A backend that cannot release a
+handle — a double destroy, a token from another publisher, a Cyclone entity
+that refuses to delete — had no way to say so, and the runtime reported a
+success it had not verified. All six now return a status, and the backends
+report a real one: Cyclone propagates `dds_delete` failures (they were
+`(void)`-cast), uORB propagates `orb_unadvertise` / `orb_unsubscribe`, and XRCE
+reports a request it could not BUFFER while documenting that the agent's own
+verdict is deliberately not awaited at close time. `Drop` cannot propagate, so
+the shim logs through `nros_log` — a leak with no message resurfaces as an
+allocation failure with no provenance.
+
+Slots identical to upstream: **17 → 20**. The headline moves less than the work
+does, because most of these 15 still differ on the payload axis (bytes, not a
+typed `void *`) — a real deviation that stays declared.
 
 ### The parity MAP had drifted 45 entries, in two directions
 
@@ -596,6 +629,22 @@ against the real header rather than a fixture, because both drifts WERE the
 fixture and the header diverging.
 
 Post-fix: vtable 64, layer 2, declined 21, gap 1.
+
+### A found bug, filed: issue 0779
+
+Building the `lending` feature to verify the loan slots turned up two test
+files that **had not compiled since W3.d** — `noop_hasd` still had the old
+one-argument shape and `NROS_RMW_RET_ERROR` was never imported. Nothing noticed
+because nothing built them: they are gated by a crate-level
+`#![cfg(feature = "lending")]`, which cargo happily compiles to an EMPTY test
+binary when the feature is off. That is a stronger false signal than issue
+0652's `required-features` (which at least does not build): nextest runs the
+binary and reports it green over zero cases.
+
+Six features, fifteen files, none in a lane.
+`check-required-features-reachable` now scans both mechanisms; `lending` is
+wired and green (48 tests vs 44 in `nros-rmw-cffi`, plus 2 in `nros-rmw-zenoh`);
+the other five are a dated backlog. → issue 0779.
 
 ### Deferral needs a name on it
 
