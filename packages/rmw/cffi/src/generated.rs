@@ -10,6 +10,22 @@
 pub type rmw_ret_t = i32;
 #[doc = " Nanoseconds since a clock's epoch — upstream's `rmw_time_point_value_t`."]
 pub type rmw_time_point_value_t = i64;
+#[doc = " Visit one network flow endpoint. Return `false` to stop.\n\n  Upstream fills an ALLOCATING `rmw_network_flow_endpoint_array_t` through an\n  `rcutils_allocator_t *`. There is no allocator at this seam and the flow\n  count is a property of the OS's routing, not of anything the caller can\n  size in advance — so it streams, exactly like the graph slots."]
+pub type rmw_network_flow_endpoint_visit_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        endpoint: *const rmw_network_flow_endpoint_t,
+    ) -> bool,
+>;
+#[doc = " Visit a subscription's content filter. Return value ignored: there is\n  exactly one filter per subscription, so this is a callback only to avoid\n  handing back an allocated `rmw_subscription_content_filter_options_t`.\n\n  `expression` and every `parameters[i]` are BORROWED for the call. A\n  subscription with no filter is reported as `expression == NULL`, which is\n  what upstream's empty options struct means."]
+pub type rmw_content_filter_visit_fn = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        expression: *const core::ffi::c_char,
+        parameters: *const *const core::ffi::c_char,
+        parameter_count: usize,
+    ),
+>;
 pub type rmw_status_event_callback_t = ::core::option::Option<
     unsafe extern "C" fn(
         kind: rmw_event_type_t::Type,
@@ -116,6 +132,19 @@ pub struct rmw_topic_endpoint_info_t {
     pub endpoint_gid: rmw_gid_t,
     #[doc = " The GRANTED profile, not the requested one — which is the whole reason a\n  consumer asks. A backend that cannot read back a remote's granted QoS\n  reports what it MATCHED on, and must not substitute the local entity's\n  requested profile."]
     pub qos_profile: rmw_qos_profile_t,
+}
+#[doc = " One network flow endpoint — upstream `rmw_network_flow_endpoint_t`, field\n  for field. Unlike the graph structs this one carries no pointers, so it\n  costs nothing to mirror exactly and a caller may copy it wholesale."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_network_flow_endpoint_t {
+    pub transport_protocol: rmw_transport_protocol_t::Type,
+    pub internet_protocol: rmw_internet_protocol_t::Type,
+    pub transport_port: u16,
+    #[doc = " Publisher-side only; 0 elsewhere."]
+    pub flow_label: u32,
+    #[doc = " Differentiated Services Code Point. Publisher-side only; 0 elsewhere."]
+    pub dscp: u8,
+    pub internet_address: [core::ffi::c_char; 48usize],
 }
 #[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults."]
 #[repr(C)]
@@ -713,6 +742,39 @@ pub struct nros_rmw_vtable_t {
             ctx: *mut core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
+    #[doc = " Upstream `rmw_subscription_set_content_filter`.\n\n  Phase 376 W5. Previously DECLINED as \"DDS-only, would bloat every\n  non-DDS backend\" — but a declined symbol is absent from the ABI for\n  EVERY backend, including the one that can answer. A NULL slot costs one\n  pointer, lets Cyclone answer, and is what the runtime already reads as\n  UNSUPPORTED everywhere else. Narrowest scope wins.\n\n  Deviation, declared: upstream passes an allocated\n  `rmw_subscription_content_filter_options_t` (a `char *` plus an\n  `rcutils_string_array_t`); ours passes the expression and its parameters\n  directly, because there is no allocator at this seam and the options\n  struct exists only to own that allocation. `expression == NULL` clears\n  the filter."]
+    pub subscription_set_content_filter: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *mut rmw_subscription_t,
+            expression: *const core::ffi::c_char,
+            parameters: *const *const core::ffi::c_char,
+            parameter_count: usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_subscription_get_content_filter`. Visitor, for the same\n  reason `set` takes plain arguments: the options struct is an allocation\n  we have nothing to make."]
+    pub subscription_get_content_filter: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            visit: rmw_content_filter_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_publisher_get_network_flow_endpoints`.\n\n  Phase 376 W5. The old decline said \"zenoh-pico/XRCE have no such\n  notion\", which is true of those two and says nothing about Cyclone —\n  the reason was scoped to the ABI when it belonged on a backend. NULL\n  there, present here.\n\n  Deviation, declared: a visitor instead of the allocating\n  `rmw_network_flow_endpoint_array_t` + `rcutils_allocator_t *`."]
+    pub publisher_get_network_flow_endpoints: ::core::option::Option<
+        unsafe extern "C" fn(
+            publisher: *const rmw_publisher_t,
+            visit: rmw_network_flow_endpoint_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_subscription_get_network_flow_endpoints`."]
+    pub subscription_get_network_flow_endpoints: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *const rmw_subscription_t,
+            visit: rmw_network_flow_endpoint_visit_fn,
+            ctx: *mut core::ffi::c_void,
+        ) -> rmw_ret_t,
+    >,
     #[doc = " Upstream `rmw_count_publishers`."]
     pub count_publishers: ::core::option::Option<
         unsafe extern "C" fn(
@@ -816,6 +878,7 @@ pub const NROS_RMW_DURABILITY_TRANSIENT_LOCAL: i32 = 1;
 pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 0;
 pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 1;
 pub const RMW_GID_STORAGE_SIZE: i32 = 24;
+pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]
@@ -875,6 +938,22 @@ pub mod rmw_endpoint_type_t {
     pub const RMW_ENDPOINT_INVALID: Type = 0;
     pub const RMW_ENDPOINT_PUBLISHER: Type = 1;
     pub const RMW_ENDPOINT_SUBSCRIPTION: Type = 2;
+}
+pub mod rmw_transport_protocol_t {
+    #[doc = " Transport protocol of a network flow — upstream `rmw_transport_protocol_t`,\n  values included."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_TRANSPORT_PROTOCOL_UNKNOWN: Type = 0;
+    pub const RMW_TRANSPORT_PROTOCOL_UDP: Type = 1;
+    pub const RMW_TRANSPORT_PROTOCOL_TCP: Type = 2;
+    pub const RMW_TRANSPORT_PROTOCOL_COUNT: Type = 3;
+}
+pub mod rmw_internet_protocol_t {
+    #[doc = " Internet protocol of a network flow — upstream `rmw_internet_protocol_t`."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_INTERNET_PROTOCOL_UNKNOWN: Type = 0;
+    pub const RMW_INTERNET_PROTOCOL_IPV4: Type = 1;
+    pub const RMW_INTERNET_PROTOCOL_IPV6: Type = 2;
+    pub const RMW_INTERNET_PROTOCOL_COUNT: Type = 3;
 }
 pub mod rmw_event_type_t {
     #[doc = " Tier-1 event kinds. Stable integer values; future kinds (Tier-2)\n  extend the enum at end."]

@@ -839,6 +839,49 @@ typedef struct nros_rmw_vtable_t {
         const char *topic_name, bool no_mangle,
         rmw_topic_endpoint_info_visit_fn visit, void *ctx);
 
+    /* ---- Content filtering (RFC-0075-era DDS feature; NULL elsewhere) ---- */
+    /** Upstream `rmw_subscription_set_content_filter`.
+     *
+     *  Phase 376 W5. Previously DECLINED as "DDS-only, would bloat every
+     *  non-DDS backend" — but a declined symbol is absent from the ABI for
+     *  EVERY backend, including the one that can answer. A NULL slot costs one
+     *  pointer, lets Cyclone answer, and is what the runtime already reads as
+     *  UNSUPPORTED everywhere else. Narrowest scope wins.
+     *
+     *  Deviation, declared: upstream passes an allocated
+     *  `rmw_subscription_content_filter_options_t` (a `char *` plus an
+     *  `rcutils_string_array_t`); ours passes the expression and its parameters
+     *  directly, because there is no allocator at this seam and the options
+     *  struct exists only to own that allocation. `expression == NULL` clears
+     *  the filter. */
+    rmw_ret_t (*subscription_set_content_filter)(rmw_subscription_t *subscription,
+        const char *expression, const char *const *parameters,
+        size_t parameter_count);
+
+    /** Upstream `rmw_subscription_get_content_filter`. Visitor, for the same
+     *  reason `set` takes plain arguments: the options struct is an allocation
+     *  we have nothing to make. */
+    rmw_ret_t (*subscription_get_content_filter)(const rmw_subscription_t *subscription,
+        rmw_content_filter_visit_fn visit, void *ctx);
+
+    /* ---- Network flow endpoints (OS-level; NULL where there is no notion) ---- */
+    /** Upstream `rmw_publisher_get_network_flow_endpoints`.
+     *
+     *  Phase 376 W5. The old decline said "zenoh-pico/XRCE have no such
+     *  notion", which is true of those two and says nothing about Cyclone —
+     *  the reason was scoped to the ABI when it belonged on a backend. NULL
+     *  there, present here.
+     *
+     *  Deviation, declared: a visitor instead of the allocating
+     *  `rmw_network_flow_endpoint_array_t` + `rcutils_allocator_t *`. */
+    rmw_ret_t (*publisher_get_network_flow_endpoints)(const rmw_publisher_t *publisher,
+        rmw_network_flow_endpoint_visit_fn visit, void *ctx);
+
+    /** Upstream `rmw_subscription_get_network_flow_endpoints`. */
+    rmw_ret_t (*subscription_get_network_flow_endpoints)(
+        const rmw_subscription_t *subscription,
+        rmw_network_flow_endpoint_visit_fn visit, void *ctx);
+
     /** Upstream `rmw_count_publishers`. */
     rmw_ret_t (*count_publishers)(const rmw_session_t *session,
         const char *topic_name, size_t *count);

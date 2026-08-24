@@ -324,9 +324,16 @@ Two are already suspect and should be re-decided rather than inherited:
   EVERY registered backend (an image can carry more than one, which upstream
   never has to handle) and reports `Unsupported` only when none exposes the
   slot.
-* **`subscription_{set,get}_content_filter`** — declined as DDS-only. True, but
-  a NULL slot returning `UNSUPPORTED` costs one pointer and lets a DDS backend
-  answer, which is strictly better than absence from the ABI.
+* **`subscription_{set,get}_content_filter`** — LANDED as slots (2026-08-24).
+  Declined as DDS-only, which is true and is an argument for a NULL SLOT rather
+  than for absence: a declined symbol is missing from the ABI for the backend
+  that CAN answer too. The **network-flow pair** turned out to have the same
+  shape — "zenoh-pico/XRCE have no such notion" is true of those two and silent
+  about Cyclone, so the reason was scoped to the ABI when it belonged on a
+  backend. All four take a VISITOR where upstream takes an
+  `rcutils_allocator_t *` plus an allocating array/options struct, matching what
+  the graph slots already do for the same reason. Contract 67 → 71,
+  declined 21 → 17.
 
 At the end of W5, `rmw-abi-shape --check` joins the `just check` line and the
 claim "feature complete against RMW, modulo declared RTOS deviations" becomes
@@ -566,7 +573,7 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 | every `ARG_DEVIATIONS` reason re-checked | **partly landed** — the `const`-only class (15 slots) and the `void`-return class (6 slots) are FIXED, not re-declared |
 | every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
 | re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
-| re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | open |
+| re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | **landed** — both slots, plus the network-flow pair, whose reason had the same shape |
 | `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check-rmw-abi-shape`, self-test + check, on the fast line |
 | parity MAP cross-checked against the header, both directions | **landed** — the MAP was stale in two ways at once (see below) |
 

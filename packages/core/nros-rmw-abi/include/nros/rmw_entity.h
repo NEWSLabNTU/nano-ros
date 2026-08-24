@@ -368,6 +368,60 @@ typedef struct rmw_topic_endpoint_info_t {
 } rmw_topic_endpoint_info_t;
              /* 24 bytes */
 
+/** Transport protocol of a network flow — upstream `rmw_transport_protocol_t`,
+ *  values included. */
+typedef enum rmw_transport_protocol_t {
+    RMW_TRANSPORT_PROTOCOL_UNKNOWN = 0,
+    RMW_TRANSPORT_PROTOCOL_UDP     = 1,
+    RMW_TRANSPORT_PROTOCOL_TCP     = 2,
+    RMW_TRANSPORT_PROTOCOL_COUNT   = 3,
+} rmw_transport_protocol_t;
+
+/** Internet protocol of a network flow — upstream `rmw_internet_protocol_t`. */
+typedef enum rmw_internet_protocol_t {
+    RMW_INTERNET_PROTOCOL_UNKNOWN = 0,
+    RMW_INTERNET_PROTOCOL_IPV4    = 1,
+    RMW_INTERNET_PROTOCOL_IPV6    = 2,
+    RMW_INTERNET_PROTOCOL_COUNT   = 3,
+} rmw_internet_protocol_t;
+
+/** Upstream's value, kept exactly: it sizes a field that crosses the ABI, and
+ *  upstream took it from `linux/inet.h` for the same reason. */
+#define RMW_INET_ADDRSTRLEN 48
+
+/** One network flow endpoint — upstream `rmw_network_flow_endpoint_t`, field
+ *  for field. Unlike the graph structs this one carries no pointers, so it
+ *  costs nothing to mirror exactly and a caller may copy it wholesale. */
+typedef struct rmw_network_flow_endpoint_t {
+    rmw_transport_protocol_t transport_protocol;
+    rmw_internet_protocol_t  internet_protocol;
+    uint16_t                 transport_port;
+    /** Publisher-side only; 0 elsewhere. */
+    uint32_t                 flow_label;
+    /** Differentiated Services Code Point. Publisher-side only; 0 elsewhere. */
+    uint8_t                  dscp;
+    char                     internet_address[RMW_INET_ADDRSTRLEN];
+} rmw_network_flow_endpoint_t;
+
+/** Visit one network flow endpoint. Return `false` to stop.
+ *
+ *  Upstream fills an ALLOCATING `rmw_network_flow_endpoint_array_t` through an
+ *  `rcutils_allocator_t *`. There is no allocator at this seam and the flow
+ *  count is a property of the OS's routing, not of anything the caller can
+ *  size in advance — so it streams, exactly like the graph slots. */
+typedef bool (*rmw_network_flow_endpoint_visit_fn)(void *ctx,
+    const rmw_network_flow_endpoint_t *endpoint);
+
+/** Visit a subscription's content filter. Return value ignored: there is
+ *  exactly one filter per subscription, so this is a callback only to avoid
+ *  handing back an allocated `rmw_subscription_content_filter_options_t`.
+ *
+ *  `expression` and every `parameters[i]` are BORROWED for the call. A
+ *  subscription with no filter is reported as `expression == NULL`, which is
+ *  what upstream's empty options struct means. */
+typedef void (*rmw_content_filter_visit_fn)(void *ctx,
+    const char *expression, const char *const *parameters, size_t parameter_count);
+
 /** Explicit infinite spelling for the u32-ms duration fields
  *  (phase-301, issue 0241). Semantically identical to 0 (no check) but
  *  lets a caller distinguish "I mean infinite" from "I left it unset". */

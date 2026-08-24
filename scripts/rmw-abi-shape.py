@@ -239,6 +239,23 @@ ARG_DEVIATIONS = {
     ),
     "publish_loaned_message": ("a length instead of upstream's allocation argument: the loan is a byte slot, and the backend needs to know how much of it was written"),
     "borrow_loaned_message": ("upstream loans a typed message via `void **`; ours reserves a byte slot of a requested size and reports the granted capacity plus an opaque token, because the payload is bytes and the backend owns the buffer until it is committed or discarded"),
+    # ---- Content filter / network flows: allocation replaced by a visitor ----
+    "subscription_set_content_filter": (
+        "upstream passes an allocated `rmw_subscription_content_filter_options_t` "
+        "(a `char *` plus an `rcutils_string_array_t`); ours passes the expression "
+        "and its parameters directly, because there is no allocator at this seam "
+        "and that struct exists only to own the allocation"
+    ),
+    "subscription_get_content_filter": (
+        "visitor instead of the allocating options struct + `rcutils_allocator_t *`, "
+        "as subscription_set_content_filter"
+    ),
+    "publisher_get_network_flow_endpoints": (
+        "visitor instead of an allocating `rmw_network_flow_endpoint_array_t` + "
+        "`rcutils_allocator_t *`; the flow count is a property of the OS routing "
+        "table, not something the caller can size in advance"
+    ),
+    "subscription_get_network_flow_endpoints": ("as publisher_get_network_flow_endpoints"),
     # ---- Events ----
     "publisher_event_init": ("upstream fills an `rmw_event_t` the caller then polls with `rmw_take_event`; ours registers a CALLBACK directly, because an RTOS executor has no wait-set to poll an event handle from. The extra `uint32_t` is the QoS-policy filter and `void *` the callback context"),
     "subscription_event_init": ("as publisher_event_init"),

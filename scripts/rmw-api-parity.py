@@ -224,15 +224,25 @@ MAP = {
     "rmw_compare_gids_equal": ("layer", "a plain exported ABI function; see rmw_qos_profile_check_compatible"),
     # ---- Declined: RTOS design ----
     "rmw_publisher_get_network_flow_endpoints": (
-        "declined",
-        "enumerates OS-level flows (DSCP, multicast egress); zenoh-pico/XRCE have no such notion",
+        "vtable",
+        "publisher_get_network_flow_endpoints — W5. The decline read "
+        "\"zenoh-pico/XRCE have no such notion\", which is true of those two and "
+        "silent about Cyclone: the reason was scoped to the ABI when it belonged "
+        "on a backend. NULL there, a visitor here",
     ),
-    "rmw_subscription_get_network_flow_endpoints": ("declined", "as above"),
+    "rmw_subscription_get_network_flow_endpoints": (
+        "vtable", "subscription_get_network_flow_endpoints — as above",
+    ),
     "rmw_subscription_set_content_filter": (
-        "declined",
-        "content filtering is a DDS-only expression evaluator; would bloat every non-DDS backend",
+        "vtable",
+        "subscription_set_content_filter — W5. \"DDS-only, would bloat every "
+        "non-DDS backend\" argues for a NULL SLOT, not for absence: a declined "
+        "symbol is missing from the ABI for the backend that CAN answer too, and "
+        "one pointer is what the bloat actually costs",
     ),
-    "rmw_subscription_get_content_filter": ("declined", "as above"),
+    "rmw_subscription_get_content_filter": (
+        "vtable", "subscription_get_content_filter — as above",
+    ),
     "rmw_set_log_severity": ("vtable", "set_log_severity"),
     "rmw_publisher_wait_for_all_acked": ("vtable", "publisher_wait_for_all_acked"),
     "rmw_client_set_on_new_response_callback": ("vtable", "client_set_on_new_response_callback"),
