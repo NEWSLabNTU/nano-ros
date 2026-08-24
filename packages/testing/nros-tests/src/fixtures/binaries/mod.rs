@@ -1141,6 +1141,13 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
         return None;
     }
     let text = String::from_utf8_lossy(&output.stdout);
+    // issue 0764 — gather the WHOLE candidate set before deciding, instead of
+    // returning on the first newer mtime. The bytes get the last word (below),
+    // and the content helper must be called ONCE with every input: called
+    // per-dep it would rewrite the baseline with a single entry each time,
+    // which is the divergence issue 0442 records.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let mut newer: Option<PathBuf> = None;
     // Indented lines are dependency paths; unindented lines are the per-object
     // `<obj>: #deps …` headers.
     for line in text.lines() {
@@ -1155,11 +1162,13 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
         if staleness::note_candidate(&dep_path) {
             continue;
         }
-        if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
+        if newer.is_none()
+            && let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
             && dep_mtime > bin_mtime
         {
-            return Some(dep_path);
+            newer = Some(dep_path.clone());
         }
+        candidates.push(dep_path);
     }
     // Sources compiled into the fixture by a Rust dep's `build.rs` (via the `cc`
     // crate) are INVISIBLE to ninja's dependency graph above: corrosion invokes
@@ -1169,7 +1178,30 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
     // behaviour (issue 0391 — the issue-0196 "watch the same inputs" rule, one
     // level deeper). Close it for the zpico (zenoh-pico) C shim, the one
     // purely-cargo C surface these fixtures link.
-    zpico_c_source_newer(binary_path, bin_mtime)
+    let (zpico_newer, zpico_candidates) = zpico_c_inputs(binary_path, bin_mtime);
+    candidates.extend(zpico_candidates);
+    let newer = newer.or(zpico_newer);
+
+    // issue 0764 — the CONTENT decides, through the same shared helper the
+    // cargo dep-info arm (`dep_info_newer_source`) and the zephyr arm already
+    // use. Before this, THIS arm compared raw mtimes while the build compared
+    // bytes: `copy_if_different` correctly skips a byte-identical archive, so
+    // nothing relinks, so the binary's mtime stays older than a source whose
+    // mtime moved — and the verdict was unclearable BY CONSTRUCTION. Rebuilding
+    // could not fix it, which is what separated 0764 from the documented mtime
+    // treadmill.
+    let Some(newer) = newer else {
+        // Fresh by mtime: record/refresh the baseline now, while the artifact is
+        // known good, so the FIRST later byte-identical rewrite has something to
+        // compare against. Same reasoning as the cargo arm.
+        let _ = staleness::candidates_changed_content_policy(binary_path, &candidates, true);
+        return None;
+    };
+    match staleness::candidates_changed_content_policy(binary_path, &candidates, false) {
+        Some(true) => Some(newer), // genuinely edited
+        Some(false) => None,       // identical bytes: a rewrite, not an edit
+        None => Some(newer),       // cannot tell → keep the old, strict answer
+    }
 }
 
 /// The zpico C shim (`zpico-sys/c/**`) is compiled by `zpico-sys`'s `build.rs`,
@@ -1178,10 +1210,22 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
 /// fixtures don't link zpico → gate on the `build-zenoh` marker to avoid false
 /// stales), compare every `.c`/`.h` under `zpico-sys/c/` against the binary
 /// mtime and report the first newer one. Detect-only; never builds.
-fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
-    let build_dir = binary_path.parent()?;
+/// issue 0764 — returns BOTH halves of one resolution: the first input whose
+/// mtime is newer than the binary, and the full candidate set to content-hash.
+///
+/// One function rather than a `_newer` and a `_candidates` sibling, because two
+/// functions resolving the same input set is how the probe arms diverged in the
+/// first place (issue 0442): the answer and the evidence for it must come from
+/// the same walk, or a later edit to one will silently not reach the other.
+fn zpico_c_inputs(
+    binary_path: &Path,
+    bin_mtime: std::time::SystemTime,
+) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let Some(build_dir) = binary_path.parent() else {
+        return (None, Vec::new());
+    };
     if !build_dir.to_string_lossy().contains("zenoh") {
-        return None;
+        return (None, Vec::new());
     }
 
     // phase-363 — ASK the tool that owns the graph. `zpico-sys`'s `build.rs`
@@ -1193,9 +1237,13 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
     // so a platform-config edit used to slip past this gate entirely.
     let recorded = zpico_recorded_inputs(build_dir);
     if !recorded.is_empty() {
-        return recorded
-            .into_iter()
-            .find_map(|p| newest_path_after(&p, bin_mtime));
+        let newer = recorded
+            .iter()
+            .find_map(|p| newest_path_after(p, bin_mtime));
+        // The recorded set may name DIRECTORIES as well as files; the content
+        // helper expands them itself (`collect_source_files`), the same way the
+        // zephyr arm passes its candidates.
+        return (newer, recorded);
     }
 
     // Bootstrap only: no build script output found, so nothing has recorded an
@@ -1210,7 +1258,8 @@ fn zpico_c_source_newer(binary_path: &Path, bin_mtime: std::time::SystemTime) ->
     // running, and a corrosion layout change is all it would take.
     staleness::note_unmeasured_input_set();
     let c_root = zpico_manifest_dir().join("c");
-    newest_source_after(&c_root, bin_mtime)
+    let newer = newest_source_after(&c_root, bin_mtime);
+    (newer, vec![c_root])
 }
 
 /// `zpico-sys`'s manifest dir — the base a RELATIVE `rerun-if-changed` entry is
