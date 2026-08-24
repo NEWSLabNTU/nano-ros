@@ -49,7 +49,7 @@ nros-orchestration-ir = { workspace = true }
 # SystemModel at compile time (the canonical bake input). Same vendored crate
 # the CLI uses; path crosses into the cli sub-workspace (host-only proc-macro
 # dep, same rationale as nros-pkg-index / nros-launch-parser above).
-ros-launch-manifest-model = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.8" }
+ros-launch-manifest-model = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.11" }
 
 [lints]
 workspace = true

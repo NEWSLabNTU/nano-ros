@@ -893,7 +893,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "ros-launch-manifest-check"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.8#1a53088da13f7ccb5deb057fea86d426d23c70e1"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
 dependencies = [
  "codespan-reporting",
  "petgraph",
@@ -904,7 +904,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-model"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.8#1a53088da13f7ccb5deb057fea86d426d23c70e1"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -917,8 +917,9 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-sched"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.8#1a53088da13f7ccb5deb057fea86d426d23c70e1"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
 dependencies = [
+ "ros-launch-manifest-types",
  "serde",
  "serde_yaml_ng",
  "thiserror 2.0.19",
@@ -928,7 +929,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.8#1a53088da13f7ccb5deb057fea86d426d23c70e1"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
 dependencies = [
  "serde",
  "serde_json",

@@ -629,7 +629,7 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         priority: spec.priority,
         stack_bytes: spec.stack_bytes,
         preempt_threshold: spec.preempt_threshold,
-        time_slice_us: spec.time_slice_us,
+        time_slice_us: spec.time_slice.map(|d| d.as_micros() as u64),
         sched_class: spec.sched_class.clone(),
         // phase-330 W1.a — these four were DROPPED here, because this crate's
         // `TierRtosSpec` had nowhere to put them. This is the ONE conversion
@@ -637,9 +637,9 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
         // `codegen-system` consume, so a field missing here is a scoped dim
         // that silently never reaches the runtime.
         core: spec.core,
-        deadline_us: spec.deadline_us,
-        budget_us: spec.budget_us,
-        period_us: spec.period_us,
+        deadline_us: spec.deadline.map(|d| d.as_micros() as u64),
+        budget_us: spec.budget.map(|d| d.as_micros() as u64),
+        period_us: spec.period.map(|d| d.as_micros() as u64),
     }
 }
 
@@ -654,11 +654,20 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TierPlatformSpec) -> T
 pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str) -> TierDef {
     let selected = t.platform(target_rtos);
     TierDef {
-        spin_period_us: t.spin_period_us,
+        spin_period_us: t.spin_period.map(|d| d.as_micros() as u64),
         class: t.class.clone(),
-        period_us: selected.and_then(|sp| sp.period_us).or(t.period_us),
-        budget_us: selected.and_then(|sp| sp.budget_us).or(t.budget_us),
-        deadline_us: selected.and_then(|s| s.deadline_us).or(t.deadline_us),
+        period_us: selected
+            .and_then(|sp| sp.period)
+            .or(t.period)
+            .map(|d| d.as_micros() as u64),
+        budget_us: selected
+            .and_then(|sp| sp.budget)
+            .or(t.budget)
+            .map(|d| d.as_micros() as u64),
+        deadline_us: selected
+            .and_then(|s| s.deadline)
+            .or(t.deadline)
+            .map(|d| d.as_micros() as u64),
         // phase-296 W5.9 — per-platform sporadic override (NuttX
         // SCHED_SPORADIC): the SELECTED platform's budget/period hoist into
         // this bake's head, so one platform's kernel sporadic server engages
