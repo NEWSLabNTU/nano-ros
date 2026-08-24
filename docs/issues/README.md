@@ -137,7 +137,7 @@ ROS 2 actually ships:
 cyclonedds and fastrtps BOTH return `RMW_RET_UNSUPPORTED` with the error string "unimplemented", and NOTHING
 in the install calls the symbol — because upstream's serialized buffer RESIZES, making the bound a perf hint
 there. Ours cannot resize: a sample that does not fit is dropped after the transport ACKed it, so the same
-number is load-bearing here. See `0776-*`. (2026-08-24)
+number is load-bearing here. See `0776-*`. (2026-08-24) Follow-up the same day: the gate that entry calls for is added (`check-rmw-ret-sign`, now STRUCTURAL and on `just check`) — it had reported 0/0 throughout, scanning only near vtable slot names — and it immediately found the same shape in cyclonedds' own `call_blocking` test helpers and in xrce's two service take helpers, which this fix did not reach.
 
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
 

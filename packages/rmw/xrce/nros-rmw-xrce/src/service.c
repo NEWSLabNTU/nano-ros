@@ -235,8 +235,24 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
     return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-static int32_t xrce_service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf,
-                                      size_t buf_len, int64_t* seq_out) {
+/* Issue 0773 — the length-or-status shape is retired here too.
+ *
+ * The W3.d step A adapters below were written as THIN translations over
+ * length-returning helpers, separating a byte count from an error with
+ * `if (n < 0)`. Step B then gave the error codes upstream's POSITIVE numbering
+ * and nothing failed to compile: `NROS_RMW_RET_NO_DATA` (1003) and
+ * `NROS_RMW_RET_BUFFER_TOO_SMALL` (1005) stopped being negative and started
+ * being lengths. The cyclonedds copy of this same shape is what crashed a
+ * user's executor with `range end index 1005 out of range for slice of
+ * length 256`; xrce had not been exercised on the failing path, which is the
+ * only reason it did not crash too.
+ *
+ * Status is returned, length goes to an out-parameter. */
+static rmw_ret_t xrce_service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf,
+                                                   size_t buf_len, int64_t* seq_out,
+                                                   size_t* out_len) {
+    if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *out_len = 0;
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -290,7 +306,8 @@ static int32_t xrce_service_try_recv_request_len(const rmw_service_t* server, ui
     }
     XRCE_REQ_RING_POP();
 #undef XRCE_REQ_RING_POP
-    return (int32_t)len;
+    *out_len = len;
+    return NROS_RMW_RET_OK;
 }
 
 /* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
@@ -305,15 +322,17 @@ rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf,
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = xrce_service_try_recv_request_len(server, buf, buf_len, seq_out);
-    if (n == NROS_RMW_RET_NO_DATA) {
-        *taken = false;
+    *out_len = 0;
+    *taken = false;
+    size_t n = 0;
+    rmw_ret_t rc = xrce_service_try_recv_request_len(server, buf, buf_len, seq_out, &n);
+    if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
-    if (n < 0) {
-        return (rmw_ret_t)n;
+    if (rc != NROS_RMW_RET_OK) {
+        return rc;
     }
-    *out_len = (size_t)n;
+    *out_len = n;
     *taken = true;
     return NROS_RMW_RET_OK;
 }
@@ -425,8 +444,11 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-static int32_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                        size_t reply_buf_len) {
+static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
+                                                     size_t reply_buf_len,
+                                                     size_t* out_len) {
+    if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *out_len = 0;
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -452,7 +474,8 @@ static int32_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, u
         memcpy(reply_buf, slot->data, len);
     }
     slot->has_reply = false;
-    return (int32_t)len;
+    *out_len = len;
+    return NROS_RMW_RET_OK;
 }
 
 /* Phase 376 W3.b/W3.d step A — upstream's shape over the unchanged body above.
@@ -466,15 +489,17 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len);
-    if (n == NROS_RMW_RET_NO_DATA) {
-        *taken = false;
+    *out_len = 0;
+    *taken = false;
+    size_t n = 0;
+    rmw_ret_t rc = xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, &n);
+    if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
-    if (n < 0) {
-        return (rmw_ret_t)n;
+    if (rc != NROS_RMW_RET_OK) {
+        return rc;
     }
-    *out_len = (size_t)n;
+    *out_len = n;
     *taken = true;
     return NROS_RMW_RET_OK;
 }

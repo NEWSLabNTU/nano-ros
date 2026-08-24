@@ -206,3 +206,40 @@ manual action run completes end to end
 this tree. A checker for `int32_t`-returning functions that `return
 NROS_RMW_RET_*` un-negated would catch the next one — noted for
 phase-376's own follow-up rather than added here.
+
+## The gate, and the two instances it found (follow-up, 2026-08-24)
+
+The section above notes the hazard is generic and defers the checker. Added
+now, in `scripts/check-rmw-ret-sign.py`, and wired to `just check` as
+`check-rmw-ret-sign`.
+
+That script reported **0 / 0 throughout this bug**. It scans a WINDOW around
+vtable slot names, and every helper here is internal — no slot name appears
+within thirty lines of some of the tests. The window cannot be widened into
+this, because the defect is not "a sign test near a slot"; it is "a function
+that returns a length OR a status at all". So the new check is structural: a
+C/C++ function whose body returns both a bare `NROS_RMW_RET_*` constant and a
+cast-to-integer length, wherever it sits.
+
+It does NOT fire on the `wire_status()` encoding this issue landed — a negated
+status is not a bare status return, which is the point of that encoding.
+
+Two more instances, found the moment it ran:
+
+* `call_blocking` in `tests/service_roundtrip.cpp` and
+  `tests/ros2_srv_client.cpp` — cyclonedds' own test helpers, carrying the bug
+  they exist to catch. Converted to status-plus-out-parameter.
+
+And one in another backend, which this issue's fix did not reach:
+
+* `xrce_service_try_recv_request_len` / `_reply_raw_len` (`xrce/service.c`)
+  carried the IDENTICAL W3.d step A "thin adapter" comment and the identical
+  `if (n < 0)`. xrce had simply never been exercised on a failing path. Both
+  converted to status-plus-out-parameter (rather than the negated encoding —
+  the xrce helpers have no caller that needs the packed form).
+
+**A hole in the gate, found by probing it rather than trusting it:** the first
+version matched only `intN_t` function heads. `rmw_ret_t` is a typedef for
+`int32_t`, so the same defect spelled with the status type passed straight
+through. Widened, then re-probed by reintroducing the original bug and
+confirming a red.

@@ -185,6 +185,61 @@ def self_test():
     print(f"check-rmw-ret-sign --self-test: OK ({len(cases)} case(s))")
 
 
+# ---------------------------------------------------------------------------
+# Issue 0773 — the gate above scans a WINDOW around vtable SLOT names, and the
+# bug that actually shipped was one layer below them.
+#
+# A backend's INTERNAL helper returned a byte count or an `NROS_RMW_RET_*`
+# constant through one `int32_t`, and its caller separated the two with
+# `if (x < 0)`. No slot name appears within thirty lines of some of those
+# tests, so the window found nothing and reported 0/0 while the cyclonedds
+# cancel path was turning `NO_DATA` (1003) into a length and then
+# `BUFFER_TOO_SMALL` (1005) into a slice bound.
+#
+# The window cannot be widened into this: the defect is not "a sign test near a
+# slot", it is "a function that returns a length OR a status at all". So this
+# check is structural instead — a C/C++ function whose body returns both an
+# `NROS_RMW_RET_*` constant and a cast-to-integer length is the shape, wherever
+# it sits and whatever its caller does with it.
+RET_CONST = re.compile(r"\breturn\s+NROS_RMW_RET_[A-Z_]+\s*;")
+LEN_RETURN = re.compile(
+    r"\breturn\s+(?:static_cast<u?int(?:8|16|32|64)_t>\(|\(u?int(?:8|16|32|64)_t\)\s*)"
+)
+# `rmw_ret_t` is a typedef for `int32_t`, so a function declared to return a
+# STATUS can still `return static_cast<int32_t>(len)` and compile. That spelling
+# is the same defect and was missed by a first version of this check that only
+# matched `intN_t` heads — caught by probing the gate instead of trusting it.
+FN_HEAD = re.compile(
+    r"(?m)^(?:static\s+)?(?:u?int(?:8|16|32|64)_t|rmw_ret_t)\s+([A-Za-z_]\w*)"
+    r"\s*\([^;{]*\)\s*\{"
+)
+
+
+def scan_multiplexers(rel):
+    """[(line, fn)] — integer-returning functions that return BOTH a status
+    constant and a cast length."""
+    path = os.path.join(ROOT, rel)
+    try:
+        src = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return []
+    body_src = strip_comments(src, rust=False)
+    out = []
+    for m in FN_HEAD.finditer(body_src):
+        depth = 1
+        i = m.end()
+        while i < len(body_src) and depth:
+            if body_src[i] == "{":
+                depth += 1
+            elif body_src[i] == "}":
+                depth -= 1
+            i += 1
+        body = body_src[m.end():i]
+        if RET_CONST.search(body) and LEN_RETURN.search(body):
+            out.append((body_src[: m.start()].count("\n") + 1, m.group(1)))
+    return out
+
+
 def main():
     self_test()
     files = tracked()
@@ -195,6 +250,13 @@ def main():
         for line_no, slot, text in scan_file(rel, DUAL_RETURN):
             later.append((rel, line_no, slot, text))
 
+    multiplexers = []
+    for rel in files:
+        if not rel.endswith((".c", ".cpp")):
+            continue
+        for line_no, fn in scan_multiplexers(rel):
+            multiplexers.append((rel, line_no, fn))
+
     print("rmw return-sign audit (phase 376 W3.d)")
     print(f"  sign tests on STATUS-ONLY results : {len(now)}   <- fix before the flip")
     print(f"  sign tests on DUAL-RETURN results : {len(later)} <- fix with the slot")
@@ -204,6 +266,21 @@ def main():
         for rel, line_no, slot, text in now:
             print(f"  {rel}:{line_no}  [{slot}]  {text[:88]}")
         print()
+    if multiplexers:
+        sys.stderr.write(
+            f"[FAIL] {len(multiplexers)} function(s) return a LENGTH or an "
+            "`NROS_RMW_RET_*` status through one integer (issue 0773):\n"
+        )
+        for rel, line_no, fn in multiplexers:
+            sys.stderr.write(f"         {rel}:{line_no}  {fn}\n")
+        sys.stderr.write(
+            "\n       Our status codes are POSITIVE since W3.d step B, so no sign\n"
+            "       test can separate the two any more and the compiler cannot see\n"
+            "       the difference. Return the status; put the length in an\n"
+            "       out-parameter, as the vtable slots themselves do.\n"
+        )
+        return 1
+
     if later:
         print("## dual-return (the contract today; changes with W3.d)")
         for rel, line_no, slot, text in later[:40]:

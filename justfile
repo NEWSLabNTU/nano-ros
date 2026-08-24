@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3556,6 +3556,17 @@ check-tier-spin-gap:
 # only: the dual-return list is the CONTRACT today and changes with the slots.
 [group("check")]
 rmw-ret-sign:
+    @python3 scripts/check-rmw-ret-sign.py
+
+# Issue 0773 — the length-or-status shape, gated.
+#
+# This script was a REPORT (`just rmw-ret-sign`), on no lane, because its job
+# was a one-off migration sweep before W3.d step B flipped the return values.
+# The flip then broke a class it could not see — backend-internal helpers
+# multiplexing a byte count with an `NROS_RMW_RET_*` code — and nobody was
+# running it anyway. It has a structural check now and a non-zero exit, so it
+# belongs on the line.
+check-rmw-ret-sign:
     @python3 scripts/check-rmw-ret-sign.py
 
 # Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and

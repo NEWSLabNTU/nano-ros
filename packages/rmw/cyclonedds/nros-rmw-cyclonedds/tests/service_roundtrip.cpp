@@ -41,8 +41,15 @@ int64_t get_le64(const uint8_t *in) {
 
 // Phase-301: the blocking `call_raw` vtable slot was deleted; emulate
 // the old blocking call with the non-blocking send + poll pair.
-int32_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
-                      size_t rep_cap) {
+// Issue 0773 — status returned, length out. This returned either a byte count
+// or an `NROS_RMW_RET_*` code through one `int32_t`, the same shape that turned
+// `BUFFER_TOO_SMALL` into a slice bound in the backend once W3.d step B made
+// the codes positive. A test helper carrying the bug it is meant to catch is
+// worse than no helper.
+rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, uint8_t *rep,
+                        size_t rep_cap, size_t *out_len) {
+    if (out_len == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *out_len = 0;
     rmw_ret_t sr = g_vt->send_request(cli, req, req_len);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
@@ -56,7 +63,8 @@ int32_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, uin
             return rc;
         }
         if (took) {
-            return static_cast<int32_t>(n);
+            *out_len = n;
+            return NROS_RMW_RET_OK;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -157,11 +165,12 @@ int main() {
     });
 
     uint8_t rep[64] = {};
-    int32_t n = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep));
+    size_t n = 0;
+    rmw_ret_t call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
     server.join();
 
-    if (n <= 0) {
-        std::fprintf(stderr, "call_blocking returned %d\n", n);
+    if (call_rc != NROS_RMW_RET_OK || n == 0) {
+        std::fprintf(stderr, "call_blocking failed rc=%d len=%zu\n", (int) call_rc, n);
         g_vt->destroy_client(&cli);
         g_vt->destroy_service(&srv);
         (void) g_vt->destroy_session(&s);
