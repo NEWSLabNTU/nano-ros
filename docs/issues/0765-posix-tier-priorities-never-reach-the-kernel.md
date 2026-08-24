@@ -182,3 +182,58 @@ then re-run the entry and expect `tier priority set tier=...` in place of
 `FAILED`. Until that is done, "priority IS applied where permitted" rests on the
 `pthread_setschedparam` contract and on the same code path working on NuttX, not
 on a measurement of the applied case.
+
+## Success path VERIFIED 2026-08-24 — and it immediately creates a POSIX band problem
+
+The privileged step was run (`setcap cap_sys_nice+ep` on the built
+`native_entry`), so the half that rested on the pthread contract is now
+measured.
+
+**Our own markers:**
+
+```
+nros: tier priority set tier=`low`  prio=10
+nros: tier priority set tier=`high` prio=80
+```
+
+**The kernel's own view, which is the one that counts** — play_launch's
+verification recipe, `ps -eLo tid,cls,rtprio,comm`, taken while the entry ran:
+
+```
+2227128  FF     10 native_entry      <- boot tier `low`, on the calling thread
+2227133  FF     80 nros-tier-high    <- spawned tier
+2227129  TS      -  native_entry
+2227131  TS      -  native_entry
+```
+
+`FF` is SCHED_FIFO and `rtprio` matches each declared value exactly. Both arms
+are proven, including the boot tier — the one that runs on the calling thread
+and was the easiest to leave out.
+
+The capability is bound to the binary's CONTENTS, so the very next fixture
+rebuild dropped it and the unprivileged path returned. That is the behaviour the
+warning text describes, observed rather than assumed, and it means an
+unprivileged `just ci` keeps working with inert priorities and a loud line —
+which is the intended arrangement, not a gap.
+
+### The finding: POSIX now has RFC-0079's inversion, and cannot fix it
+
+Read the `TS` rows again. With tier priorities real, the tiers run SCHED_FIFO at
+10 and 80 while every other thread in the process — including zenoh-pico's read
+and lease tasks — stays on SCHED_OTHER. **A SCHED_FIFO thread outranks every
+SCHED_OTHER thread unconditionally**, so both tiers now preempt the transport
+they publish over.
+
+That is issue 0623's inversion, arriving on POSIX the moment priorities stopped
+being advisory. It was not reachable before, because nothing was applied.
+
+And POSIX cannot currently answer it: `zpico_set_task_config` DISCARDS the
+priority on Linux/macOS (the `#else` arm this issue opened with), so the
+transport cannot be raised to meet the tiers even by an operator who wants it
+to. A POSIX `[board.priority_plan]` therefore needs BOTH halves — a transport
+band that can be set, and a pool below it — and only the second exists.
+
+So the status is: the knob is real and honest, and the port is not finished.
+RFC-0079's POSIX row stays open with a sharper question than it started with —
+not "can priorities apply here" (yes, measured) but "what reserves the transport
+when the tiers are FIFO and the transport is not".

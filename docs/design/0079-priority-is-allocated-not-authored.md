@@ -346,7 +346,7 @@ Four of five ports are allocated and enforced:
 | NuttX | static | 8 | `transport 100..100` (INHERITED) | `1..99` |
 | ThreadX | static | 2 | `transport 14..14` | `15..31` |
 | Zephyr | DERIVED (§4.1) | 8 | resolved per image — `7..7` here | `8..14` |
-| POSIX | none — issue 0765 | 11 | priorities reach no kernel | — |
+| POSIX | half — issue 0765 | 11 | tiers apply (SCHED_FIFO, measured); transport CANNOT be set | — |
 
 Zephyr's four `tiers.high.zephyr = 5` violations are closed: moved to 9, inside
 the resolved pool and below the transport, in all four bringups.
@@ -465,7 +465,19 @@ would re-author issue 0623 inside the mechanism built to prevent it. The
 conversion is Zephyr's, not ours, so the plan needs it read out of Zephyr's
 POSIX layer rather than guessed.
 
-**POSIX is not a port to convert but a question to answer.** The Linux board
+**POSIX is half-solved as of 2026-08-24, and the remaining half is sharper.**
+Tier priorities now apply — `setcap cap_sys_nice+ep`, then `ps -eLo
+tid,cls,rtprio` shows `FF 10` and `FF 80` for the two tiers, boot tier included
+— or print a line naming the missing capability. But that immediately creates
+this RFC's own inversion here: a SCHED_FIFO tier outranks every SCHED_OTHER
+thread unconditionally, and zenoh-pico's read/lease tasks stay on SCHED_OTHER
+because `zpico_set_task_config` DISCARDS priority on Linux/macOS. So POSIX has a
+pool and no way to reserve a band — the transport cannot be raised to meet the
+tiers even deliberately. The question is no longer "can priorities apply here"
+but "what reserves the transport when the tiers are FIFO and the transport is
+not".
+
+The original framing, kept because it is what the port looked like before: The Linux board
 never calls `sched_setscheduler` — it prints "posix tier priority/core are
 advisory (not applied natively)" whenever a tier declares one — and
 `zpico_set_task_config` discards the priority there for the same privilege
