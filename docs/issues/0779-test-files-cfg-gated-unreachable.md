@@ -72,3 +72,48 @@ python3 scripts/check-required-features-reachable.py   # lists all six
 cargo nextest run -p nros-rmw-cffi --features alloc          # 44 tests
 cargo nextest run -p nros-rmw-cffi --features alloc,lending  # 48 tests
 ```
+
+## Backlog: 5 → 3 (2026-08-25) — and the feature named here is not enough
+
+`bridge-stub` and `link-custom` are wired and out of the baseline. Five tests
+that had never run now run, all passing:
+
+| file | tests | crate-level cfg |
+| --- | --- | --- |
+| `descriptor_seam` | 1 | `#![cfg(feature = "bridge-stub")]` |
+| `registry_race` | 3 | `#![cfg(all(feature = "std", feature = "bridge-stub"))]` |
+| `custom_transport` | 1 | `#![cfg(all(feature = "platform-posix", feature = "link-custom"))]` |
+
+`just check-required-features-tests` goes 26 → 31.
+
+### The trap in this issue's own table
+
+The table above lists ONE feature per file, and for two of the three that is not
+what the file requires. Enabling exactly the named feature reproduces the bug
+this issue exists to kill, one level in:
+
+```
+cargo nextest run -p nros-rmw-zenoh --features link-custom -E 'binary(custom_transport)'
+  Summary  0 tests run: 0 passed, 0 skipped
+  error: no tests to run
+```
+
+The target builds, runs zero tests, and a lane that named it would look wired
+while covering nothing. Both were found this way — by running each feature alone
+first and reading the count, rather than trusting the table.
+
+So a lane must pass the WHOLE conjunction. Anyone retiring the remaining three
+should check each file's `#![cfg(...)]` line directly, not this table, and
+confirm the test count MOVES rather than that the command exits 0.
+
+Nextest's default "no tests to run" ERROR is what makes that checkable — the
+lane deliberately does not pass `--no-tests`, per the note already in the recipe.
+
+### Remaining backlog (3)
+
+* `posix-c-port` — 6 files, `nros-platform-cffi`. Builds C stubs.
+* `c-stub-test` — 2 files, `nros-platform-cffi` + `nros-rmw-cffi`. Builds C stubs.
+* `unix-mock` — 1 file, `nvidia-ivc`. Wants a loopback harness.
+
+Each still needs its lane or its files deleted. None is a `--features` flag
+alone, which is why they were not switched on blind with these two.

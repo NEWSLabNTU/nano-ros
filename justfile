@@ -743,6 +743,24 @@ check-required-features-tests:
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-zenoh --features lending,platform-posix \
         --test lending_traits
+    # Issue 0779 — two more of the baseline five, retired. Both were reachable
+    # all along; what kept them dark was that the FEATURE NAMED IN THE ISSUE IS
+    # NOT ENOUGH. Each file's crate-level cfg is a CONJUNCTION:
+    #
+    #   custom_transport  #![cfg(all(feature = "platform-posix", feature = "link-custom"))]
+    #   registry_race     #![cfg(all(feature = "std",            feature = "bridge-stub"))]
+    #   descriptor_seam   #![cfg(feature = "bridge-stub")]
+    #
+    # So a lane passing only `--features link-custom` builds the target, runs
+    # zero tests, and reports green — the very shape 0779 exists to kill, one
+    # level in. Pass the whole conjunction or do not bother; the `--features`
+    # text here is also what `check-required-features-reachable` reads.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-cyclonedds --features std,bridge-stub \
+        --test descriptor_seam --test registry_race
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-zenoh --features platform-posix,link-custom \
+        --test custom_transport
     echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on

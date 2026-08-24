@@ -82,8 +82,6 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE: set[str] = {
     "posix-c-port",   # 6 files, nros-platform-cffi   (issue 0779, 2026-08-24)
     "c-stub-test",    # 2 files, platform-cffi + cffi (issue 0779, 2026-08-24)
-    "bridge-stub",    # 2 files, nros-rmw-cyclonedds  (issue 0779, 2026-08-24)
-    "link-custom",    # 1 file,  nros-rmw-zenoh       (issue 0779, 2026-08-24)
     "unix-mock",      # 1 file,  nvidia-ivc           (issue 0779, 2026-08-24)
 }
 
