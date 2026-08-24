@@ -1,0 +1,182 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "rust:CallbackEffectMetadata": {
+    "verdict": "extension",
+    "why": "an optional recorded relation between a callback and an entity, so the launch resolver can see which topics a callback reads and writes without running the image. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage."
+  },
+  "rust:CallbackSlot": {
+    "verdict": "extension",
+    "why": "the declaration-order index a callback occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
+  },
+  "rust:CallbackSlot::index": {
+    "verdict": "extension",
+    "why": "see `rust:CallbackSlot`."
+  },
+  "rust:CallbackSlot::new": {
+    "verdict": "extension",
+    "why": "see `rust:CallbackSlot`."
+  },
+  "rust:EntityMetadata": {
+    "verdict": "extension",
+    "why": "one recorded entity declaration -- kind, stable id, owning node, source name, type, QoS. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage."
+  },
+  "rust:EntityMetadataSpec": {
+    "verdict": "extension",
+    "why": "the named-field input `entity_metadata` takes, collapsing seven positional arguments of which three were adjacent `&str`. Public so metadata-mode adapters for the OTHER languages build entities through one constructor and the recorded shape cannot diverge per language (phase-308). See `rust:EntityMetadata`."
+  },
+  "rust:EntitySlot": {
+    "verdict": "extension",
+    "why": "the declaration-order index a entity occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
+  },
+  "rust:EntitySlot::index": {
+    "verdict": "extension",
+    "why": "see `rust:EntitySlot`."
+  },
+  "rust:EntitySlot::new": {
+    "verdict": "extension",
+    "why": "see `rust:EntitySlot`."
+  },
+  "rust:MetadataRecorder": {
+    "verdict": "extension",
+    "why": "the in-memory sink host discovery records a declaration into; it never opens transport. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage. Capacities are const generics because the recorder must work on a `no_std` target with no allocator."
+  },
+  "rust:MetadataRecorder::callback_effects": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataRecorder::entities": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataRecorder::new": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataRecorder::nodes": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataRecorder::push_entity": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataRecorder::push_node": {
+    "verdict": "extension",
+    "why": "see `rust:MetadataRecorder`."
+  },
+  "rust:MetadataString": {
+    "verdict": "extension",
+    "why": "the fixed-capacity string every recorded name and id is stored in -- `heapless::String<METADATA_STRING_CAPACITY>`, because there is no allocator. See `rust:MetadataRecorder`."
+  },
+  "rust:NodeMetadata": {
+    "verdict": "extension",
+    "why": "what a component's declaration is recorded as, so codegen and the launch resolver can read the entity set without running the image (RFC-0043). rclrs has no codegen step and nothing to record."
+  },
+  "rust:NodeMetadataError": {
+    "verdict": "extension",
+    "why": "the failure shape of recording metadata; see `rust:NodeMetadata`."
+  },
+  "rust:ResolvedName": {
+    "verdict": "extension",
+    "why": "owned storage for a resolved name -- `heapless::String<MAX_RESOLVED_NAME_LEN>`, because there is no allocator and the result must be returnable by value from a `no_std` callee. See `rust:resolve_name`."
+  },
+  "rust:SourceLocationMetadata": {
+    "verdict": "extension",
+    "why": "the artifact plus `file:line` a declaration was written at, so a tool can point a user at the source of a recorded entity. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage."
+  },
+  "rust:SourceLocationMetadata::caller": {
+    "verdict": "extension",
+    "why": "captures it from `core::panic::Location`. See `rust:SourceLocationMetadata`."
+  },
+  "rust:SourceLocationMetadata::empty": {
+    "verdict": "extension",
+    "why": "the no-location value, for adapters that have none to give (the C/C++ metadata path). See `rust:SourceLocationMetadata`."
+  },
+  "rust:SourceMetadataExport": {
+    "verdict": "extension",
+    "why": "the settings the source-metadata JSON emitter takes -- package, component, executable, exported symbol, manifest path, source artifacts, and the source LANGUAGE. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage. The `language` field is worth one note: it was a hardcoded `\"rust\"` literal in the serializer while Rust was the only producer, and phase-308's C/C++ producer reaches the SAME serializer, so the value has to come from the caller."
+  },
+  "rust:SourceMetadataExport::executable": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceMetadataExport::exported_symbol": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceMetadataExport::language": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceMetadataExport::new": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceMetadataExport::package_manifest": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceMetadataExport::source_artifacts": {
+    "verdict": "extension",
+    "why": "see `rust:SourceMetadataExport`."
+  },
+  "rust:SourceNameKind": {
+    "verdict": "extension",
+    "why": "classifies a source-level ROS name as Absolute / Private / Relative WITHOUT resolving it, which is what the recorder needs: the sidecar records what the component wrote, and launch decides what it resolves to (RFC-0046). See `rust:resolve_name` for the resolution half."
+  },
+  "rust:SourceNameKind::from_source_name": {
+    "verdict": "extension",
+    "why": "see `rust:SourceNameKind`."
+  },
+  "rust:entity_metadata": {
+    "verdict": "extension",
+    "why": "that one constructor. See `rust:EntityMetadataSpec`."
+  },
+  "rust:expand_name": {
+    "verdict": "extension",
+    "why": "the expansion half without remapping. See `rust:resolve_name`."
+  },
+  "rust:metadata_string": {
+    "verdict": "extension",
+    "why": "copies a `&str` into a `MetadataString`, surfacing the capacity error. Public for metadata-mode adapters in the other languages (phase-308). See `rust:MetadataString`."
+  },
+  "rust:resolve_name": {
+    "verdict": "extension",
+    "why": "the ONE name-resolution seam (issue 0255 / phase-305 W3): ROS 2 source-name expansion (`~`/relative -> FQN, `ns=/` collapse) plus launch `<remap>` substitution, exact-FQN match, first rule wins. Both entry-codegen twins funnel through it -- the Rust `ExecutorSink` and the C-ABI executor-side remap table -- so the languages cannot drift on name semantics. rclrs has no equivalent because rcl resolves names inside `rcl_node_init` and rclrs never exposes the step; ROS 2's own is `rcl_node_resolve_name`.\nOUR LANGUAGES DISAGREE: this is exported from `nros::` in Rust and does not exist in C or C++ at all -- the node stage records `c:node_resolve_name` as a GAP saying \"a C caller passing a runtime-built name has no way to ask what it will resolve to\". The function that would close it is already written and already crosses the FFI boundary for the remap table; only the C entry point is missing."
+  }
+}

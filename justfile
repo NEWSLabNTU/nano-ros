@@ -424,7 +424,7 @@ profile dir="." flags="":
 # also probes via `check-tier-preconditions`; that duplicate is 0.21 s and buys
 # the property that ANY future lane gaining a CLI-using recipe stays covered.
 [group("main")]
-check: check-cli-fresh check-fast check-build
+check: check-cli-fresh check-fast check-build check-api-parity
     #!/usr/bin/env bash
     set -e
     # issue 0650 — same reason as `check-fast`'s closing line: "All checks
@@ -3769,6 +3769,23 @@ check-zenohd-router-skips:
 [group("check")]
 check-api-parity-ledger:
     @python3 scripts/api-parity.py --self-test
+
+# Phase 379 W2 (landed 2026-08-25) — every item where the nano-ros user API does
+# not correspond to rclc/rclcpp/rclrs carries a written verdict. 2158 rows across
+# 17 topic shards under docs/reference/api-parity-ledger/.
+#
+# NOT buildless, which is why it is here and not on the fast lane: it re-extracts
+# OUR surface every run (clang for C/C++, nightly rustdoc for Rust) so an edit
+# that moves us away from ROS 2 fails the gate instead of aging the ledger. The
+# ROS 2 side is the recorded surface and needs no ROS install.
+#
+# A new divergence fails this with the row's key and the bucket it landed in.
+# Add a row to the matching topic shard; `--topic <name>` shows the stage.
+#
+# Verify the user API still corresponds to rclc / rclcpp / rclrs.
+[group("check")]
+check-api-parity:
+    @python3 scripts/api-parity.py --check
 
 # Phase 379 — report how the C / C++ / Rust user API differs from rclc / rclcpp
 # / rclrs. Needs clang and the recorded ROS 2 surfaces under

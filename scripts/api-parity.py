@@ -154,6 +154,7 @@ def ours_rust(tmpdir):
         os.path.join(ROOT, "packages", "api", "nros"),
         with_deps=True,
         target_dir=os.path.join(tmpdir, "rustdoc-ours"),
+        features=extract_rust.NROS_FEATURES,
     )
     docs = extract_rust.Docs(docdir)
     return extract_rust.surface(docs, docs.crate("nros"), "nros")
@@ -591,10 +592,11 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None)
     if check:
         if misfiled:
             print(
-                "\n%d ledger row(s) sit in the wrong topic shard:" % len(misfiled),
+                "\n%d ledger row(s) sit in the wrong topic shard "
+                "(all listed; the move is mechanical):" % len(misfiled),
                 file=sys.stderr,
             )
-            for key, was, want in misfiled[:20]:
+            for key, was, want in misfiled:
                 print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
                       file=sys.stderr)
             return 1

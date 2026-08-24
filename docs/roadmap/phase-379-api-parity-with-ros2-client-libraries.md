@@ -1,12 +1,11 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
-**Status (2026-08-24). W1 LANDED — the correlator runs on all three languages
-and its first report is below. W2 is READY: 1682 decisions across 16 stages,
-one stage per feature, each stage covering C, C++ and Rust together and owning
-one ledger shard so no two collide.** No API has been corrected yet; W1 exists to make the corrections
-findable and to stop the next one being invisible. W3–W5 are the corrections
-and are not started; W3 and W4 depend on W2's classification, W5 on a decision
-recorded below.
+**Status (2026-08-25). W1 AND W2 COMPLETE.** The correlator runs on all three
+languages; every one of the 2158 items where the nano-ros user API does not
+correspond to rclc/rclcpp/rclrs carries a written verdict, in 17 topic shards
+under `docs/reference/api-parity-ledger/`. `just check-api-parity` is green and
+wired into `just check`. W3–W5 are the corrections and are not started; W5 has
+one decision recorded below that is not an implementer's to make.
 
 **Implements.** RFC-0036 (divergences from the ROS 2 standard client APIs),
 which this phase converts from a prose catalog into a checked one. Touches
@@ -279,223 +278,103 @@ introduced the `Node = Arc<NodeState>` split that the correlator has to fold
 (the methods live on `NodeState`; a user writes `Node`). Which version we mirror
 is a decision W5 has to make and record, not a detail.
 
-## W2 — classify every non-matching row, in parallel
+## W2 — classify every non-matching row (COMPLETE, 2026-08-25)
 
-**`types`, `init`, `node`, `pubsub`, `service` and `timer` are DONE
-(2026-08-24)** — 862 authored rows covering six stages in all three languages.
-Each of the first four corrected something the stage was standing on:
+2158 rows, 17 stages, all three languages. Ten stages ran as parallel agents,
+one per topic, each owning one ledger shard.
 
-* `types` found the taxonomy filing by NAME when the DECLARING HEADER was
-  available and better (see below), and produced issue 0783 — the Rust facade
-  exports `NodeError` but not `TransportError` or `RclReturnCode`, and
-  RFC-0036's Errors row names a type the user API never returns.
-* `init` found the correlator calling `nros::init(const char*, uint8_t)` the
-  SAME as `rclcpp::init(int, char**)` because both take two parameters. That
-  produced the `arity-only` bucket, four type-substitution rules and an
-  alignment rule (below), which between them reclassified 9 rows across the
-  other stages as `systematic` rather than leaving them silently `same`.
+| stage | gap | rename | divergence | extension | declined | total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| types | 2 | 0 | 7 | 2 | 5 | 16 |
+| metadata | 0 | 0 | 0 | 36 | 0 | 36 |
+| init | 4 | 0 | 7 | 4 | 15 | 30 |
+| node | 7 | 1 | 40 | 30 | 23 | 101 |
+| pubsub | 21 | 16 | 125 | 81 | 109 | 352 |
+| service | 8 | 24 | 85 | 47 | 77 | 241 |
+| timer | 36 | 12 | 76 | 36 | 87 | 247 |
+| qos | 8 | 53 | 59 | 22 | 34 | 176 |
+| param | 32 | 22 | 25 | 16 | 31 | 126 |
+| action | 7 | 8 | 67 | 57 | 23 | 162 |
+| exec | 2 | 5 | 30 | 94 | 91 | 222 |
+| lifecycle | 19 | 3 | 22 | 38 | 44 | 126 |
+| log | 13 | 2 | 19 | 1 | 7 | 42 |
+| graph | 36 | 1 | 8 | 0 | 16 | 61 |
+| serde | 0 | 5 | 0 | 37 | 1 | 43 |
+| boot | 1 | 1 | 0 | 11 | 0 | 13 |
+| other | 1 | 1 | 16 | 122 | 24 | 164 |
+| **total** | **197** | **154** | **586** | **634** | **587** | **2158** |
 
-* `node` found the header rule filing METHODS by their type. `rclcpp/node.hpp`
-  declares `Node::declare_parameter`, `Node::count_publishers`,
-  `Node::create_wall_timer` and `Node::get_clock`, and all four were in the node
-  stage — 70 rows in the wrong place. A member now asks the NAME first, matched
-  against the whole key so the owning type disambiguates (`Executor::shutdown`
-  is exec's, `LifecycleNode::on_shutdown` is a lifecycle transition, and the
-  bare member name says `init` for both).
+### What the campaign was for, and what it actually found
 
-* `pubsub` found the rclrs `State` fold applied to a method's OWNER but not to
-  the TYPE, so `rclrs::PublisherState`'s members were keyed `PublisherState::*`
-  and never met ours. The C++ `*Base` fold had the same bug and was fixed in the
-  first report; the Rust half survived because nothing had exercised it. Fixing
-  it closed 109 decisions across every stage at once — `same` had been
-  understated across the whole Rust lane.
+It was opened to align our API with ROS 2's. **The findings that matter most are
+not ROS 2 mismatches — they are defects, and places where our own three
+languages disagree with each other.** Nine issues, each reproduced before
+filing:
 
-Counts taken before 2026-08-24 will not match: all four fixes moved rows
-between stages and between buckets.
+* **0796** — the action server's result slab only ever grows; once full, every
+  result is silently dropped and `complete_goal_raw` returns `()`. And the C++
+  callback tier hardcodes `Succeeded`, so an **aborted goal is reported to the
+  client as succeeded**.
+* **0792** — twelve C lifecycle entry points cannot be called from C at all
+  (`Option_LifecycleCallbackFnCtx` is an opaque forward declaration passed by
+  value). `nros_lifecycle_init` discards the node it is handed.
+* **0793** — C ships two disjoint parameter stores; parameters declared on the
+  one `parameter.h` reaches first are invisible to `ros2 param`, and its
+  accept/reject callback is installed where no service reads it.
+* **0791** — we are visible in the ROS graph and cannot read it: 12 vtable slots,
+  all `None`, while both backends already run the discovery machinery.
+* **0794** — the baked boot config defines four fields and the emitter sets one;
+  `BOOT_SET_NAMESPACE` is set by nothing.
+* **0795** — `nros.h` omits `log.h` and `borrowed.h`, so a C author who finds no
+  logger writes `printf` — fatal on Zephyr native_sim (issue 0589).
+* **0789** — nros-cpp has no clock/time/duration surface; ROS time exists in
+  Rust and not in C.
+* **0790** — no shutdown hook in any language.
+* **0788** — six verbs spelled differently across our three languages, twice
+  with one language shipping both spellings.
 
-### What the `node` stage established, and a correction
+**RFC-0036 is stale in three separate places** — the Errors row (0783), the
+lifecycle line (we implement full REP-2002 and register five services; only
+`~/transition_event` is missing), and the parameter-callbacks line, which is
+wrong in both directions. That pattern is why this phase built a checker instead
+of another prose catalog.
 
-The Rust user API is **not rclrs-shaped**, and the first report's summary of it
-was too simple. It is a declarative component model (RFC-0043/0044): a user
-implements `Node` — which is a **trait** — and `ExecutableNode` for their own
-type, declares entities in `register`, and receives callbacks. rclrs holds an
-`Arc<Node>` and calls methods on it.
+### Three correlator defects the stages found
 
-    impl Node for Talker {
-        fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-            let mut node = ctx.create_node(NodeOptions::new("talker"))?;
-            let pub_chatter = node.create_publisher_for_topic::<StringMsg>("/chatter")?;
-            ...
+Each had been silently skewing results, and each is fixed:
 
-The constraint is static entity storage plus an executor that owns dispatch:
-with no allocator the entity set has to be known at declaration time, and with
-one executor per RTOS task the callback cannot be a closure the node keeps.
+1. **The Rust surface was extracted with `nros`'s empty default feature set.**
+   `default = []` and 18 `#[cfg(feature = "rmw-cffi")]` blocks gate the entire
+   runtime, so the correlator documented a facade with `Executor`, `NodeHandle`,
+   `EmbeddedPublisher` and `Promise` removed — inflating `theirs-only` and
+   deflating `ours-only` by 437 rows. `rust:Executor` was reported as
+   theirs-only. Fixed with an explicit feature list.
+2. **The rclrs `*State` fold was applied to a method's owner and not to the
+   type**, so `PublisherState`'s members never met ours. Closed 109 decisions at
+   once. The C++ `*Base` fold had the identical bug in W1.
+3. **The topic patterns were written in the ROS 2 spelling and are
+   case-sensitive**, so our spelling of the same word fell through to `other` —
+   `Qos` against `QoS` alone stranded ~52 rows, splitting both halves of a rename
+   across two shards. `other` was never residue; it was four topics leaking plus
+   one real one (`metadata`, now a stage).
 
-So the earlier reading — "the facade exports 709 items rclrs has no equivalent
-for, many of them internals that reached `pub use`" — was half right. A large
-share is the component model, which is deliberate and correct. What IS a
-problem is that it is not distinguishable from the machinery beside it: issue
-0784 records that `nros::` publishes the component API, the machinery
-`nros::node!` expands into, and four types with zero consumers, under one
-namespace with nothing marking which is which. `nros::Node` is the trait; the
-handle is `NodeCtx`, which the facade never exports.
+### Two things the correlator structurally cannot see
 
-**1682 decisions across 16 stages.** They parallelise cleanly because a decision
-is a sentence about one item and touches nothing else. This section is written
-so several agents can run at once without meeting — but the ORDER matters more
-than the parallelism: the campaign closes one feature at a time, in every
-language, and a stage is done only when all three lanes are.
+Recorded so nobody reads a `same` verdict as a guarantee:
 
-### The unit of work is a TOPIC, in all three languages at once
+* `spin_once` correlates as `same`. rclcpp's executes the **next one** ready
+  item; ours executes **all** of them (RFC-0002 §3).
+* `GoalResponse`/`CancelResponse` correlate as `same` while our discriminants
+  are 0-based against rclcpp_action's 1-based. Enumerator comparison is a
+  feature the tool does not have.
 
-A stage is a feature — node, pubsub, service — and it is finished when it is
-finished in C, C++ **and** Rust. Splitting by language instead would let C++
-pubsub land while C pubsub sits unexamined, and the drop-in claim is made per
-language: a feature that works in one is not a feature.
+### The ledger, and how to add to it
 
-Each stage owns exactly one file, `docs/reference/api-parity-ledger/<topic>.json`,
-holding that topic's rows in every language. Two stages never touch the same
-file, so no stage can lose another's work to a rebase. The loader merges every
-`*.json` in that directory, and `--self-test` rejects a row whose item belongs
-to a different stage — using the same `topics.topic_of` the report groups by, so
-a shard cannot disagree with the taxonomy.
-
-Get a stage's rows, and see what is left:
-
-    scripts/api-parity.py --topic pubsub    # one stage, all three languages
-    scripts/api-parity.py --by-topic        # what every stage still owes
-
-    stage             c      cpp     rust    total
-    types             0        0        0        0   done
-    init              0        0        0        0   done
-    node              0        0        0        0   done
-    pubsub            0        0        0        0   done
-    service           0        0        0        0   done
-    timer             0        0        0        0   done
-    qos              27       61       17      105
-    param            79       49       50      178
-    action          155       22        8      185
-    exec             61       59       33      153
-    lifecycle        54       45       16      115
-    log              16        5       38       59
-    graph            20       21       15       56
-    serde            31        0        7       38
-    boot              2        0       10       12
-    other            12       18       70      100
-                                              1001
-
-`--by-topic` counts DECISIONS, not rows: a member whose type already carries a
-verdict is answered, so counting rows would report the same work several times
-and make a finished stage look unfinished.
-
-**Stage order** is `topics.STAGE_ORDER`, and it is not arbitrary: nothing can be
-complete before the entry point that creates it, and every entity is created on
-a node. `types` first because every other stage's signatures are written in its
-vocabulary (`nros_ret_t`, `Result`, `Expected`, the callback typedefs); then
-`init`, `node`, and the entities.
-
-**Which topic an item belongs to is decided by "which feature is incomplete
-without this?"**, not by which type declares it. So `Node::create_publisher` is
-pubsub — the verb exists to produce a publisher, and an audit of the publisher
-API needs the way you obtain one — while `Node::get_name` is node.
-`Node::declare_parameter` is param, `Node::create_wall_timer` is timer,
-`count_publishers` is graph. Each of those is a test in `topics.py`, so
-reordering the patterns breaks the tests rather than silently re-filing hundreds
-of rows.
-
-**The DECLARING HEADER decides before the name does.** A C API spells everything
-`lower_snake_t`, so a name pattern broad enough to catch `nros_ret_t` also
-catches `rcl_bool_array_t`, `rcl_topic_endpoint_info_t` and
-`rcl_jump_threshold_t` — filing the YAML parameter parser, a graph query and a
-clock callback under "types". That is what the first taxonomy did, and it is
-invisible in the counts. The header says what the name cannot, and every record
-already carries it. Names remain the fallback for headers no map should bother
-with: rclcpp's `utilities.hpp` holds `ok`, `shutdown` AND `spin`, which are two
-topics.
-
-Our own C surface is the one case neither settles — cbindgen emits it all into
-one `nros_generated.h` — so `topics.KEY_OVERRIDES` names those individually,
-each resolved by reading the declaration.
-
-**`other` is 228 and reported, not hidden.** A large `other` means the taxonomy
-is wrong for part of the surface. The first pass had 316 and it turned out to be
-three nameable things — `serde` (the CDR primitives), `types` (error, result and
-callback vocabulary) and `boot` (baked boot/board config) — which are now stages
-of their own. What is left is mostly the RUST lane's 134, and that is not a
-taxonomy failure: it is the facade over-export this phase already identified,
-and W5 owns it. Whoever takes `other` should expect to split it again rather
-than classify it as it stands.
-
-### One row per DECISION, not per symbol
-
-The raw report has 2714 non-matching rows; 1007 of them are members of a type
-that is itself unmatched. `rclcpp::Node` has 49 public methods we do not have,
-and writing 49 sentences that each say "we have no Node" is a copy-paste
-exercise whose fiftieth reader stops reading. So:
-
-* **A row on a TYPE covers its members** — `cpp:Node` covers `cpp:Node::*` — but
-  only while the type sits in the SAME bucket as the member. If we ship `Node`
-  and lack `Node::declare_parameter`, the type is `same`, the method is
-  `theirs-only`, and that is a different claim which must be argued on its own.
-  An inherited verdict prints with a trailing `*`.
-* **A glob row covers a family** — `c:action_*`. The C surface needs this and the
-  others do not: C names are flat, so `publisher_init` and `publisher_fini`
-  share no owning type for a verdict to descend from. A glob **must declare the
-  bucket it covers** (`"bucket": "theirs-only"`), because otherwise one row
-  would absorb a gap, an extension and an unexplained signature change alike —
-  three claims under one sentence, which is the failure a ledger exists to
-  prevent. The most specific pattern wins, and an exact row always beats a glob.
-  This is why the C column is the tall one — 148 action decisions, 89 pubsub —
-  and also why it collapses fastest once the families are named.
-
-### The verdicts
-
-* `divergence` — we changed it and a PLATFORM CONSTRAINT is why. The `why` must
-  NAME the constraint (`no_std`, no exceptions, no allocator, no runtime env,
-  single-threaded transport, static entity storage). "We preferred it this way"
-  is not a divergence; it is a `rename` or a `gap` wearing a better coat. If the
-  constraint you are about to write applies to more than a handful of sites,
-  stop — it is a **signature rule** (see below), not a ledger row.
-* `extension` — we add it because an RTOS scenario needs it. Name the scenario.
-* `declined` — ROS 2 has it, we deliberately do not. Name what a user loses.
-* `gap` — ROS 2 has it, we should too, nobody has done it. A gap is a legitimate
-  entry; the point is that it is written down, not that it is absent.
-* `rename` — the names differ and OURS should change. A rename with no platform
-  reason costs the drop-in claim for nothing.
-
-`--suggest-renames` pairs unmatched names by similarity and is the fastest way
-into a stage. It is a guess: it finds `send_reply` → `send_response` and it also
-pairs `Timer` with `Time`. Confirm each before writing the row.
-
-### Rules of engagement for a parallel run
-
-* **W2 writes ledger rows. W2 does not change any API.** The renames it
-  identifies are W3/W4/W5's work, on a tree where the classification is already
-  agreed. An agent that starts renaming while four others classify produces a
-  report nobody can reconcile.
-* **A stage is not done when one language is done.** `--topic <name>` prints all
-  three lanes for a reason; finishing cpp and leaving c is how the drop-in claim
-  ends up true in one language and false in another.
-* **`signature_rules.py`, `public_surface.py` and `topics.py` are SHARED.** If a stage finds
-  a systematic pattern or a mis-filtered internal, do not edit those files —
-  say so in the stage's report and let one person land it. A rule change moves
-  rows in every lane at once.
-* **Do not run `--refresh`.** It rewrites the recorded ROS 2 surfaces, which
-  every other stage is reading.
-* **Reserve issue ids with `just issue-new <slug>`**, never by reading the
-  highest number — parallel sessions collide on this and have seven times.
-* **Gate before finishing:** `just check-api-parity-ledger` (buildless, seconds).
-
-### Acceptance
-
-Per stage: every row `--topic <name>` selects, **in all three languages**,
-carries a verdict — directly, inherited from its type, or from a declared glob —
-and `just check-api-parity-ledger` is green. `--by-topic` shows the stage at
-`0 0 0`.
-
-For W2 as a whole: `scripts/api-parity.py --check` is green and joins the
-`just check` fast lane. Until then the gate stays out — one that fails on 1707
-rows from the day it lands is one somebody switches off.
+One shard per topic, `docs/reference/api-parity-ledger/<topic>.json`, holding
+that topic's rows in all three languages. A row on a TYPE covers its members
+while they share a bucket; a glob row (`c:action_*`) covers a flat C family and
+must declare the bucket it covers. `just check-api-parity` fails on any
+unexplained divergence and on any row filed in the wrong shard, naming both.
 
 ## W3 — close the C++ coverage gaps a ported node actually hits
 

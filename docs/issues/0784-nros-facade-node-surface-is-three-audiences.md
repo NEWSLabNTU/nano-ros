@@ -54,10 +54,28 @@ established and unapplied.
 
 ## Why it matters
 
-`nros::Node` is a trait a component implements. It is NOT the handle entities
-are created on — that is `nros_node::executor::node::NodeCtx`, which the facade
-does not export at all. A Rust user reading `nros::Node` to find rclrs's `Node`
-finds something with a `register` method and no `create_publisher`.
+**CORRECTION (2026-08-25).** This issue originally said the handle "is
+`NodeCtx`, which the facade does not export at all". That was wrong, and it was
+wrong because the correlator was reading a truncated Rust surface: `nros` has
+`default = []` and gates its whole runtime behind `#[cfg(feature = "rmw-cffi")]`,
+so `scripts/api-parity.py` was documenting a facade with the runtime removed.
+Fixed, and re-checked.
+
+What is actually there is **four node-shaped things**, and that is the real
+finding:
+
+| name | what it is | reachable as |
+| --- | --- | --- |
+| `Node` | a TRAIT a component implements (`register`) | `nros::Node` |
+| `NodeHandle<'a>` | the rclrs-shaped imperative handle — `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` | `nros::NodeHandle`, **and in `nros::prelude`** |
+| `NodeCtx<'e, 's>` | the declaration-time context | not exported |
+| `Node` (struct) | the standalone pre-component node | `nros::StandaloneNode` |
+
+So a Rust user CAN have rclrs's shape — `NodeHandle` is it, and it is in the
+prelude. What the facade does not do is say which of the four to reach for, or
+that two complete APIs (declarative and imperative) sit side by side under one
+namespace. A reader who types `nros::Node` expecting rclrs's `Node` lands on the
+trait.
 
 Phase 379's correlator reports 45 open decisions in the Rust `node` stage, and
 most of them are this: items that have no rclrs counterpart because they belong
@@ -88,9 +106,12 @@ Three separable moves, none of them decided here:
 * Decide what the four zero-consumer types are for. If they are a public seam
   someone needs, they need a doc comment saying so; if they are leftovers,
   delete them.
-* Decide whether `NodeCtx` should be exported. It is the type entities are
-  created on and it is unreachable from `nros::`; see also issue 0783 for the
-  same shape in the error vocabulary.
+* Decide what `nros::` leads with. Both the declarative component model and the
+  imperative `NodeHandle` API are complete and public; nothing marks either as
+  the default, and their entity types differ (`NodePublisher` against
+  `EmbeddedPublisher`). A porting user needs to be told which one is the
+  rclrs-shaped one — it is `NodeHandle` — and the four `Node`-ish names need
+  disambiguating.
 
 Phase 379 W5 owns the facade's export policy and should settle all three at
 once rather than piecemeal.

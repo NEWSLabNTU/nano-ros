@@ -1,0 +1,283 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:count_publishers": {
+    "verdict": "gap",
+    "why": "how many publishers exist on a NAMED TOPIC anywhere on the graph. Distinct from pubsub.json's `c:publisher_get_subscription_count` gap, which is how many subscriptions matched OUR publisher -- an entity-local count the backends already track for liveliness events and expose through the vtable's `publisher_count_matched_subscriptions`. See `c:get_node_names`. OUR LANGUAGES DISAGREE: Rust answers the DECLARATION-side version of this question -- `Node::publisher_count` / `Node::subscriber_count` count the entities THIS node declared and are recorded an extension in pubsub.json -- while C and C++ have no counterpart at all (the whole C node surface is `init`/`init_ex`/`fini`/`get_name`/`get_namespace`/`get_logger`/`set_qos_overrides`/`get_default_options`/`get_zero_initialized`). Closing the graph question does not close that one: they are different questions and the cheap one is missing in two languages of three."
+  },
+  "c:count_subscribers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`."
+  },
+  "c:get_client_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "what one named node calls. See `c:get_node_names`."
+  },
+  "c:get_node_names": {
+    "verdict": "gap",
+    "why": "every node on the graph, with its namespace. reads the ROS GRAPH: which nodes exist and what they publish, subscribe, serve and call. Not the flat \"we have no discovery\" answer -- that is true of the USER API and false one layer down. `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` has carried this whole family as optional slots since phase-376 W4 (`get_node_names`, the four `*_by_node`, `get_{topic,service}_names_and_types`, `get_{publishers,subscriptions}_info_by_topic`, `count_{publishers,subscribers}`, `node_get_graph_guard_condition` -- 12 slots for upstream's 15 names), and W4 recorded the reason: \"a full graph cache costs RAM a 128 KiB target does not have, so the answer is an optional slot with UNSUPPORTED, not absence from the ABI\". Today every one of those slots is NULL in every backend (`packages/rmw/cffi/src/lib.rs`), nothing above them wraps a slot, and no C/C++/Rust entry point exists -- so the ABI seam is designed and both ends of it are missing. Both real backends already run the machinery that would answer: the zenoh shim DECLARES and QUERIES `@ros2_lv` liveliness tokens for node, publisher, subscriber, service server and service client (`Ros2Liveliness::*_keyexpr` in `nros-rmw-zenoh/src/shim/mod.rs`, wildcard GETs in `session.rs`), which is exactly how `rmw_zenoh_cpp` builds its graph cache, and the Cyclone backend PUBLISHES `ros_discovery_info` from `nros-rmw-cyclonedds/src/graph.cpp` so that stock `ros2 node list` can see our nodes -- we are visible in the graph and cannot read it. XRCE and a 128 KiB image legitimately answer UNSUPPORTED; that is what an optional slot encodes, not a reason for the family to be absent. Nobody has written the reading half. Phase 379 W3."
+  },
+  "c:get_node_names_with_enclaves": {
+    "verdict": "gap",
+    "why": "see `c:get_node_names` -- and the enclave half is separately empty: an enclave is an SROS2 security context and nano-ros has no security surface, which is why `rmw_vtable.h` answers both upstream names with ONE `get_node_names` slot whose visitor takes `enclave` as a fourth argument, NULL where untracked. A visitor has no fixed out-parameter list, so upstream's reason for splitting the two (appending to one would break its ABI) does not apply here."
+  },
+  "c:get_publisher_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "what one named node publishes. See `c:get_node_names`."
+  },
+  "c:get_publishers_info_by_topic": {
+    "verdict": "gap",
+    "why": "which publishers are on a topic, with the GRANTED QoS of each -- the fact that answers \"why is nothing arriving\". See `c:get_node_names`; our `rmw_topic_endpoint_info_t` (`rmw_entity.h`) already models exactly this record, borrowed strings and all. LEDGER CONFLICT, flagged rather than propagated: pubsub.json files the C++ halves (`cpp:Node::get_publishers_info_by_topic` and three siblings) as `declined` for \"needs dynamic discovery, which we do not have\", and points here for the rest of the family. The graph-stage evidence does not support the flat form of that reason -- the ABI slot, the endpoint-info struct, the zenoh liveliness tokens and the Cyclone `ros_discovery_info` writer are all in the tree. One of the two shards should move; this one says gap."
+  },
+  "c:get_service_names_and_types": {
+    "verdict": "gap",
+    "why": "every service on the graph and its type. See `c:get_node_names`."
+  },
+  "c:get_service_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "what one named node serves. See `c:get_node_names`."
+  },
+  "c:get_subscriber_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "what one named node subscribes to. See `c:get_node_names`."
+  },
+  "c:get_subscriptions_info_by_topic": {
+    "verdict": "gap",
+    "why": "see `c:get_publishers_info_by_topic`."
+  },
+  "c:get_topic_names_and_types": {
+    "verdict": "gap",
+    "why": "every topic on the graph and the types on it. See `c:get_node_names`."
+  },
+  "c:names_and_types_fini": {
+    "verdict": "divergence",
+    "why": "see `c:names_and_types_t`."
+  },
+  "c:names_and_types_init": {
+    "verdict": "divergence",
+    "why": "see `c:names_and_types_t`."
+  },
+  "c:names_and_types_t": {
+    "verdict": "divergence",
+    "why": "the result CARRIER, and its shape is decided against upstream's already. Every rcl graph call takes an `rcl_allocator_t *` and fills a two-level allocating array; there is no allocator at this seam (one global `nros_platform_alloc`) and the graph has no bound a CALLER can know, so a 128 KiB image would have to reserve permanently for the worst graph it might ever meet. `rmw_vtable.h` enumerates through VISITORS instead -- `rmw_node_visit_fn`, `rmw_names_and_types_visit_fn`, `rmw_topic_endpoint_info_visit_fn`, every string BORROWED for the call, peak extra RAM one entry, and a bounded caller stops early by returning `false` (a normal outcome, not a truncation error). Constraint: no allocator. So there is no array type to `init`/`fini` and there will not be one; what is missing is the QUERIES that would drive the visitor -- see `c:get_node_names`."
+  },
+  "c:service_server_is_available": {
+    "verdict": "rename",
+    "why": "the theirs half of a name we already ship twice. rcl spells it `rcl_service_server_is_available(node, client, bool*)`; ours are `nros_client_server_available` and `nros_client_service_is_ready`, and service.json's `cpp:Client::service_is_ready` records the decision that `service_is_ready` is the name to keep (rclcpp and rclrs both use it) and `c:client_server_available` the one to drop. Recorded here as the rcl-side half so the pair is complete. Two real signature deviations go with it and are deliberate: no `node` parameter (an image has no node object to pass -- the client reaches its session directly, declared in `rmw_vtable.h`) and no allocator. This is the ONE member of rcl's `graph.h` we implement, and it is implemented by exactly one backend: zenoh, via the session's liveliness subscription; Cyclone's slot is `nullptr` pending built-in topic readers, XRCE's is NULL for good."
+  },
+  "c:topic_endpoint_info_array_t": {
+    "verdict": "divergence",
+    "why": "the ARRAY of the above, which is the half that cannot survive: it is the allocated, caller-`fini`ed sequence the visitor exists to avoid. See `c:names_and_types_t`."
+  },
+  "c:topic_endpoint_info_t": {
+    "verdict": "divergence",
+    "why": "see `c:names_and_types_t` for the carrier argument. We DO have this record -- `rmw_topic_endpoint_info_t` in `rmw_entity.h`, field-for-field upstream's (node name, namespace, type, endpoint kind, gid, granted QoS) -- but with every string borrowed for the visit rather than allocated, and at the RMW seam rather than in the user header."
+  },
+  "c:wait_for_publishers": {
+    "verdict": "gap",
+    "why": "blocks until at least N publishers are on a topic, or the timeout expires -- the startup-ordering primitive, one entity kind over from `nros_client_wait_for_service`, which we DO ship. So the pattern is already here (RFC-0021: the blocking helper takes the executor and drives it, which is what makes the timeout reliable on a single-threaded transport); what is missing is the count it would wait on. See `c:count_publishers`."
+  },
+  "c:wait_for_subscribers": {
+    "verdict": "gap",
+    "why": "see `c:wait_for_publishers`."
+  },
+  "cpp:Event": {
+    "verdict": "declined",
+    "why": "`rclcpp::Event` is not a QoS event: it is `rclcpp/event.hpp`'s set/check flag, handed out by `Node::get_graph_event()` and waited on with `wait_for_graph_change()` -- a graph-change notification. It lands in this stage only because `topics.py` maps the `event` header stem to qos, which is right for `rcl/event.h` and wrong for this file. Declined for the graph stage's reason: static peers, no dynamic discovery, so there is no graph change to be notified of."
+  },
+  "cpp:Event::Event": {
+    "verdict": "declined",
+    "why": "rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `nros_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `nros_client_wait_for_service` / `server_available` answers that, and only for one service at a time. NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
+  },
+  "cpp:Event::check": {
+    "verdict": "declined",
+    "why": "see `cpp:Event::Event`."
+  },
+  "cpp:Event::check_and_clear": {
+    "verdict": "declined",
+    "why": "see `cpp:Event::Event`."
+  },
+  "cpp:Event::make_shared": {
+    "verdict": "declined",
+    "why": "see `cpp:Event::Event`; a `shared_ptr` factory needs an allocator."
+  },
+  "cpp:Event::set": {
+    "verdict": "declined",
+    "why": "see `cpp:Event::Event`."
+  },
+  "cpp:LifecycleNode::count_publishers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`."
+  },
+  "cpp:LifecycleNode::count_subscribers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`."
+  },
+  "cpp:LifecycleNode::get_graph_event": {
+    "verdict": "declined",
+    "why": "hands out the `Event` the next call to `wait_for_graph_change` blocks on. rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `nros_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `nros_client_wait_for_service` / `server_available` answers that, and only for one service at a time. NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
+  },
+  "cpp:LifecycleNode::get_node_graph_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `Node*Interface` slices exist so a component can be handed the part it needs, and our components are declared rather than constructed with an injected node (RFC-0044). The graph slice would additionally be a slice of nothing: see `c:get_node_names`."
+  },
+  "cpp:LifecycleNode::get_node_names": {
+    "verdict": "gap",
+    "why": "see `c:get_node_names`."
+  },
+  "cpp:LifecycleNode::get_service_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types`."
+  },
+  "cpp:LifecycleNode::get_service_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types_by_node`."
+  },
+  "cpp:LifecycleNode::get_topic_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_topic_names_and_types`."
+  },
+  "cpp:LifecycleNode::wait_for_graph_change": {
+    "verdict": "declined",
+    "why": "blocks the calling thread until the graph changes or the timeout expires. rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `nros_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `nros_client_wait_for_service` / `server_available` answers that, and only for one service at a time. NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
+  },
+  "cpp:NetworkFlowEndpoint": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "why": "see the pubsub stage's `cpp:Publisher::get_network_flow_endpoints`: the actual transport 5-tuple (protocol, address, port, DSCP, flow label) an endpoint is using, declined there with the endpoint-discovery reason."
+  },
+  "cpp:Node::count_publishers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`."
+  },
+  "cpp:Node::count_subscribers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`."
+  },
+  "cpp:Node::get_graph_event": {
+    "verdict": "declined",
+    "why": "hands out the `Event` the next call to `wait_for_graph_change` blocks on. rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `nros_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `nros_client_wait_for_service` / `server_available` answers that, and only for one service at a time. NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
+  },
+  "cpp:Node::get_node_graph_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `Node*Interface` slices exist so a component can be handed the part it needs, and our components are declared rather than constructed with an injected node (RFC-0044). The graph slice would additionally be a slice of nothing: see `c:get_node_names`."
+  },
+  "cpp:Node::get_node_names": {
+    "verdict": "gap",
+    "why": "see `c:get_node_names`."
+  },
+  "cpp:Node::get_service_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types`."
+  },
+  "cpp:Node::get_service_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types_by_node`."
+  },
+  "cpp:Node::get_topic_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_topic_names_and_types`."
+  },
+  "cpp:Node::wait_for_graph_change": {
+    "verdict": "declined",
+    "why": "blocks the calling thread until the graph changes or the timeout expires. rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `nros_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `nros_client_wait_for_service` / `server_available` answers that, and only for one service at a time. NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
+  },
+  "cpp:operator<<": {
+    "verdict": "declined",
+    "why": "the `std::ostream` inserter for `NetworkFlowEndpoint` (rclcpp's `network_flow_endpoint.hpp`, which is why this row is in the graph stage). Declined twice over: see the pubsub stage's `cpp:Publisher::get_network_flow_endpoints`: the actual transport 5-tuple (protocol, address, port, DSCP, flow label) an endpoint is using, declined there with the endpoint-discovery reason. And iostreams are not available -- RFC-0018 builds the C++ API `-fno-exceptions` against a freestanding/minimal libcpp with no `<ostream>`, which is the same constraint that makes `<string>` conditional on `NROS_CPP_STD`."
+  },
+  "rust:Node::count_publishers": {
+    "verdict": "gap",
+    "why": "see `c:count_publishers`. LEDGER CONFLICT this row sits on top of: pubsub.json calls our `Node::publisher_count` an EXTENSION because it counts what this node DECLARED and \"the two answer different questions\", while node.json calls the sibling `Node::subscriber_count` a RENAME of rclrs's `count_subscriptions`. Both cannot be right -- the two methods are three lines apart in `nros-node/src/node.rs` and both count `active` entries of this node's own static table. pubsub.json is the one matching the code; the rename row would give our declaration-side counter the graph query's name and leave the graph query with nowhere to land."
+  },
+  "rust:Node::count_subscriptions": {
+    "verdict": "gap",
+    "why": "see `rust:Node::count_publishers`."
+  },
+  "rust:Node::get_client_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_client_names_and_types_by_node`."
+  },
+  "rust:Node::get_node_names": {
+    "verdict": "gap",
+    "why": "see `c:get_node_names`."
+  },
+  "rust:Node::get_node_names_with_enclaves": {
+    "verdict": "gap",
+    "why": "see `c:get_node_names_with_enclaves`."
+  },
+  "rust:Node::get_publisher_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_publisher_names_and_types_by_node`."
+  },
+  "rust:Node::get_service_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types`."
+  },
+  "rust:Node::get_service_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_service_names_and_types_by_node`."
+  },
+  "rust:Node::get_subscription_names_and_types_by_node": {
+    "verdict": "gap",
+    "why": "see `c:get_subscriber_names_and_types_by_node` -- and note rclrs says `subscription` where rcl says `subscriber` for the identical query, so whichever way we spell it one of the two lanes will not be a drop-in."
+  },
+  "rust:Node::get_topic_names_and_types": {
+    "verdict": "gap",
+    "why": "see `c:get_topic_names_and_types`."
+  },
+  "rust:Node::notify_on_graph_change": {
+    "verdict": "declined",
+    "why": "resolves a `Promise` when a caller-supplied condition over the graph becomes true. Two independent reasons, and the first is already recorded: service.json declines `rust:Client::notify_on_service_ready` because it needs a future and a runtime to await it, where RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`) -- that is what makes a timeout reliable on a single-threaded transport. The second is that the graph-change edge it subscribes to does not fire: see `cpp:Event::Event`."
+  },
+  "rust:Node::notify_on_graph_change_with_period": {
+    "verdict": "declined",
+    "why": "see `rust:Node::notify_on_graph_change`; the period only sets how often the condition is re-checked."
+  },
+  "rust:NodeNameInfo": {
+    "verdict": "divergence",
+    "why": "see `c:names_and_types_t`. The Rust form of the same constraint is sharper: the core crates are `no_std` and terminal-state `core`/`core+alloc` (ARCHITECTURE \u00a72), so a struct of owned `String`s is not a carrier this API can hand back at all. The visitor's borrowed `&str` is."
+  },
+  "rust:TopicEndpointInfo": {
+    "verdict": "divergence",
+    "why": "see `rust:NodeNameInfo` and `c:topic_endpoint_info_t`."
+  },
+  "rust:TopicNamesAndTypes": {
+    "verdict": "divergence",
+    "why": "rclrs's alias for `HashMap<String, Vec<String>>` -- two allocations deep, and `HashMap` is not in `core` at all. See `rust:NodeNameInfo`."
+  }
+}

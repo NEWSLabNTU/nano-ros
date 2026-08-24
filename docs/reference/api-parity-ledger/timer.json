@@ -336,8 +336,8 @@
     "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives. Waits for the first `/clock` message; see ROS time: a clock whose value comes from the `/clock` topic so a whole system can be driven by a simulator or a bag. rcl exposes the override switches as free functions on a clock; our Rust `Clock` has the same switches as methods (`set_ros_time_override`, `clear_ros_time_override`, `is_ros_time_override_active`) and our C has none of them. The capability is real and half-present -- the C gap is recorded on `c:enable_ros_time_override`."
   },
   "cpp:ClockQoS::ClockQoS": {
-    "verdict": "divergence",
-    "why": "rclcpp gives each QoS preset its own type; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+    "verdict": "gap",
+    "why": "rclcpp gives each QoS preset its own type; ours are named constructors on one `QoS` -- but C++ ships only THREE (`default_profile`, `sensor_data`, `services`, qos.hpp:175-181) and no clock preset under any name, while our Rust `QosSettings` has twelve including `clock_default`. So this is not the preset-as-a-type divergence recorded for `cpp:ServicesQoS::ServicesQoS`; it is a preset our own Rust publishes the clock on and our C++ cannot spell. The qos stage owns the family. Phase 379 W3."
   },
   "cpp:Context::interrupt_all_sleep_for": {
     "verdict": "declined",
@@ -763,6 +763,54 @@
     "verdict": "divergence",
     "why": "`TimerDuration` is the unit a timer period is expressed in and `Duration` is the ROS message duration; rclrs has one `Duration` (a re-export of `std::time::Duration` shape) for both. Two types because a timer period is `u64` microseconds bounded by the platform tick, while a ROS duration is a signed nanosecond pair that has to round-trip a `builtin_interfaces/Duration` on the wire."
   },
+  "rust:Executor::cancel_timer": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_sporadic_timer": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_timer": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_timer_on": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_timer_oneshot": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::reset_timer": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::set_epoch_clock": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::set_timer_overrun_policy": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::timer_is_cancelled": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::timer_overruns": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::timer_period_ms": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::timer_period_us": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:ExecutorConfig::clock_us": {
     "verdict": "extension",
     "why": "the executor's clock tick in microseconds -- the resolution at which timer deadlines are evaluated (RFC-0073). rclcpp reads the OS clock at whatever resolution it offers."
@@ -966,5 +1014,13 @@
   "rust:ToLogParams::throttle_clock": {
     "verdict": "declined",
     "why": "see `rust:LogParams::get_throttle_clock`."
+  },
+  "rust:now": {
+    "verdict": "extension",
+    "why": "monotonic time helpers on the executor's clock (`now`, `now_us`), the imperative counterpart of `Clock::now`. rclcpp reaches the same through `node->get_clock()->now()`, which we lack in C++ entirely (issue 0789)."
+  },
+  "rust:now_us": {
+    "verdict": "extension",
+    "why": "monotonic time helpers on the executor's clock (`now`, `now_us`), the imperative counterpart of `Clock::now`. rclcpp reaches the same through `node->get_clock()->now()`, which we lack in C++ entirely (issue 0789)."
   }
 }

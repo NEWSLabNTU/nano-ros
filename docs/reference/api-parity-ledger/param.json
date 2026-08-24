@@ -1,0 +1,551 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:add_parameter": {
+    "verdict": "rename",
+    "why": "rclc declares a parameter with `rclc_add_parameter(server, name, type)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, default)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The name is not: a ported rclc node writes `rclc_add_parameter` and there is nothing here spelled `add`. Ours half: the `c:param_declare_*` family."
+  },
+  "c:add_parameter_constraint_double": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc attaches a `[from, to, step]` range to a double parameter and REJECTS sets outside it; our C accepts anything the type allows."
+  },
+  "c:add_parameter_constraint_integer": {
+    "verdict": "gap",
+    "why": "the integer form; see `c:add_parameter_constraint_double`."
+  },
+  "c:add_parameter_description": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc attaches a description and an additional-constraints string to a declared parameter; nothing in `nros/parameter.h` takes either."
+  },
+  "c:bool_array_t": {
+    "verdict": "declined",
+    "why": "a parsed `bool[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:byte_array_t": {
+    "verdict": "declined",
+    "why": "a parsed `byte[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:delete_parameter": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: rclc can undeclare a parameter at runtime, and so can our Rust (`ParameterServer::remove`, and `ParameterServer::unset` to clear the value while keeping the declaration). C has neither, and C++ has neither -- `nros/parameter.h` and `nros/parameter.hpp` offer declare/get/set/has/count/fini and no way to take a parameter back. Nothing about static storage forbids it; the slot is a fixed array entry that `ParameterServer::remove` already clears one language over. Phase 379 W3."
+  },
+  "c:double_array_t": {
+    "verdict": "declined",
+    "why": "a parsed `double[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:executor_add_parameter_server": {
+    "verdict": "divergence",
+    "why": "rclc attaches a CALLER-OWNED `rclc_parameter_server_t` to the executor. Ours is `nros_executor_register_parameter_services(executor)`, which takes no server because the executor owns the only one there is -- static entity storage, no allocator to make a second. Ledgered as an extension in the service stage. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. What a user additionally loses is rclc's on-modification callback, which this call is where you pass: see `c:executor_add_parameter_server_with_context`."
+  },
+  "c:executor_add_parameter_server_with_context": {
+    "verdict": "gap",
+    "why": "the `void* context` form -- and the row that matters, because BOTH rclc forms take the on-modification callback and ours takes none. So a `ros2 param set` reaching the executor-owned store notifies nobody: the C callback that does exist, `nros_param_server_set_callback`, is on the legacy standalone `nros_param_server_t`, which is not the object the services write to. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. NOTE FOR RFC-0036: line 91 says \"No parameter callbacks; parameters are read/write only\", and that is now wrong in both directions -- C ships an accept/reject set-callback on one store, and has none on the store `ros2 param` talks to. Phase 379 W3."
+  },
+  "c:executor_declare_param_*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "the service-backed parameter API: it operates on the `nros_params::ParameterServer` the EXECUTOR owns, which is the store `nros_executor_register_parameter_services` exposes to `ros2 param`. rclc has no equivalent spelling because rclc hands the executor a caller-owned server instead (`c:executor_add_parameter_server`); with static entity storage and no allocator there is one server and the executor holds it, so the executor is the handle. Gated on the `param-services` Cargo feature, which needs `alloc`. SCALARS ONLY -- bool/integer/double/string -- where the local `c:param_declare_*` family covers all ten `rcl_interfaces` types, so no C caller can publish an array parameter to `ros2 param`. Phase 379 W3."
+  },
+  "c:executor_get_param_*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "the read half; see `c:executor_declare_param_*`."
+  },
+  "c:executor_set_param_*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "the write half; see `c:executor_declare_param_*`."
+  },
+  "c:int64_array_t": {
+    "verdict": "declined",
+    "why": "a parsed `int64[]` sequence, heap-allocated by the YAML parser. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:node_params_t": {
+    "verdict": "declined",
+    "why": "one node's slice of a parsed parameter file. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:param_array_t": {
+    "verdict": "extension",
+    "why": "pointer + length for the six array parameter types. The pointer is BORROWED -- the server records the caller's buffer verbatim and never copies (issue 0340, documented at `nros/parameter.h`'s \"Array parameter pointer identity\") -- because there is no allocator to own the elements. rcl's parsed arrays (`c:double_array_t` and friends) own their memory."
+  },
+  "c:param_callback_t": {
+    "verdict": "rename",
+    "why": "the ours-only half of `c:parameter_callback_t`."
+  },
+  "c:param_declare_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "declare-with-default, one entry point per `rcl_interfaces` type. Two things are ours-only here. The FOLD of rclc's `add` + `set` into one call is deliberate and matches rclcpp/rclrs -- see `c:add_parameter`. The six ARRAY types (`byte_array`, `bool_array`, `integer_array`, `double_array`, `string_array`) have no rclc counterpart at all: rclc's parameter server handles bool/int/double scalars only. Scenario: a controller whose parameter is a calibration vector or an MPC weight matrix, stored by borrowed pointer (`c:param_array_t`) because there is no heap. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. So an array declared here is invisible to `ros2 param get`: `nros_executor_declare_param_*` covers the four SCALARS only, and there is no C entry point that puts an array in the store the services read. Phase 379 W3."
+  },
+  "c:param_get_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "the getters for `c:param_declare_*`; scalars are rclc's `rclc_parameter_get_*` renamed (see `c:parameter_get_bool`) and the array forms are ours-only. An array get returns the BORROWED pointer unchanged, which `nros/parameter.hpp` depends on -- issue 0340."
+  },
+  "c:param_get_type": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: C and Rust can ask a parameter its type -- `nros_param_get_type` here, `ParameterServer::get_type` there -- and C++ cannot: `nros::ParameterServer` wraps `nros_param_has` and `nros_param_server_get_count` and skips this one, so a C++ node has no type accessor at all. Ours-only against rclc because rclc has no type accessor either; rclcpp's nearest is `Node::get_parameter_types`, which returns a vector, where a single-name accessor returning `NROS_PARAMETER_NOT_SET` for absent needs no allocation."
+  },
+  "c:param_has": {
+    "verdict": "extension",
+    "why": "an existence predicate, so a C node can branch instead of treating `NROS_RET_NOT_FOUND` as fatal. rclc has none; rclcpp spells it `Node::has_parameter`, which we do have in C++ (`ParameterServer::has_parameter`) and Rust (`ParameterServer::has`)."
+  },
+  "c:param_server_fini": {
+    "verdict": "rename",
+    "why": "the ours-only half of `c:parameter_server_fini`."
+  },
+  "c:param_server_get_count": {
+    "verdict": "extension",
+    "why": "how many parameters are declared. rclc exposes the count as a struct field on its server; ours is behind an accessor because `nros_param_server_t`'s storage fields are not part of the documented ABI. rclcpp's nearest is `list_parameters().names.size()`."
+  },
+  "c:param_server_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "rcl's zero-init idiom under our naming; see the pubsub stage's `c:publisher_get_zero_initialized`. rclc has no equivalent because `rclc_parameter_server_init_default` allocates."
+  },
+  "c:param_server_init": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `c:parameter_server_init_default` -- caller-owned storage array plus an explicit capacity, because there is no allocator."
+  },
+  "c:param_server_set_callback": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: C has a parameter-change callback and neither C++ nor Rust does -- `nros::ParameterServer` wraps every other C entry point and skips this one, and `nros_params::ParameterServer` has no callback field at all (`grep -c callback server.rs` is 0). It is an accept/reject callback invoked before a set is applied -- the `bool` return VETOES the change, which is exactly rclcpp's `add_on_set_parameters_callback` contract. Scenario: a device that must refuse a control-loop period outside its actuator's safe band before it takes effect, with no allocator for rclcpp's handle-per-registration. rclc passes the same callback to `rclc_executor_add_parameter_server` instead, which is why this shows as ours-only. TWO CAVEATS. (1) It is registered on the LEGACY standalone server, not on the executor-owned store the parameter services write to, so it does NOT fire for `ros2 param set` -- see `c:executor_add_parameter_server_with_context`. (2) RFC-0036 line 91 (\"No parameter callbacks\") predates it and should be corrected. Phase 379 W3."
+  },
+  "c:param_server_state_t": {
+    "verdict": "extension",
+    "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined; see the pubsub stage's `c:publisher_state_t`."
+  },
+  "c:param_server_t": {
+    "verdict": "rename",
+    "why": "the ours-only half of `c:parameter_server_t`."
+  },
+  "c:param_set_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "the setters for `c:param_declare_*`; see `c:param_get_*`."
+  },
+  "c:parameter_callback_t": {
+    "verdict": "rename",
+    "why": "rclc's `rclc_parameter_callback_t`; ours is `nros_param_callback_t` with the same accept/reject `bool` return. Same `param`/`parameter` split as `c:parameter_server_t`. Ours half: `c:param_callback_t`."
+  },
+  "c:parameter_get_bool": {
+    "verdict": "rename",
+    "why": "rclc spells it `rclc_parameter_get_bool`; ours is `nros_param_get_bool`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours half: `c:param_get_bool`."
+  },
+  "c:parameter_get_double": {
+    "verdict": "rename",
+    "why": "rclc spells it `rclc_parameter_get_double`; ours is `nros_param_get_double`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours half: `c:param_get_double`."
+  },
+  "c:parameter_get_int": {
+    "verdict": "rename",
+    "why": "rclc spells it `rclc_parameter_get_int`; ours is `nros_param_get_integer`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours also spells the 64-bit integer `integer` where rclc says `int`, matching `rcl_interfaces` and our own `ParameterType::Integer`. Ours half: `c:param_get_integer`."
+  },
+  "c:parameter_options_t": {
+    "verdict": "divergence",
+    "why": "`rclc_parameter_options_t` carries `notify_changed_over_dds`, `allow_undeclared_parameters`, `low_mem_mode` and `max_params` as RUNTIME fields. All four are compile-time here: the table size is the `capacity` argument to `nros_param_server_init` over caller storage, undeclared access is not offered, and there is no `/parameter_events` publisher to toggle (see `cpp:ParameterEventHandler`). Same `compile-time-options` collapse as the node stage's `c:node_options_*`."
+  },
+  "c:parameter_server_fini": {
+    "verdict": "rename",
+    "why": "rclc's `rclc_parameter_server_fini`; ours is `nros_param_server_fini`. See `c:parameter_server_t`."
+  },
+  "c:parameter_server_init_default": {
+    "verdict": "divergence",
+    "why": "rclc's `rclc_parameter_server_init_default(server, node)` allocates the parameter table from `rcl_get_default_allocator()` and creates the six services in the same call. Ours is `nros_param_server_init(server, storage, capacity)`: the caller owns the `nros_parameter_t[]` and the count is an argument, because there is no allocator to size a table from. The service half is a separate explicit call (`c:executor_register_parameter_services`, service stage). The NAME should still change -- see `c:parameter_server_t`."
+  },
+  "c:parameter_server_init_with_option": {
+    "verdict": "divergence",
+    "why": "the options-taking form of `c:parameter_server_init_default`; see also `c:parameter_options_t`."
+  },
+  "c:parameter_server_t": {
+    "verdict": "rename",
+    "why": "rclc spells the parameter server `rclc_parameter_server_t`; ours is `nros_param_server_t`. The abbreviation is ours alone and it is not even consistent inside our own C header: the FUNCTIONS say `param` (`nros_param_declare_bool`) while the TYPES they operate on say `parameter` (`nros_parameter_t`, `nros_parameter_value_t`, `nros_parameter_type_t`), so `nros_param_get_type()` returns an `nros_parameter_type_t`. C++ and Rust both spell it out (`nros::ParameterServer`, `nros_params::ParameterServer`). Nothing about an RTOS needs the five saved characters. Ours half: `c:param_server_t`. Phase 379 W3."
+  },
+  "c:parameter_set_bool": {
+    "verdict": "rename",
+    "why": "the setter half; see `c:parameter_get_bool`. Ours: `c:param_set_bool`."
+  },
+  "c:parameter_set_double": {
+    "verdict": "rename",
+    "why": "the setter half; see `c:parameter_get_double`. Ours: `c:param_set_double`."
+  },
+  "c:parameter_set_int": {
+    "verdict": "rename",
+    "why": "the setter half; see `c:parameter_get_int`. Ours: `c:param_set_integer`."
+  },
+  "c:parameter_t": {
+    "verdict": "extension",
+    "why": "the record a declared parameter occupies: name, type and value inline, no indirection. rclc keeps the same fields in `Parameter` from `rcl_interfaces`, which is a generated message with heap strings; ours is a fixed-size struct in the caller's storage array. Named with the full word where the functions around it say `param` -- see `c:parameter_server_t`."
+  },
+  "c:parameter_value_t": {
+    "verdict": "extension",
+    "why": "the value union inside `c:parameter_t`. `rcl_interfaces/msg/ParameterValue` carries every type as a separate populated field plus a discriminator; a union sized by its largest member is the no-allocator form of the same thing."
+  },
+  "c:params_t": {
+    "verdict": "declined",
+    "why": "the whole parsed parameter tree: node names plus per-node parameter lists. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "c:set_parameter_read_only": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our Rust has the whole descriptor surface -- `ParameterDescriptor::with_description` / `with_read_only` / `with_integer_range` / `with_float_range` / `with_dynamic_typing`, plus `validate_range` enforced on every set -- and our C has NO descriptor surface whatever. The `~/describe_parameters` server a C user registers with `nros_executor_register_parameter_services` therefore answers with empty descriptors for everything that C declared. Phase 379 W3. rclc marks a declared parameter read-only so `ros2 param set` is refused. Our Rust has both `ParameterDescriptor::with_read_only` and a `ReadOnlyParameter<T>` handle, and `ParameterServer::set` returns `SetParameterResult::ReadOnly`; our C has no way to say it."
+  },
+  "c:variant_t": {
+    "verdict": "declined",
+    "why": "the tagged union a parsed YAML scalar or sequence lands in. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "cpp:AsyncParametersClient": {
+    "verdict": "declined",
+    "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half."
+  },
+  "cpp:LifecycleNode::*parameter*": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "`rclcpp_lifecycle::LifecycleNode` repeats `Node`'s entire parameter surface verbatim. Every row has the same answer as its `cpp:Node::` twin -- a lifecycle node declares and reads parameters exactly like an ordinary one here, and a lifecycle node's parameters are not lifecycle-gated in rclcpp either. See the `cpp:Node::*` rows in this shard."
+  },
+  "cpp:Node::add_on_set_parameters_callback": {
+    "verdict": "gap",
+    "why": "rclcpp's accept/reject hook: the callback returns a `SetParametersResult` and a `false` REFUSES the change. Our C has exactly this contract already -- `nros_param_server_set_callback` with a `bool` return -- and C++ does not wrap it, so RFC-0036 line 91 (\"No parameter callbacks\") is stale for C and accurate for C++ by accident. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr, which we cannot; a single fn-pointer slot per server, as C already has, is the no-allocator form. Phase 379 W3; see `c:param_server_set_callback`."
+  },
+  "cpp:Node::declare_parameter": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
+  },
+  "cpp:Node::declare_parameters": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3. This is the map-taking bulk form, and `ComponentNode` would not have it either: it takes a `std::map<std::string, T>`, which needs an allocator."
+  },
+  "cpp:Node::describe_parameter": {
+    "verdict": "gap",
+    "why": "returns the `rcl_interfaces` descriptor. Our C++ has no descriptor type; see `c:add_parameter_description` for the same hole one language over."
+  },
+  "cpp:Node::describe_parameters": {
+    "verdict": "gap",
+    "why": "the vector form; see `cpp:Node::describe_parameter`."
+  },
+  "cpp:Node::get_node_parameters_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an injected node (RFC-0044)."
+  },
+  "cpp:Node::get_parameter": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
+  },
+  "cpp:Node::get_parameter_or": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3. Read-with-fallback specifically: `ComponentNode::get_parameter<T>` already returns `T{}` on a miss, which is the same shape with the fallback fixed at the default-constructed value."
+  },
+  "cpp:Node::get_parameter_types": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: we serve `~/get_parameter_types` and our C (`nros_param_get_type`) and Rust (`ParameterServer::get_type`) both answer it locally; C++ has no type accessor on either `Node` or `ParameterServer`. See `c:param_get_type`."
+  },
+  "cpp:Node::get_parameters": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3. The bulk form additionally reads into a `std::vector<Parameter>`, which needs an allocator and `cpp:Parameter`."
+  },
+  "cpp:Node::has_parameter": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
+  },
+  "cpp:Node::list_parameters": {
+    "verdict": "gap",
+    "why": "prefix-filtered name listing. Rust has `ParameterServer::list_names` and `list_with_prefix`; C and C++ have neither, and we serve `~/list_parameters` in all three. Phase 379 W3."
+  },
+  "cpp:Node::remove_on_set_parameters_callback": {
+    "verdict": "gap",
+    "why": "the unregister half; C's form is `nros_param_server_set_callback(server, NULL, NULL)`. See `cpp:Node::add_on_set_parameters_callback`."
+  },
+  "cpp:Node::set_parameter": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: a C++ node can declare and read its parameters and cannot CHANGE one. `nros::ComponentNode` has `declare_parameter<T>` and `get_parameter<T>` and no setter at all -- not even a typed one -- while C has `nros_param_set_*` and `nros_executor_set_param_*` and Rust has `ParameterServer::set`/`set_bool`/`set_integer`/`set_double`/`set_string`. rclcpp's own setter additionally takes an `rclcpp::Parameter` value object we do not have (`cpp:Parameter`). OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
+  },
+  "cpp:Node::set_parameters": {
+    "verdict": "gap",
+    "why": "the vector form; see `cpp:Node::set_parameter`."
+  },
+  "cpp:Node::set_parameters_atomically": {
+    "verdict": "gap",
+    "why": "all-or-nothing multi-set. We SERVE it -- `~/set_parameters_atomically` is one of the six servers `nros_executor_register_parameter_services` registers, and `handle_set_parameters_atomically` implements it -- but no language offers it as a local call, so the only way to reach our own atomic set is over the wire. Phase 379 W3."
+  },
+  "cpp:Node::undeclare_parameter": {
+    "verdict": "gap",
+    "why": "see `c:delete_parameter`."
+  },
+  "cpp:Parameter": {
+    "verdict": "declined",
+    "why": "rclcpp's parameter VALUE OBJECT: a name plus a type-tagged value, copied around by value and the currency of `set_parameters`, `get_parameters` and the on-set callback. Every accessor on it (`as_string`, `as_double_array`, `value_to_string`, `to_parameter_msg`) returns an owned `std::string` or `std::vector`, so the type cannot exist without an allocator. Our C++ passes values through the typed template methods instead (`ParameterServer::get_parameter<T>(name, out&)`), which is the out-param form of the same read. What a user loses: a heterogeneous parameter list. Note C and Rust both DO have the record type (`nros_parameter_t`, `nros_params::Parameter`) -- theirs holds the value inline rather than owning it."
+  },
+  "cpp:ParameterCallbackHandle": {
+    "verdict": "declined",
+    "why": "the owning handle `ParameterEventHandler::add_parameter_callback` returns; dropping it unregisters. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+  },
+  "cpp:ParameterEventCallbackHandle": {
+    "verdict": "declined",
+    "why": "the whole-event form of `cpp:ParameterCallbackHandle`. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+  },
+  "cpp:ParameterEventHandler": {
+    "verdict": "declined",
+    "why": "the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+  },
+  "cpp:ParameterEventsQoS::ParameterEventsQoS": {
+    "verdict": "declined",
+    "why": "the QoS preset for `/parameter_events`. We define the profile (`QOS_PROFILE_PARAMETER_EVENTS`, reachable from Rust as `QosSettings::parameter_events_default`) and publish nothing on the topic. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+  },
+  "cpp:ParameterMap": {
+    "verdict": "declined",
+    "why": "`std::unordered_map<std::string, std::vector<Parameter>>` -- what `parameter_map_from_yaml_file` produces. Needs an allocator and `cpp:Parameter`. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "cpp:ParameterServer": {
+    "verdict": "divergence",
+    "why": "a fixed-capacity, node-local typed parameter store: `nros::ParameterServer<Capacity, SeqSlots, SeqPoolBytes>`, storage inline, no heap. rclcpp has no such object because rclcpp's parameters live ON the node and the node allocates. Constraints: no allocator (capacity is a template argument and the `nros_parameter_t[]` is a member), and -fno-exceptions (RFC-0018) so every method returns `nros::Result` instead of throwing `ParameterTypeException`). The methods keep rclcpp's names -- `declare_parameter<T>`, `get_parameter<T>`, `set_parameter<T>`, `has_parameter`, and `parameter_count` for `list_parameters().names.size()`. TWO THINGS TO KNOW. It wraps the LEGACY standalone C server, so its parameters are NOT what `ros2 param` sees -- Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. And `raw()` is documented as being \"useful for handing the server to C-API helpers (e.g. ROS 2 service registration)\", but no such helper takes an `nros_param_server_t*`: `nros_executor_register_parameter_services` takes only the executor. Phase 379 W3."
+  },
+  "cpp:ParameterService": {
+    "verdict": "divergence",
+    "why": "rclcpp wraps the parameter SERVERS in an object a node owns; ours is a registration call on the executor, because the executor owns the one parameter store there is. See `c:executor_register_parameter_services` and the service stage's `cpp:ParameterService::ParameterService`."
+  },
+  "cpp:ParameterType": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: the parameter type enum. C has `nros_parameter_type_t` and Rust has `ParameterType`, both mirroring `rcl_interfaces/msg/ParameterType`; C++ has no `nros::ParameterType` and no accessor that would return one. A C++ file can reach the C enum through the `extern \"C\"` include, but nothing in `nros::` names it. See `cpp:Node::get_parameter_types`."
+  },
+  "cpp:ParameterTypeException": {
+    "verdict": "declined",
+    "why": "thrown when a `Parameter` is read as the wrong type. nros-cpp is built `-fno-exceptions` (RFC-0018); every failure here is an `nros::Result` carrying an `nros_ret_t`, and a type mismatch is `NROS_RET_INVALID_ARGUMENT`."
+  },
+  "cpp:ParameterValue": {
+    "verdict": "declined",
+    "why": "the value half of `cpp:Parameter`, with the same allocator problem: `get<std::string>()` and `to_value_msg()` both hand back owned storage. Rust's `ParameterValue` is the no-allocator equivalent (heapless `String`/`Vec`, accessors that return borrows); C++ has no counterpart."
+  },
+  "cpp:ParametersQoS::ParametersQoS": {
+    "verdict": "gap",
+    "why": "the QoS preset for the parameter SERVICES -- transient-local in ROS 2, so a tool that starts after the device still sees its declared parameters. We define the matching profile (`QOS_PROFILE_PARAMETERS`: reliable, transient-local, keep-last 1000) and then do not use it: `Executor::register_parameter_services` creates all six servers with `QosSettings::services_default()` (`nros-node/src/executor/spin.rs`). So the constant is dead and the behaviour is the one the service stage recorded at `rust:QoSProfile::parameter_services_default`. Phase 379 W3."
+  },
+  "cpp:Seq": {
+    "verdict": "divergence",
+    "why": "`nros::Seq<T, N>` -- a fixed-capacity inline sequence, the `no_std` stand-in for `std::vector<T>` at the parameter surface, so a ported rclcpp node that declares a `std::vector<double>` weight matrix (RFC-0044 Q3, phase 242.3) compiles with no heap. Constraint: no allocator. Over-capacity is rejected or flagged (`overflowed()`), never UB. Under `NROS_CPP_STD` it converts to and from `std::vector<T>` so hosted source is unchanged. rclcpp needs no counterpart because `std::vector` is always available to it. Element types are `double`/`int64_t`/`bool` only -- there is no `Seq` path for the `byte_array` or `string_array` parameter types the C layer underneath does support (`nros_param_declare_byte_array`, `nros_param_declare_string_array`), so C++ reaches 8 of the 10 `rcl_interfaces` types. Phase 379 W3."
+  },
+  "cpp:SyncParametersClient": {
+    "verdict": "declined",
+    "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half. The sync form additionally blocks on its own spin, which RFC-0021 forbids."
+  },
+  "cpp:_to_json_dict_entry": {
+    "verdict": "declined",
+    "why": "rclcpp's JSON formatter for a parameter value, used by `Parameter::value_to_string`. It builds a `std::string` per entry; with no allocator there is nothing to build it in, and an image has no consumer for JSON. See `cpp:Parameter`."
+  },
+  "cpp:parameter_map_from": {
+    "verdict": "declined",
+    "why": "converts an `rcl_params_t` into a `cpp:ParameterMap`. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "cpp:parameter_map_from_yaml_file": {
+    "verdict": "declined",
+    "why": "reads a params file off disk. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "cpp:parameter_value_from": {
+    "verdict": "declined",
+    "why": "converts one `rcl_variant_t` into a `cpp:ParameterValue`. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+  },
+  "rust:AvailableValues": {
+    "verdict": "declined",
+    "why": "the input to rclrs's initial-value discriminator: the set of candidate values a declaration may choose from (override, prior value, default). rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "rust:DeclarationError": {
+    "verdict": "gap",
+    "why": "rclrs separates DECLARE-time failures (`AlreadyDeclared`, `NoValueAvailable`, `OverrideValueTypeMismatch`, `PriorValueTypeMismatch`, `InitialValueOutOfRange`, `InvalidRange`) from set-time ones. We have no declare-time error type at all: `ParameterServer::declare` and `declare_with_descriptor` return a bare `bool`, so a failed declaration cannot say whether the name was taken, the storage was full or the default was out of range -- and the C++ `ComponentNode` treats any of them as one boot-fatal flag. `ParameterError` (see `rust:ParameterValueError`) already has the variants; the declare path just does not return them. Phase 379 W3."
+  },
+  "rust:Executor::declare_parameter": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784. See issue 0793 for the parameter stores these reach."
+  },
+  "rust:Executor::declare_parameter_with_descriptor": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784. See issue 0793 for the parameter stores these reach."
+  },
+  "rust:Executor::get_parameter": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784. See issue 0793 for the parameter stores these reach."
+  },
+  "rust:Executor::get_parameter_integer": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784. See issue 0793 for the parameter stores these reach."
+  },
+  "rust:Executor::parameter": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784. See issue 0793 for the parameter stores these reach."
+  },
+  "rust:MandatoryParameter::set": {
+    "verdict": "divergence",
+    "why": "ours is `set(&mut self, T)`, rclrs's is `set(&self, U)`. rclrs can take `&self` because the value lives behind the node's `Arc<Mutex<...>>`, so a handle is a shared reference into shared state; ours holds `&'a mut ParameterServer` directly. Constraint: no allocator and no `Arc` -- with one executor per RTOS task (RFC-0002) the store is owned, not shared, so mutation is an exclusive borrow the compiler checks rather than a lock taken at runtime. The value-type difference is the same distinction: ours takes `T` exactly, rclrs takes any `U: Into<T>`."
+  },
+  "rust:Node::declare_parameter": {
+    "verdict": "divergence",
+    "why": "rclrs declares a parameter on a live `Arc<Node>` and hands back a typed handle. Ours is `DeclaredNode::declare_parameter_for_name[_with_default]`, called during `register`. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time."
+  },
+  "rust:Node::use_undeclared_parameters": {
+    "verdict": "gap",
+    "why": "rclrs's escape hatch: a handle that reads and writes parameters that were never declared. We HAVE the type -- `nros_params::typed::UndeclaredParameters`, with `get_bool`/`get_integer`/`get_double`/`get_string` -- and no way to reach it. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3. See `rust:Parameters`."
+  },
+  "rust:OptionalParameter::set": {
+    "verdict": "divergence",
+    "why": "same as `rust:MandatoryParameter::set`, with `Option<T>` because `None` is how a value is cleared here -- see `rust:OptionalParameter::unset`."
+  },
+  "rust:OptionalParameter::unset": {
+    "verdict": "declined",
+    "why": "rclrs spells clearing an optional parameter `unset()`; ours is `set(None)`, which stores `ParameterValue::NotSet` -- the same operation, one word shorter to implement and one call longer to read. What a user loses is only the spelling."
+  },
+  "rust:Parameter": {
+    "verdict": "extension",
+    "why": "the stored record -- name plus `ParameterValue` -- returned by `ParameterServer::iter()` and `get_parameter()`, and what the `~/list_parameters` / `~/describe_parameters` handlers walk. rclrs never materialises one because its store is a map behind the node handle. Ours must, because the handlers iterate the static array without allocating an intermediate collection. C has the same record as `nros_parameter_t` and C++ has none. This row covers `Parameter::new`/`bool`/`integer`/`double`/`string`/`name`/`param_type`, which are constructors and accessors over those two fields."
+  },
+  "rust:ParameterBuilder::constraints": {
+    "verdict": "gap",
+    "why": "the free-text `additional_constraints` field of `rcl_interfaces/msg/ParameterDescriptor`, which `ros2 param describe` prints. Our `ParameterDescriptor` carries `description` and not this one, and `to_rcl_descriptor` therefore always sends it empty. rclc has the same field on `rclc_add_parameter_description`; see `c:add_parameter_description`."
+  },
+  "rust:ParameterBuilder::default_from_iter": {
+    "verdict": "declined",
+    "why": "builds an array default from any `IntoIterator<Item = T>`. Ours takes the value directly, and an array value is a `heapless::Vec` bounded by `MAX_ARRAY_LEN`; collecting an unbounded iterator into a fixed capacity has to fail somewhere, which is what `ParameterVariant::try_to_parameter_value` reports (issue 0323). No allocator."
+  },
+  "rust:ParameterBuilder::default_string_array": {
+    "verdict": "declined",
+    "why": "the `&[&str]` convenience for the same thing; see `rust:ParameterBuilder::default_from_iter`. A string array here is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>` -- two compile-time bounds, not a borrowed slice of unbounded strs."
+  },
+  "rust:ParameterBuilder::discard_mismatching_prior_value": {
+    "verdict": "declined",
+    "why": "handles re-declaring a parameter whose existing value has the wrong type. Ours cannot reach that state: `ParameterServer::declare` refuses a duplicate name outright and returns `false`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "rust:ParameterBuilder::discriminate": {
+    "verdict": "declined",
+    "why": "supplies a custom choice function in place of `rust:default_initial_value_discriminator`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "rust:ParameterBuilder::float_range": {
+    "verdict": "extension",
+    "why": "the floating-point form; see `rust:ParameterBuilder::integer_range`."
+  },
+  "rust:ParameterBuilder::ignore_override": {
+    "verdict": "declined",
+    "why": "declares that a command-line or params-file override must NOT win. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "rust:ParameterBuilder::integer_range": {
+    "verdict": "extension",
+    "why": "min/max/step as three scalars. rclrs's `range()` takes a `T::Range` VALUE, and we have that method too (it matched) -- but a facade user cannot construct the value to pass it, because `ParameterRange`/`IntegerRange`/`FloatingPointRange` are not re-exported (see `rust:ParameterRange`). So the scalar form is currently the only reachable one. If the facade gap is closed this stops earning its place."
+  },
+  "rust:ParameterBuilder::new": {
+    "verdict": "divergence",
+    "why": "rclrs's builder is produced by `Node::declare_parameter(name)` and borrows the node; ours is `ParameterBuilder::new(&mut ParameterServer, name)` and borrows the SERVER, because there is no `Arc<Node>` holding parameters. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time."
+  },
+  "rust:ParameterDefault": {
+    "verdict": "extension",
+    "why": "the parameter default a COMPONENT records at declaration, so `nros sync` and the launch resolver can read a package's parameters out of source without running the image (RFC-0043). Values are `MetadataString` because the record has to be `const`-constructible in a static table -- `Double` is a string for the same reason. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it. rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]`. Covers `ParameterDefault::for_type` and `::parameter_type`."
+  },
+  "rust:ParameterDescriptor": {
+    "verdict": "divergence",
+    "why": "the per-parameter metadata `rcl_interfaces/msg/ParameterDescriptor` carries -- description, read-only, dynamic typing, range -- as ONE inline value stored beside the parameter. rclrs splits the same information across `ParameterOptions`, `ParameterRanges` and `AvailableValues`, which are owned/`Arc` shaped. Constraint: no allocator -- the descriptor lives in the server's fixed slot array, so the description is a `heapless::String` and the range an inline enum, and both are sized at compile time. `validate_range` is called on every set, which is where `SetParameterResult::OutOfRange` comes from. This row covers `ParameterDescriptor::*`. See `rust:ParameterOptions`."
+  },
+  "rust:ParameterError": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:ParameterValueError`."
+  },
+  "rust:ParameterKind": {
+    "verdict": "declined",
+    "why": "rclrs's type discriminant, which is `rcl_interfaces`'s nine types PLUS a tenth, `Dynamic`, for a parameter allowed to change type. Ours is `ParameterType` (see `rust:ParameterType`), which mirrors `rcl_interfaces/msg/ParameterType` exactly and carries the dynamic-typing intent as a descriptor FLAG (`ParameterDescriptor::with_dynamic_typing`) rather than a tenth variant, so the enum stays byte-identical to what goes on the wire. What a user loses: a type-level distinction between a fixed and a dynamic parameter."
+  },
+  "rust:ParameterOptions": {
+    "verdict": "divergence",
+    "why": "rclrs's per-parameter options bundle (description, constraints, ranges, override handling), built and passed at declare time. Ours is `ParameterDescriptor`, stored INLINE beside the parameter in the server's fixed array rather than passed as an owned bundle -- no allocator, so the description is a `heapless::String` and the range an inline enum. See `rust:ParameterDescriptor`."
+  },
+  "rust:ParameterRange": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE with our own facade, not with rclrs: `nros_params` HAS `ParameterRange` (an enum over `IntegerRange`/`FloatingPointRange`, both with min/max/step, both enforced by `ParameterDescriptor::validate_range` on every set), and `packages/api/nros/src/lib.rs` does not re-export any of the three. So a user of the `nros` facade can build a range only through the builder's `integer_range(min,max,step)` / `float_range(min,max,step)` scalars and can never name the type. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3."
+  },
+  "rust:ParameterRanges": {
+    "verdict": "gap",
+    "why": "rclrs's aggregate of every range on one parameter. Ours holds a single `Option<ParameterRange>` per descriptor, which is the same thing for the one-range case and cannot express two. See `rust:ParameterRange`."
+  },
+  "rust:ParameterServer": {
+    "verdict": "divergence",
+    "why": "the parameter store as a STANDALONE object. rclrs has no such type because in rclrs the `Arc<Node>` is the store: declaring goes through the node handle and the values live behind its mutex. Ours is a fixed array of `MAX_PARAMETERS` slots that the executor owns and the six `rcl_interfaces/srv/*` handlers read directly. Constraints: no allocator (capacity is `MAX_PARAMETERS`, a compile-time Kconfig-derived constant), and static entity storage under the component model (RFC-0043/0044) -- there is no `Arc<Node>` to hang parameters off. This row covers every `ParameterServer::*` member. Two of them are worth naming: `init_in_place` exists because the type is enormous and scales with `MAX_PARAMETERS` (285 KiB at 32 slots, 2.2 MiB at 256 -- `ParameterValue` is sized by its `StringArray` variant), so `Box::new(ParameterServer::new())` builds the whole value on the stack first and overruns an RTOS thread stack (issue 0756); and `remove`/`unset` are capabilities neither C nor C++ has (see `c:delete_parameter`)."
+  },
+  "rust:ParameterType": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:ParameterKind`. Ours is the better name of the two -- it is what `rcl_interfaces/msg/ParameterType`, rclcpp and our own C all call it -- so this pair is a rename rclrs should make, not us; recorded here because the campaign records both halves."
+  },
+  "rust:ParameterValue::*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "typed accessors (`as_bool`, `as_string`, `as_double_array`, ...) and constructors (`from_bool`, `from_string`, ...) on the value enum. rclrs converts through `From`/`TryFrom` impls that hand back owned `String`/`Vec`; ours cannot, because the value is stored in a `heapless::String<MAX_STRING_VALUE_LEN>` / `heapless::Vec<_, MAX_ARRAY_LEN>` inside the server's fixed slot and there is no allocator to copy it out of. So the readers return BORROWS (`Option<&str>`, `Option<&[u8]>`) and the writers are fallible on capacity (`from_string` returns `Option<Self>`). Constraint: no allocator, compile-time capacity. Same reason `rust:ParameterVariant::*` exists."
+  },
+  "rust:ParameterValueError": {
+    "verdict": "rename",
+    "why": "rclrs's set-time failure enum -- `OutOfRange`, `TypeMismatch`, `ReadOnly`. Ours is `ParameterError` with those three plus `NotFound`, `StorageFull`, `StringConversion` and `InvalidRange`. Same concept, different name, no platform reason. Ours half: `rust:ParameterError`."
+  },
+  "rust:ParameterVariant::*": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "`to_parameter_value` / `from_parameter_value` / `try_to_parameter_value` -- the conversion trait between a Rust type and a stored `ParameterValue`. rclrs's `ParameterVariant` declares only `kind()` and does its conversions through `From`. The third method is the constraint made visible: `to_parameter_value` cannot report that a `String` exceeded `MAX_STRING_VALUE_LEN` or a `Vec` exceeded `MAX_ARRAY_LEN`, and the hosted impls used to `unwrap_or_default()` -- turning an over-long string into `NotSet` (a TYPE change) and an oversized vec into an EMPTY array, both indistinguishable from a caller who meant it (issue 0323). Fixed capacity forces a fallible conversion; an allocator would not. See `rust:ParameterValue::*`."
+  },
+  "rust:ParameterVariant::kind": {
+    "verdict": "rename",
+    "why": "rclrs names the trait method that reports a variant's type `kind`, returning `ParameterKind`; ours is `parameter_type`, returning `ParameterType`. See `rust:ParameterKind`. Ours half: `rust:ParameterVariant::parameter_type`."
+  },
+  "rust:ParameterVariant::parameter_type": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:ParameterVariant::kind`."
+  },
+  "rust:Parameters": {
+    "verdict": "gap",
+    "why": "the handle `Node::use_undeclared_parameters` returns, with `get`/`set` covered by this row. Ours is named `UndeclaredParameters` and is not exported. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3. Ours is also read-only where rclrs's has `set`."
+  },
+  "rust:QoSProfile::parameter_events_default": {
+    "verdict": "rename",
+    "why": "rclrs spells the preset `QoSProfile::parameter_events_default`; ours is `QosSettings::parameter_events_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; see the service stage's `rust:QoSProfile::services_default`. Ours half: `rust:QosSettings::parameter_events_default`."
+  },
+  "rust:QosSettings::parameter_events_default": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSProfile::parameter_events_default`. Worth knowing that the profile it returns has no publisher behind it -- we emit no `/parameter_events` (see `cpp:ParameterEventHandler`)."
+  },
+  "rust:QosSettings::parameters_default": {
+    "verdict": "rename",
+    "why": "rclrs spells the parameter-SERVICES preset `QoSProfile::parameter_services_default`; ours drops the word `services`, which makes it read as \"the QoS for parameters\" rather than \"the QoS for the parameter services\". Same `QosSettings`/`QoSProfile` type rename as `rust:QosSettings::parameter_events_default`. It is also DEAD: `Executor::register_parameter_services` builds all six servers with `QosSettings::services_default()`, so the transient-local profile this returns is never applied -- the gap the service stage recorded at `rust:QoSProfile::parameter_services_default`. See `cpp:ParametersQoS::ParametersQoS`."
+  },
+  "rust:RmwParameterConversionError": {
+    "verdict": "gap",
+    "why": "the failure of turning an `rcl_interfaces` parameter value into a native one. We have it -- `nros_node::parameter_services::ValueConversionError`, with a `reason()` the `~/set_parameters` handler puts into the `SetParametersResult` -- and the `nros` facade does not export it, so a user cannot match on why a wire value was rejected. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3."
+  },
+  "rust:SetParameterResult": {
+    "verdict": "rename",
+    "why": "OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3."
+  },
+  "rust:default_initial_value_discriminator": {
+    "verdict": "declined",
+    "why": "the default choice function over `rust:AvailableValues`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  }
+}

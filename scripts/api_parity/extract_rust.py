@@ -30,7 +30,26 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def rustdoc_json(manifest_dir, with_deps, target_dir=None, extra_env=None):
+# `nros`'s `default = []` (issue 0591), and 18 `#[cfg(feature = "rmw-cffi")]`
+# blocks in its lib.rs gate the entire runtime surface -- `Executor`,
+# `NodeHandle`, `EmbeddedPublisher`, `Promise`, the concrete `Subscription`.
+# Documenting with default features therefore extracts a facade with the runtime
+# removed, which inflates `theirs-only` (things we HAVE read as gaps) and
+# deflates `ours-only`. The features below are what a real Rust image enables;
+# `--all-features` is not used because several are mutually exclusive backends.
+NROS_FEATURES = [
+    "rmw-cffi",
+    "macros",
+    "alloc",
+    "std",
+    "param-services",
+    "lifecycle-services",
+    "stream",
+    "safety-e2e",
+]
+
+
+def rustdoc_json(manifest_dir, with_deps, target_dir=None, extra_env=None, features=None):
     """Build rustdoc JSON for the lib target of the crate at `manifest_dir`.
 
     Nightly only -- `--output-format json` is unstable. CLAUDE.md already
@@ -50,6 +69,8 @@ def rustdoc_json(manifest_dir, with_deps, target_dir=None, extra_env=None):
     cmd = ["cargo", "+nightly", "doc", "--lib"]
     if not with_deps:
         cmd.append("--no-deps")
+    if features:
+        cmd += ["--features", ",".join(features)]
     proc = subprocess.run(cmd, cwd=manifest_dir, env=env, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(

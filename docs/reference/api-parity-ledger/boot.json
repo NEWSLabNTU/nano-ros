@@ -1,0 +1,91 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:app_main": {
+    "verdict": "extension",
+    "why": "`int nros_app_main(int argc, char** argv)` -- the entry symbol every nros C example defines, plus the `NROS_APP_MAIN_REGISTER()` macro that emits the right platform shim around it. rclc needs none of this because a desktop program writes `int main` and libc's startup calls it. The scenario is that the entry symbol is not portable across the RTOSes we target: Zephyr's kernel calls `int main(void)`, ESP-IDF/FreeRTOS/ThreadX/bare-metal startup chains call `void app_main(void)` after board init (network, executor arena, hardware), NuttX compiles with `-Dmain=<PROGNAME>_main` so nshlib can register the built-in, and a native build wants full `int main(int argc, char** argv)` pass-through. One user source builds on all of them and only the one-line registration knows which shim the linker expects. Note argc/argv are passed as `0, NULL` on every non-POSIX arm -- the signature is the portable shape, not a promise that arguments arrive."
+  },
+  "c:boot_config_node_name": {
+    "verdict": "extension",
+    "why": "The C reader over the `.nros_boot_config` blob: validates magic + version + the `NROS_BOOT_SET_NODE_NAME` bit and returns a pointer into the baked `char[64]`, or NULL. The generated C entry passes it as the `session_name` to `nros_support_init_named`, which is what fixed the PID-derived session name (#98). The governing constraint is RFC-0045's: a device is never told anything at startup. There is no argv to parse, no environment to read and (on the embedded targets) no filesystem to load a YAML from, so the identity a desktop node gets from `ros2 run --ros-args -r __node:=talker` has to be BAKED into the image at link time. rcl/rclc/rclcpp/rclrs have no counterpart to any of this for the same reason they have no counterpart to a linker script. OUR LANGUAGES DISAGREE, and this is the row to act on: the blob defines FOUR fields and the C side reads exactly one. There is no `nros_boot_config_locator`, `_domain_id` or `_namespace`, and the C/C++ emitter that WRITES the blob (`emit_boot_config_static`, nros-cli-core/src/codegen/entry/mod.rs:236) hardcodes `.domain_id = 0`, `.locator = \"\"`, `.namespace_ = \"\"` and never sets their bits -- a C image gets its locator and domain from the `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` compile definitions instead, which is the second delivery path RFC-0045 was written to remove. Rust's `BootConfig::from_baked` reads all four. Consequence: RFC-0045's follow-on `nros config patch` tool would patch three fields no C image reads, and the parity between the languages that the shared blob was supposed to buy is one field deep."
+  },
+  "rust:BOOT_SET_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "The `set_flags` bits of `BakedBootConfig` -- one per field, meaning `baked-set` as distinct from `use the compiled default`. They exist because the blob is fixed-size and pointer-free (so a post-link tool can patch it in place), which rules out `Option`, and because the zero value of every field is a LEGAL value that must not be read as unset: domain 0 is a real domain (the whole reason `c:get_default_domain_id` in the init stage carries the `NROS_DOMAIN_ID_INHERIT`/`NROS_DOMAIN_ID_EXPLICIT_ZERO` sentinels, issues 0206/0227), and the empty locator is the established `absent -- let the backend discover` value (issue 0330), not a missing one. A separate presence bit is the only encoding that survives both. ROS 2 needs none of it: absence of an env var IS the unset marker there. NOTE the C header defines the same four as `NROS_BOOT_SET_*` object-like macros, which the C surface extractor does not see -- these read as Rust-only in the report and are not."
+  },
+  "rust:BOOT_SET_NAMESPACE": {
+    "verdict": "gap",
+    "why": "ROS 2 puts a node in a namespace with `--ros-args -r __ns:=/robot` and every client library honours it. nano-ros cannot deliver one to an image, and the reason is not a constraint -- it is an unwired rung. Filed on the presence bit because that is where the evidence is: the field, the bit, the packer (`BakedBootConfig::new`) and the reader (`BootConfig::from_baked`) all exist and all work, and NOTHING SETS IT. The one production Rust bake site, `nros::main!` (main_macro.rs:1333), passes `Option::None` for namespace unconditionally; the C/C++ emitter writes `.namespace_ = \"\"` with the bit clear (see `c:boot_config_node_name`); and `EnvRung` -- the hosted rung -- has no namespace field at all, so the env cannot supply it either. Every test that exercises the bit builds the blob by hand. What is left is `ExecutorConfig::namespace(..)` called directly in a hand-written main, which is the per-board lore RFC-0045 exists to abolish. Otherwise the reasoning of `rust:BOOT_SET_*` applies. Phase 379 W3."
+  },
+  "rust:BakedBootConfig": {
+    "verdict": "extension",
+    "why": "RFC-0045's single embedded bake site: a `repr(C)`, 236-byte, pointer-free struct (magic `NRBC`, version, set_flags, domain_id, `node_name[64]`, `locator[96]`, `namespace[64]`) emitted into the `.nros_boot_config` linker section. The governing constraint is RFC-0045's: a device is never told anything at startup. There is no argv to parse, no environment to read and (on the embedded targets) no filesystem to load a YAML from, so the identity a desktop node gets from `ros2 run --ros-args -r __node:=talker` has to be BAKED into the image at link time. rcl/rclc/rclcpp/rclrs have no counterpart to any of this for the same reason they have no counterpart to a linker script. The shape is chosen for two scenarios beyond `where does an image get its name`. First, ONE inspectable symbol instead of per-board lore -- before this, identity arrived four different ways in Rust alone (runtime `from_env`, a baked `Config` with a hardcoded `nros_app`, `option_env!`, and on NuttX a trait default that silently dropped the overlay). Second, fleet provisioning: fixed-size fields and a scannable magic mean a post-link tool can rewrite a unit's node name, locator and domain in a built binary, so one firmware build flashes a fleet with per-unit identity and no recompile. The same struct is mirrored byte-for-byte in `nros/boot_config.h` with static asserts on size and every offset, so the language a node is written in does not change the blob."
+  },
+  "rust:BakedBootConfig::new": {
+    "verdict": "extension",
+    "why": "The packer, `const fn` so `nros::main!` can use it in a `static` initializer -- there is no runtime to build the blob in; it has to exist at link time. Takes four `Option`s and derives `set_flags` from which are `Some`, which is how the `rust:BOOT_SET_*` presence bits get set without the caller naming them. A string longer than its fixed buffer is a const `panic!`, i.e. a COMPILE error, never a silent truncation -- a node name truncated at 64 bytes would be a device that is on the graph under a name nobody searches for. See `rust:BakedBootConfig`."
+  },
+  "rust:NROS_BOOT_CONFIG_MAGIC": {
+    "verdict": "extension",
+    "why": "`0x4E524243` = ASCII `NRBC`, the first word of the blob. It is what makes the post-link scenario possible at all: a tool handed an `.elf` or a raw `.bin` has no symbol table it can rely on (a stripped image, a padded flash dump), so it finds the config by scanning for this word. Also the corruption guard -- `BootConfig::from_baked` returns all-`None` (falling through to the compiled defaults) rather than trusting a section that was zero-initialised or overwritten. ROS 2 has no counterpart because nothing patches a desktop binary's identity; that is what `--ros-args` is for. Defined identically as a C macro in `nros/boot_config.h`, which the C extractor cannot see."
+  },
+  "rust:NROS_BOOT_CONFIG_VERSION": {
+    "verdict": "extension",
+    "why": "The blob's layout version, checked alongside the magic. The scenario is the one that makes an in-place patch tool safe to ship: the tool and the firmware are built at different times and flashed from different machines, so a v2 tool writing v1 offsets into a fielded image has to be rejected by the image, not caught by discipline. See `rust:NROS_BOOT_CONFIG_MAGIC`. Currently 1."
+  },
+  "rust:BootConfig": {
+    "verdict": "extension",
+    "why": "The plain-field, all-`Option` middle rung RFC-0045 resolves through (`node_name`, `locator`, `domain_id`, `namespace`), sitting between the sources (baked blob, env, board overlay) and `ExecutorConfig`. It is a plain struct rather than the `DeployOverlay` it usually comes from precisely so `nros-node` and `nros-platform` need not depend on each other -- they meet only through `nros-platform-api`. rclrs's equivalent state lives inside `Context`/`InitOptions`, both of which the init stage already records as divergences (`rust:Context`, `rust:InitOptions`); this is the type that replaces them, and the ladder it feeds -- explicit argument, then hosted environment, then baked default -- is the one written down at `c:get_default_domain_id`. `None` on a field means `this rung did not speak`, which is the same distinction `rust:BOOT_SET_*` encodes as a bit once the value reaches a struct that cannot hold an `Option`."
+  },
+  "rust:BootConfig::from_baked": {
+    "verdict": "extension",
+    "why": "Turns a `&'static BakedBootConfig` into the `Option`-per-field `BootConfig` the resolver consumes: validates magic + version, then yields `Some` for each field whose `set_flags` bit is set, taking strings up to the first NUL and treating invalid UTF-8 in a set field as unset. This is the READ half of the asymmetry recorded at `c:boot_config_node_name` -- it reads all four fields where C reads one."
+  },
+  "rust:BootConfigError": {
+    "verdict": "extension",
+    "why": "`DomainIdParse` / `DomainIdRange` -- and the point is that they are ERRORS. Issue 0206: a malformed or out-of-range domain id used to be a silent fallback to domain 0 in C++ and a silent no-op in this resolver. On a desktop that is a nuisance you notice in `ros2 node list`; on a board it is the whole failure, because a device that came up on the wrong domain looks exactly like a device with a dead radio -- it has no console anyone reads, no way to be asked what domain it chose, and often no way to be interrupted. So a typo in `ROS_DOMAIN_ID` refuses to boot rather than joining a graph nobody is watching. rclrs surfaces the equivalent as an `RclrsError` carrying a string, which `rust:RclrsError` in the types stage already records as unavailable under no_std. The ladder these errors guard is `c:get_default_domain_id`."
+  },
+  "rust:BoardConfig": {
+    "verdict": "extension",
+    "why": "The trait every board crate's own config struct implements, exposing the two fields that are universal across boards -- `locator()` and `domain_id()`. Board configs are otherwise wildly board-specific (MAC, static IP, gateway, UART base, WiFi SSID), so cross-board generic code -- a benchmark harness, a multi-target test driver -- had to `cfg`-gate on the concrete type name to read even those two. rclrs has nothing to correlate against because a desktop node has no board: the transport endpoint comes from the middleware's own config file and the domain from the environment. Anchors `BoardConfig::*`; `zenoh_locator` is argued separately. The transport-specific knobs stay ordinary fields on the concrete struct (the mutable ones are `BoardTransportConfig`), so this trait stays two methods wide on purpose."
+  },
+  "rust:BoardConfig::zenoh_locator": {
+    "verdict": "rename",
+    "why": "Already renamed, and this is the deprecated alias still standing in the public surface. Issue 0330: `BoardConfig` is a core, RMW-AGNOSTIC trait, so it must not name a concrete backend -- a board with an XRCE agent or a Cyclone peer still has a locator and it was never a zenoh one. `locator()` is the live name; `zenoh_locator()` survives as a defaulted method that forwards to it, so an out-of-tree board crate that still spells the old name keeps compiling with a deprecation warning. Recorded rather than left implicit because a `#[deprecated]` item is still API a reader can find, and this one teaches a reader the wrong thing about what layer the trait belongs to. Same class as issue 0225. Its removal is the follow-up; the deprecation dates from 0.6.0."
+  }
+}

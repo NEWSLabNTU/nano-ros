@@ -367,10 +367,6 @@
     "verdict": "declined",
     "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
   },
-  "cpp:ContentFilterOptions": {
-    "verdict": "declined",
-    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
-  },
   "cpp:GenericPublisher": {
     "verdict": "declined",
     "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
@@ -396,16 +392,12 @@
     "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
   },
   "cpp:LifecycleNode::get_publishers_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "verdict": "gap",
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "cpp:LifecycleNode::get_subscriptions_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
-  },
-  "cpp:LifecyclePublisher": {
     "verdict": "gap",
-    "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "cpp:LoanedMessage": {
     "verdict": "divergence",
@@ -440,12 +432,12 @@
     "why": "a subscription whose callback also receives `MessageInfo`. rclcpp expresses this by callback ARITY -- a two-argument callback gets the info -- which needs `function_traits` introspection over a `std::function`; with plain fn-pointers the choice has to be an explicit entry point."
   },
   "cpp:Node::get_publishers_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "verdict": "gap",
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "cpp:Node::get_subscriptions_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "verdict": "gap",
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "cpp:PollingSubscription": {
     "verdict": "extension",
@@ -574,10 +566,6 @@
   "cpp:PublisherOptionsWithAllocator": {
     "verdict": "declined",
     "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
-  },
-  "cpp:QOSEventHandler": {
-    "verdict": "divergence",
-    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:SerializedMessage": {
     "verdict": "rename",
@@ -883,6 +871,110 @@
     "verdict": "extension",
     "why": "see `c:client_try_recv_response`."
   },
+  "rust:EmbeddedPublisher": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::assert_liveliness": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::on_liveliness_lost": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::on_offered_deadline_missed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::publish": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::publish_raw": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::publish_streamed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::publish_with_buffer": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedPublisher::supports_event": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::assert_liveliness": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::loan": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::loan_with_timeout": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::new": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::publish_raw": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::publish_raw_with_attachment": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::supports_event": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:EmbeddedRawPublisher::try_loan": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::add_arena_subscription_c_callback": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::add_arena_subscription_c_info_callback": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::add_arena_subscription_c_validated_callback": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::add_arena_subscription_callback": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::create_publisher_on": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::create_publisher_raw_on": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_subscription_buffered_raw_info_on": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_subscription_buffered_raw_safety_on": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:IntoAsyncSubscriptionCallback": {
     "verdict": "declined",
     "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. The async form additionally needs a runtime."
@@ -894,6 +986,10 @@
   "rust:IntoWorkerSubscriptionCallback": {
     "verdict": "declined",
     "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the node stage's `rust:Node::create_worker`."
+  },
+  "rust:LoanError": {
+    "verdict": "divergence",
+    "why": "why a loan could not be taken (slot busy, message too large for `TX_BUF`). rclcpp signals the same failures by exception or by falling back to a copy; with `-fno-exceptions` and a fixed slot there is no fallback to fall back to. See `rust:PublishLoan`."
   },
   "rust:LoanedMessage": {
     "verdict": "divergence",
@@ -964,12 +1060,12 @@
     "why": "the theirs-only half of the node stage's `rust:Node::create_subscriber` rename -- rclrs, rclcpp, rclc and our own C and C++ all say SUBSCRIPTION. Phase 379 W5."
   },
   "rust:Node::get_publishers_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "verdict": "gap",
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "rust:Node::get_subscriptions_info_by_topic": {
-    "verdict": "declined",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "verdict": "gap",
+    "why": "NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
   },
   "rust:Node::publisher_count": {
     "verdict": "extension",
@@ -979,6 +1075,46 @@
     "verdict": "extension",
     "why": "see `rust:Node::publisher_count`."
   },
+  "rust:NodeHandle::create_publisher": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_publisher_raw": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_publisher_raw_with_qos": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_publisher_with_qos": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_subscription": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_subscription_raw": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_subscription_raw_sized": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_subscription_sized": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::create_subscription_with_qos": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::publisher": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:NodeSubscriptionCallback": {
     "verdict": "divergence",
     "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert."
@@ -986,6 +1122,26 @@
   "rust:PUBLISHER_GID_SIZE": {
     "verdict": "divergence",
     "why": "see `rust:PublisherGid`."
+  },
+  "rust:Promise::try_recv": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:PublishLoan": {
+    "verdict": "divergence",
+    "why": "the publish-side loan: reserve the outgoing buffer, fill it in place, then `commit` (or `discard`). rclcpp's `borrow_loaned_message` is the same idea and rclrs has no equivalent at all. Ours differs in what backs the slot, which is the platform part: with no allocator the default backing is the publisher's own inline `[u8; TX_BUF]` and commit memcpys into the backend's outbound buffer, while `rmw-lending` swaps it for storage the backend owns (zenoh-pico's `z_bytes_from_static_buf`, XRCE's `ucdrBuffer` reservation) for a true zero-copy publish. `#[must_use]` because dropping without committing silently rolls the message back -- there is no destructor that can publish for you. See the pubsub stage's loan rows."
+  },
+  "rust:PublishLoan::as_mut": {
+    "verdict": "divergence",
+    "why": "see `rust:PublishLoan`."
+  },
+  "rust:PublishLoan::commit": {
+    "verdict": "divergence",
+    "why": "see `rust:PublishLoan`."
+  },
+  "rust:PublishLoan::discard": {
+    "verdict": "divergence",
+    "why": "see `rust:PublishLoan`."
   },
   "rust:Publisher": {
     "verdict": "divergence",
@@ -1067,6 +1223,70 @@
     "verdict": "extension",
     "why": "message metadata plus the transport ATTACHMENT (zenoh carries source timestamp and publisher GID there rather than in the payload). rclrs has `MessageInfo` and no attachment because DDS has no such field."
   },
+  "rust:RawSubscription": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::borrow": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::borrow_with_timeout": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::buffer": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::has_data": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::new": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::on_liveliness_changed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::on_message_lost": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::on_requested_deadline_missed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::register_waker": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::supports_event": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::try_borrow": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::try_recv_raw": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::try_recv_raw_with_attachment": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::try_recv_sequence": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RawSubscription::try_recv_validated": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:RawSubscriptionCallback": {
     "verdict": "divergence",
     "why": "the raw-bytes callback type. See `c:subscription_callback_t` -- bound at declaration, not handed to an executor."
@@ -1074,6 +1294,14 @@
   "rust:ReadOnlyLoanedMessage": {
     "verdict": "divergence",
     "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`. rclrs splits read-only from writable loans by type; ours is one borrow with a const view."
+  },
+  "rust:RecvView": {
+    "verdict": "divergence",
+    "why": "the read side: a `!Send + !Sync` borrow of a subscription's receive buffer, so a callback reads the bytes without a copy and the drop releases the backend's lock. Same two backings as `rust:PublishLoan`. `!Send` is load-bearing rather than conservative -- the view aliases storage the next message will overwrite, and there is no allocator to move it into."
+  },
+  "rust:RmwPublisher": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:ServiceTrait::try_recv_request": {
     "verdict": "extension",
@@ -1091,6 +1319,10 @@
     "verdict": "divergence",
     "why": "see `rust:PublisherState`."
   },
+  "rust:Subscription::buffer": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:Subscription::deserialization_error": {
     "verdict": "extension",
     "why": "see `rust:Publisher::buffer_error`."
@@ -1099,6 +1331,22 @@
     "verdict": "extension",
     "why": "non-destructive readiness check, so a caller can decide whether to take without taking. rclrs's executor answers this through the wait set; a polling caller has no wait set. See `cpp:PollingSubscription`."
   },
+  "rust:Subscription::on_liveliness_changed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Subscription::on_message_lost": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Subscription::on_requested_deadline_missed": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Subscription::process_in_place": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:Subscription::process_raw_in_place": {
     "verdict": "extension",
     "why": "hands the callback the received bytes in the transport's own buffer, with no copy into caller storage. RFC-0010's zero-copy path on the receive side for backends that can hold the buffer across the call; `supports_process_in_place` says which can."
@@ -1106,6 +1354,10 @@
   "rust:Subscription::process_raw_in_place_with_info": {
     "verdict": "extension",
     "why": "see `rust:Subscription::process_raw_in_place`."
+  },
+  "rust:Subscription::recv": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:Subscription::register_event_callback": {
     "verdict": "divergence",
@@ -1159,9 +1411,17 @@
     "verdict": "extension",
     "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
   },
+  "rust:Subscription::try_recv_validated": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:Subscription::unsupported_event_error": {
     "verdict": "extension",
     "why": "see `rust:Publisher::supports_event`."
+  },
+  "rust:Subscription::wait_next": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:SubscriptionOptions": {
     "verdict": "rename",

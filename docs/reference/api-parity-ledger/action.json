@@ -1,0 +1,703 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:accepted_callback_t": {
+    "verdict": "divergence",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. OUR LANGUAGES DISAGREE: C takes this third callback at `nros_action_server_init` and Rust takes it at `DeclaredNode::create_action_server_with_callbacks(goal, cancel, accepted)`, but `nros::ActionServer<A>` has NO way to set one -- only `set_goal_callback` and `set_cancel_callback`. A C++ user who accepts-and-defers a goal is never told it was accepted; rclcpp_action's `Server` requires the accepted callback. Phase 379 W3."
+  },
+  "c:action_*wait_set*": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "why": "rcl's wait-set protocol -- the caller asks each entity how many wait-set slots it needs and then reads back which of them are ready. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub and service stages' identical rows."
+  },
+  "c:action_abort": {
+    "verdict": "divergence",
+    "why": "see `c:action_succeed`."
+  },
+  "c:action_accept_new_goal": {
+    "verdict": "divergence",
+    "why": "rcl allocates a goal handle and returns it; ours accepts by RETURN VALUE from the goal callback (`NROS_GOAL_ACCEPT_AND_EXECUTE` / `_AND_DEFER`) or, on the L1 tier, by `nros_action_server_accept_goal_raw(server, goal_id, sequence_number)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:action_cancel_goal": {
+    "verdict": "divergence",
+    "why": "OUR LANGUAGES DISAGREE: rclcpp_action returns a future from `Client::async_cancel_goal`; ours sends the CancelGoal request and reports the outcome through the client's cancel channel (RFC-0021, no futures) -- Rust's `ActionClient::cancel_goal` returns a `Promise` the caller drives with the executor. That part is a divergence with a reason. What is not: C++ has no client-side cancel in its callback tier at all. `nros::ActionClient<A>` has no cancel method, only `nros::PollingActionClient<A>::send_cancel_request` on the L1 tier, so a C++ application written against the callback tier cannot cancel a goal it started while C and Rust can. Phase 379 W3."
+  },
+  "c:action_cancel_request_t": {
+    "verdict": "divergence",
+    "why": "rcl's `action_msgs/srv/CancelGoal` request struct. Ours never surfaces the request as a type: `nros_action_server_try_recv_cancel_request_raw` writes the named goal id, the service sequence number and the goal's current status into caller storage. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+  },
+  "c:action_cancel_response_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl builds the `action_msgs/srv/CancelGoal` response as a heap array of `goal_info` sized by `rcl_action_process_cancel_request`, so it needs an init/fini pair and an allocator. Ours is `nros_action_server_send_cancel_reply_raw(server, sequence_number, return_code, accepted[16][], count)`: the caller names the goals it accepted out of its own storage and the arena writes the reply. No allocator, so the response cannot be a constructed object. Our `nros_cancel_response_t` is a different thing -- the per-goal ACCEPT/REJECT decision; see `c:cancel_return_code_t`."
+  },
+  "c:action_canceled": {
+    "verdict": "divergence",
+    "why": "see `c:action_succeed`."
+  },
+  "c:action_client_*_callback_t": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
+  },
+  "c:action_client_action_server_is_ready": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: the non-blocking server-visibility probe. rcl's is the misnamed `rcl_action_server_is_available`; rclcpp_action's is `Client::action_server_is_ready`. We have it in C and in Rust (`ActionClient::action_server_is_ready`) and NOT in C++ -- neither `nros::ActionClient<A>` nor `nros::PollingActionClient<A>` has a readiness predicate, so a C++ caller can only block in `wait_for_action_server`. Rust also ships it twice: `ActionClient::action_server_is_ready` beside `ActionClientCore::is_server_ready`, exactly the three-spelling mess the service stage recorded at `rust:ClientTrait::is_server_ready`. See `c:action_server_is_available` for the rcl naming half. Phase 379 W3/W5."
+  },
+  "c:action_client_get_action_name": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: reads back the action a client or server was created on. Our C has neither `nros_action_client_get_action_name` nor the server form; our C++ has `get_action_name` on the POLLING tiers ONLY -- and `nros::ActionServer<A>` carries a `char action_name_[256]` field plus a comment saying it exists 'for `get_action_name()` accessor' that was never written; our Rust has `nros_core::ActionServer::name`, which `nros` does not re-export. Four surfaces, one accessor. Same class as the service stage's `cpp:Client::get_service_name` and the pubsub stage's `rust:Publisher::topic_name`. Phase 379 W3."
+  },
+  "c:action_client_get_options": {
+    "verdict": "declined",
+    "why": "no runtime options struct; see the `compile-time-options` rule and the service stage's `c:client_get_options`."
+  },
+  "c:action_client_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "rcl's zero-init idiom under our method-style naming; see the pubsub stage's `c:publisher_get_zero_initialized`."
+  },
+  "c:action_client_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl; our handles carry their state inline because there is no allocator to put it behind a pointer. See the pubsub stage's `c:publisher_impl_t`."
+  },
+  "c:action_client_init_default": {
+    "verdict": "declined",
+    "why": "rclc's default-QoS wrapper; `nros_action_client_init` takes no QoS and IS the default form. See the service stage's `c:client_init_default`."
+  },
+  "c:action_client_init_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_client_init_with_options": {
+    "verdict": "extension",
+    "why": "our own options-taking entry point, carrying what a device varies per action client (scheduling context) where rcl would use `rcl_action_client_options_t`. See the pubsub stage's `c:publisher_init_with_options`."
+  },
+  "c:action_client_is_valid": {
+    "verdict": "extension",
+    "why": "rcl's validity predicate. Ours is `nros_action_client_state_t` on the handle -- a three-state lifecycle (uninitialised / callback-mode / polling-mode) rather than a boolean, so double-init and use-after-fini return a code instead of being undefined. See the pubsub stage's `c:publisher_state_t`. Recorded as the theirs half; ours is `c:action_client_state_t`."
+  },
+  "c:action_client_poll": {
+    "verdict": "extension",
+    "why": "drains the client's four reply channels once and dispatches the bound callbacks, without the executor. rclcpp_action has no counterpart because its executor always owns dispatch. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_client_send_*_raw": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_client_set_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl lets a caller install a notify-on-arrival hook per action channel AFTER creation, so a wait set can attach itself to an existing entity. Ours is bound at creation and the notify half is the `_wake_callback` family, which fires the platform's own wake primitive rather than a wait set we do not have. See the pubsub stage's `c:subscription_set_on_new_message_callback`."
+  },
+  "c:action_client_set_*_wake_callback": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "the platform wake primitive fired when a reply or feedback lands on one of the client's four channels, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is the `set_*_client_callback` family, which notifies a wait set we do not have. See the pubsub stage's `c:subscription_set_wake_callback`."
+  },
+  "c:action_client_set_feedback_callback": {
+    "verdict": "extension",
+    "why": "the ours-only setter for `c:feedback_callback_t`. rcl's nearest is `rcl_action_client_set_feedback_subscription_callback`, which notifies a wait set; see `c:action_client_set_*`."
+  },
+  "c:action_client_set_goal_response_callback": {
+    "verdict": "extension",
+    "why": "see `c:action_client_set_feedback_callback`."
+  },
+  "c:action_client_set_result_callback": {
+    "verdict": "extension",
+    "why": "see `c:action_client_set_feedback_callback`."
+  },
+  "c:action_client_state_t": {
+    "verdict": "extension",
+    "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined, and so the L1 and L2 tiers are distinguishable at runtime. See the pubsub stage's `c:publisher_state_t`."
+  },
+  "c:action_client_try_recv_*_raw": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_client_wait_for_action_server": {
+    "verdict": "extension",
+    "why": "blocks until the action's send_goal queryable is discoverable, driving the executor. RFC-0021: a blocking helper takes the executor and drives it, which is what makes the timeout reliable on a single-threaded transport. rclcpp_action's `Client::wait_for_action_server` folds onto ours by the *Base rule; rclc has no counterpart. See the service stage's `c:client_wait_for_service`."
+  },
+  "c:action_execute": {
+    "verdict": "divergence",
+    "why": "rclcpp_action's `ServerGoalHandle::execute()`, moved off the handle onto `(server, goal)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:action_expire_goals": {
+    "verdict": "gap",
+    "why": "rcl reclaims a completed goal's result after `result_timeout` (15 min by default) and reports which goals expired. We have no expiry AND no reclamation: `ActionServerCore::complete_goal_raw` appends the result CDR to a fixed slab and `result_slab_used` only ever grows (packages/core/nros-node/src/executor/action_core.rs). Once the slab is full the store silently fails -- `complete_goal_raw` returns `()` -- and every later goal's result is dropped while the server keeps reporting success. A long-running device needs the reclamation half of this even if it never wants the timeout. Phase 379 W3."
+  },
+  "c:action_get_*names_and_types*": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "why": "no dynamic discovery: peers are static (RFC-0036), so there is no graph to enumerate action names and types out of. See the graph stage."
+  },
+  "c:action_get_goal_status": {
+    "verdict": "extension",
+    "why": "the authoritative per-goal status query, answered from the arena rather than from a field on the handle -- `NROS_RET_NOT_FOUND` once the arena has retired the goal. rcl's counterpart is `rcl_action_goal_handle_get_status` on the handle object; our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:action_get_goal_status_array": {
+    "verdict": "declined",
+    "why": "the read half of `c:action_publish_status`. The per-goal query ours offers is `nros_action_get_goal_status(server, goal, status*)` and the sweep is C++'s `ActionServer::for_each_active_goal`; neither materialises an array, because there is no allocator to materialise it into. A user loses the ability to read every goal's status as one message."
+  },
+  "c:action_get_result": {
+    "verdict": "extension",
+    "why": "the blocking get_result: send the request and drive the executor until the result or the timeout. See `c:action_send_goal`."
+  },
+  "c:action_get_result_async": {
+    "verdict": "divergence",
+    "why": "see `c:action_send_goal_async`."
+  },
+  "c:action_get_zero_initialized_*": {
+    "verdict": "declined",
+    "bucket": "theirs-only",
+    "why": "rcl's free-function zero-init spelling; ours is the method-style `nros_action_client_get_zero_initialized` / `nros_action_server_get_zero_initialized`. See the pubsub stage's `c:get_zero_initialized_publisher`. The goal-handle, goal-info, cancel-request/response and status-array forms have no counterpart at all because we ship none of those types; see `c:action_goal_handle_*` and `c:action_cancel_response_*`."
+  },
+  "c:action_goal_event_e": {
+    "verdict": "declined",
+    "why": "the event alphabet of `c:action_transition_goal_state`; we name transitions with verbs instead. See that row."
+  },
+  "c:action_goal_event_t": {
+    "verdict": "declined",
+    "why": "see `c:action_goal_event_e`."
+  },
+  "c:action_goal_handle_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:action_goal_info_t": {
+    "verdict": "divergence",
+    "why": "rcl's goal id + acceptance timestamp. Ours carries the id alone (`nros_goal_uuid_t`) at the C boundary: the stamp is filled by the arena when it publishes status, and an image with no clock source (RFC-0036: time is a board capability) cannot be asked to supply one at accept time. `nros_core::GoalInfo` keeps both fields for the wire."
+  },
+  "c:action_goal_state_t": {
+    "verdict": "rename",
+    "why": "rcl's name for what we call `nros_goal_status_t`, and both mirror `action_msgs/msg/GoalStatus`. rclcpp_action and our C++ and Rust all say STATUS (`GoalStatus`), rcl alone says STATE; ours agrees with the majority and with the message. Recorded as a rename so the pair is visible, but this is one where THEIRS is the odd spelling -- see `c:goal_status_t` for our half."
+  },
+  "c:action_goal_status_array_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl hands the caller a heap `GoalStatusArray` to fill and publish (`rcl_action_get_goal_status_array` + `rcl_action_publish_status`). Ours is not a user-facing object at all: the arena keeps the status of every live goal and publishes the array itself on every transition (`ActionServerCore::publish_status_array`). No allocator to build the array with, and nothing for a caller to do with it. See `c:action_publish_status`."
+  },
+  "c:action_goal_status_t": {
+    "verdict": "divergence",
+    "why": "rcl's `action_msgs/msg/GoalStatus` C struct (goal_info + status byte). Ours splits the two: `nros_goal_status_t` is the status ENUM and the stamped pair exists only inside the arena (`nros_core::GoalStatusStamped`), because a C caller never receives one -- the arena publishes the status topic itself. See `c:action_publish_status`."
+  },
+  "c:action_notify_goal_done": {
+    "verdict": "declined",
+    "why": "rcl makes the caller tell the server a goal reached a terminal state, because the goal handle and the server are separate objects that must be kept in step. Ours cannot drift: `nros_action_succeed` / `_abort` / `_canceled` retire the goal in the arena as part of the same call. A user loses nothing; there is no second place for the fact to live."
+  },
+  "c:action_process_cancel_request": {
+    "verdict": "divergence",
+    "why": "rcl matches a `CancelGoal` request against its goal handles and builds the response array for the caller. Ours splits the same work: the arena matches, the user's `nros_cancel_callback_t` decides per goal, and `nros_action_server_send_cancel_reply_raw` writes the reply on the L1 tier. The matching cannot be a caller-visible step because the goal set lives in the arena, not in caller storage. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:action_publish_feedback": {
+    "verdict": "divergence",
+    "why": "one of the eight the first report could not explain, and it decomposes into two changes that both have a reason. (1) The payload is `(const uint8_t*, size_t)` where rcl takes `void* ros_feedback`: and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`. (2) The goal is a SEPARATE parameter beside the server, where rcl takes the server alone and rclc takes the goal handle alone. rcl can, because its `void* ros_feedback` is the whole `<Action>_FeedbackMessage` envelope and the goal_id is a FIELD inside it; rclc can, because `rclc_action_goal_handle_t` carries a pointer back to its server. Ours can do neither: RFC-0069 makes the core write the envelope (one CDR header, then the goal id, then the fields) so the caller supplies only the inner feedback and the id must arrive as an argument, and our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`. Both halves follow from decisions taken elsewhere, so this is a divergence rather than an unexplained signature -- but it is the widest signature in the action API and it is worth saying that the L1 sibling `nros_action_server_publish_feedback_raw` spells the same call `(server, goal_id[16], feedback_cdr, len)`, i.e. the same four values with a different goal spelling."
+  },
+  "c:action_publish_status": {
+    "verdict": "declined",
+    "why": "the `<action>/status` topic is published by the arena on every goal transition (`ActionServerCore::publish_status_array`), not by the user. Exposing the verb would let an image publish a status array that disagrees with the arena, which is the state the arena exists to be the only copy of. A user loses the ability to publish status on their own cadence."
+  },
+  "c:action_send_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl_action exposes the action's three services and two topics one message at a time so a caller can drive the protocol itself. Ours runs the protocol inside the executor's action arena and hands the user the DECISIONS (accept/reject, cancel accept/reject) and the payloads; the part a caller may drive is the L1 polling tier (`nros_action_server_try_recv_goal_request_raw`, `nros_action_client_send_goal_raw`, ...), which is RFC-0022's polling tier for actions -- see the pubsub stage's `cpp:PollingSubscription`. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+  },
+  "c:action_send_goal": {
+    "verdict": "extension",
+    "why": "the blocking convenience: send the goal and drive the executor until the server accepts or rejects. rclcpp_action's equivalent is `async_send_goal(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter. See the service stage's `cpp:Client::call`."
+  },
+  "c:action_send_goal_async": {
+    "verdict": "divergence",
+    "why": "rclcpp_action returns a `std::shared_future<GoalHandle::SharedPtr>`; ours writes the generated goal uuid into caller storage and delivers the accept/reject to `nros_goal_response_callback_t`. No futures and no async runtime (RFC-0021); no allocator for the shared goal handle. See the service stage's `cpp:Client::async_send_request`."
+  },
+  "c:action_server_*_raw": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_server_active_goal_count_raw": {
+    "verdict": "rename",
+    "why": "the second spelling; see `c:action_server_get_active_goal_count`."
+  },
+  "c:action_server_get_action_name": {
+    "verdict": "gap",
+    "why": "see `c:action_client_get_action_name`."
+  },
+  "c:action_server_get_active_goal_count": {
+    "verdict": "rename",
+    "why": "OUR LANGUAGES DISAGREE, and inside one language: the C API ships this query TWICE. `nros_action_server_get_active_goal_count` returns `size_t` for the callback tier and `nros_action_server_active_goal_count_raw` returns `int32_t` for the polling tier, and both read the same arena field through the same `ActionServerRawHandle::active_goal_count`. One says `get_`, the other does not. Rust spells it `active_goal_count` on all four of its action types, agreeing with the `_raw` half; C's `get_` form is the outlier, and C++ has no count at all (only `for_each_active_goal`). Same shape as the service stage's `c:client_server_available` / `c:client_service_is_ready`. Phase 379 W5."
+  },
+  "c:action_server_get_goal_handles": {
+    "verdict": "declined",
+    "why": "returns `rcl_action_goal_handle_t***` -- a borrowed array of pointers to allocator-owned handles. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`. The iteration ours offers is `nros_action_server_get_active_goal_count` plus C++'s `ActionServer::for_each_active_goal`; a user loses random access to the goal set."
+  },
+  "c:action_server_get_options": {
+    "verdict": "declined",
+    "why": "see `c:action_client_get_options`."
+  },
+  "c:action_server_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "see `c:action_client_get_zero_initialized`."
+  },
+  "c:action_server_goal_exists": {
+    "verdict": "gap",
+    "why": "asks whether a goal id is known to the server. Ours answers the stronger question -- `nros_action_get_goal_status` returns `NROS_RET_NOT_FOUND` for a goal the arena has retired -- but only for a SERVER handle, and the C client has no equivalent. Close enough that it may be a documentation fix rather than code; written down so somebody decides. Phase 379 W3."
+  },
+  "c:action_server_handle_*_callback_t": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
+  },
+  "c:action_server_impl_t": {
+    "verdict": "declined",
+    "why": "see `c:action_client_impl_t`."
+  },
+  "c:action_server_init_default": {
+    "verdict": "declined",
+    "why": "see `c:action_client_init_default`."
+  },
+  "c:action_server_init_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "c:action_server_init_with_options": {
+    "verdict": "extension",
+    "why": "see `c:action_client_init_with_options`."
+  },
+  "c:action_server_init_with_qos": {
+    "verdict": "extension",
+    "why": "the QoS-taking form; the profile applies to the three underlying service servers while feedback and status keep their ROS-mandated profiles. See the pubsub stage's `c:publisher_init_with_qos`."
+  },
+  "c:action_server_is_available": {
+    "verdict": "rename",
+    "why": "rcl's client-side probe -- despite the name it takes `(node, action_client, bool*)` and asks whether a SERVER has been discovered. rclcpp_action says `Client::action_server_is_ready`; ours says `nros_action_client_action_server_is_ready`, which agrees with rclcpp and with our own `nros_client_service_is_ready`. rcl's free-function spelling is the odd one; recorded so the pair is visible. Our half is `c:action_client_action_server_is_ready`, which also records that this probe exists in C ALONE."
+  },
+  "c:action_server_is_valid": {
+    "verdict": "extension",
+    "why": "see `c:action_client_is_valid`."
+  },
+  "c:action_server_is_valid_except_context": {
+    "verdict": "declined",
+    "why": "rcl's variant that ignores whether the CONTEXT is still valid, for teardown ordering. There is one context per image and it outlives every entity (see the init stage's `c:context_*`), so the distinction has no second case."
+  },
+  "c:action_server_set_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl lets a caller install a notify-on-arrival hook per action channel AFTER creation, so a wait set can attach itself to an existing entity. Ours is bound at creation and the notify half is the `_wake_callback` family, which fires the platform's own wake primitive rather than a wait set we do not have. See the pubsub stage's `c:subscription_set_on_new_message_callback`."
+  },
+  "c:action_server_set_*_wake_callback": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "the server side of `c:action_client_set_*_wake_callback`, one per service channel (goal / cancel / get_result)."
+  },
+  "c:action_server_state_t": {
+    "verdict": "extension",
+    "why": "see `c:action_client_state_t`."
+  },
+  "c:action_succeed": {
+    "verdict": "divergence",
+    "why": "rclcpp_action's `ServerGoalHandle::succeed(result)`, moved off the handle onto `(server, goal, result_cdr, len)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+  },
+  "c:action_take_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl_action exposes the action's three services and two topics one message at a time so a caller can drive the protocol itself. Ours runs the protocol inside the executor's action arena and hands the user the DECISIONS (accept/reject, cancel accept/reject) and the payloads; the part a caller may drive is the L1 polling tier (`nros_action_server_try_recv_goal_request_raw`, `nros_action_client_send_goal_raw`, ...), which is RFC-0022's polling tier for actions -- see the pubsub stage's `cpp:PollingSubscription`. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+  },
+  "c:action_transition_goal_state": {
+    "verdict": "declined",
+    "why": "rcl exposes the goal state machine as a pure function over (state, event) so a caller can predict a transition. Ours is not a caller-visible machine: the arena owns it and `nros_goal_status_t` is what a user reads back. A user loses the ability to reason about a transition without performing it."
+  },
+  "c:action_try_recv_feedback": {
+    "verdict": "extension",
+    "why": "drains one pending feedback message into the bound feedback callback without blocking. See `c:action_client_poll`."
+  },
+  "c:action_type_t": {
+    "verdict": "divergence",
+    "why": "the typesupport handle an action entity is created with. rosidl's `rosidl_action_type_support_t` carries function pointers into generated code plus an identifier used to pick a middleware implementation at RUNTIME; ours names the one linked backend's descriptor plus the serialized-size bounds the static buffers are sized from. See the pubsub stage's `c:message_type_t`."
+  },
+  "c:action_update_goal_state": {
+    "verdict": "divergence",
+    "why": "rcl drives the transition through the goal handle and an EVENT enum. Ours names the transitions directly -- `nros_action_execute`, `nros_action_succeed`, `nros_action_abort`, `nros_action_canceled` -- because there is no handle object to carry a state machine. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:cancel_callback_t": {
+    "verdict": "divergence",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
+  },
+  "c:cancel_response_t": {
+    "verdict": "divergence",
+    "why": "the cancel callback's per-goal ACCEPT/REJECT decision, matching rclcpp_action::CancelResponse (with the same off-by-one in the discriminants as `c:goal_response_t`). See `c:cancel_return_code_t` for the collision this creates across our own languages."
+  },
+  "c:cancel_return_code_t": {
+    "verdict": "divergence",
+    "why": "OUR LANGUAGES DISAGREE: the `action_msgs/srv/CancelGoal` RPC-level return code (OK / REJECTED / UNKNOWN_GOAL / GOAL_TERMINATED), distinct from the per-goal `nros_cancel_response_t` above -- the C header says so itself. But our Rust spells this same RPC-level enum `CancelResponse` (`nros_core::CancelResponse::{Ok,Rejected,UnknownGoal,GoalTerminated}`), which is the name C and C++ use for the PER-GOAL decision -- and `CallbackCtx::set_cancel_response` then takes the RPC-level enum to express a per-goal accept/reject. Two concepts, three languages, one name used for both. C is the only one that names them apart, and it is the one that needed a doc comment to explain the split. Phase 379 W5."
+  },
+  "c:feedback_callback_t": {
+    "verdict": "divergence",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. The client side: feedback arrives at a callback bound to the client rather than to a subscription the caller owns."
+  },
+  "c:goal_callback_t": {
+    "verdict": "divergence",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
+  },
+  "c:goal_handle_t": {
+    "verdict": "divergence",
+    "why": "our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "c:goal_response_callback_t": {
+    "verdict": "divergence",
+    "why": "the accept/reject reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. See the service stage's `c:client_set_response_callback` and RFC-0021."
+  },
+  "c:goal_response_t": {
+    "verdict": "divergence",
+    "why": "the goal callback's accept/reject/defer decision. rclcpp_action's `GoalResponse` has the same three cases; rclc's action server returns a bare `bool`. Ours is an enum because ACCEPT_AND_DEFER and ACCEPT_AND_EXECUTE are different arena transitions. NOTE the discriminants do not match rclcpp_action's: ours are 0/1/2, rclcpp_action's are 1/2/3, and the enumerators are `NROS_GOAL_REJECT` vs `REJECT`. The correlator sees only the name, so this pair reports as `same`."
+  },
+  "c:goal_status_t": {
+    "verdict": "divergence",
+    "why": "our name for rcl's `rcl_action_goal_state_t`, and the one rclcpp_action, our C++ and our Rust all use. See `c:action_goal_state_t` for the pair."
+  },
+  "c:goal_status_to_string": {
+    "verdict": "extension",
+    "why": "the status enum as a `const char*` into rodata, for a device whose only diagnostic is a log line. rcl has no counterpart; rclcpp's users format the enum themselves with the STL we do not link."
+  },
+  "c:goal_uuid_equal": {
+    "verdict": "extension",
+    "why": "comparison for a type C cannot compare with `==`. rclcpp_action gets this from `std::array::operator==`, which needs the STL we do not link (RFC-0018)."
+  },
+  "c:goal_uuid_generate": {
+    "verdict": "extension",
+    "why": "rclcpp_action generates the goal id inside `Client::async_send_goal` and never exposes the generator. Ours must: on the L1 polling tier the caller drives the protocol itself, and an image whose entropy source is a board capability (RFC-0036) needs one sanctioned generator rather than each app inventing one. See the manual-repro seeding note in CLAUDE.md for what a bad one costs."
+  },
+  "c:goal_uuid_t": {
+    "verdict": "divergence",
+    "why": "the 16-byte goal id as its own type. rcl carries it inside `rcl_action_goal_info_t` and rclcpp_action aliases it as `GoalUUID` (a `std::array`). Ours is a plain struct so it is copyable by value into caller storage with no allocator and no STL. Note our C++ has no goal-id type at all -- it passes bare `uint8_t goal_id[16]`; see `cpp:GoalUUID`."
+  },
+  "c:result_callback_t": {
+    "verdict": "divergence",
+    "why": "see `c:goal_response_callback_t`."
+  },
+  "cpp:ActionClient": {
+    "verdict": "divergence",
+    "why": "see `cpp:ActionServer`."
+  },
+  "cpp:ActionClient::feedback_stream": {
+    "verdict": "extension",
+    "why": "a `Stream<FeedbackType>` over the client's feedback channel, so a caller can `try_next` or `wait_next(executor, timeout)` instead of installing a callback. RFC-0021's shape: the blocking form takes the executor and drives it. rclcpp_action delivers feedback only through `SendGoalOptions::feedback_callback`."
+  },
+  "cpp:ActionClient::set_callbacks": {
+    "verdict": "divergence",
+    "why": "our spelling of rclcpp_action's `SendGoalOptions`. rclcpp attaches the goal-response / feedback / result callbacks to a SINGLE send_goal call; ours binds them to the CLIENT (RFC-0041, callbacks bind to the entity at declaration), so a client that sends many goals installs them once. The nested `SendGoalOptions` struct keeps rclcpp's name for the three-callback bundle."
+  },
+  "cpp:ActionServer": {
+    "verdict": "divergence",
+    "why": "rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Ours is additionally constructed into caller-owned storage by `Node::create_action_server` rather than reached through `make_shared` -- the `out-param-first` and `no-shared-ptr` rules; see the pubsub stage's `cpp:Publisher::Publisher<M>`."
+  },
+  "cpp:ActionServer::complete_goal": {
+    "verdict": "divergence",
+    "why": "OUR LANGUAGES DISAGREE: `nros::ActionServer<A>::complete_goal(goal_id, result)` takes no status and the shim hardcodes one -- `nros_cpp_action_server_complete_goal` passes `GoalStatus::Succeeded` unconditionally (packages/api/nros-cpp/src/action.rs). So the C++ CALLBACK tier cannot abort or cancel a goal at all, while C has `nros_action_abort` / `nros_action_canceled`, the C++ POLLING tier has `PollingActionServer::complete_goal(goal_id, status, result)`, and Rust has `ActionExecutor::complete_goal_raw(.., status, ..)`. Three of our four action server surfaces take the status and the fourth reports SUCCEEDED for an aborted goal. Not a platform constraint -- a missing parameter."
+  },
+  "cpp:ActionServer::for_each_active_goal": {
+    "verdict": "extension",
+    "why": "visits every goal live in the arena with its status, taking a stateless function pointer (no `std::function`, no allocator). It exists because our goal callback cannot hand back an owning handle the way rclcpp_action's accepted callback does, so this is how a C++ or Rust user learns which goals are outstanding. rclcpp's nearest is `rcl_action_server_get_goal_handles`; see `c:action_server_get_goal_handles`."
+  },
+  "cpp:ActionServerOptions": {
+    "verdict": "extension",
+    "why": "what a device varies per action server (scheduling context) where rclcpp_action would use `rcl_action_server_options_t`. See the service stage's `cpp:ClientOptions`."
+  },
+  "cpp:Client::Client<ActionT>": {
+    "verdict": "divergence",
+    "why": "rclcpp_action's templated constructor, taking node interfaces and reached through `create_client`. Ours is `ActionClient<A>` default-constructed into caller storage and filled by `Node::create_action_client` -- the `out-param-first` and `no-shared-ptr` rules. See the service stage's `cpp:Client::Client<ServiceT>`."
+  },
+  "cpp:Client::action_server_is_ready": {
+    "verdict": "gap",
+    "why": "the non-blocking half of `cpp:Client::wait_for_action_server`, and our C++ has no readiness predicate on either action client. C has `nros_action_client_action_server_is_ready` and Rust has `ActionClient::action_server_is_ready`, so this is a C++ gap rather than a decision. Phase 379 W3."
+  },
+  "cpp:Client::async_cancel_goal": {
+    "verdict": "gap",
+    "why": "cancelling a goal from the callback-tier C++ client. `nros::ActionClient<A>` has no cancel method; C has `nros_action_cancel_goal`, Rust has `ActionClient::cancel_goal`, and C++ has only the L1 `PollingActionClient::send_cancel_request`. The async SHAPE is a divergence (RFC-0021, no futures); the absence in C++ is a gap. See `c:action_cancel_goal`. Phase 379 W3."
+  },
+  "cpp:Client::async_cancel_goals_before": {
+    "verdict": "declined",
+    "why": "cancels every goal accepted before a timestamp. It needs each goal's acceptance stamp, which our arena does not keep -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses bulk cancellation by age and must cancel by goal id."
+  },
+  "cpp:Client::wait_for_action_server": {
+    "verdict": "rename",
+    "why": "we HAVE this -- `nros::ActionClient<A>::wait_for_action_server(timeout_ms)`, same name, same meaning. It reports as theirs-only only because the owning type is spelled differently; rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Recorded so the pair is visible: the method needs no change, the TYPE name is the open question."
+  },
+  "cpp:ClientGoalHandle": {
+    "verdict": "divergence",
+    "why": "rclcpp_action hands the client a refcounted `ClientGoalHandle<ActionT>` that owns the goal's futures and its feedback subscription. Ours is a bare `uint8_t goal_id[16]` the caller keeps: no allocator for the shared handle (`no-shared-ptr`), no futures (RFC-0021), and the per-goal state lives in the arena rather than in a handle. `get_status` folds onto `nros_action_get_goal_status`; `is_feedback_aware` / `is_result_aware` describe rclcpp bookkeeping that has no analogue because our callbacks bind to the client, not to a goal."
+  },
+  "cpp:GoalInfo": {
+    "verdict": "declined",
+    "why": "rclcpp_action's alias for `action_msgs::msg::GoalInfo` (goal id + acceptance stamp). See `c:action_goal_info_t`: the stamp is the arena's, not the caller's. A C++ user loses the acceptance timestamp."
+  },
+  "cpp:GoalUUID": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: rclcpp_action aliases the goal id as a named type. Our C has `nros_goal_uuid_t` with `nros_goal_uuid_generate` and `nros_goal_uuid_equal`; our Rust has `GoalId` with `new`/`zero`/`is_zero`/`from_counter`. Our C++ has nothing -- every action signature in `action_server.hpp`, `action_client.hpp` and the two polling headers passes a raw `uint8_t goal_id[16]`, which decays to a pointer, compares with neither `==` nor `!=`, and cannot be stored in a container without the user writing the wrapper. Phase 379 W3."
+  },
+  "cpp:Node::create_action_client": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::create_action_server`."
+  },
+  "cpp:Node::create_action_server": {
+    "verdict": "declined",
+    "why": "rclcpp_action ships FREE functions (`rclcpp_action::create_server(node, ...)`) because it is a separate package that cannot add members to `rclcpp::Node`. Ours is one library, so the factory is a node method like every other entity's. A user porting `rclcpp_action::create_server(node, name, goal_cb, cancel_cb, accepted_cb)` must rewrite it as `node.create_action_server(out, name)` followed by `set_goal_callback` / `set_cancel_callback`. See `cpp:create_server`."
+  },
+  "cpp:Node::create_polling_action_client": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:Node::create_polling_action_server": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:PollingActionClient": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:PollingActionServer": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:ResultCode": {
+    "verdict": "rename",
+    "why": "rclcpp_action's client-side terminal code (SUCCEEDED / CANCELED / ABORTED / UNKNOWN). Ours is `nros::GoalStatus` in C++, `nros_goal_status_t` in C and `GoalStatus` in Rust -- one enum covering both the active and the terminal states, as `action_msgs/msg/GoalStatus` does. rclcpp_action is the one that splits the enum in two; recorded so the pair is visible rather than because ours should move."
+  },
+  "cpp:Server": {
+    "verdict": "divergence",
+    "why": "rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. So `rclcpp_action::Server<ActionT>` and its members read as theirs-only even though `nros::ActionServer<A>` implements most of them. The genuinely absent parts are the `Waitable` members (`execute`, `is_ready`, `set_on_ready_callback`, `clear_on_ready_callback`) -- rcl's wait-set protocol -- the caller asks each entity how many wait-set slots it needs and then reads back which of them are ready. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub and service stages' identical rows. -- and `make_shared`, which needs an allocator."
+  },
+  "cpp:ServerGoalHandle": {
+    "verdict": "divergence",
+    "why": "the server side of `cpp:ClientGoalHandle`. Its methods are the ones we moved onto `(server, goal)`: `succeed`/`abort`/`canceled`/`execute` are `nros_action_succeed`/`_abort`/`_canceled`/`nros_action_execute`, and `is_active`/`is_executing`/`is_canceling` are one `nros_action_get_goal_status` call. `get_goal` has no counterpart -- the arena never keeps the goal payload, so a user who needs it stashes it in the goal callback. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+  },
+  "cpp:TickCtx::send_goal_raw": {
+    "verdict": "extension",
+    "why": "the generated dispatch path for sending a goal from inside a component's tick. Machinery `nros::node!` expands into; see issue 0784 and the service stage's `rust:ClientDispatch::call_raw`."
+  },
+  "cpp:convert": {
+    "verdict": "declined",
+    "why": "converts between `rclcpp_action::GoalUUID` and `rcl_action_goal_info_t`. Both sides of that conversion are rcl types; our RMW seam is the vtable (RFC-0035), not rcl. See the pubsub stage's rows on rcl handle accessors."
+  },
+  "cpp:create_server": {
+    "verdict": "declined",
+    "why": "the free-function factory; ours is the method `Node::create_action_server`. See that row for what a porting user loses, and the service stage's `cpp:create_client` for the same pair one entity over."
+  },
+  "rust:ActionClient": {
+    "verdict": "extension",
+    "why": "the typed action client a Rust image holds: `send_goal` / `cancel_goal` / `get_result` each return a `Promise` the caller drives with the executor (RFC-0021 -- no futures and no runtime to await one), plus `try_recv_feedback` and `feedback_stream`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal. The `reset_*_in_flight` members are the escape hatch for a dropped promise: one request per channel may be outstanding because the reply buffer is a single static slot."
+  },
+  "rust:ActionClient::action_server_is_ready": {
+    "verdict": "rename",
+    "why": "one of TWO spellings of this predicate in our Rust alone -- see `rust:ActionClientCore::is_server_ready` and `c:action_client_action_server_is_ready`."
+  },
+  "rust:ActionClient::cancel_goal": {
+    "verdict": "extension",
+    "why": "the client-side cancel, present in C and Rust and absent from the C++ callback tier. See `c:action_cancel_goal`."
+  },
+  "rust:ActionClientCore": {
+    "verdict": "divergence",
+    "why": "the untyped half of `rust:ActionClient`: the four channels, the goal counter, the discovery probe and the waker registrations, over CDR bytes. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions."
+  },
+  "rust:ActionClientCore::is_server_ready": {
+    "verdict": "rename",
+    "why": "the second Rust spelling of `rust:ActionClient::action_server_is_ready`, on the type one layer below. The service stage recorded the same defect for clients (`rust:ClientTrait::is_server_ready` beside `ClientTrait::server_available` beside `Client::service_is_ready`); actions repeat it. Phase 379 W5."
+  },
+  "rust:ActionServer": {
+    "verdict": "extension",
+    "why": "the typed action server a Rust image holds, driven by `poll(on_goal, on_cancel)` plus the `try_*` verbs. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal. NOTE this name is taken twice in our own tree: `nros_core::ActionServer<A>` is the DECLARATIVE handle (name / action_type / action_hash), the exact twin of `nros_core::ServiceServer` -- and because `nros` re-exports this one, the declarative pair is not exported at all, while `ServiceServer` and `ServiceClient` are. So our Rust action API has no `name()` where the service API has one; see `c:action_client_get_action_name`."
+  },
+  "rust:ActionServer::complete_goal": {
+    "verdict": "extension",
+    "why": "takes `(goal_id, status, result)` -- as C's `nros_action_succeed`/`_abort`/`_canceled` do and as C++'s POLLING tier does. The one surface that does not is `nros::ActionServer<A>::complete_goal`; see `cpp:ActionServer::complete_goal`."
+  },
+  "rust:ActionServerCore": {
+    "verdict": "divergence",
+    "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. It is also where the unbounded-result-slab problem lives; see `c:action_expire_goals`."
+  },
+  "rust:ActionServerHandle": {
+    "verdict": "divergence",
+    "why": "an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. The typed action-server handle a registered entity is reached through. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:ActionServerRawHandle": {
+    "verdict": "divergence",
+    "why": "the CDR-bytes form of `rust:ActionServerHandle` -- what the C and C++ shims call. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:ActionTag": {
+    "verdict": "extension",
+    "why": "names a declared action server so a component's single `on_callback` can tell which one fired (RFC-0043). See the service stage's `rust:ServiceTag` and the pubsub stage's `rust:SubscriptionTag`."
+  },
+  "rust:ActiveGoal": {
+    "verdict": "extension",
+    "why": "a goal the arena is still tracking, as the typed goal plus its status. rclcpp_action hands out a refcounted `ServerGoalHandle` instead; ours is a copy the visitor sees, because there is no allocator for a shared handle. See `cpp:ServerGoalHandle`."
+  },
+  "rust:CancelResponse": {
+    "verdict": "extension",
+    "why": "the `action_msgs/srv/CancelGoal` return codes (Ok / Rejected / UnknownGoal / GoalTerminated), which is the wire contract, not an invention. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead. Its sibling `GoalResponse` -- declared 40 lines below it in the same file -- is in the action stage; only this one landed here."
+  },
+  "rust:CancelResponse::from_i8": {
+    "verdict": "extension",
+    "why": "decodes the wire value, `None` for an unknown code. See `rust:CancelResponse`."
+  },
+  "rust:CompletedGoal": {
+    "verdict": "extension",
+    "why": "a retired goal's status and typed result, held until the client's get_result request is answered. rclcpp_action keeps the same state inside the goal handle it allocated. See `c:action_expire_goals` for what is missing at the other end."
+  },
+  "rust:Executor::action_client_core_mut": {
+    "verdict": "divergence",
+    "why": "borrows a registered action client's core out of the executor's entity table, so generated dispatch can drive it. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_client_core": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_client_raw": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_client_raw_sized": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_server": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_server_raw": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_server_raw_sized": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:Executor::register_action_server_sized": {
+    "verdict": "divergence",
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:FeedbackStream": {
+    "verdict": "extension",
+    "why": "a pull-side view of the feedback channel with `recv` and `wait_next(executor, timeout)`. RFC-0021's shape: the blocking form takes the executor and drives it. rclcpp_action delivers feedback only through `SendGoalOptions::feedback_callback`; see `cpp:ActionClient::feedback_stream`."
+  },
+  "rust:GoalFeedbackStream": {
+    "verdict": "extension",
+    "why": "`rust:FeedbackStream` filtered to one goal id, for a client with several goals in flight."
+  },
+  "rust:GoalId": {
+    "verdict": "extension",
+    "why": "the 16-byte goal id, with `zero` / `is_zero` / `from_counter` and the two framing constants (`UUID_LEN`, `SEQ_PREFIX_LEN = 0`) that RFC-0069 pinned when the extra CDR header came out. `from_counter` is the RTOS half: a board with no entropy source still needs distinct goal ids. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM."
+  },
+  "rust:GoalInfo": {
+    "verdict": "extension",
+    "why": "goal id plus acceptance stamp, serialized for the status topic. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM. Note the C boundary carries the id alone; see `c:action_goal_info_t`."
+  },
+  "rust:GoalResponse": {
+    "verdict": "extension",
+    "why": "the goal callback's accept/reject/defer decision. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM. See `c:goal_response_t` for the discriminant mismatch with rclcpp_action."
+  },
+  "rust:GoalStatus": {
+    "verdict": "extension",
+    "why": "`action_msgs/msg/GoalStatus` as an enum, plus `is_active` / `is_terminal` / `from_i8`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM."
+  },
+  "rust:GoalStatusStamped": {
+    "verdict": "extension",
+    "why": "one element of the `GoalStatusArray` the arena publishes. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM."
+  },
+  "rust:NodeHandle::create_action_client": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_client_raw": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_client_raw_sized": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_client_sized": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_server": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_server_raw": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_server_raw_sized": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:NodeHandle::create_action_server_sized": {
+    "verdict": "divergence",
+    "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
+  },
+  "rust:QosSettings::action_status_default": {
+    "verdict": "extension",
+    "why": "the `<action>/status` topic's ROS-mandated profile (transient-local, so a late-joining monitor sees the current goal set) as a named constructor on `QosSettings`. rclrs has no actions and so no preset; rclcpp_action's equivalent is the `rcl_action_qos_profile_status_default` constant. Related open question in the param stage: `rust:QoSProfile::parameter_services_default`."
+  },
+  "rust:RawActionClientSpec": {
+    "verdict": "divergence",
+    "why": "see `rust:RawActionServerSpec`."
+  },
+  "rust:RawActionServerSpec": {
+    "verdict": "divergence",
+    "why": "the registration record for a raw action server (name, type names, hashes, QoS, callbacks) -- the values rclcpp_action passes to `create_server` as separate arguments, gathered into one struct because the entity is registered from generated code rather than written by hand. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+  },
+  "rust:RawActiveGoal": {
+    "verdict": "extension",
+    "why": "the untyped `rust:ActiveGoal` -- goal id and status only, which is all the arena stores. The goal payload is deliberately not retained; see `cpp:ServerGoalHandle` on the absent `get_goal`."
+  },
+  "rust:RawGoalCallback": {
+    "verdict": "divergence",
+    "why": "the raw-bytes goal callback type. Bound at declaration, not handed to an executor; see the pubsub stage's `rust:RawSubscriptionCallback`."
+  },
+  "rust:RosAction": {
+    "verdict": "extension",
+    "why": "the trait a generated action type implements: the three user types, the five wire envelopes, the action and per-service RIHS hashes, and `register_protocol_types`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`nros_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM. The envelope split is RFC-0069's -- the generated code owns the wire shape so the core writes exactly one CDR header. Compare the service stage's `rust:RosService`."
+  },
+  "rust:action_channel_type": {
+    "verdict": "extension",
+    "why": "derives the per-channel DDS type name (`\u2026::dds_::Fibonacci_SendGoal_`) from the action type name, in a `heapless::String` with no allocation. rclcpp_action gets these from generated typesupport structs; we need the derivation at runtime because the raw registration path has only the action's type name. See `c:action_type_t`."
+  }
+}

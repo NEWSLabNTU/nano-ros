@@ -1,0 +1,545 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:executor_lifecycle_change_state": {
+    "verdict": "extension",
+    "why": "the executor-scoped half of the lifecycle API. RFC-0002 gives one executor per RTOS task and the executor owns the node's entities, so the state machine that the five REP-2002 services drive lives THERE, not on a caller-held handle. rclc has no counterpart because its state machine hangs off `rclc_lifecycle_node_t`. This is the family a C app actually uses: the standalone `nros_lifecycle_*` family cannot register services (see `c:make_node_a_lifecycle_node`)."
+  },
+  "c:executor_lifecycle_get_state": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`."
+  },
+  "c:executor_lifecycle_register_on_activate": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:executor_lifecycle_register_on_cleanup": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:executor_lifecycle_register_on_configure": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:executor_lifecycle_register_on_deactivate": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:executor_lifecycle_register_on_error": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:executor_lifecycle_register_on_shutdown": {
+    "verdict": "extension",
+    "why": "see `c:executor_lifecycle_change_state`. NOTE all six carry the `c:lifecycle_register_on_configure` defect: the `cb` parameter is the opaque `struct Option_LifecycleCallbackFnCtx` passed by value, so C cannot call them."
+  },
+  "c:lifecycle_callback_map_t": {
+    "verdict": "divergence",
+    "why": "rclc's callback table is `bool[100] + int(*[100])(void)` indexed by transition id (its own `RCLC_LIFECYCLE_MAX_NUMBER_OF_STATES` comment says 'highest transition id: 99') -- roughly 900 bytes to hold at most six live entries. Ours is six named `Option<fn>` slots, because the REP-2002 transition set is closed and known at compile time. Constraint: static entity storage on a device where the whole executor arena is measured in kilobytes."
+  },
+  "c:lifecycle_change_state": {
+    "verdict": "gap",
+    "why": "two differences, and only one of them is explained. (1) The handle: theirs takes `rclc_lifecycle_node_t*`, ours `nros_lifecycle_state_machine_t*` -- one handle instead of two, see `c:lifecycle_node_t`. (2) The trailing `bool publish_update`, which rclc threads into every `rcl_lifecycle_trigger_transition_by_id` call, selects whether the transition is announced on `~/transition_event`. REP-2002's *communication interface* is the five services PLUS a `lifecycle_msgs/msg/TransitionEvent` publisher on `~/transition_event`. We ship the services and **no transition_event publisher at all** -- grep the tree: the type appears only in a round-trip unit test. A supervisor therefore cannot watch our transitions passively; it has to poll `~/get_state`. Nobody decided this, so it is a gap, not a decline; it is the same missing piece as the pubsub stage's `cpp:LifecyclePublisher`. Phase 379 W3. So the missing parameter is not a divergence -- it is the visible end of a missing publisher."
+  },
+  "c:lifecycle_change_state_callback": {
+    "verdict": "declined",
+    "why": "rclc exports the three service callbacks so the user can wire them into its executor. Ours are internal to `nros-node/src/lifecycle_services.rs` and bound by `nros_executor_register_lifecycle_services`; a user who could call them by hand could only re-implement the registration. See `c:lifecycle_init_get_state_server`."
+  },
+  "c:lifecycle_com_interface_t": {
+    "verdict": "declined",
+    "why": "rcl's bundle of the three lifecycle services PLUS the `~/transition_event` publisher, held inside the state machine. Ours is not a type: the services are registered on the executor (`nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`.) and the publisher does not exist -- that half is a gap, recorded on `c:lifecycle_change_state`."
+  },
+  "c:lifecycle_execute_callback": {
+    "verdict": "declined",
+    "why": "runs the callback for a transition id WITHOUT performing the transition. Ours has no way to do that on purpose: `nros_lifecycle_change_state` invokes the callback and applies the result as one step, so a state machine cannot observe a callback that ran against a transition that did not happen. A user loses the ability to fire a hook by hand."
+  },
+  "c:lifecycle_fini": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:lifecycle_state_machine_fini`; see that row."
+  },
+  "c:lifecycle_get_available_states_callback": {
+    "verdict": "declined",
+    "why": "rclc exports the three service callbacks so the user can wire them into its executor. Ours are internal to `nros-node/src/lifecycle_services.rs` and bound by `nros_executor_register_lifecycle_services`; a user who could call them by hand could only re-implement the registration. See `c:lifecycle_init_get_state_server`."
+  },
+  "c:lifecycle_get_default_state_machine_options": {
+    "verdict": "declined",
+    "why": "no runtime options struct; see the `compile-time-options` rule and `c:lifecycle_state_machine_options_t`."
+  },
+  "c:lifecycle_get_state": {
+    "verdict": "extension",
+    "why": "rclc reads the state straight out of the struct (`node->state_machine->current_state->id`). `nros_lifecycle_state_machine_t` keeps the real state machine in an opaque `u64[]` so the C-visible layout stays fixed across a Rust-side change, so an accessor is required rather than optional. Same reason as the executor-scoped `c:executor_lifecycle_get_state`."
+  },
+  "c:lifecycle_get_state_callback": {
+    "verdict": "declined",
+    "why": "rclc exports the three service callbacks so the user can wire them into its executor. Ours are internal to `nros-node/src/lifecycle_services.rs` and bound by `nros_executor_register_lifecycle_services`; a user who could call them by hand could only re-implement the registration. See `c:lifecycle_init_get_state_server`."
+  },
+  "c:lifecycle_get_transition_by_id": {
+    "verdict": "declined",
+    "why": "searches rcl's runtime transition map for a `rcl_lifecycle_transition_t*`. Our transitions are a closed compile-time enum, so the lookup is a cast (`LifecycleTransition::from_u8`); there is no map to search and no heap object to hand back. See `c:lifecycle_transition_t`. OUR LANGUAGES DISAGREE: Rust exposes that conversion publicly as `LifecycleTransition::from_u8` / `from_shorthand`, C and C++ expose neither."
+  },
+  "c:lifecycle_get_transition_by_label": {
+    "verdict": "declined",
+    "why": "see `c:lifecycle_get_transition_by_id` and `c:lifecycle_trigger_transition_by_label`."
+  },
+  "c:lifecycle_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "see the pubsub stage's `c:publisher_get_zero_initialized` -- the caller-owned-storage pattern applied to the state machine."
+  },
+  "c:lifecycle_get_zero_initialized_state": {
+    "verdict": "declined",
+    "why": "rcl ships a zero-initializer per heap-built lifecycle object. We have one such object and one zero-initializer, `nros_lifecycle_get_zero_initialized`; see `c:lifecycle_state_t` for why the other two do not exist as types."
+  },
+  "c:lifecycle_get_zero_initialized_state_machine": {
+    "verdict": "declined",
+    "why": "rcl ships a zero-initializer per heap-built lifecycle object. We have one such object and one zero-initializer, `nros_lifecycle_get_zero_initialized`; see `c:lifecycle_state_t` for why the other two do not exist as types."
+  },
+  "c:lifecycle_get_zero_initialized_transition": {
+    "verdict": "declined",
+    "why": "rcl ships a zero-initializer per heap-built lifecycle object. We have one such object and one zero-initializer, `nros_lifecycle_get_zero_initialized`; see `c:lifecycle_state_t` for why the other two do not exist as types."
+  },
+  "c:lifecycle_init": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:lifecycle_state_machine_init`; see that row."
+  },
+  "c:lifecycle_init_change_state_server": {
+    "verdict": "declined",
+    "why": "rclc makes the user init each lifecycle server separately and hand it a context struct. `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. We also register five servers where rclc offers three, adding `~/get_available_transitions` and `~/get_transition_graph` so `ros2 lifecycle list` works against an embedded node."
+  },
+  "c:lifecycle_init_default_state_machine": {
+    "verdict": "declined",
+    "why": "rcl's 'build the standard REP-2002 transition map at runtime' constructor. Our transition map is the compile-time `nros_core::lifecycle` table (`can_transition`/`apply_transition`), the same table for every image, so there is nothing to build. Constraint: no allocator; rcl's version mallocs the state and transition arrays."
+  },
+  "c:lifecycle_init_get_available_states_server": {
+    "verdict": "declined",
+    "why": "rclc makes the user init each lifecycle server separately and hand it a context struct. `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. We also register five servers where rclc offers three, adding `~/get_available_transitions` and `~/get_transition_graph` so `ros2 lifecycle list` works against an embedded node."
+  },
+  "c:lifecycle_init_get_state_server": {
+    "verdict": "declined",
+    "why": "rclc makes the user init each lifecycle server separately and hand it a context struct. `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. We also register five servers where rclc offers three, adding `~/get_available_transitions` and `~/get_transition_graph` so `ros2 lifecycle list` works against an embedded node."
+  },
+  "c:lifecycle_node_fini": {
+    "verdict": "declined",
+    "why": "rclc's teardown for the wrapper struct, taking an allocator. We have one handle and one teardown, `nros_lifecycle_fini`; see `c:lifecycle_state_machine_fini`."
+  },
+  "c:lifecycle_node_t": {
+    "verdict": "divergence",
+    "why": "rclc's `rclc_lifecycle_node_t` bundles a node pointer, a separately-inited `rcl_lifecycle_state_machine_t`, a 100-slot callback map and SIX request/response message buffers. `nros_lifecycle_state_machine_t` is one handle: an `initialized` flag plus opaque storage for the state and six callback slots. Constraint: static entity storage -- the service request/response buffers belong to the service entities the executor already owns, so embedding a second copy in the lifecycle handle would spend RAM to duplicate them."
+  },
+  "c:lifecycle_register_callback": {
+    "verdict": "declined",
+    "why": "rclc's generic form, keyed on a goal STATE id into the 100-slot map. We ship the six named entry points instead (`nros_lifecycle_register_on_*`), which is also what rclcpp does; a generic slot-index form would only re-open the unbounded map (`c:lifecycle_callback_map_t`)."
+  },
+  "c:lifecycle_register_on_activate": {
+    "verdict": "gap",
+    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+  },
+  "c:lifecycle_register_on_cleanup": {
+    "verdict": "gap",
+    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+  },
+  "c:lifecycle_register_on_configure": {
+    "verdict": "gap",
+    "why": "**BROKEN C DECLARATION, not a design -- this needs an issue.** The Rust parameter is `Option<LifecycleCallbackFnCtx>`, and cbindgen renders the generated Rust type name straight into the C ABI: `nros_generated.h:769` emits `typedef struct Option_LifecycleCallbackFnCtx Option_LifecycleCallbackFnCtx;` -- an OPAQUE forward declaration -- and then passes it BY VALUE. C rejects that outright ('type of formal parameter 1 is incomplete'), so **no C translation unit can compile a call to any of these twelve entry points**: the six `nros_lifecycle_register_on_*` and the six `nros_executor_lifecycle_register_on_*`. Nothing in the tree does -- every in-tree caller is Rust or goes through the C++ shim, which is why it has stayed latent. Nothing about an RTOS asks for a Rust type name in a C header. The underlying ABI is fine (a nullable `extern \"C\" fn` is just a function pointer), and OUR OWN C++ SHIM already spells the same thing correctly -- `nros_cpp_lifecycle_callback_t`, a plain fn-ptr typedef in `nros-cpp/src/lifecycle_shim.rs`. Fix: a named `nros_lifecycle_callback_t` typedef and a plain (nullable) pointer parameter, so the header declares what the symbol actually is. Separately, the callback SHAPE is a real divergence: rclc's is `int (*)(void)` with no context, ours is `uint8_t (*)(void* ctx)` -- `callback-bound-at-creation` (no allocator, so a callback cannot capture; the context travels beside the pointer). Phase 379 W4."
+  },
+  "c:lifecycle_register_on_deactivate": {
+    "verdict": "gap",
+    "why": "see `c:lifecycle_register_on_configure` -- same `Option_LifecycleCallbackFnCtx` leak, same unusable declaration."
+  },
+  "c:lifecycle_register_on_error": {
+    "verdict": "extension",
+    "why": "see `c:lifecycle_register_on_shutdown`; `on_error` is REP-2002's error-processing hook, which rclc has no registration slot for. Carries the `c:lifecycle_register_on_configure` defect too."
+  },
+  "c:lifecycle_register_on_shutdown": {
+    "verdict": "extension",
+    "why": "rclc registers only four transitions (configure/activate/deactivate/cleanup); we register all six, matching rclcpp's `LifecycleNodeInterface`. An embedded node needs `on_shutdown` most of all -- it is where a device parks an actuator before the image stops. NOTE this entry point carries the `c:lifecycle_register_on_configure` defect too."
+  },
+  "c:lifecycle_service_context_t": {
+    "verdict": "declined",
+    "why": "the context struct rclc's per-server init needs. One registration call needs no per-server context; see `c:lifecycle_init_get_state_server`."
+  },
+  "c:lifecycle_state_fini": {
+    "verdict": "declined",
+    "why": "the init/fini pair for an rcl heap-built state or transition object. rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain."
+  },
+  "c:lifecycle_state_init": {
+    "verdict": "declined",
+    "why": "the init/fini pair for an rcl heap-built state or transition object. rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain."
+  },
+  "c:lifecycle_state_machine_fini": {
+    "verdict": "declined",
+    "why": "see `c:lifecycle_state_machine_init`; ours is `nros_lifecycle_fini(sm)`, which does not ask for the node back (`handle-owns-node`) or for an allocator (`no-allocator`)."
+  },
+  "c:lifecycle_state_machine_init": {
+    "verdict": "declined",
+    "why": "rcl's lower-layer constructor: `(state_machine, node, six typesupports, options)`. `nros_lifecycle_init(sm, node)` is this function -- the typesupports come from the compile-time type registry rather than the caller, and the options struct is covered by the `compile-time-options` rule. The rclc-shaped name a user actually writes is also shipped (`nros_make_node_a_lifecycle_node`), so nothing is lost but the rcl spelling."
+  },
+  "c:lifecycle_state_machine_is_initialized": {
+    "verdict": "declined",
+    "why": "`nros_lifecycle_state_machine_t` carries a public `initialized` flag, and every entry point returns `NROS_RET_NOT_INIT` / `NROS_RET_BAD_SEQUENCE` rather than relying on the caller to ask first. A user loses the free-function spelling, not the information."
+  },
+  "c:lifecycle_state_machine_options_t": {
+    "verdict": "declined",
+    "why": "rcl's options carry an allocator and `enable_com_interface`. The allocator is the `no-allocator` rule; the com-interface switch is a separate explicit call here -- `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`."
+  },
+  "c:lifecycle_state_t": {
+    "verdict": "divergence",
+    "why": "rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain. Ours is `NROS_LIFECYCLE_STATE_*` plus the `uint8_t` a `get_state` returns."
+  },
+  "c:lifecycle_transition_fini": {
+    "verdict": "declined",
+    "why": "the init/fini pair for an rcl heap-built state or transition object. rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain."
+  },
+  "c:lifecycle_transition_init": {
+    "verdict": "declined",
+    "why": "the init/fini pair for an rcl heap-built state or transition object. rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain."
+  },
+  "c:lifecycle_transition_map_t": {
+    "verdict": "divergence",
+    "why": "rcl's runtime map of states to their valid transitions, built by `rcl_lifecycle_init_default_state_machine`. Ours is the compile-time `nros_core::lifecycle::can_transition` table. Constraint: no allocator; see `c:lifecycle_init_default_state_machine`."
+  },
+  "c:lifecycle_transition_t": {
+    "verdict": "divergence",
+    "why": "rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain. Ours is `NROS_LIFECYCLE_TRANSITION_*`."
+  },
+  "c:lifecycle_trigger_transition_by_id": {
+    "verdict": "declined",
+    "why": "rcl's spelling of `nros_lifecycle_change_state(sm, transition_id)`; see that row for the `publish_update` parameter it also takes."
+  },
+  "c:lifecycle_trigger_transition_by_label": {
+    "verdict": "declined",
+    "why": "label-keyed transition lookup. The label mapping does exist here -- `from_msg_transition_label` in `nros-node/src/lifecycle_services.rs` resolves the label a `ChangeState` request carries, including the generic `\"shutdown\"` -- but only inside the service layer, where a label actually arrives on the wire. A C caller has `NROS_LIFECYCLE_TRANSITION_*` constants and needs no string compare."
+  },
+  "c:make_node_a_lifecycle_node": {
+    "verdict": "divergence",
+    "why": "theirs `(lifecycle_node_t*, node_t*, lifecycle_state_machine_t*, allocator_t*, bool)`, ours `(lifecycle_state_machine_t*, node_t*)`. Three of theirs are accounted for: `allocator_t*` by the `no-allocator` rule (which already names this entry point); `lifecycle_state_machine_t*` because rclc keeps the wrapper and the rcl state machine as two objects while our one handle IS the state machine (see `c:lifecycle_node_t`); and `bool enable_communication_interface` because we do not fold service registration into construction -- `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. **Defect found while classifying this row, needs an issue:** `nros_lifecycle_init` (which this is a documented alias for) accepts `node` and then only NULL-CHECKS it -- the pointer is never stored, so the standalone `nros_lifecycle_state_machine_t` family cannot reach the node and cannot register the REP-2002 services. A function called `nros_make_node_a_lifecycle_node` does not, today, make a node a lifecycle node; only the executor-scoped family (`nros_executor_lifecycle_*`) does. Phase 379 W4."
+  },
+  "c:print_state_machine": {
+    "verdict": "declined",
+    "why": "rcl_lifecycle's debug dump of the transition map to stdout. A freestanding image has no stdout to dump to (and Rust `println!` is fatal on Zephyr native_sim, issue 0589), and the table is the same compile-time table in every image. The same information is reachable over `~/get_transition_graph`, which we do serve."
+  },
+  "cpp:CallbackReturn": {
+    "verdict": "extension",
+    "why": "rclcpp has this enum too, but as a nested `node_interfaces::LifecycleNodeInterface::CallbackReturn`, so a flat `nros::CallbackReturn` reads as ours-only. Same three values in the same order (`Success`/`Failure`/`Error`). The flattening is the same one as `cpp:LifecycleNode::on_configure` -- no abstract interface base to nest it in."
+  },
+  "cpp:LifecycleNode::LifecycleNode": {
+    "verdict": "divergence",
+    "why": "theirs `(name[, namespace], NodeOptions&, bool)`, ours `()` / `(void* executor_handle)` (plus a deleted copy ctor). Every position is accounted for by a rule or a constraint: `NodeOptions&` is `compile-time-options`; `make_shared`-style construction is `no-shared-ptr` (see `cpp:LifecycleNode::make_shared`); the name and namespace are not construction parameters because the node is created by the executor from baked boot config (RFC-0045), not named at the call site; and the trailing `bool enable_communication_interface` is our explicit `register_services()` / `autostart()` -- `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. The `void*` handle rather than an `Executor&` is the house idiom (`Executor::handle()` returns `void*`), not a lifecycle decision. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::autostart": {
+    "verdict": "extension",
+    "why": "registers the services and then drives the node to `Inactive` or `Active` at boot, so an unattended device comes up active with no external `ros2 lifecycle set`. rclcpp assumes an operator or a launch action performs the transitions. OUR LANGUAGES DISAGREE: Rust reaches the same behaviour DECLARATIVELY through `system.toml`'s `[lifecycle]` autostart, expanded by `nros::main!`, and spells the programmatic form `LifecyclePollingNode::bring_up`; C has no autostart entry point at all (`nros_cpp_lifecycle_autostart` is the C++ shim, not the C API). Three languages, three answers, one feature."
+  },
+  "cpp:LifecycleNode::bind": {
+    "verdict": "extension",
+    "why": "two-phase construction for the component model: a nano-ros component is constructed before the executor handle exists (RFC-0043/0044 -- components are declared and installed, not constructed with their dependencies), so a component that inherits `LifecycleNode` default-constructs and binds the handle from its install hook. rclcpp has no equivalent because its node is constructed with everything it needs."
+  },
+  "cpp:LifecycleNode::create_callback_group": {
+    "verdict": "divergence",
+    "why": "`nros::Node` has callback groups (RFC-0002 maps them onto RTOS priority tiers). Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::create_wall_timer": {
+    "verdict": "divergence",
+    "why": "we spell it `nros::Node::create_timer` -- the rename is recorded once, in the timer stage's `cpp:Node::create_wall_timer`. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::for_each_callback_group": {
+    "verdict": "divergence",
+    "why": "see `cpp:LifecycleNode::create_callback_group`; the enumeration form is on the node stage's `cpp:Node::for_each_callback_group`, not on the lifecycle mixin."
+  },
+  "cpp:LifecycleNode::get_available_states": {
+    "verdict": "declined",
+    "why": "rclcpp returns `std::vector<State>` / `std::vector<Transition>` -- a heap container of heap-labelled objects, which is `no-shared-ptr` and no-allocator twice over. The information is not lost: we serve it on `~/get_available_states`, `~/get_available_transitions` and `~/get_transition_graph`, which is what `ros2 lifecycle list` reads. What a user loses is the IN-PROCESS enumeration -- a node cannot ask itself what it may do next without a round trip. Consistent across all three of our languages: neither Rust's `LifecyclePollingNode` nor the C API has an accessor either."
+  },
+  "cpp:LifecycleNode::get_available_transitions": {
+    "verdict": "declined",
+    "why": "see `cpp:LifecycleNode::get_available_states`."
+  },
+  "cpp:LifecycleNode::get_clock": {
+    "verdict": "gap",
+    "why": "see the timer stage's `cpp:Node::get_clock`: our C++ ships no clock/time/duration surface at all, while C and Rust both do. Not a lifecycle decision -- the lifecycle mixin inherits the hole. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::get_current_state": {
+    "verdict": "rename",
+    "why": "rclcpp spells it `get_current_state()`; we spell it `get_state()`. Nothing about an RTOS asks for the shorter name, and a ported rclcpp lifecycle node calls the longer one. OUR LANGUAGES DISAGREE, three ways: C++ `get_state()`, C `nros_lifecycle_get_state` / `nros_executor_lifecycle_get_state`, Rust `LifecyclePollingNode::state()`. Rust's is correct for Rust (RFC-430 drops `get_`); C and C++ should both read `get_current_state`. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::get_logger": {
+    "verdict": "divergence",
+    "why": "`nros::Node::get_logger` exists and matches rclcpp's. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::get_name": {
+    "verdict": "divergence",
+    "why": "`nros::Node::get_name` exists and matches rclcpp's. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::get_namespace": {
+    "verdict": "divergence",
+    "why": "`nros::Node::get_namespace` exists and matches rclcpp's. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+  },
+  "cpp:LifecycleNode::get_node_base_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_clock_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_logging_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_options": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_options` and the `compile-time-options` rule."
+  },
+  "cpp:LifecycleNode::get_node_time_source_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_timers_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_topics_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_node_waitables_interface": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
+  },
+  "cpp:LifecycleNode::get_state": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:LifecycleNode::get_current_state`; see that row."
+  },
+  "cpp:LifecycleNode::get_transition_graph": {
+    "verdict": "gap",
+    "why": "MISFILED BY THE TAXONOMY, and a real finding underneath: this is the LIFECYCLE state machine's full transition table (`ros2 lifecycle list`), not the ROS graph -- it lands in this stage only because `topics.py`'s pattern matches the word `graph`. And we already have the data: `nros-node/src/lifecycle_services.rs` holds `ALL_TRANSITIONS` as a static table and serves it over `~/get_transition_graph` (sharing the `GetAvailableTransitions` type with `~/get_available_transitions`, which is why the five lifecycle services use four service types). So a remote peer can read our transition table over the wire and the node's own code cannot read it in process, in any of the three languages -- there is no local accessor beside `nros_lifecycle_get_state`. Cheap to close: the table is already `const`. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::make_shared": {
+    "verdict": "declined",
+    "why": "see the node stage's `cpp:Node::make_shared`. No allocator; `no-shared-ptr` in signature_rules.py."
+  },
+  "cpp:LifecycleNode::make_unique": {
+    "verdict": "declined",
+    "why": "see `cpp:LifecycleNode::make_shared`."
+  },
+  "cpp:LifecycleNode::now": {
+    "verdict": "gap",
+    "why": "see the node stage's `cpp:Node::now` and `cpp:LifecycleNode::get_clock`. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::on_activate": {
+    "verdict": "divergence",
+    "why": "ours takes `LifecycleState` by value, theirs `const rclcpp_lifecycle::State&`. `State` is a class wrapping `rcl_lifecycle_state_t` with a `std::string` label; ours is a `uint8_t`-backed `enum class`. Constraint: no allocator and no STL on the freestanding targets (RFC-0018) -- the `cstr-not-string` rule, applied to a state object instead of a name. Both mean the same thing: the state being left."
+  },
+  "cpp:LifecycleNode::on_cleanup": {
+    "verdict": "divergence",
+    "why": "rclcpp declares all six hooks on the separate abstract base `node_interfaces::LifecycleNodeInterface` and re-declares only `on_activate` / `on_deactivate` on `LifecycleNode` itself (to propagate to managed entities), so these four read as ours-only. We flatten the interface into the class: RFC-0018 freestanding C++ means non-pure virtuals with defaults, so there is no `__cxa_pure_virtual` and no abstract base to inherit. Same names, same signature shape, same defaults (`on_error` returns `Failure`)."
+  },
+  "cpp:LifecycleNode::on_configure": {
+    "verdict": "divergence",
+    "why": "rclcpp declares all six hooks on the separate abstract base `node_interfaces::LifecycleNodeInterface` and re-declares only `on_activate` / `on_deactivate` on `LifecycleNode` itself (to propagate to managed entities), so these four read as ours-only. We flatten the interface into the class: RFC-0018 freestanding C++ means non-pure virtuals with defaults, so there is no `__cxa_pure_virtual` and no abstract base to inherit. Same names, same signature shape, same defaults (`on_error` returns `Failure`)."
+  },
+  "cpp:LifecycleNode::on_deactivate": {
+    "verdict": "divergence",
+    "why": "ours takes `LifecycleState` by value, theirs `const rclcpp_lifecycle::State&`. `State` is a class wrapping `rcl_lifecycle_state_t` with a `std::string` label; ours is a `uint8_t`-backed `enum class`. Constraint: no allocator and no STL on the freestanding targets (RFC-0018) -- the `cstr-not-string` rule, applied to a state object instead of a name. Both mean the same thing: the state being left."
+  },
+  "cpp:LifecycleNode::on_error": {
+    "verdict": "divergence",
+    "why": "rclcpp declares all six hooks on the separate abstract base `node_interfaces::LifecycleNodeInterface` and re-declares only `on_activate` / `on_deactivate` on `LifecycleNode` itself (to propagate to managed entities), so these four read as ours-only. We flatten the interface into the class: RFC-0018 freestanding C++ means non-pure virtuals with defaults, so there is no `__cxa_pure_virtual` and no abstract base to inherit. Same names, same signature shape, same defaults (`on_error` returns `Failure`)."
+  },
+  "cpp:LifecycleNode::on_shutdown": {
+    "verdict": "divergence",
+    "why": "rclcpp declares all six hooks on the separate abstract base `node_interfaces::LifecycleNodeInterface` and re-declares only `on_activate` / `on_deactivate` on `LifecycleNode` itself (to propagate to managed entities), so these four read as ours-only. We flatten the interface into the class: RFC-0018 freestanding C++ means non-pure virtuals with defaults, so there is no `__cxa_pure_virtual` and no abstract base to inherit. Same names, same signature shape, same defaults (`on_error` returns `Failure`)."
+  },
+  "cpp:LifecycleNode::register_on_activate": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_activate` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::register_on_cleanup": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_cleanup` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::register_on_configure": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_configure` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::register_on_deactivate": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_deactivate` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::register_on_error": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_error` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::register_on_shutdown": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_shutdown` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::trigger_transition": {
+    "verdict": "rename",
+    "why": "rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3."
+  },
+  "cpp:LifecyclePublisher": {
+    "verdict": "gap",
+    "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
+  },
+  "cpp:LifecycleState": {
+    "verdict": "extension",
+    "why": "the ours-only half of `rclcpp_lifecycle::State`: a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel for a null executor handle. See `cpp:LifecycleNode::on_activate` for why it is an enum and not a class."
+  },
+  "cpp:ManagedEntityInterface": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "bucket-covered with its members: rclcpp's managed-entity protocol -- the interface a `LifecyclePublisher` implements so a node's activation reaches its entities. We have lifecycle state and no entity that observes it; a deactivated node's publishers keep publishing. Same gap as the pubsub stage's `cpp:LifecyclePublisher`, which cannot be closed without this interface. Phase 379 W3."
+  },
+  "cpp:SimpleManagedEntity": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "the default `ManagedEntityInterface` implementation (an `is_activated()` flag that a publisher checks before sending). See `cpp:ManagedEntityInterface`. Phase 379 W3."
+  },
+  "cpp:Transition": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "OUR LANGUAGES DISAGREE: Rust has a full `LifecycleTransition` enum (`from_u8`, `from_shorthand`, `source_state`), C has the `NROS_LIFECYCLE_TRANSITION_*` constants, and C++ has NO transition type or constants at all -- a caller passes a bare `uint8_t` to the protected `trigger()`. rclcpp's `Transition` carries `id`, `label`, `start_state`, `goal_state`. Nothing forbids an `enum class` here: we already ship `enum class LifecycleState` in the same header. Bucket-covered with its members. Phase 379 W3."
+  },
+  "cpp:Transition::goal_state": {
+    "verdict": "declined",
+    "why": "not an action item: this is `rclcpp_lifecycle::Transition::goal_state()`, the TARGET state of a lifecycle transition. It is routed here because the taxonomy decides a MEMBER by its name and `goal_` belongs to action. The real reason we lack it belongs to the lifecycle stage -- our `LifecycleTransition` is the enum itself, not an object carrying start and goal states. Flagged for a `topics.py` fix; see this stage's report."
+  },
+  "cpp:Transition::start_state": {
+    "verdict": "gap",
+    "why": "see `cpp:Transition`. Worth one extra note: where rclcpp says `start_state`, our Rust says `LifecycleTransition::source_state`. If C++ grows the type, it should not grow a third spelling -- pick rclcpp's."
+  },
+  "cpp:create_default_publisher_options": {
+    "verdict": "declined",
+    "why": "`rclcpp_lifecycle`'s helper for building the options a lifecycle publisher is created with. No runtime options struct here; see the `compile-time-options` rule. The behaviour those options carry is the `cpp:LifecyclePublisher` gap, not the struct."
+  },
+  "cpp:create_default_subscription_options": {
+    "verdict": "declined",
+    "why": "see `cpp:create_default_publisher_options`."
+  },
+  "rust:Executor::lifecycle_state_machine": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::lifecycle_state_machine_mut": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_lifecycle_node": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Lifecycle": {
+    "verdict": "extension",
+    "why": "this is `nros::LifecycleState`; the correlator's rclrs `*State` fold (`_RCLRS_STATE` in correlate.py, which exists to line `NodeState` up with `Node`) strips the suffix from OUR name too. The type is the five REP-2002 primary states plus `ErrorProcessing`, with `is_primary` / `is_terminal` / `from_u8`. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecycleCallbackFn": {
+    "verdict": "extension",
+    "why": "`fn() -> TransitionResult` -- the plain function-pointer callback slot for `LifecyclePollingNode`. A function POINTER rather than a `Box<dyn FnMut>` is the `no_std` / no-allocator constraint, the same one behind the pubsub stage's callback rows. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecycleCallbackFnCtx": {
+    "verdict": "extension",
+    "why": "`unsafe extern \"C\" fn(*mut c_void) -> u8` -- the FFI-shaped callback, so C, C++ and Rust all drive ONE state machine implementation. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages. NOTE this alias is the source of the C-header defect recorded on `c:lifecycle_register_on_configure`: `Option<LifecycleCallbackFnCtx>` reaches the C ABI as `struct Option_LifecycleCallbackFnCtx`."
+  },
+  "rust:LifecycleCallbackSlot": {
+    "verdict": "extension",
+    "why": "which of the six transition slots `LifecyclePollingNodeCtx::register` writes -- an enum instead of rclc's `goal_state` integer index into a 100-slot map (see `c:lifecycle_callback_map_t`). **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecycleCallbacks": {
+    "verdict": "extension",
+    "why": "the SAFE callback surface (issue 0335 / phase-317): implement the transitions you need, register with `Executor::register_lifecycle_node`, no `unsafe` in user code. Monomorphized `extern \"C\"` trampolines replace a boxed closure, which is what makes it `no_std`. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages. OUR LANGUAGES DISAGREE on the name for one concept: this trait is the exact counterpart of C++'s `nros::LifecycleNode` (same six hooks, same defaults, `on_error` -> `Failure`), and the two names share no word. rclcpp calls it `LifecycleNodeInterface`."
+  },
+  "rust:LifecycleError": {
+    "verdict": "extension",
+    "why": "the transition failure type: `InvalidTransition { from, transition }`, `CallbackFailed`, `NodeFinalized`. RFC-0018/no exceptions means a failed transition is a `Result`, and the variants carry what a device needs to log without a string. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecyclePollingNode": {
+    "verdict": "extension",
+    "why": "the standalone `no_std` state machine with plain fn-pointer callbacks and no node handle -- usable on a target with no services registered at all, which is the smallest useful form of REP-2002 on a device. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecyclePollingNode::bring_up": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: this is configure-then-activate in one call, which our C++ spells `LifecycleNode::autostart(LifecycleState)` and our C does not have at all; Rust ALSO reaches it declaratively through `system.toml`'s `[lifecycle]` autostart, expanded by `nros::main!`. One feature, three answers. rclrs has no lifecycle surface to compare against. See `cpp:LifecycleNode::autostart`."
+  },
+  "rust:LifecyclePollingNode::state": {
+    "verdict": "extension",
+    "why": "see `rust:LifecyclePollingNode`. Naming: Rust convention drops `get_` (RFC-430), so `state()` is right for Rust -- but see `cpp:LifecycleNode::get_current_state`, where the same reading is spelled two other ways across our own languages."
+  },
+  "rust:LifecyclePollingNode::trigger_transition": {
+    "verdict": "extension",
+    "why": "see `rust:LifecyclePollingNode`. This is rclcpp's word for the operation, and it is public here -- the same operation is `protected trigger()` in our C++ and `nros_lifecycle_change_state` in our C. See `cpp:LifecycleNode::trigger_transition`."
+  },
+  "rust:LifecyclePollingNodeCtx": {
+    "verdict": "extension",
+    "why": "the same state machine with `(void* ctx)` callbacks; this is the object the C API's opaque `nros_lifecycle_state_machine_t` storage actually holds, and the one `Executor::register_lifecycle_node` drives. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:LifecycleTransition": {
+    "verdict": "extension",
+    "why": "the REP-2002 transition set as a closed enum, with `from_u8`, `from_shorthand` (so the generic `\"shutdown\"` label a `ChangeState` request may carry resolves against the current state) and `source_state`. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages. See `cpp:Transition` -- this type has no C++ counterpart, which is a gap on that side."
+  },
+  "rust:LifecycleTransition::source_state": {
+    "verdict": "extension",
+    "why": "see `rust:LifecycleTransition`. Naming note: rclcpp calls the same field `start_state` (`cpp:Transition::start_state`); if the C++ type is ever added, both should use rclcpp's word."
+  },
+  "rust:TransitionResult": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: one enum, three names -- Rust `TransitionResult`, C++ `CallbackReturn` (rclcpp's word, see `cpp:CallbackReturn`), C `NROS_LIFECYCLE_RET_*`. Same three values in the same order (`Success`/`Failure`/`Error`), the return of every transition callback. rclrs 0.5.1 has no lifecycle support whatsoever -- the whole stage reports zero theirs-only rows in the Rust lane -- so every Rust item here is an extension by definition; see `rust:Lifecycle` for the scenario."
+  },
+  "rust:on_activate": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_activate::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_activate`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:on_cleanup": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_cleanup::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_cleanup`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:on_configure": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_configure::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_configure`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:on_deactivate": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_deactivate::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_deactivate`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:on_error": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_error::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_error`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  },
+  "rust:on_shutdown": {
+    "verdict": "extension",
+    "why": "`lifecycle::trampolines::on_shutdown::<T>` -- the monomorphized `extern \"C\"` shim that recovers `&mut T` from the FFI context pointer and calls `LifecycleCallbacks::on_shutdown`. One per `T`, emitted by rustc, so a safe trait can be registered through a C function-pointer slot with no allocation. Public because `Executor::register_lifecycle_node` names them, not because a user calls them. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+  }
+}

@@ -1,7 +1,7 @@
 ---
 id: 783
-title: "The Rust user API returns `NodeError` and exports no way to inspect it —
-  and RFC-0036 documents a different type that the user API never returns"
+title: "`RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust
+  error type the user API never returns"
 status: open
 type: bug
 area: api, docs
@@ -13,7 +13,7 @@ related: [rfc-0036, rfc-0037, phase-379]
 Three separate facts, found together while classifying phase-379's `types`
 stage:
 
-**1. The facade exports the error type but none of its vocabulary.**
+**1. The error vocabulary is exported, but not where a reader looks.**
 `packages/api/nros/src/lib.rs:855` re-exports `NodeError`, which is what every
 fallible call in the Rust user API returns:
 
@@ -25,12 +25,24 @@ pub fn create_publisher<M: MessageForRmw>(
 ```
 
 `NodeError::Transport(TransportError)` is its most common variant, so handling
-one means naming `TransportError` — and the "Re-export core types" block
-(`lib.rs:206`) lists `CdrReader, CdrWriter, Clock, ClockType, DeserError,
-Deserialize, Duration, Logger, MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo,
-RosMessage, RosService, SerError, Serialize, Time` and neither error type.
+one means naming `TransportError`.
 
-**2. `RclReturnCode` exists and is unreachable.** `nros-core/src/error.rs:36`
+**CORRECTION (2026-08-25).** This issue originally claimed `TransportError` was
+not exported and that a caller therefore could not match on the error. **That was
+wrong.** It is exported unconditionally at `lib.rs:687`, in the "Re-export
+transport types" block. Phase 379's `other` stage caught the error and it was
+verified before this correction.
+
+What is actually true is much narrower and not a capability gap: the "Re-export
+core types" block at `lib.rs:206` — which lists `CdrReader, CdrWriter, Clock,
+ClockType, DeserError, Deserialize, Duration, Logger, MessageInfo,
+PUBLISHER_GID_SIZE, RawMessageInfo, RosMessage, RosService, SerError, Serialize,
+Time` — contains neither error type, so a reader looking for the error vocabulary
+beside the other core types does not find it there. That is a discoverability
+nit. The two findings below are the substance of this issue.
+
+**2. `RclReturnCode` exists and is unreachable.** (Verified again 2026-08-25:
+`grep -c RclReturnCode packages/api/nros/src/lib.rs` → 0.) `nros-core/src/error.rs:36`
 defines it as the `rcl_ret_t` mirror RFC-0036 describes. Nothing in
 `packages/api/nros` re-exports it, so a Rust user cannot name it. rclrs exports
 its equivalent; phase-379's correlator reports `rust:RclReturnCode` as
@@ -42,7 +54,7 @@ says:
 > rclrs `RclrsError` → Rust `NanoRosError { code: RclReturnCode, context, nested }`
 
 `NanoRosError` is defined at `nros-core/src/error.rs:235` and appears **nowhere**
-in `packages/core/nros-node` or `packages/api` — a user meets `NodeError`, which
+in `packages/core/nros-node` or `packages/api` (re-verified 2026-08-25) — a user meets `NodeError`, which
 has none of that shape. The RFC already carries a "naming note" correcting an
 earlier `RclrsError` mislabel; the corrected name is also not the one users see.
 
@@ -78,8 +90,9 @@ time that row has been wrong.
 Not decided here; phase-379 W2 records the classification and W5 owns the
 facade's export policy. The three parts are separable:
 
-* Export `TransportError` (and `RclReturnCode`, if it is meant to be user
-  vocabulary) from `nros`. Cheap, and unblocks matching on the error.
+* Export `RclReturnCode`, if it is meant to be user vocabulary, and consider
+  moving `TransportError` next to `NodeError` in the core block so the error
+  vocabulary reads as one group.
 * Decide whether `NanoRosError` is dead code or the intended user error. If it
   is dead, delete it — a second error type that documents the API but is not in
   it is worse than none.

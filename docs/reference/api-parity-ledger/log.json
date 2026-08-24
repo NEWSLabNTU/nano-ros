@@ -1,0 +1,211 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:get_zero_initialized_log_levels": {
+    "verdict": "declined",
+    "why": "rcl's zero-init idiom for a type we do not have; see `c:log_levels_*`. Same shape as `c:get_zero_initialized_init_options` in the init stage."
+  },
+  "c:log_levels_*": {
+    "verdict": "divergence",
+    "bucket": "theirs-only",
+    "why": "rcl's `rcl_log_levels_t` is a heap-allocated growable array of (logger name, severity) pairs with an `rcl_allocator_t` member, populated from `--ros-args --log-level`; `init` / `fini` / `copy` / `shrink_to_size` are its memory lifecycle and nothing else. Constraints: no allocator and no argv (RFC-0045). Ours is a per-`Logger` `AtomicU8` threshold living inside the `'static Logger` itself (`nros_log::Logger::{level, set_level, is_enabled}`) reached through a bounded 32-entry intern table (`nros_log::MAX_LOGGERS`), so there is no separate collection to allocate, copy, shrink or free. The compile-time half of the same knob is the `max-level-*` Cargo features, checked by the `const fn severity_enabled_at_compile_time` the macros expand into. The one member of this family that is a CAPABILITY rather than memory management has its own row -- see `c:log_levels_add_logger_setting`."
+  },
+  "c:log_levels_add_logger_setting": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: this is rcl's \"set THIS logger's level\", the one member of `rcl_log_levels_*` that is a capability rather than allocation bookkeeping. Rust has it -- `nros_log::Logger::set_level(Severity)`, and `examples/native/rust/logging/src/main.rs` calls it to drop a live logger to `Warn`. C and C++ have NO way to reach it: `<nros/log.h>` exposes only `nros_log_emit`, `nros_log_emit_fmt`, `nros_log_init` and `nros_log_default_logger`, and there is no `nros_logger_set_level` / `nros_logger_get_level` on the `nros_logger_t` handle. The C example's own file comment claims otherwise (\"Threshold adjustment uses the same `nros_logger_t` handle through a small helper that calls into the Rust facade\") and `examples/native/c/logging/src/main.c` contains no such call -- it works around the absence by narrating that TRACE and DEBUG drop at the default Info threshold. Nothing about `no_std` prevents the two accessors; the state is already an `AtomicU8` behind the pointer C is holding. Phase 379 W3."
+  },
+  "c:log_severity_t": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: we HAVE this enum -- `nros_log_severity_t` in `packages/api/nros-c/include/nros/log.h`, the same six-level REP-2012 ladder with the same discriminants as `rcutils_log_severity_t` (0=TRACE .. 5=FATAL). It reads as missing because `<nros/nros.h>`, the umbrella this tool and every C example include, does not `#include \"nros/log.h\"` -- while `<nros/nros.hpp>` DOES include `nros/log.hpp`. So a C user who includes the umbrella gets no logging surface and a C++ user gets all of it. One `#include` line closes this row and makes `nros_log_emit`, `nros_log_emit_fmt`, `nros_log_init`, `nros_log_default_logger`, `nros_logger_t` and the six `NROS_LOG_*` macros visible to the report at all. Phase 379 W3."
+  },
+  "c:logger_setting_t": {
+    "verdict": "divergence",
+    "why": "the (name, severity) pair `rcl_log_levels_t` holds an array of. Ours is the `Logger` object itself -- name plus `AtomicU8` threshold, `const`-constructible as a `static`. See `c:log_levels_*`."
+  },
+  "c:logging_configure": {
+    "verdict": "divergence",
+    "why": "rcl builds the logging system from `rcl_arguments_t*` (parsed argv) plus an `rcl_allocator_t`. Both constraints bite: an embedded image has no argv -- `rcl/arguments.h` is already excluded as plumbing for exactly that reason, and RFC-0045 bakes boot config instead -- and there is no allocator. Ours is `nros_log_init()` (C) / `nros_log::init(&'static [&'static dyn LogSink])` (Rust): a `'static` sink list, no arguments, no allocation. Records raised before it runs are not lost -- `nros_log::early` holds them in a fixed ring and `init` drains them into whatever sinks the board chose."
+  },
+  "c:logging_configure_with_output_handler": {
+    "verdict": "gap",
+    "why": "see `c:logging_output_handler_t` -- a C caller cannot install a sink at all, so there is no handler-taking variant to have."
+  },
+  "c:logging_fini": {
+    "verdict": "declined",
+    "why": "rcl tears the logging system down at shutdown. `nros_log` has no teardown by construction: `init` publishes the sink list into an `AtomicPtr` read lock-free on every dispatch and deliberately LEAKS the previous pointer, because a lock-free reader means nothing can prove when the old list stopped being read (`packages/core/nros-log/src/lib.rs`). What a user loses: no way to uninstall sinks. `nros_log::flush()` is the only lifecycle verb, and it is Rust-only -- `<nros/log.h>` declares no `nros_log_flush`, which is a small C gap of its own even though rcl has no `rcl_logging_flush` to name it here."
+  },
+  "c:logging_multiple_output_handler": {
+    "verdict": "declined",
+    "why": "rcl's built-in handler that fans one record out to console + file + `/rosout`. Fan-out is our DEFAULT shape rather than a special handler -- `nros_log::init` takes a SLICE and `dispatch_to_sinks` walks all of it -- so there is no `multiple` variant to have. What a user loses is the destinations, not the fan-out: we ship no file sink (see `cpp:get_logging_directory`) and no `/rosout` sink (see `c:logging_rosout_enabled`), so the shipped list is one `PlatformSink` plus the optional `LogCrateSink`."
+  },
+  "c:logging_output_handler_t": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: two facts about what a log handler is here. (1) WHO MAY INSTALL ONE: Rust's `nros_log::init` TAKES the sink list, so a Rust app composes its own delivery; the C `nros_log_init()` takes no arguments and hardwires `nros_platform_cffi::log::default_sinks()`, so a C or C++ caller cannot install a sink and must instead implement the `nros_platform_log_write` ABI in a board crate. Nothing about `no_std` prevents a C `nros_log_add_sink`. (2) WHAT IT RECEIVES: rcl's handler signature carries a `rcutils_log_location_t` (file / function / line) and a timestamp. The Rust macros capture `core::file!()`, `core::line!()` and `__timestamp_ns()` into `nros_log::Record`, but the C emit path hardcodes `file: \"<nros-c>\", line: 0, timestamp_ns: 0` (`packages/api/nros-c/src/log.rs`), so every record from a C or C++ call site reaches the sink with no location and no time -- even though the C++ LEGACY macros (`NROS_INFO`/`NROS_WARN`/...) do print `__FILE__:__LINE__`, from a different code path. Phase 379 W3."
+  },
+  "c:logging_rosout_enabled": {
+    "verdict": "gap",
+    "why": "whether records are republished on the `/rosout` topic. We publish nothing there: `book/src/user-guide/logging.md` calls `/rosout` \"explicitly out of scope today\" and leaves room for an add-later `RosoutSink` alongside `PlatformSink`. This is a gap and not a divergence -- a `RosoutSink` is one publisher of `rcl_interfaces/msg/Log`, which static entity storage can hold, and the sink list is already the right shape for it. What a user loses is the standard way an operator reads logs off a running robot: `ros2 topic echo /rosout`, `rqt_console`, and every launch-side log aggregator see nothing from a nano-ros node. Note `nros-cpp`'s rclcpp compat shim ships `NodeOptions::enable_rosout` as a stored-and-ignored bool defaulting to false (`rclcpp_compat.hpp`) -- a ported node can ask for a thing we cannot give it and gets no diagnostic. Phase 379 W3."
+  },
+  "c:node_get_logger": {
+    "verdict": "extension",
+    "why": "rclc wraps none of rcutils logging, so a node-keyed logger accessor is ours over rclc; rclcpp's counterpart is `Node::get_logger()`, which our C++ does have (it correlates as `same`). Returns an opaque `const void*` = `&'static nros_log::Logger`, interned on the NODE'S OWN NAME (`packages/api/nros-c/src/node.rs` reads `node.name` and calls `nros_log::get_logger(name)`). Recorded here because it makes the node stage's `c:node_get_logger_name` row wrong on its facts: that row declined `rcl_node_get_logger_name` on the grounds that \"nros_log takes an explicit logger name at the call site, so there is no derived name to fetch\", and this function derives exactly that name -- `nros_log::Logger::name()` on the returned handle IS the answer, one C accessor away. W3/W5 should re-read `c:node_get_logger_name` as a gap."
+  },
+  "cpp:Logger": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Logger` is a VALUE type holding a `std::string name_`, copied into every macro call, and `get_child` mints a new one by concatenating `parent.child`. Constraints: no allocator, and no `<string>` on a freestanding C++ build -- `nros-cpp` headers are compiled `-nostdinc++` against Zephyr's minimal libcpp, where the rule (RFC-0018, issue 0112) is to gate a std include on `NROS_CPP_STD` rather than `__STDC_HOSTED__`, because a hosted compiler invoked `-nostdinc++` still reports itself hosted. (`log.hpp` itself still gates its `<cstdio>` on `defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)`; that one is the include 0112 explicitly left on the hosted gate, since minimal libcpp does provide `<cstdio>`.) Ours is an OPAQUE `const void*` returned by `Node::get_logger()` (`packages/api/nros-cpp/include/nros/node.hpp`), pointing at a `&'static nros_log::Logger` in a bounded 32-slot intern table keyed on `&'static str`. `Logger::Logger` and `Logger::get_child` follow from that: a `void*` has no constructor and no allocator to build a child name with. What does NOT follow is that the accessors are missing -- see `cpp:Logger::get_name` and `cpp:Logger::set_level`. A named `nros::Logger` wrapper over the same handle would cost one struct and restore the type without restoring the allocation."
+  },
+  "cpp:Logger::get_name": {
+    "verdict": "gap",
+    "why": "reads the logger's name. `nros_log::Logger::name()` exists and is `const fn`; the C++ side cannot call it because `Node::get_logger()` hands back a bare `const void*` with no accessor beside it. Not a platform constraint -- the string is a `&'static str` already living in the binary. Phase 379 W3."
+  },
+  "cpp:Logger::set_level": {
+    "verdict": "gap",
+    "why": "see `c:log_levels_add_logger_setting` -- same missing accessor, C++ side. A ported node can raise or lower a logger in rclcpp and cannot here."
+  },
+  "cpp:Node::get_node_logging_interface": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::get_node_base_interface` in the node stage -- rclcpp's ~10-way `node_interfaces::Node*Interface` split exists so a component can be handed the slice it needs, and our components are declared rather than constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
+  },
+  "cpp:get_logger": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: rclcpp's free `rclcpp::get_logger(\"name\")` returns a logger without a node. Rust has exactly this function -- `nros_log::get_logger(name)`, total, returning `DEFAULT_LOGGER` when the name is not registered -- and neither C nor C++ can reach it: the only nameless entry point is `nros_log_default_logger()`, which takes no name and always returns the catch-all `\"nros\"` logger. What a C/C++ user loses: per-subsystem loggers. Every call site that is not inside a node lands on one logger and shares its threshold, so the per-logger filtering the severity ladder exists for is unavailable to two of our three languages. The Rust function is already `extern`-able. Phase 379 W3."
+  },
+  "cpp:get_logging_directory": {
+    "verdict": "declined",
+    "why": "reports where rcl's file sink writes, resolved from `ROS_LOG_DIR` / `ROS_HOME` / `HOME` at runtime. Two constraints, both already decided elsewhere: no runtime environment on an embedded target (the same one that moved the domain ID to `nros_support_init`'s parameter, RFC-0036), and no file sink to have a directory -- delivery is `PlatformSink` -> `nros_platform_log_write`, which each `nros-platform-<rtos>` implements as that RTOS's console. What a user loses: on-target log files and the env vars that place them."
+  },
+  "cpp:get_node_logger": {
+    "verdict": "declined",
+    "why": "rclcpp's free function taking a raw `rcl_node_t*`, for code holding the handle but not the `rclcpp::Node`. Our member form `Node::get_logger()` matches rclcpp's and correlates as `same`; we expose no raw node handle to build a free form on top of (`Node::ffi_handle` is the C seam, not user API -- see the node stage)."
+  },
+  "rust:LogOccurrence": {
+    "verdict": "divergence",
+    "why": "rclrs's `All` / `Once` / `SkipFirst` is a runtime field of `LogParams`, and its `log!` macro mints the hidden per-call-site state that makes `Once` work. Ours are separate methods (`info_once`, `warn_skip_first`) taking a CALLER-SUPPLIED `&OnceFlag`. Constraints, both real: a method has no call-site identity to hang a hidden static off, and `OnceFlag` is a single `AtomicBool` using load+store rather than `compare_exchange` because riscv32imc has no CAS -- the source says so. Two consequences worth writing down: the occurrence state is the caller's `static`, and `OnceFlag` is exported by `nros-core` but NOT re-exported by the `nros` facade, so `nros::Logger::info_once` takes a type an `nros` user cannot name without adding a second dependency. Phase 379 W3."
+  },
+  "rust:LogParams": {
+    "verdict": "divergence",
+    "why": "rclrs carries severity, occurrence, throttle interval, logger name and a user filter as RUNTIME FIELDS of a builder its `log!` macro consumes. Ours encode severity in the MACRO NAME (`nros_trace!` .. `nros_fatal!`) so that `severity_enabled_at_compile_time` -- a `const fn` over the `max-level-*` Cargo features -- can gate the whole call site before it is built, and rustc eliminates the format string with it. The constraint is the compile-time options rule (RFC-0036/0045) applied to logging, and the reason it matters here is flash: a runtime `severity` field defeats the elimination that keeps format strings out of a 16 KB image. `LogParams::get_throttle_clock` is already ledgered in the timer stage. Our nearest equivalent of `get_user_filter` / `only_if` is an `if` around the call, which costs nothing; `get_logger_name` is `nros_log::Logger::name()`."
+  },
+  "rust:Logger::*_once": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "our spelling of `ToLogParams::once` / `LogOccurrence::Once`; see `rust:LogOccurrence` for the shape and the constraint."
+  },
+  "rust:Logger::*_skip_first": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "our spelling of `ToLogParams::skip_first` / `LogOccurrence::SkipFirst`; see `rust:LogOccurrence`."
+  },
+  "rust:Logger::*_throttle": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "OUR LANGUAGES DISAGREE: our RUST throttle really throttles -- `Logger::{trace,debug,info,warn,error}_throttle(&mut last_log_ms, now_ms, interval_ms, msg)` gates on `should_log_throttled`, which is unit-tested (`packages/core/nros-core/src/logger.rs`). Our C++ does not: `RCLCPP_INFO_THROTTLE` / `_WARN_THROTTLE` / `_ERROR_THROTTLE` in `packages/api/nros-cpp/include/nros/rclcpp_compat.hpp` expand to the un-throttled macro and DISCARD the `clock` and `period_ms` arguments, so a ported node that rate-limited a hot path at 1 Hz now logs it every iteration with no diagnostic. C has no throttle spelling at all. The shape difference from rclrs is real and constrained -- see `rust:ThrottleClock` -- but the C++ hole is not a divergence, it is unfinished work the header itself calls \"a follow-up\" (and RFC-0036's `_THROTTLE` note, which this stage was asked to verify, is accurate ONLY for C++). Phase 379 W3."
+  },
+  "rust:Logger::create_child": {
+    "verdict": "divergence",
+    "why": "hierarchical `parent.child` loggers with level inheritance. Constraints: no allocator to concatenate the child's name, and a bounded 32-slot intern table over `&'static str` (`nros_log::MAX_LOGGERS`) with nowhere to store a runtime-built one. What a user loses: per-subsystem loggers that inherit a parent's threshold -- the same loss `cpp:Logger` records for `get_child`. Combined with `cpp:get_logger`, a C/C++ port has no way to have more than one logger per node at all."
+  },
+  "rust:Logger::debug": {
+    "verdict": "divergence",
+    "why": "see `rust:Logger::info`."
+  },
+  "rust:Logger::error": {
+    "verdict": "divergence",
+    "why": "see `rust:Logger::info`."
+  },
+  "rust:Logger::info": {
+    "verdict": "divergence",
+    "why": "OUR LANGUAGES DISAGREE: There are TWO Rust `Logger` types in this repo and the facade exports the wrong one. `nros::Logger` is `nros_core::logger::Logger<'a>`, whose severity methods forward to the `log` CRATE (`log::info!(target: self.node_name, ...)`). The Phase-88 facade `nros_log::Logger` -- the one `<nros/log.h>` wraps, the one `nros_node::NodeHandle::logger()` returns, and the one CLAUDE.md's issue-0589 rule names (`nros_log::nros_error!(nros_log::get_logger(\"<crate>\"), ...)`, because `std::println!` recurses to death on Zephyr native_sim) -- is a DEPENDENCY of the `nros` crate that is never `pub use`d from it. So the type a user reaches through `nros::prelude::*` is the one that does NOT go through the `nros_platform_log_write` sink chain. On the signature itself: rclrs has no severity METHODS at all -- `Logger` is a handle and emission is the `log_info!` macro family. Ours are methods taking a PRE-RENDERED `&str`, not `format_args!`, because rclrs's macro formats into a `String` and there is no allocator here; the `nros_log` macros solve the same problem by rendering into a stack `FormatBuffer` sized by a `buffer-size-<N>` Cargo feature. Phase 379 W3 should decide which of the two loggers the facade exports; W5 should decide whether the surviving one keeps methods or macros."
+  },
+  "rust:Logger::name": {
+    "verdict": "rename",
+    "why": "OUR LANGUAGES DISAGREE: three spellings of one accessor. `nros_log::Logger::name()`, rclrs `Logger::name()` and rclcpp `Logger::get_name()` all say NAME; the `Logger` our facade actually exports (`nros_core::logger::Logger`) says `node_name()`. Nothing about an RTOS asks for the longer word, and it is also wrong on the facts -- the string is a LOGGER name, and `nros_log::get_logger(\"nros_log\")` / `get_logger(\"<crate>\")` prove a logger need not belong to a node. Ours should become `name`. Paired with `rust:Logger::node_name`. Phase 379 W5."
+  },
+  "rust:Logger::new": {
+    "verdict": "divergence",
+    "why": "see `rust:LoggerName`. The arities overlap and nothing else does: ours is `const fn new(&str) -> Self`, theirs is `new(impl Borrow<str>) -> Result<Logger, RclrsError>`."
+  },
+  "rust:Logger::node_name": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:Logger::name` -- this is the name that should change."
+  },
+  "rust:Logger::set_default_level": {
+    "verdict": "gap",
+    "why": "sets the threshold new/unnamed loggers start at. `nros_log::DEFAULT_LOGGER` is an ordinary `Logger`, so `DEFAULT_LOGGER.set_level(..)` is the capability -- it just reaches no public API. See `rust:Logger::set_level`."
+  },
+  "rust:Logger::set_level": {
+    "verdict": "gap",
+    "why": "the per-logger runtime threshold. `nros_log::Logger::set_level` exists (an `AtomicU8`, `Relaxed`), but the `Logger` the `nros` facade exports is `nros_core::logger::Logger`, which has no threshold at all -- it forwards straight to `log::info!` and whatever `log` backend the binary installed decides what survives. So the capability is in the tree and is not in the public API. See `rust:Logger::info` for why there are two loggers, and `c:log_levels_add_logger_setting` for the same hole in C and C++. Phase 379 W3."
+  },
+  "rust:Logger::trace": {
+    "verdict": "divergence",
+    "why": "see `rust:Logger::info`."
+  },
+  "rust:Logger::warn": {
+    "verdict": "divergence",
+    "why": "see `rust:Logger::info`."
+  },
+  "rust:LoggerName": {
+    "verdict": "divergence",
+    "why": "rclrs validates a logger name against the rcutils rules and tracks whether that happened (`Validated` / `Unvalidated`), which is why its `Logger::new` returns `Result<Logger, RclrsError>`. Ours is `const fn Logger::new(&str) -> Self`, infallible, because a `Logger` must be constructible as a `static` in a `no_std` image -- `static LOGGER: nros_log::Logger = Logger::new(\"demo\")` is the shape every embedded call site uses -- and a fallible constructor cannot initialise a `static`. What a user loses: an invalid logger name is accepted silently."
+  },
+  "rust:Node::logger": {
+    "verdict": "divergence",
+    "why": "rclrs's `Node` is a handle with a `logger()` accessor. Ours is the declarative component model (RFC-0043/0044): `nros::Node` is the TRAIT a user implements, and the handle-side equivalent is `nros_node::NodeHandle`, which DOES have `logger() -> &'static nros_log::Logger`. See `rust:Node` in the node stage for the constraint. Note the accessor does not appear as an ours-only row because `NodeHandle` is re-exported behind `#[cfg(feature = \"rmw-cffi\")]` and the report builds rustdoc with default features (`default = []`) -- see this stage's report, not a property of the API. Note also the type collision it creates: `nros::Logger` and the logger `NodeHandle::logger()` returns are DIFFERENT types with the same short name (`rust:Logger::info`)."
+  },
+  "rust:NodeHandle::logger": {
+    "verdict": "gap",
+    "why": "`NodeHandle::logger()` returns the Phase-88 `nros_log::Logger`, which the `nros` facade does not re-export -- so a user can obtain a logger from a node handle and cannot name its type. The facade exports a DIFFERENT `Logger` (`nros_core::logger::Logger`, which forwards to the `log` crate). See the log stage's `rust:Logger::info`. Phase 379 W3."
+  },
+  "rust:ThrottleClock": {
+    "verdict": "divergence",
+    "why": "rclrs picks which clock a throttle measures against (`SteadyTime` / `SystemTime` / a ROS `Clock`). Ours takes no clock: `*_throttle(&mut last_log_ms, current_time_ms, interval_ms, msg)` has the CALLER supply the reading. The constraint is that the logging path has no clock to depend on -- `nros_log::__timestamp_ns()` returns 0 unless the `platform-clock` feature is on, precisely so that logging imposes no link-time requirement on `nros_platform_clock_ns`, and a logger that silently needs a clock would put that requirement on every binary. The timer stage already declined `rust:LogParams::get_throttle_clock` by pointing here."
+  },
+  "rust:ToLogParams": {
+    "verdict": "declined",
+    "why": "the blanket-impl trait letting rclrs write `log!(node, ...)`, `log!(\"name\", ...)` or `log!(&logger, ...)` and chain `.once()` / `.throttle(d)` / `.only_if(b)` / `.severity(s)` on any of them. Same call as `rust:IntoNodeOptions` in the node stage: an ergonomic overload trait over what is one concrete caller shape here -- our macros and methods take a `&Logger`. What a user loses: the fluent modifier chain, and passing a node or a bare `&str` where a logger is expected. The modifiers themselves survive as method names -- see `rust:Logger::*_once`, `rust:Logger::*_skip_first`, `rust:Logger::*_throttle` -- and `only_if` survives as an `if`."
+  },
+  "rust:log": {
+    "verdict": "gap",
+    "why": "rclrs's severity-taking `log!` macro; see `rust:log_*`. Our nearest equivalent is `nros_log::__nros_log_emit!`, which is `#[doc(hidden)]` and takes a `Severity` -- not a supported spelling."
+  },
+  "rust:log_*": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "OUR LANGUAGES DISAGREE: rclrs's `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_fatal!`. We have the whole family -- `nros_log::{nros_trace, nros_debug, nros_info, nros_warn, nros_error, nros_fatal}!`, six to rclrs's five -- and the `nros` facade does not `pub use nros_log` or re-export a single macro, even though it already depends on the crate. So `use nros::prelude::*` gives a Rust user no way to log, while `#include <nros/nros.hpp>` gives a C++ user six macros; `examples/native/rust/logging/` has to depend on `nros-log` directly, and so does every call site following CLAUDE.md's issue-0589 rule. This is the gap to close first, because it is what makes `std::println!` -- fatal on Zephyr native_sim -- the path of least resistance for anyone using the facade. The names also differ (`nros_info!` vs `log_info!`) and W5 should settle that, but the missing re-export is the real finding, and it is why no matching ours-only row exists for a rename to point at. Phase 379 W3."
+  }
+}

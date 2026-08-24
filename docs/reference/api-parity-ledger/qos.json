@@ -1,0 +1,742 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:count_status_t": {
+    "verdict": "divergence",
+    "why": "the counted-event payload. rmw declares one status struct per event (`rmw_requested_deadline_missed_status_t`, `rmw_offered_deadline_missed_status_t`, `rmw_message_lost_status_t`) that are field-identical, and rclcpp typedefs each one to its own `QOS*Info` name. Ours is a single `nros_count_status_t` (`total_count`, `total_count_change`) shared by all three, plus `nros_liveliness_changed_status_t` for the one that differs. The widths are fixed (`uint32_t`, and `uint16_t`/`int16_t` for the liveliness counters) rather than `size_t`/`int32_t`: the payload crosses the C ABI BY VALUE into a callback, so it must have one layout on a 64-bit host and a 32-bit target -- the same hand-mirrored-FFI-struct hazard issue 0160 gated. These print as ours-only because the ROS 2 originals live in `rmw`, which is outside the rclc+rcl surface this report compares."
+  },
+  "c:event_callback_t": {
+    "verdict": "divergence",
+    "why": "an alias for `rmw_event_callback_t`, the untyped notify-with-a-count listener; see `c:event_set_callback`."
+  },
+  "c:event_fini": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:event_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying `rmw_event_t` so a caller can bypass rcl. There is no event object here to hold one -- see `c:event_t` -- and the seam is closed anyway; see `c:node_get_rmw_handle`."
+  },
+  "c:event_impl_t": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:event_is_valid": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:event_liveliness_changed_cb_t": {
+    "verdict": "divergence",
+    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`."
+  },
+  "c:event_set_callback": {
+    "verdict": "divergence",
+    "why": "rcl's listener form: one untyped `rmw_event_callback_t` per event OBJECT, invoked with an unread COUNT so the caller then goes and takes the payload. Ours delivers the payload straight to a typed per-event callback on the entity (`nros_event_liveliness_changed_cb_t`, `nros_event_subscriber_count_cb_t`), so there is no count-then-take round trip and no event object to attach a listener to. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:event_subscriber_count_cb_t": {
+    "verdict": "divergence",
+    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`."
+  },
+  "c:event_t": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:get_zero_initialized_event": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:liveliness_changed_status_t": {
+    "verdict": "divergence",
+    "why": "the counted-event payload. rmw declares one status struct per event (`rmw_requested_deadline_missed_status_t`, `rmw_offered_deadline_missed_status_t`, `rmw_message_lost_status_t`) that are field-identical, and rclcpp typedefs each one to its own `QOS*Info` name. Ours is a single `nros_count_status_t` (`total_count`, `total_count_change`) shared by all three, plus `nros_liveliness_changed_status_t` for the one that differs. The widths are fixed (`uint32_t`, and `uint16_t`/`int16_t` for the liveliness counters) rather than `size_t`/`int32_t`: the payload crosses the C ABI BY VALUE into a callback, so it must have one layout on a 64-bit host and a 32-bit target -- the same hand-mirrored-FFI-struct hazard issue 0160 gated. These print as ours-only because the ROS 2 originals live in `rmw`, which is outside the rclc+rcl surface this report compares."
+  },
+  "c:node_set_qos_overrides": {
+    "verdict": "divergence",
+    "why": "installs the baked override table on the node, once, before any entity is created. The ours-only half of `cpp:QosOverridingOptions`; the same call exists in all three languages under the same name (`nros_node_set_qos_overrides`, `Node::set_qos_overrides`, `NodeHandle::set_qos_overrides`), which is the one place this stage found our languages already agreeing. QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "c:publisher_event_init": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:publisher_event_type_e": {
+    "verdict": "divergence",
+    "why": "rcl selects WHICH event with an enum passed to a generic `rcl_publisher_event_init` / `rcl_subscription_event_init`. Ours has one named registration function per event (`nros_publisher_set_liveliness_lost_callback` and friends, classified in the pubsub stage), so the enum has no argument position to appear in and each callback can carry its own typed payload instead of a `void *`. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`. Separately, both rcl enums include `*_INCOMPATIBLE_QOS`, which we do not raise -- see `cpp:QOSOfferedIncompatibleQoSInfo`."
+  },
+  "c:publisher_event_type_t": {
+    "verdict": "divergence",
+    "why": "rcl selects WHICH event with an enum passed to a generic `rcl_publisher_event_init` / `rcl_subscription_event_init`. Ours has one named registration function per event (`nros_publisher_set_liveliness_lost_callback` and friends, classified in the pubsub stage), so the enum has no argument position to appear in and each callback can carry its own typed payload instead of a `void *`. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`. Separately, both rcl enums include `*_INCOMPATIBLE_QOS`, which we do not raise -- see `cpp:QOSOfferedIncompatibleQoSInfo`."
+  },
+  "c:qos_durability_t": {
+    "verdict": "divergence",
+    "why": "the ROS 2 counterpart is `rmw_qos_profile_t` / `rmw_qos_*_policy_t`, declared in `rmw` and only re-exported by rcl, so it prints ours-only against the rclc+rcl surface this report compares. `nros_qos_t` matches the field set. Two substantive differences: our policy enums carry no `SYSTEM_DEFAULT` and no `UNKNOWN` discriminant (RFC-0036 selects QoS at COMPILE time against a backend linked at build time -- there is no middleware to defer to and no remote endpoint to read an unknown value off), and the three time windows are `uint32_t` milliseconds rather than `rmw_time_t` because neither C nor C++ has a duration type here (timer stage, `cpp:Duration::Duration`)."
+  },
+  "c:qos_history_t": {
+    "verdict": "divergence",
+    "why": "the ROS 2 counterpart is `rmw_qos_profile_t` / `rmw_qos_*_policy_t`, declared in `rmw` and only re-exported by rcl, so it prints ours-only against the rclc+rcl surface this report compares. `nros_qos_t` matches the field set. Two substantive differences: our policy enums carry no `SYSTEM_DEFAULT` and no `UNKNOWN` discriminant (RFC-0036 selects QoS at COMPILE time against a backend linked at build time -- there is no middleware to defer to and no remote endpoint to read an unknown value off), and the three time windows are `uint32_t` milliseconds rather than `rmw_time_t` because neither C nor C++ has a duration type here (timer stage, `cpp:Duration::Duration`)."
+  },
+  "c:qos_liveliness_t": {
+    "verdict": "divergence",
+    "why": "the ROS 2 counterpart is `rmw_qos_profile_t` / `rmw_qos_*_policy_t`, declared in `rmw` and only re-exported by rcl, so it prints ours-only against the rclc+rcl surface this report compares. `nros_qos_t` matches the field set. Two substantive differences: our policy enums carry no `SYSTEM_DEFAULT` and no `UNKNOWN` discriminant (RFC-0036 selects QoS at COMPILE time against a backend linked at build time -- there is no middleware to defer to and no remote endpoint to read an unknown value off), and the three time windows are `uint32_t` milliseconds rather than `rmw_time_t` because neither C nor C++ has a duration type here (timer stage, `cpp:Duration::Duration`)."
+  },
+  "c:qos_override_t": {
+    "verdict": "divergence",
+    "why": "the C-ABI mirror of `nros_rmw::QosOverride`, our replacement for rclcpp's `QosOverridingOptions`. QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead. One asymmetry worth naming: the C row is plain scalars -- `uint8_t policy` (0 = reliability .. 7 = liveliness_lease_duration) plus a `uint32_t value` whose meaning depends on the policy -- deliberately, so the cbindgen header has no short-enum ABI mirror to keep in sync (the hazard issue 0160 gated). Rust keeps the typed `QosOverrideValue`, so a bad policy is caught at BAKE time there and only there."
+  },
+  "c:qos_reliability_t": {
+    "verdict": "divergence",
+    "why": "the ROS 2 counterpart is `rmw_qos_profile_t` / `rmw_qos_*_policy_t`, declared in `rmw` and only re-exported by rcl, so it prints ours-only against the rclc+rcl surface this report compares. `nros_qos_t` matches the field set. Two substantive differences: our policy enums carry no `SYSTEM_DEFAULT` and no `UNKNOWN` discriminant (RFC-0036 selects QoS at COMPILE time against a backend linked at build time -- there is no middleware to defer to and no remote endpoint to read an unknown value off), and the three time windows are `uint32_t` milliseconds rather than `rmw_time_t` because neither C nor C++ has a duration type here (timer stage, `cpp:Duration::Duration`)."
+  },
+  "c:qos_t": {
+    "verdict": "divergence",
+    "why": "the ROS 2 counterpart is `rmw_qos_profile_t` / `rmw_qos_*_policy_t`, declared in `rmw` and only re-exported by rcl, so it prints ours-only against the rclc+rcl surface this report compares. `nros_qos_t` matches the field set. Two substantive differences: our policy enums carry no `SYSTEM_DEFAULT` and no `UNKNOWN` discriminant (RFC-0036 selects QoS at COMPILE time against a backend linked at build time -- there is no middleware to defer to and no remote endpoint to read an unknown value off), and the three time windows are `uint32_t` milliseconds rather than `rmw_time_t` because neither C nor C++ has a duration type here (timer stage, `cpp:Duration::Duration`)."
+  },
+  "c:subscription_event_init": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "c:subscription_event_type_e": {
+    "verdict": "divergence",
+    "why": "rcl selects WHICH event with an enum passed to a generic `rcl_publisher_event_init` / `rcl_subscription_event_init`. Ours has one named registration function per event (`nros_publisher_set_liveliness_lost_callback` and friends, classified in the pubsub stage), so the enum has no argument position to appear in and each callback can carry its own typed payload instead of a `void *`. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`. Separately, both rcl enums include `*_INCOMPATIBLE_QOS`, which we do not raise -- see `cpp:QOSOfferedIncompatibleQoSInfo`."
+  },
+  "c:subscription_event_type_t": {
+    "verdict": "divergence",
+    "why": "rcl selects WHICH event with an enum passed to a generic `rcl_publisher_event_init` / `rcl_subscription_event_init`. Ours has one named registration function per event (`nros_publisher_set_liveliness_lost_callback` and friends, classified in the pubsub stage), so the enum has no argument position to appear in and each callback can carry its own typed payload instead of a `void *`. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`. Separately, both rcl enums include `*_INCOMPATIBLE_QOS`, which we do not raise -- see `cpp:QOSOfferedIncompatibleQoSInfo`."
+  },
+  "c:take_event": {
+    "verdict": "divergence",
+    "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+  },
+  "cpp:ClockQoS": {
+    "verdict": "gap",
+    "why": "the clock preset (best-effort, keep-last(1)). OUR LANGUAGES DISAGREE: our C++ ships exactly THREE QoS presets -- `QoS::default_profile()`, `QoS::sensor_data()`, `QoS::services()` (qos.hpp) -- and C ships the same three as constants (`NROS_QOS_DEFAULT`, `NROS_QOS_SENSOR_DATA`, `NROS_QOS_SERVICES`), while Rust's `QosSettings` ships twelve: topics, sensor_data, services, parameters, parameter_events, clock, action_status, system, px4, plus the BEST_EFFORT/RELIABLE consts. So the profiles our OWN Rust parameter, clock and action code publishes on are unspellable from C and C++, and a ported node has to open a DDS reference and retype the numbers. Not a divergence -- nothing about a device stops a `constexpr QoS` named constructor from existing; the presets are just values. Phase 379 W3. Note the timer stage's `cpp:ClockQoS::ClockQoS` records only the type-per-preset SHAPE and reads as though we had the preset under another name; we do not."
+  },
+  "cpp:DurabilityPolicy": {
+    "verdict": "rename",
+    "why": "rclcpp declares the four policy enums at namespace scope as `enum class`es. Ours are nested in `nros::QoS` and three of the four (`Reliability`, `Durability`, `History`) are PRIVATE; only `QoS::Liveliness` is public, and it is singular where rclcpp's is `LivelinessPolicy`. That is the same defect as the `_raw` getters and has the same fix -- see `cpp:QoS::reliability_raw`. One deliberate difference survives the rename: rclcpp's enums each carry `SystemDefault` and `Unknown`, which we decline. `SystemDefault` means defer to the middleware and there is none to defer to (RFC-0036, the backend is linked at build time); `Unknown` is a discovery artefact for a policy read off a remote endpoint, and we do no dynamic discovery."
+  },
+  "cpp:HistoryPolicy": {
+    "verdict": "rename",
+    "why": "rclcpp declares the four policy enums at namespace scope as `enum class`es. Ours are nested in `nros::QoS` and three of the four (`Reliability`, `Durability`, `History`) are PRIVATE; only `QoS::Liveliness` is public, and it is singular where rclcpp's is `LivelinessPolicy`. That is the same defect as the `_raw` getters and has the same fix -- see `cpp:QoS::reliability_raw`. One deliberate difference survives the rename: rclcpp's enums each carry `SystemDefault` and `Unknown`, which we decline. `SystemDefault` means defer to the middleware and there is none to defer to (RFC-0036, the backend is linked at build time); `Unknown` is a discovery artefact for a policy read off a remote endpoint, and we do no dynamic discovery."
+  },
+  "cpp:KeepAll": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:KeepAll::KeepAll": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:KeepLast": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:KeepLast::KeepLast": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:LivelinessPolicy": {
+    "verdict": "rename",
+    "why": "rclcpp declares the four policy enums at namespace scope as `enum class`es. Ours are nested in `nros::QoS` and three of the four (`Reliability`, `Durability`, `History`) are PRIVATE; only `QoS::Liveliness` is public, and it is singular where rclcpp's is `LivelinessPolicy`. That is the same defect as the `_raw` getters and has the same fix -- see `cpp:QoS::reliability_raw`. One deliberate difference survives the rename: rclcpp's enums each carry `SystemDefault` and `Unknown`, which we decline. `SystemDefault` means defer to the middleware and there is none to defer to (RFC-0036, the backend is linked at build time); `Unknown` is a discovery artefact for a policy read off a remote endpoint, and we do no dynamic discovery."
+  },
+  "cpp:Node::set_qos_overrides": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `cpp:QosOverridingOptions`: installs the baked table on the node once, before entities exist, instead of attaching an options object to each entity. See `c:node_set_qos_overrides`. QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:ParameterEventsQoS": {
+    "verdict": "gap",
+    "why": "the parameter-events preset (reliable, volatile, keep-all); Rust has it as `QosSettings::parameter_events_default()`. OUR LANGUAGES DISAGREE: our C++ ships exactly THREE QoS presets -- `QoS::default_profile()`, `QoS::sensor_data()`, `QoS::services()` (qos.hpp) -- and C ships the same three as constants (`NROS_QOS_DEFAULT`, `NROS_QOS_SENSOR_DATA`, `NROS_QOS_SERVICES`), while Rust's `QosSettings` ships twelve: topics, sensor_data, services, parameters, parameter_events, clock, action_status, system, px4, plus the BEST_EFFORT/RELIABLE consts. So the profiles our OWN Rust parameter, clock and action code publishes on are unspellable from C and C++, and a ported node has to open a DDS reference and retype the numbers. Not a divergence -- nothing about a device stops a `constexpr QoS` named constructor from existing; the presets are just values. Phase 379 W3."
+  },
+  "cpp:ParametersQoS": {
+    "verdict": "gap",
+    "why": "the parameters preset (reliable, transient-local, keep-last(1000)); Rust has it as `QosSettings::parameters_default()`. OUR LANGUAGES DISAGREE: our C++ ships exactly THREE QoS presets -- `QoS::default_profile()`, `QoS::sensor_data()`, `QoS::services()` (qos.hpp) -- and C ships the same three as constants (`NROS_QOS_DEFAULT`, `NROS_QOS_SENSOR_DATA`, `NROS_QOS_SERVICES`), while Rust's `QosSettings` ships twelve: topics, sensor_data, services, parameters, parameter_events, clock, action_status, system, px4, plus the BEST_EFFORT/RELIABLE consts. So the profiles our OWN Rust parameter, clock and action code publishes on are unspellable from C and C++, and a ported node has to open a DDS reference and retype the numbers. Not a divergence -- nothing about a device stops a `constexpr QoS` named constructor from existing; the presets are just values. Phase 379 W3."
+  },
+  "cpp:PublisherEventCallbacks": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSDeadlineOfferedCallbackType": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSDeadlineOfferedInfo": {
+    "verdict": "divergence",
+    "why": "rclcpp's name for the event payload -- a typedef of the matching `rmw_*_status_t`. Ours are `nros_count_status_t` and `nros_liveliness_changed_status_t`; see `c:count_status_t`."
+  },
+  "cpp:QOSDeadlineRequestedCallbackType": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSDeadlineRequestedInfo": {
+    "verdict": "divergence",
+    "why": "rclcpp's name for the event payload -- a typedef of the matching `rmw_*_status_t`. Ours are `nros_count_status_t` and `nros_liveliness_changed_status_t`; see `c:count_status_t`."
+  },
+  "cpp:QOSEventHandler": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:QOSLivelinessChangedCallbackType": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSLivelinessChangedInfo": {
+    "verdict": "divergence",
+    "why": "rclcpp's name for the event payload -- a typedef of the matching `rmw_*_status_t`. Ours are `nros_count_status_t` and `nros_liveliness_changed_status_t`; see `c:count_status_t`."
+  },
+  "cpp:QOSLivelinessLostCallbackType": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSLivelinessLostInfo": {
+    "verdict": "divergence",
+    "why": "rclcpp's name for the event payload -- a typedef of the matching `rmw_*_status_t`. Ours are `nros_count_status_t` and `nros_liveliness_changed_status_t`; see `c:count_status_t`."
+  },
+  "cpp:QOSMessageLostCallbackType": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:QOSMessageLostInfo": {
+    "verdict": "divergence",
+    "why": "rclcpp's name for the event payload -- a typedef of the matching `rmw_*_status_t`. Ours are `nros_count_status_t` and `nros_liveliness_changed_status_t`; see `c:count_status_t`."
+  },
+  "cpp:QOSOfferedIncompatibleQoSCallbackType": {
+    "verdict": "declined",
+    "why": "the incompatible-QoS event fires when DISCOVERY finds a remote endpoint whose offered profile does not match the requested one. We have static peers and no dynamic discovery, so there is no remote profile to compare against at runtime. The analogous failure is reported synchronously instead: a profile the LINKED backend cannot honour makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). Our `nros_rmw::EventKind` has exactly five variants -- liveliness changed/lost, requested/offered deadline missed, message lost -- and these two are the ones deliberately absent. A user loses the runtime notification that a peer showed up with an unmatchable profile; they get a build-time-fixed profile and a create-time error."
+  },
+  "cpp:QOSOfferedIncompatibleQoSInfo": {
+    "verdict": "declined",
+    "why": "the incompatible-QoS event fires when DISCOVERY finds a remote endpoint whose offered profile does not match the requested one. We have static peers and no dynamic discovery, so there is no remote profile to compare against at runtime. The analogous failure is reported synchronously instead: a profile the LINKED backend cannot honour makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). Our `nros_rmw::EventKind` has exactly five variants -- liveliness changed/lost, requested/offered deadline missed, message lost -- and these two are the ones deliberately absent. A user loses the runtime notification that a peer showed up with an unmatchable profile; they get a build-time-fixed profile and a create-time error."
+  },
+  "cpp:QOSRequestedIncompatibleQoSCallbackType": {
+    "verdict": "declined",
+    "why": "the incompatible-QoS event fires when DISCOVERY finds a remote endpoint whose offered profile does not match the requested one. We have static peers and no dynamic discovery, so there is no remote profile to compare against at runtime. The analogous failure is reported synchronously instead: a profile the LINKED backend cannot honour makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). Our `nros_rmw::EventKind` has exactly five variants -- liveliness changed/lost, requested/offered deadline missed, message lost -- and these two are the ones deliberately absent. A user loses the runtime notification that a peer showed up with an unmatchable profile; they get a build-time-fixed profile and a create-time error."
+  },
+  "cpp:QOSRequestedIncompatibleQoSInfo": {
+    "verdict": "declined",
+    "why": "the incompatible-QoS event fires when DISCOVERY finds a remote endpoint whose offered profile does not match the requested one. We have static peers and no dynamic discovery, so there is no remote profile to compare against at runtime. The analogous failure is reported synchronously instead: a profile the LINKED backend cannot honour makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). Our `nros_rmw::EventKind` has exactly five variants -- liveliness changed/lost, requested/offered deadline missed, message lost -- and these two are the ones deliberately absent. A user loses the runtime notification that a peer showed up with an unmatchable profile; they get a build-time-fixed profile and a create-time error."
+  },
+  "cpp:QoS::deadline": {
+    "verdict": "rename",
+    "why": "ours is `QoS::deadline_ms`. the `_ms` suffix exists because C++ has NO `Duration` type here. rclcpp's accessor takes `rmw_time_t` or `rclcpp::Duration` and returns `rmw_time_t`; our C++ ships neither, and in fact ships no clock, time or duration surface at all while C and Rust both do (timer stage, `cpp:Duration::Duration`). So this name FOLLOWS whatever W3 decides about `cpp:Duration` rather than the other way round: give C++ a `Duration` and the accessor becomes `deadline(Duration)` / `deadline()` with no suffix. Recorded as a rename because the millisecond unit is fine on a device -- it is the suffix in the NAME that a ported rclcpp node trips on. `cpp:QoS::liveliness_lease_duration` was recorded in the timer stage for the same reason."
+  },
+  "cpp:QoS::deadline_ms": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::deadline`. the `_ms` suffix exists because C++ has NO `Duration` type here. rclcpp's accessor takes `rmw_time_t` or `rclcpp::Duration` and returns `rmw_time_t`; our C++ ships neither, and in fact ships no clock, time or duration surface at all while C and Rust both do (timer stage, `cpp:Duration::Duration`). So this name FOLLOWS whatever W3 decides about `cpp:Duration` rather than the other way round: give C++ a `Duration` and the accessor becomes `deadline(Duration)` / `deadline()` with no suffix. Recorded as a rename because the millisecond unit is fine on a device -- it is the suffix in the NAME that a ported rclcpp node trips on. `cpp:QoS::liveliness_lease_duration` was recorded in the timer stage for the same reason."
+  },
+  "cpp:QoS::default_profile": {
+    "verdict": "rename",
+    "why": "OUR LANGUAGES DISAGREE: one profile, three names. The plain default (RELIABLE + VOLATILE + KEEP_LAST(10)) is `NROS_QOS_DEFAULT` in C, `QoS::default_profile()` in C++ and `QosSettings::topics_default()` in Rust, and only the Rust one matches its upstream (rclrs spells it `topics_default`). rclcpp needs no name for it because its default CONSTRUCTOR is the profile -- and ours is too (`QoS::QoS`, already reconciled as systematic), which makes `default_profile()` a second spelling of a constructor we already match. Pick one word for the preset across the three languages, or drop the C++ one for the constructor."
+  },
+  "cpp:QoS::durability": {
+    "verdict": "rename",
+    "why": "rclcpp's getter is `durability()` returning `DurabilityPolicy`; ours is `durability_raw()` returning `int`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::durability_raw": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::durability`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::get_rmw_qos_profile": {
+    "verdict": "declined",
+    "why": "hands out the underlying DDS-shaped `rmw_qos_profile_t` so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from a user type; see `c:node_get_rmw_handle`. `nros_qos_t` matches the field set, so the information is not hidden -- the rmw type is."
+  },
+  "cpp:QoS::history": {
+    "verdict": "rename",
+    "why": "rclcpp's getter is `history()` returning `HistoryPolicy`; ours is `history_raw()` returning `int`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::history_raw": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::history`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::lifespan": {
+    "verdict": "rename",
+    "why": "ours is `QoS::lifespan_ms`. the `_ms` suffix exists because C++ has NO `Duration` type here. rclcpp's accessor takes `rmw_time_t` or `rclcpp::Duration` and returns `rmw_time_t`; our C++ ships neither, and in fact ships no clock, time or duration surface at all while C and Rust both do (timer stage, `cpp:Duration::Duration`). So this name FOLLOWS whatever W3 decides about `cpp:Duration` rather than the other way round: give C++ a `Duration` and the accessor becomes `deadline(Duration)` / `deadline()` with no suffix. Recorded as a rename because the millisecond unit is fine on a device -- it is the suffix in the NAME that a ported rclcpp node trips on. `cpp:QoS::liveliness_lease_duration` was recorded in the timer stage for the same reason."
+  },
+  "cpp:QoS::lifespan_ms": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::lifespan`. the `_ms` suffix exists because C++ has NO `Duration` type here. rclcpp's accessor takes `rmw_time_t` or `rclcpp::Duration` and returns `rmw_time_t`; our C++ ships neither, and in fact ships no clock, time or duration surface at all while C and Rust both do (timer stage, `cpp:Duration::Duration`). So this name FOLLOWS whatever W3 decides about `cpp:Duration` rather than the other way round: give C++ a `Duration` and the accessor becomes `deadline(Duration)` / `deadline()` with no suffix. Recorded as a rename because the millisecond unit is fine on a device -- it is the suffix in the NAME that a ported rclcpp node trips on. `cpp:QoS::liveliness_lease_duration` was recorded in the timer stage for the same reason."
+  },
+  "cpp:QoS::liveliness": {
+    "verdict": "rename",
+    "why": "prints arity-only because the 1-argument SETTER lines up (ours takes `QoS::Liveliness`, rclcpp's takes `LivelinessPolicy` or the rmw enum) while rclcpp's 0-argument GETTER has no counterpart -- ours is `liveliness_raw()`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::liveliness_lease_ms": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::liveliness_lease_duration`, which the timer stage already recorded. the `_ms` suffix exists because C++ has NO `Duration` type here. rclcpp's accessor takes `rmw_time_t` or `rclcpp::Duration` and returns `rmw_time_t`; our C++ ships neither, and in fact ships no clock, time or duration surface at all while C and Rust both do (timer stage, `cpp:Duration::Duration`). So this name FOLLOWS whatever W3 decides about `cpp:Duration` rather than the other way round: give C++ a `Duration` and the accessor becomes `deadline(Duration)` / `deadline()` with no suffix. Recorded as a rename because the millisecond unit is fine on a device -- it is the suffix in the NAME that a ported rclcpp node trips on. `cpp:QoS::liveliness_lease_duration` was recorded in the timer stage for the same reason."
+  },
+  "cpp:QoS::liveliness_raw": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::liveliness`'s missing getter overload. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::reliability": {
+    "verdict": "rename",
+    "why": "rclcpp's getter is `reliability()` returning `ReliabilityPolicy`; ours is `reliability_raw()` returning `int`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::reliability_raw": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:QoS::reliability`. OUR LANGUAGES DISAGREE: reading a QoS policy back loses its type in C++ and only in C++. rclcpp's getters are const no-arg overloads returning the policy enum -- `reliability()` -> `ReliabilityPolicy`, and likewise `durability()`, `history()`, `liveliness()`. Ours are `reliability_raw()`/`durability_raw()`/`history_raw()`/`liveliness_raw()` returning plain `int`, because `QoS`'s `Reliability`, `Durability` and `History` enums are PRIVATE members of the class (qos.hpp) and a public getter cannot name a private type. There is no platform reason for that: `nros_cpp_qos_reliability_t` and its three siblings are already public in `nros_cpp_ffi.h` one header up, the C API returns `nros_qos_reliability_t` and Rust returns `QosReliabilityPolicy`. Make the nested enums public, name the getters after the policy, and the rclcpp spelling comes back for free. Distinct from the `_ms` suffix, which does have a reason -- see `cpp:QoS::deadline`."
+  },
+  "cpp:QoS::sensor_data": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `cpp:SensorDataQoS`: the sensor-data preset as a member on `QoS` rather than a type of its own. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+  },
+  "cpp:QoS::tx_express": {
+    "verdict": "extension",
+    "why": "phase 282 (issue #145) -- a transport hint, not a DDS policy: this publisher's samples bypass transport tx batching and go out immediately even when the batching knob is on (zenoh's wire EXPRESS flag). The RTOS scenario is a low-bandwidth radio or serial link where batching is what makes the link affordable, and one control-tier topic must not wait for the next flush. No RxO matching and no backend-compat validation, because there is no remote to negotiate it with; ignored on subscriptions and by backends with no batching concept. rclcpp has nothing to compare it with -- DDS has no such knob. Present in all three languages: `nros_qos_t.tx_express`, `QoS::tx_express()`, `QosSettings::tx_express`."
+  },
+  "cpp:QoSCheckCompatibleResult": {
+    "verdict": "declined",
+    "why": "RxO compatibility between a publisher profile and a subscription profile. Answering it needs the REMOTE endpoint's offered QoS, which arrives through discovery; we have static peers and no dynamic discovery, so there is no second profile to compare against. What we check instead is a different question with the same name-shape: `QosSettings::validate_against(Session::supported_qos_policies())` compares the requested profile with what the LINKED BACKEND can honour and makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). `QoSCheckCompatibleResult` additionally carries a `std::string reason`, which the freestanding build has no allocator for, and `qos_check_compatible` reports failure by throwing `QoSCheckCompatibilityException` (-fno-exceptions, RFC-0018). A user loses the \"will these two endpoints talk?\" pre-flight; they get a create-time error instead. OUR LANGUAGES DISAGREE on the replacement: `supported_qos_policies` is Rust-only, so a C or C++ caller cannot ask the backend-capability question in advance at all -- see `rust:Session::supported_qos_policies`."
+  },
+  "cpp:QoSCompatibility": {
+    "verdict": "declined",
+    "why": "RxO compatibility between a publisher profile and a subscription profile. Answering it needs the REMOTE endpoint's offered QoS, which arrives through discovery; we have static peers and no dynamic discovery, so there is no second profile to compare against. What we check instead is a different question with the same name-shape: `QosSettings::validate_against(Session::supported_qos_policies())` compares the requested profile with what the LINKED BACKEND can honour and makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). `QoSCheckCompatibleResult` additionally carries a `std::string reason`, which the freestanding build has no allocator for, and `qos_check_compatible` reports failure by throwing `QoSCheckCompatibilityException` (-fno-exceptions, RFC-0018). A user loses the \"will these two endpoints talk?\" pre-flight; they get a create-time error instead. OUR LANGUAGES DISAGREE on the replacement: `supported_qos_policies` is Rust-only, so a C or C++ caller cannot ask the backend-capability question in advance at all -- see `rust:Session::supported_qos_policies`."
+  },
+  "cpp:QoSInitialization": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:QoSInitialization::QoSInitialization": {
+    "verdict": "declined",
+    "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+  },
+  "cpp:QoSInitialization::from_rmw": {
+    "verdict": "declined",
+    "why": "builds the initialization tag from an `rmw_qos_profile_t`. Both halves are declined: the tag (see `cpp:QoSInitialization`) and the rmw type (see `cpp:QoS::get_rmw_qos_profile`)."
+  },
+  "cpp:QosCallback": {
+    "verdict": "divergence",
+    "why": "the signature and result type of `QosOverridingOptions`'s validation callback; see `cpp:QosOverridingOptions::get_validation_callback`."
+  },
+  "cpp:QosCallbackResult": {
+    "verdict": "divergence",
+    "why": "the signature and result type of `QosOverridingOptions`'s validation callback; see `cpp:QosOverridingOptions::get_validation_callback`."
+  },
+  "cpp:QosOverridingOptions": {
+    "verdict": "divergence",
+    "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosOverridingOptions::QosOverridingOptions": {
+    "verdict": "divergence",
+    "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosOverridingOptions::get_id": {
+    "verdict": "divergence",
+    "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosOverridingOptions::get_policy_kinds": {
+    "verdict": "divergence",
+    "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosOverridingOptions::get_validation_callback": {
+    "verdict": "divergence",
+    "why": "the user hook rclcpp runs over an override value read from a parameter before accepting it. Ours validates at BAKE time instead -- `nros_orchestration_ir::qos_override` rejects an unknown policy or an out-of-range value when the plan is lowered, so nothing unvalidated reaches the image. QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosOverridingOptions::with_default_policies": {
+    "verdict": "divergence",
+    "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QosOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+  },
+  "cpp:QosPolicyKind": {
+    "verdict": "divergence",
+    "why": "rclcpp's typed policy-kind enum, used to name the `qos_overrides.*` parameters and to say which policy was incompatible. Ours is the `policy` byte of `nros_qos_override_t` (0 = reliability .. 7 = liveliness_lease_duration) and the bits of `QosPolicyMask`. Constraint: the override row crosses the cbindgen C ABI, and a `#[repr(C)]` enum there is a short-enum ABI mirror somebody has to keep in sync -- the hazard issue 0160 gated after it bit us three times. Rust keeps the typed `QosOverrideValue` on its own side of the seam, so the bake step still rejects an unknown policy. See `cpp:QosOverridingOptions` for the family and `cpp:qos_policy_kind_to_cstr` for what the untyped byte costs in diagnostics."
+  },
+  "cpp:ReliabilityPolicy": {
+    "verdict": "rename",
+    "why": "rclcpp declares the four policy enums at namespace scope as `enum class`es. Ours are nested in `nros::QoS` and three of the four (`Reliability`, `Durability`, `History`) are PRIVATE; only `QoS::Liveliness` is public, and it is singular where rclcpp's is `LivelinessPolicy`. That is the same defect as the `_raw` getters and has the same fix -- see `cpp:QoS::reliability_raw`. One deliberate difference survives the rename: rclcpp's enums each carry `SystemDefault` and `Unknown`, which we decline. `SystemDefault` means defer to the middleware and there is none to defer to (RFC-0036, the backend is linked at build time); `Unknown` is a discovery artefact for a policy read off a remote endpoint, and we do no dynamic discovery."
+  },
+  "cpp:RosoutQoS": {
+    "verdict": "declined",
+    "why": "the QoS `/rosout` log publication uses (transient-local, keep-last(1000), 10 s lifespan). We publish no `/rosout` at all: `nros_log` composes a `&'static [&dyn LogSink]` and the `/rosout` sink is listed there as future work (nros-log/src/lib.rs:17, and `nros-tests/tests/logging.rs` says the macros are deferred along with it), while `rclcpp_compat.hpp`'s `NodeOptions::enable_rosout` defaults to false and is inert. A user loses `ros2 topic echo /rosout` on a nano-ros node -- logs land on the board console. The node-option spelling of the same decision is `cpp:NodeOptions::rosout_qos`, already recorded in the node stage."
+  },
+  "cpp:RosoutQoS::RosoutQoS": {
+    "verdict": "declined",
+    "why": "see `cpp:RosoutQoS`."
+  },
+  "cpp:SensorDataQoS": {
+    "verdict": "divergence",
+    "why": "ours is the named constructor `QoS::sensor_data()`. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+  },
+  "cpp:SensorDataQoS::SensorDataQoS": {
+    "verdict": "divergence",
+    "why": "ours is the named constructor `QoS::sensor_data()`. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+  },
+  "cpp:ServicesQoS": {
+    "verdict": "divergence",
+    "why": "ours is the named constructor `QoS::services()`, classified in the service stage. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+  },
+  "cpp:SubscriptionEventCallbacks": {
+    "verdict": "divergence",
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+  },
+  "cpp:SystemDefaultsQoS": {
+    "verdict": "gap",
+    "why": "Rust has `QosSettings::system_default()`; C++ and C have no such preset. OUR LANGUAGES DISAGREE: our C++ ships exactly THREE QoS presets -- `QoS::default_profile()`, `QoS::sensor_data()`, `QoS::services()` (qos.hpp) -- and C ships the same three as constants (`NROS_QOS_DEFAULT`, `NROS_QOS_SENSOR_DATA`, `NROS_QOS_SERVICES`), while Rust's `QosSettings` ships twelve: topics, sensor_data, services, parameters, parameter_events, clock, action_status, system, px4, plus the BEST_EFFORT/RELIABLE consts. So the profiles our OWN Rust parameter, clock and action code publishes on are unspellable from C and C++, and a ported node has to open a DDS reference and retype the numbers. Not a divergence -- nothing about a device stops a `constexpr QoS` named constructor from existing; the presets are just values. Phase 379 W3. Note the semantics do not carry over intact: `rmw_qos_profile_system_default` means \"leave every policy for the middleware to decide\", and there is no middleware here to defer to -- the backend is linked at build time and the profile is fixed at compile time (RFC-0036). Our `system_default` is a concrete RELIABLE + VOLATILE + KEEP_LAST(1) value, and our policy enums carry no `SystemDefault` or `Unknown` discriminant on purpose."
+  },
+  "cpp:SystemDefaultsQoS::SystemDefaultsQoS": {
+    "verdict": "gap",
+    "why": "see `cpp:SystemDefaultsQoS`."
+  },
+  "cpp:UnsupportedEventTypeException": {
+    "verdict": "divergence",
+    "why": "thrown when the middleware cannot deliver a requested QoS event. `-fno-exceptions` (RFC-0018), so ours answers the same question by return value and answers it BEFORE registration: `Publisher::supports_event` / `Subscription::supports_event` and `unsupported_event_error`, recorded as extensions in the pubsub stage. That ordering matters more here than in rclcpp because our backends genuinely differ -- zenoh-pico raises no deadline events, Cyclone does -- where rclcpp assumes DDS and claims support unconditionally."
+  },
+  "cpp:UnsupportedEventTypeException::UnsupportedEventTypeException": {
+    "verdict": "divergence",
+    "why": "see `cpp:UnsupportedEventTypeException`."
+  },
+  "cpp:operator!=": {
+    "verdict": "gap",
+    "why": "see `cpp:operator==`."
+  },
+  "cpp:operator==": {
+    "verdict": "gap",
+    "why": "OUR LANGUAGES DISAGREE: `rclcpp::operator==` compares two profiles policy by policy, and our `nros::QoS` has no comparison at all -- while Rust's `QosSettings` derives `PartialEq, Eq` and gets it for nothing. `QoS` is a POD of scalars and enums, so `==` is a defaulted member comparison with no allocator, no exceptions and no runtime cost; there is no platform reason for its absence. Ported code that compares a profile against a preset, and any test asserting one, has nothing to call. Phase 379 W3."
+  },
+  "cpp:qos_check_compatible": {
+    "verdict": "declined",
+    "why": "RxO compatibility between a publisher profile and a subscription profile. Answering it needs the REMOTE endpoint's offered QoS, which arrives through discovery; we have static peers and no dynamic discovery, so there is no second profile to compare against. What we check instead is a different question with the same name-shape: `QosSettings::validate_against(Session::supported_qos_policies())` compares the requested profile with what the LINKED BACKEND can honour and makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). `QoSCheckCompatibleResult` additionally carries a `std::string reason`, which the freestanding build has no allocator for, and `qos_check_compatible` reports failure by throwing `QoSCheckCompatibilityException` (-fno-exceptions, RFC-0018). A user loses the \"will these two endpoints talk?\" pre-flight; they get a create-time error instead. OUR LANGUAGES DISAGREE on the replacement: `supported_qos_policies` is Rust-only, so a C or C++ caller cannot ask the backend-capability question in advance at all -- see `rust:Session::supported_qos_policies`."
+  },
+  "cpp:qos_policy_kind_to_cstr": {
+    "verdict": "gap",
+    "why": "returns a policy kind's name as a `const char *`. Unlike its `std::string` sibling this is freestanding-safe -- a static string table costs a few dozen bytes of flash -- and we have the kind in three places with no way to print any of them: `nros_qos_override_t.policy` as a bare `uint8_t` whose meaning lives only in a doc comment, `QosPolicyMask` as bits, and `QosOverrideValue` as a Rust enum. The consequence is that an `INCOMPATIBLE_QOS` return names no policy, and naming the policy is the entire diagnostic. Phase 379 W3."
+  },
+  "cpp:qos_policy_name_from_kind": {
+    "verdict": "declined",
+    "why": "returns the policy's name as a `std::string`. No allocator, and no `<string>` in the freestanding build (see `nros-cpp` headers gating std includes on `NROS_CPP_STD`). The `const char *` sibling is the one worth having -- see `cpp:qos_policy_kind_to_cstr`."
+  },
+  "rust:DeadlinePolicy": {
+    "verdict": "extension",
+    "why": "RFC-0052's deadline-miss reaction (what the tier does when a callback overruns), not a QoS deadline policy. See `c:deadline_policy_t`."
+  },
+  "rust:Executor::set_node_qos_overrides": {
+    "verdict": "divergence",
+    "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:IntoPrimitiveOptions::deadline": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::durability": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::history": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::infinite_lifespan": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::lifespan": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::liveliness": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::liveliness_automatic": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::liveliness_lease": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::liveliness_manual": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::no_deadline": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::qos": {
+    "verdict": "declined",
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QosSettings` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+  },
+  "rust:IntoPrimitiveOptions::reliability": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::sensor_data_qos": {
+    "verdict": "declined",
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QosSettings` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+  },
+  "rust:IntoPrimitiveOptions::system_qos": {
+    "verdict": "declined",
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QosSettings` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+  },
+  "rust:IntoPrimitiveOptions::topics_qos": {
+    "verdict": "declined",
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QosSettings` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+  },
+  "rust:NodeHandle::qos_overrides": {
+    "verdict": "divergence",
+    "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::set_qos_overrides": {
+    "verdict": "divergence",
+    "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:QOS_PROFILE_CLOCK": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_DEFAULT": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_PARAMETERS": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_PARAMETER_EVENTS": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_SENSOR_DATA": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_SERVICES_DEFAULT": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
+  },
+  "rust:QOS_PROFILE_SYSTEM_DEFAULT": {
+    "verdict": "rename",
+    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QosSettings`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename. Note the semantics do not carry over intact: `rmw_qos_profile_system_default` means \"leave every policy for the middleware to decide\", and there is no middleware here to defer to -- the backend is linked at build time and the profile is fixed at compile time (RFC-0036). Our `system_default` is a concrete RELIABLE + VOLATILE + KEEP_LAST(1) value, and our policy enums carry no `SystemDefault` or `Unknown` discriminant on purpose."
+  },
+  "rust:QoSDurabilityPolicy": {
+    "verdict": "rename",
+    "why": "ours is `QosDurabilityPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QoSDuration": {
+    "verdict": "divergence",
+    "why": "rclrs models every QoS duration as a tri-state enum -- `SystemDefault` (let the middleware pick), `Infinite`, `Custom(Duration)`. Ours is a plain `u32` of milliseconds with `0` as the infinite sentinel (`deadline_ms`, `lifespan_ms`, `liveliness_lease_ms`, identically in `nros_qos_t` and `nros::QoS`). `SystemDefault` is the arm that cannot exist: RFC-0036 fixes the profile at COMPILE time against a backend linked at build time, so there is nothing to defer the choice to and nothing that could tell you afterwards what it chose. The `Infinite`/`Custom` split collapses into the sentinel, which costs the ability to express a genuinely zero window -- for deadline, lifespan and lease alike, zero and infinite both mean \"do not enforce\", so nothing is actually lost. The millisecond UNIT is the timer stage's rename (`rust:QoSProfile::deadline_duration`); this row is about the shape."
+  },
+  "rust:QoSHistoryPolicy": {
+    "verdict": "rename",
+    "why": "ours is `QosHistoryPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QoSLivelinessPolicy": {
+    "verdict": "rename",
+    "why": "ours is `QosLivelinessPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QoSProfile": {
+    "verdict": "rename",
+    "why": "ours is `QosSettings` -- both the type's WORD (`Settings` vs `Profile`) and the capitalisation differ, and neither has a reason. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. The ours-only half is `rust:QosSettings`; it is not in this shard because the same case-sensitivity puts it in `other`. The service and timer stages already deferred here (`rust:QoSProfile::services_default`, `rust:QosSettings::clock_default`); this row settles it."
+  },
+  "rust:QoSProfile::best_effort": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::best_effort`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::keep_all": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::keep_all`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::keep_last": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::keep_last`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::reliable": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::reliable`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::sensor_data_default": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::sensor_data_default`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::system_default": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::system_default`, which topics.py files under `other` -- also explained in that row. Note the semantics do not carry over intact: `rmw_qos_profile_system_default` means \"leave every policy for the middleware to decide\", and there is no middleware here to defer to -- the backend is linked at build time and the profile is fixed at compile time (RFC-0036). Our `system_default` is a concrete RELIABLE + VOLATILE + KEEP_LAST(1) value, and our policy enums carry no `SystemDefault` or `Unknown` discriminant on purpose."
+  },
+  "rust:QoSProfile::topics_default": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::topics_default`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::transient_local": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::transient_local`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSProfile::volatile": {
+    "verdict": "rename",
+    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::volatile`, which topics.py files under `other` -- also explained in that row."
+  },
+  "rust:QoSReliabilityPolicy": {
+    "verdict": "rename",
+    "why": "ours is `QosReliabilityPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QosDurabilityPolicy": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSDurabilityPolicy`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QosHistoryPolicy": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSHistoryPolicy`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QosLivelinessPolicy": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSLivelinessPolicy`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QosOverride": {
+    "verdict": "extension",
+    "why": "ROS 2 implements `qos_overrides.<topic>.<role>.<policy>` launch parameters through the PARAMETER system at runtime: rclcpp's `QosOverridingOptions` declares them on the node and rebuilds the entity's profile from the declared values. Nothing here can do that -- entity QoS is compile-time (RFC-0036/0045) and there is no runtime parameter callback to rebuild an entity from. So the planner lowers the same launch parameter into a baked `&'static [QosOverride]` table and the entity folds the matching rows in at create time: one linear scan, no alloc, before the backend-compat check, so an override the active RMW cannot honour still errors loudly. rclrs has no QoS-override support at all."
+  },
+  "rust:QosOverrideRole": {
+    "verdict": "extension",
+    "why": "which side of the topic an override targets -- the `<role>` segment of `qos_overrides.<topic>.<role>.<policy>`. See `rust:QosOverride`."
+  },
+  "rust:QosOverrideValue": {
+    "verdict": "extension",
+    "why": "one typed policy+value an override sets. A typed enum rather than a string so codegen catches an unknown policy at BAKE time instead of silently no-op-ing on target. See `rust:QosOverride`."
+  },
+  "rust:QosPolicyMask": {
+    "verdict": "extension",
+    "why": "the bitset those two exchange -- one bit per policy a backend either can or cannot honour. See `rust:QosSettings::required_policies`."
+  },
+  "rust:QosPolicyMask::contains": {
+    "verdict": "extension",
+    "why": "see `rust:QosPolicyMask`."
+  },
+  "rust:QosPolicyMask::union": {
+    "verdict": "extension",
+    "why": "see `rust:QosPolicyMask`."
+  },
+  "rust:QosReliabilityPolicy": {
+    "verdict": "rename",
+    "why": "the ours-only half of `rust:QoSReliabilityPolicy`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here."
+  },
+  "rust:QosSettings": {
+    "verdict": "rename",
+    "why": "OUR LANGUAGES DISAGREE: rclrs spells this `QoSProfile`, rclcpp spells it `QoS`, rmw spells it `rmw_qos_profile_t` -- and our OWN C++ is `nros::QoS` and our C is `nros_qos_t`, both matching upstream. Only Rust says `QosSettings`, and it also spells the acronym `Qos` where C++ writes `QoS`. The cost is measurable in this very report: nine of our methods (`keep_last`, `keep_all`, `reliable`, `best_effort`, `volatile`, `transient_local`, `topics_default`, `sensor_data_default`, `system_default`) are already spelled EXACTLY as rclrs spells them, and the type name alone splits all nine into an ours-only column and a theirs-only column. Nothing about an RTOS asks for the different word. Rename to `QoSProfile` (the rclrs spelling, since this is the Rust lane); the theirs-only half is `rust:QoSProfile` in the qos stage. Phase 379 W5."
+  },
+  "rust:QosSettings::apply_override_codes": {
+    "verdict": "extension",
+    "why": "the same fold over the primitive wire form a baked table travels in (issue 0303), which is what the C and C++ ABIs carry. See `rust:QosOverride`."
+  },
+  "rust:QosSettings::apply_override_value": {
+    "verdict": "extension",
+    "why": "the ONE place a policy maps to the field it sets, so a new policy cannot reach some paths only. See `rust:QosOverride`."
+  },
+  "rust:QosSettings::apply_overrides": {
+    "verdict": "extension",
+    "why": "the fold itself, at `create_publisher`/`create_subscription` time. See `rust:QosOverride`."
+  },
+  "rust:QosSettings::best_effort": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::best_effort` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::depth": {
+    "verdict": "extension",
+    "why": "enum-taking chainable setters. rclrs's `QoSProfile` offers only the policy-specific shorthands (`reliable()`, `best_effort()`, `keep_last(n)`, ...) and rclcpp's `QoS` has the enum-taking form; ours has BOTH, which is why these four are unmatched while the shorthands beside them are renames. They exist because codegen bakes a profile from a plan and needs to set one policy from a value rather than from a method name -- our own `QosSettings::apply_override_value` is the caller. Note our C++ `nros::QoS` does NOT have them, so this is Rust-only among our three languages. All four are `const fn`, so the profile is still buildable in a `static`."
+  },
+  "rust:QosSettings::durability": {
+    "verdict": "extension",
+    "why": "see `rust:QosSettings::depth`."
+  },
+  "rust:QosSettings::history": {
+    "verdict": "extension",
+    "why": "see `rust:QosSettings::depth`."
+  },
+  "rust:QosSettings::history_depth": {
+    "verdict": "extension",
+    "why": "`depth` narrowed to the `uint8_t` the C ABI and the backend handle tables carry, saturating at 255. rclrs keeps one `u32` because rcl takes a `size_t`; ours needs the narrowed read because the value crosses a `repr(C)` boundary into a fixed-width field. The doc comment says \"for backwards compatibility\", which is not a reason -- worth a look in W5."
+  },
+  "rust:QosSettings::keep_all": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::keep_all` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::keep_last": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::keep_last` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::new": {
+    "verdict": "extension",
+    "why": "a `const fn` returning `QOS_PROFILE_DEFAULT`, so a profile can be built in a `static` / `const` initialiser. That is what compile-time QoS (RFC-0036/0045) needs: the entity's profile is baked, not assembled at runtime. rclrs builds a `QoSProfile` through the `*_default()` constructors or `Default`."
+  },
+  "rust:QosSettings::px4": {
+    "verdict": "extension",
+    "why": "the QoS PX4's `uxrce_dds_client` uses on `/fmu/out/*` and `/fmu/in/*` -- BEST_EFFORT + VOLATILE + KEEP_LAST(1). A companion-computer node talking to the same `MicroXRCEAgent` must match it exactly or nothing is delivered (verified against PX4 SITL: a TRANSIENT_LOCAL reader silently fails to match `/fmu/out/*`). RFC-0039 Track B. rclrs has no vendor profiles because a desktop node discovers and negotiates instead."
+  },
+  "rust:QosSettings::reliability": {
+    "verdict": "extension",
+    "why": "see `rust:QosSettings::depth`."
+  },
+  "rust:QosSettings::reliable": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::reliable` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::required_policies": {
+    "verdict": "extension",
+    "why": "backend-compatibility validation. Backends differ in which QoS policies they can honour at all -- zenoh-pico enforces no DEADLINE or LIFESPAN, XRCE none of the extended set -- so an entity requesting one the active backend cannot keep fails SYNCHRONOUSLY at create time with `TransportError::IncompatibleQos`, never a silent downgrade. ROS 2 answers the same question at runtime instead, through RxO matching and a QOS_INCOMPATIBLE event on the entity; both halves of that need dynamic discovery and the QoS event surface, and we have neither (see the qos stage's `c:get_zero_initialized_event`). `required_policies` reports what a profile asks for, `validate_against` checks it against what the session advertises."
+  },
+  "rust:QosSettings::sensor_data_default": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::sensor_data_default` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::system_default": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::system_default` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::topics_default": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::topics_default` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::transient_local": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::transient_local` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:QosSettings::tx_express": {
+    "verdict": "extension",
+    "why": "publisher-side batching-bypass hint (phase-279, issue 0145): this publisher's samples set zenoh's wire EXPRESS flag, so a batching zenoh-pico session sends them immediately instead of queueing them for the next flush. A TRANSPORT hint, not a DDS policy -- no RxO matching, no backend-compat validation, ignored by subscriptions and by backends with no batching concept. It exists because a control-tier topic on a slow serial link pays the batch window in latency, which is not a problem a desktop RMW has. Our C++ `nros::QoS` has the same setter."
+  },
+  "rust:QosSettings::validate_against": {
+    "verdict": "extension",
+    "why": "see `rust:QosSettings::required_policies`."
+  },
+  "rust:QosSettings::volatile": {
+    "verdict": "rename",
+    "why": "the method name ALREADY matches rclrs's `QoSProfile::volatile` exactly -- only the owning type's name differs. See `rust:QosSettings`."
+  },
+  "rust:Session::next_deadline_ms": {
+    "verdict": "extension",
+    "why": "the backend's own next internal deadline (lease keepalive, heartbeat, ACK-NACK timeout), so the executor can cap its wait against it instead of waking early on a quiet link and round-tripping back into `drive_io`. See `rust:Session`."
+  },
+  "rust:Session::supported_qos_policies": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls; see `rust:Session::create_publisher` in the pubsub stage, and issue 0784 on `nros::` exporting the seam beside the API. rclrs has no equivalent because rcl is its only backend and DDS is assumed to honour every policy. It exists here because ours do not: zenoh-pico honours a different subset from Cyclone, and `QosSettings::validate_against` uses this mask to fail a create call with `INCOMPATIBLE_QOS` rather than downgrade silently (RFC-0036). OUR LANGUAGES DISAGREE: this is the only way in any of our three languages to ask which policies the linked backend honours, and it is Rust-only -- a C or C++ caller learns the answer only by getting `NROS_RET_INCOMPATIBLE_QOS` back from a create it already made. Same asymmetry as `Publisher::supports_event` in the pubsub stage."
+  }
+}

@@ -75,6 +75,14 @@
     "verdict": "divergence",
     "why": "rclcpp signals failure by throwing, so it needs no result type. nano-ros builds with -fno-exceptions on Zephyr, FreeRTOS and bare-metal (RFC-0018), so every fallible call returns `nros::Result` and NROS_TRY() early-returns it. The constraint is no exceptions; the type is what replaces them."
   },
+  "rust:Promise": {
+    "verdict": "divergence",
+    "why": "RFC-0021: a `Promise` is what an async call returns, and every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`). rclrs returns a future and needs a runtime to await it; rclcpp returns a `std::shared_future` and drives it through `spin_until_future_complete`. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Promise::poll_until_ready": {
+    "verdict": "divergence",
+    "why": "RFC-0021: a `Promise` is what an async call returns, and every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`). rclrs returns a future and needs a runtime to await it; rclcpp returns a `std::shared_future` and drives it through `spin_until_future_complete`. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
   "rust:RclErrorMsg": {
     "verdict": "declined",
     "why": "the owned String rclrs copies out of rcl's thread-local error state. Same decision as the C `error_string_t`, and the same constraint: no per-thread formatted-message buffer. A `no_std` build has no String either."

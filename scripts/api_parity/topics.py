@@ -70,15 +70,16 @@ TOPICS = [
         "action",
         re.compile(
             r"Action|action_|Goal|goal_|Feedback|feedback_|publish_feedback"
-            r"|CancelGoal|cancel_goal|cancel_request|cancel_response"
+            r"|CancelGoal|CancelResponse|CancelReturn|cancel_goal|cancel_request"
+            r"|cancel_response"
         ),
     ),
     (
         "pubsub",
         re.compile(
             r"Publisher|publisher|Subscription|subscription|LoanedMessage"
-            r"|SerializedMessage|\bpublish|\btake\b|take_data|try_recv"
-            r"|borrow_loaned|return_loaned"
+            r"|SerializedMessage|\bpublish|Publish|\btake\b|take_data|try_recv"
+            r"|borrow_loaned|return_loaned|PublishLoan|RecvView|LoanError"
         ),
     ),
     (
@@ -102,14 +103,16 @@ TOPICS = [
     (
         "qos",
         re.compile(
-            r"QoS|qos|Reliability|Durability|History|Liveliness|Deadline|Lifespan"
+            r"QoS|Qos|qos|Reliability|reliability|Durability|durability|History"
+            r"|history|Liveliness|liveliness|Deadline|deadline|Lifespan|lifespan"
         ),
     ),
     (
         "exec",
         re.compile(
-            r"Executor|executor|Executable|CallbackGroup|callback_group|\bspin"
-            r"|GuardCondition"
+            r"Executor|executor|Executable|CallbackGroup|callback_group|\bspin|Spin"
+            r"|GuardCondition|Trigger|HandleId|HandleSet|ReadinessSnapshot"
+            r"|InvocationMode|SchedClass|SchedContext|TimeTriggered"
             r"|guard_condition|Waitable|WaitSet|wait_set|\bwait\b"
         ),
     ),
@@ -126,9 +129,25 @@ TOPICS = [
     # what belongs to no feature lands here. They exist because the first run
     # put 316 rows in `other`, which this module calls a finding rather than a
     # rounding error -- and it was: `other` was three nameable things.
+    # The source-metadata subsystem: record a component's declaration WITHOUT
+    # opening middleware, so `nros sync` and the launch resolver can read the
+    # entity set off the host (RFC-0043). It was split across `node` and `other`
+    # by an accident of naming -- `NodeMetadata` and `NodeSlot` contain `Node`,
+    # while `EntitySlot` and `CallbackSlot`, defined in the same block of the
+    # same file, contained nothing any pattern matched.
+    (
+        "metadata",
+        re.compile(
+            r"Metadata|metadata|EntitySlot|CallbackSlot|SourceName|SourceLocation"
+            r"|record_node|entity_metadata|entity_callback|resolve_name|expand_name"
+            r"|ResolvedName|MetadataRecorder|MetadataString"
+        ),
+    ),
     (
         "serde",
-        re.compile(r"^cdr_|\bCdr|serialize|deserialize|Serializer|Deserializer"),
+        re.compile(
+            r"_?cdr_|\bCdr|CDR_|[Ss]erialize|[Dd]eserialize|Serializer|Deserializer"
+        ),
     ),
     (
         "types",
@@ -164,6 +183,7 @@ NAMES = list(dict.fromkeys([name for name, _ in TOPICS])) + ["other"]
 # creates it, and every entity is created on a node.
 STAGE_ORDER = [
     "types",
+    "metadata",
     "init",
     "node",
     "pubsub",
@@ -274,6 +294,9 @@ KEY_OVERRIDES = {
     "event_liveliness_changed_cb_t": "qos",
     "event_subscriber_count_cb_t": "qos",
     "deadline_policy_t": "qos",
+    # RFC-0047's deadline-miss reaction, a field of `nros_sched_context_t` --
+    # not a QoS deadline. Its three siblings are already mapped to exec.
+    "deadline_policy_t": "exec",
     # scheduling: RFC-0047's sched context, and the executor's wake state
     "sched_class_t": "exec",
     "sched_context_id_t": "exec",
@@ -289,6 +312,20 @@ KEY_OVERRIDES = {
     # rclrs takes this straight from the rcl bindings, where nothing names the
     # feature; it is the id a service reply is correlated by.
     "rmw_request_id_t": "service",
+    # the LIFECYCLE state-machine table, filed under graph only because the name
+    # contains the word.
+    "LifecycleNode::get_transition_graph": "lifecycle",
+    "Transition::goal_state": "lifecycle",
+    # RFC-0052's deadline-miss reaction, not an action.
+    "DeadlineAction": "exec",
+    "DeadlineAction::from_tier_str": "exec",
+    # `TickCtx` is one concept; the Rust one is declared in a mapped header and
+    # the C++ one is not, which split it across two stages.
+    "TickCtx": "exec",
+    # rclcpp's `Event` is the graph-change flag `Node::get_graph_event` returns;
+    # `rcl/event.h` is the QoS-event API. The type and its members were landing
+    # in different stages.
+    "Event": "graph",
     # CDR errors: the serde stage's vocabulary, not the general one.
     "SerError": "serde",
     "DeserError": "serde",
@@ -390,6 +427,18 @@ def self_test():
     check("action_publish_feedback", "action")
     check("QoS::reliability", "qos")
     check("Executor::spin", "exec")
+    check("QosSettings", "qos")
+    check("QosSettings::keep_last", "qos")
+    check("SpinOptions::timeout_ms", "exec")
+    check("CancelResponse", "action")
+    check("strip_cdr_header", "serde")
+    check("Serialize::serialize", "serde")
+    check("Deserialize", "serde")
+    check("EntitySlot", "metadata")
+    check("CallbackSlot", "metadata")
+    check("MetadataRecorder", "metadata")
+    check("deadline_policy_t", "exec")
+    check("DeadlineAction", "exec")
     check("AnyExecutable", "exec")
     check("executor_add_subscription", "pubsub")
     check("Clock::now", "timer")
