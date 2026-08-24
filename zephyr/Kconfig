@@ -805,11 +805,27 @@ configdefault NET_BUF_TX_COUNT
 configdefault NET_TCP_WORKQ_STACK_SIZE
     default 4096
 
+# 32/16, not the 1024/512 this carried until 2026-08-25. Those numbers date from
+# the POSIX ddsrt sync backend, where cyclone took 3 pthread mutexes per writer
+# plus one per addrset and graph size became a compile-time RAM constant (issues
+# 0371/0496). nros_rmw_cyclonedds.cmake now removes sync/posix/sync.c
+# unconditionally and DDSRT_WITH_ZEPHYR selects the k_mutex/k_condvar types, so
+# every Zephyr cyclone image embeds its locks in the entity and takes ZERO pool
+# slots. The default did not follow the backend.
+#
+# Measured on mr_canhubk3/s32k344: the linked image has zero call sites to
+# pthread_mutex_init / _lock / pthread_cond_wait, and the pools cost 20,480 +
+# 6,144 = 26,624 B of __pinned_bss that --gc-sections cannot drop. Dropping to
+# 32/16 took RAM 174,908 -> 149,116, i.e. 25,792 B, 7.9% of that part's SRAM.
+#
+# 32/16 rather than lower on purpose: it matches the zenoh line, where the pools
+# ARE used, so one number covers both and there is headroom for anything in the
+# POSIX surface that reaches for a mutex without cyclone asking it to.
 configdefault MAX_PTHREAD_MUTEX_COUNT
-    default 1024
+    default 32
 
 configdefault MAX_PTHREAD_COND_COUNT
-    default 512
+    default 16
 
 configdefault POSIX_THREAD_THREADS_MAX
     default 16
