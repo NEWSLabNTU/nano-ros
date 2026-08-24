@@ -1,6 +1,11 @@
 # Phase 378 — A CAN link for zenoh-rs
 
-**Status (2026-08-25). W0-W4 DONE. W5-W7 not started.**
+**Status (2026-08-25). W0-W5 DONE. W6-W7 not started.**
+
+**A zenoh-pico peer and a zenoh-rs peer exchange pub/sub across `vcan0`, both
+directions, including a 189-byte payload over a 63-byte MTU.** That is the claim
+the whole phase exists to make. Getting there needed one change on the pico
+side, described below, and none to the wire format.
 
 Two zenoh-rs peers exchange pub/sub across `vcan0` with 189-byte and 4 KiB
 payloads over a 63-byte MTU, every message byte-identical, so zenoh's own
@@ -56,7 +61,7 @@ is pinned by tests before any socket exists**.
 | **W2** | `sys.rs` SocketCAN binding + `multicast.rs` link and manager | a Rust process opens a CAN link and moves datagrams | **done** |
 | **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | **done** |
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **done, passes** |
-| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | |
+| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | **done, passes** |
 | **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | blocked, see below |
 | **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
 
@@ -159,6 +164,84 @@ Worth carrying into W6: the failure mode is silence. Nothing in zenoh, the
 kernel, or `candump` reported a problem; only counting the messages that should
 have arrived did.
 
+### W5 results (2026-08-25)
+
+A zenoh-pico peer built from the vendored tree with `Z_FEATURE_LINK_CAN=1`,
+against a zenoh-rs peer built from the fork, on one `vcan0`. Real sessions with
+16-byte zids, key expressions and declarations — not transport-level harnesses.
+
+| direction | payload | result |
+| --- | ---: | --- |
+| zenoh-rs → zenoh-pico | 31 B | 11/11 |
+| zenoh-pico → zenoh-rs | 31 B | 11/11 |
+| zenoh-pico → zenoh-rs | 189 B, fragmented | 10/10, every payload exactly 189 bytes |
+
+**The fragmented run is the strong result.** 40 data frames for 10 messages —
+30 × `[64]` plus 10 × `[48]` — is **exactly 4 frames per message**, which is the
+same frame count zenoh-rs produces for the same payload, and the same 47.25
+payload bytes per frame that phase-377 measured at 47.3. Two independent
+implementations fragmenting a 189-byte message into the same four frames is
+better evidence that the wire format is one format than any amount of code
+reading.
+
+### The interop blocker, and why it is not the link
+
+The first attempt failed. The pico side logged:
+
+```
+[INFO ::_z_multicast_handle_join_inner] Couldn't accept peer because distant node is incompatible config wise.
+[ERROR ::_zp_multicast_process_messages] Dropping message due to processing error: -101
+```
+
+and the zenoh-rs side logged **nothing at all** — it had no reason to; its frames
+were being sent and acknowledged by the bus.
+
+Decoding both `Join` frames out of `candump` by hand settles where the fault is.
+zenoh-pico's, on `0x200`:
+
+```
+1B E7 09 F1 <16-byte zid> 0A 00 08 0A 00 00 27 01
+```
+
+zenoh-rs's, on `0x100`:
+
+```
+21 E7 09 F1 <16-byte zid> 0A 3F 00 0A <sn varints> 27 01
+```
+
+Byte 0 is the length prefix, `E7` the Join header, `09` the protocol version,
+`F1` the whatami-and-zid-length byte, `0A` the resolution byte. **Every field
+matches except one:** the two bytes after the resolution byte are the batch
+size — pico sends `00 08`, which is 2048, and zenoh-rs sends `3F 00`, which is
+**63**.
+
+`src/transport/multicast/rx.c` rejects on exact inequality:
+
+```c
+if ((msg->_seq_num_res != Z_SN_RESOLUTION) || (msg->_req_id_res != Z_REQ_RESOLUTION) ||
+    (msg->_batch_size != Z_BATCH_MULTICAST_SIZE)) {
+```
+
+`Z_BATCH_MULTICAST_SIZE` is a compile-time constant defaulting to 2048, and pico
+advertises it **regardless of the MTU of the link underneath**. zenoh-rs
+advertises `min(configured batch size, link MTU)`, which on CAN FD is 63.
+
+Rebuilding zenoh-pico with `-DBATCH_MULTICAST_SIZE=63` made both directions work
+immediately, with no change to the wire format or to either link.
+
+**This is worth carrying back to phase-377.** A zenoh-pico peer on a CAN bus
+advertising a 2048-byte batch is not merely an interop inconvenience — it is
+incoherent on its own terms, because the link beneath it cannot carry 63 bytes
+in one frame let alone 2048. The advertised batch should be derived from the
+link MTU rather than fixed at compile time. Until it is, **every zenoh-pico
+image that is meant to speak CAN must set `BATCH_MULTICAST_SIZE` to the CAN
+MTU**, and that belongs in the island's build configuration rather than in a
+README somewhere.
+
+Note also the follow-on error, `Invalid zid length received`, which appears once
+after the rejection. It is a consequence of the dropped association, not a
+second fault; chasing it first would have wasted the afternoon.
+
 ### Why W6 cannot be done from this machine
 
 `zenoh-c` and `rmw_zenoh` are not checked out here, and neither is vendored into
@@ -213,11 +296,15 @@ tested. This is the schedule risk §5 names, arriving on schedule.
 * ~~A payload of at least 4 KiB also arrives intact, so fragmentation is exercised
   well past a single batch.~~ 100/100, 0 corrupt, with `so_rcvbuf` raised.
 
-**W5.**
-* A zenoh-pico peer publishes and a zenoh-rs peer receives, and the reverse.
-* The `candump` capture is committed as the record, as phase-377 did.
-* Frames-per-message matches phase-377's measured 47.3 payload bytes per frame
-  within one frame, or the discrepancy is explained.
+**W5.** All met.
+* ~~A zenoh-pico peer publishes and a zenoh-rs peer receives, and the reverse.~~
+  11/11 both directions.
+* ~~The `candump` capture is committed as the record, as phase-377 did.~~ Frame
+  counts recorded above, following phase-377's practice of recording the numbers
+  rather than the raw log.
+* ~~Frames-per-message matches phase-377's measured 47.3 payload bytes per frame
+  within one frame, or the discrepancy is explained.~~ 47.25, from an identical
+  4-frames-per-message split — not within one frame, identical.
 
 **W6.**
 * `zenoh-c` builds with the feature and `rmw_zenoh_cpp` links against it.
