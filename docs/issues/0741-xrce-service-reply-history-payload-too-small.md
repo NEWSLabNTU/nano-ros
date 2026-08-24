@@ -656,3 +656,57 @@ reproduce and two environments do not, so comparing their Fast-DDS and
 `ros-humble-rmw-fastrtps-cpp` versions is likely faster than reading further —
 whatever changed between those versions is a candidate for whether the reader
 resizes or refuses.
+
+## Fast-DDS version RETRACTED as the axis (2026-08-24)
+
+The version hypothesis was mine, it was confident, and it is wrong.
+
+This host ran `fastrtps 2.6.11` while the passing environment recorded
+`2.6.12` — a single patch release, on the one component neither the agent pin
+nor `rmw_fastrtps_cpp` could explain, and the symptom (`RTPS_READER_HISTORY …
+cannot be resized`) is reader-history sizing, which lives in Fast-DDS. It fit.
+
+Upgraded and re-tested with fixtures rebuilt in the same window:
+
+| | before | after |
+| --- | --- | --- |
+| `ros-humble-fastrtps` | 2.6.11 | **2.6.12** |
+| `ros-humble-rmw-fastrtps-cpp` | 6.2.10 | 6.2.10 |
+
+```
+Summary [11.872s] 1 test run: 0 passed, 1 failed
+[RTPS_READER_HISTORY Error] Change payload size of '28' bytes is larger than
+the history payload size of '15' bytes and cannot be resized.
+```
+
+11.9 s, so the fixture built and both peers ran — not the sub-second STALE bail
+that has produced four uninterpretable results in this issue already. The
+versions now match the passing environment exactly and the failure is
+byte-identical. **Fast-DDS version is not the differentiator.**
+
+## Four layers now excluded by direct evidence
+
+1. nano-ros never advertises a size — the replier is declared with
+   `uxr_buffer_create_replier_bin`, type NAMES only.
+2. The type names are correct (`<Service>_Response_` / `_Request_`).
+3. The Agent advertises **1028** (`TopicPubSubType::m_typeSize = 1024 + 4`), not 15.
+4. Fast-DDS / rmw_fastrtps versions match a passing environment and it still fails.
+
+And yet two hosts reproduce while two environments do not. Something
+environmental still differs and it is none of the components anyone has checked.
+
+## Next, cheapest first
+
+* **Which agent binary actually runs.** This host resolves the SDK-store pin
+  `2.4.3-nros1` (`~/.nros/sdk/xrce-agent/`), while `third-party/xrce/agent` is
+  plain v2.4.3. If the two environments run different builds of the agent, that
+  is a difference nobody has compared — and the agent is where the reply topic's
+  type gets registered.
+* **`fastcdr`** — 1.0.29 here, never recorded for the passing host.
+* **A Fast-DDS log at reader creation.** This is the only step that stops
+  guessing: it shows directly what max serialized size the reply reader
+  negotiated and from which discovered endpoint. Every hypothesis so far has
+  been an inference from a number nobody has watched being computed.
+
+Recommend the third. Four eliminations in, inference has a poor record on this
+issue.
