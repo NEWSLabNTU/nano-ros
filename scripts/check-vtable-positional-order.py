@@ -26,11 +26,16 @@ slot insertion is what made it worth writing.
 
 WHAT IT CHECKS
 
-For each positional initialiser: the sequence of `/*slot*/` comment names is a
-PREFIX-ORDERED SUBSEQUENCE of the header's field order. Subsequence rather than
-equality because an initialiser may legitimately stop early (C++ zero-fills the
-rest) — but it may never name them out of order, and it may never name a field
-that does not exist.
+For each positional initialiser: the sequence of `/*slot*/` comment names EQUALS
+the header's first N fields. A PREFIX, not a subsequence.
+
+The first version of this check allowed a subsequence, reasoning that an
+initialiser may stop early and let C++ zero-fill the rest — which is true, and
+irrelevant. Positional initialisation has no way to SKIP: entry i fills field i,
+full stop. An initialiser that names fields 1..20 and then 25 is not "ordered
+with a gap", it is four entries writing the wrong fields with comments that look
+right, and a subsequence test passes it. Stopping early is fine; skipping is the
+bug this file exists to catch, and the weaker rule could not see it.
 
 Run: python3 scripts/check-vtable-positional-order.py
 """
@@ -90,48 +95,46 @@ def self_test():
         bad.append(f"header parse produced only {len(order)} slots — regex broke")
     if "create_session" not in order or "take" not in order:
         bad.append("header parse is missing known slots")
-    # A shifted sequence must be REJECTED, an early stop ACCEPTED.
-    shifted = [order[1], order[0]] + order[2:5]
-    if is_ordered_subsequence(shifted, order):
+    # Swapped pair: rejected. Early stop: accepted. Unknown name: rejected.
+    # SKIP: rejected — the case the first version of this check let through.
+    if is_prefix([order[1], order[0]] + order[2:5], order):
         bad.append("a swapped pair was accepted")
-    if not is_ordered_subsequence(order[:5], order):
+    if not is_prefix(order[:5], order):
         bad.append("a legitimate early stop was rejected")
-    if is_ordered_subsequence(["not_a_slot"], order):
+    if is_prefix(["not_a_slot"], order):
         bad.append("an unknown name was accepted")
+    if is_prefix(order[:3] + order[4:6], order):
+        bad.append("a SKIPPED field was accepted — entry i must be field i")
     if bad:
         for b in bad:
             sys.stderr.write("check-vtable-positional-order --self-test: " + b + "\n")
         return 2
     print(
         f"check-vtable-positional-order --self-test: OK "
-        f"({len(order)} header slots, 3 case(s))"
+        f"({len(order)} header slots, 4 case(s))"
     )
     return 0
 
 
-def is_ordered_subsequence(names, order):
-    pos = 0
-    for n in names:
-        try:
-            nxt = order.index(n, pos)
-        except ValueError:
-            return False
-        pos = nxt + 1
-    return True
+def is_prefix(names, order):
+    return len(names) <= len(order) and names == order[: len(names)]
 
 
 def first_disagreement(names, order):
-    pos = 0
+    """(index, name, explanation) of the first entry that is not field[i]."""
     for i, n in enumerate(names):
-        try:
-            nxt = order.index(n, pos)
-        except ValueError:
-            where = "names no slot in the header" if n not in order else (
-                "appears BEFORE a slot it should follow — the initialiser has "
-                "shifted relative to the header"
-            )
-            return i, n, where
-        pos = nxt + 1
+        if i >= len(order):
+            return i, n, "is past the end of the struct"
+        if n != order[i]:
+            if n not in order:
+                why = "names no slot in the header at all"
+            else:
+                why = (
+                    f"but field {i} is `{order[i]}` — the initialiser has "
+                    "shifted, or it SKIPPED a field (positional initialisation "
+                    "cannot skip: entry i fills field i)"
+                )
+            return i, n, why
     return None
 
 
@@ -153,12 +156,15 @@ def main():
     for rel, names in inits:
         bad = first_disagreement(names, order)
         if bad is None:
-            print(f"  {rel}: OK ({len(names)} annotated slot(s), in header order)")
+            print(
+                f"  {rel}: OK ({len(names)} annotated slot(s) == the header's "
+                f"first {len(names)} fields)"
+            )
             continue
         i, n, why = bad
         failed = True
         sys.stderr.write(
-            f"[FAIL] {rel}: entry {i} is annotated `{n}`, which {why}.\n"
+            f"[FAIL] {rel}: entry {i} is annotated `{n}`, {why}.\n"
             "       A positional initialiser's comments are the only thing "
             "saying which slot a line fills, and nothing else checks them. "
             "Adjacent slots that share a signature swap SILENTLY when the "
