@@ -216,11 +216,33 @@ impl ClientTrait for MockServiceClient {
 }
 
 /// Mock session that produces mock handles.
-pub struct MockSession;
+pub struct MockSession {
+    /// Issue 0790 — optional observer bumped once per [`Session::close`].
+    ///
+    /// A shutdown hook is handed nothing but its own `*mut c_void`; it cannot
+    /// reach the executor that is closing, so "was the session still open when
+    /// I ran?" has to be observable from OUTSIDE the executor. This is that
+    /// observation, and it is what lets the ordering test assert the ORDER
+    /// rather than merely that both hooks ran.
+    ///
+    /// A `&'static` the TEST owns, not a module-level static: `cargo test` runs
+    /// test functions on parallel threads, and one shared counter would make
+    /// every close in the suite look like this test's.
+    close_observer: Option<&'static core::sync::atomic::AtomicUsize>,
+}
 
 impl MockSession {
     pub fn new() -> Self {
-        Self
+        Self {
+            close_observer: None,
+        }
+    }
+
+    /// A session whose `close()` bumps `observer`. See the field doc.
+    pub fn with_close_observer(observer: &'static core::sync::atomic::AtomicUsize) -> Self {
+        Self {
+            close_observer: Some(observer),
+        }
     }
 }
 
@@ -271,6 +293,9 @@ impl Session for MockSession {
     }
 
     fn close(&mut self) -> Result<(), TransportError> {
+        if let Some(observer) = self.close_observer {
+            observer.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        }
         Ok(())
     }
 

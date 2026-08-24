@@ -2424,6 +2424,178 @@ pub unsafe extern "C" fn nros_executor_bind_handle_to_sched_context(
     }
 }
 
+// ============================================================================
+// Shutdown hooks (issue 0790)
+// ============================================================================
+
+/// Shutdown-hook callback type.
+///
+/// # Parameters
+/// * `context` - User-provided context pointer, handed back unchanged.
+//
+// A LOCAL alias, not `nros_node::ShutdownCallbackFn`. cbindgen runs with
+// `parse_deps = false`, so a type owned by another crate in an `extern "C"`
+// signature degrades to an opaque struct that C cannot call through — the same
+// reason `nros_timer_callback_t` is spelled here rather than imported.
+pub type nros_shutdown_callback_t = Option<unsafe extern "C" fn(context: *mut core::ffi::c_void)>;
+
+/// Handle to a registered shutdown hook.
+///
+/// Returned by `nros_executor_add_{pre,on}_shutdown_callback` and consumed by
+/// the matching `remove`. Opaque: the only operations are "pass it back" and
+/// "compare against `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`".
+pub type nros_shutdown_callback_handle_t = u32;
+
+/// The value no successful registration ever produces.
+//
+// A LITERAL, not `u32::MAX` and not `Something as u32`: cbindgen silently DROPS
+// a constant whose initializer it cannot evaluate, and a constant that is
+// missing from the header is worse than one that is wrong — C compiles until
+// someone uses it. The `const _` below is what keeps the literal honest.
+pub const NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID: nros_shutdown_callback_handle_t = 0xFFFF_FFFF;
+
+const _: () = assert!(
+    NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID == nros_node::ShutdownCallbackHandle::INVALID.0,
+    "the C-visible invalid-handle literal drifted from nros_node's ShutdownCallbackHandle::INVALID"
+);
+
+/// Register a callback to run BEFORE the executor's session is closed.
+///
+/// Issue 0790. This is the phase with no workaround: the callback runs while
+/// every entity still works, so a node can publish a final state, answer a last
+/// request, park an actuator or release a bus. After teardown it cannot.
+///
+/// On success writes the handle through `out_handle` and returns
+/// `NROS_RET_OK`. Returns `NROS_RET_FULL` when the phase's fixed table is
+/// exhausted (build-time `NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2).
+///
+/// The hooks run when the executor is finalized — `nros_executor_fini()`, or
+/// whatever tears the executor down. They are a CLEAN-STOP facility: a watchdog
+/// reset, a hard fault or an abort does not come through here.
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor.
+/// * `out_handle` must be a valid pointer.
+/// * `callback` must be safe to invoke once with `context`, and `context` must
+///   stay valid until the hook runs or is removed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_pre_shutdown_callback(
+    executor: *mut nros_executor_t,
+    callback: nros_shutdown_callback_t,
+    context: *mut core::ffi::c_void,
+    out_handle: *mut nros_shutdown_callback_handle_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, out_handle);
+    let Some(callback) = callback else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    match rust_exec.add_pre_shutdown_callback(callback, context) {
+        Ok(handle) => {
+            *out_handle = handle.0;
+            NROS_RET_OK
+        }
+        Err(_) => {
+            *out_handle = NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+            NROS_RET_FULL
+        }
+    }
+}
+
+/// Register a callback to run AFTER the executor's session is closed.
+///
+/// Issue 0790 — rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`.
+/// The entities are gone by the time it runs, so anything that needs the wire
+/// belongs in [`nros_executor_add_pre_shutdown_callback`] instead.
+///
+/// # Safety
+/// Same contract as [`nros_executor_add_pre_shutdown_callback`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_on_shutdown_callback(
+    executor: *mut nros_executor_t,
+    callback: nros_shutdown_callback_t,
+    context: *mut core::ffi::c_void,
+    out_handle: *mut nros_shutdown_callback_handle_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, out_handle);
+    let Some(callback) = callback else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    match rust_exec.add_on_shutdown_callback(callback, context) {
+        Ok(handle) => {
+            *out_handle = handle.0;
+            NROS_RET_OK
+        }
+        Err(_) => {
+            *out_handle = NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+            NROS_RET_FULL
+        }
+    }
+}
+
+/// Remove a previously registered pre-shutdown callback.
+///
+/// Returns `NROS_RET_OK` when `handle` named a live hook, `NROS_RET_NOT_FOUND`
+/// when it did not — including a handle that was already removed, and a handle
+/// issued by `nros_executor_add_on_shutdown_callback` (the phase is part of the
+/// handle, so it cannot cross over and remove the wrong hook).
+///
+/// # Safety
+/// `executor` must be a valid pointer to an initialized executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_pre_shutdown_callback(
+    executor: *mut nros_executor_t,
+    handle: nros_shutdown_callback_handle_t,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    if rust_exec.remove_pre_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
+        NROS_RET_OK
+    } else {
+        NROS_RET_NOT_FOUND
+    }
+}
+
+/// Remove a previously registered on-shutdown callback.
+/// See [`nros_executor_remove_pre_shutdown_callback`].
+///
+/// # Safety
+/// `executor` must be a valid pointer to an initialized executor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_remove_on_shutdown_callback(
+    executor: *mut nros_executor_t,
+    handle: nros_shutdown_callback_handle_t,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    let rust_exec = get_executor(&mut executor._opaque);
+    if rust_exec.remove_on_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
+        NROS_RET_OK
+    } else {
+        NROS_RET_NOT_FOUND
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

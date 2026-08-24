@@ -668,6 +668,22 @@ config NROS_EXECUTOR_MAX_SC
       SchedContext slots per executor (nros-node build.rs MAX_SC,
       RFC-0052 / Phase 110.B).
 
+config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
+    int "Shutdown-hook slots per phase"
+    default 2
+    help
+      How many shutdown hooks the executor can hold PER PHASE — one table
+      this size for pre-shutdown hooks (run while the session is still open,
+      so a node can publish a final state or park an actuator) and a second
+      for on-shutdown hooks (run after the close). Issue 0790;
+      nros-node/build.rs NROS_EXECUTOR_MAX_SHUTDOWN_CBS.
+
+      Deliberately small: the slots are static, so every image pays for them
+      whether or not it registers a hook (the same cost issue 0460 measured
+      for queryable slots). Raise it only when an image genuinely has more
+      things to park on the way down. Overflow is reported at registration
+      (NROS_RET_FULL), not silently dropped.
+
 config NROS_EXECUTOR_MAX_NODES
     int "Maximum nodes per executor"
     default 4

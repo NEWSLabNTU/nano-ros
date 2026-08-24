@@ -1352,6 +1352,24 @@ pub struct Executor<'s> {
     pub(crate) report_violations: bool,
     pub(crate) monitor_violations:
         heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
+    /// Issue 0790 — hooks that run BEFORE the session is closed, while every
+    /// entity still works. The load-bearing half: a device releasing a bus or
+    /// parking an actuator has to publish its final state / answer its last
+    /// request from HERE, because after teardown it cannot.
+    ///
+    /// `[Option<_>; N]` rather than a `heapless::Vec`, deliberately: the handle
+    /// a caller holds IS the slot index, so a removal must leave every other
+    /// index where it was. A `Vec`'s `swap_remove` would silently re-point one
+    /// live handle at a different callback, and its `remove` would re-point all
+    /// of them. Clearing a slot to `None` also lets the next registration reuse
+    /// it, which a fill cursor could not.
+    pub(crate) pre_shutdown_hooks:
+        [Option<super::types::ShutdownHook>; crate::config::MAX_SHUTDOWN_CBS],
+    /// Issue 0790 — hooks that run AFTER the session is closed. rclcpp's
+    /// `add_on_shutdown_callback` / `rclcpp::on_shutdown`. See
+    /// [`Self::pre_shutdown_hooks`] for why this is an array.
+    pub(crate) on_shutdown_hooks:
+        [Option<super::types::ShutdownHook>; crate::config::MAX_SHUTDOWN_CBS],
 }
 
 impl<'s> Executor<'s> {
@@ -1472,6 +1490,11 @@ impl<'s> Executor<'s> {
             monitor_violations_dropped: 0,
             report_violations: true,
             monitor_violations: heapless::Vec::new(),
+            // Issue 0790 — both phase tables start empty. An image that
+            // registers nothing pays these `None`s and a two-slot scan at
+            // teardown, and nothing else.
+            pre_shutdown_hooks: [None; crate::config::MAX_SHUTDOWN_CBS],
+            on_shutdown_hooks: [None; crate::config::MAX_SHUTDOWN_CBS],
         }
     }
 
@@ -2953,11 +2976,195 @@ impl<'s> Executor<'s> {
             .map_err(|_| NodeError::Transport(TransportError::PollFailed))
     }
 
-    /// Close the underlying session.
+    /// Close the underlying session, running the shutdown hooks around it.
+    ///
+    /// Issue 0790. The order is the feature:
+    ///
+    /// 1. every registered PRE-shutdown hook, while the session is still open
+    ///    and every entity still works — this is where a node publishes a final
+    ///    state, answers a last request, parks an actuator or releases a bus;
+    /// 2. the session close;
+    /// 3. every registered ON-shutdown hook.
+    ///
+    /// A hook runs EXACTLY ONCE: each phase table is emptied before its first
+    /// hook is invoked, so a second `close()` — or the [`Drop`] sweep after one
+    /// — finds nothing left to run. Step 2 runs even
+    /// if a pre-shutdown hook was registered and step 3 even if the close
+    /// failed — a hook cannot strand the session, and a dead session must not
+    /// strand the hooks.
+    ///
+    /// # This is a CLEAN-STOP facility and nothing more
+    ///
+    /// A watchdog reset, a hard fault or a panic does not come through here, so
+    /// these hooks do not run then. Nothing in a fixed static table can promise
+    /// otherwise, and an API that implied it would be worse than none: hardware
+    /// that must be safe across an abnormal stop needs a hardware answer (a
+    /// pull-down, a watchdog-driven output disable), not a callback.
     pub fn close(&mut self) -> Result<(), NodeError> {
-        self.session
+        self.run_shutdown_hooks(super::types::ShutdownPhase::Pre);
+        let result = self
+            .session
             .close()
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed));
+        self.run_shutdown_hooks(super::types::ShutdownPhase::Post);
+        result
+    }
+
+    /// Register a hook to run BEFORE the session is closed (issue 0790).
+    ///
+    /// rclcpp's `Context::add_pre_shutdown_callback`. Returns the handle
+    /// [`Self::remove_pre_shutdown_callback`] takes, or
+    /// [`NodeError::ShutdownCallbacksFull`] when the phase table is full —
+    /// raise `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (default 2) at build time.
+    ///
+    /// # Safety
+    /// `callback` must be safe to invoke exactly once with `context`, and
+    /// `context` must stay valid until the hook runs or is removed. The hook
+    /// runs on whichever task calls [`Self::close`] (or drops the executor),
+    /// which is not necessarily the task that registered it.
+    pub unsafe fn add_pre_shutdown_callback(
+        &mut self,
+        callback: super::types::ShutdownCallbackFn,
+        context: *mut core::ffi::c_void,
+    ) -> Result<super::types::ShutdownCallbackHandle, NodeError> {
+        Self::claim_shutdown_slot(
+            &mut self.pre_shutdown_hooks,
+            super::types::ShutdownPhase::Pre,
+            callback,
+            context,
+        )
+    }
+
+    /// Register a hook to run AFTER the session is closed (issue 0790).
+    ///
+    /// rclcpp's `Context::add_on_shutdown_callback` / `rclcpp::on_shutdown`.
+    /// Entities are gone by the time it runs, so anything that needs the wire
+    /// belongs in [`Self::add_pre_shutdown_callback`] instead.
+    ///
+    /// # Safety
+    /// Same contract as [`Self::add_pre_shutdown_callback`].
+    pub unsafe fn add_on_shutdown_callback(
+        &mut self,
+        callback: super::types::ShutdownCallbackFn,
+        context: *mut core::ffi::c_void,
+    ) -> Result<super::types::ShutdownCallbackHandle, NodeError> {
+        Self::claim_shutdown_slot(
+            &mut self.on_shutdown_hooks,
+            super::types::ShutdownPhase::Post,
+            callback,
+            context,
+        )
+    }
+
+    /// Remove a pre-shutdown hook. `true` if `handle` named a live one.
+    ///
+    /// rclcpp's `Context::remove_pre_shutdown_callback`, and `bool` for the
+    /// same reason: "it was not there" is an ordinary answer (the hook may
+    /// already have run), not an error. A handle issued for the OTHER phase
+    /// returns `false` and removes nothing — that is what the phase tag in
+    /// [`ShutdownCallbackHandle`] buys.
+    ///
+    /// [`ShutdownCallbackHandle`]: super::types::ShutdownCallbackHandle
+    pub fn remove_pre_shutdown_callback(
+        &mut self,
+        handle: super::types::ShutdownCallbackHandle,
+    ) -> bool {
+        Self::release_shutdown_slot(
+            &mut self.pre_shutdown_hooks,
+            super::types::ShutdownPhase::Pre,
+            handle,
+        )
+    }
+
+    /// Remove an on-shutdown hook. See [`Self::remove_pre_shutdown_callback`].
+    pub fn remove_on_shutdown_callback(
+        &mut self,
+        handle: super::types::ShutdownCallbackHandle,
+    ) -> bool {
+        Self::release_shutdown_slot(
+            &mut self.on_shutdown_hooks,
+            super::types::ShutdownPhase::Post,
+            handle,
+        )
+    }
+
+    /// How many hooks are currently registered for `phase`. Diagnostic /
+    /// test surface, and what a "did my registration land?" assertion reads.
+    pub fn shutdown_callback_count(&self, phase: super::types::ShutdownPhase) -> usize {
+        let table = match phase {
+            super::types::ShutdownPhase::Pre => &self.pre_shutdown_hooks,
+            super::types::ShutdownPhase::Post => &self.on_shutdown_hooks,
+        };
+        table.iter().flatten().count()
+    }
+
+    /// Claim the first free slot of a phase table.
+    fn claim_shutdown_slot(
+        table: &mut [Option<super::types::ShutdownHook>],
+        phase: super::types::ShutdownPhase,
+        callback: super::types::ShutdownCallbackFn,
+        context: *mut core::ffi::c_void,
+    ) -> Result<super::types::ShutdownCallbackHandle, NodeError> {
+        for (index, slot) in table.iter_mut().enumerate() {
+            if slot.is_some() {
+                continue;
+            }
+            let handle = super::types::ShutdownCallbackHandle::new(phase, index)
+                .ok_or(NodeError::ShutdownCallbacksFull)?;
+            *slot = Some(super::types::ShutdownHook { callback, context });
+            return Ok(handle);
+        }
+        Err(NodeError::ShutdownCallbacksFull)
+    }
+
+    /// Clear a slot of a phase table, rejecting a handle from the other phase.
+    fn release_shutdown_slot(
+        table: &mut [Option<super::types::ShutdownHook>],
+        phase: super::types::ShutdownPhase,
+        handle: super::types::ShutdownCallbackHandle,
+    ) -> bool {
+        if handle.phase() != Some(phase) {
+            return false;
+        }
+        match table.get_mut(handle.index()) {
+            Some(slot) => slot.take().is_some(),
+            None => false,
+        }
+    }
+
+    /// Run — and consume — every hook registered for `phase`, in registration
+    /// order.
+    ///
+    /// The table is EMPTIED BEFORE the first callback runs, not slot by slot as
+    /// the loop walks it, and both halves of that matter:
+    ///
+    /// * "exactly once" becomes a property of the table rather than of the
+    ///   caller — a second `close()`, or the `Drop` sweep after one, finds
+    ///   nothing left to run;
+    /// * the `&mut self` borrow ENDS before any foreign code is invoked. A hook
+    ///   is an `extern "C" fn` that may hold a raw pointer back to this
+    ///   executor (the C and C++ shims hand out exactly that), so a hook that
+    ///   registers or removes another one must not be running inside a live
+    ///   `&mut` into the table it is touching.
+    pub(crate) fn run_shutdown_hooks(&mut self, phase: super::types::ShutdownPhase) {
+        let table = match phase {
+            super::types::ShutdownPhase::Pre => &mut self.pre_shutdown_hooks,
+            super::types::ShutdownPhase::Post => &mut self.on_shutdown_hooks,
+        };
+        // `ShutdownHook` is `Copy` (a fn pointer and a raw pointer), so this is
+        // a register-width move of a table whose default size is two slots —
+        // not a reason to keep the borrow open across the calls.
+        let hooks = *table;
+        *table = [None; crate::config::MAX_SHUTDOWN_CBS];
+        for hook in hooks.iter().flatten() {
+            // SAFETY: the `add_*_shutdown_callback` caller promised `callback`
+            // is safe to invoke once with `context`, and that `context` stays
+            // valid until the hook runs or is removed. This is that one call,
+            // and the table is already cleared so it cannot happen again.
+            unsafe {
+                (hook.callback)(hook.context);
+            }
+        }
     }
 
     /// Phase 216 follow-up — register a per-Node dispatch trampoline.
@@ -7124,6 +7331,18 @@ unsafe impl<'s> Send for Executor<'s> {}
 
 impl<'s> Drop for Executor<'s> {
     fn drop(&mut self) {
+        // Issue 0790 — a teardown that never went through `close()` still gets
+        // its ordered shutdown hooks, and gets them in the SAME order. The C
+        // API's `nros_executor_fini` is exactly that path: it drops the
+        // executor in place and leaves the session to `nros_support_fini`, so
+        // without this the whole facility would be silently inert for every C
+        // entry. Entities are still live at the top of `drop` — the component
+        // cells and the arena entries below are what tears them down — so this
+        // is the last moment a pre-shutdown hook can do what it exists to do.
+        //
+        // After a normal `close()` both tables are already empty and these two
+        // calls are a pair of `None` scans.
+        self.run_shutdown_hooks(super::types::ShutdownPhase::Pre);
         // Phase 258 (Track 2, 2a) — release executor-owned component cells
         // first (before the arena entries), so a component's `drop`
         // trampoline can still touch its own (cell-owned) state. Each slot
@@ -7146,6 +7365,9 @@ impl<'s> Drop for Executor<'s> {
                 (meta.drop_fn)(data_ptr);
             }
         }
+        // Issue 0790 — the post-teardown half, after the entities are gone.
+        // Same "already empty after `close()`" note as the pre pass above.
+        self.run_shutdown_hooks(super::types::ShutdownPhase::Post);
     }
 }
 

@@ -24,6 +24,62 @@ namespace nros {
 class Node;
 class NodeBuilder;
 
+/// Signature of a shutdown callback: `void callback(void* context)`.
+///
+/// rclcpp takes `std::function<void()>`, which is a heap allocation per
+/// registration and needs the STL. This is freestanding C++ with no allocator,
+/// so the callback is a plain function pointer plus an opaque `context` the
+/// callee casts back to its own state — the same shape every other callback in
+/// this API uses. Capture what you need in a struct and pass its address.
+using ShutdownCallback = void (*)(void* context);
+
+/// Handle to a registered shutdown callback — rclcpp's
+/// `rclcpp::ShutdownCallbackHandle`. Issue 0790.
+///
+/// rclcpp's handle owns a `std::shared_ptr` to the callback. There is no
+/// allocator here and the callbacks live in a fixed-capacity static table, so
+/// this wraps the SLOT INDEX instead: the smallest thing that names a row of a
+/// static array, and one `uint32_t` across the C ABI.
+class ShutdownCallbackHandle {
+  public:
+    /// An empty handle. `valid()` is false; passing it to a `remove` does
+    /// nothing and reports false.
+    ShutdownCallbackHandle() : value_(NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID) {}
+
+    /// Wrap a raw handle from the C FFI. Rarely needed directly — the
+    /// `add_*_shutdown_callback` methods hand back a typed handle.
+    explicit ShutdownCallbackHandle(nros_cpp_shutdown_callback_handle_t value) : value_(value) {}
+
+    /// True when this handle came from a successful registration.
+    bool valid() const { return value_ != NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID; }
+
+    /// The raw FFI value, for passing to the C entry points directly.
+    nros_cpp_shutdown_callback_handle_t value() const { return value_; }
+
+  private:
+    nros_cpp_shutdown_callback_handle_t value_;
+};
+
+/// Handle to a PRE-shutdown callback — rclcpp's
+/// `rclcpp::PreShutdownCallbackHandle`.
+///
+/// A distinct type from [`OnShutdownCallbackHandle`], as in rclcpp, so the
+/// compiler refuses `remove_on_shutdown_callback(a_pre_handle)`. The runtime
+/// value carries its phase too, so the same mistake made through the C API
+/// fails instead of removing the wrong callback — but a compile error is a
+/// better place to learn it.
+class PreShutdownCallbackHandle : public ShutdownCallbackHandle {
+  public:
+    using ShutdownCallbackHandle::ShutdownCallbackHandle;
+};
+
+/// Handle to an ON-shutdown callback — rclcpp's
+/// `rclcpp::OnShutdownCallbackHandle`. See [`PreShutdownCallbackHandle`].
+class OnShutdownCallbackHandle : public ShutdownCallbackHandle {
+  public:
+    using ShutdownCallbackHandle::ShutdownCallbackHandle;
+};
+
 /// Explicit executor for managing ROS 2 entities and spinning.
 ///
 /// Mirrors `rclcpp::executors::SingleThreadedExecutor`. Provides an
@@ -192,6 +248,76 @@ class Executor {
     /// lie. Callers that only need to observe the handle should do so
     /// through methods on `Executor` directly.
     void* handle() { return storage_; }
+
+    /// Register a callback to run BEFORE this executor's entities are torn
+    /// down — rclcpp's `Context::add_pre_shutdown_callback`. Issue 0790.
+    ///
+    /// This is the load-bearing half and the one with no workaround. The
+    /// callback runs while every publisher, subscription, service and client
+    /// still works, so a node can publish a final state, answer a last request,
+    /// park an actuator or release a bus. After teardown it cannot: on a device
+    /// there is no OS to reclaim a claimed SPI bus, an armed DMA channel or an
+    /// actuator holding its last commanded position.
+    ///
+    /// The callbacks run from [`shutdown`] (and from the destructor, which
+    /// shuts down if still active). They are a CLEAN-STOP facility: a watchdog
+    /// reset, a hard fault or an abort does not come through here, and nothing
+    /// backed by a static table could promise otherwise.
+    ///
+    /// @param callback  Function to invoke. Must not be null.
+    /// @param context   Opaque pointer handed back to `callback`. Must stay
+    ///                  valid until the callback runs or is removed.
+    /// @param out       Receives the handle `remove_pre_shutdown_callback`
+    ///                  takes. Optional.
+    /// @return Success, `ErrorCode::Full` when the fixed table is exhausted
+    ///         (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2), or
+    ///         `ErrorCode::NotInitialized`.
+    Result add_pre_shutdown_callback(ShutdownCallback callback, void* context = nullptr,
+                                     PreShutdownCallbackHandle* out = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+        nros_cpp_ret_t ret = nros_cpp_add_pre_shutdown_callback(storage_, callback, context, &raw);
+        if (out != nullptr) *out = PreShutdownCallbackHandle(raw);
+        return Result(ret);
+    }
+
+    /// Register a callback to run AFTER this executor's entities are torn down
+    /// — rclcpp's `Context::add_on_shutdown_callback` / `rclcpp::on_shutdown`.
+    ///
+    /// The entities are gone by the time it runs, so anything that needs the
+    /// wire belongs in [`add_pre_shutdown_callback`] instead. Use this for what
+    /// survives the middleware: releasing a GPIO, stopping a peripheral clock,
+    /// writing a log line.
+    ///
+    /// @see add_pre_shutdown_callback for the parameter and error contract.
+    Result add_on_shutdown_callback(ShutdownCallback callback, void* context = nullptr,
+                                    OnShutdownCallbackHandle* out = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+        nros_cpp_ret_t ret = nros_cpp_add_on_shutdown_callback(storage_, callback, context, &raw);
+        if (out != nullptr) *out = OnShutdownCallbackHandle(raw);
+        return Result(ret);
+    }
+
+    /// Remove a registered pre-shutdown callback — rclcpp's
+    /// `Context::remove_pre_shutdown_callback`.
+    ///
+    /// `bool` for rclcpp's reason: "it was not there" is an ordinary answer
+    /// (the callback may already have run), not an error.
+    ///
+    /// @return true when `handle` named a live callback.
+    bool remove_pre_shutdown_callback(PreShutdownCallbackHandle handle) {
+        if (!initialized_) return false;
+        return nros_cpp_remove_pre_shutdown_callback(storage_, handle.value()) == 0;
+    }
+
+    /// Remove a registered on-shutdown callback — rclcpp's
+    /// `Context::remove_on_shutdown_callback`.
+    /// @see remove_pre_shutdown_callback
+    bool remove_on_shutdown_callback(OnShutdownCallbackHandle handle) {
+        if (!initialized_) return false;
+        return nros_cpp_remove_on_shutdown_callback(storage_, handle.value()) == 0;
+    }
 
     /// Shut down the executor and close the middleware connection.
     Result shutdown() {

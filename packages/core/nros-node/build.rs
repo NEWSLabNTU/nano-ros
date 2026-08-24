@@ -74,6 +74,18 @@ fn main() {
     // nodes typically need 2 (ingress + egress). Default 4 leaves
     // headroom for multi-Node services with shared spin.
     let max_nodes = env_usize("NROS_EXECUTOR_MAX_NODES", 4);
+    // issue 0790 — shutdown-hook slots, PER PHASE: the executor keeps one table
+    // this size for pre-shutdown hooks and a second for on-shutdown hooks.
+    //
+    // Deliberately SMALL. Issue 0460 is the precedent: a per-entity static slot
+    // is a measurable cost paid by every image, including the ones that never
+    // register a single hook, so the default must not assume everyone wants
+    // them. Two is enough for the canonical shape (park the actuator, release
+    // the bus) and costs 2 x 2 x sizeof(fn ptr + ctx ptr) = 64 bytes on a
+    // 64-bit host, 32 on a 32-bit target. Raise it with
+    // `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (or `CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS`
+    // on Zephyr) when an image genuinely has more things to park.
+    let max_shutdown_cbs = env_usize("NROS_EXECUTOR_MAX_SHUTDOWN_CBS", 2);
 
     // --- Derived arena size ---
     // Arena must hold MAX_CBS entries. Worst-case entry is an
@@ -146,7 +158,12 @@ fn main() {
          \n\
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
-         pub const MAX_NODES: usize = {max_nodes};\n"
+         pub const MAX_NODES: usize = {max_nodes};\n\
+         \n\
+         /// Shutdown-hook slots PER PHASE -- one table this size for \
+         pre-shutdown hooks and a second for on-shutdown hooks \
+         (set via NROS_EXECUTOR_MAX_SHUTDOWN_CBS, default 2). Issue 0790.\n\
+         pub const MAX_SHUTDOWN_CBS: usize = {max_shutdown_cbs};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();

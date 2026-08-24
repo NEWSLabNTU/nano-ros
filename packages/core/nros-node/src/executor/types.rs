@@ -579,6 +579,11 @@ pub enum NodeError {
     /// Executor's open session (single-session restriction lifts in
     /// Phase 104.C.3 when the per-Node session cache lands).
     BackendMismatch,
+    /// Issue 0790 — the shutdown-hook table for the requested phase is full
+    /// (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2). Distinct from
+    /// `ExecutorFull` so the register seam can name the knob that is actually
+    /// exhausted; the two tables are sized independently of `MAX_CBS`.
+    ShutdownCallbacksFull,
 }
 
 impl From<TransportError> for NodeError {
@@ -1659,6 +1664,109 @@ mod baked_boot_config_tests {
     //     Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), // 65 A's (> 64-byte buffer)
     //     None, None, None,
     // );
+}
+
+// ============================================================================
+// Shutdown hooks (issue 0790)
+// ============================================================================
+
+/// A shutdown hook: `extern "C"` so the same slot serves Rust, C and C++
+/// without a second registry, and so no allocator is involved.
+///
+/// Deliberately NOT a closure. rclcpp takes `std::function<void()>`, which is
+/// a heap allocation per registration; the callback shape the rest of this
+/// tree's FFI surface already uses is a bare function pointer plus an opaque
+/// `context` the callee casts back to its own state.
+pub type ShutdownCallbackFn = unsafe extern "C" fn(context: *mut core::ffi::c_void);
+
+/// Which of the two ordered shutdown phases a hook belongs to.
+///
+/// The ordering IS the feature (issue 0790): a node that must release a bus or
+/// park an actuator has to do it while its entities still work, so it can
+/// publish a final state or answer a last request. After teardown it cannot.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShutdownPhase {
+    /// Runs BEFORE the session is closed — publishers, subscriptions, services
+    /// and clients are all still live. rclcpp's `add_pre_shutdown_callback`.
+    Pre = 0,
+    /// Runs AFTER the session is closed. rclcpp's `add_on_shutdown_callback` /
+    /// `rclcpp::on_shutdown`.
+    Post = 1,
+}
+
+/// Handle to a registered shutdown hook, returned by
+/// [`Executor::add_pre_shutdown_callback`] /
+/// [`Executor::add_on_shutdown_callback`] and consumed by the matching
+/// `remove_*`. rclcpp's `PreShutdownCallbackHandle` / `OnShutdownCallbackHandle`.
+///
+/// # Why an index and not a pointer
+///
+/// rclcpp's handle owns a `std::shared_ptr` to the callback. There is no
+/// allocator here and the hooks live in a fixed-capacity static table, so the
+/// handle is the SLOT INDEX — the smallest thing that identifies a row of a
+/// static array, and trivially passable through the C ABI as one `uint32_t`.
+///
+/// The phase is packed into the high half rather than left implicit, so a
+/// handle from one list cannot silently remove a callback from the other. A
+/// slot index is only meaningful next to the table it indexes, and there are
+/// two tables.
+///
+/// [`Executor::add_pre_shutdown_callback`]: crate::executor::Executor::add_pre_shutdown_callback
+/// [`Executor::add_on_shutdown_callback`]: crate::executor::Executor::add_on_shutdown_callback
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShutdownCallbackHandle(pub u32);
+
+impl ShutdownCallbackHandle {
+    /// The value no registration ever returns. C callers compare against
+    /// `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`, which is this number.
+    pub const INVALID: ShutdownCallbackHandle = ShutdownCallbackHandle(u32::MAX);
+
+    /// Bit position the phase tag occupies. 16 bits of index is more slots
+    /// than any static table will ever hold and keeps the packing readable in
+    /// hex (`0x0000_0001` = pre slot 1, `0x0001_0001` = post slot 1).
+    const PHASE_SHIFT: u32 = 16;
+    const INDEX_MASK: u32 = (1 << Self::PHASE_SHIFT) - 1;
+
+    /// Pack a `(phase, slot)` pair. `None` when `index` does not fit the
+    /// 16-bit index field — unreachable for any table this crate builds, and
+    /// an honest `None` rather than a silent truncation if one ever grows.
+    pub const fn new(phase: ShutdownPhase, index: usize) -> Option<Self> {
+        if index > Self::INDEX_MASK as usize {
+            return None;
+        }
+        Some(ShutdownCallbackHandle(
+            ((phase as u32) << Self::PHASE_SHIFT) | index as u32,
+        ))
+    }
+
+    /// The phase this handle was issued for, or `None` if the value is not a
+    /// handle this crate ever issued (including [`Self::INVALID`]).
+    pub const fn phase(self) -> Option<ShutdownPhase> {
+        match self.0 >> Self::PHASE_SHIFT {
+            0 => Some(ShutdownPhase::Pre),
+            1 => Some(ShutdownPhase::Post),
+            _ => None,
+        }
+    }
+
+    /// The slot index within this handle's phase table.
+    pub const fn index(self) -> usize {
+        (self.0 & Self::INDEX_MASK) as usize
+    }
+
+    /// True for anything [`Self::new`] could have produced.
+    pub const fn is_valid(self) -> bool {
+        self.phase().is_some()
+    }
+}
+
+/// One occupied row of a shutdown-hook table.
+#[derive(Clone, Copy)]
+pub(crate) struct ShutdownHook {
+    pub(crate) callback: ShutdownCallbackFn,
+    pub(crate) context: *mut core::ffi::c_void,
 }
 
 // ============================================================================

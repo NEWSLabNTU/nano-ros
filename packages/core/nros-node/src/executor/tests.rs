@@ -4257,3 +4257,317 @@ fn create_node_registers_and_dedups_by_name() {
         .expect("a distinct name registers separately");
     assert_ne!(first, other, "distinct names are distinct nodes");
 }
+
+// ============================================================================
+// Shutdown hooks (issue 0790)
+// ============================================================================
+
+// The hook context is a raw pointer the executor holds for its whole life, so
+// every fixture below is `&'static` via a leaked box. `alloc`, not `std`: this
+// crate is `no_std` and the test module inherits that.
+use alloc::{boxed::Box, vec::Vec};
+
+/// The ordering test's shared observation point.
+///
+/// A hook is an `extern "C" fn(*mut c_void)` — it gets its own context and
+/// nothing else — so what it can SAY about the world has to be reachable
+/// through that pointer. Each hook is handed one of these and stamps it with
+/// the two numbers that make the ORDER checkable rather than just the fact that
+/// it ran: how many times the session had been closed when it fired, and its
+/// position in a global run sequence.
+#[derive(Debug, Default)]
+struct HookWitness {
+    /// How many times this hook ran. The whole point of "exactly once".
+    runs: core::sync::atomic::AtomicUsize,
+    /// `closes` observed at the moment it ran. `0` for a pre-shutdown hook
+    /// means the session was still open; `1` for an on-shutdown hook means the
+    /// close already happened.
+    closes_seen: core::sync::atomic::AtomicUsize,
+    /// Its ticket from the shared run sequence, so "pre before post" is an
+    /// assertion and not an inference.
+    sequence: core::sync::atomic::AtomicUsize,
+}
+
+/// What every hook in these tests reads and writes. `&'static` because the
+/// registration hands the executor a raw pointer that must outlive it, and a
+/// leaked box is the honest way to say so in a test.
+struct ShutdownFixture {
+    closes: &'static core::sync::atomic::AtomicUsize,
+    ticket: core::sync::atomic::AtomicUsize,
+    pre: HookWitness,
+    post: HookWitness,
+}
+
+impl ShutdownFixture {
+    /// A fixture plus the `MockSession` whose `close()` feeds it. Leaked, not
+    /// dropped: both the session and the executor's hook table hold references
+    /// into it for as long as the executor lives, and the test's assertions run
+    /// after the executor is gone.
+    fn new() -> (&'static ShutdownFixture, MockSession) {
+        let closes: &'static core::sync::atomic::AtomicUsize =
+            Box::leak(Box::new(core::sync::atomic::AtomicUsize::new(0)));
+        let fixture: &'static ShutdownFixture = Box::leak(Box::new(ShutdownFixture {
+            closes,
+            ticket: core::sync::atomic::AtomicUsize::new(0),
+            pre: HookWitness::default(),
+            post: HookWitness::default(),
+        }));
+        (fixture, MockSession::with_close_observer(closes))
+    }
+
+    fn closes(&self) -> usize {
+        self.closes.load(core::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn record(&self, witness: &HookWitness) {
+        use core::sync::atomic::Ordering::SeqCst;
+        witness.runs.fetch_add(1, SeqCst);
+        witness.closes_seen.store(self.closes(), SeqCst);
+        witness
+            .sequence
+            .store(self.ticket.fetch_add(1, SeqCst) + 1, SeqCst);
+    }
+
+    fn as_ctx(&'static self) -> *mut core::ffi::c_void {
+        self as *const ShutdownFixture as *mut core::ffi::c_void
+    }
+}
+
+fn runs(witness: &HookWitness) -> usize {
+    witness.runs.load(core::sync::atomic::Ordering::SeqCst)
+}
+
+fn closes_seen(witness: &HookWitness) -> usize {
+    witness
+        .closes_seen
+        .load(core::sync::atomic::Ordering::SeqCst)
+}
+
+fn sequence(witness: &HookWitness) -> usize {
+    witness.sequence.load(core::sync::atomic::Ordering::SeqCst)
+}
+
+/// # Safety
+/// `ctx` must be the `&'static ShutdownFixture` the registration passed.
+unsafe extern "C" fn record_pre(ctx: *mut core::ffi::c_void) {
+    let fixture = unsafe { &*(ctx as *const ShutdownFixture) };
+    fixture.record(&fixture.pre);
+}
+
+/// # Safety
+/// `ctx` must be the `&'static ShutdownFixture` the registration passed.
+unsafe extern "C" fn record_post(ctx: *mut core::ffi::c_void) {
+    let fixture = unsafe { &*(ctx as *const ShutdownFixture) };
+    fixture.record(&fixture.post);
+}
+
+/// # Safety
+/// `ctx` must be a `&'static AtomicUsize`.
+unsafe extern "C" fn bump(ctx: *mut core::ffi::c_void) {
+    let counter = unsafe { &*(ctx as *const core::sync::atomic::AtomicUsize) };
+    counter.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+}
+
+/// Issue 0790 — the ORDER is the feature, so this is the test that has to hold.
+///
+/// It asserts four separate things, because three of them pass on an
+/// implementation that has the ordering backwards:
+///
+/// * the pre-shutdown hook ran while the session was still OPEN (`closes_seen
+///   == 0`) — this is the half with no workaround, the one a node needs to
+///   publish a final state or park an actuator;
+/// * the on-shutdown hook ran AFTER the close (`closes_seen == 1`);
+/// * the pre hook's sequence ticket precedes the post hook's;
+/// * each ran exactly once, including across a SECOND `close()` and the drop
+///   that follows.
+#[test]
+fn a_pre_shutdown_hook_sees_a_live_session_and_an_on_shutdown_hook_sees_a_closed_one() {
+    let (fixture, session) = ShutdownFixture::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // SAFETY: `fixture` is `&'static`, so the context outlives the executor,
+    // and both trampolines expect exactly that pointer.
+    let pre_handle = unsafe {
+        executor
+            .add_pre_shutdown_callback(record_pre, fixture.as_ctx())
+            .expect("a fresh executor has a free pre-shutdown slot")
+    };
+    let post_handle = unsafe {
+        executor
+            .add_on_shutdown_callback(record_post, fixture.as_ctx())
+            .expect("a fresh executor has a free on-shutdown slot")
+    };
+    assert_eq!(pre_handle.phase(), Some(ShutdownPhase::Pre));
+    assert_eq!(post_handle.phase(), Some(ShutdownPhase::Post));
+    assert_eq!(executor.shutdown_callback_count(ShutdownPhase::Pre), 1);
+    assert_eq!(executor.shutdown_callback_count(ShutdownPhase::Post), 1);
+
+    // Nothing has run yet: registration is not invocation.
+    assert_eq!(runs(&fixture.pre), 0, "pre-shutdown hook ran too early");
+    assert_eq!(runs(&fixture.post), 0, "on-shutdown hook ran too early");
+
+    executor.close().expect("MockSession::close succeeds");
+
+    assert_eq!(runs(&fixture.pre), 1, "pre-shutdown hook did not run");
+    assert_eq!(runs(&fixture.post), 1, "on-shutdown hook did not run");
+    assert_eq!(
+        closes_seen(&fixture.pre),
+        0,
+        "the pre-shutdown hook ran AFTER the session closed — that is the phase \
+         with no workaround, and it is useless if the entities are already gone"
+    );
+    assert_eq!(
+        closes_seen(&fixture.post),
+        1,
+        "the on-shutdown hook ran BEFORE the session closed"
+    );
+    assert!(
+        sequence(&fixture.pre) < sequence(&fixture.post),
+        "pre-shutdown must precede on-shutdown (pre ticket {}, post ticket {})",
+        sequence(&fixture.pre),
+        sequence(&fixture.post),
+    );
+
+    // Exactly once, part 1: a second close finds both tables empty.
+    executor.close().expect("a second close is not an error");
+    assert_eq!(runs(&fixture.pre), 1, "pre-shutdown hook ran twice");
+    assert_eq!(runs(&fixture.post), 1, "on-shutdown hook ran twice");
+
+    // Exactly once, part 2: the drop sweep must not re-run what close ran.
+    drop(executor);
+    assert_eq!(runs(&fixture.pre), 1, "drop re-ran the pre-shutdown hook");
+    assert_eq!(runs(&fixture.post), 1, "drop re-ran the on-shutdown hook");
+}
+
+/// Issue 0790 — the C API's `nros_executor_fini` drops the executor in place
+/// and never calls `close()`. If `Drop` did not sweep the tables the whole
+/// facility would be silently inert for every C entry, which is the failure
+/// mode this repo calls a museum binary: the code is there, the gate is green,
+/// and nothing runs.
+#[test]
+fn dropping_an_executor_without_closing_it_still_runs_both_phases_once() {
+    let (fixture, session) = ShutdownFixture::new();
+    let mut executor: Executor = executor_with_clock(session);
+    // SAFETY: as above — `fixture` is `&'static`.
+    unsafe {
+        executor
+            .add_pre_shutdown_callback(record_pre, fixture.as_ctx())
+            .unwrap();
+        executor
+            .add_on_shutdown_callback(record_post, fixture.as_ctx())
+            .unwrap();
+    }
+
+    drop(executor);
+
+    assert_eq!(runs(&fixture.pre), 1, "drop skipped the pre-shutdown hook");
+    assert_eq!(runs(&fixture.post), 1, "drop skipped the on-shutdown hook");
+    assert!(
+        sequence(&fixture.pre) < sequence(&fixture.post),
+        "drop must keep the phase order"
+    );
+}
+
+/// Issue 0790 — the handle exists so a registration can be undone.
+#[test]
+fn a_removed_shutdown_hook_does_not_run() {
+    let (fixture, session) = ShutdownFixture::new();
+    let mut executor: Executor = executor_with_clock(session);
+    // SAFETY: as above.
+    let handle = unsafe {
+        executor
+            .add_pre_shutdown_callback(record_pre, fixture.as_ctx())
+            .unwrap()
+    };
+
+    assert!(
+        executor.remove_pre_shutdown_callback(handle),
+        "removing a live hook reports true"
+    );
+    assert_eq!(executor.shutdown_callback_count(ShutdownPhase::Pre), 0);
+    assert!(
+        !executor.remove_pre_shutdown_callback(handle),
+        "removing it twice reports false rather than erroring"
+    );
+
+    executor.close().unwrap();
+    assert_eq!(runs(&fixture.pre), 0, "a removed hook still ran");
+}
+
+/// Issue 0790 — a slot index means nothing without the table it indexes, and
+/// there are two tables. The phase tag in the handle is what keeps a pre-phase
+/// handle from removing the on-phase hook that happens to share its index.
+#[test]
+fn a_handle_from_one_phase_cannot_remove_the_other_phases_hook() {
+    let (fixture, session) = ShutdownFixture::new();
+    let mut executor: Executor = executor_with_clock(session);
+    // SAFETY: as above.
+    let (pre_handle, post_handle) = unsafe {
+        (
+            executor
+                .add_pre_shutdown_callback(record_pre, fixture.as_ctx())
+                .unwrap(),
+            executor
+                .add_on_shutdown_callback(record_post, fixture.as_ctx())
+                .unwrap(),
+        )
+    };
+    // Same slot index, different phase — the exact collision an untagged
+    // index-only handle would not survive.
+    assert_eq!(pre_handle.index(), post_handle.index());
+    assert_ne!(pre_handle, post_handle);
+
+    assert!(!executor.remove_on_shutdown_callback(pre_handle));
+    assert!(!executor.remove_pre_shutdown_callback(post_handle));
+    assert_eq!(executor.shutdown_callback_count(ShutdownPhase::Pre), 1);
+    assert_eq!(executor.shutdown_callback_count(ShutdownPhase::Post), 1);
+
+    executor.close().unwrap();
+    assert_eq!(runs(&fixture.pre), 1);
+    assert_eq!(runs(&fixture.post), 1);
+}
+
+/// Issue 0790 — the tables are fixed-capacity by design (issue 0460's
+/// precedent: a static slot is a cost every image pays). Overflow must name the
+/// knob rather than silently dropping the registration, because a dropped
+/// shutdown hook is invisible until the day it was needed.
+#[test]
+fn registering_past_capacity_reports_the_knob_and_frees_on_removal() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let counter: &'static core::sync::atomic::AtomicUsize =
+        Box::leak(Box::new(core::sync::atomic::AtomicUsize::new(0)));
+    let ctx = counter as *const _ as *mut core::ffi::c_void;
+
+    let mut handles = Vec::new();
+    for slot in 0..crate::config::MAX_SHUTDOWN_CBS {
+        // SAFETY: `counter` is `&'static` and `bump` expects exactly it.
+        handles.push(unsafe {
+            executor
+                .add_pre_shutdown_callback(bump, ctx)
+                .unwrap_or_else(|e| panic!("slot {slot} should be free, got {e:?}"))
+        });
+    }
+    // SAFETY: as above.
+    let overflow = unsafe { executor.add_pre_shutdown_callback(bump, ctx) };
+    assert_eq!(
+        overflow.unwrap_err(),
+        NodeError::ShutdownCallbacksFull,
+        "overflow must name the shutdown-hook table, not a generic full error"
+    );
+
+    // A freed slot is reusable — the tables are arrays with holes, not a fill
+    // cursor that can only grow.
+    assert!(executor.remove_pre_shutdown_callback(handles[0]));
+    // SAFETY: as above.
+    let reused = unsafe { executor.add_pre_shutdown_callback(bump, ctx) }
+        .expect("a removed slot is available again");
+    assert_eq!(reused, handles[0], "the freed slot is the one reused");
+
+    executor.close().unwrap();
+    assert_eq!(
+        counter.load(core::sync::atomic::Ordering::SeqCst),
+        crate::config::MAX_SHUTDOWN_CBS,
+        "every occupied slot runs exactly once"
+    );
+}

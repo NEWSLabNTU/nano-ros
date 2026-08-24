@@ -483,6 +483,18 @@ typedef struct nros_cpp_transport_ops_t {
 typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
 
 /**
+ * C callback type for shutdown hooks: `void callback(void* context)`.
+ */
+typedef void (*nros_cpp_shutdown_callback_t)(void *context);
+
+/**
+ * Handle to a registered shutdown hook. Opaque to C++: pass it back to the
+ * matching `remove`, or compare against
+ * `NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID`.
+ */
+typedef uint32_t nros_cpp_shutdown_callback_handle_t;
+
+/**
  * Success.
  */
 #define NROS_CPP_RET_OK 0
@@ -571,6 +583,11 @@ typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
  * Transport / connection error (C++-space extension; nros_ret_t stops at -16).
  */
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
+
+/**
+ * The value no successful registration ever produces.
+ */
+#define NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID 4294967295
 
 #ifdef __cplusplus
 extern "C" {
@@ -2473,6 +2490,62 @@ nros_cpp_ret_t nros_cpp_get_param_string(void *executor,
                                          const char *name,
                                          char *out_buf,
                                          size_t buf_len);
+
+/**
+ * Register a hook to run BEFORE the executor's session is closed.
+ *
+ * On success writes the handle through `out_handle` and returns
+ * `NROS_CPP_RET_OK`; `NROS_CPP_RET_FULL` when the phase's fixed table is
+ * exhausted (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2).
+ *
+ * # Safety
+ * * `executor_handle` must be a handle from `nros_cpp_init()`.
+ * * `out_handle` must be a valid pointer.
+ * * `callback` must be safe to invoke once with `context`, and `context` must
+ *   stay valid until the hook runs or is removed.
+ */
+nros_cpp_ret_t nros_cpp_add_pre_shutdown_callback(void *executor_handle,
+                                                  nros_cpp_shutdown_callback_t callback,
+                                                  void *context,
+                                                  nros_cpp_shutdown_callback_handle_t *out_handle);
+
+/**
+ * Register a hook to run AFTER the executor's session is closed.
+ *
+ * rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`. Entities are
+ * gone by the time it runs, so anything that needs the wire belongs in
+ * [`nros_cpp_add_pre_shutdown_callback`].
+ *
+ * # Safety
+ * Same contract as [`nros_cpp_add_pre_shutdown_callback`].
+ */
+nros_cpp_ret_t nros_cpp_add_on_shutdown_callback(void *executor_handle,
+                                                 nros_cpp_shutdown_callback_t callback,
+                                                 void *context,
+                                                 nros_cpp_shutdown_callback_handle_t *out_handle);
+
+/**
+ * Remove a registered pre-shutdown hook.
+ *
+ * `NROS_CPP_RET_OK` when `handle` named a live hook, `NROS_CPP_RET_NOT_FOUND`
+ * when it did not — including an already-removed handle and one issued for the
+ * OTHER phase (the phase is part of the handle, so it cannot cross over).
+ *
+ * # Safety
+ * `executor_handle` must be a handle from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_remove_pre_shutdown_callback(void *executor_handle,
+                                                     nros_cpp_shutdown_callback_handle_t handle);
+
+/**
+ * Remove a registered on-shutdown hook.
+ * See [`nros_cpp_remove_pre_shutdown_callback`].
+ *
+ * # Safety
+ * `executor_handle` must be a handle from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_remove_on_shutdown_callback(void *executor_handle,
+                                                    nros_cpp_shutdown_callback_handle_t handle);
 
 /**
  * Issue a service-client raw-CDR request from a tick body and block on

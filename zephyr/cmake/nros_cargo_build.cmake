@@ -255,6 +255,10 @@ function(nros_resolve_knobs)
         "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_NODES "${CONFIG_NROS_EXECUTOR_MAX_NODES}")
+    # issue 0790 — shutdown-hook slots per phase. Read by nros-node/build.rs
+    # through the derived CONFIG_<name> lookup, like its five siblings above.
+    _nros_resolve_knob(NROS_EXECUTOR_MAX_SHUTDOWN_CBS
+        "${CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS}")
     _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
         "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
     _nros_resolve_knob(NROS_MAX_PARAMETERS "${CONFIG_NROS_MAX_PARAMETERS}")

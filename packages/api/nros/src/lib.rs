@@ -854,7 +854,8 @@ pub use nros_node::{
     ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
     NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawCancelCallback,
     RawGoalCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
+    ShutdownCallbackFn, ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions,
+    SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
 };
 
 // RFC-0052 / phase-296 W3b — on-target contract-monitor types. Baked

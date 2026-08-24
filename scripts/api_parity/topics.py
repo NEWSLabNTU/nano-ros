@@ -113,6 +113,15 @@ TOPICS = [
             r"Executor|executor|Executable|CallbackGroup|callback_group|\bspin|Spin"
             r"|GuardCondition|Trigger|HandleId|HandleSet|ReadinessSnapshot"
             r"|InvocationMode|SchedClass|SchedContext|TimeTriggered"
+            # issue 0790 -- the shutdown-hook vocabulary. Named types, not a bare
+            # `Shutdown`: `shutdown` the VERB belongs to whoever owns the object
+            # being shut down (`Context::shutdown` is init's, `LifecycleNode::
+            # on_shutdown` is a lifecycle transition), and the lowercase free
+            # functions are init's by the pattern further down. These three are
+            # the executor's callback tables and nothing else's -- without them
+            # `ShutdownCallbackHandle::index` matches no pattern at all and lands
+            # in `other`, splitting one family across two stages.
+            r"|ShutdownCallbackHandle|ShutdownCallbackFn|ShutdownPhase"
             r"|guard_condition|Waitable|WaitSet|wait_set|\bwait\b"
         ),
     ),
@@ -168,7 +177,14 @@ TOPICS = [
         "init",
         re.compile(
             r"^init$|^shutdown$|^ok$|Context|context_|InitOptions|support_|Support"
-            r"|signal_handler|on_shutdown|ros_arguments"
+            # issue 0790 -- `pre_shutdown` joins `on_shutdown` so the free-function
+            # half of the shutdown-hook family stays in ONE stage. rclcpp declares
+            # both phases on `Context` (init's header), and a taxonomy that filed
+            # `on_shutdown` here and `pre_shutdown` under `other` would split a
+            # feature across two stages for a spelling. The Executor METHODS still
+            # match `exec` first, which is correct: those are our executor's
+            # surface, not the context-shaped free functions.
+            r"|signal_handler|on_shutdown|pre_shutdown|ros_arguments"
         ),
     ),
     ("node", re.compile(r"Node|node_|\bnamespace\b|get_name|remap")),
@@ -297,6 +313,13 @@ KEY_OVERRIDES = {
     # RFC-0047's deadline-miss reaction, a field of `nros_sched_context_t` --
     # not a QoS deadline. Its three siblings are already mapped to exec.
     "deadline_policy_t": "exec",
+    # issue 0790's shutdown hooks: a `void(*)(void*)` and the `uint32_t` slot
+    # index it is removed by, both declared on `nros_executor_*`. The generic
+    # `_t$` rule in `types` would take them, which is what that rule is for --
+    # a name that says nothing. These say nothing either; the DECLARATION says
+    # executor, same as `sched_context_id_t` two lines down.
+    "shutdown_callback_t": "exec",
+    "shutdown_callback_handle_t": "exec",
     # scheduling: RFC-0047's sched context, and the executor's wake state
     "sched_class_t": "exec",
     "sched_context_id_t": "exec",

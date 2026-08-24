@@ -208,8 +208,9 @@ pub use executor::{
     ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
     NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawAcceptedCallback,
     RawCancelCallback, RawGoalCallback, RawResponseCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
+    RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn, ShutdownCallbackHandle,
+    ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+    baked_domain_from_c_abi,
 };
 
 // Re-export RMW-dependent executor types

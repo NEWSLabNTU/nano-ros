@@ -99,18 +99,6 @@
     "bucket": "theirs-only",
     "why": "the C++ face of `rcl_init_options_t`; see `c:init_options_*`. `auto_initialize_logging` and `use_default_domain_id` are runtime toggles for decisions taken at build time here (RFC-0045)."
   },
-  "cpp:OnShutdownCallbackHandle": {
-    "verdict": "gap",
-    "why": "see cpp:ShutdownCallbackHandle."
-  },
-  "cpp:PreShutdownCallbackHandle": {
-    "verdict": "gap",
-    "why": "rclcpp runs pre-shutdown callbacks BEFORE entities are torn down and on-shutdown ones after. The ordering is the useful part for a device releasing hardware. See `cpp:on_shutdown`."
-  },
-  "cpp:ShutdownCallbackHandle": {
-    "verdict": "gap",
-    "why": "the handle a registered shutdown callback is removed by. Part of `cpp:on_shutdown`'s gap; listed separately because it is a type, not a verb."
-  },
   "cpp:get_contexts": {
     "verdict": "declined",
     "why": "enumerates the process's contexts; there is exactly one and it is not a value you can hold. See `cpp:Context`."
@@ -133,8 +121,20 @@
     "why": "no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal. rclcpp installs a SIGINT handler so Ctrl-C shuts the context down; an image is stopped by its RTOS, a watchdog or a power rail."
   },
   "cpp:on_shutdown": {
-    "verdict": "gap",
-    "why": "rclcpp lets a node register work to run when the context shuts down, and nano-ros has no hook at all -- not the free function, not `Context::add_on_shutdown_callback`, not the pre-shutdown variant. Nothing about no_std prevents a fixed-capacity callback array; a node that must park an actuator or release a bus on the way down currently has nowhere to do it, which matters MORE on a device than on a desktop. Phase 379 W3."
+    "verdict": "divergence",
+    "why": "CLOSED as a gap by issue 0790: `nros::on_shutdown(cb, ctx)` now exists, so the names correspond and the row is arity-only rather than theirs-only. What still differs is the SIGNATURE, and the platform constraint is no allocator: rclcpp takes `std::function<void()>`, a heap allocation per callback, while a freestanding no-STL header takes a function pointer plus an opaque `context` and stores the pair in a fixed-capacity static table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2). The `out` handle parameter is the third argument for the same reason rclcpp returns one -- so a callback can be removed -- but it is an out-param because this API does not throw and registration can fail with `Full`. The PRE-shutdown phase, which is the half a device actually needs, is `cpp:pre_shutdown` here and `cpp:Executor::add_pre_shutdown_callback` in exec.json."
+  },
+  "cpp:pre_shutdown": {
+    "verdict": "extension",
+    "why": "`nros::pre_shutdown(cb, ctx)` -- the free-function spelling of the PRE-shutdown phase over the global executor, next to `nros::on_shutdown`. rclcpp has a free `rclcpp::on_shutdown` but no free pre-shutdown form; having only the post-teardown one as a free function would leave the half that matters on a device reachable only through the executor object. The phase itself is recorded on `cpp:Executor::add_pre_shutdown_callback` (exec.json). Issue 0790."
+  },
+  "cpp:remove_on_shutdown_callback": {
+    "verdict": "extension",
+    "why": "Removal counterpart of `cpp:on_shutdown` over the global executor. rclcpp spells it `Context::remove_on_shutdown_callback`; we have no `Context`, so it sits beside the free `on_shutdown` it undoes. Issue 0790."
+  },
+  "cpp:remove_pre_shutdown_callback": {
+    "verdict": "extension",
+    "why": "Removal counterpart of `cpp:pre_shutdown` over the global executor. rclcpp's removals live on `Context`, which we do not have; see `cpp:Context`. Issue 0790."
   },
   "cpp:remove_ros_arguments": {
     "verdict": "declined",

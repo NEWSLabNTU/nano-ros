@@ -176,6 +176,12 @@ mod transport;
 mod lifecycle_shim;
 mod params_shim;
 
+// Issue 0790 — ordered shutdown hooks over the CppContext handle. Not
+// `rmw-cffi`-gated at the module level: the typedefs and the invalid-handle
+// constant are part of the header whether or not a backend is linked, and the
+// four entry points carry the gate individually (they need `ctx.executor`).
+mod shutdown;
+
 // ── Tick-time client dispatch (Phase 212.M-F.4.c) ──
 //
 // Mirror of the Rust substrate's `TickCtx::call_raw` /
@@ -880,7 +886,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         E::ServiceRequestFailed | E::ServiceReplyFailed => NROS_CPP_RET_SERVICE_FAILED,
         E::NoSchedContextSlot => NROS_CPP_RET_FULL,
         E::InvalidSchedContextBinding => NROS_CPP_RET_INVALID_ARGUMENT,
-        E::NodeTableFull | E::ExecutorFull => NROS_CPP_RET_FULL,
+        E::NodeTableFull | E::ExecutorFull | E::ShutdownCallbacksFull => NROS_CPP_RET_FULL,
         E::BackendMismatch => NROS_CPP_RET_UNSUPPORTED,
         // NO wildcard. Every `NodeError` variant is named above, and rustc
         // rejects a `_` arm here as unreachable — which is the property worth

@@ -74,6 +74,73 @@ inline Result spin_once(int32_t timeout_ms = 10) {
     return Result(nros_cpp_spin_once(Node::global_storage(), timeout_ms));
 }
 
+/// Register a callback to run BEFORE the global session's entities are torn
+/// down — issue 0790.
+///
+/// rclcpp hangs the shutdown hooks on `Context`, which nano-ros does not have
+/// (phase-379's init stage records the collapse into one support object), so
+/// they live on the executor — here, the global one `nros::init()` opened and
+/// `nros::shutdown()` closes.
+///
+/// This is the phase with no workaround: the callback runs while every entity
+/// still works, so a node can publish a final state, answer a last request,
+/// park an actuator or release a bus. `nros::on_shutdown` below runs after
+/// teardown, when none of that is possible any more.
+///
+/// A CLEAN-STOP facility: a watchdog reset, a hard fault or an abort does not
+/// come through `nros::shutdown()`, so it does not come through here either.
+///
+/// @param callback  Function to invoke. Must not be null.
+/// @param context   Opaque pointer handed back to `callback`. Must stay valid
+///                  until the callback runs or is removed.
+/// @param out       Receives the removal handle. Optional.
+inline Result pre_shutdown(ShutdownCallback callback, void* context = nullptr,
+                           PreShutdownCallbackHandle* out = nullptr) {
+    void* executor = global_handle();
+    if (executor == nullptr) {
+        return Result(ErrorCode::NotInitialized);
+    }
+    nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+    nros_cpp_ret_t ret = nros_cpp_add_pre_shutdown_callback(executor, callback, context, &raw);
+    if (out != nullptr) *out = PreShutdownCallbackHandle(raw);
+    return Result(ret);
+}
+
+/// Register a callback to run AFTER the global session's entities are torn
+/// down — `rclcpp::on_shutdown`. Issue 0790.
+///
+/// The entities are gone by the time it runs; use [`pre_shutdown`] for
+/// anything that needs the wire.
+///
+/// @see pre_shutdown for the parameter and error contract.
+inline Result on_shutdown(ShutdownCallback callback, void* context = nullptr,
+                          OnShutdownCallbackHandle* out = nullptr) {
+    void* executor = global_handle();
+    if (executor == nullptr) {
+        return Result(ErrorCode::NotInitialized);
+    }
+    nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+    nros_cpp_ret_t ret = nros_cpp_add_on_shutdown_callback(executor, callback, context, &raw);
+    if (out != nullptr) *out = OnShutdownCallbackHandle(raw);
+    return Result(ret);
+}
+
+/// Remove a callback registered with [`pre_shutdown`]. `true` when `handle`
+/// named a live one — "it was not there" is an ordinary answer, as in rclcpp.
+inline bool remove_pre_shutdown_callback(PreShutdownCallbackHandle handle) {
+    void* executor = global_handle();
+    if (executor == nullptr) return false;
+    return nros_cpp_remove_pre_shutdown_callback(executor, handle.value()) == 0;
+}
+
+/// Remove a callback registered with [`on_shutdown`].
+/// @see remove_pre_shutdown_callback
+inline bool remove_on_shutdown_callback(OnShutdownCallbackHandle handle) {
+    void* executor = global_handle();
+    if (executor == nullptr) return false;
+    return nros_cpp_remove_on_shutdown_callback(executor, handle.value()) == 0;
+}
+
 /// Phase 123.B.2 — block until `nros::ok()` returns false.
 ///
 /// Mirror of `rclcpp::spin(node)`. The typical pattern in user

@@ -2282,6 +2282,23 @@ typedef struct nros_sched_context_t {
 } nros_sched_context_t;
 
 /**
+ * Shutdown-hook callback type.
+ *
+ * # Parameters
+ * * `context` - User-provided context pointer, handed back unchanged.
+ */
+typedef void (*nros_shutdown_callback_t)(void *context);
+
+/**
+ * Handle to a registered shutdown hook.
+ *
+ * Returned by `nros_executor_add_{pre,on}_shutdown_callback` and consumed by
+ * the matching `remove`. Opaque: the only operations are "pass it back" and
+ * "compare against `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`".
+ */
+typedef uint32_t nros_shutdown_callback_handle_t;
+
+/**
  * Opaque lifecycle state machine storage.
  *
  * The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
@@ -2584,6 +2601,11 @@ typedef struct nros_integrity_status_t {
  * phase (109+).
  */
 #define NROS_RET_UNSUPPORTED -16
+
+/**
+ * The value no successful registration ever produces.
+ */
+#define NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID 4294967295
 
 #ifdef __cplusplus
 extern "C" {
@@ -4413,6 +4435,75 @@ NROS_PUBLIC
 nros_ret_t nros_executor_bind_handle_to_sched_context(struct nros_executor_t *executor,
                                                       size_t handle,
                                                       nros_sched_context_id_t sc_id);
+
+/**
+ * Register a callback to run BEFORE the executor's session is closed.
+ *
+ * Issue 0790. This is the phase with no workaround: the callback runs while
+ * every entity still works, so a node can publish a final state, answer a last
+ * request, park an actuator or release a bus. After teardown it cannot.
+ *
+ * On success writes the handle through `out_handle` and returns
+ * `NROS_RET_OK`. Returns `NROS_RET_FULL` when the phase's fixed table is
+ * exhausted (build-time `NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2).
+ *
+ * The hooks run when the executor is finalized — `nros_executor_fini()`, or
+ * whatever tears the executor down. They are a CLEAN-STOP facility: a watchdog
+ * reset, a hard fault or an abort does not come through here.
+ *
+ * # Safety
+ * * `executor` must be a valid pointer to an initialized executor.
+ * * `out_handle` must be a valid pointer.
+ * * `callback` must be safe to invoke once with `context`, and `context` must
+ *   stay valid until the hook runs or is removed.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_add_pre_shutdown_callback(struct nros_executor_t *executor,
+                                                   nros_shutdown_callback_t callback,
+                                                   void *context,
+                                                   nros_shutdown_callback_handle_t *out_handle);
+
+/**
+ * Register a callback to run AFTER the executor's session is closed.
+ *
+ * Issue 0790 — rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`.
+ * The entities are gone by the time it runs, so anything that needs the wire
+ * belongs in [`nros_executor_add_pre_shutdown_callback`] instead.
+ *
+ * # Safety
+ * Same contract as [`nros_executor_add_pre_shutdown_callback`].
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_add_on_shutdown_callback(struct nros_executor_t *executor,
+                                                  nros_shutdown_callback_t callback,
+                                                  void *context,
+                                                  nros_shutdown_callback_handle_t *out_handle);
+
+/**
+ * Remove a previously registered pre-shutdown callback.
+ *
+ * Returns `NROS_RET_OK` when `handle` named a live hook, `NROS_RET_NOT_FOUND`
+ * when it did not — including a handle that was already removed, and a handle
+ * issued by `nros_executor_add_on_shutdown_callback` (the phase is part of the
+ * handle, so it cannot cross over and remove the wrong hook).
+ *
+ * # Safety
+ * `executor` must be a valid pointer to an initialized executor.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_pre_shutdown_callback(struct nros_executor_t *executor,
+                                                      nros_shutdown_callback_handle_t handle);
+
+/**
+ * Remove a previously registered on-shutdown callback.
+ * See [`nros_executor_remove_pre_shutdown_callback`].
+ *
+ * # Safety
+ * `executor` must be a valid pointer to an initialized executor.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_remove_on_shutdown_callback(struct nros_executor_t *executor,
+                                                     nros_shutdown_callback_handle_t handle);
 
 /**
  * Get a zero-initialized guard condition.
