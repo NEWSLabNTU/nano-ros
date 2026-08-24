@@ -24,25 +24,13 @@
     "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
     "the rest. `--check` is deliberately not wired into `just check` until then --",
     "a gate that fails on ~2000 rows from the day it lands is one somebody",
-    "switches off. Keys beginning with '_' are documentation and are skipped."
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "SHARDED BY LANGUAGE so parallel work does not collide: this file holds only",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others."
   ],
-
-  "cpp:Node::create_wall_timer": {
-    "verdict": "rename",
-    "why": "We spell it `create_timer`; rclcpp spells it `create_wall_timer` and a ported node calls that name. Nothing about an RTOS requires the shorter name -- our timers are wall-clock timers like rclcpp's. Phase 379 W3."
-  },
-  "cpp:Clock": {
-    "verdict": "gap",
-    "why": "rclcpp::Clock is named directly by ported code (`node->get_clock()`, `rclcpp::Clock(RCL_STEADY_TIME)`). nros-c has `nros/clock.h` and nros-core has a time type, but no C++ `nros::Clock` wraps them. Phase 379 W3."
-  },
-  "cpp:Duration": {
-    "verdict": "gap",
-    "why": "Same as Clock -- `rclcpp::Duration` appears in ported signatures (timer periods, QoS deadline/lifespan) and has no C++ surface here. Phase 379 W3."
-  },
-  "rust:Executor::spin_async": {
-    "verdict": "declined",
-    "why": "rclrs drives spin_async on an async runtime (async-std/tokio). no_std targets have neither, and RFC-0002 puts one executor per RTOS task rather than a task-stealing runtime. The blocking `spin` is the whole model here."
-  },
   "cpp:AnyExecutable": {
     "verdict": "declined",
     "why": "An rclcpp internal, not user API -- it is the wait-set result type its executors pass between themselves. A user writes neither the type nor its fields. RFC-0002's executor is not built from it."

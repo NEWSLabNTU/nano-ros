@@ -1,9 +1,12 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
 **Status (2026-08-24). W1 LANDED — the correlator runs on all three languages
-and its first report is below.** No API has been corrected yet; W1 exists to
-make the corrections findable and to stop the next one being invisible. W2–W5
-are the corrections and are not started.
+and its first report is below. W2 is READY FOR A PARALLEL RUN: 1707 decisions,
+packeted by (language, topic), each packet owning one ledger shard so no two
+collide.** No API has been corrected yet; W1 exists to make the corrections
+findable and to stop the next one being invisible. W3–W5 are the corrections
+and are not started; W3 and W4 depend on W2's classification, W5 on a decision
+recorded below.
 
 **Implements.** RFC-0036 (divergences from the ROS 2 standard client APIs),
 which this phase converts from a prose catalog into a checked one. Touches
@@ -40,6 +43,7 @@ sources, line them up, and report every item that does not correspond.
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --suggest-renames   # pair look-alike unmatched names
     scripts/api-parity.py --include-internal  # compare the whole ROS 2 surface
+    scripts/api-parity.py --lang cpp --grep '^Node'   # one work packet's rows
     scripts/api-parity.py --refresh …     # re-derive the ROS 2 side
     scripts/api-parity.py --self-test
 
@@ -252,28 +256,100 @@ introduced the `Node = Arc<NodeState>` split that the correlator has to fold
 (the methods live on `NodeState`; a user writes `Node`). Which version we mirror
 is a decision W5 has to make and record, not a detail.
 
-## W2 — turn `theirs-only` into a work list, per language
+## W2 — classify every non-matching row, in parallel
 
-The counts above mix "a gap we should close", "a decline we should state" and
-"an rclcpp internal that is not API". Nobody can act on the mixture. W2
-classifies every non-matching row into `docs/reference/api-parity-ledger.json`
-with one of five verdicts, each requiring a written reason:
+**1707 decisions**, and they parallelise cleanly because a decision is a sentence
+about one item and touches nothing else. This section is written so several
+agents can run at once without meeting.
 
-* `divergence` — we changed it and a PLATFORM CONSTRAINT is why. The reason must
-  name the constraint (`no_std`, no exceptions, no allocator, no runtime env,
-  single-threaded transport), not a preference. This is the only sanctioned
-  reason to differ.
-* `extension` — we add it because an RTOS scenario needs it.
-* `declined` — ROS 2 has it, we deliberately do not, with the reason.
+### The unit of work is a (language, topic) packet
+
+Each packet owns exactly one file, `docs/reference/api-parity-ledger/<lang>-<topic>.json`,
+and nothing else. Two packets never touch the same file, so no packet can lose
+another's work to a rebase. The loader merges every `*.json` in that directory;
+the lane is the filename up to the first `-`, and a row filed under the wrong
+lane fails `--self-test` rather than quietly skewing two lanes' counts.
+
+Get your rows:
+
+    scripts/api-parity.py --lang cpp --grep '^Node'
+
+The summary line stays whole-lane on purpose — a packet should be able to see
+that it is 146 of 545, not mistake its slice for the total.
+
+| lane | decisions | packets, by rows |
+| --- | ---: | --- |
+| cpp | 545 | node 146, pubsub 97, service 76, exec 46, qos 45, timer 24, param 12, action 6, other 87 |
+| rust | 439 | node 70, param 43, pubsub 39, timer 31, log 30, service 27, exec 14, other 158 |
+| c | 723 | action 112, service 93, pubsub 78, param 75, timer 54, lifecycle 50, exec 40, node 29, other 174 |
+
+`other` is the residue each lane's regexes did not claim; whoever takes it
+should expect it to be less coherent than the rest and may split it further by
+adding another `<lang>-<topic>.json`.
+
+### One row per DECISION, not per symbol
+
+The raw report has 2714 non-matching rows; 1007 of them are members of a type
+that is itself unmatched. `rclcpp::Node` has 49 public methods we do not have,
+and writing 49 sentences that each say "we have no Node" is a copy-paste
+exercise whose fiftieth reader stops reading. So:
+
+* **A row on a TYPE covers its members** — `cpp:Node` covers `cpp:Node::*` — but
+  only while the type sits in the SAME bucket as the member. If we ship `Node`
+  and lack `Node::declare_parameter`, the type is `same`, the method is
+  `theirs-only`, and that is a different claim which must be argued on its own.
+  An inherited verdict prints with a trailing `*`.
+* **A glob row covers a family** — `c:action_*`. The C surface needs this and the
+  others do not: C names are flat, so `publisher_init` and `publisher_fini`
+  share no owning type for a verdict to descend from. A glob **must declare the
+  bucket it covers** (`"bucket": "theirs-only"`), because otherwise one row
+  would absorb a gap, an extension and an unexplained signature change alike —
+  three claims under one sentence, which is the failure a ledger exists to
+  prevent. The most specific pattern wins, and an exact row always beats a glob.
+
+### The verdicts
+
+* `divergence` — we changed it and a PLATFORM CONSTRAINT is why. The `why` must
+  NAME the constraint (`no_std`, no exceptions, no allocator, no runtime env,
+  single-threaded transport, static entity storage). "We preferred it this way"
+  is not a divergence; it is a `rename` or a `gap` wearing a better coat. If the
+  constraint you are about to write applies to more than a handful of sites,
+  stop — it is a **signature rule** (see below), not a ledger row.
+* `extension` — we add it because an RTOS scenario needs it. Name the scenario.
+* `declined` — ROS 2 has it, we deliberately do not. Name what a user loses.
 * `gap` — ROS 2 has it, we should too, nobody has done it. A gap is a legitimate
-  ledger entry; the point is that it is WRITTEN DOWN.
-* `rename` — the names differ and OURS is the one that should change. This is
-  the campaign's work list, because a rename with no platform reason costs the
-  drop-in claim for nothing.
+  entry; the point is that it is written down, not that it is absent.
+* `rename` — the names differ and OURS should change. A rename with no platform
+  reason costs the drop-in claim for nothing.
 
-Acceptance: `scripts/api-parity.py --check` is green, and joins the `just check`
-fast lane. Until then the gate is not wired — a gate that fails on ~2000 rows
-from the day it lands is one somebody switches off.
+`--suggest-renames` pairs unmatched names by similarity and is the fastest way
+into a packet. It is a guess: it finds `send_reply` → `send_response` and it also
+pairs `Timer` with `Time`. Confirm each before writing the row.
+
+### Rules of engagement for a parallel run
+
+* **W2 writes ledger rows. W2 does not change any API.** The renames it
+  identifies are W3/W4/W5's work, on a tree where the classification is already
+  agreed. An agent that starts renaming while four others classify produces a
+  report nobody can reconcile.
+* **`signature_rules.py` and `public_surface.py` are SHARED.** If a packet finds
+  a systematic pattern or a mis-filtered internal, do not edit those files —
+  say so in the packet's report and let one person land it. A rule change moves
+  rows in every lane at once.
+* **Do not run `--refresh`.** It rewrites the recorded ROS 2 surfaces, which
+  every other packet is reading.
+* **Reserve issue ids with `just issue-new <slug>`**, never by reading the
+  highest number — parallel sessions collide on this and have seven times.
+* **Gate before finishing:** `just check-api-parity-ledger` (buildless, seconds).
+
+### Acceptance
+
+Per packet: every row its `--grep` selects carries a verdict, directly or
+inherited, and `just check-api-parity-ledger` is green.
+
+For W2 as a whole: `scripts/api-parity.py --check` is green and joins the
+`just check` fast lane. Until then the gate stays out — one that fails on 1707
+rows from the day it lands is one somebody switches off.
 
 ## W3 — close the C++ coverage gaps a ported node actually hits
 
@@ -315,6 +391,17 @@ Two decisions, neither of them mechanical:
   likely answer is a `nros::prelude` that IS the rclrs-shaped API and an
   explicit second tier for the RTOS-specific machinery — but that is RFC work,
   not a rename sweep.
+
+## Blocking decisions (not an agent's to make)
+
+Two, and they change what later packets conclude rather than how they work, so
+W2 does not wait on either:
+
+1. **Which rclrs do we mirror** — RFC-0036 says 0.7.0, the recorded surface is
+   0.5.1, and they differ in the `Node = Arc<NodeState>` split. W5.
+2. **Does the C `handle-owns-node` shape stay** — it is currently a signature
+   rule covering six `*_fini` entry points, which asserts it is a platform
+   decision. If it is not, those six become signature changes. W4.
 
 ## Acceptance
 

@@ -16,6 +16,7 @@ does not correspond.
     scripts/api-parity.py --show same     # include the matching rows too
     scripts/api-parity.py --suggest-renames   # pair up look-alike unmatched names
     scripts/api-parity.py --include-internal  # do not filter the ROS 2 side to public API
+    scripts/api-parity.py --lang cpp --grep '^Node' # one work packet's rows
     scripts/api-parity.py --check         # fail on anything unledgered
     scripts/api-parity.py --refresh       # re-derive the ROS 2 side from source
     scripts/api-parity.py --self-test
@@ -68,8 +69,10 @@ The gate is not "no differences". It is "no UNEXPLAINED differences".
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
+import fnmatch
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -83,9 +86,11 @@ import public_surface  # noqa: E402
 import signature_rules  # noqa: E402
 
 SURFACE_DIR = os.path.join(ROOT, "docs", "reference", "api-surface")
-LEDGER = os.path.join(ROOT, "docs", "reference", "api-parity-ledger.json")
+LEDGER_DIR = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
 
 VERDICTS = ("divergence", "extension", "declined", "gap", "rename")
+
+BUCKETS = ("systematic", "differs", "ours-only", "theirs-only")
 
 LANGS = ("c", "cpp", "rust")
 
@@ -273,20 +278,133 @@ def refresh(langs, prefix, rclc_root, rclrs_root):
 
 
 def load_ledger():
-    """The ledger, minus its own documentation.
+    """Every ledger shard, merged, minus their documentation.
 
-    JSON has no comments, so the file explains itself in `_doc`. Keys beginning
-    with `_` are documentation and are never entries.
+    One file per language. The split is for CONCURRENCY, not taste: classifying
+    ~1300 rows is work for several people at once, and a single file makes every
+    one of them rebase against the others. A shard is only ever touched by
+    whoever owns that lane.
+
+    JSON has no comments, so each shard explains itself in `_doc`. Keys
+    beginning with `_` are documentation and are never entries.
+
+    A shard file is named `<lang>[-<topic>].json`, so one lane can be split
+    further -- `cpp-node.json`, `cpp-qos.json` -- and several people can work
+    the same lane at once. The lane is the part before the first `-`.
+
+    A row filed in the wrong shard is a real error, not a harmless one: the
+    shard is the lane's inventory, and a `cpp:` row hiding in `rust.json` makes
+    both lanes' counts wrong. `--self-test` rejects it.
     """
-    if not os.path.exists(LEDGER):
-        return {}
-    with open(LEDGER) as fh:
-        raw = json.load(fh)
-    return {k: v for k, v in raw.items() if not k.startswith("_")}
+    merged = {}
+    if not os.path.isdir(LEDGER_DIR):
+        return merged
+    for name in sorted(os.listdir(LEDGER_DIR)):
+        if not name.endswith(".json"):
+            continue
+        lane = name[: -len(".json")].split("-", 1)[0]
+        with open(os.path.join(LEDGER_DIR, name)) as fh:
+            raw = json.load(fh)
+        for key, value in raw.items():
+            if key.startswith("_"):
+                continue
+            value = dict(value)
+            value["_shard"] = lane
+            # The lane is what correctness turns on; the FILENAME is what the
+            # person fixing it has to open. A message naming `cpp.json` when the
+            # row sits in `cpp-node.json` sends them to a file that need not
+            # exist.
+            value["_file"] = name
+            merged[key] = value
+    return merged
 
 
 def ledger_key(lang, key):
     return "%s:%s" % (lang, key)
+
+
+def lookup(ledger, lang, key, bucket, buckets_by_key):
+    """(entry, inherited) for a row -- a member may inherit its TYPE's verdict.
+
+    `rclcpp::Node` has 49 public methods we do not have. Writing 49 sentences
+    that each say "we have no Node" is not a ledger, it is a copy-paste
+    exercise, and the fiftieth reader stops reading. So a row on `Node` covers
+    `Node::*`.
+
+    The inheritance is conditional, and the condition is the point: it applies
+    only when the TYPE is in the SAME bucket as the member. If we have `Node`
+    but not `Node::declare_parameter`, the type is `same` and the method is
+    `theirs-only` -- a real gap in a type we ship, which is a different
+    statement from "we do not have this type" and must be argued on its own.
+    An inherited verdict prints with a trailing `*`.
+    """
+    own = ledger.get(ledger_key(lang, key))
+    if own is not None:
+        return own, False
+
+    if "::" in key:
+        owner = key.rsplit("::", 1)[0]
+        if buckets_by_key.get(owner) == bucket:
+            inherited = ledger.get(ledger_key(lang, owner))
+            if inherited is not None:
+                return inherited, True
+
+    # A glob row covers a family. The C surface needs this and the C++/Rust
+    # surfaces do not: C names are flat, so `publisher_init` and
+    # `publisher_fini` share no owning type for a verdict to descend from, and
+    # the entity prefix is the only structure the API has.
+    #
+    # A glob must DECLARE the bucket it covers, and only matches rows in it.
+    # Without that, one `c:action_*` row would silently absorb a gap, an
+    # extension and an unexplained signature change alike -- three different
+    # claims under one sentence, which is the failure a ledger exists to
+    # prevent. Most specific glob wins, so a narrower row can override.
+    best = None
+    for lkey, entry in ledger.items():
+        klang, _, pattern = lkey.partition(":")
+        if klang != lang or "*" not in pattern:
+            continue
+        if entry.get("bucket") != bucket:
+            continue
+        if not fnmatch.fnmatchcase(key, pattern):
+            continue
+        if best is None or len(pattern) > len(best[0]):
+            best = (pattern, entry)
+    if best is not None:
+        return best[1], True
+    return None, False
+
+
+def validate_ledger(entries):
+    """Complaints about a set of ledger rows. Empty means the ledger is well-formed.
+
+    Separated from `load_ledger` so the self-test can feed it a bad row. A
+    validator that can only be run against the good ledger on disk proves the
+    good ledger is good and nothing about the check.
+    """
+    problems = []
+    for key, value in sorted(entries.items()):
+        if value.get("verdict") not in VERDICTS:
+            problems.append("ledger %s: unknown verdict %r" % (key, value.get("verdict")))
+        if not value.get("why", "").strip():
+            problems.append("ledger %s: empty reason" % key)
+        pattern = key.partition(":")[2]
+        if "*" in pattern and value.get("bucket") not in BUCKETS:
+            problems.append(
+                "ledger %s: a glob row must declare the bucket it covers (one of %s)"
+                % (key, ", ".join(BUCKETS))
+            )
+        lang = key.split(":", 1)[0]
+        if lang not in LANGS:
+            problems.append("ledger %s: unknown language %r" % (key, lang))
+        elif "_shard" in value and value["_shard"] != lang:
+            problems.append(
+                "ledger %s: filed in %s, which is the %s lane; move it to a "
+                "%s-*.json shard"
+                % (key, value.get("_file", value["_shard"] + ".json"),
+                   value["_shard"], lang)
+            )
+    return problems
 
 
 # --------------------------------------------------------------------------
@@ -310,15 +428,17 @@ def run_lang(lang, tmpdir, include_internal=False):
     return correlate.compare(ours, theirs, clang), payload.get("provenance", {}), removed
 
 
-def report(langs, show, check, suggest, include_internal):
+def report(langs, show, check, suggest, include_internal, grep=None):
     ledger = load_ledger()
     unledgered = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
             counts = {}
+            by_key = {}
             for r in rows:
                 counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
+                by_key[r["key"]] = r["bucket"]
 
             print("\n=== %s vs %s ===" % (lang, prov.get("package", "?")))
             if prov:
@@ -346,13 +466,17 @@ def report(langs, show, check, suggest, include_internal):
 
             for r in rows:
                 bucket = r["bucket"]
+                if grep is not None and not grep.search(r["key"]):
+                    continue
                 if bucket == "same" and "same" not in show:
                     continue
                 if bucket != "same" and bucket not in show and show != {"all"}:
                     if show and "all" not in show:
                         continue
-                entry = ledger.get(ledger_key(lang, r["key"]))
-                verdict = entry["verdict"] if entry else ""
+                entry, inherited = lookup(ledger, lang, r["key"], bucket, by_key)
+                verdict = (entry["verdict"] + "*") if (entry and inherited) else (
+                    entry["verdict"] if entry else ""
+                )
                 if bucket == "systematic":
                     # The rule IS the explanation. Requiring a ledger row too
                     # would restate one sentence once per site, which is how the
@@ -385,9 +509,9 @@ def report(langs, show, check, suggest, include_internal):
     if check:
         if unledgered:
             print(
-                "\n%d item(s) differ with no ledger entry. Add a row to %s\n"
-                "with one of: %s"
-                % (len(unledgered), os.path.relpath(LEDGER, ROOT), ", ".join(VERDICTS)),
+                "\n%d item(s) differ with no ledger entry. Add a row to "
+                "%s/<lang>.json\nwith one of: %s"
+                % (len(unledgered), os.path.relpath(LEDGER_DIR, ROOT), ", ".join(VERDICTS)),
                 file=sys.stderr,
             )
             for lang, bucket, key in unledgered[:40]:
@@ -575,14 +699,54 @@ def self_test():
     # A ledger row must not be able to claim a verdict this tool does not know:
     # a typo'd verdict that silently satisfies the gate is the failure mode a
     # ledger is supposed to prevent.
-    for k, v in load_ledger().items():
-        if v.get("verdict") not in VERDICTS:
-            failures.append("ledger %s: unknown verdict %r" % (k, v.get("verdict")))
-        if not v.get("why", "").strip():
-            failures.append("ledger %s: empty reason" % k)
-        lang = k.split(":", 1)[0]
-        if lang not in LANGS:
-            failures.append("ledger %s: unknown language %r" % (k, lang))
+    failures.extend(validate_ledger(load_ledger()))
+
+    # And the validator itself must reject each shape, or it only proves the
+    # ledger on disk is the ledger on disk.
+    bad = {
+        "cpp:A": {"verdict": "typo", "why": "x", "_shard": "cpp"},
+        "cpp:B": {"verdict": "gap", "why": "  ", "_shard": "cpp"},
+        "cpp:C": {"verdict": "gap", "why": "x", "_shard": "rust", "_file": "rust-exec.json"},
+        "go:D": {"verdict": "gap", "why": "x", "_shard": "go"},
+    }
+    caught = validate_ledger(bad)
+    for needle in ("unknown verdict", "empty reason", "rust-exec.json", "unknown language"):
+        if not any(needle in c for c in caught):
+            failures.append("validate_ledger missed %r" % needle)
+
+    # A type-level row covers its members only when both sit in the same
+    # bucket. The negative case is the one that matters: a gap INSIDE a type we
+    # ship is a different claim from not shipping the type.
+    led = {"cpp:Node": {"verdict": "gap", "why": "x"}}
+    got, inh = lookup(led, "cpp", "Node::create_wall_timer", "theirs-only",
+                      {"Node": "theirs-only"})
+    if not (got and inh):
+        failures.append("a member did not inherit its type's verdict")
+    got, inh = lookup(led, "cpp", "Node::create_wall_timer", "theirs-only",
+                      {"Node": "same"})
+    if got is not None:
+        failures.append("a member inherited a verdict across differing buckets")
+    got, inh = lookup(led, "cpp", "Node", "theirs-only", {"Node": "theirs-only"})
+    if got is None or inh:
+        failures.append("a type's own row was reported as inherited")
+
+    # A glob covers a family, but only inside the bucket it declares.
+    globbed = {
+        "c:action_*": {"verdict": "gap", "why": "x", "bucket": "theirs-only"},
+        "c:action_server_init": {"verdict": "divergence", "why": "y"},
+    }
+    got, inh = lookup(globbed, "c", "action_publish_feedback", "theirs-only", {})
+    if not (got and inh and got["verdict"] == "gap"):
+        failures.append("a glob row did not cover its family")
+    got, _ = lookup(globbed, "c", "action_publish_feedback", "differs", {})
+    if got is not None:
+        failures.append("a glob row covered a bucket it did not declare")
+    got, inh = lookup(globbed, "c", "action_server_init", "theirs-only", {})
+    if not got or inh or got["verdict"] != "divergence":
+        failures.append("an exact row lost to a glob")
+    if not any("must declare the bucket" in c for c in validate_ledger(
+            {"c:foo_*": {"verdict": "gap", "why": "x"}})):
+        failures.append("a bucketless glob row was accepted")
 
     failures.extend(public_surface.self_test())
     failures.extend(signature_rules.self_test())
@@ -603,6 +767,8 @@ def main():
                     help="pair unmatched names by similarity (suggestions, never findings)")
     ap.add_argument("--include-internal", action="store_true",
                     help="do not filter the ROS 2 side down to public API")
+    ap.add_argument("--grep", metavar="REGEX",
+                    help="list only rows whose key matches; the summary counts stay whole-lane")
     ap.add_argument("--refresh", action="store_true", help="re-derive the ROS 2 side and record it")
     ap.add_argument("--ros-prefix", default=os.environ.get("ROS_PREFIX", "/opt/ros/humble"))
     ap.add_argument("--rclc", help="path to a ros2/rclc checkout (for --refresh --lang c)")
@@ -619,7 +785,8 @@ def main():
         return 0
 
     show = set(args.show or ["differs", "systematic", "ours-only", "theirs-only"])
-    return report(langs, show, args.check, args.suggest_renames, args.include_internal)
+    grep = re.compile(args.grep) if args.grep else None
+    return report(langs, show, args.check, args.suggest_renames, args.include_internal, grep)
 
 
 if __name__ == "__main__":
