@@ -1,0 +1,4761 @@
+{
+ "provenance": {
+  "package": "rclrs",
+  "ref": "ceb5fbc30923064c4030f301f7ff909cdadec1cd",
+  "version": "0.5.1"
+ },
+ "records": [
+  {
+   "kind": "alias",
+   "name": "rmw_request_id_t",
+   "qual": "rclrs::rmw_request_id_t",
+   "type": "rmw_request_id_s"
+  },
+  {
+   "kind": "macro",
+   "name": "log",
+   "qual": "rclrs::log"
+  },
+  {
+   "kind": "macro",
+   "name": "log_debug",
+   "qual": "rclrs::log_debug"
+  },
+  {
+   "kind": "macro",
+   "name": "log_info",
+   "qual": "rclrs::log_info"
+  },
+  {
+   "kind": "macro",
+   "name": "log_warn",
+   "qual": "rclrs::log_warn"
+  },
+  {
+   "kind": "macro",
+   "name": "log_error",
+   "qual": "rclrs::log_error"
+  },
+  {
+   "kind": "macro",
+   "name": "log_fatal",
+   "qual": "rclrs::log_fatal"
+  },
+  {
+   "kind": "function",
+   "name": "extract_non_ros_args",
+   "params": [
+    {
+     "default": false,
+     "name": "args",
+     "type": "impl ?"
+    }
+   ],
+   "qual": "rclrs::extract_non_ros_args",
+   "ret": "Result<Vec<String>, RclrsError>",
+   "template": [
+    "impl IntoIterator<Item = String>"
+   ]
+  },
+  {
+   "kind": "alias",
+   "name": "Client",
+   "qual": "rclrs::Client",
+   "type": "std::sync::Arc<ClientState<T>>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "call",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "request",
+       "type": "Req"
+      }
+     ],
+     "ret": "Result<Promise<Out>, RclrsError>",
+     "template": [
+      "Req",
+      "Out"
+     ]
+    },
+    {
+     "name": "call_then",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "request",
+       "type": "Req"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Promise<()>, RclrsError>",
+     "template": [
+      "Req",
+      "Args",
+      "impl ClientCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "call_then_async",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "request",
+       "type": "Req"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Promise<()>, RclrsError>",
+     "template": [
+      "Req",
+      "Args",
+      "impl ClientAsyncCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "service_is_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<bool, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "notify_on_service_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      }
+     ],
+     "ret": "Promise<()>",
+     "template": []
+    },
+    {
+     "name": "service_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    }
+   ],
+   "name": "ClientState",
+   "qual": "rclrs::ClientState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "service_name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "ClientOptions",
+   "qual": "rclrs::ClientOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "run_client_async_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "response",
+       "type": "T::Response"
+      },
+      {
+       "default": false,
+       "name": "info",
+       "type": "ServiceInfo"
+      }
+     ],
+     "ret": "Self::Task",
+     "template": []
+    }
+   ],
+   "name": "ClientAsyncCallback",
+   "qual": "rclrs::ClientAsyncCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "run_client_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "response",
+       "type": "T::Response"
+      },
+      {
+       "default": false,
+       "name": "info",
+       "type": "ServiceInfo"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "ClientCallback",
+   "qual": "rclrs::ClientCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "create_channel",
+     "params": [],
+     "ret": "(AnyClientOutputSender<Response>, Promise<Self>)",
+     "template": []
+    }
+   ],
+   "name": "ClientOutput",
+   "qual": "rclrs::ClientOutput",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "AnyClientOutputSender",
+   "qual": "rclrs::AnyClientOutputSender",
+   "template": [],
+   "values": [
+    "ResponseOnly",
+    "WithId",
+    "WithServiceInfo"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ClockType",
+   "qual": "rclrs::ClockType",
+   "template": [],
+   "values": [
+    "RosTime",
+    "SystemTime",
+    "SteadyTime"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "system",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "steady",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "with_source",
+     "params": [],
+     "ret": "(Self, ClockSource)",
+     "template": []
+    },
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "kind",
+       "type": "ClockType"
+      }
+     ],
+     "ret": "(Self, Option<ClockSource>)",
+     "template": []
+    },
+    {
+     "name": "clock_type",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "ClockType",
+     "template": []
+    },
+    {
+     "name": "now",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Time",
+     "template": []
+    }
+   ],
+   "name": "Clock",
+   "qual": "rclrs::Clock",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "set_ros_time_override",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "nanoseconds",
+       "type": "i64"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "ClockSource",
+   "qual": "rclrs::ClockSource",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "args",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "InitOptions"
+      }
+     ],
+     "ret": "Result<Self, RclrsError>",
+     "template": [
+      "impl IntoIterator<Item = String>"
+     ]
+    },
+    {
+     "name": "from_env",
+     "params": [
+      {
+       "default": false,
+       "name": "options",
+       "type": "InitOptions"
+      }
+     ],
+     "ret": "Result<Self, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "default_from_env",
+     "params": [],
+     "ret": "Result<Self, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "create_executor",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "runtime",
+       "type": "E"
+      }
+     ],
+     "ret": "Executor",
+     "template": [
+      "E"
+     ]
+    },
+    {
+     "name": "domain_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "usize",
+     "template": []
+    },
+    {
+     "name": "ok",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "Context",
+   "qual": "rclrs::Context",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [],
+     "ret": "InitOptions",
+     "template": []
+    },
+    {
+     "name": "with_domain_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "domain_id",
+       "type": "Option<usize>"
+      }
+     ],
+     "ret": "InitOptions",
+     "template": []
+    },
+    {
+     "name": "set_domain_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "domain_id",
+       "type": "Option<usize>"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "domain_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Option<usize>",
+     "template": []
+    }
+   ],
+   "name": "InitOptions",
+   "qual": "rclrs::InitOptions",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [
+    {
+     "name": "is_timeout",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    },
+    {
+     "name": "is_take_failed",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "RclrsError",
+   "qual": "rclrs::RclrsError",
+   "template": [],
+   "values": [
+    "RclError",
+    "UnknownRclError",
+    "StringContainsNul",
+    "AlreadyAddedToWaitSet",
+    "NegativeDuration",
+    "UnownedGuardCondition",
+    "InvalidPayload",
+    "ParameterDeclarationError",
+    "PoisonedMutex"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "RclErrorMsg",
+   "qual": "rclrs::RclErrorMsg",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "RclReturnCode",
+   "qual": "rclrs::RclReturnCode",
+   "template": [],
+   "values": [
+    "Ok",
+    "Error",
+    "Timeout",
+    "Unsupported",
+    "BadAlloc",
+    "InvalidArgument",
+    "AlreadyInit",
+    "NotInit",
+    "MismatchedRmwId",
+    "TopicNameInvalid",
+    "ServiceNameInvalid",
+    "UnknownSubstitution",
+    "AlreadyShutdown",
+    "NodeInvalid",
+    "NodeInvalidName",
+    "NodeInvalidNamespace",
+    "NodeNameNonexistent",
+    "PublisherInvalid",
+    "SubscriptionInvalid",
+    "SubscriptionTakeFailed",
+    "ClientInvalid",
+    "ClientTakeFailed",
+    "ServiceInvalid",
+    "ServiceTakeFailed",
+    "TimerInvalid",
+    "TimerCanceled",
+    "WaitSetInvalid",
+    "WaitSetEmpty",
+    "WaitSetFull",
+    "InvalidRemapRule",
+    "WrongLexeme",
+    "InvalidRosArgs",
+    "InvalidParamRule",
+    "InvalidLogLevelRule",
+    "EventInvalid",
+    "EventTakeFailed",
+    "LifecycleStateRegistered",
+    "LifecycleStateNotRegistered"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "first_error",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "timeout_ok",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "take_failed_ok",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "ignore_non_errors",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "RclrsErrorFilter",
+   "qual": "rclrs::RclrsErrorFilter",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "commands",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<ExecutorCommands>",
+     "template": []
+    },
+    {
+     "name": "create_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Node, RclrsError>",
+     "template": [
+      "impl IntoNodeOptions<'a>"
+     ]
+    },
+    {
+     "name": "spin",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "SpinOptions"
+      }
+     ],
+     "ret": "Vec<RclrsError>",
+     "template": []
+    },
+    {
+     "name": "spin_async",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "SpinOptions"
+      }
+     ],
+     "ret": "(Self, Vec<RclrsError>)",
+     "template": []
+    }
+   ],
+   "name": "Executor",
+   "qual": "rclrs::Executor",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "create_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Node, RclrsError>",
+     "template": [
+      "impl IntoNodeOptions<'a>"
+     ]
+    },
+    {
+     "name": "halt_spinning",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "query",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Promise<F::Output>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "run",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Promise<F::Output>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "create_notice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "promise",
+       "type": "Promise<Out>"
+      }
+     ],
+     "ret": "(Promise<Out>, Promise<()>)",
+     "template": [
+      "Out"
+     ]
+    },
+    {
+     "name": "context",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Context",
+     "template": []
+    }
+   ],
+   "name": "ExecutorCommands",
+   "qual": "rclrs::ExecutorCommands",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "add_async_task",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "BoxFuture<()>"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "add_to_wait_set",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "new_entity",
+       "type": "Waitable"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "send_payload_task",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "PayloadTask"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "add_activity_listener",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "listener",
+       "type": "WeakActivityListener"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "WorkerChannel",
+   "qual": "rclrs::WorkerChannel",
+   "template": []
+  },
+  {
+   "kind": "alias",
+   "name": "PayloadTask",
+   "qual": "rclrs::PayloadTask",
+   "type": "Box<dyn ? + ?>"
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ExecutorWorkerOptions",
+   "qual": "rclrs::ExecutorWorkerOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "create_worker",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "ExecutorWorkerOptions"
+      }
+     ],
+     "ret": "Arc<dyn ?>",
+     "template": []
+    },
+    {
+     "name": "wake_all_wait_sets",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "ExecutorChannel",
+   "qual": "rclrs::ExecutorChannel",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "channel",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Arc<dyn ?>",
+     "template": []
+    },
+    {
+     "name": "spin",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "conditions",
+       "type": "SpinConditions"
+      }
+     ],
+     "ret": "Vec<RclrsError>",
+     "template": []
+    },
+    {
+     "name": "spin_async",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Box<Self>"
+      },
+      {
+       "default": false,
+       "name": "conditions",
+       "type": "SpinConditions"
+      }
+     ],
+     "ret": "BoxFuture<(Box<dyn ?>, Vec<RclrsError>)>",
+     "template": []
+    }
+   ],
+   "name": "ExecutorRuntime",
+   "qual": "rclrs::ExecutorRuntime",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "spin_once",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "until_promise_resolved",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "promise",
+       "type": "Promise<()>"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "timeout",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "timeout",
+       "type": "Duration"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "clone_partial",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "SpinOptions",
+     "template": []
+    }
+   ],
+   "name": "SpinOptions",
+   "qual": "rclrs::SpinOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "clone_partial",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "SpinConditions",
+     "template": []
+    }
+   ],
+   "name": "SpinConditions",
+   "qual": "rclrs::SpinConditions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "create_basic_executor",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Executor",
+     "template": []
+    }
+   ],
+   "name": "CreateBasicExecutor",
+   "qual": "rclrs::CreateBasicExecutor",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "BasicExecutorRuntime",
+   "qual": "rclrs::BasicExecutorRuntime",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "logger_name",
+       "type": "LoggerName"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "get_logger_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&LoggerName",
+     "template": []
+    },
+    {
+     "name": "get_severity",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "LogSeverity",
+     "template": []
+    },
+    {
+     "name": "get_occurence",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "LogOccurrence",
+     "template": []
+    },
+    {
+     "name": "get_throttle",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Duration",
+     "template": []
+    },
+    {
+     "name": "get_throttle_clock",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "ThrottleClock",
+     "template": []
+    },
+    {
+     "name": "get_user_filter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "LogParams",
+   "qual": "rclrs::LogParams",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "to_log_params",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "once",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "skip_first",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "occurs",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "occurs",
+       "type": "LogOccurrence"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "throttle",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "throttle",
+       "type": "Duration"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "throttle_clock",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "clock",
+       "type": "ThrottleClock"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "only_if",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "only_if",
+       "type": "bool"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "debug",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "info",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "warn",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "error",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "fatal",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    },
+    {
+     "name": "severity",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "severity",
+       "type": "LogSeverity"
+      }
+     ],
+     "ret": "LogParams",
+     "template": []
+    }
+   ],
+   "name": "ToLogParams",
+   "qual": "rclrs::ToLogParams",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "LoggerName",
+   "qual": "rclrs::LoggerName",
+   "template": [],
+   "values": [
+    "Validated",
+    "Unvalidated"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "LogOccurrence",
+   "qual": "rclrs::LogOccurrence",
+   "template": [],
+   "values": [
+    "All",
+    "Once",
+    "SkipFirst"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ThrottleClock",
+   "qual": "rclrs::ThrottleClock",
+   "template": [],
+   "values": [
+    "SteadyTime",
+    "SystemTime",
+    "Clock"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "name",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Logger, RclrsError>",
+     "template": [
+      "impl Borrow<str>"
+     ]
+    },
+    {
+     "name": "create_child",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "child_name",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Logger, RclrsError>",
+     "template": [
+      "impl Borrow<str>"
+     ]
+    },
+    {
+     "name": "name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&str",
+     "template": []
+    },
+    {
+     "name": "set_level",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "severity",
+       "type": "LogSeverity"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "set_default_level",
+     "params": [
+      {
+       "default": false,
+       "name": "severity",
+       "type": "LogSeverity"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "Logger",
+   "qual": "rclrs::Logger",
+   "template": []
+  },
+  {
+   "kind": "alias",
+   "name": "Node",
+   "qual": "rclrs::Node",
+   "type": "std::sync::Arc<NodeState>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "get_publisher_names_and_types_by_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "node",
+       "type": "&str"
+      },
+      {
+       "default": false,
+       "name": "namespace",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_subscription_names_and_types_by_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "node",
+       "type": "&str"
+      },
+      {
+       "default": false,
+       "name": "namespace",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_service_names_and_types_by_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "node",
+       "type": "&str"
+      },
+      {
+       "default": false,
+       "name": "namespace",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_client_names_and_types_by_node",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "node",
+       "type": "&str"
+      },
+      {
+       "default": false,
+       "name": "namespace",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_topic_names_and_types",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_service_names_and_types",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<TopicNamesAndTypes, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_node_names",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<Vec<NodeNameInfo>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_node_names_with_enclaves",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<Vec<(NodeNameInfo, String)>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "count_publishers",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<usize, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "count_subscriptions",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<usize, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_publishers_info_by_topic",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<Vec<TopicEndpointInfo>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_subscriptions_info_by_topic",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Result<Vec<TopicEndpointInfo>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "get_clock",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Clock",
+     "template": []
+    },
+    {
+     "name": "name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "namespace",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "fully_qualified_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "create_worker",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Worker<Payload>",
+     "template": [
+      "Payload",
+      "impl Into<WorkerOptions<Payload>>"
+     ]
+    },
+    {
+     "name": "create_client",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Client<T>, RclrsError>",
+     "template": [
+      "T",
+      "impl Into<ClientOptions<'a>>"
+     ]
+    },
+    {
+     "name": "create_publisher",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<Self>"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Publisher<T>, RclrsError>",
+     "template": [
+      "T",
+      "impl Into<PublisherOptions<'a>>"
+     ]
+    },
+    {
+     "name": "create_service",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Service<T>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<ServiceOptions<'a>>",
+      "impl IntoNodeServiceCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "create_async_service",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Service<T>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<ServiceOptions<'a>>",
+      "impl IntoAsyncServiceCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "create_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Subscription<T>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<SubscriptionOptions<'a>>",
+      "impl IntoNodeSubscriptionCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "create_async_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<Subscription<T>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<SubscriptionOptions<'a>>",
+      "impl IntoAsyncSubscriptionCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "domain_id",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "usize",
+     "template": []
+    },
+    {
+     "name": "declare_parameter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "name",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "ParameterBuilder<T>",
+     "template": [
+      "T",
+      "impl Into<Arc<str>>"
+     ]
+    },
+    {
+     "name": "use_undeclared_parameters",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Parameters",
+     "template": []
+    },
+    {
+     "name": "notify_on_graph_change",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "condition",
+       "type": "impl ? + ? + ?"
+      }
+     ],
+     "ret": "Promise<()>",
+     "template": [
+      "impl FnMut() -> bool + Send + 'static"
+     ]
+    },
+    {
+     "name": "notify_on_graph_change_with_period",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "period",
+       "type": "Duration"
+      },
+      {
+       "default": false,
+       "name": "condition",
+       "type": "impl ? + ? + ?"
+      }
+     ],
+     "ret": "Promise<()>",
+     "template": [
+      "impl FnMut() -> bool + Send + 'static"
+     ]
+    },
+    {
+     "name": "commands",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<ExecutorCommands>",
+     "template": []
+    },
+    {
+     "name": "logger",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Logger",
+     "template": []
+    }
+   ],
+   "name": "NodeState",
+   "qual": "rclrs::NodeState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_node_options",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "namespace",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "namespace",
+       "type": "&str"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "use_global_arguments",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "enable",
+       "type": "bool"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "arguments",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "arguments",
+       "type": "Args"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": [
+      "Args"
+     ]
+    },
+    {
+     "name": "enable_rosout",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "enable",
+       "type": "bool"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "start_parameter_services",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "start",
+       "type": "bool"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "clock_type",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "clock_type",
+       "type": "ClockType"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    },
+    {
+     "name": "clock_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "clock_qos",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    }
+   ],
+   "name": "IntoNodeOptions",
+   "qual": "rclrs::IntoNodeOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "name",
+       "type": "&str"
+      }
+     ],
+     "ret": "NodeOptions",
+     "template": []
+    }
+   ],
+   "name": "NodeOptions",
+   "qual": "rclrs::NodeOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "apply_to",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "qos",
+       "type": "&mut QoSProfile"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "PrimitiveOptions",
+   "qual": "rclrs::PrimitiveOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_primitive_options",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "profile",
+       "type": "QoSProfile"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "topics_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "sensor_data_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "services_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "system_qos",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "history",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "history",
+       "type": "QoSHistoryPolicy"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "keep_last",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "depth",
+       "type": "u32"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "keep_all",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "reliability",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "reliability",
+       "type": "QoSReliabilityPolicy"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "reliable",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "best_effort",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "durability",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "durability",
+       "type": "QoSDurabilityPolicy"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "volatile",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "transient_local",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "lifespan",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "lifespan",
+       "type": "QoSDuration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "lifespan_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "duration",
+       "type": "Duration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "infinite_lifespan",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "deadline",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "deadline",
+       "type": "QoSDuration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "deadline_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "duration",
+       "type": "Duration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "no_deadline",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "liveliness",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "liveliness",
+       "type": "QoSLivelinessPolicy"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "liveliness_automatic",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "liveliness_manual",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "liveliness_lease",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "lease",
+       "type": "QoSDuration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "liveliness_lease_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "duration",
+       "type": "Duration"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    },
+    {
+     "name": "avoid_ros_namespace_conventions",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "PrimitiveOptions",
+     "template": []
+    }
+   ],
+   "name": "IntoPrimitiveOptions",
+   "qual": "rclrs::IntoPrimitiveOptions",
+   "template": []
+  },
+  {
+   "kind": "alias",
+   "name": "TopicNamesAndTypes",
+   "qual": "rclrs::TopicNamesAndTypes",
+   "type": "std::collections::HashMap<String, Vec<String>>"
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "NodeNameInfo",
+   "qual": "rclrs::NodeNameInfo",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "TopicEndpointInfo",
+   "qual": "rclrs::TopicEndpointInfo",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ParameterOptions",
+   "qual": "rclrs::ParameterOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "default",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "value",
+       "type": "T"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "ignore_override",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "discard_mismatching_prior_value",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "discriminate",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Self",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "range",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "range",
+       "type": "T::Range"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "description",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "description",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Self",
+     "template": [
+      "impl Into<Arc<str>>"
+     ]
+    },
+    {
+     "name": "constraints",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "constraints",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Self",
+     "template": [
+      "impl Into<Arc<str>>"
+     ]
+    },
+    {
+     "name": "mandatory",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<MandatoryParameter<T>, DeclarationError>",
+     "template": []
+    },
+    {
+     "name": "read_only",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<ReadOnlyParameter<T>, DeclarationError>",
+     "template": []
+    },
+    {
+     "name": "optional",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<OptionalParameter<T>, DeclarationError>",
+     "template": []
+    },
+    {
+     "name": "default_from_iter",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "default_value",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Self",
+     "template": [
+      "impl IntoIterator<Item = T>"
+     ]
+    },
+    {
+     "name": "default_string_array",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "default_value",
+       "type": "U"
+      }
+     ],
+     "ret": "Self",
+     "template": [
+      "U"
+     ]
+    }
+   ],
+   "name": "ParameterBuilder",
+   "qual": "rclrs::ParameterBuilder",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "AvailableValues",
+   "qual": "rclrs::AvailableValues",
+   "template": []
+  },
+  {
+   "kind": "function",
+   "name": "default_initial_value_discriminator",
+   "params": [
+    {
+     "default": false,
+     "name": "available",
+     "type": "AvailableValues<T>"
+    }
+   ],
+   "qual": "rclrs::default_initial_value_discriminator",
+   "ret": "Option<T>",
+   "template": [
+    "T"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "T",
+     "template": []
+    },
+    {
+     "name": "set",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "value",
+       "type": "U"
+      }
+     ],
+     "ret": "Result<(), ParameterValueError>",
+     "template": [
+      "U"
+     ]
+    }
+   ],
+   "name": "MandatoryParameter",
+   "qual": "rclrs::MandatoryParameter",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Option<T>",
+     "template": []
+    },
+    {
+     "name": "set",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "value",
+       "type": "U"
+      }
+     ],
+     "ret": "Result<(), ParameterValueError>",
+     "template": [
+      "U"
+     ]
+    },
+    {
+     "name": "unset",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "OptionalParameter",
+   "qual": "rclrs::OptionalParameter",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "T",
+     "template": []
+    }
+   ],
+   "name": "ReadOnlyParameter",
+   "qual": "rclrs::ReadOnlyParameter",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "get",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Option<T>",
+     "template": [
+      "T"
+     ]
+    },
+    {
+     "name": "set",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "name",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "value",
+       "type": "T"
+      }
+     ],
+     "ret": "Result<(), ParameterValueError>",
+     "template": [
+      "T",
+      "impl Into<Arc<str>>"
+     ]
+    }
+   ],
+   "name": "Parameters",
+   "qual": "rclrs::Parameters",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ParameterValueError",
+   "qual": "rclrs::ParameterValueError",
+   "template": [],
+   "values": [
+    "OutOfRange",
+    "TypeMismatch",
+    "ReadOnly"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "DeclarationError",
+   "qual": "rclrs::DeclarationError",
+   "template": [],
+   "values": [
+    "AlreadyDeclared",
+    "NoValueAvailable",
+    "OverrideValueTypeMismatch",
+    "PriorValueTypeMismatch",
+    "InitialValueOutOfRange",
+    "InvalidRange"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ParameterRanges",
+   "qual": "rclrs::ParameterRanges",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ParameterRange",
+   "qual": "rclrs::ParameterRange",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ParameterValue",
+   "qual": "rclrs::ParameterValue",
+   "template": [],
+   "values": [
+    "Bool",
+    "Integer",
+    "Double",
+    "String",
+    "ByteArray",
+    "BoolArray",
+    "IntegerArray",
+    "DoubleArray",
+    "StringArray"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ParameterKind",
+   "qual": "rclrs::ParameterKind",
+   "template": [],
+   "values": [
+    "Bool",
+    "Integer",
+    "Double",
+    "String",
+    "ByteArray",
+    "BoolArray",
+    "IntegerArray",
+    "DoubleArray",
+    "StringArray",
+    "Dynamic"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "kind",
+     "params": [],
+     "ret": "ParameterKind",
+     "template": []
+    }
+   ],
+   "name": "ParameterVariant",
+   "qual": "rclrs::ParameterVariant",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "RmwParameterConversionError",
+   "qual": "rclrs::RmwParameterConversionError",
+   "template": [],
+   "values": [
+    "InvalidParameterType"
+   ]
+  },
+  {
+   "kind": "alias",
+   "name": "Publisher",
+   "qual": "rclrs::Publisher",
+   "type": "std::sync::Arc<PublisherState<T>>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "topic_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "get_subscription_count",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<usize, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "notify_on_subscriber_ready",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Arc<PublisherState<T>>"
+      }
+     ],
+     "ret": "Promise<()>",
+     "template": []
+    },
+    {
+     "name": "publish",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "message",
+       "type": "M"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": [
+      "M"
+     ]
+    },
+    {
+     "name": "borrow_loaned_message",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<LoanedMessage<T>, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "can_loan_messages",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "bool",
+     "template": []
+    }
+   ],
+   "name": "PublisherState",
+   "qual": "rclrs::PublisherState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "PublisherOptions",
+   "qual": "rclrs::PublisherOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_cow",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Cow<T>",
+     "template": []
+    }
+   ],
+   "name": "MessageCow",
+   "qual": "rclrs::MessageCow",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "publish",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "LoanedMessage",
+   "qual": "rclrs::LoanedMessage",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "QoSHistoryPolicy",
+   "qual": "rclrs::QoSHistoryPolicy",
+   "template": [],
+   "values": [
+    "SystemDefault",
+    "KeepLast",
+    "KeepAll"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "QoSReliabilityPolicy",
+   "qual": "rclrs::QoSReliabilityPolicy",
+   "template": [],
+   "values": [
+    "SystemDefault",
+    "Reliable",
+    "BestEffort"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "QoSDurabilityPolicy",
+   "qual": "rclrs::QoSDurabilityPolicy",
+   "template": [],
+   "values": [
+    "SystemDefault",
+    "TransientLocal",
+    "Volatile"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "QoSLivelinessPolicy",
+   "qual": "rclrs::QoSLivelinessPolicy",
+   "template": [],
+   "values": [
+    "SystemDefault",
+    "Automatic",
+    "ManualByTopic"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "QoSDuration",
+   "qual": "rclrs::QoSDuration",
+   "template": [],
+   "values": [
+    "SystemDefault",
+    "Infinite",
+    "Custom"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "keep_last",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "depth",
+       "type": "u32"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "keep_all",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "reliable",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "best_effort",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "volatile",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "transient_local",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "deadline_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "deadline",
+       "type": "Duration"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "liveliness_lease_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "lease_duration",
+       "type": "Duration"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "lifespan_duration",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "lifespan",
+       "type": "Duration"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "topics_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "sensor_data_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "services_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "parameter_services_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "parameter_events_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "system_default",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "QoSProfile",
+   "qual": "rclrs::QoSProfile",
+   "template": []
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_SENSOR_DATA",
+   "qual": "rclrs::QOS_PROFILE_SENSOR_DATA"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_CLOCK",
+   "qual": "rclrs::QOS_PROFILE_CLOCK"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_PARAMETERS",
+   "qual": "rclrs::QOS_PROFILE_PARAMETERS"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_DEFAULT",
+   "qual": "rclrs::QOS_PROFILE_DEFAULT"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_SERVICES_DEFAULT",
+   "qual": "rclrs::QOS_PROFILE_SERVICES_DEFAULT"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_PARAMETER_EVENTS",
+   "qual": "rclrs::QOS_PROFILE_PARAMETER_EVENTS"
+  },
+  {
+   "kind": "const",
+   "name": "QOS_PROFILE_SYSTEM_DEFAULT",
+   "qual": "rclrs::QOS_PROFILE_SYSTEM_DEFAULT"
+  },
+  {
+   "kind": "alias",
+   "name": "Service",
+   "qual": "rclrs::Service",
+   "type": "std::sync::Arc<ServiceState<T, crate::Node>>"
+  },
+  {
+   "kind": "alias",
+   "name": "WorkerService",
+   "qual": "rclrs::WorkerService",
+   "type": "std::sync::Arc<ServiceState<T, crate::Worker<Payload>>>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "service_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "set_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoNodeServiceCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "set_async_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoAsyncServiceCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "set_worker_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoWorkerServiceCallback<T, Payload, Args>"
+     ]
+    }
+   ],
+   "name": "ServiceState",
+   "qual": "rclrs::ServiceState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "name",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "ServiceOptions",
+   "qual": "rclrs::ServiceOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ServiceHandle",
+   "qual": "rclrs::ServiceHandle",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "AnyServiceCallback",
+   "qual": "rclrs::AnyServiceCallback",
+   "template": [],
+   "values": [
+    "Node",
+    "Worker"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "NodeServiceCallback",
+   "qual": "rclrs::NodeServiceCallback",
+   "template": [],
+   "values": [
+    "OnlyRequest",
+    "WithId",
+    "WithInfo"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_async_service_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyServiceCallback<T, ()>",
+     "template": []
+    }
+   ],
+   "name": "IntoAsyncServiceCallback",
+   "qual": "rclrs::IntoAsyncServiceCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_node_service_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyServiceCallback<T, ()>",
+     "template": []
+    }
+   ],
+   "name": "IntoNodeServiceCallback",
+   "qual": "rclrs::IntoNodeServiceCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_worker_service_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnyServiceCallback<T, Payload>",
+     "template": []
+    }
+   ],
+   "name": "IntoWorkerServiceCallback",
+   "qual": "rclrs::IntoWorkerServiceCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ServiceInfo",
+   "qual": "rclrs::ServiceInfo",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "RequestId",
+   "qual": "rclrs::RequestId",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "WorkerServiceCallback",
+   "qual": "rclrs::WorkerServiceCallback",
+   "template": [],
+   "values": [
+    "OnlyRequest",
+    "WithId",
+    "WithInfo"
+   ]
+  },
+  {
+   "kind": "alias",
+   "name": "Subscription",
+   "qual": "rclrs::Subscription",
+   "type": "std::sync::Arc<SubscriptionState<T, crate::Node>>"
+  },
+  {
+   "kind": "alias",
+   "name": "WorkerSubscription",
+   "qual": "rclrs::WorkerSubscription",
+   "type": "std::sync::Arc<SubscriptionState<T, crate::Worker<Payload>>>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "topic_name",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "String",
+     "template": []
+    },
+    {
+     "name": "set_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoNodeSubscriptionCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "set_async_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoAsyncSubscriptionCallback<T, Args>"
+     ]
+    },
+    {
+     "name": "set_worker_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "Args",
+      "impl IntoWorkerSubscriptionCallback<T, Payload, Args>"
+     ]
+    }
+   ],
+   "name": "SubscriptionState",
+   "qual": "rclrs::SubscriptionState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "topic",
+       "type": "&str"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "SubscriptionOptions",
+   "qual": "rclrs::SubscriptionOptions",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "AnySubscriptionCallback",
+   "qual": "rclrs::AnySubscriptionCallback",
+   "template": [],
+   "values": [
+    "Node",
+    "Worker"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "NodeSubscriptionCallback",
+   "qual": "rclrs::NodeSubscriptionCallback",
+   "template": [],
+   "values": [
+    "Regular",
+    "RegularWithMessageInfo",
+    "Boxed",
+    "BoxedWithMessageInfo",
+    "Loaned",
+    "LoanedWithMessageInfo"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_async_subscription_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnySubscriptionCallback<T, ()>",
+     "template": []
+    }
+   ],
+   "name": "IntoAsyncSubscriptionCallback",
+   "qual": "rclrs::IntoAsyncSubscriptionCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_node_subscription_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnySubscriptionCallback<T, ()>",
+     "template": []
+    }
+   ],
+   "name": "IntoNodeSubscriptionCallback",
+   "qual": "rclrs::IntoNodeSubscriptionCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "into_worker_subscription_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      }
+     ],
+     "ret": "AnySubscriptionCallback<T, Payload>",
+     "template": []
+    }
+   ],
+   "name": "IntoWorkerSubscriptionCallback",
+   "qual": "rclrs::IntoWorkerSubscriptionCallback",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "PublisherGid",
+   "qual": "rclrs::PublisherGid",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "MessageInfo",
+   "qual": "rclrs::MessageInfo",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "ReadOnlyLoanedMessage",
+   "qual": "rclrs::ReadOnlyLoanedMessage",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "WorkerSubscriptionCallback",
+   "qual": "rclrs::WorkerSubscriptionCallback",
+   "template": [],
+   "values": [
+    "Regular",
+    "RegularWithMessageInfo",
+    "Boxed",
+    "BoxedWithMessageInfo",
+    "Loaned",
+    "LoanedWithMessageInfo"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "compare_with",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "rhs",
+       "type": "&Time"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Option<U>",
+     "template": [
+      "U",
+      "F"
+     ]
+    },
+    {
+     "name": "to_ros_msg",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<builtin_interfaces::msg::Time, TryFromIntError>",
+     "template": []
+    }
+   ],
+   "name": "Time",
+   "qual": "rclrs::Time",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "context",
+       "type": "&Context"
+      }
+     ],
+     "ret": "Result<Self, RclrsError>",
+     "template": []
+    },
+    {
+     "name": "add",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "entities",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": [
+      "impl IntoIterator<Item = Waitable>"
+     ]
+    },
+    {
+     "name": "clear",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    },
+    {
+     "name": "wait",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "timeout",
+       "type": "Option<Duration>"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": [
+      "impl FnMut(&mut dyn RclPrimitive) -> Result<(), RclrsError>"
+     ]
+    },
+    {
+     "name": "count",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "WaitableCount",
+     "template": []
+    }
+   ],
+   "name": "WaitSet",
+   "qual": "rclrs::WaitSet",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "trigger",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "GuardCondition",
+   "qual": "rclrs::GuardCondition",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [
+    {
+     "name": "owned",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Option<&rcl_guard_condition_s>",
+     "template": []
+    },
+    {
+     "name": "owned_mut",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      }
+     ],
+     "ret": "Option<&mut rcl_guard_condition_s>",
+     "template": []
+    },
+    {
+     "name": "use_handle",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Out",
+     "template": [
+      "Out",
+      "impl FnOnce(&rcl_guard_condition_t) -> Out"
+     ]
+    }
+   ],
+   "name": "InnerGuardConditionHandle",
+   "qual": "rclrs::InnerGuardConditionHandle",
+   "template": [],
+   "values": [
+    "Owned",
+    "Unowned"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "execute",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "payload",
+       "type": "&mut dyn ?"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    },
+    {
+     "name": "kind",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "RclPrimitiveKind",
+     "template": []
+    },
+    {
+     "name": "handle",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "RclPrimitiveHandle",
+     "template": []
+    }
+   ],
+   "name": "RclPrimitive",
+   "qual": "rclrs::RclPrimitive",
+   "template": []
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "RclPrimitiveKind",
+   "qual": "rclrs::RclPrimitiveKind",
+   "template": [],
+   "values": [
+    "Subscription",
+    "GuardCondition",
+    "Timer",
+    "Client",
+    "Service",
+    "Event"
+   ]
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "RclPrimitiveHandle",
+   "qual": "rclrs::RclPrimitiveHandle",
+   "template": [],
+   "values": [
+    "Subscription",
+    "GuardCondition",
+    "Timer",
+    "Client",
+    "Service",
+    "Event"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "primitive",
+       "type": "Box<dyn ?>"
+      },
+      {
+       "default": false,
+       "name": "guard_condition",
+       "type": "Option<Arc<GuardCondition>>"
+      }
+     ],
+     "ret": "(Self, WaitableLifecycle)",
+     "template": []
+    }
+   ],
+   "name": "Waitable",
+   "qual": "rclrs::Waitable",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "WaitableLifecycle",
+   "qual": "rclrs::WaitableLifecycle",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "WaitableCount",
+   "qual": "rclrs::WaitableCount",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "worker_options",
+       "type": "ExecutorWorkerOptions"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    },
+    {
+     "name": "waitable_sender",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "UnboundedSender<Waitable>",
+     "template": []
+    },
+    {
+     "name": "payload_task_sender",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "UnboundedSender<PayloadTask>",
+     "template": []
+    },
+    {
+     "name": "activity_listeners",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "Arc<Mutex<Vec<WeakActivityListener>>>",
+     "template": []
+    },
+    {
+     "name": "guard_condition",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "&Arc<GuardCondition>",
+     "template": []
+    },
+    {
+     "name": "run",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "Self"
+      },
+      {
+       "default": false,
+       "name": "conditions",
+       "type": "WaitSetRunConditions"
+      }
+     ],
+     "ret": "Promise<(Self, Result<(), RclrsError>)>",
+     "template": []
+    },
+    {
+     "name": "run_blocking",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&mut Self"
+      },
+      {
+       "default": false,
+       "name": "conditions",
+       "type": "WaitSetRunConditions"
+      }
+     ],
+     "ret": "Result<(), RclrsError>",
+     "template": []
+    }
+   ],
+   "name": "WaitSetRunner",
+   "qual": "rclrs::WaitSetRunner",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "WaitSetRunConditions",
+   "qual": "rclrs::WaitSetRunConditions",
+   "template": []
+  },
+  {
+   "kind": "alias",
+   "name": "Worker",
+   "qual": "rclrs::Worker",
+   "type": "std::sync::Arc<WorkerState<Payload>>"
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "run",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Promise<Out>",
+     "template": [
+      "Out",
+      "F"
+     ]
+    },
+    {
+     "name": "run_with_notice",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "(Promise<Out>, Promise<()>)",
+     "template": [
+      "Out",
+      "F"
+     ]
+    },
+    {
+     "name": "listen",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "ActivityListener<Payload>",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "listen_until",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "Promise<Out>",
+     "template": [
+      "Out",
+      "F"
+     ]
+    },
+    {
+     "name": "create_subscription",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<WorkerSubscription<T, Payload>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<SubscriptionOptions<'a>>",
+      "impl IntoWorkerSubscriptionCallback<T, Payload, Args>"
+     ]
+    },
+    {
+     "name": "create_service",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "options",
+       "type": "impl ?"
+      },
+      {
+       "default": false,
+       "name": "callback",
+       "type": "impl ?"
+      }
+     ],
+     "ret": "Result<WorkerService<T, Payload>, RclrsError>",
+     "template": [
+      "T",
+      "Args",
+      "impl Into<ServiceOptions<'a>>",
+      "impl IntoWorkerServiceCallback<T, Payload, Args>"
+     ]
+    }
+   ],
+   "name": "WorkerState",
+   "qual": "rclrs::WorkerState",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "new",
+     "params": [
+      {
+       "default": false,
+       "name": "payload",
+       "type": "Payload"
+      }
+     ],
+     "ret": "Self",
+     "template": []
+    }
+   ],
+   "name": "WorkerOptions",
+   "qual": "rclrs::WorkerOptions",
+   "template": []
+  },
+  {
+   "kind": "type",
+   "members": [
+    {
+     "name": "set_callback",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      },
+      {
+       "default": false,
+       "name": "f",
+       "type": "F"
+      }
+     ],
+     "ret": "",
+     "template": [
+      "F"
+     ]
+    },
+    {
+     "name": "set_inert",
+     "params": [
+      {
+       "default": false,
+       "name": "self",
+       "type": "&Self"
+      }
+     ],
+     "ret": "",
+     "template": []
+    }
+   ],
+   "name": "ActivityListener",
+   "qual": "rclrs::ActivityListener",
+   "template": []
+  },
+  {
+   "kind": "alias",
+   "name": "WeakActivityListener",
+   "qual": "rclrs::WeakActivityListener",
+   "type": "std::sync::Weak<std::sync::Mutex<Option<ActivityListenerCallback>>>"
+  },
+  {
+   "kind": "enum",
+   "members": [],
+   "name": "ActivityListenerCallback",
+   "qual": "rclrs::ActivityListenerCallback",
+   "template": [],
+   "values": [
+    "Listen",
+    "Inert"
+   ]
+  },
+  {
+   "kind": "type",
+   "members": [],
+   "name": "WorkScope",
+   "qual": "rclrs::WorkScope",
+   "template": []
+  }
+ ]
+}

@@ -3,8 +3,8 @@ rfc: 0036
 title: "Divergences from the ROS 2 standard client APIs (rclrs / rclcpp / rclc)"
 status: Draft
 since: 2026-06
-last-reviewed: 2026-06
-implements-tracked-by: []
+last-reviewed: 2026-08
+implements-tracked-by: [phase-379]
 supersedes: []
 superseded-by: null
 ---
@@ -91,6 +91,36 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 - **No parameter callbacks**; parameters are read/write only.
 - **No lifecycle-node graph** — a simplified state model for embedded executors.
 
+## This catalog is now checked, not only written
+
+`scripts/api-parity.py` (phase-379) extracts both surfaces from their real
+sources — clang JSON AST for the C and C++ headers, rustdoc JSON for the Rust
+crates — correlates them by normalised name, and reports every item that does
+not correspond. `just api-parity` runs it; `docs/reference/api-surface/*.json`
+holds the recorded ROS 2 side so it runs on a host with no ROS install.
+
+The reason is this RFC's own history. It shipped calling the Rust error
+`RclrsError` when the type had been `NanoRosError` for months, and had to add a
+note correcting itself. Issue 0338 is the same failure one level down:
+`Executor::spin` meant the OPPOSITE of `rclcpp::Executor::spin` here, and a
+person reading found it, once. A catalog of API divergences that only a reader
+can check will drift, because the API moves and the prose does not.
+
+Each divergence below is therefore expected to have a row in
+`docs/reference/api-parity-ledger.json` naming the platform constraint that
+justifies it. The ledger's verdicts are deliberately narrow — `divergence`
+requires naming a constraint (`no_std`, no exceptions, no allocator, no runtime
+env, single-threaded transport), so "we preferred it this way" cannot be
+recorded as one.
+
+**The first run also corrected the reading of where we stand.** Against rclcpp
+there are ZERO argument divergences among shared names; what differs is
+coverage. Against rclc+rcl there are 32 argument divergences, none of which had
+ever been argued in writing. Against rclrs the `nros` facade exports 709 items
+rclrs has no equivalent for. Phase 379 W2–W5 classify and settle these; until
+then this RFC's catalog is accurate about the divergences it lists and silent
+about a much larger set it never enumerated.
+
 ## Alternatives considered
 
 - **Keep divergences in per-RFC notes only.** Rejected — no single porting
@@ -105,9 +135,17 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
    here; put runnable side-by-sides in `book/`.
 2. Track convergence opportunities (e.g. a hosted-only `std`-backed mode closer
    to rclrs)? Proposed: out of scope; note if it arises.
+3. **Which rclrs do we mirror?** This RFC says 0.7.0; the correlator's recorded
+   surface is 0.5.1, which is the version reachable here. They differ in the
+   `Node = Arc<NodeState>` split, so the answer changes what "matching rclrs"
+   means. Phase 379 W5 decides and records it.
 
 ## Changelog
 
+- 2026-08 — the catalog gained a checker (`scripts/api-parity.py`, phase-379)
+  and a ledger (`docs/reference/api-parity-ledger.json`). Recorded the first
+  run's finding that the C++ lane has no argument divergences at all, the C lane
+  has 32, and the Rust facade over-exports; opened the rclrs-version question.
 - 2026-06 — created (Draft). Consolidated the type/error/domain-id/naming/
   execution/omitted-surface divergences from RFC-0018/0021/0022/0002 + code;
   noted the stale `RclrsError` → actual `NanoRosError` naming.

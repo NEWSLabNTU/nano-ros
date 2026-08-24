@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-api-parity-ledger check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3753,6 +3753,45 @@ check-rmw-slot-producers:
 check-zenohd-router-skips:
     @python3 scripts/check-zenohd-router-skips.py --self-test
     @python3 scripts/check-zenohd-router-skips.py
+
+# Phase 379 — the user API against the ROS 2 client library it mirrors. This is
+# the LEDGER gate, not the parity gate: it checks that every ledger row names a
+# verdict the tool knows and gives a reason, and that the correlator's own
+# matching rules still hold (a defaulted parameter must not read as a
+# divergence -- that bug reported all 11 of the C++ lane's first "findings").
+#
+# Buildless: no clang, no ROS, no nightly. The full comparison needs all three,
+# so it is `just api-parity`, not a gate. `--check` joins this recipe in W2,
+# once the ledger classifies the ~2000 rows the first report found; wiring a
+# gate that fails on all of them today is how a gate gets switched off.
+#
+# Check the API-parity ledger and the correlator's matching rules.
+[group("check")]
+check-api-parity-ledger:
+    @python3 scripts/api-parity.py --self-test
+
+# Phase 379 — report how the C / C++ / Rust user API differs from rclc / rclcpp
+# / rclrs. Needs clang and the recorded ROS 2 surfaces under
+# docs/reference/api-surface/ (committed, so no ROS install is required); the
+# Rust lane also needs the nightly toolchain for rustdoc JSON.
+#
+#   just api-parity              # all three languages
+#   just api-parity cpp          # one
+#
+# Re-derive the ROS 2 side after a distro or upstream bump:
+#   scripts/api-parity.py --refresh --rclc <ros2/rclc checkout> \
+#                                   --rclrs <ros2_rust/rclrs crate dir>
+#
+# Report the user API against rclc / rclcpp / rclrs.
+[group("check")]
+api-parity lang="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{ lang }}" ]; then
+        python3 scripts/api-parity.py --lang "{{ lang }}"
+    else
+        python3 scripts/api-parity.py
+    fi
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and
