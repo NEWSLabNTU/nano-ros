@@ -94,3 +94,53 @@ arithmetic bug does.
 * Consider a debug-build assertion in the vtable assembly that the
   positional initializer's comment names match the header's field order
   — the class this whole surface is exposed to.
+
+## Evidence 2026-08-24 — the length is REAL, so the vtable suspicion does not hold
+
+Measured, not reasoned:
+
+* **Raising `CANCEL_BUF` 256 -> 1024 makes `test_native_cyclonedds_rust_action`
+  pass END TO END in 4.9 s.** A misaligned positional slot would have produced a
+  valid slice over GARBAGE — the action would not have completed. So the take
+  returns a real 1005-byte payload, and the "nonsense length" reading is out.
+* **`CANCEL_BUF` is the outlier, not the norm.** `GOAL_BUF`, `RESULT_BUF` and
+  `FEEDBACK_BUF` all derive from `DEFAULT_RX_BUF_SIZE` (1024); cancel alone was a
+  hardcoded 256. 1005 fits 1024 and not 256, which is exactly why only the cancel
+  path crashed.
+* **Nothing is being stolen.** With the larger buffer the CLIENT still receives
+  its result, so the cancel reader is getting a COPY of a message rather than
+  consuming one the client needed. In DDS that means a reader matched to a topic
+  it should not be matched to.
+
+Ruled out by reading, so the next person need not repeat it:
+
+* Service topic naming (`service_topic_name`, `service.cpp:237`) builds
+  `rq/<service>Request` / `rr/<service>Reply`; `cancel_goal` and `get_result`
+  cannot collide by name.
+* The action keys are distinct (`cancel_goal_key` / `get_result_key`,
+  `nros-rmw/src/traits.rs:158-166`).
+* `cancel_buffer` has exactly ONE take site
+  (`action_core.rs:529`, `try_recv_cancel_request`), so the 256-byte slice in
+  the panic is unambiguously the cancel path.
+
+**Still unexplained, and it is the actual defect:** why a *cancel* request take
+yields ~1005 bytes at all. `CancelGoal_Request` is a goal UUID and a stamp. The
+next step is runtime observation — dump the first bytes and the matched topic at
+the take when `out_len > buf.len()` — not more reading; the static explanations
+are exhausted.
+
+**Do not fix this by enlarging the buffer alone.** `ActionServerCore` crosses the
+C ABI as a probe-sized `_opaque` array, so +768 bytes lands in every C/C++ image
+that instantiates an action server (`ACTION_SERVER_OPAQUE_U64S` catches it at
+compile time — issue 0472's mirror class). That footprint is only justified once
+the 1005 is explained.
+
+**Adjacent finding:** `CANCEL_BUF` governs only the struct field. Four
+constructors spell `[0u8; 256]` as a literal (`action.rs:279,693`,
+`node.rs:792,1081`), so the constant never actually sized the buffer — changing
+it alone is a type error, and a literal that happened to match would be a silent
+no-op.
+
+The shim half of this issue's Direction landed in `b58eb11e0`: `checked_take_len`
+rejects `out_len > buf.len()` at all three copying-take sites, so the six cells
+now fail at their own assertions instead of killing the server process.
