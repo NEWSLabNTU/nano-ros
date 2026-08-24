@@ -613,8 +613,12 @@ fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
     }
 }
 
-/// Register + spin one tier on a freshly-opened borrowed-session
-/// executor (spawned-tier path).
+// NOTE: this text describes a different function and is preserved verbatim,
+// only demoted from `///` to `//`. A doc comment cannot attach to an `extern`
+// block, so under the lane's `-D warnings` it was a hard `unused_doc_comments`
+// error; whoever owns issue 0765 should say what it meant to say.
+// Register + spin one tier on a freshly-opened borrowed-session
+// executor (spawned-tier path).
 // RFC-0079 / issue 0765 — see `apply_tier_priority` below.
 #[cfg(unix)]
 unsafe extern "C" {
