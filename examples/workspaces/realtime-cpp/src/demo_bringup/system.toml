@@ -46,7 +46,13 @@ priority = 80
 # Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the codegen onto
 # ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
 [tiers.high.zephyr]
-priority = 5
+# RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
+# than the transport band. Zephyr's band is not a literal: the zenoh read/lease
+# tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
+# k_thread priority that depends on the IMAGE (7, with pool [8, 14], for the
+# realtime entries' .config). 5 outranked it, undeclared. Resolve for any image:
+#   python3 scripts/check-tier-priority-plan-image.py <build>/zephyr/.config
+priority = 9
 # ZEPHYR-SCOPED: kernel EDF here, lowers to None (Fifo) elsewhere.
 deadline_us = 10000
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher

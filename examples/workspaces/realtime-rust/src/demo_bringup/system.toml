@@ -50,7 +50,13 @@ core = 0
 # phase-276 W2 / issue #128 half 2 — RAW Zephyr priority (preemptive; lower
 # number = higher priority). Consumed by the zephyr_entry projection.
 [tiers.high.zephyr]
-priority = 5
+# RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
+# than the transport band. Zephyr's band is not a literal: the zenoh read/lease
+# tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
+# k_thread priority that depends on the IMAGE (7, with pool [8, 14], for the
+# realtime entries' .config). 5 outranked it, undeclared. Resolve for any image:
+#   python3 scripts/check-tier-priority-plan-image.py <build>/zephyr/.config
+priority = 9
 # issue 0655 — the zephyr `core` lives on THIS tier, not on `low`, because
 # `high` is SPAWNED. Zephyr accepts a cpu mask only on a thread that has not
 # started, so the board pins a spawned tier in its `k_thread_create` ->

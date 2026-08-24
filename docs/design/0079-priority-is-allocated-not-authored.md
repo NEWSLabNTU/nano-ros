@@ -331,12 +331,35 @@ which nano-ros does not use.
 `scripts/dev/priority-collision-report.py` evaluates all 38 pins against the
 system bands that can be CITED from code today. **Four of 38 are clean.**
 
-| verdict | at first run | with plans + `above` |
+| verdict | at first run | now |
 | --- | --- | --- |
-| `UNPLANNED` — the port declares no band at all | 21 | **19** |
+| `UNPLANNED` — the port declares no band at all | 21 | **11** (posix only) |
 | `PREEMPTS` — more urgent than a system band | 8 | **0** |
 | `COLLIDES` — lands exactly ON one | 4 | **0** |
-| below bands — correct by the plan | 5 | **19** |
+| below bands — correct by the plan | 5 | **27** |
+
+Four of five ports are allocated and enforced:
+
+| port | plan | pins | reserved | pool |
+| --- | --- | --- | --- | --- |
+| FreeRTOS | static | 9 | `transport 4..4` | `1..3` |
+| NuttX | static | 8 | `transport 100..100` (INHERITED) | `1..99` |
+| ThreadX | static | 2 | `transport 14..14` | `15..31` |
+| Zephyr | DERIVED (§4.1) | 8 | resolved per image — `7..7` here | `8..14` |
+| POSIX | none — issue 0765 | 11 | priorities reach no kernel | — |
+
+Zephyr's four `tiers.high.zephyr = 5` violations are closed: moved to 9, inside
+the resolved pool and below the transport, in all four bringups.
+`check-tier-priority-plan-image` reports 8 of 8 clean against the realtime
+image's own `.config`.
+
+Measured with every realtime fixture rebuilt — the fullest coverage this work
+has had: **`realtime_tiers` 17 rows ran, 4 skipped, 1 failed.** The three Zephyr
+rows (rust, c, cpp) all pass, as do all three FreeRTOS, NuttX-arm c and cpp,
+ThreadX and the three native rows. The four skips want tooling this host lacks
+(`native/cpp-rclcpp` needs ROS, `nuttx-riscv/*` need `qemu-system-riscv32`); the
+one failure is issue 0736's `nuttx-arm/rust`, which is unrelated to allocation
+and known flaky.
 
 **Both defect columns are closed on the two ports that can describe
 themselves.** FreeRTOS and NuttX declare `[board.priority_plan]`;
