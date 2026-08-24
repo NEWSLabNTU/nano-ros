@@ -138,9 +138,16 @@ def normalize(lang, side, qual, kind):
         if m and m.group(1):
             owner = m.group(1)
         owner = TYPE_SYNONYMS["rust"].get(owner, owner)
-        tail_syn = TYPE_SYNONYMS["rust"].get(tail)
-        if tail_syn and kind in ("type", "enum", "alias"):
-            tail = tail_syn
+        # The TYPE itself must fold too, exactly as the C++ `*Base` case does:
+        # `flatten` builds member keys from the type key, so folding only the
+        # method owner leaves `rclrs::PublisherState`'s members keyed under
+        # `PublisherState::` and they never meet ours. Missing this understated
+        # `same` across the whole Rust lane.
+        if kind in ("type", "enum", "alias"):
+            m = _RCLRS_STATE.match(tail)
+            if m and m.group(1):
+                tail = m.group(1)
+            tail = TYPE_SYNONYMS["rust"].get(tail, tail)
 
     if kind in ("type", "enum", "alias", "const", "macro"):
         # A type's identity is its own name; its module path is not part of the

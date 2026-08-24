@@ -1,0 +1,1186 @@
+{
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:borrow_loaned_message": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:client_try_recv_reply_raw": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "c:client_try_recv_response": {
+    "verdict": "extension",
+    "why": "the service-client half of `try_recv`; recorded here because the topic patterns file `try_recv` under pubsub. See the service stage for the client model."
+  },
+  "c:event_publisher_count_cb_t": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same. This one reports matched-subscription count changes, which rclcpp answers by POLLING `get_subscription_count` -- see that row."
+  },
+  "c:executor_add_subscription_in_group": {
+    "verdict": "extension",
+    "why": "adds a subscription to a named callback group, which rclc has no concept of (rclcpp does -- see `cpp:Node::create_callback_group` in the exec stage). Needed because RFC-0002 maps groups onto RTOS priority tiers."
+  },
+  "c:executor_add_subscription_raw_with_info": {
+    "verdict": "extension",
+    "why": "the raw + message-info form; see `c:publish_raw` and `rust:RawMessageInfo`."
+  },
+  "c:get_zero_initialized_publisher": {
+    "verdict": "declined",
+    "why": "rcl's free-function spelling; ours is `nros_publisher_get_zero_initialized`, a method-style name on the type. See `c:get_zero_initialized_node`."
+  },
+  "c:get_zero_initialized_subscription": {
+    "verdict": "declined",
+    "why": "see `c:get_zero_initialized_publisher`."
+  },
+  "c:get_zero_initialized_subscription_content_filter_options": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:message_type_t": {
+    "verdict": "divergence",
+    "why": "the typesupport handle a publisher or subscription is created with. rosidl's `rosidl_message_type_support_t` carries function pointers into generated code plus an identifier used to pick a middleware-specific implementation at RUNTIME; ours names the one linked backend's descriptor, because an image has exactly one."
+  },
+  "c:publish": {
+    "verdict": "rename",
+    "why": "rcl's free function `rcl_publish(publisher, msg, allocation)`; ours is the method-style `nros_publisher_publish`. The WORD matches; the spelling is ours to align, and it is the same shape as `c:get_zero_initialized_publisher`."
+  },
+  "c:publish_loaned_message": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:publish_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "c:publish_serialized_message": {
+    "verdict": "rename",
+    "why": "see `c:take_serialized_message`; ours is `nros_publisher_publish_raw`."
+  },
+  "c:publisher_can_loan_messages": {
+    "verdict": "gap",
+    "why": "asks whether the middleware supports loaning, so a caller can pick the zero-copy path at runtime. Ours is a compile-time property of the backend and nothing exposes it, so portable code cannot branch on it. Phase 379 W3."
+  },
+  "c:publisher_commit": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:publisher_discard": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`. `discard` has no rcl counterpart at all: rcl returns a loan the same way whether it was published or abandoned, and ours separates them so an abandoned loan cannot be mistaken for a send."
+  },
+  "c:publisher_get_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "c:publisher_get_context": {
+    "verdict": "declined",
+    "why": "reaches the context a publisher was created on. There is no separate context object -- see the init stage's `c:context_*`."
+  },
+  "c:publisher_get_options": {
+    "verdict": "declined",
+    "why": "reads back the options struct a publisher was created with; there is no options struct (`compile-time-options` rule)."
+  },
+  "c:publisher_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+  },
+  "c:publisher_get_subscription_count": {
+    "verdict": "gap",
+    "why": "how many subscriptions are matched, RIGHT NOW. We notify on change (`nros_event_publisher_count_cb_t` + `nros_count_status_t`) and never let a caller ask, so code that wants to skip work when nobody is listening has to keep its own mirror of the callback's last value. Both forms are useful and rclcpp ships both. Phase 379 W3."
+  },
+  "c:publisher_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "rcl's zero-init idiom under our naming; see `c:node_get_zero_initialized`."
+  },
+  "c:publisher_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl. Our handles carry their state inline because there is no allocator to put it behind a pointer; see the init stage's `c:context_*`."
+  },
+  "c:publisher_init_best_effort": {
+    "verdict": "divergence",
+    "why": "rclc ships a named entry point per QoS preset (`_default`, `_best_effort`). Ours takes a QoS value (`nros_publisher_init_with_qos`) because the presets are a `nros_qos_t` a caller can also build, and a named function per preset does not scale past the two rclc chose."
+  },
+  "c:publisher_init_default": {
+    "verdict": "declined",
+    "why": "rclc's convenience wrapper: publisher with the default QoS. `nros_publisher_init` takes no QoS and IS the default form; `nros_publisher_init_with_qos` is the explicit one."
+  },
+  "c:publisher_init_with_options": {
+    "verdict": "extension",
+    "why": "our own options-taking entry point, carrying what a device varies per publisher (RMW selection, scheduling context) where rcl would use `rcl_publisher_options_t`. Named parameters on an explicit entry point rather than a struct nobody can allocate; see `c:node_init_ex`."
+  },
+  "c:publisher_init_with_qos": {
+    "verdict": "extension",
+    "why": "the QoS-taking form that replaces rclc's per-preset entry points; see `c:publisher_init_best_effort`."
+  },
+  "c:publisher_is_valid_except_context": {
+    "verdict": "declined",
+    "why": "checks a publisher whose context has already been finalised -- a teardown-ordering hazard from rcl's separately-owned context. Not reachable here; see `c:node_is_valid_except_context`."
+  },
+  "c:publisher_loan": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:publisher_publish_streamed": {
+    "verdict": "extension",
+    "why": "publishes a message larger than the transport MTU by streaming it in fragments (phase-40). rcl assumes the middleware fragments; zenoh-pico and XRCE on a constrained link do not, so the API has to."
+  },
+  "c:publisher_set_liveliness_lost_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:publisher_set_offered_deadline_missed_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:publisher_state_t": {
+    "verdict": "extension",
+    "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined; see `c:node_state_t`."
+  },
+  "c:publisher_wait_for_all_acked": {
+    "verdict": "declined",
+    "why": "blocks until every matched reliable subscription has acknowledged everything sent. Needs per-sample ack tracking the backends do not expose uniformly, and a blocking call that cannot bound its wait is the shape RFC-0021 exists to prevent."
+  },
+  "c:return_loaned_message_from_publisher": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:return_loaned_message_from_subscription": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:service_try_recv_request_raw": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "c:subscription_borrow": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:subscription_callback_t": {
+    "verdict": "divergence",
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the subscription rather than to the executor's add call. rclc's counterpart is `rclc_subscription_callback_t`, passed to `rclc_executor_add_subscription` -- the `executor-owns-no-entity-storage` rule, seen as a type."
+  },
+  "c:subscription_can_loan_messages": {
+    "verdict": "gap",
+    "why": "see `c:publisher_can_loan_messages`."
+  },
+  "c:subscription_content_filter_options_fini": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_content_filter_options_init": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_content_filter_options_set": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_content_filter_options_t": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_get_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "c:subscription_get_content_filter": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_get_options": {
+    "verdict": "declined",
+    "why": "see `c:publisher_get_options`."
+  },
+  "c:subscription_get_publisher_count": {
+    "verdict": "gap",
+    "why": "see `c:publisher_get_subscription_count`."
+  },
+  "c:subscription_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+  },
+  "c:subscription_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "see `c:publisher_get_zero_initialized`."
+  },
+  "c:subscription_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl. Our handles carry their state inline because there is no allocator to put it behind a pointer; see the init stage's `c:context_*`."
+  },
+  "c:subscription_info_callback_t": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:subscription_init_best_effort": {
+    "verdict": "divergence",
+    "why": "see `c:publisher_init_best_effort`."
+  },
+  "c:subscription_init_default": {
+    "verdict": "declined",
+    "why": "see `c:publisher_init_default`."
+  },
+  "c:subscription_init_polling": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch."
+  },
+  "c:subscription_init_polling_with_qos": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch."
+  },
+  "c:subscription_init_with_options": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_options`."
+  },
+  "c:subscription_init_with_qos": {
+    "verdict": "extension",
+    "why": "see `c:publisher_init_with_qos`."
+  },
+  "c:subscription_is_cft_enabled": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_options_fini": {
+    "verdict": "declined",
+    "why": "see `c:publisher_get_options`."
+  },
+  "c:subscription_options_set_content_filter_options": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_release": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:subscription_set_content_filter": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "c:subscription_set_liveliness_changed_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:subscription_set_message_lost_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:subscription_set_on_new_message_callback": {
+    "verdict": "divergence",
+    "why": "rcl lets a caller install a notify-on-arrival hook AFTER creation, so an executor can attach itself to an existing subscription. Ours is bound at creation and cannot be swapped; the notify half is `nros_subscription_set_wake_callback`."
+  },
+  "c:subscription_set_requested_deadline_missed_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "c:subscription_set_wake_callback": {
+    "verdict": "extension",
+    "why": "the platform wake primitive fired when data arrives, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is `rcl_subscription_set_on_new_message_callback`, which notifies a wait set we do not have."
+  },
+  "c:subscription_state_t": {
+    "verdict": "extension",
+    "why": "see `c:publisher_state_t`."
+  },
+  "c:subscription_try_recv_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "c:subscription_try_recv_sequence": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+  },
+  "c:subscription_try_recv_validated": {
+    "verdict": "extension",
+    "why": "receive WITH the end-to-end integrity verdict attached (`nros_integrity_status_t`: sequence gap, duplicate, CRC valid/mismatch/absent). RFC-0028. ROS 2 has no counterpart because a desktop DDS link is not treated as a safety channel."
+  },
+  "c:take": {
+    "verdict": "rename",
+    "why": "rcl, rclcpp and rclrs all spell the non-blocking receive `take`; we spell it `try_recv`. Both are non-blocking and both report emptiness without failing, so nothing about an RTOS asks for the other word -- and `try_recv` is Rust channel vocabulary that reads as a different contract to a ROS 2 user. Covers `nros_subscription_try_recv{,_raw,_sequence,_validated}` and the C++/Rust spellings. Phase 379 W5."
+  },
+  "c:take_loaned_message": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "c:take_sequence": {
+    "verdict": "rename",
+    "why": "batch receive; ours is `nros_subscription_try_recv_sequence`. Same word as `c:take`."
+  },
+  "c:take_serialized_message": {
+    "verdict": "rename",
+    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; we say RAW (`publish_raw`, `try_recv_raw`, `nros_cpp_publisher_publish_raw`). One word, used consistently on both sides, and ours is the one that has to move. Phase 379 W5."
+  },
+  "cpp:CallbackGroup::find_subscription_ptrs_if": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Client::get_number_of_ready_subscriptions": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Client::get_request_publisher_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Client::get_response_subscription_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Client::take_data": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Client::take_data_by_entity_id": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:ContentFilterOptions": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:GenericPublisher": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:GenericSubscription": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:LifecycleNode::create_generic_publisher": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:LifecycleNode::create_generic_subscription": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:LifecycleNode::create_publisher": {
+    "verdict": "gap",
+    "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::create_subscription": {
+    "verdict": "gap",
+    "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
+  },
+  "cpp:LifecycleNode::get_publishers_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:LifecycleNode::get_subscriptions_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:LifecyclePublisher": {
+    "verdict": "gap",
+    "why": "a publisher whose sends are dropped while the node is inactive, so a lifecycle node cannot emit before `on_activate`. We have lifecycle state (see the lifecycle stage) and no entity that observes it -- a deactivated node's publishers keep publishing. Phase 379 W3."
+  },
+  "cpp:LoanedMessage": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`. Ours is `Publisher::Loan`, nested in the publisher rather than free-standing."
+  },
+  "cpp:MessageInfo": {
+    "verdict": "divergence",
+    "why": "both sides carry per-message metadata; rclcpp wraps `rmw_message_info_t` and exposes it whole (`get_rmw_message_info`), ours is a flat struct of the fields the backends actually populate (source/received timestamps, sequence numbers, publisher GID) because `rmw_message_info_t` is a DDS-shaped type two of three backends would fill with zeroes."
+  },
+  "cpp:Node::create_generic_publisher": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:Node::create_generic_subscription": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:Node::create_polling_subscription": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch."
+  },
+  "cpp:Node::create_publisher_in": {
+    "verdict": "extension",
+    "why": "creates the entity in a named callback group, so its callbacks run on the tier that group maps to (RFC-0002). rclcpp passes the group through `PublisherOptions` instead."
+  },
+  "cpp:Node::create_subscription_in": {
+    "verdict": "extension",
+    "why": "see `cpp:Node::create_publisher_in`."
+  },
+  "cpp:Node::create_subscription_with_info": {
+    "verdict": "extension",
+    "why": "a subscription whose callback also receives `MessageInfo`. rclcpp expresses this by callback ARITY -- a two-argument callback gets the info -- which needs `function_traits` introspection over a `std::function`; with plain fn-pointers the choice has to be an explicit entry point."
+  },
+  "cpp:Node::get_publishers_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:Node::get_subscriptions_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:PollingSubscription": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch."
+  },
+  "cpp:Publisher::Publisher<M>": {
+    "verdict": "divergence",
+    "why": "ours is constructed into caller-owned storage by `Node::create_publisher`; rclcpp's takes `(NodeBaseInterface*, topic, options)` and is reached through `make_shared`. The `out-param-first` and `no-shared-ptr` rules, at construction."
+  },
+  "cpp:Publisher::Publisher<MessageT, AllocatorT>": {
+    "verdict": "declined",
+    "why": "rclcpp's publisher is templated on its ALLOCATOR as well as its message. One global allocator here, so the parameter has nothing to vary and the constructor signature it produces has no counterpart. See the `no-allocator` rule."
+  },
+  "cpp:Publisher::PublisherBase": {
+    "verdict": "declined",
+    "why": "rclcpp's type-erased base, which the correlator normally folds onto `Publisher`. This row is the CONSTRUCTOR, which has no counterpart because ours is not constructed by a subclass."
+  },
+  "cpp:Publisher::borrow_loaned_message": {
+    "verdict": "rename",
+    "why": "ours is `Publisher::loan`. In C++ both sides return a typed RAII handle (`Expected<Loan>` against `LoanedMessage<T>`), so unlike the C API there is no shape difference here to justify the different verb. Phase 379 W5; see `c:borrow_loaned_message` for the shape argument that does apply to C."
+  },
+  "cpp:Publisher::can_loan_messages": {
+    "verdict": "gap",
+    "why": "see `c:publisher_can_loan_messages`."
+  },
+  "cpp:Publisher::clear_on_new_qos_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Publisher::get_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Publisher::get_allocator": {
+    "verdict": "declined",
+    "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+  },
+  "cpp:Publisher::get_event_handlers": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Publisher::get_gid": {
+    "verdict": "gap",
+    "why": "the publisher's globally-unique id, used to attribute a received message to its sender. Rust exposes it (`PUBLISHER_GID_SIZE`, `MessageInfo::publisher_gid`); C++ and C do not, so again the three languages disagree. Phase 379 W3."
+  },
+  "cpp:Publisher::get_intra_process_subscription_count": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Publisher::get_network_flow_endpoints": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:Publisher::get_published_type_allocator": {
+    "verdict": "declined",
+    "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+  },
+  "cpp:Publisher::get_publisher_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+  },
+  "cpp:Publisher::get_queue_size": {
+    "verdict": "declined",
+    "why": "reads the history depth back off the publisher. Compile-time here; see `ACTUALQOS`."
+  },
+  "cpp:Publisher::get_ros_message_type_allocator": {
+    "verdict": "declined",
+    "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+  },
+  "cpp:Publisher::get_subscription_count": {
+    "verdict": "gap",
+    "why": "see `c:publisher_get_subscription_count`."
+  },
+  "cpp:Publisher::is_valid": {
+    "verdict": "extension",
+    "why": "rclcpp has no validity predicate because construction throws on failure; with -fno-exceptions the object exists either way. See `cpp:Node::is_valid`."
+  },
+  "cpp:Publisher::loan": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `cpp:Publisher::borrow_loaned_message` rename pair; recorded so the pair is visible from both sides."
+  },
+  "cpp:Publisher::make_shared": {
+    "verdict": "declined",
+    "why": "no allocator; see the `no-shared-ptr` rule."
+  },
+  "cpp:Publisher::make_unique": {
+    "verdict": "declined",
+    "why": "see `cpp:Publisher::make_shared`."
+  },
+  "cpp:Publisher::on_liveliness_lost": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Publisher::on_offered_deadline_missed": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Publisher::post_init_setup": {
+    "verdict": "declined",
+    "why": "rclcpp's two-phase construction: the base constructor cannot finish because the derived type's allocator is not known yet. Ours is created into caller storage in one call."
+  },
+  "cpp:Publisher::publish_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "cpp:Publisher::publish_streamed": {
+    "verdict": "extension",
+    "why": "see `c:publisher_publish_streamed`."
+  },
+  "cpp:Publisher::set_on_new_qos_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Publisher::setup_intra_process": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Publisher::wait_for_all_acked": {
+    "verdict": "declined",
+    "why": "see `c:publisher_wait_for_all_acked`."
+  },
+  "cpp:PublisherFactory": {
+    "verdict": "declined",
+    "why": "rclcpp's indirection for constructing a publisher through a type-erased factory, needed because `create_publisher` is a template that must reach a non-template `NodeTopicsInterface`. Our create is not routed through an interface slice (see the node stage), so there is nothing to erase."
+  },
+  "cpp:PublisherOptionsWithAllocator": {
+    "verdict": "declined",
+    "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+  },
+  "cpp:QOSEventHandler": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:SerializedMessage": {
+    "verdict": "rename",
+    "why": "the owned byte buffer both sides pass around. Ours is a `(ptr, len)` pair at the call site with no wrapper type, which is a real divergence (no allocator to own a growable buffer) -- but the WORD is the rename in `c:take_serialized_message`, and a nano-ros type for this would be `RawMessage`, not `SerializedMessage`, on today's naming. Settle the word first."
+  },
+  "cpp:Server::get_number_of_ready_subscriptions": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Server::take_data": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Server::take_data_by_entity_id": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Service::get_request_subscription_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Service::get_response_publisher_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Service::try_recv_request": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "cpp:Subscription::Subscription<M>": {
+    "verdict": "divergence",
+    "why": "see `cpp:Publisher::Publisher<M>`."
+  },
+  "cpp:Subscription::Subscription<MessageT, AllocatorT, SubscribedT, ROSMessageT, MessageMemoryStrategyT>": {
+    "verdict": "declined",
+    "why": "five template parameters: the message, the allocator, the type-adapted type, the ROS type and the memory strategy. Four of them exist to make allocation and type adaptation configurable; ours has one message parameter. See the `no-allocator` rule and `cpp:PublisherOptionsWithAllocator`."
+  },
+  "cpp:Subscription::SubscriptionBase": {
+    "verdict": "declined",
+    "why": "see `cpp:Publisher::PublisherBase`."
+  },
+  "cpp:Subscription::can_loan_messages": {
+    "verdict": "gap",
+    "why": "see `c:publisher_can_loan_messages`."
+  },
+  "cpp:Subscription::clear_on_new_intra_process_message_callback": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Subscription::clear_on_new_message_callback": {
+    "verdict": "divergence",
+    "why": "see `c:subscription_set_on_new_message_callback`."
+  },
+  "cpp:Subscription::clear_on_new_qos_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::create_message": {
+    "verdict": "declined",
+    "why": "allocates the message the executor will take into. Ours takes into caller storage or a loan; there is nothing to allocate."
+  },
+  "cpp:Subscription::create_serialized_message": {
+    "verdict": "declined",
+    "why": "see `cpp:Subscription::create_message`."
+  },
+  "cpp:Subscription::exchange_in_use_by_wait_set_state": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Subscription::get_actual_qos": {
+    "verdict": "declined",
+    "why": "reports the QoS the middleware actually negotiated, which can differ from what was requested. QoS is selected at COMPILE time here and no backend downgrades it at runtime (RFC-0036), so actual and requested are the same value by construction -- an accessor would return its own input."
+  },
+  "cpp:Subscription::get_content_filter": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:Subscription::get_event_handlers": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::get_intra_process_waitable": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Subscription::get_message_type_support_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+  },
+  "cpp:Subscription::get_network_flow_endpoints": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "cpp:Subscription::get_publisher_count": {
+    "verdict": "gap",
+    "why": "see `c:publisher_get_subscription_count`."
+  },
+  "cpp:Subscription::get_subscription_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+  },
+  "cpp:Subscription::handle_loaned_message": {
+    "verdict": "declined",
+    "why": "rclcpp's internal dispatch entry point -- the executor calls it after taking a message. Ours is `drive_io` calling the entity's registered callback directly; a user writes neither side."
+  },
+  "cpp:Subscription::handle_message": {
+    "verdict": "declined",
+    "why": "rclcpp's internal dispatch entry point -- the executor calls it after taking a message. Ours is `drive_io` calling the entity's registered callback directly; a user writes neither side."
+  },
+  "cpp:Subscription::handle_serialized_message": {
+    "verdict": "declined",
+    "why": "rclcpp's internal dispatch entry point -- the executor calls it after taking a message. Ours is `drive_io` calling the entity's registered callback directly; a user writes neither side."
+  },
+  "cpp:Subscription::has_sched_handle": {
+    "verdict": "extension",
+    "why": "whether this subscription is bound to a scheduling context (RFC-0047), so its callback runs at a declared priority. rclcpp's callback groups carry no priority."
+  },
+  "cpp:Subscription::is_cft_enabled": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:Subscription::is_serialized": {
+    "verdict": "declined",
+    "why": "asks whether this subscription was created in serialized mode, because rclcpp decides the take path from it at runtime. Ours are separate entry points (`try_recv` vs `try_recv_raw`), so the caller already knows."
+  },
+  "cpp:Subscription::is_valid": {
+    "verdict": "extension",
+    "why": "see `cpp:Publisher::is_valid`."
+  },
+  "cpp:Subscription::make_shared": {
+    "verdict": "declined",
+    "why": "see `cpp:Publisher::make_shared`."
+  },
+  "cpp:Subscription::make_unique": {
+    "verdict": "declined",
+    "why": "see `cpp:Publisher::make_shared`."
+  },
+  "cpp:Subscription::on_liveliness_changed": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::on_message_lost": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::on_requested_deadline_missed": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::post_init_setup": {
+    "verdict": "declined",
+    "why": "see `cpp:Publisher::post_init_setup`."
+  },
+  "cpp:Subscription::return_message": {
+    "verdict": "declined",
+    "why": "the free half of `create_message`."
+  },
+  "cpp:Subscription::return_serialized_message": {
+    "verdict": "declined",
+    "why": "the free half of `create_serialized_message`."
+  },
+  "cpp:Subscription::sched_handle_id": {
+    "verdict": "extension",
+    "why": "see `cpp:Subscription::has_sched_handle`."
+  },
+  "cpp:Subscription::set_content_filter": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:Subscription::set_on_new_intra_process_message_callback": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Subscription::set_on_new_message_callback": {
+    "verdict": "divergence",
+    "why": "see `c:subscription_set_on_new_message_callback`."
+  },
+  "cpp:Subscription::set_on_new_qos_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "cpp:Subscription::setup_intra_process": {
+    "verdict": "declined",
+    "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+  },
+  "cpp:Subscription::stream": {
+    "verdict": "extension",
+    "why": "the receive half of `publish_streamed`; see `c:publisher_publish_streamed`."
+  },
+  "cpp:Subscription::take": {
+    "verdict": "rename",
+    "why": "see `c:take` -- ours is `Subscription::try_recv`."
+  },
+  "cpp:Subscription::take_serialized": {
+    "verdict": "rename",
+    "why": "see `c:take_serialized_message`."
+  },
+  "cpp:Subscription::take_type_erased": {
+    "verdict": "rename",
+    "why": "see `c:take` -- ours is `Subscription::try_recv_raw`."
+  },
+  "cpp:Subscription::try_borrow": {
+    "verdict": "extension",
+    "why": "the subscription half of the loan API; see `c:subscription_borrow`."
+  },
+  "cpp:Subscription::try_recv": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+  },
+  "cpp:Subscription::try_recv_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "cpp:Subscription::try_recv_raw_with_attachment": {
+    "verdict": "extension",
+    "why": "receive with the transport attachment (zenoh carries the source timestamp and publisher GID there rather than in the payload). rcl's equivalent information arrives in `rmw_message_info_t`; ours is exposed separately because only one backend populates it."
+  },
+  "cpp:Subscription::try_recv_sequence": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+  },
+  "cpp:Subscription::try_recv_validated": {
+    "verdict": "extension",
+    "why": "see `c:subscription_try_recv_validated`."
+  },
+  "cpp:Subscription::use_take_shared_method": {
+    "verdict": "declined",
+    "why": "tells the intra-process machinery whether the callback wants a shared or unique pointer. See the intra-process rows."
+  },
+  "cpp:SubscriptionContentFilterOptions": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:SubscriptionFactory": {
+    "verdict": "declined",
+    "why": "see `cpp:PublisherFactory`."
+  },
+  "cpp:SubscriptionOptionsWithAllocator": {
+    "verdict": "declined",
+    "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+  },
+  "cpp:SubscriptionWaitSetMask": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:WaitSetTemplate::add_subscription": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:WaitSetTemplate::remove_subscription": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Waitable::get_number_of_ready_subscriptions": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Waitable::take_data": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:Waitable::take_data_by_entity_id": {
+    "verdict": "declined",
+    "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+  },
+  "cpp:create_generic_publisher": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:create_generic_subscription": {
+    "verdict": "declined",
+    "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  },
+  "cpp:create_publisher": {
+    "verdict": "rename",
+    "why": "rclcpp's free-function form. Ours is `nros::make_publisher` -- `--suggest-renames` pairs them at 0.83, and nothing about an RTOS asks for `make`. `make_subscription` moves with it. Phase 379 W5."
+  },
+  "cpp:create_publisher_factory": {
+    "verdict": "declined",
+    "why": "see `cpp:PublisherFactory`."
+  },
+  "cpp:create_subscription": {
+    "verdict": "rename",
+    "why": "see `cpp:create_publisher`."
+  },
+  "cpp:create_subscription_factory": {
+    "verdict": "declined",
+    "why": "see `cpp:PublisherFactory`."
+  },
+  "cpp:make_publisher": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:create_publisher`."
+  },
+  "cpp:make_subscription": {
+    "verdict": "rename",
+    "why": "the ours-only half of `cpp:create_publisher`."
+  },
+  "rust:ClientTrait::try_recv_reply": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "rust:ClientTrait::try_recv_reply_raw": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "rust:IntoAsyncSubscriptionCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. The async form additionally needs a runtime."
+  },
+  "rust:IntoNodeSubscriptionCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert."
+  },
+  "rust:IntoWorkerSubscriptionCallback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the node stage's `rust:Node::create_worker`."
+  },
+  "rust:LoanedMessage": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
+  },
+  "rust:MessageCow": {
+    "verdict": "declined",
+    "why": "rclrs's borrow-or-own wrapper so `publish` accepts either a reference or an owned message. Ours takes `&M` and serialises immediately -- there is no deferred path for an owned message to be worth keeping."
+  },
+  "rust:MessageInfo": {
+    "verdict": "divergence",
+    "why": "see `cpp:MessageInfo`."
+  },
+  "rust:MessageInfo::new": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::publication_sequence_number": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::publisher_gid": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::received_timestamp": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::reception_sequence_number": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::set_publication_sequence_number": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::set_publisher_gid": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::set_received_timestamp": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::set_reception_sequence_number": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::set_source_timestamp": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited. The setters exist because a backend shim fills the struct field by field as the transport yields each value."
+  },
+  "rust:MessageInfo::source_timestamp": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:MessageInfo::with_timestamps": {
+    "verdict": "extension",
+    "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+  },
+  "rust:Node::create_async_subscription": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. Needs a runtime to await on."
+  },
+  "rust:Node::create_subscription": {
+    "verdict": "rename",
+    "why": "the theirs-only half of the node stage's `rust:Node::create_subscriber` rename -- rclrs, rclcpp, rclc and our own C and C++ all say SUBSCRIPTION. Phase 379 W5."
+  },
+  "rust:Node::get_publishers_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "rust:Node::get_subscriptions_info_by_topic": {
+    "verdict": "declined",
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+  },
+  "rust:Node::publisher_count": {
+    "verdict": "extension",
+    "why": "how many publishers this node DECLARED -- a property of the declaration, not of the graph. rclrs's `count_publishers` asks the graph about a topic; the two answer different questions and only ours works without discovery."
+  },
+  "rust:Node::publisher_topic_info": {
+    "verdict": "extension",
+    "why": "see `rust:Node::publisher_count`."
+  },
+  "rust:NodeSubscriptionCallback": {
+    "verdict": "divergence",
+    "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert."
+  },
+  "rust:PUBLISHER_GID_SIZE": {
+    "verdict": "divergence",
+    "why": "see `rust:PublisherGid`."
+  },
+  "rust:Publisher": {
+    "verdict": "divergence",
+    "why": "rclrs 0.5 splits every entity into `X` (an `Arc<XState>` alias) and `XState` (the inherent impl); ours is one type. The correlator folds the suffix, so the members listed here are the ones with no counterpart at all -- see `rust:PublisherState::get_subscription_count` and the loan rows."
+  },
+  "rust:Publisher::assert_liveliness": {
+    "verdict": "extension",
+    "why": "manual liveliness assertion. rclcpp has `PublisherBase::assert_liveliness`, which folds onto ours by the *Base rule; recorded here because the Rust side has no rclrs counterpart -- rclrs does not expose liveliness at all."
+  },
+  "rust:Publisher::borrow_loaned_message": {
+    "verdict": "divergence",
+    "why": "see the loan rows -- `c:borrow_loaned_message`."
+  },
+  "rust:Publisher::buffer_error": {
+    "verdict": "extension",
+    "why": "constructs the error for a too-small serialisation buffer -- part of the caller-supplied-buffer contract in `rust:Publisher::publish`. rclrs owns the buffer and cannot fail this way."
+  },
+  "rust:Publisher::can_loan_messages": {
+    "verdict": "gap",
+    "why": "see `c:publisher_can_loan_messages`."
+  },
+  "rust:Publisher::get_subscription_count": {
+    "verdict": "gap",
+    "why": "see `c:publisher_get_subscription_count`."
+  },
+  "rust:Publisher::notify_on_subscriber_ready": {
+    "verdict": "declined",
+    "why": "rclrs's async wait for the first matched subscription. Needs a future and a runtime to await it; the event form is `register_event_callback` (see the QoS-event rows)."
+  },
+  "rust:Publisher::publish": {
+    "verdict": "divergence",
+    "why": "ours is `publish(&self, msg: &M, buf: &mut [u8])`; rclrs takes the message by value and serialises into a buffer it owns. The caller supplies the serialisation buffer because there is no allocator, and it is `&M` rather than `M` because a no_std caller usually wants to keep the message. This is the `no-allocator` constraint at the hottest call in the API."
+  },
+  "rust:Publisher::publish_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "rust:Publisher::publish_raw_with_attachment": {
+    "verdict": "extension",
+    "why": "see `cpp:Subscription::try_recv_raw_with_attachment`."
+  },
+  "rust:Publisher::publish_streamed": {
+    "verdict": "extension",
+    "why": "see `c:publisher_publish_streamed`."
+  },
+  "rust:Publisher::register_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "rust:Publisher::serialization_error": {
+    "verdict": "extension",
+    "why": "see `rust:Publisher::buffer_error`."
+  },
+  "rust:Publisher::supports_event": {
+    "verdict": "extension",
+    "why": "asks whether the linked backend raises a given QoS event, because they differ: zenoh-pico raises no deadline events and Cyclone does. rclcpp assumes DDS and always claims support."
+  },
+  "rust:Publisher::topic_name": {
+    "verdict": "gap",
+    "why": "reads back the topic a publisher was created on. C and C++ have it (`nros_publisher_get_topic_name`, `Publisher::get_topic_name`); the Rust publisher does not, so the three languages disagree with each other as well as with ROS 2. Phase 379 W3."
+  },
+  "rust:Publisher::unsupported_event_error": {
+    "verdict": "extension",
+    "why": "the error `supports_event` predicts; see that row."
+  },
+  "rust:PublisherGid": {
+    "verdict": "divergence",
+    "why": "rclrs wraps the GID in a type; ours is a fixed array plus `PUBLISHER_GID_SIZE`, because a wrapper with no allocator buys only the name."
+  },
+  "rust:PublisherHandle": {
+    "verdict": "divergence",
+    "why": "the backend-agnostic publisher a component holds. rclrs's `Publisher` IS the rcl handle; ours is an index into the executor's static entity table, because the entity outlives the borrow that created it."
+  },
+  "rust:PublisherOptions::qos": {
+    "verdict": "divergence",
+    "why": "ours carries QoS and nothing else; rclrs's publisher options also carry the callback group and the allocator. See `compile-time-options`."
+  },
+  "rust:RawMessageInfo": {
+    "verdict": "extension",
+    "why": "message metadata plus the transport ATTACHMENT (zenoh carries source timestamp and publisher GID there rather than in the payload). rclrs has `MessageInfo` and no attachment because DDS has no such field."
+  },
+  "rust:RawSubscriptionCallback": {
+    "verdict": "divergence",
+    "why": "the raw-bytes callback type. See `c:subscription_callback_t` -- bound at declaration, not handed to an executor."
+  },
+  "rust:ReadOnlyLoanedMessage": {
+    "verdict": "divergence",
+    "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`. rclrs splits read-only from writable loans by type; ours is one borrow with a const view."
+  },
+  "rust:ServiceTrait::try_recv_request": {
+    "verdict": "extension",
+    "why": "see `c:client_try_recv_response`."
+  },
+  "rust:Session::create_publisher": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
+  },
+  "rust:Session::create_subscription": {
+    "verdict": "divergence",
+    "why": "see `rust:Session::create_publisher`."
+  },
+  "rust:Subscription": {
+    "verdict": "divergence",
+    "why": "see `rust:PublisherState`."
+  },
+  "rust:Subscription::deserialization_error": {
+    "verdict": "extension",
+    "why": "see `rust:Publisher::buffer_error`."
+  },
+  "rust:Subscription::has_data": {
+    "verdict": "extension",
+    "why": "non-destructive readiness check, so a caller can decide whether to take without taking. rclrs's executor answers this through the wait set; a polling caller has no wait set. See `cpp:PollingSubscription`."
+  },
+  "rust:Subscription::process_raw_in_place": {
+    "verdict": "extension",
+    "why": "hands the callback the received bytes in the transport's own buffer, with no copy into caller storage. RFC-0010's zero-copy path on the receive side for backends that can hold the buffer across the call; `supports_process_in_place` says which can."
+  },
+  "rust:Subscription::process_raw_in_place_with_info": {
+    "verdict": "extension",
+    "why": "see `rust:Subscription::process_raw_in_place`."
+  },
+  "rust:Subscription::register_event_callback": {
+    "verdict": "divergence",
+    "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
+  },
+  "rust:Subscription::register_waker": {
+    "verdict": "extension",
+    "why": "the Rust half of `c:subscription_set_wake_callback`."
+  },
+  "rust:Subscription::set_async_callback": {
+    "verdict": "declined",
+    "why": "rclrs's conversion traits let `create_subscription` accept a closure, an async closure, or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. The async form additionally needs a runtime."
+  },
+  "rust:Subscription::set_callback": {
+    "verdict": "divergence",
+    "why": "rclrs's conversion traits let `create_subscription` accept a closure, an async closure, or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert."
+  },
+  "rust:Subscription::set_worker_callback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:Subscription::supports_event": {
+    "verdict": "extension",
+    "why": "see `rust:Publisher::supports_event`."
+  },
+  "rust:Subscription::supports_process_in_place": {
+    "verdict": "extension",
+    "why": "see `rust:Subscription::process_raw_in_place`."
+  },
+  "rust:Subscription::topic_name": {
+    "verdict": "gap",
+    "why": "see `rust:Publisher::topic_name`."
+  },
+  "rust:Subscription::try_recv": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+  },
+  "rust:Subscription::try_recv_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "rust:Subscription::try_recv_raw_with_attachment": {
+    "verdict": "extension",
+    "why": "see `cpp:Subscription::try_recv_raw_with_attachment`."
+  },
+  "rust:Subscription::try_recv_raw_with_info": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  },
+  "rust:Subscription::try_recv_sequence": {
+    "verdict": "extension",
+    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+  },
+  "rust:Subscription::unsupported_event_error": {
+    "verdict": "extension",
+    "why": "see `rust:Publisher::supports_event`."
+  },
+  "rust:SubscriptionOptions": {
+    "verdict": "rename",
+    "why": "rclrs spells it `SubscriptionOptions`; ours is `SubscriberOptions`. Moves with `rust:Node::create_subscriber`."
+  },
+  "rust:SubscriptionTag": {
+    "verdict": "extension",
+    "why": "names a declared subscription so a component's single `on_callback` can tell which one fired (RFC-0043). rclrs has one closure per subscription and never needs the tag."
+  },
+  "rust:Worker::create_subscription": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:WorkerSubscription": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:WorkerSubscriptionCallback": {
+    "verdict": "declined",
+    "why": "see the node stage's `rust:Node::create_worker`."
+  }
+}

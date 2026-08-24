@@ -281,9 +281,9 @@ is a decision W5 has to make and record, not a detail.
 
 ## W2 — classify every non-matching row, in parallel
 
-**`types`, `init` and `node` are DONE (2026-08-24)** — 134 authored rows
-covering three stages in all three languages. Each corrected something the stage
-was standing on:
+**`types`, `init`, `node` and `pubsub` are DONE (2026-08-24)** — 421 authored
+rows covering four stages in all three languages. Each corrected something the
+stage was standing on:
 
 * `types` found the taxonomy filing by NAME when the DECLARING HEADER was
   available and better (see below), and produced issue 0783 — the Rust facade
@@ -303,7 +303,14 @@ was standing on:
   is exec's, `LifecycleNode::on_shutdown` is a lifecycle transition, and the
   bare member name says `init` for both).
 
-Counts taken before 2026-08-24 will not match: all three fixes moved rows
+* `pubsub` found the rclrs `State` fold applied to a method's OWNER but not to
+  the TYPE, so `rclrs::PublisherState`'s members were keyed `PublisherState::*`
+  and never met ours. The C++ `*Base` fold had the same bug and was fixed in the
+  first report; the Rust half survived because nothing had exercised it. Fixing
+  it closed 109 decisions across every stage at once — `same` had been
+  understated across the whole Rust lane.
+
+Counts taken before 2026-08-24 will not match: all four fixes moved rows
 between stages and between buckets.
 
 ### What the `node` stage established, and a correction
@@ -362,20 +369,20 @@ Get a stage's rows, and see what is left:
     types             0        0        0        0   done
     init              0        0        0        0   done
     node              0        0        0        0   done
-    pubsub           77      121       61      259
-    service          52       69       34      155
+    pubsub            0        0        0        0   done
+    service          52       69       32      153
     timer            60       35       30      125
-    qos              27       62       17      106
+    qos              27       61       17      105
     param            79       51       50      180
     action          155       22        8      185
-    exec             61       59       34      154
-    lifecycle        54       46       16      116
+    exec             61       59       33      153
+    lifecycle        54       45       16      115
     log              16        5       38       59
     graph            20       21       15       56
     serde            31        0        7       38
     boot              2        0       10       12
-    other            12       19       70      101
-                                              1546
+    other            12       18       70      100
+                                              1281
 
 `--by-topic` counts DECISIONS, not rows: a member whose type already carries a
 verdict is answered, so counting rows would report the same work several times
@@ -509,7 +516,26 @@ campaign: **`Node::create_subscriber` should be `create_subscription`.** rclrs,
 rclcpp and rclc all say subscription, and so do our own C
 (`nros_subscription_init`) and C++ (`Node::create_subscription`) — Rust is the
 odd one out among our three languages as well as against ROS 2.
-`subscriber_count` and `subscriber_topic_info` move with it. Also `Node::now`
+`subscriber_count` and `subscriber_topic_info` move with it.
+
+`pubsub` added two more rename families, both of them one word used
+consistently on each side:
+
+* **`take` → we say `try_recv`.** rcl, rclcpp and rclrs all spell the
+  non-blocking receive `take`. Both are non-blocking and both report emptiness
+  without failing, so nothing asks for the other word — and `try_recv` is Rust
+  channel vocabulary that reads as a different contract to a ROS 2 user.
+* **SERIALIZED → we say RAW.** `publish_serialized_message`/`take_serialized`
+  against `publish_raw`/`try_recv_raw`.
+
+Plus `create_publisher`/`create_subscription` against our free-function
+`make_publisher`/`make_subscription`, and `Publisher::borrow_loaned_message`
+against `Publisher::loan` — the C loan API has a real shape reason (a token over
+a byte range, because C has no templates and the wrapper would need an allocator
+to own), but the C++ one returns a typed RAII handle on both sides, so only the
+verb differs there.
+
+Also `Node::now`
 (the accessor a ported rclcpp publisher uses to stamp a header, tied to the
 `Clock` gap), `node_get_domain_id`, `node_get_fully_qualified_name`,
 `node_resolve_name` and `node_is_valid`. Expected shape: `create_wall_timer` as a name

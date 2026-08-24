@@ -639,6 +639,27 @@ def self_test():
         "Node::create_publisher",
     )
     check(
+        "rust State type folds",
+        correlate.normalize("rust", "theirs", "rclrs::PublisherState", "type"),
+        "Publisher",
+    )
+    state_rows = correlate.compare(
+        correlate.flatten(
+            [{"kind": "type", "qual": "nros::Publisher", "name": "Publisher",
+              "members": [{"name": "publish", "params": [{"type": "&M"}], "ret": "", "template": []}]}],
+            "rust", "ours"),
+        correlate.flatten(
+            [{"kind": "type", "qual": "rclrs::PublisherState", "name": "PublisherState",
+              "members": [{"name": "publish", "params": [{"type": "&M"}], "ret": "", "template": []}]}],
+            "rust", "theirs"),
+        "rust",
+    )
+    check(
+        "an rclrs State split is not a divergence",
+        {r["key"]: r["bucket"] for r in state_rows}.get("Publisher::publish"),
+        "same",
+    )
+    check(
         "rust NodeCtx synonym",
         correlate.normalize("rust", "ours", "nros::node::NodeCtx::create_publisher", "function"),
         "Node::create_publisher",
