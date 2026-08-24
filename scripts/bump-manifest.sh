@@ -23,6 +23,12 @@
 #         just bump-manifest v0.1.12 --dry-run
 set -euo pipefail
 
+# Issue 0726 — `grep -q` cannot distinguish "no match" from "grep failed to
+# run", and the two want opposite handling. Here a failed grep would report the
+# tag as ABSENT and refuse a bump that was perfectly valid.
+# shellcheck source=scripts/lib/grep-q.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/grep-q.sh"
+
 TAG="${1:-}"
 DRY_RUN="${2:-}"
 if [ -z "$TAG" ]; then
@@ -59,7 +65,8 @@ echo "  requested : $TAG"
 # --- validate the tag on the REMOTE before touching anything ---------------
 # The whole point of refusing early: a typo'd tag must change nothing at all,
 # rather than rewriting four manifests and failing at `cargo update`.
-if ! git ls-remote --tags "$URL" "refs/tags/$TAG" 2>/dev/null | grep -q "refs/tags/$TAG"; then
+remote_tags="$(git ls-remote --tags "$URL" "refs/tags/$TAG" 2>/dev/null || true)"
+if ! nros_grep_q "refs/tags/$TAG" <<<"$remote_tags"; then
     echo "ERROR: tag '$TAG' does not exist on $URL — nothing changed." >&2
     echo "  available (most recent):" >&2
     git ls-remote --tags "$URL" 2>/dev/null \
