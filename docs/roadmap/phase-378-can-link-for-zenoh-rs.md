@@ -1,7 +1,12 @@
 # Phase 378 — A CAN link for zenoh-rs
 
-**Status (2026-08-25). W0-W3 DONE. W4 written and compiling, blocked on a
-`vcan0` interface. W5-W7 not started.**
+**Status (2026-08-25). W0-W4 DONE. W5-W7 not started.**
+
+Two zenoh-rs peers exchange pub/sub across `vcan0` with 189-byte and 4 KiB
+payloads over a 63-byte MTU, every message byte-identical, so zenoh's own
+fragmentation is driving the link. **One frame carries 47.25 payload bytes**,
+against the 47.3 phase-377 measured with two zenoh-pico peers — the two
+implementations agree to within 0.1%.
 
 The link exists, registers, and builds: `cargo test -p zenoh-link-can` passes
 41 tests with no `vcan0` and no root, `cargo check -p zenoh --features
@@ -50,8 +55,8 @@ is pinned by tests before any socket exists**.
 | **W1** | Golden-frame tests: byte-exact buffers produced by the zenoh-pico encoder | the two implementations are one wire format, checked in CI | **done** |
 | **W2** | `sys.rs` SocketCAN binding + `multicast.rs` link and manager | a Rust process opens a CAN link and moves datagrams | **done** |
 | **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | **done** |
-| **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **written, compiles, blocked on `vcan0`** |
-| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | blocked on W4 |
+| **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **done, passes** |
+| **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | |
 | **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | blocked, see below |
 | **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
 
@@ -99,6 +104,61 @@ value is an error rather than a quiet fall back to the default. Neither breaks a
 configuration that works today; both turn a silent priority misconfiguration
 into a startup error.
 
+### W4 results (2026-08-25)
+
+Three tests in `io/zenoh-transport/tests/multicast_can.rs`, all passing on
+`vcan0`. Peers take distinct identifiers — `0x100`/`0x101` — because a peer
+drops frames carrying its own identifier, so two peers sharing one `id` would
+each discard everything the other sent.
+
+| payload | messages | result |
+| ---: | ---: | --- |
+| 189 B, Data priority | 100 | 100/100, 0 corrupt |
+| 189 B, RealTime priority | 100 | 100/100, 0 corrupt |
+| 4 KiB | 100 | 100/100, 0 corrupt |
+
+`candump` for the 189-byte runs, 200 messages:
+
+| | frames |
+| --- | ---: |
+| `[64]` full fragments on `0x100` | 600 |
+| `[48]` final fragments on `0x100` | 200 |
+| `[20]` Join on `0x100` / `0x101` | 4 / 4 |
+| `[03]` close on `0x100` / `0x101` | 2 / 2 |
+
+**Exactly 4 frames per message**, so 189 / 4 = **47.25 payload bytes per frame**
+and 63 − 47.25 = **15.75 bytes per frame not carrying payload** — phase-377's
+"about 16 bytes" of per-fragment overhead, arrived at independently.
+
+The final fragment declares 33 bytes in a 48-byte frame: 14 bytes of DLC
+padding, visible on the wire, which is exactly the case the length prefix exists
+for. **The `Join` message is 18 bytes** and needs one 20-byte frame, so
+RFC-0081's concern that it might not fit a 63-byte MTU is settled — it fits with
+room to spare, though only because multicast `is_qos` defaults false.
+
+### The measurement that was not one, and the defect underneath it
+
+The test first reported 50-59 of 100 messages arriving. That was **not** loss:
+the assertion loop, copied from the UDP multicast test, stops at
+`count != 0`, so the figure was whatever had arrived by the time it stopped
+looking. Replacing it with a settle loop gave 100/100.
+
+That fix exposed a real defect underneath. 100 messages of 4 KiB is 7 100
+frames, and a virtual bus delivers them as fast as memory allows. The kernel
+dropped the overflow before the link saw it: **31% of messages lost, no error
+reported anywhere**, `ip -s link` showing zero drops because the loss is above
+the interface. An 8 MiB receive buffer took it to 100%.
+
+A real bus cannot do this — 2 Mbit/s of CAN FD is under 2 800 frames per second,
+and the reader keeps up comfortably — so the default is unchanged and the knob
+is opt-in: `so_rcvbuf`, spelled as the TCP and UDP links spell it. The kernel
+clamps the request to `net.core.rmem_max` without saying so, so the link reads
+the value back and warns when it fell short.
+
+Worth carrying into W6: the failure mode is silence. Nothing in zenoh, the
+kernel, or `candump` reported a problem; only counting the messages that should
+have arrived did.
+
 ### Why W6 cannot be done from this machine
 
 `zenoh-c` and `rmw_zenoh` are not checked out here, and neither is vendored into
@@ -142,15 +202,16 @@ tested. This is the schedule risk §5 names, arriving on schedule.
 * A session configured with a `can/...` listen endpoint opens a multicast
   transport rather than erroring with "Multicast not supported for link".
 
-**W4.**
-* Two zenoh-rs peers on `vcan0`, distinct identifiers, exchange a payload of at
+**W4.** All met.
+* ~~Two zenoh-rs peers on `vcan0`, distinct identifiers, exchange a payload of at
   least 189 bytes — matching phase-377's figure so the two phases are
-  comparable — and the subscriber receives it byte-identical.
-* The test skips with an explanatory message when `vcan0` is absent; it never
-  fails for that reason.
-* `candump` shows traffic on both identifiers.
-* A payload of at least 4 KiB also arrives intact, so fragmentation is exercised
-  well past a single batch.
+  comparable — and the subscriber receives it byte-identical.~~ 100/100, 0 corrupt.
+* ~~The test skips with an explanatory message when `vcan0` is absent; it never
+  fails for that reason.~~ Verified by running it with no interface present.
+* ~~`candump` shows traffic on both identifiers.~~ 808 frames on `0x100`,
+  8 on `0x101`.
+* ~~A payload of at least 4 KiB also arrives intact, so fragmentation is exercised
+  well past a single batch.~~ 100/100, 0 corrupt, with `so_rcvbuf` raised.
 
 **W5.**
 * A zenoh-pico peer publishes and a zenoh-rs peer receives, and the reverse.
