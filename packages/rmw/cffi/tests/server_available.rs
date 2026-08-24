@@ -177,7 +177,7 @@ unsafe extern "C" fn stub_destroy_client(_: *mut NrosRmwClient) -> NrosRmwRet {
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_reg_sub_event(
-    _: *mut NrosRmwSubscription,
+    _: *const NrosRmwSubscription,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
@@ -186,7 +186,7 @@ unsafe extern "C" fn stub_reg_sub_event(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_reg_pub_event(
-    _: *mut NrosRmwPublisher,
+    _: *const NrosRmwPublisher,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
@@ -199,7 +199,7 @@ unsafe extern "C" fn stub_assert_liveliness(_: *const NrosRmwPublisher) -> NrosR
 }
 // The slot under test: returns whatever `SCRIPT` currently holds.
 unsafe extern "C" fn scripted_server_is_available(
-    _: *mut NrosRmwClient,
+    _: *const NrosRmwClient,
     out_available: *mut bool,
 ) -> NrosRmwRet {
     let rc = SCRIPT.load(Ordering::SeqCst);

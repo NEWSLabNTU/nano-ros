@@ -322,7 +322,7 @@ pub struct nros_rmw_vtable_t {
     pub destroy_subscription: ::core::option::Option<
         unsafe extern "C" fn(subscription: *mut rmw_subscription_t) -> rmw_ret_t,
     >,
-    #[doc = " Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a message was copied; `*out_len` is\n  how many bytes, meaningful only when taken. Both are\n  written only on `NROS_RMW_RET_OK`.\n\n  Second slot to retire `NROS_RMW_RET_NO_DATA`: an empty\n  subscription is `taken = false` with OK, which is what\n  upstream's `taken` out-parameter means.\n\n  Deviations from upstream, declared:\n  - `buf` / `buf_len` / `*out_len` replace upstream's typed\n    `void *ros_message`. There is no typesupport indirection\n    on target — the payload is bytes and the caller owns the\n    buffer, so it needs the length back.\n  - no `rmw_subscription_allocation_t *`: pools are baked, so\n    there is nothing to pre-size (the matching\n    `rmw_init_subscription_allocation` is declined for the\n    same reason)."]
+    #[doc = " Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a message was copied; `*out_len` is\n  how many bytes, meaningful only when taken. Both are\n  written only on `NROS_RMW_RET_OK`.\n\n  Second slot to retire `NROS_RMW_RET_NO_DATA`: an empty\n  subscription is `taken = false` with OK, which is what\n  upstream's `taken` out-parameter means.\n\n  Deviations from upstream, declared:\n  - `buf` / `buf_len` / `*out_len` replace upstream's typed\n    `void *ros_message`. There is no typesupport indirection\n    on target — the payload is bytes and the caller owns the\n    buffer, so it needs the length back.\n  - no `rmw_subscription_allocation_t *`: it is an OPAQUE\n    per-implementation handle (`{const char *implementation_identifier;\n    void *data;}` in Humble's `rmw/types.h` — no allocator in\n    it), and the only thing that produces one is\n    `rmw_init_subscription_allocation`, whose other parameters\n    are a typesupport pointer and a sequence bound, both\n    declined ABI-wide. Nothing can make one, so the argument has\n    nothing to point at. Two earlier reasons here were wrong:\n    \"pools are baked\" (issue 0777 — cyclonedds calls\n    `ddsrt_calloc` on this very path) and then \"upstream\n    pre-sizes an `rcutils_allocator_t`\" (there is none)."]
     pub take: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
@@ -409,7 +409,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Register a callback for a subscription-side event. NULL function\n  pointer = backend doesn't generate any subscription events.\n  Specific kind unsupported on a backend that supports some\n  events = `NROS_RMW_RET_UNSUPPORTED` return.\n  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`\n  only; ignored otherwise."]
     pub subscription_event_init: ::core::option::Option<
         unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
+            subscription: *const rmw_subscription_t,
             kind: rmw_event_type_t::Type,
             deadline_ms: u32,
             cb: rmw_status_event_callback_t,
@@ -418,7 +418,7 @@ pub struct nros_rmw_vtable_t {
     >,
     pub publisher_event_init: ::core::option::Option<
         unsafe extern "C" fn(
-            publisher: *mut rmw_publisher_t,
+            publisher: *const rmw_publisher_t,
             kind: rmw_event_type_t::Type,
             deadline_ms: u32,
             cb: rmw_status_event_callback_t,
@@ -489,7 +489,7 @@ pub struct nros_rmw_vtable_t {
     >,
     #[doc = " Phase 124.C.1 — service-server availability probe.\n\n  Returns `1` if ≥ 1 matching server has been discovered on the\n  RMW graph, `0` if none yet, or a negative `rmw_ret_t`\n  constant on backend error. The runtime exposes this to user\n  code as `nros_client_server_available()` /\n  `Client<S>::server_available()` — clients use it to gate the\n  first request so a startup-ordering race doesn't surface as\n  a request-side timeout.\n\n  Implementation notes per backend:\n  - **Zenoh**: `z_session` tracks matched queryables via\n    interest declarations.\n  - **Cyclone DDS / dust-DDS**: built-in topic readers expose\n    matched-pub counts.\n  - **XRCE**: agent has no participant enumeration; return\n    `NROS_RMW_RET_UNSUPPORTED`.\n\n  NULL function pointer = backend cannot answer; the runtime\n  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller.\n\n  Phase 376 W3.d step A — upstream's shape: the STATUS is the\n  return value and the answer is an out-parameter. Previously\n  this slot multiplexed both through one `int32_t` (1 = yes,\n  0 = no, negative = error), which is what makes upstream's\n  positive `RMW_RET_ERROR = 1` unadoptable — `1` would mean\n  both \"available\" and \"failed\". Splitting them is what lets\n  step B renumber at all.\n\n  A backend writes `*out_available` only on\n  `NROS_RMW_RET_OK`; on any error the caller's value is\n  untouched. The old contract's tolerance for \"any positive\n  value other than 1 means available\" is gone with the int:\n  a `bool` has no non-spec value to be lenient about.\n\n  Deviation from upstream, declared: no `node` parameter.\n  `rmw_service_server_is_available` takes both a node and a\n  client; an image has no node object to pass — the client\n  reaches its session directly."]
     pub service_server_is_available: ::core::option::Option<
-        unsafe extern "C" fn(client: *mut rmw_client_t, out_available: *mut bool) -> rmw_ret_t,
+        unsafe extern "C" fn(client: *const rmw_client_t, out_available: *mut bool) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.D.1 — burst-take.\n\n  Drains up to `max_msgs` queued messages into a contiguous\n  caller buffer in a single backend call, avoiding N × vtable\n  dispatch when a burst-sensor subscription catches up on a\n  backlog (e.g. a 100 Hz IMU feed polled at 10 Hz).\n\n  Storage contract:\n    * `buf` is a contiguous `max_msgs * per_msg_cap` block.\n    * The i-th delivered message lives at `buf + i * per_msg_cap`\n      and has byte length `out_lens[i]`.\n    * `out_lens` is at least `max_msgs` entries long.\n\n  Returns:\n    * `>= 0` — count of messages taken (0..=max_msgs).\n    * `< 0` — `rmw_ret_t` error code; partial drains MUST\n      use the count form, not error-out.\n\n  NULL function pointer = backend doesn't natively batch; the\n  runtime emits a `try_recv_raw` loop fallback in\n  `CffiSubscriber::try_recv_sequence`. The fallback gives\n  identical observable behaviour (each call still costs N\n  vtable hops) but lets user code commit to the batched API. */\n/** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —\n  the COUNT moves to `*taken`, matching upstream's\n  `size_t *taken`, and the return carries only a status.\n  `*taken` is written only on `NROS_RMW_RET_OK`; a partial\n  drain reports what it got rather than erroring."]
     pub take_sequence: ::core::option::Option<
@@ -609,7 +609,7 @@ pub struct nros_rmw_vtable_t {
     pub publisher_wait_for_all_acked: ::core::option::Option<
         unsafe extern "C" fn(publisher: *const rmw_publisher_t, timeout_ms: u32) -> rmw_ret_t,
     >,
-    #[doc = " Upstream `rmw_take_with_info`.\n\n  `take` plus the sample's metadata, written to caller-owned storage. See\n  `rmw_message_info_t` for why this is a pointer parameter rather than the\n  side table the runtime uses today.\n\n  Deviations from upstream, declared: the same two `take` declares —\n  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because\n  there is no typesupport on target; and no allocation argument, because\n  pools are baked.\n\n  NULL slot: the runtime falls back to `take`, and the caller gets no\n  metadata — which is exactly today's behaviour for every C backend."]
+    #[doc = " Upstream `rmw_take_with_info`.\n\n  `take` plus the sample's metadata, written to caller-owned storage. See\n  `rmw_message_info_t` for why this is a pointer parameter rather than the\n  side table the runtime uses today.\n\n  Deviations from upstream, declared: the same two `take` declares —\n  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because\n  there is no typesupport on target; and no allocation argument, because\n  nothing in this ABI can produce upstream's opaque\n  `rmw_subscription_allocation_t` — see `take`, which carries the full\n  reason and the two wrong ones that preceded it.\n\n  NULL slot: the runtime falls back to `take`, and the caller gets no\n  metadata — which is exactly today's behaviour for every C backend."]
     pub take_with_info: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,

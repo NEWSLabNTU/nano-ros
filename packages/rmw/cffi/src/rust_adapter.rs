@@ -1003,7 +1003,7 @@ const _: () = {
 };
 
 unsafe extern "C" fn subscription_event_init_trampoline<R: RustBackend>(
-    subscriber: *mut NrosRmwSubscription,
+    subscriber: *const NrosRmwSubscription,
     kind: NrosRmwEventKind,
     deadline_ms: u32,
     cb: NrosRmwEventCallback,
@@ -1045,7 +1045,7 @@ unsafe extern "C" fn subscription_event_init_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn publisher_event_init_trampoline<R: RustBackend>(
-    publisher: *mut NrosRmwPublisher,
+    publisher: *const NrosRmwPublisher,
     kind: NrosRmwEventKind,
     deadline_ms: u32,
     cb: NrosRmwEventCallback,
@@ -1135,7 +1135,7 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
 }
 
 unsafe extern "C" fn service_server_is_available_trampoline<R: RustBackend>(
-    client: *mut NrosRmwClient,
+    client: *const NrosRmwClient,
     out_available: *mut bool,
 ) -> NrosRmwRet {
     // Phase 124.C.1 — delegate to the Rust backend's

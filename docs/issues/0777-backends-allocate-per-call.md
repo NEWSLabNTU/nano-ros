@@ -65,3 +65,43 @@ askable; it was previously unaskable because the tree asserted it did not happen
 3. **Worth deciding:** whether a `no_std`-reachable image is claimed for cyclone
    and zenoh at all. If it is, the allocation sites are the gap; if not, saying
    so is better than a clause implying the opposite.
+
+## Correction, 2026-08-24: the replacement reason was also false
+
+This issue said the seven declarations should say *"upstream pre-sizes a
+per-entity `rcutils_allocator_t` the CALLER owns, and this ABI has no allocator
+to hand one"*. That is wrong in the same way the clause it replaced was wrong —
+plausible, embedded-sounding, and never checked against the thing it describes.
+
+Humble's `rmw/types.h`, read in the ros2 distrobox:
+
+```c
+typedef struct RMW_PUBLIC_TYPE rmw_publisher_allocation_s
+{
+  const char * implementation_identifier;
+  void * data;
+} rmw_publisher_allocation_t;
+```
+
+No allocator. It is an opaque per-implementation handle, and
+`rmw_subscription_allocation_t` is identical.
+
+The reason that survives checking: the only thing that produces one is
+`rmw_init_{publisher,subscription}_allocation`, whose other two parameters are a
+`rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *` —
+both declined ABI-wide since W3.c. Nothing here can make one, so the argument
+has nothing to point at. That holds regardless of what any backend allocates.
+
+Two wrong reasons in one week for one parameter is the finding. Both passed
+`rmw-abi-shape --check`, because that gate gets a difference DECLARED and cannot
+tell a true declaration from a false one — which is exactly why W5's
+reason-by-reason audit exists and why it should not be skipped for the parts
+that "obviously" hold.
+
+The CAPABILITY question this issue opened stays open and is unaffected: cyclone
+still calls `ddsrt_calloc(1, desc->m_size)` on every publish and every take, and
+`desc->m_size` is knowable at create time. If a pre-size slot is wanted it is
+ours to design (no allocator, no typesupport — something like
+`subscription_set_sample_pool(sub, max_serialized_size, depth)`), not upstream's
+symbol to adopt.
+

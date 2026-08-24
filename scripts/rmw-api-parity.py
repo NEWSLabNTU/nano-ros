@@ -102,13 +102,28 @@ MAP = {
         "callback already runs on the safe one, from inside drive_io on the executor "
         "thread, never an ISR or a transport thread",
     ),
+    # A GROUPING, not an absence. "Fused into `*_event_init`" describes an
+    # ANSWER, and this table has a bucket for that. Listed as `declined` it read
+    # on the report as "we do not do this", when what we have is upstream's
+    # function with its arguments moved to init time. The residual — cannot
+    # replace or clear a callback afterwards — is recorded as a deviation on
+    # `publisher_event_init`, where it belongs.
     "rmw_event_set_callback": (
-        "declined",
-        "fused into publisher_event_init / subscription_event_init, which take the "
-        "callback at init time; there is no rmw_event_t handle to attach one to later. "
-        "Costs the ability to replace or clear a callback afterwards, which upstream has",
+        "vtable",
+        "publisher_event_init — grouped; `subscription_event_init` on the "
+        "subscription side. Both take the callback at init, so there is no "
+        "`rmw_event_t` handle to attach one to later",
     ),
-    "rmw_subscription_set_on_new_message_callback": ("vtable", "set_wake_callback"),
+    # NOT `set_wake_callback` — that record was never true and the header says
+    # so (`rmw_vtable.h`: "it never was: that slot is session-scoped"). W4 gave
+    # the symbol its own exact-parity slot. The first version of
+    # `check_against_vtable()` passed this entry because `set_wake_callback` IS
+    # a slot: it verified that the detail names A slot, not the RIGHT one,
+    # which is the W3.b drift class it was written to stop, surviving inside
+    # its own gate.
+    "rmw_subscription_set_on_new_message_callback": (
+        "vtable", "subscription_set_on_new_message_callback",
+    ),
     # ---- Answered a layer up or down ----
     "rmw_init": ("vtable", "create_session — grouped"),
     "rmw_shutdown": ("vtable", "destroy_session — grouped"),
@@ -148,15 +163,24 @@ MAP = {
         "GuardConditionHandle::trigger -> the platform wake primitive; ISR-safety is a "
         "platform-ABI guarantee no backend makes",
     ),
+    # `layer`, not `declined` — the reason's own first five words are "codegen,
+    # not a backend concern", which is the DEFINITION of this bucket, and we do
+    # answer it: `nros_serdes::{Serialize, Deserialize, DeserializeBorrowed}`,
+    # the C pack's `<Type>_serialize`, the C++ pack's `ffi_serialize`. Same
+    # precedent as `rmw_qos_profile_check_compatible`. Keeping an implemented
+    # function in the "deliberately absent" bucket is what made
+    # `get_serialized_message_size` — genuinely absent — unreadable next to it.
     "rmw_serialize": (
-        "declined",
-        "codegen, not a backend concern: CDR for an IDL type is fixed by ROS interop, "
-        "so a per-backend answer would be a defect. Upstream's parameters are also two "
-        "things this ABI already declined — a typesupport pointer and an "
-        "`rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an "
-        "ALLOCATOR, at a seam with no allocator",
+        "layer",
+        "nros-serdes (`Serialize`/`Deserialize`/`DeserializeBorrowed`) plus the "
+        "per-language codegen packs; CDR for an IDL type is fixed by ROS interop, "
+        "so a per-backend answer would be a DEFECT. Not a slot for the same "
+        "reason it is not per-backend, and because upstream's parameters are two "
+        "things this ABI declined anyway — a typesupport pointer and an "
+        "`rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying "
+        "an ALLOCATOR, at a seam with no allocator",
     ),
-    "rmw_deserialize": ("declined", "as rmw_serialize"),
+    "rmw_deserialize": ("layer", "as rmw_serialize"),
     "rmw_get_serialized_message_size": (
         "gap",
         "issue 0776. The old reason — \"generated per type; the bound is baked\" — was FALSE: "
@@ -173,11 +197,15 @@ MAP = {
     "rmw_feature_supported": ("vtable", "feature_supported — a NULL slot is still the structural probe; this answers the named `rmw_feature_t` values"),
     "rmw_init_publisher_allocation": (
         "declined",
-        "upstream pre-sizes a per-entity `rcutils_allocator_t` the CALLER owns, and this "
-        "ABI has no allocator to hand one — there is nothing for the argument to point "
-        "at. NOT because 'pools are baked': that clause was FALSE (issue 0777) — "
-        "cyclonedds allocates per publish and per take, zenoh inside zenoh-pico, the cffi "
-        "shim per fallback loan; only uORB preallocates",
+        "upstream's first two parameters are a `rosidl_message_type_support_t *` "
+        "and a `rosidl_runtime_c__Sequence__bound *`, both declined ABI-wide, so "
+        "the symbol cannot cross this seam whatever the third holds. TWO earlier "
+        "reasons here were wrong: 'pools are baked' (issue 0777 — false for four "
+        "backends of five) and then 'upstream pre-sizes an `rcutils_allocator_t` "
+        "the caller owns' (also false — `rmw_publisher_allocation_t` is "
+        "`{const char *implementation_identifier; void *data;}`, verified against "
+        "Humble's `rmw/types.h`). The CAPABILITY question is separate and live for "
+        "cyclonedds alone; it belongs to issue 0777, not to this parameter list",
     ),
     "rmw_fini_publisher_allocation": ("declined", "as above"),
     "rmw_init_subscription_allocation": ("declined", "as above"),
@@ -295,6 +323,20 @@ def check_against_vtable():
         if bucket == "vtable":
             if named not in slots:
                 bad.append((sym, f"detail names {named!r}, which is no slot in rmw_vtable.h"))
+                continue
+            # …and it must be the RIGHT slot. The mechanical rule is the whole
+            # naming contract: slot = upstream name minus `rmw_`. Anything else
+            # has to be a DECLARED grouping. Checking only that the name
+            # resolves let `rmw_subscription_set_on_new_message_callback` go on
+            # pointing at `set_wake_callback` — a real slot, the wrong one, and
+            # a record the header already called untrue.
+            mechanical = sym[4:] if sym.startswith("rmw_") else sym
+            if named != mechanical and grouped.get(sym) != named:
+                bad.append((
+                    sym,
+                    f"detail names slot {named!r}, but the mechanical name is "
+                    f"{mechanical!r} and no GROUPED_SYMBOLS row redirects it",
+                ))
             continue
         # The other direction: a slot EXISTS and the MAP still says we do not
         # answer it there. `gap` is the one that matters — it is the bucket

@@ -154,8 +154,8 @@ constraint. They stay; they get written down per slot in `ARG_DEVIATIONS`:
 | --- | --- | --- |
 | `const rmw_node_t *` | `rmw_session_t *` | an image opens ONE session; upstream's context/node split has no target-side meaning |
 | `const rosidl_message_type_support_t *` | `const char *` pkg + `const char *` type | no typesupport indirection on target — codegen bakes the type |
-| returns `rmw_publisher_t *` | returns `rmw_ret_t`, entity is an OUT param | no runtime allocation: the caller owns the storage |
-| `rmw_publisher_allocation_t *` | absent | pools are baked; nothing to pre-size |
+| returns `rmw_publisher_t *` | returns `rmw_ret_t`, entity is an OUT param | the caller owns the entity STRUCT's storage, so there is nothing to return a pointer to — and a status is more informative than NULL. Note this is not the same claim as "no runtime allocation": the backend still heap-allocates its `backend_data` in the same call |
+| `rmw_publisher_allocation_t *` | absent | upstream's first two parameters (typesupport, sequence bound) are already declined ABI-wide, so the symbol cannot cross this seam whatever the third holds. **Not** "pools are baked" — issue 0777 measured that clause false for four backends of five |
 
 ### W3.d — the return-code question, narrower AND sharper than it looked
 
@@ -307,8 +307,9 @@ answer neither. "Init options: declined" is about the init/copy/fini trio only.
 Feature completeness makes the deviations the only thing left, so the last wave
 is about them being *true*, not merely present. For each declared deviation:
 
-* Does the stated constraint still hold? (`init_publisher_allocation` is
-  declined because pools are baked — is that still true of every backend?)
+* Does the stated constraint still hold? (`init_publisher_allocation` was
+  declined because "pools are baked" — issue 0777 measured that false for four
+  backends of five, so the decline needed a different reason, which it now has.)
 * Is it declared at the narrowest scope? A deviation that applies to one backend
   should be a NULL slot on that backend, not an ABI-wide difference.
 * Is the reason about the TARGET, or about our convenience? Only the first is a
@@ -581,13 +582,53 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 
 | item | state |
 | --- | --- |
-| every `ADDED` slot's reason re-checked against the target constraint | open |
-| every `ARG_DEVIATIONS` reason re-checked | **partly landed** — the `const`-only class (15 slots) and the `void`-return class (6 slots) are FIXED, not re-declared |
-| every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
+| every `ADDED` slot's reason re-checked against the target constraint | **landed** — 11 → 9 (two were never additions), 3 reasons rewritten, 2 slots filed as redundant (0781) |
+| every `ARG_DEVIATIONS` reason re-checked | **landed** — the `const` class (15 + 3 the first sweep missed) and the `void`-return class (6) FIXED not re-declared; 10 false claims rewritten |
+| every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | **landed** — 21 → 14: 4 became slots, `event_set_callback` was a grouping, `serialize`/`deserialize` were `layer`, `take_event` filed as 0780 |
 | re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
 | re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | **landed** — both slots, plus the network-flow pair, whose reason had the same shape |
 | `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check-rmw-abi-shape`, self-test + check, on the fast line |
 | parity MAP cross-checked against the header, both directions | **landed** — the MAP was stale in two ways at once (see below) |
+
+### W5's audit, run in full (2026-08-24)
+
+Three parallel read-only audits over the three declaration tables. The headline
+is not how many reasons were wrong — it is that **every one of them passed
+`rmw-abi-shape --check`**, because that gate asks whether a difference is
+DECLARED and cannot ask whether the declaration is true. That is the whole
+argument for a reason-by-reason pass.
+
+What it found, beyond the rewordings:
+
+* **The const class had recurred within a week.** The 15-slot sweep compared
+  arguments POSITIONALLY, and three slots put the handle at a different index
+  than upstream (`{publisher,subscription}_event_init` lead with an
+  `rmw_event_t *`, `service_server_is_available` with a `const rmw_node_t *`),
+  so `zip()` lined the handle up against something else and reported nothing.
+  The class fix stopped one short of the class for a reason unrelated to the
+  class. Now matched BY TYPE, and gated.
+* **`create_session` / `destroy_session` were in `ADDED` and in
+  `GROUPED_SYMBOLS` at once** — their own reasons said they had upstream
+  equivalents, under a comment saying additions have none. They were parked
+  there because `expected` did not union the grouped targets, so removing them
+  made both report as undeclared extras. Fixed at the union. 11 additions → 9.
+* **`rmw_subscription_set_on_new_message_callback` still pointed at
+  `set_wake_callback`**, a record the header itself calls untrue. The MAP
+  cross-check passed it because it verified the detail names *a* slot, not the
+  *right* one — the W3.b drift class surviving inside the gate built to stop
+  it. Now checked against the mechanical name.
+* **Issue 0777's replacement reason was ALSO false.** It said upstream
+  "pre-sizes a per-entity `rcutils_allocator_t` the caller owns". Humble's
+  `rmw/types.h` says `rmw_publisher_allocation_t` is
+  `{const char *implementation_identifier; void *data;}` — no allocator. Two
+  wrong reasons for one parameter in one week, both plausible, both unchecked.
+  The one that survives: nothing here can PRODUCE that handle, because
+  `rmw_init_publisher_allocation`'s other two parameters are declined
+  ABI-wide.
+* **Three findings too large to fold in**, filed: 0780 (`take_event` declined
+  on a premise this ABI contradicts; cyclone cannot deliver a status event at
+  all), 0781 (one in-place capability over five slots), 0782 (`publish_streamed`
+  `malloc`s the whole payload on the target class it exists to help).
 
 ### Two declared deviations were fixed rather than re-justified
 

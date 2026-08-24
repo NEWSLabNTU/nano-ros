@@ -88,7 +88,7 @@ runtime allocation to pre-size; pools are baked", which is true of ONE backend i
 `ddsrt_malloc`s per publish and `ddsrt_calloc`s per take (`publisher.cpp:202,235`, `subscriber.cpp:143`),
 zenoh allocates inside zenoh-pico, xrce per streamed publish, and the cffi shim itself does
 `vec![0u8; len]` per fallback loan (`lib.rs:2025`); only uORB matches. The CONCLUSION survives — upstream's
-allocation argument pre-sizes an `rcutils_allocator_t` the caller owns and this ABI has none — but the
+allocation argument is an opaque per-impl handle nothing here can produce — the SECOND replacement reason, the first (`rcutils_allocator_t`) having been false too — but the
 premise was false and was reused six times after it was written, which is how one unchecked sentence
 becomes an invisible property of the design. Clause retired from all seven. Open question: whether a
 `no_std`-reachable image is claimed for cyclone/zenoh at all. See `0777-*`. (2026-08-24)
@@ -3708,3 +3708,24 @@ target. `nros-rmw-cffi`'s two `lending` files had stopped COMPILING a phase earl
 out-parameter and named return codes) and nothing noticed. `lending` is now wired (48 tests vs 44);
 `posix-c-port`, `c-stub-test`, `bridge-stub`, `link-custom`, `unix-mock` are a dated shrinking backlog in
 `check-required-features-reachable`, which now scans both mechanisms. See `0779-*`. (2026-08-24)
+
+**#0780** (rmw, open 2026-08-24) — `rmw_take_event` declined on two clauses that both fail. "A poll would be
+blind without a wait set" contradicts `has_data`, whose own doc calls a wait-set-free poll the model here;
+"our callback runs on the safe context inside `drive_io`" is true of no backend — zenoh fires from
+`try_recv_raw`/`has_data`, and cyclone's DDS listeners fire on Cyclone's worker while its `drive_io` is a
+sleep with no callback path (the comment claiming otherwise names an `Activator` that does not exist). So
+the backend a ROS-interop image actually uses cannot deliver a QoS status event at all. See `0780-*`.
+(2026-08-24)
+
+**#0781** (rmw tech-debt, open 2026-08-24) — one in-place-dispatch capability spread over five slots.
+`subscription_supports_in_place` re-encodes what slot NULLITY already says (both impls ignore their
+subscription argument and return a constant; the shim already maps a missing `process_raw_in_place` to
+false), and the upstream-named subscription loan pair is NULL in every backend. `process_raw_in_place`'s
+reason also describes upstream's `rmw_take_loaned_message` rather than the leak-proof scoped borrow that is
+its actual target argument. See `0781-*`. (2026-08-24)
+
+**#0782** (rmw/memory, open 2026-08-24) — `publish_streamed` exists to avoid a per-publisher `.bss` staging
+buffer on MCUs; XRCE implements it as `malloc(total)` of the whole payload and returns MESSAGE_TOO_LARGE
+past one stream slot, so on the target class the slot exists for it swaps a static buffer for a same-sized
+heap one. zenoh grows a writer to full size. Same family as 0777: a memory claim in the ABI no backend
+keeps. See `0782-*`. (2026-08-24)

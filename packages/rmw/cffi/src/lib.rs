@@ -2258,7 +2258,7 @@ impl Publisher for CffiPublisher {
         cb: nros_rmw::EventCallback,
         user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), TransportError> {
-        let mut view = NrosRmwPublisher {
+        let view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             qos: self.qos,
@@ -2281,7 +2281,7 @@ impl Publisher for CffiPublisher {
         let Some(register) = self.vtable.publisher_event_init else {
             return Err(TransportError::Unsupported);
         };
-        let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
+        let ret = unsafe { register(&view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2705,7 +2705,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         cb: nros_rmw::EventCallback,
         user_ctx: *mut core::ffi::c_void,
     ) -> Result<(), TransportError> {
-        let mut view = self.make_view();
+        let view = self.make_view();
         let cb: NrosRmwEventCallback = Some(unsafe {
             core::mem::transmute::<
                 nros_rmw::EventCallback,
@@ -2718,7 +2718,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         let Some(register) = self.vtable.subscription_event_init else {
             return Err(TransportError::Unsupported);
         };
-        let ret = unsafe { register(&mut view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
+        let ret = unsafe { register(&view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
@@ -2972,7 +2972,7 @@ impl ClientTrait for CffiClient {
         // required for a graph probe). The borrowed pointers all
         // alias into `&self`, so the lifetime is bounded by the
         // call.
-        let mut view = NrosRmwClient {
+        let view = NrosRmwClient {
             service_name: self.service_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
             _reserved: [0u8; 8],
@@ -2983,7 +2983,7 @@ impl ClientTrait for CffiClient {
         // lenient about: the old arm treating "any positive other than 1" as
         // available existed only because a count and a status shared one int.
         let mut available = false;
-        let rc = unsafe { f(&mut view, &mut available) };
+        let rc = unsafe { f(&view, &mut available) };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
@@ -3572,7 +3572,7 @@ mod tests {
         NROS_RMW_RET_OK
     }
     unsafe extern "C" fn stub_register_subscription_event(
-        _: *mut NrosRmwSubscription,
+        _: *const NrosRmwSubscription,
         _: NrosRmwEventKind,
         _: u32,
         _: NrosRmwEventCallback,
@@ -3581,7 +3581,7 @@ mod tests {
         NROS_RMW_RET_UNSUPPORTED
     }
     unsafe extern "C" fn stub_register_publisher_event(
-        _: *mut NrosRmwPublisher,
+        _: *const NrosRmwPublisher,
         _: NrosRmwEventKind,
         _: u32,
         _: NrosRmwEventCallback,

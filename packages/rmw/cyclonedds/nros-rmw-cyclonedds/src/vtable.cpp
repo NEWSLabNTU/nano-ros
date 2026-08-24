@@ -19,10 +19,10 @@ using namespace nros_rmw_cyclonedds;
 // Phase 108 event hooks left NULL until a follow-up phase wires
 // Cyclone listeners through to the runtime's status-event surface.
 constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
-    rmw_subscription_t *, rmw_event_type_t, uint32_t,
+    const rmw_subscription_t *, rmw_event_type_t, uint32_t,
     rmw_status_event_callback_t, void *) = nullptr;
 constexpr rmw_ret_t (*kRegisterPublisherEvent)(
-    rmw_publisher_t *, rmw_event_type_t, uint32_t,
+    const rmw_publisher_t *, rmw_event_type_t, uint32_t,
     rmw_status_event_callback_t, void *) = nullptr;
 constexpr rmw_ret_t (*kAssertPublisherLiveliness)(
     const rmw_publisher_t *) = nullptr;

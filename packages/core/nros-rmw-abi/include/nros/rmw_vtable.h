@@ -49,14 +49,29 @@ extern "C" {
  * `destroy_*` releases the backend's `backend_data` only. The struct
  * shell stays valid until the runtime drops its owner.
  *
- * **Return-value conventions.**
- *  - `create_session` / `destroy_session` / `drive_io` / `create_*` / `publish_raw` /
- *    `send_reply`: `NROS_RMW_RET_OK` on success, negative
- *    `rmw_ret_t` constant on error (see `<nros/rmw_ret.h>`).
- *  - `try_recv_raw` / `try_recv_request` / `try_recv_reply_raw`: non-negative =
- *    bytes produced, negative = `rmw_ret_t` error.
- *  - `has_data` / `has_request`: 1 = yes, 0 = no.
- *  - `destroy_*`: void (best-effort cleanup).
+ * **Return-value conventions.** One rule, no exceptions:
+ *
+ *  - EVERY slot returns `rmw_ret_t`. `NROS_RMW_RET_OK` (which is 0, upstream's
+ *    value) on success; a POSITIVE named constant on failure, upstream's where
+ *    upstream has a name for it and one above `NROS_RMW_RET_EXTENSION_BASE`
+ *    where it does not. See `<nros/rmw_ret.h>`.
+ *  - An ANSWER is an out-parameter, never the return: `bool *taken`,
+ *    `size_t *out_len`, `bool *out_has_data`. No slot multiplexes a count or a
+ *    flag with a status, so no caller may test a status by its SIGN — gated by
+ *    `scripts/check-rmw-ret-sign.py`.
+ *  - Out-parameters are written only on `NROS_RMW_RET_OK` unless a slot says
+ *    otherwise.
+ *
+ * This paragraph described the PRE-W3.d ABI until 2026-08-24 and was wrong on
+ * five counts at once: it promised NEGATIVE error constants (step B adopted
+ * upstream's positive numbering), it said `try_recv_*` returned a byte count
+ * and `has_data` returned 1-or-0 (step A moved both to out-parameters), it said
+ * `destroy_*` returned void (W5 gave all six a status), and it named five slots
+ * that no longer exist — `publish_raw`, `send_reply`, `try_recv_raw`,
+ * `try_recv_request`, `try_recv_reply_raw`, all renamed by W3.b. Prose in the
+ * SSoT header is not covered by any of the shape gates, which compare
+ * DECLARATIONS against the header and never read what the header says about
+ * itself.
  */
 
 
@@ -165,10 +180,17 @@ typedef struct nros_rmw_vtable_t {
      *    `void *ros_message`. There is no typesupport indirection
      *    on target — the payload is bytes and the caller owns the
      *    buffer, so it needs the length back.
-     *  - no `rmw_subscription_allocation_t *`: pools are baked, so
-     *    there is nothing to pre-size (the matching
-     *    `rmw_init_subscription_allocation` is declined for the
-     *    same reason). */
+     *  - no `rmw_subscription_allocation_t *`: it is an OPAQUE
+     *    per-implementation handle (`{const char *implementation_identifier;
+     *    void *data;}` in Humble's `rmw/types.h` — no allocator in
+     *    it), and the only thing that produces one is
+     *    `rmw_init_subscription_allocation`, whose other parameters
+     *    are a typesupport pointer and a sequence bound, both
+     *    declined ABI-wide. Nothing can make one, so the argument has
+     *    nothing to point at. Two earlier reasons here were wrong:
+     *    "pools are baked" (issue 0777 — cyclonedds calls
+     *    `ddsrt_calloc` on this very path) and then "upstream
+     *    pre-sizes an `rcutils_allocator_t`" (there is none). */
     rmw_ret_t (*take)(const rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len,
         size_t *out_len, bool *taken);
@@ -252,7 +274,7 @@ typedef struct nros_rmw_vtable_t {
      *  `deadline_ms` is consulted for `REQUESTED_DEADLINE_MISSED`
      *  only; ignored otherwise. */
     rmw_ret_t (*subscription_event_init)(
-        rmw_subscription_t *subscription,
+        const rmw_subscription_t *subscription,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
         rmw_status_event_callback_t cb,
@@ -285,7 +307,7 @@ typedef struct nros_rmw_vtable_t {
      *    the callback fires.
      */
     rmw_ret_t (*publisher_event_init)(
-        rmw_publisher_t  *publisher,
+        const rmw_publisher_t  *publisher,
         rmw_event_type_t  kind,
         uint32_t               deadline_ms,
         rmw_status_event_callback_t cb,
@@ -476,7 +498,7 @@ typedef struct nros_rmw_vtable_t {
      *  client; an image has no node object to pass — the client
      *  reaches its session directly. */
     rmw_ret_t (*service_server_is_available)(
-        rmw_client_t *client,
+        const rmw_client_t *client,
         bool *out_available);
 
     /** Phase 124.D.1 — burst-take.
@@ -735,7 +757,9 @@ typedef struct nros_rmw_vtable_t {
      *  Deviations from upstream, declared: the same two `take` declares —
      *  bytes (`buf`/`buf_len`/`*out_len`) instead of a typed `void *`, because
      *  there is no typesupport on target; and no allocation argument, because
-     *  pools are baked.
+     *  nothing in this ABI can produce upstream's opaque
+     *  `rmw_subscription_allocation_t` — see `take`, which carries the full
+     *  reason and the two wrong ones that preceded it.
      *
      *  NULL slot: the runtime falls back to `take`, and the caller gets no
      *  metadata — which is exactly today's behaviour for every C backend. */

@@ -171,7 +171,7 @@ unsafe extern "C" fn noop_dcli(_: *mut NrosRmwClient) -> NrosRmwRet {
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_regsubev(
-    _: *mut NrosRmwSubscription,
+    _: *const NrosRmwSubscription,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,
@@ -180,7 +180,7 @@ unsafe extern "C" fn noop_regsubev(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_regpubev(
-    _: *mut NrosRmwPublisher,
+    _: *const NrosRmwPublisher,
     _: NrosRmwEventKind,
     _: u32,
     _: NrosRmwEventCallback,

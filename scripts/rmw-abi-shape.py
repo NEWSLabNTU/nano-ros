@@ -112,6 +112,9 @@ ABI_FUNCTIONS = {
 # alias becomes a way to make a MISSING slot invisible, which is the opposite of
 # what this tool is for.
 GROUPED_SYMBOLS = {
+    # Upstream attaches the callback to an `rmw_event_t` afterwards; ours takes
+    # it at init, so `*_event_init` IS this function (phase-376 W5, A3).
+    "rmw_event_set_callback": "publisher_event_init",
     # Upstream split `_with_enclaves` off `rmw_get_node_names` only because
     # appending to a fixed out-parameter list would have broken its ABI. A
     # visitor has no such list, so the enclave is a fourth argument, NULL where
@@ -137,23 +140,60 @@ GROUPED_SYMBOLS = {
 
 # Slots we add that upstream has no equivalent for.
 ADDED = {
-    "create_session": (
-        "upstream's `rmw_init` + context, in the shape an image that opens exactly ONE "
-        "session needs — grouped onto it in GROUPED_SYMBOLS rather than claimed as "
-        "having no upstream equivalent"
+    # `create_session` and `destroy_session` are NOT here. They were, and their
+    # own reasons said why they should not be — "grouped onto it in
+    # GROUPED_SYMBOLS rather than claimed as having no upstream equivalent",
+    # written directly under a comment reading "slots we add that upstream has
+    # no equivalent for". They stayed only because `expected` did not union the
+    # grouped targets, so removing them made both slots report as undeclared
+    # extras. Fixed at the union instead of by parking them here, and the
+    # self-test now refuses the overlap outright.
+    "drive_io": (
+        "the caller donates the thread. A backend may pump its own transport here "
+        "(XRCE, single-threaded zenoh) or merely PACE the caller when it owns RX "
+        "threads of its own (cyclonedds' is a sleep, and says so; uORB's is a "
+        "no-op) — what the ABI never does is assume a background transport "
+        "thread the target may not have. Do not shorten this back to \"the caller "
+        "donates the CPU that does I/O\": that is false on half the backends"
     ),
-    "destroy_session": "upstream's `rmw_shutdown` + `rmw_context_fini`; there is no second teardown phase because the session shell is caller-owned",
-    "drive_io": "no background transport thread is assumed; the caller donates the CPU that does I/O",
-    "next_deadline_ms": "lets a caller-driven loop sleep exactly until the backend's next internal event",
+    "next_deadline_ms": (
+        "an upper BOUND on how long the backend may be left undriven before its "
+        "own timers slip (lease keepalive, heartbeat, ACK-NACK); the executor "
+        "caps its `drive_io` wait against it. Not \"sleep EXACTLY until the next "
+        "internal event\" — its one implementation cannot do that and says so: "
+        "zenoh-pico does not expose the next-keepalive timestamp through FFI, so "
+        "the shim returns the constant `Z_TRANSPORT_LEASE / EXPIRE_FACTOR`. A "
+        "bound is what the caller needs anyway; the value of a bound is that the "
+        "loop never OVER-sleeps"
+    ),
     "set_wake_callback": (
         "wake the executor from the transport's own thread or ISR, without a wait-set. "
         "SESSION-scoped: the per-entity `*_set_on_new_*_callback` slots are the upstream "
         "family, and this is not a substitute for them"
     ),
-    "ping_session": "liveness of the SESSION, which upstream expresses through a context that cannot fail",
+    "ping_session": (
+        "reachability of the AGENT/ROUTER behind the session, which an RTOS image "
+        "on a serial or agent link needs in order to reconnect: a session over "
+        "such a transport can die with no entity-level symptom, and there is "
+        "nothing else in this ABI that reports it (`drive_io` reports nothing on "
+        "cyclonedds, whose implementation is a sleep). The old reason — "
+        "\"upstream expresses liveness through a context that cannot fail\" — was "
+        "a remark about upstream's data model, equally true on a workstation, "
+        "which is what makes it not a target reason"
+    ),
     "has_data": "a poll that allocates nothing, for a loop with no wait-set",
     "has_request": "as above, service side",
-    "publish_streamed": "publish a payload larger than any single buffer the target can hold",
+    "publish_streamed": (
+        "saves the per-publisher STAGING buffer: a static `.bss` array sized for "
+        "the largest message the node can send, on a target with no allocator. "
+        "That is the header's own justification and it is the one that holds. It "
+        "is NOT \"publish a payload larger than any single buffer the target can "
+        "hold\" — neither implementation delivers that (XRCE `malloc`s the whole "
+        "payload and returns MESSAGE_TOO_LARGE past one stream slot; zenoh grows "
+        "a `z_owned_bytes_writer_t` to full size), and on the target class the "
+        "slot exists for, XRCE's is a same-sized heap allocation in place of the "
+        "static buffer — see the follow-up issue"
+    ),
     "subscription_supports_in_place": "probe: can this backend hand out its receive buffer directly",
     "process_raw_in_place": "dispatch from the transport's own buffer — no copy on a target with no spare RAM",
 }
@@ -205,7 +245,12 @@ ARG_DEVIATIONS = {
         "so a request taken and never answered leaks a slot"
     ),
     "take_response": (
-        "same two deviations as `take_request`, client side"
+        "bytes for the typed `void *ros_response`, as `take_request` — but the "
+        "SECOND deviation is NOT the same one, and reading it as \"same two, "
+        "client side\" is how the difference stayed invisible. `take_request` "
+        "REPLACES upstream's `rmw_service_info_t *` with `*seq_out`; this slot "
+        "DROPS it with nothing in its place, so a client cannot correlate a reply "
+        "to a request at all. That asymmetry is the client half of issue 0778"
     ),
     # ---- Entity lifecycle ----
     # The session/node difference and the OUT-parameter shape are one decision
@@ -227,15 +272,38 @@ ARG_DEVIATIONS = {
     # struct — so the deviation described nothing. The entry stays as this
     # comment because "listed so it stays visible instead of settling in as
     # permanent" was the right instinct and it worked.
-    # ---- No node object to destroy through ----
-    "destroy_publisher": ("upstream takes (node, entity); an image has no node object, so the entity alone identifies it"),
+    # ---- The node argument, and why it is absent ----
+    #
+    # "An image has no node object" was TRUE when W3.c wrote it and stopped
+    # being true on 2026-08-24, when W4 landed `rmw_node_t` plus `create_node` /
+    # `destroy_node`. Twelve entries still argued from it. The conclusions
+    # survive, on two DIFFERENT better reasons:
+    #   - teardown and availability: upstream's node argument is VALIDATION
+    #     context; our entity's `backend_data` is self-sufficient, so the
+    #     parameter would be inert.
+    #   - counts and the graph family: these are SESSION-wide facts, and our
+    #     `rmw_node_t` deliberately carries no `context` field, so a backend
+    #     handed only a node could not reach the session to answer. Upstream
+    #     reaches its context THROUGH the node; we pass the session directly.
+    "destroy_publisher": (
+        "upstream takes (node, entity). The node is VALIDATION context there; here "
+        "the entity's `backend_data` is self-sufficient, so the parameter would be "
+        "inert. NOT \"an image has no node object\" — it has had one since W4"
+    ),
     "destroy_subscription": ("as destroy_publisher"),
     "destroy_service": ("as destroy_publisher"),
     "destroy_client": ("as destroy_publisher"),
     # ---- Data plane ----
     "publish": (
         "bytes (`const uint8_t *`, `size_t`) rather than a typed `const void *`, because "
-        "codegen bakes the type and there is no typesupport on target; and no allocation argument: upstream's pre-sizes a per-entity allocator the CALLER owns, and this ABI has no allocator to hand one. NOT because 'pools are baked' — that clause was FALSE and is retired (issue 0777): cyclonedds ddsrt_malloc/calloc per publish AND per take, zenoh mallocs inside zenoh-pico, and the cffi shim vec![]s per fallback loan. Only uORB preallocates"
+        "codegen bakes the type and there is no typesupport on target; and no "
+        "allocation argument, because upstream's allocation argument is an OPAQUE per-implementation handle (`rmw_publisher_allocation_t` is `{const char *implementation_identifier; void *data;}` — verified against Humble's `rmw/types.h`, and it contains no allocator), produced only by `rmw_init_publisher_allocation`, whose OTHER two parameters are a typesupport pointer and a `rosidl_runtime_c__Sequence__bound *` — both declined ABI-wide. With no way to produce one, the argument has nothing to point at. "
+        "TWO reasons have been wrong here in a week, both of them plausible: "
+        "'pools are baked' (FALSE — issue 0777 measured cyclonedds calling "
+        "ddsrt_malloc/calloc per publish AND per take, zenoh inside zenoh-pico, "
+        "the cffi shim per fallback loan; only uORB preallocates), then 'upstream "
+        "pre-sizes an rcutils_allocator_t the caller owns' (FALSE — there is no "
+        "allocator in that struct). Check the struct before writing a third"
     ),
     "publish_loaned_message": ("a length instead of upstream's allocation argument: the loan is a byte slot, and the backend needs to know how much of it was written"),
     "borrow_loaned_message": ("upstream loans a typed message via `void **`; ours reserves a byte slot of a requested size and reports the granted capacity plus an opaque token, because the payload is bytes and the backend owns the buffer until it is committed or discarded"),
@@ -257,7 +325,17 @@ ARG_DEVIATIONS = {
     ),
     "subscription_get_network_flow_endpoints": ("as publisher_get_network_flow_endpoints"),
     # ---- Events ----
-    "publisher_event_init": ("upstream fills an `rmw_event_t` the caller then polls with `rmw_take_event`; ours registers a CALLBACK directly, because an RTOS executor has no wait-set to poll an event handle from. The extra `uint32_t` is the QoS-policy filter and `void *` the callback context"),
+    "publisher_event_init": (
+        "upstream fills an `rmw_event_t` the caller then polls with "
+        "`rmw_take_event`; ours registers a CALLBACK directly, because an RTOS "
+        "executor has no wait-set to poll an event handle from. Taking the "
+        "callback at init also FUSES upstream's `rmw_event_set_callback` into "
+        "this slot, at the cost of being unable to replace or clear one later. "
+        "The extra `uint32_t` is `deadline_ms`, a duration consulted for the "
+        "DEADLINE_MISSED kinds only — it read \"the QoS-policy filter\" until "
+        "2026-08-24, which is a different thing that does not exist here — and "
+        "`void *` is the callback context"
+    ),
     "subscription_event_init": ("as publisher_event_init"),
     "get_node_names": (
         "visitor instead of an allocating `rcutils_string_array_t` pair; session "
@@ -272,14 +350,19 @@ ARG_DEVIATIONS = {
     "get_subscriber_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
     "get_service_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
     "get_client_names_and_types_by_node": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
-    "get_publishers_info_by_topic": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
-    "get_subscriptions_info_by_topic": ('upstream returns an ALLOCATING `rmw_names_and_types_t` / `rcutils_string_array_t`; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_publishers_info_by_topic": ('upstream returns an ALLOCATING `rmw_topic_endpoint_info_array_t` — NOT `rmw_names_and_types_t`, which is the sibling family this entry was copy-pasted from; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
+    "get_subscriptions_info_by_topic": ('upstream returns an ALLOCATING `rmw_topic_endpoint_info_array_t` — NOT `rmw_names_and_types_t`, which is the sibling family this entry was copy-pasted from; ours streams through a visitor callback, because there is no allocator at this seam and the ROS graph has no bound the CALLER can know — a buffer shape would make a 128 KiB image reserve for the worst graph it might ever meet. Session, not node, as everywhere else'),
     "count_publishers": (
-        "session, not node — an image has no node object to count through"
+        "session, not node: a matched count is a SESSION-wide fact and our "
+        "`rmw_node_t` carries no `context`, so a backend handed only a node could "
+        "not reach the session to answer it. Upstream reaches its context THROUGH "
+        "the node. NOT \"an image has no node object\""
     ),
     "count_subscribers": ("as count_publishers"),
     "node_get_graph_guard_condition": (
-        "upstream RETURNS a guard condition for the caller to add to a wait set; we "
+        "`rmw_session_t *` for upstream's `const rmw_node_t *`, as the rest of the "
+        "graph family and for the same reason. And upstream RETURNS a guard "
+        "condition for the caller to add to a wait set; we "
         "have no wait set and guard conditions are an executor concept here, so this "
         "registers a callback instead — the `set_wake_callback` shape. The callback "
         "is an EDGE with no payload: saying WHAT changed means buffering it, which "
@@ -295,9 +378,12 @@ ARG_DEVIATIONS = {
         "opaque release token instead of a typed loan"
     ),
     "publisher_wait_for_all_acked": (
-        "`uint32_t timeout_ms` for upstream's by-value `rmw_time_t`: every duration "
-        "in this ABI is u32 milliseconds (issue 0241), one width and one unit, so a "
-        "per-call time struct would be the only one of its kind"
+        "`uint32_t timeout_ms` for upstream's by-value `rmw_time_t {int64 sec, "
+        "uint64 nsec}`: 4 bytes against 16 in every entity and every call, and no "
+        "64-bit division on a 32-bit MCU. Millisecond resolution and a ~49.7-day "
+        "ceiling are the price (issue 0241). Do NOT restore the old claim that "
+        "\"every duration in this ABI is u32\" — `drive_io` and `ping_session` take "
+        "`int32_t timeout_ms`, so it is one unit and TWO widths"
     ),
     "send_request": (
         "bytes rather than a typed `const void *`, and no `int64_t *sequence_id` "
@@ -324,9 +410,9 @@ ARG_DEVIATIONS = {
         "until `sub_release`"
     ),
     "service_server_is_available": (
-        "upstream takes (node, client, bool *); an image has no node object — "
-        "the client reaches its session directly, so the node parameter would be "
-        "a pointer with nothing to point at"
+        "upstream takes (node, client, bool *); the node is validation context "
+        "there and the client reaches its session directly here, so the parameter "
+        "would be inert. NOT \"an image has no node object\""
     ),
 }
 
@@ -337,6 +423,15 @@ _spec = _util.spec_from_file_location("_parity", os.path.join(ROOT, "scripts", "
 _parity = _util.module_from_spec(_spec)
 _spec.loader.exec_module(_parity)
 DECLINED = {k for k, (bucket, _why) in _parity.MAP.items() if bucket == "declined"}
+
+# `layer` — answered, but not through the vtable and not as a C ABI function
+# either: `rmw_serialize` / `rmw_deserialize` are nros-serdes plus the codegen
+# packs. Skipped like `declined`, and counted SEPARATELY so the report never
+# implies they are missing. (The two `layer` symbols that ARE C functions in
+# our headers are in ABI_FUNCTIONS and verified there instead.)
+LAYERED = {
+    k for k, (bucket, _why) in _parity.MAP.items() if bucket == "layer"
+}
 
 # A `gap` whose reason names a TRACKED ISSUE is deferred, not forgotten, and
 # `--check` must not treat it as a red — otherwise the only way to put this
@@ -449,6 +544,7 @@ def compare():
     missing, arg_diff, matched, declared, ret_diff, grouped, abi_fns = (
         [], [], [], [], [], [], [])
     deferred = []
+    layered = []
 
     # What the headers actually DECLARE, so the table above cannot claim a
     # function nobody wrote.
@@ -463,6 +559,9 @@ def compare():
     }
     for name, (up_ret, params) in sorted(up.items()):
         if name in DECLINED:
+            continue
+        if name in LAYERED and name not in ABI_FUNCTIONS:
+            layered.append(name)
             continue
         if name in ABI_FUNCTIONS:
             if name in declared_fns:
@@ -495,7 +594,14 @@ def compare():
         else:
             arg_diff.append((slot, params, slots[slot]))
 
-    expected = {n[len("rmw_"):] for n in up} | set(ADDED)
+    # Grouped TARGETS are expected too. `create_session` / `destroy_session`
+    # have no upstream name of their own (they answer `rmw_init` and
+    # `rmw_shutdown` + `rmw_context_fini`), so without this they read as
+    # undeclared extras — which is why both were parked in `ADDED`, a table
+    # whose comment says "upstream has no equivalent" while their own reasons
+    # say the opposite. The headline then claimed 11 RTOS additions when 9 are
+    # additions.
+    expected = {n[len("rmw_"):] for n in up} | set(ADDED) | set(GROUPED_SYMBOLS.values())
     undeclared_extra = sorted(s for s in slots if s not in expected)
 
     # Vendor-named types in the signatures — the "generic flavour" rule.
@@ -512,6 +618,7 @@ def compare():
         "upstream": up,
         "missing": missing,
         "deferred": deferred,
+        "layered": layered,
         "arg_diff": arg_diff,
         "matched": matched,
         "abi_fns": abi_fns,
@@ -546,6 +653,13 @@ def self_test():
                 f"{sym}: grouped onto {target!r}, which is NOT a slot — an alias to a "
                 "missing slot hides the gap it should report"
             )
+    both = set(ADDED) & set(GROUPED_SYMBOLS.values())
+    if both:
+        bad.append(
+            f"slot(s) in ADDED *and* a GROUPED target: {sorted(both)} — a slot "
+            "cannot both have no upstream equivalent and be the answer to an "
+            "upstream name"
+        )
     if not ADDED:
         bad.append("ADDED is empty — every RTOS-only slot must carry its reason")
     for slot, why in ADDED.items():
@@ -574,6 +688,42 @@ def self_test():
     up = upstream_signatures()
     if up is not None:
         our_args, our_rets = vtable_slots()
+        # A handle upstream takes as `const` must be `const` here too.
+        #
+        # Matched BY TYPE, never by position — the first sweep of this class
+        # (15 slots, commit 0814b645d) compared arguments positionally and so
+        # missed three: upstream puts an `rmw_event_t *` or a `const rmw_node_t *`
+        # ahead of the handle in `{publisher,subscription}_event_init` and
+        # `service_server_is_available`, and ours does not, so zip() lined the
+        # handle up against something else and saw nothing. The class fix
+        # stopped one short of the class for a reason that had nothing to do
+        # with the class.
+        handles = {
+            "rmw_publisher_t", "rmw_subscription_t", "rmw_service_t",
+            "rmw_client_t", "rmw_node_t", "rmw_session_t",
+        }
+
+        def _handle_constness(params):
+            out = {}
+            for prm in params:
+                m = re.match(r"^(const )?(rmw_\w+_t) \*$", prm)
+                if m and m.group(2) in handles:
+                    out[m.group(2)] = bool(m.group(1))
+            return out
+
+        for name, (_uret, uargs) in sorted(up.items()):
+            slot = GROUPED_SYMBOLS.get(name) or name[len("rmw_"):]
+            if slot not in our_args:
+                continue
+            theirs = _handle_constness(uargs)
+            ours = _handle_constness(our_args[slot])
+            for ty, is_const in theirs.items():
+                if is_const and ty in ours and not ours[ty]:
+                    bad.append(
+                        f"{slot}: takes a non-const `{ty} *` where upstream takes "
+                        "`const` — no backend writes the handle, so this is a "
+                        "signature to fix, not a deviation to declare"
+                    )
         # Per SLOT, not per bucket: a slot can legitimately hold an ARG entry
         # and a stale RET entry at once (`destroy_publisher` did — it still
         # drops upstream's node argument, which kept it in the "declared"
@@ -623,7 +773,8 @@ def main(argv):
         )
         return 2
 
-    total = len(r["upstream"]) - len(DECLINED & set(r["upstream"]))
+    total = (len(r["upstream"]) - len(DECLINED & set(r["upstream"]))
+             - len(r["layered"]))
     print("rmw ABI shape — our vtable against upstream, name and args")
     print(f"  contract symbols to mirror : {total}")
     # Phase 376 W5 — three numbers, not two. This used to print ONE, counting a
@@ -635,6 +786,7 @@ def main(argv):
     print(f"  name matches, args DECLARED : {len(r['declared'])}")
     print(f"  answered by a GROUPED slot  : {len(r['grouped'])}")
     print(f"  plain ABI functions         : {len(r['abi_fns'])}")
+    print(f"  answered at another layer   : {len(r['layered'])}")
     print(f"  slots present, args differ : {len(r['arg_diff'])}")
     print(f"  UNDECLARED return-type diff: {len(r['ret_diff'])}")
     print(f"  no slot at all             : {len(r['missing'])}")
