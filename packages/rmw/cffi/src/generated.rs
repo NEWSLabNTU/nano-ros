@@ -739,6 +739,10 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Upstream `rmw_destroy_node`.\n\n  Releases the backend's `backend_data`; the shell stays valid until its\n  owner drops it."]
     pub destroy_node:
         ::core::option::Option<unsafe extern "C" fn(node: *mut rmw_node_t) -> rmw_ret_t>,
+    #[doc = " Upstream `rmw_set_log_severity`. Exact parity.\n\n  Sets the verbosity of the BACKEND's own logging — Cyclone's `dds_log`,\n  zenoh-pico's log, the XRCE client's. Not `nros_log`: that is the\n  runtime's logger, already runtime-settable through\n  `nros_log::Logger::set_level`, and it needs no ABI to reach.\n\n  This IS a slot rather than a plain ABI function, and the distinction is\n  the one the pure functions turn on: \"what does this middleware print\"\n  genuinely varies by middleware, so a per-backend answer is correct here\n  rather than a defect. All three reference implementations\n  (`librmw_{cyclonedds,fastrtps,zenoh}_cpp.so`) implement it with real\n  bodies, which is the opposite of what they do for\n  `rmw_get_serialized_message_size`.\n\n  Phase 376 W5 — this was DECLINED, on the reasoning that \"log level is a\n  build-time constant (nros_log); a runtime setter implies a mutable\n  global\". Both clauses were false: `Logger::level` is an `AtomicU8` with a\n  public `set_level` already used by tests, and the compile-time part is a\n  CEILING that defaults open. The decline described a design we do not\n  have.\n\n  NULL slot: the backend has no adjustable logging, and the runtime\n  surfaces `UNSUPPORTED`."]
+    pub set_log_severity: ::core::option::Option<
+        unsafe extern "C" fn(severity: rmw_log_severity_t::Type) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -844,6 +848,16 @@ pub mod nros_rmw_qos_clash_t {
     pub const NROS_RMW_QOS_CLASH_DEADLINE: Type = 4;
     pub const NROS_RMW_QOS_CLASH_LIVELINESS_KIND: Type = 8;
     pub const NROS_RMW_QOS_CLASH_LIVELINESS_LEASE: Type = 16;
+}
+pub mod rmw_log_severity_t {
+    #[doc = " Log severity — upstream `rmw_log_severity_t`, values included.\n\n  The values are `rcutils`' ladder (`DEBUG 10`, `INFO 20`, …), not a dense\n  0..N, so they are written out rather than renumbered: a caller that has an\n  `rcutils` severity in hand can pass it straight through.\n\n  There is no `TRACE`. `nros_log::Severity` has one, and it maps to `DEBUG`\n  crossing this seam — losing a distinction upstream never had is better than\n  inventing a value a ROS-side caller cannot produce."]
+    pub type Type = core::ffi::c_uint;
+    pub const RMW_LOG_SEVERITY_UNSET: Type = 0;
+    pub const RMW_LOG_SEVERITY_DEBUG: Type = 10;
+    pub const RMW_LOG_SEVERITY_INFO: Type = 20;
+    pub const RMW_LOG_SEVERITY_WARN: Type = 30;
+    pub const RMW_LOG_SEVERITY_ERROR: Type = 40;
+    pub const RMW_LOG_SEVERITY_FATAL: Type = 50;
 }
 pub mod rmw_endpoint_type_t {
     #[doc = " Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`."]

@@ -279,6 +279,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     node_get_graph_guard_condition: None,
     create_node: None,
     destroy_node: None,
+    set_log_severity: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -3002,6 +3003,78 @@ impl CffiRmw {
 // 3. Rust accessors (`CffiPublisher::topic_name()`, `qos()`,
 //    `can_loan_messages()`) read back the values without any
 //    vtable callback.
+
+// ============================================================================
+// Phase 376 W5 — backend log severity
+// ============================================================================
+
+/// Map `nros_log`'s ladder onto upstream's.
+///
+/// `Trace` has no upstream counterpart and folds into `DEBUG`. Losing a
+/// distinction upstream never had is better than inventing a value a ROS-side
+/// caller could not produce — the mapping is deliberately lossy in the
+/// direction that keeps the wire vocabulary standard.
+#[must_use]
+pub fn rmw_severity_of(severity: nros_log::Severity) -> generated::rmw_log_severity_t::Type {
+    match severity {
+        nros_log::Severity::Trace | nros_log::Severity::Debug => {
+            generated::rmw_log_severity_t::RMW_LOG_SEVERITY_DEBUG
+        }
+        nros_log::Severity::Info => generated::rmw_log_severity_t::RMW_LOG_SEVERITY_INFO,
+        nros_log::Severity::Warn => generated::rmw_log_severity_t::RMW_LOG_SEVERITY_WARN,
+        nros_log::Severity::Error => generated::rmw_log_severity_t::RMW_LOG_SEVERITY_ERROR,
+        nros_log::Severity::Fatal => generated::rmw_log_severity_t::RMW_LOG_SEVERITY_FATAL,
+    }
+}
+
+/// Set the verbosity of every registered BACKEND's own logging.
+///
+/// This is the backend's logger — Cyclone's `dds_log`, zenoh-pico's — not
+/// `nros_log`, which is the runtime's and is set directly through
+/// `nros_log::Logger::set_level` with no ABI involved.
+///
+/// Applies to EVERY registered backend, because an image may link more than one
+/// (`nros_rmw_cffi_register_named`) and verbosity is a property of the process
+/// rather than of a session. Upstream has no equivalent decision to make: it
+/// loads one implementation.
+///
+/// Returns `Unsupported` when no registered backend implements the slot, the
+/// first error any backend reported otherwise, and `Ok` when at least one
+/// accepted it.
+pub fn set_backend_log_severity(severity: nros_log::Severity) -> Result<(), TransportError> {
+    const MAX: usize = 8;
+    let mut names: [*const core::ffi::c_char; MAX] = [core::ptr::null(); MAX];
+    // SAFETY: `names` is `MAX` entries and the callee writes at most that many.
+    let n = unsafe { nros_rmw_cffi_registered_names(names.as_mut_ptr(), MAX) };
+
+    let wire = rmw_severity_of(severity);
+    let mut applied = false;
+    let mut first_err = None;
+    for name in names.iter().take(n.min(MAX)) {
+        // SAFETY: the registry hands back NUL-terminated static names.
+        let vt = unsafe { nros_rmw_cffi_lookup(*name) };
+        if vt.is_null() {
+            continue;
+        }
+        // SAFETY: a non-null lookup yields a vtable valid for the image's life.
+        let Some(f) = (unsafe { (*vt).set_log_severity }) else {
+            continue;
+        };
+        // SAFETY: the slot takes a plain enum by value.
+        let rc = unsafe { f(wire) };
+        if rc == NROS_RMW_RET_OK {
+            applied = true;
+        } else if first_err.is_none() {
+            first_err = Some(error_from_ret(rc));
+        }
+    }
+
+    match (applied, first_err) {
+        (true, _) => Ok(()),
+        (false, Some(e)) => Err(e),
+        (false, None) => Err(TransportError::Unsupported),
+    }
+}
 
 // ============================================================================
 // Phase 376 W4 — the two PURE functions, defined ONCE

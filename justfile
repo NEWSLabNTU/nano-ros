@@ -1038,7 +1038,10 @@ check-abi-bindings:
         packages/rmw/cffi/src/generated.rs \
         packages/platform/nros-platform-cffi/src/generated.rs \
         packages/boards/nros-board-cffi/src/generated.rs; then
-        git --no-pager diff --stat -- packages/core/*/src/generated.rs
+        git --no-pager diff --stat -- \
+            packages/rmw/cffi/src/generated.rs \
+            packages/platform/nros-platform-cffi/src/generated.rs \
+            packages/boards/nros-board-cffi/src/generated.rs
         echo "ERROR: committed ABI bindings are stale — headers changed without rerunning scripts/gen-abi-bindings.sh; commit the regenerated files."
         exit 1
     fi

@@ -319,6 +319,24 @@ rmw_ret_t rmw_qos_profile_check_compatible(
 rmw_ret_t rmw_compare_gids_equal(const rmw_gid_t *gid1, const rmw_gid_t *gid2,
     bool *result);
 
+/** Log severity — upstream `rmw_log_severity_t`, values included.
+ *
+ *  The values are `rcutils`' ladder (`DEBUG 10`, `INFO 20`, …), not a dense
+ *  0..N, so they are written out rather than renumbered: a caller that has an
+ *  `rcutils` severity in hand can pass it straight through.
+ *
+ *  There is no `TRACE`. `nros_log::Severity` has one, and it maps to `DEBUG`
+ *  crossing this seam — losing a distinction upstream never had is better than
+ *  inventing a value a ROS-side caller cannot produce. */
+typedef enum rmw_log_severity_t {
+    RMW_LOG_SEVERITY_UNSET = 0,
+    RMW_LOG_SEVERITY_DEBUG = 10,
+    RMW_LOG_SEVERITY_INFO  = 20,
+    RMW_LOG_SEVERITY_WARN  = 30,
+    RMW_LOG_SEVERITY_ERROR = 40,
+    RMW_LOG_SEVERITY_FATAL = 50,
+} rmw_log_severity_t;
+
 /** Which end of a topic an endpoint is — upstream `rmw_endpoint_type_t`. */
 typedef enum rmw_endpoint_type_t {
     RMW_ENDPOINT_INVALID      = 0,

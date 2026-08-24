@@ -310,9 +310,20 @@ is about them being *true*, not merely present. For each declared deviation:
 
 Two are already suspect and should be re-decided rather than inherited:
 
-* **`set_log_severity`** — declined because the log level is a build-time
-  constant. That is a policy choice, not a constraint; a runtime setter is
-  possible and the reason as written does not carry.
+* **`set_log_severity`** — LANDED as a vtable slot (2026-08-24). The decline
+  said "log level is a build-time constant (`nros_log`); a runtime setter
+  implies a mutable global". Both clauses were false against the code as it
+  actually stands: `nros_log::Logger::level` is already an `AtomicU8` with a
+  public `set_level`, and the compile-time part is a CEILING that defaults open
+  (`Severity::Trace` when no feature selects one). So the setter needed no new
+  mutable state and no new global — it needed the slot. A probe of the three
+  upstream backends found all three implement `rmw_set_log_severity` with a real
+  body, unlike `rmw_get_serialized_message_size` which two of them stub, so the
+  behaviour genuinely varies per backend and it is correctly a SLOT rather than
+  a plain ABI function. Runtime half: `set_backend_log_severity()` applies to
+  EVERY registered backend (an image can carry more than one, which upstream
+  never has to handle) and reports `Unsupported` only when none exposes the
+  slot.
 * **`subscription_{set,get}_content_filter`** — declined as DDS-only. True, but
   a NULL slot returning `UNSUPPORTED` costs one pointer and lets a DDS backend
   answer, which is strictly better than absence from the ABI.
@@ -554,7 +565,7 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 | every `ADDED` slot's reason re-checked against the target constraint | open |
 | every `ARG_DEVIATIONS` reason re-checked | open |
 | every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | open |
-| re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | open |
+| re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
 | re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | open |
 | `rmw-abi-shape --check` joins the `just check` line | open |
 

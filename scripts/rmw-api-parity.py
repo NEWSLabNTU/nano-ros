@@ -225,10 +225,7 @@ MAP = {
         "content filtering is a DDS-only expression evaluator; would bloat every non-DDS backend",
     ),
     "rmw_subscription_get_content_filter": ("declined", "as above"),
-    "rmw_set_log_severity": (
-        "declined",
-        "log level is a build-time constant (nros_log); a runtime setter implies a mutable global",
-    ),
+        "rmw_set_log_severity": ("vtable", "set_log_severity"),
     "rmw_publisher_wait_for_all_acked": (
         "gap",
         "reliable backends know their unacked count; needed for clean shutdown",

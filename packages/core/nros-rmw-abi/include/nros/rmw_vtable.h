@@ -902,6 +902,32 @@ typedef struct nros_rmw_vtable_t {
      *  owner drops it. */
     rmw_ret_t (*destroy_node)(rmw_node_t *node);
 
+    /** Upstream `rmw_set_log_severity`. Exact parity.
+     *
+     *  Sets the verbosity of the BACKEND's own logging — Cyclone's `dds_log`,
+     *  zenoh-pico's log, the XRCE client's. Not `nros_log`: that is the
+     *  runtime's logger, already runtime-settable through
+     *  `nros_log::Logger::set_level`, and it needs no ABI to reach.
+     *
+     *  This IS a slot rather than a plain ABI function, and the distinction is
+     *  the one the pure functions turn on: "what does this middleware print"
+     *  genuinely varies by middleware, so a per-backend answer is correct here
+     *  rather than a defect. All three reference implementations
+     *  (`librmw_{cyclonedds,fastrtps,zenoh}_cpp.so`) implement it with real
+     *  bodies, which is the opposite of what they do for
+     *  `rmw_get_serialized_message_size`.
+     *
+     *  Phase 376 W5 — this was DECLINED, on the reasoning that "log level is a
+     *  build-time constant (nros_log); a runtime setter implies a mutable
+     *  global". Both clauses were false: `Logger::level` is an `AtomicU8` with a
+     *  public `set_level` already used by tests, and the compile-time part is a
+     *  CEILING that defaults open. The decline described a design we do not
+     *  have.
+     *
+     *  NULL slot: the backend has no adjustable logging, and the runtime
+     *  surfaces `UNSUPPORTED`. */
+    rmw_ret_t (*set_log_severity)(rmw_log_severity_t severity);
+
 } nros_rmw_vtable_t;
 
 /**
