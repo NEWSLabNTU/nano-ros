@@ -47,7 +47,13 @@ The tree holds TWO kinds of project and they take different conventions:
 | context | convention | why |
 | --- | --- | --- |
 | `examples/**` copy-out leaves | **Cargo/CMake native** — `target/` and `build/` beside the source, per-leaf `.gitignore` | a user copies the leaf out; it must behave like a normal Cargo/CMake project in their repo (CLAUDE.md: "Examples are standalone copy-out projects") |
-| the nano-ros workspace (`workspaces/`, fixtures, tooling) | **colcon-style shared `build/`** (+ `install/`, `log/`) | ROS familiarity is a project goal, and this is where sharing is legitimate |
+| the nano-ros workspace (`workspaces/`, fixtures, tooling) | **colcon-style shared `build/`** (+ `dist/`, `log/`) | ROS familiarity is a project goal, and this is where sharing is legitimate |
+
+> **AMENDED 2026-08-25 by [RFC-0065](0065-colcon-like-workspace-builder.md) §D8: `install/` → `dist/`.**
+> `install/` promises an environment to source. nano-ros bakes ONE image per
+> `(entry, board)` pair and composes nothing at runtime, so `dist/setup.bash` can never
+> exist — and a ROS user's first move on seeing `install/` is to source it. `dist/<image>/`
+> names what is actually there: finished artifacts, keyed by image.
 
 R1 below applies to the SECOND row only. R2, R3 and R4 are unchanged and apply
 to both.

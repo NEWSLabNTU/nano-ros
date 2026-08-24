@@ -74,6 +74,14 @@ superseded-by: null
 2. **No colcon as primary orchestrator.** Error attribution (rustc/gcc diagnostics swallowed by `Failed <<<`), embedded targets ignored, install/ tree dead weight for MCUs, cross-language codegen invisible to colcon DAG. Colcon stays *available* for Autoware-style outer integration via `colcon-cargo-ros2` seam; never the inner workflow.
 3. **cargo / cmake stay user-facing.** `cargo build` works at workspace root for Rust-majority. `cmake --build build` works for C++-majority. Rustc errors stay rustc errors.
 4. **nros never a build verb.** No `nros build` / `nros test` / `nros flash`. nros = provisioner + codegen + metadata. Idf.py-shaped, not colcon-shaped.
+   > **AMENDED 2026-08-25 by [RFC-0065](0065-colcon-like-workspace-builder.md) §D1.** The
+   > objection recorded in §9 is to *wrapping the compiler* — "hides cargo/cmake
+   > diagnostics" — not to *deriving the root build file*. `nros build` returns with two
+   > properties that keep §2.2 and §2.3 intact: its final stage is an **`exec`**, not a
+   > pipe, so diagnostics are byte-identical to the native tool's; and what it generates
+   > is a **real build tree** a user can drive by hand thereafter. `nros test` and `nros
+   > flash` stay rejected — neither has a derivation to perform, so both would be pure
+   > wrapping.
 5. **One-package workflow stays canonical for tiny fixtures.** Multi-package shape kicks in at ≥2 components. (Phase 212 already decided single-package workflow user-facing.)
 
 ---
@@ -322,7 +330,7 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 ## 9. Rejected alternatives (so far)
 
 - **Colcon inner loop.** Error attribution, embedded coverage, install/ overhead. §2 constraint 2.
-- **`nros build` / `nros test` / `nros flash`.** Re-creates colcon's wrapping anti-pattern; hides cargo/cmake diagnostics. §2 constraint 4.
+- **`nros build` / `nros test` / `nros flash`.** Re-creates colcon's wrapping anti-pattern; hides cargo/cmake diagnostics. §2 constraint 4. **`nros build` re-admitted 2026-08-25 as a generate-then-`exec` builder — see the amendment note on §2 constraint 4 and [RFC-0065](0065-colcon-like-workspace-builder.md). `test` / `flash` remain rejected.**
 - **Single workspace-root `nros.toml` w/ `[system.<name>]` sub-tables.** Re-creates colcon monorepo-of-unrelated-systems pattern; breaks per-system `<exec_depend>` hygiene. §5.
 - **Bringup pkg ships `CMakeLists.txt` + empty `install(DIRECTORY launch ...)`.** Drags ament_cmake into a pure-Rust workspace for zero benefit. nros reads `launch/` from source. §4.
 - **`find_package(NanoRos)` consumption.** Already deleted Phase 140. Confirmed not coming back. Consumption stays `add_subdirectory(<repo-root>)`. §6.2.

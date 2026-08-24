@@ -181,6 +181,8 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 **#0770** (testing, open 2026-08-24) — tier-2 runs the native interop cells against fixtures its build lane never refreshed (the #482 exists-vs-fresh split, resurfaced for `interop::CELLS`); ~8 one-cause reds per sweep on a stale native lane. See `0770-*`.
 
 
+**#0798** (examples, open 2026-08-25) — `examples/workspaces/c`'s root routes `s32z270-freertos` to a FreeRTOS entry that hardcodes `BOARD`/`DEPLOY mps2-an385-freertos`, so all three arms of `_nra_board_active` are false: the image links with NO platform glue and no locator bake — issue 0735's "configure succeeded, the build succeeded, the image was wrong" one arm over. Latent, not red: the only s32z270 fixture row targets the C++ workspace, which phase-372 W2 DID fix (`BOARD ${NANO_ROS_BOARD}`). The class is the implicit (entry × board) pairing that RFC-0065 makes derived. See `0798-*`.
+
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
 the spawned `low` tier printed nothing in a full 12 s). Fixed by `boot_tier_index`: the session owner is now
