@@ -166,3 +166,47 @@ No FreeRTOS consumer has asked. The named demander is a Zephyr island
 is S32Z270 (phase-372, Cortex-R52 automotive), which stamps nothing today. The
 port stays at `0` — correct, not unfinished — until someone needs it, and this
 section is what they should read first.
+
+## Re-acquisition is a REQUIREMENT, not "drift handling later" (2026-08-24)
+
+The Non-goals section says one epoch acquisition at boot is what stamped-message
+interop needs, and that drift can layer later. Measured evidence from the ASI
+consumer says the opposite for any consumer whose tick is not real-time-paced:
+a one-shot epoch is unbounded-error by construction, because the epoch is
+advanced afterwards by the platform's own tick.
+
+Measured on the ASI Zephyr FVP island (one-shot SNTP in its boot network hook,
+then the FVP tick):
+
+    island stamp 1787579546  vs  host wall 1787575852   offset  3694 s
+    +16 s of wall clock later                            offset  3854 s
+
+i.e. the island's wall-clock estimate advances ~10.5x real time whenever the
+model is idle (the FVP fast-forwards an idle guest; its rate limiter lives in
+the visualisation component and does not pace idle time). The error has no
+bound — it grows for as long as the image runs.
+
+What that cost downstream: Autoware's `mrm_emergency_stop_operator` seeds its
+braking ramp over `dt = now - input.stamp` with no sanity clamp, so a
+future-stamped command turned an emergency STOP into `a = +7127 m/s^2`
+(measured: `a0 = -1.5 + 3.0 * 2376`, where 2376 s was the offset at that
+moment) and drove a simulated vehicle to its speed clamp. The peer's missing
+clamp is its own bug — but the input that triggered it was a one-shot epoch
+left to drift.
+
+Consequences for this design:
+
+- `acquire_epoch()` must be RE-callable, and the port should re-acquire on an
+  interval (or slew), not once at boot. The returns-0 sentinel already models
+  "not yet"; nothing in the ABI needs to change to allow a second call, but the
+  contract has to SAY it is allowed and the providers have to do it.
+- The interval belongs with the other deploy facts (alongside server
+  address/port), because the tolerable error is a property of the deployment:
+  ppm-level on real silicon, ~10x on a free-running simulator.
+- Worth stating in the port documentation: consumers that stamp messages for a
+  validating peer should treat a monotonic-only clock as unsafe to stamp with,
+  the same way the lwIP note above tells them to wait for `epoch_us() != 0`.
+
+Full investigation record (probe method, per-sample numbers, the two halves of
+the chain) lives in the ASI consumer's phase-4 doc, section "MRM divergence —
+investigated and root-caused".

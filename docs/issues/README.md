@@ -505,7 +505,12 @@ messages from their boot epoch and stamped-message peers reject them (ASI's Auto
 case — autonomous mode could not actuate until the consumer hand-rolled an SNTP hook + host server).
 Direction: an optional `epoch_us`/`acquire_epoch` platform-vtable slot with SNTP as the first provider
 (Zephyr in-tree client, lwIP SNTP, POSIX `CLOCK_REALTIME`), server address as a deploy fact, acquired
-between netif-up and component construction. See `0758-*`. (2026-08-22)
+between netif-up and component construction. AMENDED 2026-08-24: a one-shot epoch is UNBOUNDED-ERROR by
+construction, because the platform tick advances it afterwards — the ASI island measured 3694 s of offset
+growing 160 s per 16 s of wall clock (~10.5x real, the FVP fast-forwards an idle guest). That future stamp
+then seeded Autoware's `mrm_emergency_stop_operator`, whose unclamped `now - input.stamp` turned an
+emergency STOP into `a = +7127 m/s^2`. So `acquire_epoch()` must be RE-callable with a deploy-fact
+re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-22)
 
 
 
