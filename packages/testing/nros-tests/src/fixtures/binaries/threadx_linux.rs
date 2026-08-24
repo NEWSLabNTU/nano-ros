@@ -64,6 +64,37 @@ fn build_rust_example(name: &str, _binary_name: &str) -> TestResult<PathBuf> {
     require_entry_binary(name, name)
 }
 
+/// Resolve a ThreadX-Linux cmake example's artifact for a NAMED rmw.
+///
+/// Issue 0786, sibling of the RV64 one. Four sites in `native_api.rs` built
+/// `examples/threadx-linux/<lang>/<case>/build-cyclonedds/<bin>` by hand and
+/// guarded it with `.exists()`. A museum binary EXISTS, so that guard passes
+/// and the stale image runs — which is issue 0215 verbatim, recorded in a
+/// comment at one of those very sites ("an orphaned museum binary in the
+/// never-wiped build dir satisfied the existence check while silently broken").
+/// The RV64 C++ cell then hit the same thing from the same cause and read as a
+/// code regression.
+///
+/// `require_prebuilt_binary_fresh_cmake` answers the question `.exists()`
+/// cannot: is this artifact NEWER than the sources it was built from.
+pub fn build_threadx_cmake_example_rmw(
+    lang: &str,
+    name: &str,
+    binary_name: &str,
+    rmw: super::Rmw,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/threadx-linux/{}/{}", lang, name));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example not found: {}",
+            example_dir.display()
+        )));
+    }
+    let binary_path = example_dir.join(rmw.build_dir()).join(binary_name);
+    super::require_prebuilt_binary_fresh_cmake(&binary_path)
+}
+
 pub fn build_threadx_talker() -> TestResult<&'static Path> {
     THREADX_TALKER_BINARY
         .get_or_try_init(|| build_rust_example("talker", "threadx-linux-talker"))

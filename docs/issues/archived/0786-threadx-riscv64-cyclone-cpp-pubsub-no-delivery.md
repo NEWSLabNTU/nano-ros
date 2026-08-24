@@ -1,12 +1,63 @@
 ---
 id: 786
-title: "`test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub`: the image boots and
-  the listener starts, then nothing is delivered — 30 s timeout"
-status: open
+title: "`test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub` ran a five-day-old
+  binary: two tests hand-joined a fixture path and skipped the staleness probe"
+status: resolved
 type: bug
 area: testing, threadx
-related: [issue-0664, phase-376]
+related: [issue-0664, issue-0215, issue-0482, phase-376]
+resolved_in: "phase-378"
 ---
+
+## Resolution — it was never a code regression
+
+**The image was five days old.** The C listener rebuilt at 2026-08-24 23:19; both
+C++ listeners sat at 2026-08-19 13:34. Rebuilt fresh, all four
+`threadx_riscv64_qemu` tests pass in ~1.4 s.
+
+The cause is in the TEST, not the runtime:
+
+```rust
+let talker_bin = root.join("examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds/cpp_talker");
+```
+
+A hand-joined path skips both things the resolver exists to do — the lane
+coordinate check (`fixtures::lane::require_in_lane`) and the freshness probe
+(`require_prebuilt_binary_fresh_cmake`). The tier-2 build lane is 1-wise, so it
+need not rebuild this coordinate; the artifact from an older lane simply sat
+there and RAN. Per issue 0482 an in-lane fixture that is stale must fail HARD and
+an out-of-lane one must SKIP — this did neither, because it never reached the
+code that decides.
+
+Fixed by adding `build_rv64_cmake_example_rmw` (the C/C++ resolvers only ever
+spelled `build-zenoh`, which is why the test hand-rolled a cyclonedds path in the
+first place) and routing both the C and the C++ pubsub tests through it. The
+now-redundant `.exists()` guards are deleted: the resolver's own policy is
+strictly better — tier-aware skip in the light lane, a `.build-failed` marker
+distinguishing "never built" from "build FAILED", and a hard error otherwise.
+
+Swept the class: four more sites in `native_api.rs` hand-joined
+`examples/threadx-linux/**/build-cyclonedds/*` and guarded with `.exists()` — a
+museum binary satisfies that check. One of them carries a comment describing
+issue **0215**, which is this same defect biting in 2026. Those now resolve
+through a new `build_threadx_cmake_example_rmw`.
+
+Verified by holding out artifacts rather than by reasoning: fresh → PASS; a
+backdated binary → FAIL in 0.18 s naming the binary, the newer source and the
+remedy; a removed binary → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1` and a
+hard error without it.
+
+## What the original report got wrong
+
+Everything below this line is the diagnosis as first filed. It is kept because
+the reasoning was plausible and wrong in an instructive way: a stale artifact
+presents as a runtime hang, and both candidate causes named below are real
+changes in the right window that had nothing to do with it. **Read the artifact
+mtimes before bisecting a hang.** The zenoh C++ image hanging identically was the
+tell — one bug in two backends is usually one binary that was not rebuilt.
+
+---
+
 
 ## Symptom
 

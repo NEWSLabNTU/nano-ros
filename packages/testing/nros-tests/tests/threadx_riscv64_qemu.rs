@@ -27,8 +27,11 @@
 use std::time::Duration;
 
 use nros_tests::fixtures::{
-    QemuProcess, is_qemu_riscv64_available, qemu_riscv64_supports_dgram_unix,
-    threadx_riscv64::{is_netx_available, is_riscv_gcc_available, is_threadx_available},
+    QemuProcess, Rmw, is_qemu_riscv64_available, qemu_riscv64_supports_dgram_unix,
+    threadx_riscv64::{
+        build_rv64_cmake_example_rmw, is_netx_available, is_riscv_gcc_available,
+        is_threadx_available,
+    },
 };
 
 // =============================================================================
@@ -111,16 +114,15 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     }
 
     let root = nros_tests::project_root();
-    let talker_bin = root.join("examples/qemu-riscv64-threadx/c/talker/build-cyclonedds/c_talker");
-    let listener_bin =
-        root.join("examples/qemu-riscv64-threadx/c/listener/build-cyclonedds/c_listener");
-    if !talker_bin.exists() || !listener_bin.exists() {
-        nros_tests::skip!(
-            "CycloneDDS ThreadX fixtures missing; build with: \
-             just threadx_riscv64 build-fixtures (or just build-all). They build \
-             by default — was NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 set?"
-        );
-    }
+    // Issue 0786 — RESOLVE, never `root.join`. A hand-built path skips the lane
+    // coordinate check and the staleness probe, and the tier-2 build lane is
+    // 1-wise, so it need not rebuild this coordinate: the C++ sibling of this
+    // test ran a five-day-old image for exactly that reason and read as a code
+    // regression.
+    let talker_bin = build_rv64_cmake_example_rmw("c", "talker", "c_talker", Rmw::Cyclonedds)
+        .expect("resolve rv64 C talker (cyclonedds)");
+    let listener_bin = build_rv64_cmake_example_rmw("c", "listener", "c_listener", Rmw::Cyclonedds)
+        .expect("resolve rv64 C listener (cyclonedds)");
 
     // MACs match each node's config.toml (talker 10.0.2.40/:56,
     // listener 10.0.2.41/:57) so QEMU's device MAC equals the NetX-assigned
@@ -362,17 +364,13 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
     }
 
     let root = nros_tests::project_root();
-    let talker_bin =
-        root.join("examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds/cpp_talker");
+    // Issue 0786 — RESOLVE, never `root.join`; see the note in the C sibling.
+    // This is the test that ran the museum binary.
+    let talker_bin = build_rv64_cmake_example_rmw("cpp", "talker", "cpp_talker", Rmw::Cyclonedds)
+        .expect("resolve rv64 C++ talker (cyclonedds)");
     let listener_bin =
-        root.join("examples/qemu-riscv64-threadx/cpp/listener/build-cyclonedds/cpp_listener");
-    if !talker_bin.exists() || !listener_bin.exists() {
-        nros_tests::skip!(
-            "CycloneDDS ThreadX C++ fixtures missing; build with: \
-             just threadx_riscv64 build-fixtures (or just build-all). They build \
-             by default — was NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 set?"
-        );
-    }
+        build_rv64_cmake_example_rmw("cpp", "listener", "cpp_listener", Rmw::Cyclonedds)
+            .expect("resolve rv64 C++ listener (cyclonedds)");
 
     // MACs match each C++ node's baked identity (talker 0x56, listener 0x57).
     const TALKER_MAC: &str = "52:54:00:12:34:56";

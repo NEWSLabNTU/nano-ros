@@ -188,7 +188,29 @@ static RV64_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
+/// Resolve a ThreadX-RV64 cmake example's artifact for a NAMED rmw.
+///
+/// Issue 0786. The C and C++ pubsub tests used to hand-build
+/// `examples/qemu-riscv64-threadx/<lang>/<case>/build-cyclonedds/<bin>` as a
+/// plain `root.join(...)`, because the resolver below only ever spelled
+/// `build-zenoh`. A hand-built path skips BOTH things this function exists to
+/// do: the lane coordinate check, and `require_prebuilt_binary_fresh_cmake`.
+///
+/// The consequence was not a missing file — it was a five-day-old one. The
+/// tier-2 build lane is 1-wise, so it need not rebuild this coordinate, and
+/// the artifact from a previous lane sat there and RAN. A museum binary that
+/// hangs looks exactly like a code regression: it cost a bisect-shaped
+/// investigation and a filed issue before the mtimes were read.
+///
+/// So the rule the rest of the suite follows applies here too — resolve, never
+/// join. The zenoh entry point below delegates here rather than keeping its own
+/// copy of the path arithmetic, so the two cannot drift.
+pub fn build_rv64_cmake_example_rmw(
+    lang: &str,
+    name: &str,
+    binary_name: &str,
+    rmw: super::Rmw,
+) -> TestResult<PathBuf> {
     let root = project_root();
     let example_dir = root.join(format!("examples/qemu-riscv64-threadx/{}/{}", lang, name));
 
@@ -199,9 +221,13 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
-    let build_dir = example_dir.join("build-zenoh");
+    let build_dir = example_dir.join(rmw.build_dir());
     let binary_path = build_dir.join(binary_name);
     super::require_prebuilt_binary_fresh_cmake(&binary_path)
+}
+
+fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    build_rv64_cmake_example_rmw(lang, name, binary_name, super::Rmw::Zenoh)
 }
 
 pub fn build_rv64_c_talker() -> TestResult<&'static Path> {

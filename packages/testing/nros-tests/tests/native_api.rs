@@ -1076,14 +1076,13 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     // shape). Issue #215: this path kept the OLD name and an orphaned museum
     // binary in the never-wiped build dir satisfied the existence check while
     // silently broken — keep the name in sync with the CMake target.
-    let talker_bin = nros_tests::project_root()
-        .join("examples/threadx-linux/c/talker/build-cyclonedds/c_talker");
-    if !talker_bin.exists() {
-        nros_tests::skip!(
-            "threadx-linux CycloneDDS talker missing; build with: \
-             just threadx_linux build-fixtures"
-        );
-    }
+    let talker_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "c",
+        "talker",
+        "c_talker",
+        nros_tests::fixtures::Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| panic!("resolve threadx-linux c talker (cyclonedds): {e}"));
     // Native C Cyclone listener built via the standard fixture path.
     let listener_bin = cyclone_listener_binary(Language::C);
 
@@ -1135,14 +1134,13 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
     if !require_cmake() {
         nros_tests::skip!("cmake not found");
     }
-    let talker_bin = nros_tests::project_root()
-        .join("examples/threadx-linux/cpp/talker/build-cyclonedds/cpp_talker");
-    if !talker_bin.exists() {
-        nros_tests::skip!(
-            "threadx-linux CycloneDDS C++ talker missing; build with: \
-             just threadx_linux build-fixtures"
-        );
-    }
+    let talker_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "cpp",
+        "talker",
+        "cpp_talker",
+        nros_tests::fixtures::Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| panic!("resolve threadx-linux cpp talker (cyclonedds): {e}"));
     let listener_bin = cyclone_listener_binary(Language::Cpp);
 
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-cpp-cyclonedds-listener", "107");
@@ -1189,14 +1187,13 @@ fn test_threadx_linux_cyclonedds_service() {
     if !require_cmake() {
         nros_tests::skip!("cmake not found");
     }
-    let server_bin = nros_tests::project_root()
-        .join("examples/threadx-linux/c/service-server/build-cyclonedds/c_service_server");
-    if !server_bin.exists() {
-        nros_tests::skip!(
-            "threadx-linux CycloneDDS service-server missing; build with: \
-             just threadx_linux build-fixtures"
-        );
-    }
+    let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "c",
+        "service-server",
+        "c_service_server",
+        nros_tests::fixtures::Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| panic!("resolve threadx-linux c service-server (cyclonedds): {e}"));
     let client_bin = cyclone_role_binary(Language::C, "service-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-service-server", "107");
@@ -1232,14 +1229,13 @@ fn test_threadx_linux_cyclonedds_action() {
     if !require_cmake() {
         nros_tests::skip!("cmake not found");
     }
-    let server_bin = nros_tests::project_root()
-        .join("examples/threadx-linux/c/action-server/build-cyclonedds/c_action_server");
-    if !server_bin.exists() {
-        nros_tests::skip!(
-            "threadx-linux CycloneDDS action-server missing; build with: \
-             just threadx_linux build-fixtures"
-        );
-    }
+    let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+        "c",
+        "action-server",
+        "c_action_server",
+        nros_tests::fixtures::Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| panic!("resolve threadx-linux c action-server (cyclonedds): {e}"));
     let client_bin = cyclone_role_binary(Language::C, "action-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-action-server", "107");
