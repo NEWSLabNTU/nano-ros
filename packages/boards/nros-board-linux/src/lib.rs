@@ -434,9 +434,20 @@ impl LinuxBoard {
         // own refusal line has already said why.
         #[cfg(unix)]
         {
+            // RFC-0079 — the RESERVED band's floor, not `max_tier + 1`.
+            //
+            // Deriving it from the tiers was circular: a reserved band defined
+            // by the tiers it is meant to sit above moves whenever they do, and
+            // cannot be checked statically because nothing knows it until the
+            // entry runs. Every other port states a fixed band (FreeRTOS 4,
+            // NuttX 100, ThreadX 14) with the pool below it; POSIX now does
+            // too — `[board.priority_plan]` in packages/boards/linux, reserved
+            // 90..99, pool 1..89, cross-checked against this constant by
+            // `check-tier-priority-plan` so the two cannot drift.
+            const TRANSPORT_BAND_FLOOR: u32 = 90;
             let max_tier = tiers.iter().map(|t| t.priority).max().unwrap_or(0);
             if max_tier > 0 {
-                let transport = max_tier.clamp(0, i64::from(u32::MAX) - 1) as u32 + 1;
+                let transport = TRANSPORT_BAND_FLOOR;
                 unsafe extern "C" {
                     fn zpico_set_task_config(
                         read_priority: u32,
@@ -449,7 +460,8 @@ impl LinuxBoard {
                 // states a PRIORITY, not a stack size.
                 unsafe { zpico_set_task_config(transport, 0, transport, 0) };
                 <Self as BoardPrint>::println(format_args!(
-                    "nros: transport tasks at SCHED_FIFO {} (one above the most urgent tier, {})",
+                    "nros: transport tasks at SCHED_FIFO {} (reserved band floor; most \
+                     urgent tier is {})",
                     transport, max_tier
                 ));
             }

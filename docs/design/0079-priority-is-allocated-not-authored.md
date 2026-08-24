@@ -333,7 +333,7 @@ system bands that can be CITED from code today. **Four of 38 are clean.**
 
 | verdict | at first run | now |
 | --- | --- | --- |
-| `UNPLANNED` — the port declares no band at all | 21 | **11** (posix only) |
+| `UNPLANNED` — the port declares no band at all | 21 | **0** |
 | `PREEMPTS` — more urgent than a system band | 8 | **0** |
 | `COLLIDES` — lands exactly ON one | 4 | **0** |
 | below bands — correct by the plan | 5 | **27** |
@@ -346,7 +346,7 @@ Four of five ports are allocated and enforced:
 | NuttX | static | 8 | `transport 100..100` (INHERITED) | `1..99` |
 | ThreadX | static | 2 | `transport 14..14` | `15..31` |
 | Zephyr | DERIVED (§4.1) | 8 | resolved per image — `7..7` here | `8..14` |
-| POSIX | half — issue 0765 | 11 | tiers apply (SCHED_FIFO, measured); transport CANNOT be set | — |
+| POSIX | static | 11 | `transport 90..99` (`sched_get_priority_*` range) | `1..89` |
 
 Zephyr's four `tiers.high.zephyr = 5` violations are closed: moved to 9, inside
 the resolved pool and below the transport, in all four bringups.

@@ -24,3 +24,32 @@ supported_netstacks = []
 heap = true
 atomics = true
 threads = true
+
+# RFC-0079 — the PORT's priority address plan.
+#
+# STATIC, unlike Zephyr's: Linux's SCHED_FIFO range is fixed by POSIX
+# (`sched_get_priority_min/max` report 1..99 here) rather than by a per-image
+# Kconfig, so the band is a literal the checker can judge with nothing but the
+# repo.
+#
+# The transport band sits at the TOP, and the tiers below it. That direction is
+# the one thing this port could not express until issue 0765: tier priorities
+# were advisory, so nothing was applied and there was no ordering to get wrong.
+# Once they became real the default was the WRONG way round — a SCHED_FIFO tier
+# outranks every SCHED_OTHER thread unconditionally, and zenoh-pico's read and
+# lease tasks are SCHED_OTHER, so every tier preempted the link it publishes
+# over with no arrangement in which it did not.
+[board.priority_plan]
+tier_key = "posix"
+direction = "bigger-is-urgent"
+# `sched_get_priority_{min,max}(SCHED_FIFO)` on glibc/Linux. Cross-checked
+# against the value the board actually uses by `check-tier-priority-plan`.
+range = [1, 99]
+# zenoh-pico's read and lease tasks. A RANGE rather than a point because the
+# two are configured separately and a future flush task joins them; the board
+# places them at the floor, 90, leaving room above for anything an operator
+# deliberately puts higher.
+reserved.transport = [90, 99]
+# What tiers may be allocated. The existing pins (10, 40, 80) already live here
+# — this plan describes where they were, it does not move them.
+pool.app = [1, 89]

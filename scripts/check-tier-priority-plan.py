@@ -57,6 +57,26 @@ def cross_reference(plans, errors):
                 f"{key} = {v} in {cfg.relative_to(ROOT)} — the plan does not "
                 "describe the port it belongs to")
 
+    # POSIX: the board hardcodes the band FLOOR it places the transport at, and
+    # the plan states the band. Two spellings of one fact unless something
+    # compares them — the failure this whole gate exists to prevent, one level
+    # up (issue 0765).
+    posix_plan = plans.get("posix")
+    if posix_plan is not None:
+        src = ROOT / "packages/boards/nros-board-linux/src/lib.rs"
+        text = src.read_text(encoding="utf-8")
+        m = re.search(r"const TRANSPORT_BAND_FLOOR: u32 = (\d+);", text)
+        lo, hi = posix_plan["reserved"].get("transport", (None, None))
+        if m is None:
+            errors.append(
+                f"{src.relative_to(ROOT)}: no TRANSPORT_BAND_FLOOR — the posix plan "
+                f"reserves [{lo}, {hi}] but nothing places the transport there")
+        elif lo is None or not (lo <= int(m.group(1)) <= hi):
+            errors.append(
+                f"posix priority_plan reserves transport [{lo}, {hi}] but the board "
+                f"places it at {m.group(1)} ({src.relative_to(ROOT)}) — the plan does "
+                "not describe what the port does")
+
     hdr = ROOT / "packages/boards/nros-board-freertos/config/FreeRTOSConfig.h"
     m = re.search(r"define\s+configMAX_PRIORITIES\s+(\d+)", hdr.read_text(encoding="utf-8"))
     if m and plan.get("range"):

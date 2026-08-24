@@ -497,16 +497,20 @@ a knob that varies something, transport band 1 vs 120 gives 2.6/2.6/2.9/1.7 agai
 separation, so transport priority genuinely is not what throttles that tier. See `archived/0775-*`.
 (2026-08-25)
 
-**#0765** (boards/orchestration, open 2026-08-23) — `[tiers.*.posix] priority` is ADVISORY: 11 pins
-across the bringups reach no kernel at all (`nros-board-linux` prints "advisory (not applied
-natively)" and calls no `sched_setscheduler`; `zpico_set_task_config` discards priority on
-Linux/macOS). The stated reason — RT scheduling needs privilege — is already SOLVED in this tree:
-`play_launch` applies SCHED_FIFO/RR + affinity per-thread with no root, via a ROS-free
-`play_launch_rt_helper` holding `CAP_SYS_NICE` only. Not identical though: play_launch schedules
-PROCESSES it spawns, nano-ros schedules THREADS it owns, and nano-ros has in-process transport
-threads (zenoh read/lease pthreads) so it has RFC-0079's reserved-band problem on POSIX too. Blocks
-a POSIX `[board.priority_plan]`. Three candidate directions, incl. retiring the knob — eleven
-numbers that do nothing are worse than none. See `0765-*`. (2026-08-23)
+Recently resolved (2026-08-25): **#0765** (boards/orchestration) — `[tiers.*.posix] priority` reached no
+kernel: 11 advisory pins, and `zpico_set_task_config` discarded the transport priority on Linux/macOS.
+Resolved in three steps. (1) Tiers self-apply SCHED_FIFO at entry via `nros_posix_apply_current_priority`
+— the sibling of the NuttX/FreeRTOS helpers — or print the missing capability and the `setcap
+cap_sys_nice+ep` remedy; verified against the kernel (`FF 10`, `FF 80` in `ps -eLo tid,cls,rtprio`), boot
+tier included. (2) The transport became placeable, behind a capability PROBE rather than an attribute —
+an attribute is NOT best-effort (`PTHREAD_EXPLICIT_SCHED` makes `pthread_create` itself return EPERM),
+and the first version took the zenoh session down entirely on every unprivileged host. (3) A STATIC
+`[board.priority_plan]` — reserved `90..99`, pool `1..89`, range from
+`sched_get_priority_{min,max}` — replacing a `max_tier + 1` derivation that could not be a plan at all.
+No pin moved: 10/40/80 were already inside the pool. Plan and the board's `TRANSPORT_BAND_FLOOR` are
+cross-checked so they cannot drift. **RFC-0079 now has 30 pins checked against 5 plans and 0 UNPLANNED**,
+from 21 unchecked. Not measured: the APPLIED band (needs setcap re-granted after a rebuild). See
+`archived/0765-*`. (2026-08-25)
 
 Recently resolved (2026-08-25): **#0766** (boards/rmw/zephyr) — Zephyr's tiers are RAW `k_thread`
 priorities while its transport is a POSIX pthread on a normalised band, so RFC-0079's

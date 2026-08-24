@@ -1,7 +1,7 @@
 ---
 id: 765
 title: "`[tiers.*.posix] priority` is advisory — 11 pins that never reach the kernel, and the privilege argument that kept them there is solved in play_launch"
-status: open
+status: resolved
 type: limitation
 area: boards, orchestration
 related: [rfc-0079, issue-0506, issue-0623]
@@ -237,3 +237,77 @@ So the status is: the knob is real and honest, and the port is not finished.
 RFC-0079's POSIX row stays open with a sharper question than it started with —
 not "can priorities apply here" (yes, measured) but "what reserves the transport
 when the tiers are FIFO and the transport is not".
+
+
+## Resolved 2026-08-25 — POSIX declares a plan, and RFC-0079 has no unplanned port left
+
+The last piece was the band itself. Tier priorities applied (measured: `FF 10`
+and `FF 80` in `ps -eLo tid,cls,rtprio`) and the transport was placeable, but
+the board derived the transport as `max_tier + 1` — which cannot be a PLAN.
+
+A reserved band defined by the tiers it is meant to sit above moves whenever
+they do, and no checker can judge it without running the entry. Every other
+port states a fixed band with the pool below it: FreeRTOS `4..4`, NuttX
+`100..100`, ThreadX `14..14`. POSIX now does the same:
+
+```toml
+[board.priority_plan]
+tier_key  = "posix"
+direction = "bigger-is-urgent"
+range     = [1, 99]        # sched_get_priority_{min,max}(SCHED_FIFO), glibc/Linux
+reserved.transport = [90, 99]
+pool.app  = [1, 89]
+```
+
+STATIC, not derived like Zephyr's: Linux's SCHED_FIFO range is fixed by POSIX
+rather than by a per-image Kconfig, so the checker can judge it with nothing but
+the repo.
+
+**No pin moved.** The eleven existing `[tiers.*.posix]` pins are 10, 40 and 80 —
+all already inside `pool.app`. The plan describes where they were; it does not
+relocate them. That is worth saying because it is the first port where the
+declaration cost nothing, and the reason is simply that the transport band was
+never a number anyone had written down here.
+
+The board places the transport at the band's FLOOR (90) through a
+`TRANSPORT_BAND_FLOOR` constant, and `check-tier-priority-plan` cross-references
+that constant against the plan — two spellings of one fact unless something
+compares them, which is the failure this gate exists to prevent one level up.
+Verified by drift: setting the constant to 50 FAILS with *"posix priority_plan
+reserves transport [90, 99] but the board places it at 50 — the plan does not
+describe what the port does"*.
+
+### Measured
+
+```
+nros: transport tasks at SCHED_FIFO 90 (reserved band floor; most urgent tier is 80)
+[warn] nros: SCHED_FIFO priority 1 was REFUSED (EPERM) ...
+[INFO] nros: session open
+```
+
+`check-tier-priority-plan`: **30 pin(s) checked against 5 declared plan(s), 0
+UNPLANNED** — from 21 unchecked when RFC-0079 was written.
+`realtime_tiers`: 17 rows ran, 1 failed — issue 0736's known `nuttx-arm/rust`
+flake, unrelated to allocation; all three native rows pass.
+
+### Still not measured, and it needs one privileged command
+
+The APPLIED band. A rebuild drops the file capability, so confirming the read
+and lease threads actually land at `FF 90` needs:
+
+```
+sudo setcap cap_sys_nice+ep <built native_entry>
+```
+
+then `ps -eLo tid,cls,rtprio` while it runs. The refusal path, the announcement
+and the plan/constant agreement are all verified; the applied case rests on the
+same `pthread_attr_setschedparam` contract that was already proven for the tiers
+on this host.
+
+### One thing this does NOT settle
+
+Whether 90 is the RIGHT floor. It is above every tier in the tree and leaves
+room for an operator to place something higher deliberately, which satisfies
+RFC-0079's rule — but nothing has measured a workload against it. Issue 0506
+("transport tasks above application tiers is the right default but has no
+budget") is the place that question belongs.
