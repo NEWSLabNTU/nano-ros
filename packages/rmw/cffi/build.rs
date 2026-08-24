@@ -50,6 +50,19 @@ fn emit_max_backends() {
     }
 
     println!("cargo:rustc-env=NROS_RMW_MAX_BACKENDS={parsed}");
+
+    // Phase 376 W5/B1 — distinct `(name, namespace)` pairs one session hosts.
+    // Default 4, matching `nros-node`'s `NROS_EXECUTOR_MAX_NODES`: the shim
+    // cannot see more nodes than the executor will register.
+    let nodes = knob("NROS_RMW_MAX_NODES", 4);
+    if !(1..=64).contains(&nodes) {
+        panic!(
+            "NROS_RMW_MAX_NODES={nodes} out of range [1, 64]. Bump \
+             NROS_EXECUTOR_MAX_NODES to match if you raise it."
+        );
+    }
+    println!("cargo:rerun-if-env-changed=NROS_RMW_MAX_NODES");
+    println!("cargo:rustc-env=NROS_RMW_MAX_NODES={nodes}");
 }
 
 /// Issue 0269 — size the embedded (`target_os = "none"`, no-std)

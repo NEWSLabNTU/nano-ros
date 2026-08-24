@@ -41,12 +41,19 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
     rmw_subscription_t sub{};
     sub.topic_name = "chatter";
     sub.type_name  = "std_msgs::msg::dds_::String_";
     sub.qos        = qos;
-    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "",
+    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "",
                                 0, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         return 3;

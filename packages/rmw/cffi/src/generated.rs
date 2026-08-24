@@ -177,7 +177,7 @@ pub struct rmw_session_t {
     #[doc = " Opaque backend state. NULL for an uninitialised session."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " A graph node — upstream `rmw_node_t`, minus what an image has no use for.\n\n  Phase 376 W4. Storage is CALLER-OWNED, like every other entity here: the\n  runtime hands `create_node` a zero-initialised shell and the backend writes\n  its `backend_data` into it.\n\n  **Why a node exists at all when an image opens ONE session.** The session\n  half of that statement holds; the node half does not, and our own code says\n  so. `Executor` keeps a node table, and `CffiSession::entity_view` exists\n  SOLELY to fabricate a per-call session carrying the entity's owning-node\n  identity — its own comment reads \"one session can host N graph nodes\". The\n  zenoh backend then re-derives a node registry from that string by\n  linear-scanning declared tokens. So node identity already reaches the\n  backend, through a side channel, in every image.\n\n  **Booked, not done — and the booking is the point.** The right end state is\n  `create_publisher` / `create_subscription` / `create_service` /\n  `create_client` taking `rmw_node_t *` the way upstream does, which RETIRES\n  the `entity_view` fabrication and retires the W3.c \"session not node\"\n  deviation rather than adding to it. Landing these two slots without booking\n  that leaves node identity arriving two ways at once, which is the shape that\n  has already cost this tree three FFI-mirror bugs. Tracked in\n  `docs/roadmap/phase-376-rmw-api-parity.md` under W5.\n\n  Not carried from upstream: `context`, `implementation_identifier` and\n  `data`. A node reaches its session because the runtime knows which session\n  it opened on, and one image links one backend per session."]
+#[doc = " A graph node — upstream `rmw_node_t`, minus what an image has no use for.\n\n  Phase 376 W4. Storage is CALLER-OWNED, like every other entity here: the\n  runtime hands `create_node` a zero-initialised shell and the backend writes\n  its `backend_data` into it.\n\n  **Why a node exists at all when an image opens ONE session.** The session\n  half of that statement holds; the node half does not, and our own code says\n  so. `Executor` keeps a node table, and `CffiSession::entity_view` exists\n  SOLELY to fabricate a per-call session carrying the entity's owning-node\n  identity — its own comment reads \"one session can host N graph nodes\". The\n  zenoh backend then re-derives a node registry from that string by\n  linear-scanning declared tokens. So node identity already reaches the\n  backend, through a side channel, in every image.\n\n  **Done, W5/B1 (2026-08-24).** `create_publisher` / `create_subscription` /\n  `create_service` / `create_client` take `const rmw_node_t *` the way\n  upstream does. That retired the `entity_view` fabrication — the shim now\n  owns a node table and calls `create_node` once per distinct\n  `(name, namespace)`, which is only true because `Executor::create_node`\n  deduplicates (W5/B1.a).\n\n  **Still owed:** zenoh's `ensure_node_liveliness` still linear-scans its own\n  `per_node_liveliness` table. Retiring it needs a `create_node` method on the\n  Rust `Rmw`/`Session` trait plus a trampoline in `RustBackendAdapter`, so\n  that a Rust backend can be TOLD about a node the way a C one is. The slot\n  and the table it needs both exist now; only that trait hop is missing. Do\n  not read this paragraph as done — the first draft of this comment said the\n  registry was retired, which it was not.\n\n  Not carried from upstream: `implementation_identifier` and `data` (one\n  image links one backend per session, so there is nothing to disambiguate).\n\n  `session` IS carried, and is our `context`. Upstream's node reaches its\n  context that way and every `rmw_create_*` relies on it; a node with no route\n  to its session cannot be the only argument those slots get, which is what\n  made this field the precondition for the whole change rather than a\n  convenience. Set by the runtime BEFORE `create_node`, and stable for the\n  node's life."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_node_t {
@@ -185,6 +185,8 @@ pub struct rmw_node_t {
     pub name: *const core::ffi::c_char,
     #[doc = " Node namespace. Borrowed; outlives the node."]
     pub namespace_: *const core::ffi::c_char,
+    #[doc = " The session this node lives on — upstream's `context`. Set by the\n  runtime before `create_node`; never NULL in a node the runtime hands to\n  a slot. A backend reaches its own session state through\n  `node->session->backend_data`."]
+    pub session: *mut rmw_session_t,
     #[doc = " Reserved; must be zero."]
     pub _reserved: [u8; 8usize],
     #[doc = " Opaque backend state. NULL until `create_node` succeeds."]
@@ -287,7 +289,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Create a publisher. The runtime fills `out->topic_name`,\n  `out->type_name`, `out->qos` before this call; the backend\n  writes `out->backend_data` and `out->can_loan_messages`.\n  `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
     pub create_publisher: ::core::option::Option<
         unsafe extern "C" fn(
-            session: *mut rmw_session_t,
+            node: *const rmw_node_t,
             topic_name: *const core::ffi::c_char,
             type_name: *const core::ffi::c_char,
             type_hash: *const core::ffi::c_char,
@@ -309,7 +311,7 @@ pub struct nros_rmw_vtable_t {
     #[doc = " `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
     pub create_subscription: ::core::option::Option<
         unsafe extern "C" fn(
-            session: *mut rmw_session_t,
+            node: *const rmw_node_t,
             topic_name: *const core::ffi::c_char,
             type_name: *const core::ffi::c_char,
             type_hash: *const core::ffi::c_char,
@@ -341,7 +343,7 @@ pub struct nros_rmw_vtable_t {
     >,
     pub create_service: ::core::option::Option<
         unsafe extern "C" fn(
-            session: *mut rmw_session_t,
+            node: *const rmw_node_t,
             service_name: *const core::ffi::c_char,
             type_name: *const core::ffi::c_char,
             type_hash: *const core::ffi::c_char,
@@ -377,7 +379,7 @@ pub struct nros_rmw_vtable_t {
     >,
     pub create_client: ::core::option::Option<
         unsafe extern "C" fn(
-            session: *mut rmw_session_t,
+            node: *const rmw_node_t,
             service_name: *const core::ffi::c_char,
             type_name: *const core::ffi::c_char,
             type_hash: *const core::ffi::c_char,

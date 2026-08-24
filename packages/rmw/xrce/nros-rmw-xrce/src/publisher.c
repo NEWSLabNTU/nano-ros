@@ -18,7 +18,7 @@
 #include <uxr/client/core/session/write_access.h>
 #include <ucdr/microcdr.h>
 
-rmw_ret_t xrce_publisher_create(rmw_session_t *session,
+rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
                                      const char *topic_name,
                                      const char *type_name,
                                      const char *type_hash,
@@ -26,6 +26,10 @@ rmw_ret_t xrce_publisher_create(rmw_session_t *session,
                                      const rmw_qos_profile_t *qos,
                                      const rmw_publisher_options_t *options,
                                      rmw_publisher_t *out) {
+    /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
+     * The node carries the route to its session (our `context`). */
+    if (node == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    rmw_session_t* session = node->session;
     (void)type_hash;
     (void)domain_id;
     (void)options;

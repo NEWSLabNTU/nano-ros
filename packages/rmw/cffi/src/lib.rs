@@ -192,6 +192,9 @@ const _: () = assert!(nros_rmw::DURATION_INFINITE_MS as i64 == NROS_RMW_DURATION
 pub type NrosRmwQos = rmw_qos_profile_t;
 /// Compat alias for the generated `rmw_session_t`.
 pub type NrosRmwSession = rmw_session_t;
+/// Phase 376 W5/B1 — a graph node. The first argument of the four `create_*`
+/// slots, in place of the fabricated per-call session view they used to take.
+pub type NrosRmwNode = rmw_node_t;
 /// Compat alias for the generated `rmw_publisher_t`.
 pub type NrosRmwPublisher = rmw_publisher_t;
 /// Compat alias for the generated `rmw_subscription_t`.
@@ -1268,6 +1271,117 @@ fn cstr_buf_to_str<const N: usize>(buf: &[u8; N]) -> &str {
 }
 
 // ============================================================================
+// Node table (phase-376 W5/B1)
+// ============================================================================
+//
+// A SIDE table, not a field on `CffiSession`, for the same reason
+// `MESSAGE_INFO_TABLE` above is one: the session's size is an ABI surface. It
+// is what every C and C++ `_opaque` buffer is sized from, through a build-time
+// probe that has to agree across every coordinate, and the guards that catch a
+// disagreement are compile-time asserts in `nros-c` (issue 0472). Per-node
+// bookkeeping is runtime state, not part of the session's shape — putting four
+// name buffers inside the session grew `_opaque` by ~544 bytes in every C
+// consumer and tripped those guards, which is the machinery working correctly
+// and saying "this does not belong here".
+
+/// Distinct `(session, name, namespace)` triples the shim tracks. Raise with
+/// `NROS_RMW_MAX_NODES`; the default mirrors the executor's `MAX_NODES`.
+pub const MAX_NODES: usize = parse_env_usize(
+    env!("NROS_RMW_MAX_NODES"),
+    "NROS_RMW_MAX_NODES must be a decimal integer",
+);
+
+struct NodeSlot {
+    /// The owning session's `backend_data`, or 0 when free.
+    session_key: portable_atomic::AtomicUsize,
+    name: UnsafeCell<[u8; NODE_NAME_BUF_LEN]>,
+    namespace_: UnsafeCell<[u8; NODE_NAME_BUF_LEN]>,
+    backend_data: UnsafeCell<*mut c_void>,
+}
+
+impl NodeSlot {
+    const fn empty() -> Self {
+        Self {
+            session_key: portable_atomic::AtomicUsize::new(0),
+            name: UnsafeCell::new([0u8; NODE_NAME_BUF_LEN]),
+            namespace_: UnsafeCell::new([0u8; NODE_NAME_BUF_LEN]),
+            backend_data: UnsafeCell::new(core::ptr::null_mut()),
+        }
+    }
+}
+
+// SAFETY: a slot is claimed by a CAS on `session_key` from 0, and only the
+// claiming thread writes its cells before any other reader can match it (a
+// reader matches on `session_key` AND the names, which are written first).
+// Entity creation is a setup-time operation on the executor thread.
+unsafe impl Sync for NodeSlot {}
+
+static NODE_TABLE: [NodeSlot; MAX_NODES] = {
+    #[allow(clippy::declare_interior_mutable_const)]
+    const E: NodeSlot = NodeSlot::empty();
+    [E; MAX_NODES]
+};
+
+/// Release every node this session claimed. Called from `destroy_session`: a
+/// static table that is never reclaimed would let a long-running image that
+/// opens and closes sessions exhaust it.
+fn release_session_nodes(session_key: usize) {
+    if session_key == 0 {
+        return;
+    }
+    for slot in NODE_TABLE.iter() {
+        if slot.session_key.load(Ordering::Acquire) == session_key {
+            slot.session_key.store(0, Ordering::Release);
+        }
+    }
+}
+
+fn slot_str(cell: &UnsafeCell<[u8; NODE_NAME_BUF_LEN]>) -> &str {
+    // SAFETY: cells are written once by the thread that claimed the slot,
+    // before `session_key` makes it findable.
+    cstr_buf_to_str(unsafe { &*cell.get() })
+}
+
+fn find_node_slot(key: usize, name: &str, namespace: &str) -> Option<&'static NodeSlot> {
+    NODE_TABLE.iter().find(|slot| {
+        slot.session_key.load(Ordering::Acquire) == key
+            && slot_str(&slot.name) == name
+            && slot_str(&slot.namespace_) == namespace
+    })
+}
+
+fn claim_node_slot(key: usize, name: &str, namespace: &str) -> Option<&'static NodeSlot> {
+    for slot in NODE_TABLE.iter() {
+        if slot
+            .session_key
+            .compare_exchange(0, key, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            // SAFETY: the CAS above makes this thread the slot's owner, and a
+            // reader cannot match it until the names are in place.
+            unsafe {
+                let _ = to_c_str(name, &mut *slot.name.get());
+                let _ = to_c_str(namespace, &mut *slot.namespace_.get());
+                *slot.backend_data.get() = core::ptr::null_mut();
+            }
+            return Some(slot);
+        }
+    }
+    None
+}
+
+fn node_view_of(slot: &'static NodeSlot, session_view: &mut NrosRmwSession) -> NrosRmwNode {
+    NrosRmwNode {
+        name: slot.name.get().cast(),
+        namespace_: slot.namespace_.get().cast(),
+        session: session_view as *mut NrosRmwSession,
+        _reserved: [0u8; 8],
+        // SAFETY: written once by the claiming thread before use.
+        backend_data: unsafe { *slot.backend_data.get() },
+    }
+}
+
+// ============================================================================
 // CffiSession
 // ============================================================================
 //
@@ -1289,6 +1403,12 @@ fn cstr_buf_to_str<const N: usize>(buf: &[u8; N]) -> &str {
 //   relocate.
 
 const NAME_BUF_LEN: usize = 256;
+/// Node name / namespace storage. 64, not `NAME_BUF_LEN`: the executor bounds
+/// both at `heapless::String<64>`, so a name that reached us through it cannot
+/// be longer, and four nodes of two 256-byte buffers would put 2 KiB of mostly
+/// zeroes in every session on an MCU.
+const NODE_NAME_BUF_LEN: usize = 64;
+
 const HASH_BUF_LEN: usize = 128;
 
 /// Session backed by a C vtable.
@@ -1314,45 +1434,84 @@ impl CffiSession {
         }
     }
 
-    /// Phase 268 — build a per-call session view whose `node_name` / `namespace_`
-    /// carry the ENTITY's owning-node identity (when the entity declares one),
-    /// not the session's open-time default.
+    /// Phase 376 W5/B1 — find or create the node an entity belongs to, and
+    /// return a view a `create_*` slot can take.
     ///
-    /// A backend reads `session->node_name` to tag the entity it is creating for
-    /// ROS 2 graph discovery (`ros2 node list`). One session can host N graph
-    /// nodes (e.g. a multi-node launch entry), so the session's single open-time
-    /// name is wrong for any entity owned by a different node. #104 threaded the
-    /// node name only into the session, so multi-node entries collapsed every
-    /// entity onto the one session name (`/node`). Overriding per entity here is
-    /// the fix — no vtable ABI / signature change, every backend benefits (it
-    /// already reads `session->node_name`).
+    /// This replaces `entity_view`, which fabricated a per-call
+    /// `NrosRmwSession` whose `node_name` carried the entity's owning node.
+    /// That worked and cost no ABI change, which is why phase-268 chose it —
+    /// but it meant a backend learned about a node by reading a STRING off a
+    /// session it was also using for transport state, and had to re-derive the
+    /// set of nodes itself. zenoh does precisely that, linear-scanning declared
+    /// liveliness tokens to answer "have I seen this node before".
     ///
-    /// Falls back to the session buffers when the entity carries no node identity
-    /// (direct-API / single-node path) — backward-compatible. The staging buffers
-    /// must outlive the synchronous trampoline call; callers keep them on the
-    /// stack across the `(vtable.create_*)` call.
-    fn entity_view(
-        &self,
+    /// Now the runtime owns that question: `create_node` fires once per
+    /// distinct `(name, namespace)`, which is only true because
+    /// `Executor::create_node` deduplicates too (W5/B1.a).
+    ///
+    /// The returned `rmw_node_t` borrows `session_view` and the table's name
+    /// cells, so the caller keeps `session_view` alive across the slot call —
+    /// the same discipline `entity_view` documented, moved one level up.
+    fn node_slot(
+        &mut self,
         node_name: Option<&str>,
         namespace: &str,
-        nn_buf: &mut [u8; NAME_BUF_LEN],
-        ns_buf: &mut [u8; NAME_BUF_LEN],
-    ) -> NrosRmwSession {
-        let node_name_ptr = match node_name {
-            Some(n) if !n.is_empty() => to_c_str(n, nn_buf),
-            _ => self.node_name_buf.as_ptr().cast(),
-        };
-        let namespace_ptr = if namespace.is_empty() {
-            self.namespace_buf.as_ptr().cast()
-        } else {
-            to_c_str(namespace, ns_buf)
-        };
-        NrosRmwSession {
-            node_name: node_name_ptr,
-            namespace_: namespace_ptr,
-            _reserved: [0u8; 8],
-            backend_data: self.backend_data,
+        session_view: &mut NrosRmwSession,
+    ) -> Result<NrosRmwNode, TransportError> {
+        let key = self.backend_data as usize;
+        if key == 0 {
+            return Err(TransportError::InvalidArgument);
         }
+
+        // No node identity on the entity (direct-RMW / single-node path): fall
+        // back to the session's own open-time name, which is what phase-268's
+        // fallback did and keeps a one-node image working unchanged.
+        let mut scratch = [0u8; NODE_NAME_BUF_LEN];
+        let name: &str = match node_name {
+            Some(n) if !n.is_empty() => n,
+            _ => {
+                let owned = self.node_name();
+                let len = owned.len().min(NODE_NAME_BUF_LEN - 1);
+                scratch[..len].copy_from_slice(&owned.as_bytes()[..len]);
+                cstr_buf_to_str(&scratch)
+            }
+        };
+
+        // Truncating would MERGE two distinct nodes into one record and then
+        // declare the wrong identity on the graph, so it is refused. The
+        // executor bounds both at 64, so a name that arrived through it fits.
+        if name.len() >= NODE_NAME_BUF_LEN || namespace.len() >= NODE_NAME_BUF_LEN {
+            return Err(TransportError::InvalidArgument);
+        }
+
+        if let Some(slot) = find_node_slot(key, name, namespace) {
+            return Ok(node_view_of(slot, session_view));
+        }
+
+        let slot = claim_node_slot(key, name, namespace).ok_or(TransportError::ConnectionFailed)?;
+
+        // A backend with no `create_node` keeps working: the node is then a
+        // pure identity carrier with a NULL `backend_data`, which is what every
+        // backend that has not implemented the slot already sees.
+        if let Some(create) = self.vtable.create_node {
+            let mut view = node_view_of(slot, session_view);
+            let ret = unsafe {
+                create(
+                    session_view as *mut NrosRmwSession,
+                    view.name,
+                    view.namespace_,
+                    &mut view,
+                )
+            };
+            if ret != NROS_RMW_RET_OK {
+                slot.session_key.store(0, Ordering::Release);
+                return Err(error_from_ret(ret));
+            }
+            // SAFETY: this thread claimed the slot above and nothing else
+            // writes it.
+            unsafe { *slot.backend_data.get() = view.backend_data };
+        }
+        Ok(node_view_of(slot, session_view))
     }
 
     /// Node name passed at session-open time.
@@ -1507,17 +1666,17 @@ impl Session for CffiSession {
             _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
-        // Phase 268 — tag the entity with its owning node, not the session default.
-        let mut nn_buf = [0u8; NAME_BUF_LEN];
-        let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view =
-            self.entity_view(topic.node_name, topic.namespace, &mut nn_buf, &mut ns_buf);
+        // Phase 376 W5/B1 — the entity is created ON ITS NODE. `session_view`
+        // must outlive the call: `node_view` points the node's `session` field
+        // at it.
+        let mut session_view = self.make_view();
+        let node_view = self.node_slot(topic.node_name, topic.namespace, &mut session_view)?;
         let ret = unsafe {
             (self
                 .vtable
                 .create_publisher
                 .expect("rmw vtable: create_publisher"))(
-                &mut session_view,
+                &node_view,
                 topic_ptr,
                 type_ptr,
                 hash_ptr,
@@ -1575,17 +1734,17 @@ impl Session for CffiSession {
             _reserved: [0u8; 7],
             backend_data: core::ptr::null_mut(),
         };
-        // Phase 268 — tag the entity with its owning node, not the session default.
-        let mut nn_buf = [0u8; NAME_BUF_LEN];
-        let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view =
-            self.entity_view(topic.node_name, topic.namespace, &mut nn_buf, &mut ns_buf);
+        // Phase 376 W5/B1 — the entity is created ON ITS NODE. `session_view`
+        // must outlive the call: `node_view` points the node's `session` field
+        // at it.
+        let mut session_view = self.make_view();
+        let node_view = self.node_slot(topic.node_name, topic.namespace, &mut session_view)?;
         let ret = unsafe {
             (self
                 .vtable
                 .create_subscription
                 .expect("rmw vtable: create_subscription"))(
-                &mut session_view,
+                &node_view,
                 topic_ptr,
                 type_ptr,
                 hash_ptr,
@@ -1643,21 +1802,15 @@ impl Session for CffiSession {
             _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
-        // Phase 268 — tag the entity with its owning node, not the session default.
-        let mut nn_buf = [0u8; NAME_BUF_LEN];
-        let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view = self.entity_view(
-            service.node_name,
-            service.namespace,
-            &mut nn_buf,
-            &mut ns_buf,
-        );
+        // Phase 376 W5/B1 — see `create_publisher`.
+        let mut session_view = self.make_view();
+        let node_view = self.node_slot(service.node_name, service.namespace, &mut session_view)?;
         let ret = unsafe {
             (self
                 .vtable
                 .create_service
                 .expect("rmw vtable: create_service"))(
-                &mut session_view,
+                &node_view,
                 svc_ptr,
                 type_ptr,
                 hash_ptr,
@@ -1700,21 +1853,15 @@ impl Session for CffiSession {
             _reserved: [0u8; 8],
             backend_data: core::ptr::null_mut(),
         };
-        // Phase 268 — tag the entity with its owning node, not the session default.
-        let mut nn_buf = [0u8; NAME_BUF_LEN];
-        let mut ns_buf = [0u8; NAME_BUF_LEN];
-        let mut session_view = self.entity_view(
-            service.node_name,
-            service.namespace,
-            &mut nn_buf,
-            &mut ns_buf,
-        );
+        // Phase 376 W5/B1 — see `create_publisher`.
+        let mut session_view = self.make_view();
+        let node_view = self.node_slot(service.node_name, service.namespace, &mut session_view)?;
         let ret = unsafe {
             (self
                 .vtable
                 .create_client
                 .expect("rmw vtable: create_client"))(
-                &mut session_view,
+                &node_view,
                 svc_ptr,
                 type_ptr,
                 hash_ptr,
@@ -1737,6 +1884,10 @@ impl Session for CffiSession {
         if self.backend_data.is_null() {
             return Ok(());
         }
+        // Phase 376 W5/B1 — hand the node slots back BEFORE the backend loses
+        // its session state. A static table that is never reclaimed would let a
+        // long-running image that opens and closes sessions exhaust it.
+        release_session_nodes(self.backend_data as usize);
         let mut view = self.make_view();
         let ret = unsafe {
             (self
@@ -3426,7 +3577,7 @@ mod tests {
     }
 
     unsafe extern "C" fn stub_create_publisher(
-        _session: *mut NrosRmwSession,
+        _session: *const NrosRmwNode,
         _topic_name: *const core::ffi::c_char,
         _type_name: *const core::ffi::c_char,
         _type_hash: *const core::ffi::c_char,
@@ -3469,7 +3620,7 @@ mod tests {
     }
 
     unsafe extern "C" fn stub_create_subscription(
-        _: *mut NrosRmwSession,
+        _: *const NrosRmwNode,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
@@ -3508,7 +3659,7 @@ mod tests {
     }
 
     unsafe extern "C" fn stub_create_service(
-        _: *mut NrosRmwSession,
+        _: *const NrosRmwNode,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
@@ -3555,7 +3706,7 @@ mod tests {
     }
 
     unsafe extern "C" fn stub_create_client(
-        _: *mut NrosRmwSession,
+        _: *const NrosRmwNode,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,
         _: *const core::ffi::c_char,

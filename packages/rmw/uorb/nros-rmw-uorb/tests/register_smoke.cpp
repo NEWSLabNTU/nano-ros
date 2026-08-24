@@ -172,6 +172,13 @@ int main() {
         std::fprintf(stderr, "open returned %d, expected OK\n", rc);
         return 1;
     }
+
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = session.node_name;
+    node.namespace_ = session.namespace_;
+    node.session    = &session;
     if (session.backend_data == nullptr) {
         std::fprintf(stderr, "open did not populate backend_data\n");
         return 1;
@@ -205,7 +212,7 @@ int main() {
     // Without a registered topic, create_publisher must reject with
     // TOPIC_NAME_INVALID — distinct from UNSUPPORTED.
     rmw_publisher_t pubp{};
-    rc = vt->create_publisher(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &pubp);
+    rc = vt->create_publisher(&node, "/unregistered", "T", "H", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
@@ -230,7 +237,7 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_publisher(&session, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &pubp);
+    rc = vt->create_publisher(&node, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher returned %d, expected OK\n", rc);
         return 1;
@@ -301,7 +308,7 @@ int main() {
     // Without a registered topic, create_subscription must reject
     // with TOPIC_NAME_INVALID.
     rmw_subscription_t subp{};
-    rc = vt->create_subscription(&session, "/unregistered", "T", "H", 0, nullptr, nullptr, &subp);
+    rc = vt->create_subscription(&node, "/unregistered", "T", "H", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
@@ -310,7 +317,7 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_subscription(&session, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &subp);
+    rc = vt->create_subscription(&node, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription returned %d, expected OK\n", rc);
         return 1;

@@ -55,10 +55,17 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
                                     domain, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service failed\n");
         return 3;

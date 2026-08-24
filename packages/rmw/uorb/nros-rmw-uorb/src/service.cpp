@@ -21,6 +21,10 @@ rmw_ret_t service_create(rmw_session_t* /*session*/, const char* /*service_name*
                                      const char* /*type_name*/, const char* /*type_hash*/,
                                      uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
                                      rmw_service_t* /*out*/) {
+    // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
+    // The node carries the route to its session (our `context`).
+    if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    rmw_session_t* session = node->session;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -54,6 +58,10 @@ rmw_ret_t client_create(rmw_session_t* /*session*/, const char* /*service_name*/
                                      const char* /*type_name*/, const char* /*type_hash*/,
                                      uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
                                      rmw_client_t* /*out*/) {
+    // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
+    // The node carries the route to its session (our `context`).
+    if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    rmw_session_t* session = node->session;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 

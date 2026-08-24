@@ -85,7 +85,7 @@ void xrce_topic_callback(uxrSession *session,
      * for diagnostics when the slot pool is full. */
 }
 
-rmw_ret_t xrce_subscription_create(rmw_session_t *session,
+rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
                                       const char *topic_name,
                                       const char *type_name,
                                       const char *type_hash,
@@ -93,6 +93,10 @@ rmw_ret_t xrce_subscription_create(rmw_session_t *session,
                                       const rmw_qos_profile_t *qos,
                                       const rmw_subscription_options_t *options,
                                       rmw_subscription_t *out) {
+    /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
+     * The node carries the route to its session (our `context`). */
+    if (node == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    rmw_session_t* session = node->session;
     (void)type_hash;
     (void)domain_id;
     (void)options;

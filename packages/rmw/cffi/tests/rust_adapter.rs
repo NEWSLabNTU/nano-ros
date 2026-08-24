@@ -19,7 +19,7 @@ use nros_rmw::{
 };
 use nros_rmw_cffi::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient,
-    NrosRmwEventKind, NrosRmwEventPayload, NrosRmwLivelinessChangedStatus, NrosRmwQos,
+    NrosRmwEventKind, NrosRmwEventPayload, NrosRmwLivelinessChangedStatus, NrosRmwNode, NrosRmwQos,
     NrosRmwService, NrosRmwSession, RustBackendAdapter,
 };
 
@@ -399,6 +399,18 @@ fn rust_backend_adapter_routes_every_slot() {
         _reserved: [0u8; 8],
         backend_data: core::ptr::null_mut(),
     };
+
+    // Phase 376 W5/B1 — the four `create_*` slots take the NODE now: it
+    // carries its own identity plus the route to its session (upstream's
+    // `context`). Declared beside the session so every create in this
+    // scope can reach it.
+    let node = NrosRmwNode {
+        name: b"test-node\0".as_ptr().cast(),
+        namespace_: b"/\0".as_ptr().cast(),
+        session: &raw mut sess,
+        _reserved: [0u8; 8],
+        backend_data: core::ptr::null_mut(),
+    };
     let rc = unsafe {
         (vt.create_session.expect("vtable slot"))(
             b"tcp/127.0.0.1:7447\0".as_ptr().cast(),
@@ -441,7 +453,7 @@ fn rust_backend_adapter_routes_every_slot() {
     };
     let rc = unsafe {
         (vt.create_publisher.expect("vtable slot"))(
-            &mut sess,
+            &node,
             b"/chatter\0".as_ptr().cast(),
             b"std_msgs/String\0".as_ptr().cast(),
             b"abc123\0".as_ptr().cast(),
@@ -472,7 +484,7 @@ fn rust_backend_adapter_routes_every_slot() {
     };
     let rc = unsafe {
         (vt.create_subscription.expect("vtable slot"))(
-            &mut sess,
+            &node,
             b"/chatter\0".as_ptr().cast(),
             b"std_msgs/String\0".as_ptr().cast(),
             b"abc123\0".as_ptr().cast(),
@@ -531,6 +543,18 @@ fn rust_backend_adapter_preserves_session_identity() {
         _reserved: [0u8; 8],
         backend_data: core::ptr::null_mut(),
     };
+
+    // Phase 376 W5/B1 — the four `create_*` slots take the NODE now: it
+    // carries its own identity plus the route to its session (upstream's
+    // `context`). Declared beside the session so every create in this
+    // scope can reach it.
+    let node = NrosRmwNode {
+        name: b"talker\0".as_ptr().cast(),
+        namespace_: b"/demo\0".as_ptr().cast(),
+        session: &raw mut sess,
+        _reserved: [0u8; 8],
+        backend_data: core::ptr::null_mut(),
+    };
     assert_eq!(
         unsafe {
             (vt.create_session.expect("vtable slot"))(
@@ -569,7 +593,7 @@ fn rust_backend_adapter_preserves_session_identity() {
     assert_eq!(
         unsafe {
             (vt.create_publisher.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/chatter\0".as_ptr().cast(),
                 b"std_msgs/String\0".as_ptr().cast(),
                 b"abc123\0".as_ptr().cast(),
@@ -593,7 +617,7 @@ fn rust_backend_adapter_preserves_session_identity() {
     assert_eq!(
         unsafe {
             (vt.create_subscription.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/chatter\0".as_ptr().cast(),
                 b"std_msgs/String\0".as_ptr().cast(),
                 b"abc123\0".as_ptr().cast(),
@@ -615,7 +639,7 @@ fn rust_backend_adapter_preserves_session_identity() {
     assert_eq!(
         unsafe {
             (vt.create_service.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/add_two_ints\0".as_ptr().cast(),
                 b"example/AddTwoInts\0".as_ptr().cast(),
                 b"def456\0".as_ptr().cast(),
@@ -636,7 +660,7 @@ fn rust_backend_adapter_preserves_session_identity() {
     assert_eq!(
         unsafe {
             (vt.create_client.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/add_two_ints\0".as_ptr().cast(),
                 b"example/AddTwoInts\0".as_ptr().cast(),
                 b"def456\0".as_ptr().cast(),
@@ -723,6 +747,18 @@ fn rust_backend_adapter_routes_events_and_services() {
         _reserved: [0u8; 8],
         backend_data: core::ptr::null_mut(),
     };
+
+    // Phase 376 W5/B1 — the four `create_*` slots take the NODE now: it
+    // carries its own identity plus the route to its session (upstream's
+    // `context`). Declared beside the session so every create in this
+    // scope can reach it.
+    let node = NrosRmwNode {
+        name: b"e\0".as_ptr().cast(),
+        namespace_: b"/\0".as_ptr().cast(),
+        session: &raw mut sess,
+        _reserved: [0u8; 8],
+        backend_data: core::ptr::null_mut(),
+    };
     assert_eq!(
         unsafe {
             (vt.create_session.expect("vtable slot"))(
@@ -746,7 +782,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(
         unsafe {
             (vt.create_service.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/svc\0".as_ptr().cast(),
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
@@ -806,7 +842,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(
         unsafe {
             (vt.create_client.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/svc\0".as_ptr().cast(),
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
@@ -847,7 +883,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(
         unsafe {
             (vt.create_publisher.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/t\0".as_ptr().cast(),
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
@@ -870,7 +906,7 @@ fn rust_backend_adapter_routes_events_and_services() {
     assert_eq!(
         unsafe {
             (vt.create_subscription.expect("vtable slot"))(
-                &mut sess,
+                &node,
                 b"/t\0".as_ptr().cast(),
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
@@ -957,6 +993,18 @@ fn rust_backend_adapter_rejects_null_pointers() {
     let mut sess = NrosRmwSession {
         node_name: b"x\0".as_ptr().cast(),
         namespace_: b"/\0".as_ptr().cast(),
+        _reserved: [0u8; 8],
+        backend_data: core::ptr::null_mut(),
+    };
+
+    // Phase 376 W5/B1 — the four `create_*` slots take the NODE now: it
+    // carries its own identity plus the route to its session (upstream's
+    // `context`). Declared beside the session so every create in this
+    // scope can reach it.
+    let _node = NrosRmwNode {
+        name: b"x\0".as_ptr().cast(),
+        namespace_: b"/\0".as_ptr().cast(),
+        session: &raw mut sess,
         _reserved: [0u8; 8],
         backend_data: core::ptr::null_mut(),
     };

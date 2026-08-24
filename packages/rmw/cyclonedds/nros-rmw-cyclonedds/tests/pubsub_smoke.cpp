@@ -40,6 +40,13 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     // Default-ish QoS — reliability=reliable, history=keep_last(10).
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
@@ -49,7 +56,7 @@ int main() {
     pub.topic_name = "rt/pubsub_smoke";
     pub.type_name = "nros_test::msg::TestString";
     pub.qos = qos;
-    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "", 99, &qos, nullptr, &pub) !=
+    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "", 99, &qos, nullptr, &pub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         (void)g_vt->destroy_session(&s);
@@ -64,7 +71,7 @@ int main() {
     sub.topic_name = "rt/pubsub_smoke";
     sub.type_name = "nros_test::msg::TestString";
     sub.qos = qos;
-    if (g_vt->create_subscription(&s, sub.topic_name, sub.type_name, "", 99, &qos, nullptr, &sub) !=
+    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "", 99, &qos, nullptr, &sub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         g_vt->destroy_publisher(&pub);
@@ -105,7 +112,7 @@ int main() {
     // Unknown type: create_publisher must report UNSUPPORTED, not
     // ERROR.
     rmw_publisher_t bad{};
-    if (g_vt->create_publisher(&s, "rt/unknown", "no::such::Type", "", 99, &qos, nullptr, &bad) !=
+    if (g_vt->create_publisher(&node, "rt/unknown", "no::such::Type", "", 99, &qos, nullptr, &bad) !=
         NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr, "create_publisher unknown-type should be UNSUPPORTED\n");
         return 9;

@@ -13,8 +13,8 @@ use core::{
 use nros_rmw::{RmwConfig, Session as _, SessionMode, TopicInfo};
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
-    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     nros_rmw_cffi_register_named,
 };
 
@@ -45,7 +45,7 @@ unsafe extern "C" fn a_drive_io(session: *mut NrosRmwSession, _timeout_ms: i32) 
 }
 
 unsafe extern "C" fn a_create_publisher(
-    _session: *mut NrosRmwSession,
+    _session: *const NrosRmwNode,
     _topic_name: *const core::ffi::c_char,
     _type_name: *const core::ffi::c_char,
     _type_hash: *const core::ffi::c_char,
@@ -96,7 +96,7 @@ unsafe extern "C" fn b_drive_io(session: *mut NrosRmwSession, _timeout_ms: i32) 
 }
 
 unsafe extern "C" fn b_create_publisher(
-    _session: *mut NrosRmwSession,
+    _session: *const NrosRmwNode,
     _topic_name: *const core::ffi::c_char,
     _type_name: *const core::ffi::c_char,
     _type_hash: *const core::ffi::c_char,
@@ -131,7 +131,7 @@ unsafe extern "C" fn noop_destroy_pub(_p: *mut NrosRmwPublisher) -> NrosRmwRet {
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_create_sub(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
@@ -163,7 +163,7 @@ unsafe extern "C" fn noop_has_data(
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn noop_create_srv(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
@@ -204,7 +204,7 @@ unsafe extern "C" fn noop_send_reply(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_create_client(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,

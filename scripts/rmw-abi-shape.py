@@ -211,8 +211,8 @@ RET_DEVIATIONS = {
         "registers a callback and returns a status, where upstream returns the guard "
         "condition itself — see the ARG_DEVIATIONS entry"
     ),
-    "create_node": "node is an OUT parameter; the return carries the status (no runtime allocation) — as create_publisher",
-    "create_publisher": "entity is an OUT parameter; the return carries the status (no runtime allocation)",
+    "create_node": "node is an OUT parameter; the return carries the status — the caller owns the node struct, as every other create here",
+    "create_publisher": "entity is an OUT parameter; the return carries the status. The CALLER owns the entity struct — this is not a claim that nothing allocates (issue 0777)",
     "create_subscription": "as create_publisher",
     "create_service": "as create_publisher",
     "create_client": "as create_publisher",
@@ -261,7 +261,17 @@ ARG_DEVIATIONS = {
         "no `rmw_context_t *`: an image has one session and reaches it directly. "
         "Node is an OUT parameter, as every other create here"
     ),
-    "create_publisher": ("session not node; baked pkg/type strings not typesupport; entity is an OUT parameter (no runtime allocation)"),
+    "create_publisher": (
+        "`const rmw_node_t *` matches upstream since W5/B1 — the \"session not "
+        "node\" deviation is RETIRED, not declared. What remains: baked "
+        "pkg/type strings plus a `type_hash` in place of upstream's "
+        "`rosidl_message_type_support_t *`, because there is no typesupport "
+        "indirection on target; an explicit `uint32_t domain_id`, which "
+        "upstream carries in the context; and the entity as an OUT parameter, "
+        "because the CALLER owns that struct's storage (upstream mallocs it and "
+        "returns a pointer). That last clause is about the entity STRUCT only — "
+        "the backend still heap-allocates its `backend_data` in the same call"
+    ),
     "create_subscription": ("as create_publisher"),
     "create_service": ("as create_publisher"),
     "create_client": ("as create_publisher"),

@@ -319,7 +319,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms);
 rmw_ret_t xrce_session_ping(rmw_session_t* session, int32_t timeout_ms);
 
 /* ---- publisher.c ---- */
-rmw_ret_t xrce_publisher_create(rmw_session_t* session, const char* topic_name,
+rmw_ret_t xrce_publisher_create(const rmw_node_t* node, const char* topic_name,
                                      const char* type_name, const char* type_hash,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      const rmw_publisher_options_t* options,
@@ -334,7 +334,7 @@ rmw_ret_t xrce_publisher_publish_streamed(
     void* user_ctx);
 
 /* ---- subscriber.c ---- */
-rmw_ret_t xrce_subscription_create(rmw_session_t* session, const char* topic_name,
+rmw_ret_t xrce_subscription_create(const rmw_node_t* node, const char* topic_name,
                                       const char* type_name, const char* type_hash,
                                       uint32_t domain_id, const rmw_qos_profile_t* qos,
                                       const rmw_subscription_options_t* options,
@@ -359,7 +359,7 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
                          uxrStreamId stream_id, struct ucdrBuffer* ub, uint16_t length, void* args);
 
 /* ---- service.c ---- */
-rmw_ret_t xrce_service_create(rmw_session_t* session, const char* service_name,
+rmw_ret_t xrce_service_create(const rmw_node_t* node, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_service_t* out);
@@ -370,7 +370,7 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
 rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
 
-rmw_ret_t xrce_client_create(rmw_session_t* session, const char* service_name,
+rmw_ret_t xrce_client_create(const rmw_node_t* node, const char* service_name,
                                           const char* type_name, const char* type_hash,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_client_t* out);

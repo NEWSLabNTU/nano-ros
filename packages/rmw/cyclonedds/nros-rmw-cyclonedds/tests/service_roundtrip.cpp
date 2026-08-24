@@ -82,6 +82,13 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     // Phase 193.5 — exercise the non-default QoS path (not the `nullptr` ⇒
     // SERVICES_DEFAULT branch). A RELIABLE + VOLATILE + KEEP_LAST(5) profile is a
     // valid non-default for request/reply (RELIABLE is effectively required); the
@@ -97,7 +104,7 @@ int main() {
     rmw_service_t srv{};
     srv.service_name = "svc_roundtrip";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
                                     99, &qos, &srv) != NROS_RMW_RET_OK) {
         return 3;
     }
@@ -105,7 +112,7 @@ int main() {
     rmw_client_t cli{};
     cli.service_name = "svc_roundtrip";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&s, cli.service_name, cli.type_name, "",
+    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "",
                                     99, &qos, &cli) != NROS_RMW_RET_OK) {
         g_vt->destroy_service(&srv);
         (void) g_vt->destroy_session(&s);

@@ -38,10 +38,17 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&s, srv.service_name, srv.type_name, "",
+    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
                                     99, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service failed\n");
         (void) g_vt->destroy_session(&s);
@@ -55,7 +62,7 @@ int main() {
     rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&s, cli.service_name, cli.type_name, "",
+    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "",
                                     99, nullptr, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_client failed\n");
         g_vt->destroy_service(&srv);
@@ -82,7 +89,7 @@ int main() {
     // so consumers get a clear error if they forgot to call the
     // codegen helper.
     rmw_service_t any{};
-    if (g_vt->create_service(&s, "missing", "no::such::Svc", "",
+    if (g_vt->create_service(&node, "missing", "no::such::Svc", "",
                                     99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,
             "missing type_name should report UNSUPPORTED\n");

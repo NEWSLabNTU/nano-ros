@@ -147,7 +147,7 @@ typedef struct nros_rmw_vtable_t {
      *  writes `out->backend_data` and `out->can_loan_messages`.
      *  `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
-    rmw_ret_t (*create_publisher)(rmw_session_t *session,
+    rmw_ret_t (*create_publisher)(const rmw_node_t *node,
         const char *topic_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_publisher_options_t *options,
@@ -159,7 +159,7 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
     /** `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
-    rmw_ret_t (*create_subscription)(rmw_session_t *session,
+    rmw_ret_t (*create_subscription)(const rmw_node_t *node,
         const char *topic_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_subscription_options_t *options,
@@ -210,7 +210,7 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Service (phase-301: rmw's term; was `service_server`) ---- */
     /* Phase 193.1b — `qos` applies to both the request + reply endpoints
        (one profile per service, mirrors create_publisher/subscription). */
-    rmw_ret_t (*create_service)(rmw_session_t *session,
+    rmw_ret_t (*create_service)(const rmw_node_t *node,
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_service_t *out);
@@ -237,7 +237,7 @@ typedef struct nros_rmw_vtable_t {
         int64_t seq, const uint8_t *data, size_t len);
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
-    rmw_ret_t (*create_client)(rmw_session_t *session,
+    rmw_ret_t (*create_client)(const rmw_node_t *node,
         const char *service_name, const char *type_name, const char *type_hash,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_client_t *out);

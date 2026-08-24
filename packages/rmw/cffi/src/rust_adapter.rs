@@ -48,8 +48,8 @@ use nros_rmw::{
 
 use crate::{
     EMPTY_VTABLE, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos,
-    NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
     event_kind_from_c, ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
 };
 
@@ -268,13 +268,19 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
     }
 }
 
-unsafe fn session_node_name<'a>(session: *const NrosRmwSession) -> Option<&'a str> {
-    let name = unsafe { cstr_to_str((*session).node_name) };
+// Phase 376 W5/B1 — `session_node_name` and `session_namespace` are GONE with
+// the `entity_view` fabrication they served. They read the OWNING NODE's
+// identity off a session struct the shim rewrote per call, which is how node
+// identity reached a backend before the node itself did.
+
+/// The node's own identity.
+unsafe fn node_name_of<'a>(node: *const NrosRmwNode) -> Option<&'a str> {
+    let name = unsafe { cstr_to_str((*node).name) };
     if name.is_empty() { None } else { Some(name) }
 }
 
-unsafe fn session_namespace<'a>(session: *const NrosRmwSession) -> &'a str {
-    let namespace = unsafe { cstr_to_str((*session).namespace_) };
+unsafe fn node_namespace_of<'a>(node: *const NrosRmwNode) -> &'a str {
+    let namespace = unsafe { cstr_to_str((*node).namespace_) };
     if namespace.is_empty() { "/" } else { namespace }
 }
 
@@ -429,7 +435,7 @@ unsafe extern "C" fn drive_io_trampoline<R: RustBackend>(
 // ============================================================================
 
 unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
-    session: *mut NrosRmwSession,
+    node: *const NrosRmwNode,
     topic_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
@@ -441,11 +447,18 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // Phase 376 W5/B1 — the node carries both halves now: its own identity, and
+    // the route to its session (upstream's `context`). Reading the name off the
+    // session was the `entity_view` fabrication, and it is gone.
+    if node.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let session = unsafe { (*node).session };
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    let node_name = unsafe { session_node_name(session) };
-    let namespace = unsafe { session_namespace(session) };
+    let node_name = unsafe { node_name_of(node) };
+    let namespace = unsafe { node_namespace_of(node) };
     let topic = TopicInfo {
         name: unsafe { cstr_to_str(topic_name) },
         type_name: unsafe { cstr_to_str(type_name) },
@@ -503,7 +516,7 @@ unsafe extern "C" fn publish_trampoline<R: RustBackend>(
 // ============================================================================
 
 unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
-    session: *mut NrosRmwSession,
+    node: *const NrosRmwNode,
     topic_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
@@ -515,11 +528,18 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // Phase 376 W5/B1 — the node carries both halves now: its own identity, and
+    // the route to its session (upstream's `context`). Reading the name off the
+    // session was the `entity_view` fabrication, and it is gone.
+    if node.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let session = unsafe { (*node).session };
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    let node_name = unsafe { session_node_name(session) };
-    let namespace = unsafe { session_namespace(session) };
+    let node_name = unsafe { node_name_of(node) };
+    let namespace = unsafe { node_namespace_of(node) };
     let topic = TopicInfo {
         name: unsafe { cstr_to_str(topic_name) },
         type_name: unsafe { cstr_to_str(type_name) },
@@ -706,7 +726,7 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
 // ============================================================================
 
 unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
-    session: *mut NrosRmwSession,
+    node: *const NrosRmwNode,
     service_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
@@ -717,11 +737,18 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // Phase 376 W5/B1 — the node carries both halves now: its own identity, and
+    // the route to its session (upstream's `context`). Reading the name off the
+    // session was the `entity_view` fabrication, and it is gone.
+    if node.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let session = unsafe { (*node).session };
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    let node_name = unsafe { session_node_name(session) };
-    let namespace = unsafe { session_namespace(session) };
+    let node_name = unsafe { node_name_of(node) };
+    let namespace = unsafe { node_namespace_of(node) };
     let info = nros_rmw::ServiceInfo {
         name: unsafe { cstr_to_str(service_name) },
         type_name: unsafe { cstr_to_str(type_name) },
@@ -847,7 +874,7 @@ unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
 // ============================================================================
 
 unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
-    session: *mut NrosRmwSession,
+    node: *const NrosRmwNode,
     service_name: *const core::ffi::c_char,
     type_name: *const core::ffi::c_char,
     type_hash: *const core::ffi::c_char,
@@ -858,11 +885,18 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // Phase 376 W5/B1 — the node carries both halves now: its own identity, and
+    // the route to its session (upstream's `context`). Reading the name off the
+    // session was the `entity_view` fabrication, and it is gone.
+    if node.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let session = unsafe { (*node).session };
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    let node_name = unsafe { session_node_name(session) };
-    let namespace = unsafe { session_namespace(session) };
+    let node_name = unsafe { node_name_of(node) };
+    let namespace = unsafe { node_namespace_of(node) };
     let info = nros_rmw::ServiceInfo {
         name: unsafe { cstr_to_str(service_name) },
         type_name: unsafe { cstr_to_str(type_name) },

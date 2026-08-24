@@ -41,7 +41,7 @@ mod stub {
     }
     #[allow(clippy::too_many_arguments)]
     pub unsafe extern "C" fn cpub(
-        _: *mut rmw_session_t,
+        _: *const rmw_node_t,
         _: *const c_char,
         _: *const c_char,
         _: *const c_char,
@@ -60,7 +60,7 @@ mod stub {
     }
     #[allow(clippy::too_many_arguments)]
     pub unsafe extern "C" fn csub(
-        _: *mut rmw_session_t,
+        _: *const rmw_node_t,
         _: *const c_char,
         _: *const c_char,
         _: *const c_char,
@@ -89,7 +89,7 @@ mod stub {
         NROS_RMW_RET_OK
     }
     pub unsafe extern "C" fn csrv(
-        _: *mut rmw_session_t,
+        _: *const rmw_node_t,
         _: *const c_char,
         _: *const c_char,
         _: *const c_char,
@@ -103,7 +103,7 @@ mod stub {
         NROS_RMW_RET_OK
     }
     pub unsafe extern "C" fn ccli(
-        _: *mut rmw_session_t,
+        _: *const rmw_node_t,
         _: *const c_char,
         _: *const c_char,
         _: *const c_char,

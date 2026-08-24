@@ -24,8 +24,8 @@ use core::{
 use nros_rmw::{Session, SessionMode, Subscription, TopicInfo};
 use nros_rmw_cffi::{
     EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
-    NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
-    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
+    NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService,
+    NrosRmwSession, NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 const PER_MSG_CAP: usize = 32;
@@ -62,7 +62,7 @@ unsafe extern "C" fn stub_drive_io(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_create_publisher(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
@@ -84,7 +84,7 @@ unsafe extern "C" fn stub_publish_raw(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_create_subscription(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
@@ -144,7 +144,7 @@ unsafe extern "C" fn stub_has_data(
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_create_service(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
@@ -185,7 +185,7 @@ unsafe extern "C" fn stub_send_reply(
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_create_client(
-    _: *mut NrosRmwSession,
+    _: *const NrosRmwNode,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,
     _: *const core::ffi::c_char,

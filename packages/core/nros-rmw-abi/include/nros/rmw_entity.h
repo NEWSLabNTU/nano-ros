@@ -565,23 +565,40 @@ typedef struct rmw_session_t {
  *  linear-scanning declared tokens. So node identity already reaches the
  *  backend, through a side channel, in every image.
  *
- *  **Booked, not done — and the booking is the point.** The right end state is
- *  `create_publisher` / `create_subscription` / `create_service` /
- *  `create_client` taking `rmw_node_t *` the way upstream does, which RETIRES
- *  the `entity_view` fabrication and retires the W3.c "session not node"
- *  deviation rather than adding to it. Landing these two slots without booking
- *  that leaves node identity arriving two ways at once, which is the shape that
- *  has already cost this tree three FFI-mirror bugs. Tracked in
- *  `docs/roadmap/phase-376-rmw-api-parity.md` under W5.
+ *  **Done, W5/B1 (2026-08-24).** `create_publisher` / `create_subscription` /
+ *  `create_service` / `create_client` take `const rmw_node_t *` the way
+ *  upstream does. That retired the `entity_view` fabrication — the shim now
+ *  owns a node table and calls `create_node` once per distinct
+ *  `(name, namespace)`, which is only true because `Executor::create_node`
+ *  deduplicates (W5/B1.a).
  *
- *  Not carried from upstream: `context`, `implementation_identifier` and
- *  `data`. A node reaches its session because the runtime knows which session
- *  it opened on, and one image links one backend per session. */
+ *  **Still owed:** zenoh's `ensure_node_liveliness` still linear-scans its own
+ *  `per_node_liveliness` table. Retiring it needs a `create_node` method on the
+ *  Rust `Rmw`/`Session` trait plus a trampoline in `RustBackendAdapter`, so
+ *  that a Rust backend can be TOLD about a node the way a C one is. The slot
+ *  and the table it needs both exist now; only that trait hop is missing. Do
+ *  not read this paragraph as done — the first draft of this comment said the
+ *  registry was retired, which it was not.
+ *
+ *  Not carried from upstream: `implementation_identifier` and `data` (one
+ *  image links one backend per session, so there is nothing to disambiguate).
+ *
+ *  `session` IS carried, and is our `context`. Upstream's node reaches its
+ *  context that way and every `rmw_create_*` relies on it; a node with no route
+ *  to its session cannot be the only argument those slots get, which is what
+ *  made this field the precondition for the whole change rather than a
+ *  convenience. Set by the runtime BEFORE `create_node`, and stable for the
+ *  node's life. */
 typedef struct rmw_node_t {
     /** Node name. Borrowed; outlives the node. */
     const char *name;
     /** Node namespace. Borrowed; outlives the node. */
     const char *namespace_;
+    /** The session this node lives on — upstream's `context`. Set by the
+     *  runtime before `create_node`; never NULL in a node the runtime hands to
+     *  a slot. A backend reaches its own session state through
+     *  `node->session->backend_data`. */
+    rmw_session_t *session;
     /** Reserved; must be zero. */
     uint8_t _reserved[8];
     /** Opaque backend state. NULL until `create_node` succeeds. */

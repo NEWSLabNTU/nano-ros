@@ -42,13 +42,20 @@ int main() {
         return 2;
     }
 
+    // Phase 376 W5/B1 — entities are created ON A NODE now. The node
+    // carries its own identity plus the route to its session.
+    rmw_node_t node{};
+    node.name       = s.node_name;
+    node.namespace_ = s.namespace_;
+    node.session    = &s;
+
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
     rmw_publisher_t pub{};
     pub.topic_name = "chatter";
     pub.type_name  = "std_msgs::msg::dds_::String_";
     pub.qos        = qos;
-    if (g_vt->create_publisher(&s, pub.topic_name, pub.type_name, "",
+    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "",
                                0, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 3;

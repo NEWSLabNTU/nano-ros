@@ -262,30 +262,47 @@ Two commitments made when a slot landed. Both are the kind of debt that is only
 visible at the moment it is incurred, so they are written down here rather than
 left to be rediscovered.
 
-### `rmw_node_t *` on the four `create_*` slots
+### `rmw_node_t *` on the four `create_*` slots — **LANDED 2026-08-24**
 
-`create_node` / `destroy_node` landed in W4 on the strength of a finding: the
-W3.c deviation reason "an image opens ONE session; upstream's context/node split
-has no target-side meaning" is HALF FALSE. The session half holds. The node half
-is contradicted by our own code — `Executor` keeps a node table, and
-`CffiSession::entity_view` exists solely to fabricate a per-call session
-carrying the entity's owning-node identity ("one session can host N graph
-nodes", its own comment), from which the zenoh backend re-derives a node
-registry by linear-scanning declared tokens.
+`create_publisher` / `create_subscription` / `create_service` / `create_client`
+take `const rmw_node_t *` as upstream does. Three things had to move, and the
+order was forced:
 
-So node identity ALREADY reaches the backend, by a side channel. The end state
-is `create_publisher` / `create_subscription` / `create_service` /
-`create_client` taking `rmw_node_t *` as upstream does, which RETIRES the
-`entity_view` fabrication and retires the W3.c deviation rather than adding to
-it. Until then node identity arrives two ways at once, which is the shape that
-has cost this tree three FFI-mirror bugs.
+**B1.a — `Executor::create_node` registered nothing.** It built a `NodeHandle`
+and returned it without touching `self.nodes`, so two calls with one name gave
+two nodes the executor had never heard of. `create_node_on_with_domain` had had
+the dedup since phase-267; the plain path never got it. Without a registry the
+`create_node` SLOT's contract ("once per distinct `(name, namespace)`") has
+nothing making it true.
 
-**Prerequisite, not a tidy-up:** plain `Executor::create_node(name)` registers
-nothing in `self.nodes` (only `create_node_on_with_domain` dedups), so it can
-hand out two handles of one name. The `create_node` slot's contract says the
-runtime calls it once per distinct `(name, namespace_)`; without this the
-backend gets duplicate declarations and must keep the per-backend dedup registry
-the slot exists to delete.
+**B1.b — the slots were dead.** W4 landed `create_node` / `destroy_node` and
+nothing ever called them. The shim now owns a node table and fires `create_node`
+once per distinct pair.
+
+**B1.c — `rmw_node_t` gained `session`.** This was the precondition, not a
+convenience: upstream's node reaches its context that way and every
+`rmw_create_*` depends on it. A node with no route to its session cannot be the
+only argument those slots get. Checked against Humble's `rmw/types.h` in the
+distrobox rather than assumed.
+
+`CffiSession::entity_view` is GONE, with `session_node_name` and
+`session_namespace` in the adapter. The W3.c "session not node" deviation is
+retired rather than re-declared.
+
+**Where the node table lives, and why that is not a detail.** The first attempt
+put it in `CffiSession`. That grew every C and C++ `_opaque` buffer by ~544
+bytes and tripped `nros-c`'s compile-time size guards (issue 0472) — the
+machinery working exactly as designed and saying the bookkeeping did not belong
+on an ABI surface. It moved to a static side table keyed by the session's
+`backend_data`, which is the same shape `MESSAGE_INFO_TABLE` already uses for
+the same reason, with the slots released on `close`. Bounded by
+`NROS_RMW_MAX_NODES` (default 4, mirroring the executor).
+
+**Still owed:** zenoh's `ensure_node_liveliness` still linear-scans its own
+`per_node_liveliness`. Retiring it needs a `create_node` method on the Rust
+`Rmw`/`Session` trait plus an adapter trampoline, so a Rust backend can be TOLD
+about a node the way a C one now is. The slot and the table both exist; only
+that trait hop is missing.
 
 ### `rmw_qos_profile_t` needs an UNKNOWN encoding
 

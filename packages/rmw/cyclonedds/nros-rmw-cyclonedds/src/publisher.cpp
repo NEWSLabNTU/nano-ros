@@ -101,11 +101,15 @@ rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) {
 
 } // namespace
 
-rmw_ret_t publisher_create(rmw_session_t* session, const char* topic_name,
+rmw_ret_t publisher_create(const rmw_node_t* node, const char* topic_name,
                                 const char* type_name, const char* /*type_hash*/,
                                 uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
                                 const rmw_publisher_options_t* /*options*/,
                                 rmw_publisher_t* out) {
+    // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
+    // The node carries the route to its session (our `context`).
+    if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    rmw_session_t* session = node->session;
     if (out == nullptr || session == nullptr || topic_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
