@@ -1029,9 +1029,14 @@ typedef struct nros_rmw_vtable_t {
  * value list — the only slot in the vtable without one — encoded inline as
  * `0u8` / `1u8` at the Rust boundary.
  *
- * Divergence from `rmw.h`, recorded deliberately: `rmw_init_options_t` carries
- * domain_id, enclave, security_options and discovery_options, and has NO
- * session-mode concept. This parameter is closest to zenoh's `whatami`, and a
+ * Divergence from `rmw.h`, recorded deliberately: Humble's
+ * `rmw_init_options_t` carries `instance_id`, `implementation_identifier`,
+ * `domain_id`, `security_options`, `localhost_only`, `enclave`, `allocator`
+ * and `impl` — and has NO session-mode concept. (This list said "domain_id,
+ * enclave, security_options and discovery_options" until 2026-08-24, which
+ * omitted five of the eight and named one, `discovery_options`, that is an
+ * IRON field and does not exist in the distro our recorded contract is taken
+ * from. What we do and do not carry from those eight is issue 0785.) This parameter is closest to zenoh's `whatami`, and a
  * backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it
  * rather than fail. Folding it into backend-private config behind the locator
  * — so the agnostic vtable stops carrying a backend-shaped field — is the

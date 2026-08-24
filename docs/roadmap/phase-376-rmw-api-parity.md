@@ -359,10 +359,44 @@ the renumbering passes through them untouched. It does mean the repo now has
 two enums where `2` names different policies — a trap, recorded here rather
 than half-fixed.
 
-### Residue, so it is not mistaken for decided
+### The init-options residue — **DECIDED 2026-08-24 (B3)**
 
-`rmw_init_options_t` also carries `security_options` and `discovery_options`. We
-answer neither. "Init options: declined" is about the init/copy/fini trio only.
+This section used to read: *"`rmw_init_options_t` also carries
+`security_options` and `discovery_options`. We answer neither. 'Init options:
+declined' is about the init/copy/fini trio only."*
+
+Both halves needed correcting before the question could be answered.
+**`discovery_options` is not a Humble field** — it arrived in Iron, and our
+recorded contract is Humble. And the real list is eight fields, not two. Two
+header comments carried the same wrong list; both fixed.
+
+Audited against Humble's `rmw/init_options.h`, read in the distrobox:
+
+| upstream field | ours | verdict |
+| --- | --- | --- |
+| `domain_id` | `create_session`'s `domain_id` | carried |
+| `implementation_identifier` | `get_implementation_identifier` slot + descriptor | answered elsewhere |
+| `impl` | `rmw_session_t::backend_data` | answered elsewhere |
+| `allocator` | — | declined ABI-wide; no allocator at this seam |
+| `instance_id` | — | rcl-side process identity, not middleware behaviour |
+| `security_options` | — | **declined**, on a target reason |
+| `localhost_only` | — | **gap** → issue 0785 |
+| `enclave` | — | **gap**, and it makes a grouping hollow → issue 0785 |
+
+`security_options` is `{enforce_security, security_root_path}` — a DDS-SROS2
+keystore FILESYSTEM path plus an enforce/permissive switch. Neither the
+filesystem nor the DDS security plugin exists on these targets, and the one
+backend that could honour it is the one where a caller can configure the
+participant out of band. That reason is about the target, so the decline holds.
+
+The `enclave` finding is the sharp one. `rmw_get_node_names_with_enclaves` is
+counted as ANSWERED, grouped onto `get_node_names`. The grouping is right in
+shape — upstream split the two names only because appending to a fixed
+out-parameter list would break its ABI, and a visitor has no such list. It is
+hollow in content: nothing in this ABI accepts an enclave, so the visitor's
+`enclave` argument is structurally always NULL. A symbol we can only ever
+answer with "nothing" sits in the report's answered column, and no gate can see
+it.
 
 ## W5 — RTOS correctness: audit the declarations
 

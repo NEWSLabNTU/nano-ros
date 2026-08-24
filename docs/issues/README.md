@@ -3729,3 +3729,12 @@ buffer on MCUs; XRCE implements it as `malloc(total)` of the whole payload and r
 past one stream slot, so on the target class the slot exists for it swaps a static buffer for a same-sized
 heap one. zenoh grows a writer to full size. Same family as 0777: a memory claim in the ABI no backend
 keeps. See `0782-*`. (2026-08-24)
+
+**#0785** (rmw, open 2026-08-24) — `create_session` carries `domain_id` and nothing else from Humble's
+eight-field `rmw_init_options_t`. Two are real gaps: `localhost_only` (a discovery-scope control that maps
+to a real cyclonedds setting) and `enclave` — and the second makes a GROUPED answer hollow, because
+`rmw_get_node_names_with_enclaves` is counted as answered while nothing in this ABI accepts an enclave, so
+the visitor's `enclave` argument is structurally always NULL. `security_options` stays declined on a target
+reason (filesystem keystore + DDS security plugin). Also fixed two header comments that listed the init
+fields as "domain_id, enclave, security_options and discovery_options": `discovery_options` is an IRON
+field, not Humble, and the list omitted five of eight. See `0785-*`. (2026-08-24)
