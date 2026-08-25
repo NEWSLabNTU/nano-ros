@@ -106,6 +106,16 @@ function(nano_ros_add_executable name)
         set(_NRE_BOARD "${NROS_BOARD}")
     endif()
 
+    # issue 0755 — the entry knows WHICH deploy this build is (explicit
+    # `DEPLOY`, else the package.xml tuple). Board facts resolve further down
+    # the call chain, and without this the resolver could only ask by BOARD —
+    # which a `system.toml` carrying several deploys for one board answers with
+    # an ambiguity refusal, and this lane's soft error handling turns that into
+    # a silent skip. cmake functions are dynamically scoped, so setting it here
+    # reaches the nested resolution without threading a parameter through every
+    # frame between.
+    set(NROS_DEPLOY "${_NRE_DEPLOY}")
+
     # Generate the package's declared interface closure in the leaf's language
     # (no-op when package.xml declares no interface deps).
     _nros_generate_declared_interfaces(${_lang})

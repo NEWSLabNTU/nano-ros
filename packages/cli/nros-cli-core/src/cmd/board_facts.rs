@@ -496,6 +496,45 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
         assert!(msg.contains("--deploy"), "{msg}");
     }
 
+    /// issue 0755 — the ambiguity the previous test proves is REFUSABLE is
+    /// also RESOLVABLE, by naming the deploy. That is the whole point of
+    /// threading `--deploy` from the cmake wrapper: the entry knows which
+    /// deploy this build is, and without it a multi-deploy `system.toml`
+    /// (one bringup, deploys for posix + fvp + hardware) turns board facts
+    /// into a silent skip.
+    #[test]
+    fn naming_the_deploy_resolves_what_the_board_alone_cannot() {
+        let ws = ws_with(&format!(
+            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\n\
+             rmw = \"zenoh\"\n\n[deploy.other.nros]\nnetstack = \"lwip\"\n\
+             sdk = {{ freertos = \"/elsewhere\", lwip = \"{{env:LWIP_DIR}}\" }}\n"
+        ));
+        let env = |k: &str| match k {
+            "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
+            "LWIP_DIR" => Some("/opt/lwip".to_string()),
+            _ => None,
+        };
+        // By board alone: refused (the previous test).
+        assert!(
+            resolve(
+                ws.path(),
+                &repo_root(),
+                None,
+                Some("mps2-an385-freertos"),
+                &env
+            )
+            .is_err()
+        );
+        // By deploy name: each one answers for itself.
+        let other = resolve(ws.path(), &repo_root(), Some("other"), None, &env)
+            .expect("the named deploy resolves");
+        assert_eq!(
+            other.get("NROS_SDK_FREERTOS").map(String::as_str),
+            Some("/elsewhere"),
+            "the named deploy's own SDK root, not the other one's"
+        );
+    }
+
     /// `board = "mps2-an385-freertos"` is the DIRECTORY spelling, which that
     /// descriptor does not carry in `names`. Every in-tree site block uses it.
     #[test]

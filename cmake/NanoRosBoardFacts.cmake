@@ -27,23 +27,43 @@ include_guard(GLOBAL)
 # issue 0657 — `nros_corrosion_env_target`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 
-# nros_resolve_board_facts([BOARD <name>] [WORKSPACE <dir>])
+# nros_resolve_board_facts([BOARD <name>] [DEPLOY <name>] [WORKSPACE <dir>])
 #
-# Resolve once per configure into the `NROS_BOARD_FACTS_ENV` cache entry (a
-# `KEY=VALUE;…` list). Exactly one board is active per configure — the board
-# module is selected by `if/elseif` on `NANO_ROS_BOARD` and the toolchain file
-# must precede `project()` — so one cached value is the whole answer, never a
-# table a caller has to index.
+# Resolve into `NROS_BOARD_FACTS_ENV` (a `KEY=VALUE;…` list) in the CALLER's
+# scope, memoised per (board, deploy) so the verb runs once per distinct
+# question rather than once per caller.
+#
+# Exactly one BOARD is active per configure — the board module is selected by
+# `if/elseif` on `NANO_ROS_BOARD` and the toolchain file must precede
+# `project()`. DEPLOY is NOT bound that way: one configure can carry several
+# entry leaves, each naming its own deploy in its `package.xml` export tuple,
+# so the memo is keyed on both rather than assuming one answer (issue 0755).
 function(nros_resolve_board_facts)
-    cmake_parse_arguments(_A "" "BOARD;WORKSPACE" "" ${ARGN})
-
-    if(DEFINED NROS_BOARD_FACTS_ENV)
-        return()
-    endif()
+    cmake_parse_arguments(_A "" "BOARD;DEPLOY;WORKSPACE" "" ${ARGN})
 
     set(_board "${_A_BOARD}")
     if(_board STREQUAL "")
         set(_board "${NANO_ROS_BOARD}")
+    endif()
+
+    # issue 0755 — the caller that knows the deploy is the entry verb, which
+    # already resolved it (explicit `DEPLOY`, else the package.xml tuple
+    # `find_package(nano_ros)` parsed into `NROS_DEPLOY`). Forwarding it is
+    # what keeps a multi-deploy `system.toml` from becoming an AMBIGUITY
+    # refusal — which this file's deliberately-soft error handling would then
+    # turn into a silent skip, dropping the tier/sizing facts out of the image
+    # with a STATUS line at best.
+    set(_deploy "${_A_DEPLOY}")
+    if(_deploy STREQUAL "" AND DEFINED NROS_DEPLOY)
+        set(_deploy "${NROS_DEPLOY}")
+    endif()
+
+    # One cache entry per question asked. `_` is not legal in a cache name
+    # position for arbitrary board/deploy spellings, so sanitise.
+    string(MAKE_C_IDENTIFIER "NROS_BOARD_FACTS_ENV__${_board}__${_deploy}" _memo)
+    if(DEFINED ${_memo})
+        set(NROS_BOARD_FACTS_ENV "${${_memo}}" PARENT_SCOPE)
+        return()
     endif()
 
     # Where to resolve FROM, most specific first. `APPLICATION_SOURCE_DIR` is
@@ -62,14 +82,16 @@ function(nros_resolve_board_facts)
         message(STATUS
             "nano-ros: board facts NOT delivered — no nros CLI (build it with "
             "`./scripts/bootstrap.sh`; contributors: `just setup-cli`).")
-        set(NROS_BOARD_FACTS_ENV "" CACHE INTERNAL "phase-351 W5: no CLI")
+        set(${_memo} "" CACHE INTERNAL "phase-351 W5: no CLI")
+        set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
     if(_ws STREQUAL "")
         message(STATUS
             "nano-ros: board facts NOT delivered — no workspace/application dir "
             "to resolve from (pass WORKSPACE).")
-        set(NROS_BOARD_FACTS_ENV "" CACHE INTERNAL "phase-351 W5: no workspace")
+        set(${_memo} "" CACHE INTERNAL "phase-351 W5: no workspace")
+        set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
 
@@ -79,6 +101,9 @@ function(nros_resolve_board_facts)
     set(_args ws board-facts "${_ws}")
     if(NOT _board STREQUAL "")
         list(APPEND _args --board "${_board}")
+    endif()
+    if(NOT _deploy STREQUAL "")
+        list(APPEND _args --deploy "${_deploy}")
     endif()
 
     execute_process(
@@ -108,14 +133,16 @@ function(nros_resolve_board_facts)
         string(SUBSTRING "${_why}" 0 200 _why)
         message(STATUS
             "nano-ros: board facts NOT delivered from ${_ws} — ${_why}")
-        set(NROS_BOARD_FACTS_ENV "" CACHE INTERNAL "phase-351 W5: nothing to deliver")
+        set(${_memo} "" CACHE INTERNAL "phase-351 W5: nothing to deliver")
+        set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
 
     string(REPLACE "\n" ";" _lines "${_out}")
     list(REMOVE_ITEM _lines "")
-    set(NROS_BOARD_FACTS_ENV "${_lines}" CACHE INTERNAL
+    set(${_memo} "${_lines}" CACHE INTERNAL
         "phase-351 W5: resolved board facts + site config from ${_ws}")
+    set(NROS_BOARD_FACTS_ENV "${_lines}" PARENT_SCOPE)
     list(LENGTH _lines _n)
     message(STATUS "nano-ros: board facts from ${_ws} — ${_n} value(s) delivered to cargo")
 endfunction()
