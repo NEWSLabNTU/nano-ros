@@ -32,10 +32,11 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 
 | knob | default | read by |
 | --- | ---: | --- |
-| `NROS_EXECUTOR_ARENA_SIZE` | computed — see `packages/core/nros-node/build.rs:122` | `packages/core/nros-node` |
+| `NROS_EXECUTOR_ARENA_SIZE` | computed — see `packages/core/nros-node/build.rs:134` | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_CBS` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_NODES` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SC` | 8 | `packages/core/nros-node` |
+| `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` | 2 | `packages/core/nros-node` |
 | `NROS_KEYEXPR_STRING_SIZE` | 256 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `NROS_LET_BUFFER_SIZE` | 512 | `packages/tooling/nros-build-helpers` |
 | `NROS_MAX_ARRAY_LEN` | 32 | `packages/core/nros-params` |

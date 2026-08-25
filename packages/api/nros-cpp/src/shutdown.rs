@@ -18,6 +18,13 @@
 
 use core::ffi::c_void;
 
+// Gated exactly like the four entry points below, and for the same reason: the
+// module itself is UNGATED so the callback typedef and `NROS_CPP_MAX_SHUTDOWN_HOOKS`
+// always reach the header, but everything imported here is reachable only from a
+// `rmw-cffi` build (`cpp_ctx_checked` is itself gated). Without this the crate
+// fails to compile under `--no-default-features`, which only
+// `check-workspace-features` builds.
+#[cfg(feature = "rmw-cffi")]
 use crate::{
     NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_OK,
     cpp_ctx_checked, nros_cpp_ret_t,
