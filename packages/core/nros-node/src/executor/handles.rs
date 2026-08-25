@@ -1865,6 +1865,29 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
 
+    /// Handle a request by STREAMING it — the handler reads the request's fields
+    /// off the wire and writes the reply's fields straight back, so neither is
+    /// ever materialised as a value.
+    ///
+    /// phase-382 W1'. This is what `handle_request_boxed` should have been: that
+    /// one boxes the reply and leaves the REQUEST as a stack local, which is how
+    /// `ros2 param set` came to put 1.19 MB on the calling task's stack. Streaming
+    /// removes both, and needs no allocator — see
+    /// `ServiceTrait::handle_request_raw` for why it is byte-identical to the
+    /// generated `Serialize` impls, and for the drift risk it carries.
+    #[cfg(any(feature = "param-services", feature = "lifecycle-services"))]
+    pub fn handle_request_raw(
+        &mut self,
+        handler: impl FnOnce(
+            &mut nros_core::CdrReader<'_>,
+            &mut nros_core::CdrWriter<'_>,
+        ) -> Result<(), nros_rmw::TransportError>,
+    ) -> Result<bool, NodeError> {
+        self.handle
+            .handle_request_raw(&mut self.req_buffer, &mut self.reply_buffer, handler)
+            .map_err(|_| NodeError::ServiceReplyFailed)
+    }
+
     /// Check if a request is available.
     pub fn has_request(&self) -> bool {
         self.handle.has_request()

@@ -2178,6 +2178,77 @@ pub trait ServiceTrait {
         self.send_reply(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
+
+    /// Handle one request by STREAMING: the handler reads fields off the wire
+    /// and writes the reply's fields straight back, so neither the request nor
+    /// the reply is ever materialised as a value.
+    ///
+    /// phase-382 W1'. `handle_request_boxed` above boxes the REPLY because the
+    /// parameter responses are enormous — `GetParametersResponse` measures
+    /// 1,176,072 bytes. It does not box the REQUEST, which is deserialized by
+    /// value into a stack local one line above the handler, and
+    /// `SetParametersRequest` measures **1,192,968 bytes**. So every
+    /// `ros2 param set` against a node put a 1.19 MB local on the calling
+    /// task's stack — larger than the reply the boxing exists for, on every
+    /// platform, with `param-services` live on Zephyr.
+    ///
+    /// Streaming removes both, and removes the `alloc` requirement with them:
+    /// the whole value is never needed, because serialisation happens on the
+    /// line after construction. Three things make it safe rather than clever:
+    ///
+    /// * **No `rcl_interfaces` message uses a DHEADER** — every `Serialize` impl
+    ///   is plain sequential CDR, so hand-written field writes are byte-identical
+    ///   to the generated ones. (If a future message gains XCDR2 extensibility
+    ///   this stops being true for THAT message; see RFC-0055.)
+    /// * `req_buf` and `reply_buf` are disjoint, so a handler can hold the
+    ///   reader and the writer at once.
+    /// * `CdrReader::read_string` borrows out of `req_buf` rather than copying,
+    ///   so a handler can look a name up without a buffer of its own.
+    ///
+    /// The cost is that the hand-written writes can drift from the generated
+    /// `Serialize`. Guard it with a round-trip test that deserialises the
+    /// streamed bytes back into the generated type — the by-value handler makes
+    /// a good test-only oracle.
+    ///
+    /// No `alloc`, deliberately: this is the seam that lets `param-services` and
+    /// `lifecycle-services` build without it.
+    fn handle_request_raw(
+        &mut self,
+        req_buf: &mut [u8],
+        reply_buf: &mut [u8],
+        handler: impl FnOnce(
+            &mut nros_core::CdrReader<'_>,
+            &mut nros_core::CdrWriter<'_>,
+        ) -> Result<(), TransportError>,
+    ) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        use nros_core::{CdrReader, CdrWriter};
+
+        let buf_start = req_buf.as_ptr() as usize;
+        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+            Some(request) => {
+                let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
+                (offset, request.data.len(), request.sequence_number)
+            }
+            None => return Ok(false),
+        };
+
+        // Split the borrow so the reader (over `req_buf`) and the writer (over
+        // `reply_buf`) can be live at the same time. They are separate
+        // parameters, so this is disjoint by construction.
+        let mut reader = CdrReader::new_with_header(&req_buf[data_offset..data_offset + data_len])
+            .map_err(|_| TransportError::DeserializationError)?;
+        let mut writer =
+            CdrWriter::new_with_header(reply_buf).map_err(|_| TransportError::BufferTooSmall)?;
+
+        handler(&mut reader, &mut writer)?;
+        let len = writer.position();
+
+        self.send_reply(sequence_number, &reply_buf[..len])?;
+        Ok(true)
+    }
 }
 
 /// Service client trait for sending requests.

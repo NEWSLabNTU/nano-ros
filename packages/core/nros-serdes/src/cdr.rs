@@ -510,6 +510,20 @@ impl<'a> CdrReader<'a> {
         self.pos
     }
 
+    /// Whether nothing has been read yet — the reader still sits on its
+    /// alignment origin.
+    ///
+    /// CDR alignment is computed as `pos - origin`, so a caller that re-reads a
+    /// request by taking the remaining bytes and building a fresh reader over
+    /// them only gets identical alignment when the slice STARTS at the origin.
+    /// That is a real precondition with no visible symptom when broken — the
+    /// padding silently shifts — and `origin` is private, so this is how a
+    /// caller checks it. See `parameter_services::rewind` (phase-382 W1').
+    #[inline]
+    pub fn is_at_origin(&self) -> bool {
+        self.pos == self.origin
+    }
+
     /// Get remaining bytes
     #[inline]
     pub fn remaining(&self) -> usize {

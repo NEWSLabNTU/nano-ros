@@ -13,6 +13,22 @@ answer is neither: conciliate them into one API that keeps what each does well.
 **Implements.** RFC-0045 (boot config), and amends RFC-0036's parameter row.
 Closes the store half of issue 0793.
 
+**Decided 2026-08-25: alloc-free is the target.** The store already is —
+`cargo check -p nros-params --no-default-features` is clean, storage is
+`[Option<ParameterEntry>; MAX_PARAMETERS]`, and names/strings/arrays are all
+`heapless` and bounded at build time. The `alloc` lives entirely in the SERVICES
+and is an accident of implementation: three `Box`es, every one about PLACEMENT
+rather than dynamic sizing (a value too large for the stack, with the heap as the
+nearest home). So an image with no heap will be able to answer `ros2 param`.
+
+Note what this decision does NOT change: `impl ParameterVariant for
+String`/`Vec<T>` stays `alloc`-gated, correctly — those are ergonomics for a
+hosted caller, not capability.
+
+The cost, stated plainly: W1' replaces generated `Serialize` calls with
+hand-written field writes that can drift from the generated impls. The
+round-trip oracle test is the mitigation, not a cure.
+
 ## The situation, measured
 
 Two stores, and the consumer counts invert the obvious reading:
@@ -102,7 +118,34 @@ feature-dependent, which is issue 0665's probe-vs-link trap at 273 KB instead of
 
 ## Work items (re-planned after exploration)
 
-### W0 — settle the ARRAY question. Blocking; nothing downstream is designable first.
+### W0 — settle the ARRAY question. **DECIDED 2026-08-26: borrowed variant alongside copying.**
+
+The unified store carries BOTH: the copying `heapless::Vec<T, MAX_ARRAY_LEN>` and
+a BORROWED `{ data, len }` variant that records the caller's pointer verbatim.
+W6' is therefore a MIGRATION, not a break.
+
+Why borrowed survives rather than being folded away:
+
+* It IS caller capacity and placement — the property this phase set out to keep.
+  The copying variant forfeits both, and does so precisely on the values large
+  enough for it to matter.
+* The legacy store has NO array cap, because the memory is the caller's.
+  Unifying on `heapless::Vec<T, 32>` would be a capability LOSS, not merely an
+  ABI change: arrays over 32 elements stop being expressible at all.
+* `parameter.h:261-287` documents pointer identity as load-bearing, and
+  `nros/parameter.hpp` recovers each block's capacity from an out-of-band word
+  in FRONT of the returned pointer. Breaking it fails every C++
+  `set_parameter(Seq)` and the live `parameters_roundtrip` test.
+
+**The cost, stated plainly: a borrowed array can dangle.** The store does not own
+the buffer and cannot observe the caller freeing it, where the copying variant is
+memory-safe by construction. This is the tradeoff the decision accepts, so the
+implementation owes it a mitigation rather than a comment — the borrowed variant
+must be reachable ONLY through the declare-time C entry points, whose contract
+already says the caller's storage must outlive the node, and must never be
+constructible from a wire `set` (see W5': a remote set may not choose placement).
+
+
 
 `parameter.h:261-287` documents array pointer identity as **load-bearing**, not
 incidental: `nros_param_declare_*_array` records the caller's `data` pointer
@@ -126,7 +169,59 @@ alongside the copying one, or accept a breaking C ABI change and do the
 capacity-in-server-state fix `parameter.h` already names as "the proper fix".
 This determines whether W6' is a migration or a break.
 
-### W1' — the streaming service seam. Biggest win, independent of all storage work.
+### W1' — the streaming service seam. **LANDED 2026-08-25.**
+
+`ServiceTrait::handle_request_raw` (`nros-rmw/src/traits.rs`) plus the
+`ServiceServerHandle` wrapper. All 11 handlers stream — 6 parameter, 5
+lifecycle. No `alloc` on any streaming path.
+
+**The defect was bigger than this doc first said.** `handle_request_boxed` boxes
+the REPLY and leaves the REQUEST as a by-value stack local — and
+`SetParametersRequest` (1,192,968 B) is LARGER than the reply the boxing exists
+for. Every `ros2 param set` put 1.19 MB on the calling task's stack.
+
+Dominant local per handler (`size_of`; the largest single local, NOT a frame
+total):
+
+| handler | request, was on stack | reply, was boxed | largest local now |
+| --- | ---: | ---: | ---: |
+| `get_parameters` | 16,904 | 1,176,072 | **0** |
+| `set_parameters` | **1,192,968** | 17,416 | **8,464** |
+| `set_parameters_atomically` | **1,192,968** | 272 | **8,464** |
+| `list_parameters` | 16,912 | 33,808 | **2,064** |
+| `describe_parameters` | 16,904 | 55,304 | **0** |
+| `get_parameter_types` | 16,904 | 72 | **0** |
+| `change_state` | 272 | 272 | **24** |
+| `get_state` | 272 | 272 | **24** |
+| `get_available_states` | 272 | 17,416 | **24** |
+| `get_available_transitions` | 272 | 52,232 | **24** |
+| `get_transition_graph` | 272 | 52,232 | **24** |
+
+Headline: `set_parameters` goes 1,192,968 -> 8,464, **141x**.
+
+**This does NOT yet make a heapless image build.** The three `compile_error!`s
+in `nros-node/src/lib.rs` stay. W1' removed the per-REQUEST allocation; the
+per-NODE ones (`Box<ParamState>`, `Box<dyn ParamServiceProcessor>`, the
+lifecycle processor box) are W3'/W4'.
+
+Two things to keep in mind when reading this code:
+
+* **`SetParametersAtomically` needs the request twice** (validate all, then apply
+  all) and `CdrReader` cannot seek. It takes the body as a borrowed slice and
+  builds a fresh reader per pass — exact only while that slice begins at the
+  reader's alignment ORIGIN. Break it and CDR padding shifts silently, with no
+  other symptom. So it is ENFORCED, not documented: `CdrReader::is_at_origin()`
+  plus a hard check in the handler, and a field read added above that line fails
+  loudly. Inverting the check fails exactly one test, so it is on a live path.
+* **Both halves are guarded by round-trip oracle tests.** The old by-value
+  handlers survive as `#[cfg(test)]` and each `*_streams_like_the_oracle` asserts
+  the streamed bytes are byte-identical to the generated `Serialize` AND
+  deserialize back equal. Both were mutation-checked — swapped fields, altered
+  reason strings, raw byte runs in place of `write_string` — and the mutations
+  turn tests red, so the oracles constrain the writes rather than merely
+  exercising them.
+
+### W1' original plan (kept for the reasoning)
 
 Add `ServiceTrait::handle_request_raw`, taking `&mut CdrReader` / `&mut CdrWriter`
 instead of a by-value request and a boxed reply. It works because:
@@ -142,6 +237,17 @@ the `&nros_params::ParameterValue` from the store and write its fields straight
 out. No wire value is ever constructed. `SetParameters` applies one parameter at
 a time; peak stack becomes one internal `ParameterValue` (8,464 B) — **141×
 better than today's 1.19 MB**.
+
+**Verified 2026-08-25, and it is broader than stated:** `grep -rn begin_dheader
+packages/interfaces/` returns nothing across all 64 generated serializers, so NO
+generated message in the tree uses a DHEADER, not merely `rcl_interfaces`. The
+hand-written writes are therefore byte-identical to the generated impls today.
+
+The tripwire for tomorrow is the round-trip test itself: if codegen ever emits
+XCDR2 extensibility for a streamed message, its generated `Deserialize` starts
+expecting a DHEADER the streaming handler does not write, and the round-trip
+assert fails. That only holds while the test covers EVERY streamed message —
+which is why the acceptance below is per-handler rather than a sample.
 
 Guard the one real risk — hand-written writes drifting from the generated
 `Serialize` — with a round-trip test that deserialises the streamed bytes back
