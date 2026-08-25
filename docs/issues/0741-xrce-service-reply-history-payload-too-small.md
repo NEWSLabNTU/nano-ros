@@ -783,6 +783,7 @@ It does not immediately explain the host split — two hosts reproduce, two do n
 and a missing capability is the same on all four. But anyone resuming this should
 read 0776 first: it is the difference between "find the bug that computes 15" and
 "nothing computes anything, so the 15 comes from a peer's default".
+
 ## Re-measured 2026-08-26 — 1 failure in 13, and three hypotheses eliminated
 
 This host reproduced the symptom exactly once and has not since. The number
@@ -829,6 +830,15 @@ green measurements were taken across hosts and dates without recording fixture
 freshness, and at least the ones from such a window cannot be read as greens.
 That may be part of why "two hosts reproduce, two do not" never resolved into an
 axis: some of the greens may be absences rather than passes.
+
+This bears on the open question the 0776 cross-link above leaves — "it does not
+immediately explain the host split". If the split is partly an artifact of
+unrecorded fixture staleness plus a 1-in-13 rate under `retries = 2`, there may
+be no host axis to explain: four environments sampling a rare intermittent
+failure, some of them not actually running the test, would produce exactly the
+two-and-two pattern. That is a hypothesis, not a finding — but it is cheaper to
+test than another layer sweep, and it costs only that future measurements record
+fixture freshness, retry count, and the number of runs.
 
 Issue 0764 (fixed 2026-08-25) removed one large source of false STALE, so
 measurements taken from now on are cleaner than the ones above it in this file.
