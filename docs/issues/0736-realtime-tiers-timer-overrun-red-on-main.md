@@ -1,7 +1,7 @@
 ---
 id: 736
-title: "`realtime_tiers` nuttx-arm/rust: the 10 ms tier's TIMER fires 7 times in
-  1000 spins — the tier is scheduled, its clock is not advancing with it"
+title: "`realtime_tiers` nuttx-arm/rust: the fast tier now outruns the slow one
+  but only ~2.4x against a 3x bar — was a 10x inversion, now a marginal shortfall"
 status: open
 type: bug
 area: core, platform, testing
@@ -92,6 +92,56 @@ counters showed it to be a passenger rather than the driver.
 budget FAILED tier=high rc=22` (EINVAL) where the arm build succeeds. It was
 invisible because its fixture had never been built — `realtime_tiers` reported
 "16 ran, 10 skipped" until `just nuttx build-fixtures` brought it down to 5.
+
+
+## Measured 2026-08-25 — the inversion is GONE; what remains is a ~2.4x shortfall against a 3x bar
+
+Re-measured on current main (`5bfe2e305`), after `just nuttx build-fixtures`,
+six consecutive `realtime_tiers_e2e` runs with `--retries 0`. This follows
+`c7708cc24`, `b28ced424` and `9e60ebc83`, all of which landed after the
+2026-08-21 section above — so that section is stale, and in particular its
+"Ruled out: SCHED_SPORADIC" no longer holds (`c7708cc24` reverses it by name).
+
+| run | /ctrl | /telem | ratio | verdict |
+| --- | --- | --- | --- | --- |
+| 1 | 71 | 30 | 2.37x | FAIL |
+| 2 | — | — | >=3x | **PASS** |
+| 3 | 67 | 27 | 2.48x | FAIL |
+| 4 | 62 | 23 | 2.70x | FAIL |
+| 5 | 86 | 30 | 2.87x | FAIL |
+| 6 | 46 | 25 | 1.84x | FAIL |
+
+**Two things changed qualitatively.**
+
+1. **The inversion is gone.** This issue opened at `/ctrl` 2 vs `/telem` 21 —
+   the FAST tier delivering ~10x FEWER messages than the slow one. It is now
+   46–86 vs 23–30: the fast tier outruns the slow one in every run. Whatever
+   remains is not "the tier's clock does not advance with it".
+
+2. **It is no longer deterministic.** 5 of 6 fail, 1 passes. The title's
+   "Deterministic" is now wrong, and that matters for triage: a single green run
+   proves nothing here, so anyone declaring this fixed needs a repeat count.
+
+**What the residual actually is.** The declared ratio is 10 ms vs 100 ms, i.e.
+**10x**. The assertion demands only **3x** — already a heavily discounted bar
+for an `-icount` emulated target — and the measured 1.8–2.9x misses even that.
+So the fast tier is running at roughly a quarter of its declared rate RELATIVE
+to the slow one, which is the same order as the "~3 spins in 4 skipped" the
+budget-throttle work measured. The open question is whether the remaining gap is
+more of that same throttle, or whether 3x is simply not achievable on this
+target and the bar is wrong.
+
+`nuttx-riscv/rust` no longer appears at all: it ran in every one of the six and
+failed in none, so the separate `/ctrl` 0 / `rc=22` failure recorded above is
+also resolved.
+
+**Method note, because it bit me first.** `cargo nextest run -p nros-tests
+--test realtime_tiers_e2e` reported **1 passed** on a tree where this row was
+never exercised — `realtime_tiers` runs its rows INSIDE one test and skips the
+ones whose fixtures are absent (`17 row(s) ran, 10 skipped`, nuttx-arm/rust
+among them). The summary line cannot distinguish that from a real pass. Run
+`just nuttx build-fixtures` first, as this issue's Reproduce section says, and
+check the `row(s) ran / skipped` line before believing either verdict.
 
 ## Reproduce
 
