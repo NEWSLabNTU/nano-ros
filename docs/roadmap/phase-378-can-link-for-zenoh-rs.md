@@ -1,6 +1,7 @@
 # Phase 378 — A CAN link for zenoh-rs
 
-**Status (2026-08-25). W0-W6 DONE. W7 not started.**
+**Status (2026-08-25). W0-W6 DONE. W7 IMPLEMENTED AND BLOCKED — the mechanism
+works and cannot be switched on.**
 
 **A ROS 2 node under `RMW_IMPLEMENTATION=rmw_zenoh_cpp` publishes over CAN and a
 zenoh-pico peer receives it**, with the stock `rmw_zenoh_cpp` binary and no ROS
@@ -78,7 +79,7 @@ is pinned by tests before any socket exists**.
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **done, passes** |
 | **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | **done, passes** |
 | **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | **done, passes** |
-| **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
+| **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | **built, blocked below the feature** |
 
 W1 is the gate that matters for interop. W4 is the gate that matters for the
 link being real. **W7 is a separate upstream PR** and must not be bundled into
@@ -280,6 +281,61 @@ publishes, a router forwards the whole graph. But the original instinct to put
 CAN on the router was **not wrong on 1.8** — it is wrong on 1.10, and a design
 that assumed either version would be wrong on the other.
 
+### W7 results (2026-08-25): the mechanism works, and cannot be switched on
+
+**What was built.** `LinkMulticastTrait` gains a defaulted
+`write_all_with_priority`, so no other link changes and no signature breaks. The
+multicast TX task passes the priority it already holds — `pipeline.pull()`
+returns `(batch, priority)` and it was being discarded one call later, which is
+the whole of RFC-0080 §4.2's "the link is priority-blind" on the Rust side.
+`Join`, `KeepAlive` and `Close` go out at `Control` so session traffic cannot
+lose the bus to bulk data.
+
+The identifier splits into a class field of `prio_bits` bits at the top and a
+peer field below. Two properties matter and both are unit-tested:
+
+* **Class dominates arbitration**, because it sits at the most significant end.
+  The highest-numbered peer at `Control` outranks the lowest-numbered peer at
+  `Background`.
+* **Nothing is inverted.** zenoh numbers `Control` 0 and `Background` 7, CAN
+  gives the bus to the lowest identifier, so the two orderings already agree.
+
+Peer identity is recovered by masking the class off. Without that, one peer
+transmitting at eight priorities would look like eight peers, and would hear its
+own frames. `prio_bits` defaults to 0 — the wire zenoh-pico speaks — and the
+interop was re-run to confirm the default is unchanged.
+
+**Why it cannot be switched on.** Mapping priority onto the wire only does
+anything if the transport keeps one queue per priority, because otherwise every
+batch reports queue index 0 and every frame goes out in class 0. That was the
+first observation: with QoS off, `candump` showed 806 frames on `0x00A` and
+nothing else.
+
+Turning multicast QoS on makes `Join` carry eight `PrioritySn` instead of one.
+`Join` is written as a **single un-fragmented datagram**. Measured, in a test
+that needs no bus:
+
+| | bytes |
+| --- | ---: |
+| `Join` without QoS | **33** |
+| `Join` with per-priority SNs | **99** |
+| CAN FD MTU | **63** |
+
+The 33 is corroborated: it is exactly the `Join` length observed on the wire in
+W5. So enabling QoS kills the transmit task before the session starts, and the
+bus stays silent — which is what the first attempt did, with a 60-second timeout
+and zero frames captured.
+
+**This is a protocol limit, not a link limit.** 99 bytes does not fit a CAN FD
+frame under any framing: the frame is 64 bytes. The ways out are all above the
+link — fragmenting `Join`, or a compact QoS extension — and none is in this
+phase's reach. RFC-0081 §3.3 called W7 "a genuine capability"; it is, and it is
+also unreachable on CAN FD as the protocol stands today.
+
+`join_with_qos_does_not_fit_one_can_frame` records both numbers and **fails if
+the `Join` ever shrinks enough to fit**, which is the day this becomes usable.
+That is deliberately a failing-open test rather than a comment.
+
 ### W6 results (2026-08-25)
 
 `ros2 run demo_nodes_cpp talker` under `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, with a
@@ -456,12 +512,16 @@ closed the gap.
   multicast face unconditionally. This is the RFC-0081 §3.2 measurement and it
   is the deliverable of the wave, not a side note.
 
-**W7.**
-* Priority reaches `LinkMulticastTrait` without changing any other link's
-  behaviour — a defaulted trait method, not a breaking signature change.
-* An identifier layout in which class dominates from the MSB.
-* A measurement showing an urgent message overtaking a bulk burst **from the
-  same peer**, which is precisely what phase-377 §3b could not achieve.
+**W7.** Two of three met; the third is blocked twice over.
+* ~~Priority reaches `LinkMulticastTrait` without changing any other link's
+  behaviour — a defaulted trait method, not a breaking signature change.~~
+  `write_all_with_priority`, defaulted to `write_all`.
+* ~~An identifier layout in which class dominates from the MSB.~~ `prio_bits`,
+  default 0.
+* **A measurement showing an urgent message overtaking a bulk burst from the
+  same peer.** NOT MET, and not by an oversight — see below. `vcan` does not
+  arbitrate, so it could never have shown this; and the feature cannot be
+  enabled at all, so there is nothing to measure even on hardware yet.
 
 ## 4. Test method
 

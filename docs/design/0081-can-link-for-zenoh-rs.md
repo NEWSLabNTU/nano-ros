@@ -186,6 +186,19 @@ deliverable. It changes a framework trait, which makes it a much harder upstream
 argument than "a new link crate beside the existing ones". It is a second,
 separately justified PR. See §4.2 and phase-378 W7.
 
+**[BUILT, AND BLOCKED — phase-378 W7]** The plumbing is done and the identifier
+layout works, but the capability cannot be switched on. Priority only reaches
+the link if the multicast transport keeps one queue per priority, and enabling
+that makes `Join` carry eight `PrioritySn` instead of one. `Join` is sent as a
+single un-fragmented datagram, and it measures **99 bytes against a 63-byte CAN
+FD MTU** — 33 bytes without QoS, which matches the `Join` observed on the wire
+in W5. The transmit task dies before the session starts.
+
+99 bytes fits no CAN FD frame under any framing; the frame is 64 bytes. So this
+is a protocol limit, not a link limit, and every way out is above the link:
+fragmenting `Join`, or a compact QoS extension. RFC-0080 §4.2's blocker is
+removed on the Rust side and replaced by a different one a layer up.
+
 ## 4. Design
 
 ### 4.1 Crate layout
