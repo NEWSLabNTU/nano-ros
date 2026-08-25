@@ -86,12 +86,24 @@ zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c
-    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net.c
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/timer.c
-    # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
-    # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
-    ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait.c
 )
+
+# net.c and net_wait.c are IP-stack code: net.c uses SOL_SOCKET, net_wait.c
+# reads net_if_config.ip. They were compiled unconditionally, so an image whose
+# only transport is a UART still had to enable NET_SOCKETS and carry the whole
+# stack -- on a 320 KiB S32K344 that pushed a one-publisher serial talker to 94%
+# of SRAM for code it never calls. Compile them only when there is a stack to
+# talk to; the socket wrappers in nros_platform_zephyr_shims.c are gated on the
+# same symbol.
+if(CONFIG_NET_SOCKETS)
+    zephyr_library_sources(
+        ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net.c
+        # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
+        # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
+        ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait.c
+    )
+endif()
 
 # phase-281 W3a — C/C++ multi-tier Zephyr entry seam
 # (`nros_board_zephyr_run_tiers`, packages/boards/nros-board-zephyr/c/). A

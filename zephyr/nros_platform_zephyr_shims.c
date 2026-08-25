@@ -243,7 +243,16 @@ int nros_zephyr_timer_cancel(void* timer) {
  * Zephyr's POSIX wrappers. The glibc versions return POSIX addrinfo
  * layout (ai_flags first), but Zephyr's zsock_addrinfo has ai_next
  * first. Use Zephyr's zsock_* API directly to avoid the collision.
+ *
+ * Gated on CONFIG_NET_SOCKETS. These wrappers use socklen_t and struct
+ * sockaddr unconditionally, so without the gate this TU cannot compile
+ * without the IP stack -- and an image that only ever talks over UART is
+ * then forced to carry one. On an S32K344 that is the difference between
+ * fitting in 320 KiB and not: the serial talker sat at 94% of SRAM purely
+ * because NET_SOCKETS dragged in the stack it never uses.
  */
+
+#if defined(CONFIG_NET_SOCKETS)
 
 #include <zephyr/net/socket.h>
 
@@ -309,6 +318,8 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
                            const struct sockaddr* dest_addr, socklen_t addrlen) {
     return zsock_sendto(fd, buf, len, flags, dest_addr, addrlen);
 }
+
+#endif /* CONFIG_NET_SOCKETS */
 
 /* ── Thread creation with Zephyr-managed stacks ─────────────────────
  *
