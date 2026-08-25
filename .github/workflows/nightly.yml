@@ -254,6 +254,21 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
+      # issue 0797 — `--bin nros` alone is not a usable CLI. `nros sync` refuses
+      # to resolve a SystemModel without `nros-launch-resolve` beside it, and
+      # that refusal is correct (0409: a missing resolver silently dropped every
+      # `[[component]].params` projection from 22 models). Five of eight nightly
+      # jobs aborted in 2-5 s for want of this step, so the matrix appeared to
+      # cover six platforms while exercising one.
+      #
+      # The helper is its own cargo workspace, so it does NOT land in
+      # `packages/cli/target/`. `nros` finds it exe-relative at
+      # `../../nros-launch-resolve/target/release/` (ws.rs `resolver_from`),
+      # which is exactly where this recipe builds it — no copy needed, and no
+      # $PATH involvement (0285).
+      - name: Provision nros-launch-resolve (issue 0797)
+        run: just setup-launch-resolve
+
       - name: just ${{ matrix.plat }} setup
         run: just ${{ matrix.plat }} setup
 
@@ -425,6 +440,21 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
+      # issue 0797 — `--bin nros` alone is not a usable CLI. `nros sync` refuses
+      # to resolve a SystemModel without `nros-launch-resolve` beside it, and
+      # that refusal is correct (0409: a missing resolver silently dropped every
+      # `[[component]].params` projection from 22 models). Five of eight nightly
+      # jobs aborted in 2-5 s for want of this step, so the matrix appeared to
+      # cover six platforms while exercising one.
+      #
+      # The helper is its own cargo workspace, so it does NOT land in
+      # `packages/cli/target/`. `nros` finds it exe-relative at
+      # `../../nros-launch-resolve/target/release/` (ws.rs `resolver_from`),
+      # which is exactly where this recipe builds it — no copy needed, and no
+      # $PATH involvement (0285).
+      - name: Provision nros-launch-resolve (issue 0797)
+        run: just setup-launch-resolve
+
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
@@ -511,6 +541,21 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
+      # issue 0797 — `--bin nros` alone is not a usable CLI. `nros sync` refuses
+      # to resolve a SystemModel without `nros-launch-resolve` beside it, and
+      # that refusal is correct (0409: a missing resolver silently dropped every
+      # `[[component]].params` projection from 22 models). Five of eight nightly
+      # jobs aborted in 2-5 s for want of this step, so the matrix appeared to
+      # cover six platforms while exercising one.
+      #
+      # The helper is its own cargo workspace, so it does NOT land in
+      # `packages/cli/target/`. `nros` finds it exe-relative at
+      # `../../nros-launch-resolve/target/release/` (ws.rs `resolver_from`),
+      # which is exactly where this recipe builds it — no copy needed, and no
+      # $PATH involvement (0285).
+      - name: Provision nros-launch-resolve (issue 0797)
+        run: just setup-launch-resolve
+
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
@@ -576,6 +621,21 @@ jobs:
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      # issue 0797 — `--bin nros` alone is not a usable CLI. `nros sync` refuses
+      # to resolve a SystemModel without `nros-launch-resolve` beside it, and
+      # that refusal is correct (0409: a missing resolver silently dropped every
+      # `[[component]].params` projection from 22 models). Five of eight nightly
+      # jobs aborted in 2-5 s for want of this step, so the matrix appeared to
+      # cover six platforms while exercising one.
+      #
+      # The helper is its own cargo workspace, so it does NOT land in
+      # `packages/cli/target/`. `nros` finds it exe-relative at
+      # `../../nros-launch-resolve/target/release/` (ws.rs `resolver_from`),
+      # which is exactly where this recipe builds it — no copy needed, and no
+      # $PATH involvement (0285).
+      - name: Provision nros-launch-resolve (issue 0797)
+        run: just setup-launch-resolve
 
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
