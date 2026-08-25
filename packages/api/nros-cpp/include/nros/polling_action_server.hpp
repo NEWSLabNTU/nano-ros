@@ -144,15 +144,27 @@ template <typename A> class PollingActionServer {
     }
 
     /// Phase 122.3.c.6.d — reply to a previously-peeked cancel
-    /// request. `return_code` matches `nros::CancelResponse`:
+    /// request. `return_code` is a `nros::CancelReturnCode`:
     /// 0 = Ok (one+ goals canceling), 1 = Rejected, 2 = UnknownGoal,
     /// 3 = GoalTerminated. `accepted` is a contiguous array of
     /// 16-byte goal IDs that will transition to CANCELING.
+    ///
+    /// Issue 0796 — this doc said `nros::CancelResponse`, which in C++ is the
+    /// PER-GOAL Reject/Accept decision and has never had four values. Prefer
+    /// the `CancelReturnCode` overload below; the `int8_t` one is kept because
+    /// callers pass the raw byte they read off the wire.
     Result send_cancel_reply(int64_t sequence_number, int8_t return_code,
                              const uint8_t (*accepted)[16], size_t accepted_count) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_server_send_cancel_reply_raw(
             storage_, sequence_number, return_code, accepted, accepted_count));
+    }
+
+    /// Typed overload of `send_cancel_reply` (issue 0796).
+    Result send_cancel_reply(int64_t sequence_number, CancelReturnCode return_code,
+                             const uint8_t (*accepted)[16], size_t accepted_count) {
+        return send_cancel_reply(sequence_number, static_cast<int8_t>(return_code), accepted,
+                                 accepted_count);
     }
 
     /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per

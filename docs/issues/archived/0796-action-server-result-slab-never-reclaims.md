@@ -3,7 +3,7 @@ id: 796
 title: "Action server: the result slab only ever grows, so a long-running server
   silently stops delivering results; and the C++ callback tier reports every
   goal as SUCCEEDED"
-status: open
+status: resolved
 type: bug
 area: core, api
 related: [rfc-0069, phase-379, phase-237]
@@ -151,29 +151,119 @@ CLAUDE.md describes for exactly this drift class) caught the third with
 `conflicting types`. Six example call sites used the raw FFI directly and were
 updated. `just check-c` and `just check-cpp` are green.
 
-**Both problems are now fixed.** What remains open in this issue is the
-`Related` list below — the C++ callback tier's missing accepted-callback and
-client-side cancel, and the `CancelResponse` naming collision.
+**Both problems are now fixed**, and so is the `Related` list below.
 
-## Related, from the same stage
+## Related, from the same stage — all FIXED 2026-08-25
 
-* **No accepted-callback in C++.** C takes `nros_accepted_callback_t` at
-  `nros_action_server_init`, Rust takes one in
-  `create_action_server_with_callbacks(goal, cancel, accepted)`, and
-  `nros::ActionServer<A>` has only `set_goal_callback`/`set_cancel_callback`. A
-  C++ user who returns ACCEPT_AND_DEFER is never told the goal was accepted.
-* **Client-side cancel is missing from the C++ callback tier only.**
-* **`CancelResponse` names two different things.** In C/C++ it is the per-goal
-  Reject/Accept decision; `nros_core::CancelResponse` is the
-  `action_msgs/srv/CancelGoal` return code — and `CallbackCtx::set_cancel_response`
-  takes the RPC-level enum to express a per-goal decision. C is the only language
-  that names them apart (`nros_cancel_response_t` vs
-  `nros_cancel_return_code_t`).
-* **`GoalResponse` and `CancelResponse` correlate as `same` against
-  rclcpp_action and are not drop-in**: our discriminants are 0-based where
-  rclcpp_action's are 1-based, and our enumerators are `Reject` where theirs are
-  `REJECT`. Not wire values, so not an interop bug — but the correlator cannot
-  see it, because enumerator comparison is a feature it does not have.
+### No accepted-callback in C++ — FIXED
+
+`nros::ActionServer<A>` now has `set_accepted_callback` /
+`set_accepted_callback_with_ctx`, matching its existing per-callback setter
+shape (C takes all three at `nros_action_server_init`; Rust takes all three at
+`create_action_server_with_callbacks`; C++ sets them one at a time, and this is
+the third setter rather than a fourth parameter on an existing one). The hook
+fires once per ACCEPTED goal, after the accept reply has reached the client, for
+`AcceptAndExecute` and `AcceptAndDefer` alike — which is the case that mattered:
+a user who returned ACCEPT_AND_DEFER was never told the goal had been accepted,
+i.e. never told when to start executing it.
+
+The shim registered `accepted_callback: None` with a comment claiming the C++
+API "runs user callbacks via `try_accept_goal`, not via the post-accept hook".
+That was not a design, just an absence — the raw path has never used
+`try_accept_goal`. It now registers a trampoline unconditionally (the arena
+captures the pointer when the entry is BUILT, so it cannot be added later) and
+the trampoline is a no-op until a callback is installed.
+
+`nros_cpp_action_server_set_accepted_callback` is a SEPARATE FFI entry point
+rather than a fourth parameter on `nros_cpp_action_server_set_callbacks`: that
+declaration is mirrored in three headers and called directly by four in-tree C
+components, so growing it would have broken every caller for no gain. Both
+calls pass the same context pointer, and `install_callbacks()` makes both, so
+relocation cannot strand the new one.
+
+`CppActionServer` gained one pointer, which is a size change: the layout mirror
+in `nros::sizes::CppActionServerLayout` (the const-assert caught it, as
+designed) and the NuttX snapshot in `nros_cpp_config_generated_nuttx.h` (an
+upper bound, 80 → 88) both moved with it.
+
+### Client-side cancel missing from the C++ callback tier — FIXED
+
+`nros::ActionClient<A>::cancel_goal(goal_id)` sends the request and
+`try_recv_cancel_response(CancelReturnCode&)` reads the RPC outcome — the same
+fire-then-read shape as C's `nros_action_cancel_goal`. rclcpp_action's
+`async_cancel_goal` returns a future; RFC-0021 has no runtime to await one, so
+that part of the divergence stands and is recorded as such. A truncated reply
+that carries no `return_code` byte is an ERROR, not "no reply yet" (issue
+0223's rule).
+
+### `CancelResponse` named two different concepts — FIXED, by following C
+
+C was the only language that named them apart, so the other two now use its
+pair:
+
+| concept | C | C++ | Rust |
+| --- | --- | --- | --- |
+| per-goal Reject/Accept | `nros_cancel_response_t` | `nros::CancelResponse` | `nros_core::CancelResponse` |
+| `CancelGoal` RPC status | `nros_cancel_return_code_t` | `nros::CancelReturnCode` | `nros_core::CancelReturnCode` |
+
+`nros_core::CancelResponse` was the RPC return code and is now the per-goal
+decision (`Reject` = 0, `Accept` = 1, matching C and C++); the RPC enum kept its
+four variants under the new name. `CallbackCtx::set_cancel_response` therefore
+takes the per-goal type, which was the actual bug — a per-goal question answered
+with `CancelResponse::Ok`.
+
+Keeping the NAME on the per-goal concept, rather than on the type that had it,
+is deliberate: `nros::CancelResponse` is what C and C++ already meant by it, it
+is what a `set_cancel_response` caller means by it, and every existing Rust use
+site is a per-goal decision. It also means no caller changes MEANING silently —
+the old variants (`Ok`, `Rejected`, …) do not exist on the new enum, so every
+site is a compile error and had to be looked at. Ten in-tree call sites were:
+five example action servers, one workspace package, one RTIC example, one
+orchestration test package, and the two shims.
+
+The split surfaced a live latent hazard. `ActionServerCore::try_handle_cancel`
+wrote the callback's answer straight into the reply's `return_code` field
+(`writer.write_i8(response as i8)`). That was correct only because the two
+concepts shared a type; with them separated, the same line would have written
+`Reject` (0) as `Ok` and `Accept` (1) as `Rejected` — a perfect inversion. The
+translation is now explicit, and a unit test
+(`test_cancel_response_is_not_a_return_code`) pins the overlap so nobody
+reintroduces a cast.
+
+**One thing is deliberately left undone**: `packages/api/nros/src/lib.rs` does
+not re-export `CancelReturnCode`, so `ActionClient::cancel_goal`'s
+`Promise<CancelReturnCode>` cannot be NAMED from `nros::` alone
+(`nros_node::CancelReturnCode` works). That file was reserved by another
+session at the time; the fix is one token in the existing
+`pub use nros_core::{…}` list.
+
+### `GoalResponse` / `CancelResponse` correlate as `same` and are not drop-in — RECORDED, not changed
+
+Our discriminants are 0-based where rclcpp_action's are 1-based, and our
+enumerators are `Reject` where theirs are `REJECT`. Not wire values, so not an
+interop bug — but the correlator sees only the name, so the pair reports `same`
+and the difference had nowhere to live. It now lives in the ledger:
+`cpp:GoalResponse` and `cpp:CancelResponse` are rows *for items that correlate
+as `same`*, which the tool permits (it only DEMANDS a row for non-matching
+rows) and which is the only place a name-blind comparison can be corrected.
+
+**Decision: do not align the discriminants.**
+
+1. They are a C ABI, not a preference. The value crosses three FFI seams as an
+   integer — a `#[repr(i8)]` Rust enum returned directly from `extern "C"`
+   trampolines, `nros_c_goal_response_t` / `nros_c_cancel_response_t` in
+   `component.h`, and an `enum class : int32_t` in C++. Renumbering produces no
+   compile error anywhere; it produces a half-rebuilt tree that starts deciding
+   accept where it meant reject.
+2. It would buy nothing. A ported `switch` names
+   `rclcpp_action::GoalResponse::REJECT`, so it must be edited regardless; once
+   edited it uses our enumerators and gets the right value under either
+   numbering. Only code that hardcodes the integers is affected, and that code
+   is already wrong.
+3. `Reject` = 0 is load-bearing. The arena's decision slots are zero-initialised
+   static storage with no allocator and no constructor, and the null-callback
+   path yields `Default`. Making 0 invalid would make "nobody answered" mean
+   accept.
 
 ## Evidence
 

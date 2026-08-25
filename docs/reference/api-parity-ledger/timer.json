@@ -37,7 +37,7 @@
   ],
   "c:clock_add_jump_callback": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:clock_change_e": {
     "verdict": "declined",
@@ -45,7 +45,7 @@
   },
   "c:clock_change_t": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either. Describes which KIND of change occurred (ROS time activated, deactivated, stepped)."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it. Describes which KIND of change occurred (ROS time activated, deactivated, stepped)."
   },
   "c:clock_get_now_ns": {
     "verdict": "divergence",
@@ -65,15 +65,11 @@
   },
   "c:clock_remove_jump_callback": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:clock_state_t": {
     "verdict": "extension",
     "why": "see `c:publisher_state_t`."
-  },
-  "c:clock_time_started": {
-    "verdict": "gap",
-    "why": "whether the clock has produced its first value; part of the ROS-time surface C lacks. See `c:enable_ros_time_override`."
   },
   "c:clock_type_e": {
     "verdict": "declined",
@@ -87,17 +83,13 @@
     "verdict": "rename",
     "why": "rcl's `rcl_difference_times(start, finish, out)`; ours is `nros_time_sub`. Same operation, and `sub` matches `nros_time_add` which rcl has no counterpart for at all."
   },
-  "c:disable_ros_time_override": {
-    "verdict": "gap",
-    "why": "see `c:enable_ros_time_override`."
+  "c:duration_from_nanoseconds": {
+    "verdict": "extension",
+    "why": "the duration half of `c:time_from_nanoseconds` -- the same `{sec, nanosec}` split, on `nros_duration_t`. rcl's duration is a bare signed nanosecond count (`c:duration_value_t`) so it needs no constructor; ours is the wire struct, and a SIGNED span has to floor rather than truncate (issue 0799). Its absence is what made the C++ `Duration::to_msg` open-code the split."
   },
   "c:duration_value_t": {
     "verdict": "divergence",
     "why": "rcl's duration is a distinct signed nanosecond type. Ours are `uint64_t` milliseconds at the C API's timer entry points and a `TimerDuration` in Rust -- the unit is named in the parameter rather than in a typedef. This is why the QoS accessors read `deadline_ms` rather than `deadline`; see the qos stage."
-  },
-  "c:enable_ros_time_override": {
-    "verdict": "gap",
-    "why": "ROS time is half-present: our Rust `Clock` has `set_ros_time_override`/`clear_ros_time_override`/`is_ros_time_override_active`, and our C has NONE of them. A C image cannot be driven by a simulator's `/clock` while a Rust one can, which is a capability split between our own languages rather than a divergence from ROS 2. Phase 379 W3."
   },
   "c:executor_add_time_triggered_dispatcher": {
     "verdict": "extension",
@@ -107,25 +99,25 @@
     "verdict": "extension",
     "why": "see the pubsub stage's `c:executor_add_subscription_in_group`."
   },
+  "c:get_ros_time_override": {
+    "verdict": "extension",
+    "why": "reads the installed ROS time back. rcl has no such entry point -- a caller there reads the clock -- but our Rust `Clock` has `get_ros_time_override`, and issue 0789 is about the two languages having the same switches. Returns `NROS_RET_NOT_FOUND` when no override is in effect, which is the `Option` the Rust one returns."
+  },
   "c:get_zero_initialized_timer": {
     "verdict": "declined",
     "why": "rcl's free-function spelling; see `c:get_zero_initialized_publisher`."
   },
-  "c:is_enabled_ros_time_override": {
-    "verdict": "gap",
-    "why": "see `c:enable_ros_time_override`."
-  },
   "c:jump_callback_info_t": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:jump_callback_t": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:jump_threshold_t": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:platform_clock_ns": {
     "verdict": "extension",
@@ -146,10 +138,6 @@
   "c:ros_clock_init": {
     "verdict": "declined",
     "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `nros_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
-  },
-  "c:set_ros_time_override": {
-    "verdict": "gap",
-    "why": "see `c:enable_ros_time_override`."
   },
   "c:sleep_ms": {
     "verdict": "declined",
@@ -185,7 +173,7 @@
   },
   "c:time_jump_t": {
     "verdict": "declined",
-    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case needs ROS time, which C does not have either."
+    "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
   },
   "c:time_point_t": {
     "verdict": "divergence",
@@ -281,7 +269,7 @@
   },
   "cpp:Clock::create_jump_callback": {
     "verdict": "declined",
-    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case needs ROS time, which C does not have either. Revisit with `c:enable_ros_time_override`."
+    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
   "cpp:Clock::get_clock_handle": {
     "verdict": "declined",
@@ -303,10 +291,6 @@
     "verdict": "declined",
     "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
   },
-  "cpp:Clock::ros_time_is_active": {
-    "verdict": "gap",
-    "why": "Issue 0789 shipped the C++ clock surface (`nros/clock.hpp`, `nros/time.hpp`, `nros/duration.hpp`); what remains here is a member of it we still do not have. ROS time: a clock whose value comes from the `/clock` topic so a whole system can be driven by a simulator or a bag. Our Rust `Clock` has the switches (`set_ros_time_override`, `clear_ros_time_override`, `is_ros_time_override_active`) and our C -- which `nros::Clock` wraps -- has none of them, so the C++ predicate has nothing to read. The capability gap is recorded once on `c:enable_ros_time_override`; adding the switches to C closes this row with it."
-  },
   "cpp:Clock::sleep_for": {
     "verdict": "declined",
     "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
@@ -315,13 +299,9 @@
     "verdict": "declined",
     "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
   },
-  "cpp:Clock::started": {
-    "verdict": "gap",
-    "why": "Issue 0789 shipped the C++ clock surface (`nros/clock.hpp`, `nros/time.hpp`, `nros/duration.hpp`); what remains here is a member of it we still do not have. `started()` answers whether a ROS-time clock has received its first `/clock` sample. There is nothing to answer with until ROS time is real: `NROS_CLOCK_ROS_TIME` currently reads the system clock, so the predicate would be a constant. Closes with `c:enable_ros_time_override`."
-  },
   "cpp:Clock::wait_until_started": {
     "verdict": "declined",
-    "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives. Waits for the first `/clock` message; see ROS time: a clock whose value comes from the `/clock` topic so a whole system can be driven by a simulator or a bag. rcl exposes the override switches as free functions on a clock; our Rust `Clock` has the same switches as methods (`set_ros_time_override`, `clear_ros_time_override`, `is_ros_time_override_active`) and our C has none of them. The capability is real and half-present -- the C gap is recorded on `c:enable_ros_time_override`."
+    "why": "rclcpp blocks the calling thread until the first `/clock` message arrives. RFC-0021 forbids a blocking helper that does not drive the executor -- a wait that spins nothing stops the transport for as long as the simulator takes to publish, and on a single-threaded executor that is forever. The predicate it waits on IS available (`Clock::started`, issue 0789): a node polls it from a timer, or simply publishes once time is non-zero."
   },
   "cpp:ClockQoS::ClockQoS": {
     "verdict": "gap",
@@ -421,19 +401,19 @@
   },
   "cpp:JumpHandler": {
     "verdict": "declined",
-    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case needs ROS time, which C does not have either. Revisit with `c:enable_ros_time_override`."
+    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
   "cpp:JumpHandler::JumpHandler": {
     "verdict": "declined",
-    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case needs ROS time, which C does not have either. Revisit with `c:enable_ros_time_override`."
+    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
   "cpp:JumpHandler::make_shared": {
     "verdict": "declined",
-    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case needs ROS time, which C does not have either. Revisit with `c:enable_ros_time_override`."
+    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
   "cpp:JumpHandler::make_unique": {
     "verdict": "declined",
-    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case needs ROS time, which C does not have either. Revisit with `c:enable_ros_time_override`."
+    "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
   "cpp:Node::create_timer": {
     "verdict": "extension",

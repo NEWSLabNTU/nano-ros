@@ -60,7 +60,7 @@ impl ExecutableNode for FibonacciServer {
                 let _ = ctx.set_goal_response(response);
             }
             "on_cancel" => {
-                let _ = ctx.set_cancel_response(CancelResponse::Ok);
+                let _ = ctx.set_cancel_response(CancelResponse::Accept);
             }
             "on_accepted" => {
                 // No imperative work here — feedback/result are driven from

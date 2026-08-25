@@ -2690,11 +2690,18 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         Ok(Some((goal_id, feedback)))
     }
 
-    /// Cancel a goal (non-blocking). Returns a [`Promise`] for the cancel response.
+    /// Cancel a goal (non-blocking). Returns a [`Promise`] for the
+    /// `action_msgs/srv/CancelGoal` return code.
+    ///
+    /// Issue 0796 — the promise resolves to a
+    /// [`nros_core::CancelReturnCode`], the RPC-level outcome. The per-goal
+    /// accept/reject decision a SERVER's cancel callback returns is the
+    /// separate [`nros_core::CancelResponse`]; both were spelled
+    /// `CancelResponse` until the two were split.
     pub fn cancel_goal(
         &mut self,
         goal_id: &nros_core::GoalId,
-    ) -> Result<Promise<'_, nros_core::CancelResponse>, NodeError> {
+    ) -> Result<Promise<'_, nros_core::CancelReturnCode>, NodeError> {
         if self.core.in_flight_cancel {
             return Err(NodeError::RequestInFlight);
         }
@@ -3058,13 +3065,13 @@ fn parse_goal_accepted(data: &[u8]) -> Result<bool, NodeError> {
 /// Parse a cancel response (issue #223 — read errors propagate; an
 /// out-of-range enum value is still mapped through `from_i8`'s default,
 /// which is a PROTOCOL value question, not a truncation).
-fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelResponse, NodeError> {
+fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelReturnCode, NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
     let return_code = reader
         .read_i8()
         .map_err(|_| NodeError::ServiceRequestFailed)?;
-    Ok(nros_core::CancelResponse::from_i8(return_code).unwrap_or_default())
+    Ok(nros_core::CancelReturnCode::from_i8(return_code).unwrap_or_default())
 }
 
 /// Parse an action result response (status + result; issue #223 — read
@@ -3086,7 +3093,7 @@ fn parse_result_response<A: RosAction>(
 #[cfg(test)]
 mod parse_response_tests {
     // Issue #223 — truncated action-response frames must ERROR, not collapse
-    // to plausible defaults ("goal rejected" / CancelResponse::default()).
+    // to plausible defaults ("goal rejected" / CancelReturnCode::default()).
     use super::{parse_cancel_response, parse_goal_accepted};
 
     /// A valid 4-byte CDR encapsulation header with NO payload — the

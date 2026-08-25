@@ -418,12 +418,27 @@ impl Deserialize for GoalStatusStamped {
     }
 }
 
-/// Cancel goal response codes
+/// `action_msgs/srv/CancelGoal` RPC return codes.
 ///
-/// These codes match `action_msgs/srv/CancelGoal` response codes.
+/// This is the *whole-request* outcome the server writes into the
+/// `CancelGoal` reply — "did the cancel RPC succeed", not "is this one goal
+/// being cancelled". These codes are the wire contract, so the discriminants
+/// are fixed by `action_msgs`.
+///
+/// Issue 0796 — this type used to be called `CancelResponse`, which is the
+/// name C ([`nros_cancel_response_t`]) and C++ ([`nros::CancelResponse`]) both
+/// use for the PER-GOAL accept/reject decision. Two concepts under one name is
+/// how [`CancelResponse`] ended up being the type a per-goal cancel callback
+/// returned: `CancelResponse::Ok` meant "cancel this goal", which reads as an
+/// RPC status and is not one. C already named them apart
+/// (`nros_cancel_response_t` vs `nros_cancel_return_code_t`); the Rust names
+/// now follow it.
+///
+/// [`nros_cancel_response_t`]: https://docs.rs/nros-c
+/// [`nros::CancelResponse`]: CancelResponse
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i8)]
-pub enum CancelResponse {
+pub enum CancelReturnCode {
     /// No error, goal(s) will be canceled
     #[default]
     Ok = 0,
@@ -435,29 +450,61 @@ pub enum CancelResponse {
     GoalTerminated = 3,
 }
 
-impl CancelResponse {
+impl CancelReturnCode {
     /// Convert from i8 value
     pub fn from_i8(value: i8) -> Option<Self> {
         match value {
-            0 => Some(CancelResponse::Ok),
-            1 => Some(CancelResponse::Rejected),
-            2 => Some(CancelResponse::UnknownGoal),
-            3 => Some(CancelResponse::GoalTerminated),
+            0 => Some(CancelReturnCode::Ok),
+            1 => Some(CancelReturnCode::Rejected),
+            2 => Some(CancelReturnCode::UnknownGoal),
+            3 => Some(CancelReturnCode::GoalTerminated),
             _ => None,
         }
     }
 }
 
-impl Serialize for CancelResponse {
+impl Serialize for CancelReturnCode {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i8(*self as i8)
     }
 }
 
-impl Deserialize for CancelResponse {
+impl Deserialize for CancelReturnCode {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let value = reader.read_i8()?;
-        CancelResponse::from_i8(value).ok_or(DeserError::InvalidData)
+        CancelReturnCode::from_i8(value).ok_or(DeserError::InvalidData)
+    }
+}
+
+/// Per-goal cancel decision returned from a server's cancel callback.
+///
+/// The twin of [`GoalResponse`] for the cancel path: the user is asked about
+/// ONE goal and answers accept or reject. It never travels on the wire — the
+/// server turns the answer into a [`CancelReturnCode`] plus a `goals_canceling`
+/// entry when it writes the `CancelGoal` reply.
+///
+/// Discriminants match C's `nros_cancel_response_t` (`NROS_CANCEL_REJECT` = 0,
+/// `NROS_CANCEL_ACCEPT` = 1) and C++'s `nros::CancelResponse`, so the three
+/// surfaces agree. `Reject` is the default because a zeroed or unanswered
+/// decision must not cancel a goal nobody asked to cancel.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(i8)]
+pub enum CancelResponse {
+    /// Do not cancel this goal.
+    #[default]
+    Reject = 0,
+    /// Cancel this goal — it transitions to [`GoalStatus::Canceling`].
+    Accept = 1,
+}
+
+impl CancelResponse {
+    /// Convert from i8 value
+    pub fn from_i8(value: i8) -> Option<Self> {
+        match value {
+            0 => Some(CancelResponse::Reject),
+            1 => Some(CancelResponse::Accept),
+            _ => None,
+        }
     }
 }
 
@@ -640,18 +687,41 @@ mod tests {
     }
 
     #[test]
-    fn test_cancel_response_from_i8() {
-        assert_eq!(CancelResponse::from_i8(0), Some(CancelResponse::Ok));
-        assert_eq!(CancelResponse::from_i8(1), Some(CancelResponse::Rejected));
+    fn test_cancel_return_code_from_i8() {
+        assert_eq!(CancelReturnCode::from_i8(0), Some(CancelReturnCode::Ok));
         assert_eq!(
-            CancelResponse::from_i8(2),
-            Some(CancelResponse::UnknownGoal)
+            CancelReturnCode::from_i8(1),
+            Some(CancelReturnCode::Rejected)
         );
         assert_eq!(
-            CancelResponse::from_i8(3),
-            Some(CancelResponse::GoalTerminated)
+            CancelReturnCode::from_i8(2),
+            Some(CancelReturnCode::UnknownGoal)
         );
-        assert_eq!(CancelResponse::from_i8(4), None);
+        assert_eq!(
+            CancelReturnCode::from_i8(3),
+            Some(CancelReturnCode::GoalTerminated)
+        );
+        assert_eq!(CancelReturnCode::from_i8(4), None);
+    }
+
+    /// Issue 0796 — the per-goal decision and the RPC return code are two
+    /// types now, and the thing that made the collision dangerous is that
+    /// their discriminants OVERLAP with opposite meanings: 0 is "reject this
+    /// goal" on one and "the RPC succeeded" on the other. A cast between them
+    /// is therefore never a no-op, which is what this pins down.
+    #[test]
+    fn test_cancel_response_is_not_a_return_code() {
+        assert_eq!(CancelResponse::from_i8(0), Some(CancelResponse::Reject));
+        assert_eq!(CancelResponse::from_i8(1), Some(CancelResponse::Accept));
+        assert_eq!(CancelResponse::from_i8(2), None);
+        assert_eq!(CancelResponse::default(), CancelResponse::Reject);
+
+        // Same byte, opposite verdicts.
+        assert_eq!(CancelResponse::Reject as i8, CancelReturnCode::Ok as i8);
+        assert_eq!(
+            CancelResponse::Accept as i8,
+            CancelReturnCode::Rejected as i8
+        );
     }
 
     #[test]
@@ -881,13 +951,26 @@ mod verification {
         assert_eq!(resp.is_accepted(), val >= 1);
     }
 
+    // ---- CancelReturnCode ----
+
+    #[kani::proof]
+    fn cancel_return_code_from_i8_valid_range() {
+        let val: i8 = kani::any();
+        let resp = CancelReturnCode::from_i8(val);
+        if (0..=3).contains(&val) {
+            assert!(resp.is_some());
+        } else {
+            assert!(resp.is_none());
+        }
+    }
+
     // ---- CancelResponse ----
 
     #[kani::proof]
     fn cancel_response_from_i8_valid_range() {
         let val: i8 = kani::any();
         let resp = CancelResponse::from_i8(val);
-        if (0..=3).contains(&val) {
+        if (0..=1).contains(&val) {
             assert!(resp.is_some());
         } else {
             assert!(resp.is_none());

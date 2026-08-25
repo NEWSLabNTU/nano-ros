@@ -587,8 +587,10 @@ typedef enum nros_qos_liveliness_t {
  * Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
  * the per-goal `nros_cancel_response_t` (ACCEPT/REJECT) used by the
  * L2 callback path. These four discriminants mirror
- * `nros_core::CancelResponse` and the `action_msgs/srv/CancelGoal`
- * wire-CDR `return_code` field.
+ * `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
+ * wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
+ * `CancelResponse` until it was split; this pair of C names is what the
+ * Rust names now follow.)
  */
 typedef enum nros_cancel_return_code_t {
   NROS_CANCEL_RC_OK = 0,
@@ -3024,9 +3026,90 @@ NROS_PUBLIC enum nros_clock_type_t nros_clock_get_type(const struct nros_clock_t
 NROS_PUBLIC nros_ret_t nros_clock_fini(struct nros_clock_t *clock);
 
 /**
+ * Enable the ROS time override on a `NROS_CLOCK_ROS_TIME` clock.
+ *
+ * Mirrors `rcl_enable_ros_time_override`. If no override is active yet the
+ * clock starts at time 0 — the state rcl reports as "not started"
+ * (`nros_clock_time_started`), i.e. enabled but waiting for the first
+ * `/clock` sample. An already-active override keeps its value.
+ */
+NROS_PUBLIC nros_ret_t nros_enable_ros_time_override(const struct nros_clock_t *clock);
+
+/**
+ * Disable the ROS time override; the clock reads the system clock again.
+ *
+ * Mirrors `rcl_disable_ros_time_override`, and `nros_core::Clock::
+ * clear_ros_time_override` underneath. The stored time does not survive: with
+ * one piece of state there is nowhere for an inert value to live, so
+ * re-enabling starts from 0 again.
+ */
+NROS_PUBLIC nros_ret_t nros_disable_ros_time_override(const struct nros_clock_t *clock);
+
+/**
+ * Whether the ROS time override is in effect.
+ *
+ * Mirrors `rcl_is_enabled_ros_time_override`. Writes `is_enabled` only on
+ * `NROS_RET_OK`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_is_enabled_ros_time_override(const struct nros_clock_t *clock,
+                                             bool *is_enabled);
+
+/**
+ * Set the time a `NROS_CLOCK_ROS_TIME` clock reads, in nanoseconds since the
+ * epoch — the entry point a `/clock` subscriber or a bag player calls.
+ *
+ * Mirrors `rcl_set_ros_time_override`, with the one model difference stated at
+ * the top of this section: setting a value also ENABLES the override, and a
+ * NEGATIVE `nanoseconds` is `NROS_RET_INVALID_ARGUMENT` because a negative
+ * value is the "no override" sentinel.
+ */
+NROS_PUBLIC
+nros_ret_t nros_set_ros_time_override(const struct nros_clock_t *clock,
+                                      int64_t nanoseconds);
+
+/**
+ * Read the ROS time override back, in nanoseconds since the epoch.
+ *
+ * The C face of `nros_core::Clock::get_ros_time_override`, whose `Option` this
+ * splits into a status and an out-parameter: `NROS_RET_OK` and a value when an
+ * override is in effect, `NROS_RET_NOT_FOUND` and an untouched out-parameter
+ * when none is. rcl has no equivalent — a caller there reads the clock — but
+ * dropping it would leave the C mirror of the Rust surface one entry point
+ * short, and "is a simulator driving me, and at what time" is one question.
+ */
+NROS_PUBLIC
+nros_ret_t nros_get_ros_time_override(const struct nros_clock_t *clock,
+                                      int64_t *nanoseconds);
+
+/**
+ * Whether the clock has produced a time yet.
+ *
+ * Mirrors `rcl_clock_time_started`, including its implementation: read the
+ * clock and report whether the value is non-zero. For a ROS-time clock that is
+ * the "enabled, but no `/clock` sample has arrived" state — the one
+ * `nros_enable_ros_time_override` leaves behind — and for a system or steady
+ * clock it is true as soon as the clock is valid.
+ */
+NROS_PUBLIC bool nros_clock_time_started(const struct nros_clock_t *clock);
+
+/**
  * Convert nanoseconds to a nros_time_t structure.
  */
 NROS_PUBLIC struct nros_time_t nros_time_from_nanoseconds(int64_t nanoseconds);
+
+/**
+ * Convert nanoseconds to a nros_duration_t structure.
+ *
+ * The duration half of `nros_time_from_nanoseconds`, and the same encoding —
+ * `builtin_interfaces/msg/Duration` has the identical `{sec, nanosec}` shape
+ * and the identical `[0, 1e9)` rule on `nanosec`. Issue 0799: a negative span
+ * is ordinary ("how far ahead of the deadline are we" is negative half the
+ * time), and until this existed the C++ `Duration::to_msg` open-coded the
+ * split rather than delegate to a `_time_` entry point that got negatives
+ * wrong.
+ */
+NROS_PUBLIC struct nros_duration_t nros_duration_from_nanoseconds(int64_t nanoseconds);
 
 /**
  * Convert a nros_time_t structure to nanoseconds.

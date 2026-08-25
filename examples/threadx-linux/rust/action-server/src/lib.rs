@@ -75,7 +75,7 @@ impl ExecutableNode for FibonacciServer {
                 });
             }
             "on_cancel" => {
-                let _ = ctx.set_cancel_response(CancelResponse::Ok);
+                let _ = ctx.set_cancel_response(CancelResponse::Accept);
             }
             "on_accepted" => {
                 // Per-spin work runs in `tick()` (the only place the

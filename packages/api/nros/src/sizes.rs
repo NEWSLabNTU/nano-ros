@@ -148,6 +148,8 @@ mod rmw_sizes {
     type CppGoalCallbackLayout =
         unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void) -> i32;
     type CppCancelCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
+    // issue 0796 — the C++ callback tier's accepted-goal hook (`CppAcceptedCallback`).
+    type CppAcceptedCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void);
 
     // Byte-shape mirror of one of `nros-cpp`'s `nros_cpp_qos_t` policy enums
     // (`nros_cpp_qos_reliability_t` et al). These are `#[repr(C)]` fieldless
@@ -195,6 +197,7 @@ mod rmw_sizes {
         pub handle: Option<nros_node::ActionServerRawHandle>,
         pub goal_cb: Option<CppGoalCallbackLayout>,
         pub cancel_cb: Option<CppCancelCallbackLayout>,
+        pub accepted_cb: Option<CppAcceptedCallbackLayout>,
         pub cb_ctx: *mut c_void,
         pub node_id: u8,
         pub _reserved: [u8; 7],

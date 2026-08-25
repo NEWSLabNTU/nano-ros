@@ -4626,6 +4626,20 @@ check-cpp: check-cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/service_client_call_polling.cpp
+    # issue 0796 — the action CALLBACK tier: the accepted-goal hook
+    # (`set_accepted_callback`) and the client-side `cancel_goal`, both of
+    # which C and Rust had and C++ did not. Template BODIES, so the header
+    # parse loop above never type-checks them; this TU instantiates them and
+    # static-asserts that the per-goal `CancelResponse` and the RPC
+    # `CancelReturnCode` stay distinct types.
+    echo "  - action callback tier instantiation (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/action_callback_tier.cpp
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level

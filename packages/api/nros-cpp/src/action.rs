@@ -57,6 +57,21 @@ pub type CppGoalCallback = unsafe extern "C" fn(
 pub type CppCancelCallback =
     unsafe extern "C" fn(goal_id: *const [u8; 16], ctx: *mut c_void) -> i32;
 
+/// Accepted-goal callback type invoked by the arena's post-accept hook.
+///
+/// Issue 0796 — the C++ callback tier had no way to register one, so a user
+/// who returned `AcceptAndDefer` from the goal callback was never told the
+/// goal had been accepted: the exact point at which a deferred goal is
+/// supposed to start executing. C takes `nros_accepted_callback_t` at
+/// `nros_action_server_init` and Rust takes one in
+/// `create_action_server_with_callbacks(goal, cancel, accepted)`; this is the
+/// C++ spelling of the same hook.
+///
+/// Fires AFTER the accept reply has reached the client (see
+/// [`nros_node::RawAcceptedCallback`]), for both `AcceptAndExecute` and
+/// `AcceptAndDefer`, so a long-running body here does not delay the accept.
+pub type CppAcceptedCallback = unsafe extern "C" fn(goal_id: *const [u8; 16], ctx: *mut c_void);
+
 /// Internal state for the action server.
 ///
 /// Holds the arena handle and the user-registered callbacks. Phase 87.6
@@ -75,6 +90,9 @@ pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
     goal_cb: Option<CppGoalCallback>,
     cancel_cb: Option<CppCancelCallback>,
+    /// issue 0796 — post-accept hook, `None` until
+    /// `nros_cpp_action_server_set_accepted_callback` installs one.
+    accepted_cb: Option<CppAcceptedCallback>,
     cb_ctx: *mut c_void,
     /// Phase 104.C.9.b — NodeId captured at create time, consumed by
     /// `nros_cpp_action_server_register` to pick the `_on(NodeId, ...)`
@@ -156,13 +174,38 @@ unsafe extern "C" fn cancel_callback_trampoline(
 ) -> nros::CancelResponse {
     let server = unsafe { &*(context as *const CppActionServer) };
     let Some(cb) = server.cancel_cb else {
-        return nros::CancelResponse::Ok;
+        return nros::CancelResponse::Accept;
     };
     let uuid_ptr = goal_id as *const [u8; 16];
+    // issue 0796 — `nros::CancelResponse` is now the PER-GOAL decision, with
+    // the same 0/1 discriminants as C++'s `nros::CancelResponse` enum class,
+    // so this is a straight translation rather than a hop through the
+    // `CancelGoal` RPC return code.
     match unsafe { cb(uuid_ptr, server.cb_ctx) } {
-        0 => nros::CancelResponse::Rejected,
-        _ => nros::CancelResponse::Ok,
+        0 => nros::CancelResponse::Reject,
+        _ => nros::CancelResponse::Accept,
     }
+}
+
+/// Post-accept trampoline — forwards to the user's registered accepted
+/// callback, if any.
+///
+/// Registered unconditionally at `register_action_server_raw` time (the arena
+/// captures the hook when the entry is built, before the user has had a chance
+/// to call `set_accepted_callback`), so the `None` case is the normal one and
+/// must be free.
+///
+/// # Safety
+/// `context` must point to a valid `CppActionServer`.
+unsafe extern "C" fn accepted_callback_trampoline(
+    goal_id: *const nros::GoalId,
+    context: *mut c_void,
+) {
+    let server = unsafe { &*(context as *const CppActionServer) };
+    let Some(cb) = server.accepted_cb else {
+        return;
+    };
+    unsafe { cb(goal_id as *const [u8; 16], server.cb_ctx) };
 }
 
 /// Create an action server on a node.
@@ -198,6 +241,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
         handle: None,
         goal_cb: None,
         cancel_cb: None,
+        accepted_cb: None,
         cb_ctx: core::ptr::null_mut(),
         // Phase 104.C.9.b — capture the Node's id so register can
         // pick the multi-Node `_on(NodeId, ...)` dispatch variant.
@@ -285,8 +329,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
             qos,
             goal_callback: goal_callback_trampoline,
             cancel_callback: cancel_callback_trampoline,
-            // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
-            accepted_callback: None,
+            // issue 0796 — always registered; the trampoline is a no-op until
+            // the user installs a callback. The arena captures this pointer
+            // when the entry is built, so it cannot be added later.
+            accepted_callback: Some(accepted_callback_trampoline),
             context: storage,
         });
     match result {
@@ -347,6 +393,35 @@ pub unsafe extern "C" fn nros_cpp_action_server_set_callbacks(
     let server = unsafe { &mut *(handle as *mut CppActionServer) };
     server.goal_cb = goal_cb;
     server.cancel_cb = cancel_cb;
+    server.cb_ctx = ctx;
+    NROS_CPP_RET_OK
+}
+
+/// Register the accepted-goal callback on the action server (issue 0796).
+///
+/// Separate from `nros_cpp_action_server_set_callbacks` so that adding the
+/// third callback did not change an existing FFI signature; `ctx` is the SAME
+/// shared context slot those two use, and passing a different pointer here
+/// re-points all three. The C++ `ActionServer<A>` passes `this` from
+/// `install_callbacks()` in both calls.
+///
+/// The callback fires once per accepted goal, after the accept reply has been
+/// sent — for `AcceptAndExecute` and `AcceptAndDefer` alike. Pass a null
+/// `accepted_cb` to clear it.
+///
+/// # Safety
+/// `handle` must be a valid initialized action server storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_set_accepted_callback(
+    handle: *mut c_void,
+    accepted_cb: Option<CppAcceptedCallback>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let server = unsafe { &mut *(handle as *mut CppActionServer) };
+    server.accepted_cb = accepted_cb;
     server.cb_ctx = ctx;
     NROS_CPP_RET_OK
 }
@@ -1620,6 +1695,81 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
     }
 }
 
+/// Cancel a goal (non-blocking) — issue 0796.
+///
+/// Sends the `action_msgs/srv/CancelGoal` request for `goal_id` and returns.
+/// The RPC's return code arrives later; drain it with
+/// [`nros_cpp_action_client_try_recv_cancel_response`].
+///
+/// The callback tier had no cancel at all: C has `nros_action_cancel_goal`,
+/// Rust has `ActionClient::cancel_goal`, and C++ had only the L1 polling
+/// tier's `PollingActionClient::send_cancel_request` — so a C++ application
+/// written against the callback tier could start a goal it could not stop.
+/// This is the same shape as C's: fire the request, read the outcome later.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
+    handle: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let id = nros::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+        Some(c) => c,
+        None => return NROS_CPP_RET_ERROR,
+    };
+    match core.send_cancel_request(&id) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
+///
+/// Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
+/// 2 = UnknownGoal, 3 = GoalTerminated — `nros::CancelReturnCode`, not the
+/// per-goal `nros::CancelResponse`; issue 0796) to `out_return_code`.
+///
+/// Returns `NROS_CPP_RET_OK` when a reply was consumed,
+/// `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response(
+    handle: *mut c_void,
+    out_return_code: *mut i8,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || out_return_code.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+        Some(c) => c,
+        None => return NROS_CPP_RET_ERROR,
+    };
+    match core.try_recv_cancel_reply() {
+        // [CDR_HDR(4)][return_code i8][goals_canceling…]
+        Ok(Some(len)) if len > CDR_HEADER_LEN => {
+            unsafe { *out_return_code = core.result_buffer_ref()[CDR_HEADER_LEN] as i8 };
+            NROS_CPP_RET_OK
+        }
+        // A reply that carries no return_code byte is a malformed frame, not
+        // "no reply yet" — issue 0223's rule: do not collapse a truncation
+        // onto a plausible default.
+        Ok(Some(_)) => NROS_CPP_RET_ERROR,
+        Ok(None) => NROS_CPP_RET_TRY_AGAIN,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Register async callbacks on the action client.
 ///
 /// # Safety
@@ -2298,8 +2448,12 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(
 }
 
 /// Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
-/// request. `return_code` matches `nros_core::CancelResponse`
-/// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated).
+/// request. `return_code` matches `nros_core::CancelReturnCode`
+/// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
+/// `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
+/// `nros::CancelResponse` accept/reject a cancel callback returns (issue
+/// 0796; the two used to share a name and their discriminants overlap with
+/// opposite meanings).
 /// `accepted` points to `accepted_count` 16-byte goal-id arrays.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_send_cancel_reply_raw(
@@ -2314,10 +2468,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_send_cancel_reply_raw(
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
     let resp = match return_code {
-        0 => nros::CancelResponse::Ok,
-        1 => nros::CancelResponse::Rejected,
-        2 => nros::CancelResponse::UnknownGoal,
-        3 => nros::CancelResponse::GoalTerminated,
+        0 => nros_node::CancelReturnCode::Ok,
+        1 => nros_node::CancelReturnCode::Rejected,
+        2 => nros_node::CancelReturnCode::UnknownGoal,
+        3 => nros_node::CancelReturnCode::GoalTerminated,
         _ => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     let mut ids: nros::heapless::Vec<nros::GoalId, 8> = nros::heapless::Vec::new();

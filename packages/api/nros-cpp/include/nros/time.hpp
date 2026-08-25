@@ -119,7 +119,10 @@ class Time {
     /// node.now().to_msg(msg.header.stamp);
     /// ```
     template <typename TimeMsgT> void to_msg(TimeMsgT& out) const {
-        // A timestamp is non-negative, so the C decomposition is exact here.
+        // The C decomposition floors and keeps `nanosec` in `[0, 1e9)`, which
+        // is what `Time.msg` specifies — for a time before the epoch as much
+        // as after it (issue 0799). `Duration::to_msg` is the same call on the
+        // duration entry point.
         nros_time_t t = nros_time_from_nanoseconds(ns_);
         out.sec = t.sec;
         out.nanosec = t.nanosec;

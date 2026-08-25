@@ -24,7 +24,11 @@
  * EXECUTOR_OPAQUE_U64S: a hand-maintained number left behind by a fix that
  * moved the thing it was derived from. Asserted below. */
 #define NROS_CPP_EXECUTOR_STORAGE_SIZE 98312
-#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 80
+/* issue 0796 — was 80. `CppActionServer` gained the accepted-goal callback
+ * slot (one function pointer), so every per-build value rose by one pointer
+ * width: the host generator now emits 128 where it emitted 120. Raised by 8 to
+ * keep this snapshot the UPPER BOUND its header comment requires. */
+#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 88
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 48
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24

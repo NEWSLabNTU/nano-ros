@@ -33,10 +33,18 @@ extern "C" {
 typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                             size_t len, void* ctx);
 typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+/* Issue 0796 — post-accept hook. Excluded from cbindgen for the same reason as
+ * the two above (`Option<extern "C" fn>` renders as an opaque struct), so this
+ * declaration is MIRRORED in `nros/component.h` as well; `just check-c`'s
+ * cross-include TU is the gate that catches a half-updated mirror. */
+typedef void (*nros_cpp_accepted_callback_t)(const uint8_t goal_id[16], void* ctx);
 
 nros_cpp_ret_t nros_cpp_action_server_set_callbacks(void* handle, nros_cpp_goal_callback_t goal_cb,
                                                     nros_cpp_cancel_callback_t cancel_cb,
                                                     void* ctx);
+nros_cpp_ret_t
+nros_cpp_action_server_set_accepted_callback(void* handle, nros_cpp_accepted_callback_t accepted_cb,
+                                             void* ctx);
 } // extern "C"
 
 namespace nros {
@@ -48,10 +56,31 @@ enum class GoalResponse : int32_t {
     AcceptAndDefer = 2,
 };
 
-/// Cancel acceptance response returned from the user's cancel callback.
+/// Per-goal cancel decision returned from the user's cancel callback.
+///
+/// Issue 0796 — this is NOT the `action_msgs/srv/CancelGoal` RPC status; that
+/// is `CancelReturnCode` below. The two carry different meanings on
+/// overlapping values (`Reject` and `Ok` are both 0), so never cast between
+/// them. C names them apart too (`nros_cancel_response_t` vs
+/// `nros_cancel_return_code_t`), and Rust now does (`nros_core::CancelResponse`
+/// vs `nros_core::CancelReturnCode`).
 enum class CancelResponse : int32_t {
     Reject = 0,
     Accept = 1,
+};
+
+/// `action_msgs/srv/CancelGoal` RPC return code — the WHOLE-REQUEST outcome
+/// (issue 0796).
+///
+/// Written by a polling-tier server into `send_cancel_reply`, and read by a
+/// client from `ActionClient::try_recv_cancel_response`. Distinct from the
+/// per-goal `CancelResponse` above; these four discriminants are the wire
+/// contract, fixed by `action_msgs`.
+enum class CancelReturnCode : int8_t {
+    Ok = 0,
+    Rejected = 1,
+    UnknownGoal = 2,
+    GoalTerminated = 3,
 };
 
 /// Mirror of `action_msgs/msg/GoalStatus` — lifecycle state reported by
@@ -104,6 +133,10 @@ template <typename A> class ActionServer {
     using TypedCancelFn = CancelResponse (*)(const uint8_t uuid[16]);
     /// User-facing typed cancel callback signature with user context (Phase 84.G9).
     using TypedCancelFnWithCtx = CancelResponse (*)(const uint8_t uuid[16], void* ctx);
+    /// User-facing typed accepted-goal callback signature (issue 0796).
+    using TypedAcceptedFn = void (*)(const uint8_t uuid[16]);
+    /// User-facing typed accepted-goal callback signature with user context.
+    using TypedAcceptedFnWithCtx = void (*)(const uint8_t uuid[16], void* ctx);
     /// User-facing visitor signature for `for_each_active_goal`.
     using TypedVisitorFn = void (*)(const uint8_t uuid[16], GoalStatus status);
 
@@ -158,6 +191,41 @@ template <typename A> class ActionServer {
         user_cancel_fn_ctx_ = f;
         user_cancel_ctx_ = ctx;
         user_cancel_fn_ = nullptr;
+        return install_callbacks();
+    }
+
+    /// Register a callback invoked once per ACCEPTED goal (issue 0796).
+    ///
+    /// Fires after the accept reply has reached the client, for
+    /// `GoalResponse::AcceptAndExecute` and `GoalResponse::AcceptAndDefer`
+    /// alike. This is where a deferred goal starts executing: the goal
+    /// callback answers accept/reject and must return promptly, so it is the
+    /// wrong place to begin work.
+    ///
+    /// Mirrors C's `nros_accepted_callback_t` (passed at
+    /// `nros_action_server_init`) and Rust's third argument to
+    /// `create_action_server_with_callbacks(goal, cancel, accepted)`. Without
+    /// it a C++ user who returned ACCEPT_AND_DEFER was never told the goal had
+    /// been accepted.
+    ///
+    /// F must be a stateless callable convertible to TypedAcceptedFn.
+    template <typename F> Result set_accepted_callback(F f) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_accepted_fn_ = TypedAcceptedFn(f); // compile error if F is not convertible
+        user_accepted_fn_ctx_ = nullptr;        // mutually exclusive with _with_ctx
+        user_accepted_ctx_ = nullptr;
+        return install_callbacks();
+    }
+
+    /// Register an accepted-goal callback with a user context pointer.
+    ///
+    /// Mirrors `set_goal_callback_with_ctx`. Mutually exclusive with
+    /// `set_accepted_callback()`.
+    Result set_accepted_callback_with_ctx(TypedAcceptedFnWithCtx f, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        user_accepted_fn_ctx_ = f;
+        user_accepted_ctx_ = ctx;
+        user_accepted_fn_ = nullptr;
         return install_callbacks();
     }
 
@@ -250,7 +318,9 @@ template <typename A> class ActionServer {
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
           user_goal_fn_ctx_(other.user_goal_fn_ctx_), user_goal_ctx_(other.user_goal_ctx_),
           user_cancel_fn_(other.user_cancel_fn_), user_cancel_fn_ctx_(other.user_cancel_fn_ctx_),
-          user_cancel_ctx_(other.user_cancel_ctx_), user_visitor_fn_(other.user_visitor_fn_),
+          user_cancel_ctx_(other.user_cancel_ctx_), user_accepted_fn_(other.user_accepted_fn_),
+          user_accepted_fn_ctx_(other.user_accepted_fn_ctx_),
+          user_accepted_ctx_(other.user_accepted_ctx_), user_visitor_fn_(other.user_visitor_fn_),
           initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_action_server_relocate(other.storage_, storage_);
@@ -271,6 +341,9 @@ template <typename A> class ActionServer {
             user_cancel_fn_ = other.user_cancel_fn_;
             user_cancel_fn_ctx_ = other.user_cancel_fn_ctx_;
             user_cancel_ctx_ = other.user_cancel_ctx_;
+            user_accepted_fn_ = other.user_accepted_fn_;
+            user_accepted_fn_ctx_ = other.user_accepted_fn_ctx_;
+            user_accepted_ctx_ = other.user_accepted_ctx_;
             user_visitor_fn_ = other.user_visitor_fn_;
             initialized_ = other.initialized_;
             if (other.initialized_) {
@@ -287,7 +360,8 @@ template <typename A> class ActionServer {
     ActionServer()
         : executor_(nullptr), user_goal_fn_(nullptr), user_goal_fn_ctx_(nullptr),
           user_goal_ctx_(nullptr), user_cancel_fn_(nullptr), user_cancel_fn_ctx_(nullptr),
-          user_cancel_ctx_(nullptr), user_visitor_fn_(nullptr), initialized_(false) {}
+          user_cancel_ctx_(nullptr), user_accepted_fn_(nullptr), user_accepted_fn_ctx_(nullptr),
+          user_accepted_ctx_(nullptr), user_visitor_fn_(nullptr), initialized_(false) {}
 
   private:
     ActionServer(const ActionServer&) = delete;
@@ -330,12 +404,33 @@ template <typename A> class ActionServer {
         return static_cast<int32_t>(CancelResponse::Accept);
     }
 
+    static void accepted_trampoline(const uint8_t goal_id[16], void* ctx) {
+        auto* self = static_cast<ActionServer*>(ctx);
+        if (!self) return;
+        if (self->user_accepted_fn_ctx_ != nullptr) {
+            self->user_accepted_fn_ctx_(goal_id, self->user_accepted_ctx_);
+            return;
+        }
+        if (self->user_accepted_fn_ != nullptr) {
+            self->user_accepted_fn_(goal_id);
+        }
+    }
+
     Result install_callbacks() {
         bool goal_set = (user_goal_fn_ != nullptr) || (user_goal_fn_ctx_ != nullptr);
         bool cancel_set = (user_cancel_fn_ != nullptr) || (user_cancel_fn_ctx_ != nullptr);
+        bool accepted_set = (user_accepted_fn_ != nullptr) || (user_accepted_fn_ctx_ != nullptr);
         nros_cpp_goal_callback_t gcb = goal_set ? &goal_trampoline : nullptr;
         nros_cpp_cancel_callback_t ccb = cancel_set ? &cancel_trampoline : nullptr;
-        return Result(nros_cpp_action_server_set_callbacks(storage_, gcb, ccb, this));
+        nros_cpp_ret_t ret = nros_cpp_action_server_set_callbacks(storage_, gcb, ccb, this);
+        if (ret != 0) return Result(ret);
+        // Issue 0796 — a SECOND install call rather than a fourth parameter on
+        // the first: `nros_cpp_action_server_set_callbacks` is declared in
+        // three places and called directly by C components, so growing it
+        // would have broken every one of them. Both calls pass the same
+        // `this`, which is the shared context slot the runtime keeps.
+        nros_cpp_accepted_callback_t acb = accepted_set ? &accepted_trampoline : nullptr;
+        return Result(nros_cpp_action_server_set_accepted_callback(storage_, acb, this));
     }
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
@@ -346,6 +441,9 @@ template <typename A> class ActionServer {
     TypedCancelFn user_cancel_fn_;
     TypedCancelFnWithCtx user_cancel_fn_ctx_;
     void* user_cancel_ctx_;
+    TypedAcceptedFn user_accepted_fn_;
+    TypedAcceptedFnWithCtx user_accepted_fn_ctx_;
+    void* user_accepted_ctx_;
     TypedVisitorFn user_visitor_fn_;
     bool initialized_;
     // Phase 87.6: action name buffer moved C++-side. 256 matches

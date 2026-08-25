@@ -43,12 +43,13 @@ namespace nros {
 /// down — so unlike `rclcpp::Clock` (which finalises an `rcl_clock_t` holding
 /// an allocator) there is nothing for a destructor to release.
 ///
-/// ROS time is only half-present, and the half that is missing is C's: our Rust
-/// `Clock` can be driven by a simulator's `/clock`
-/// (`set_ros_time_override` and friends) and the C surface this wraps has none
-/// of those switches, so `NROS_CLOCK_ROS_TIME` currently reads the system
-/// clock. Tracked as `c:enable_ros_time_override` in the parity ledger and in
-/// issue 0789; adding the switches to C is what closes it for C++ too.
+/// A `NROS_CLOCK_ROS_TIME` clock can be driven by a simulator's or a bag
+/// player's `/clock` (issue 0789): `ros_time_is_active()` reports whether it
+/// is, `started()` whether a sample has arrived. The switches that INSTALL a
+/// time are the C ones (`nros_set_ros_time_override` and friends) rather than
+/// members here, because the override is process-global — one simulated clock
+/// per image, as in Rust — and hanging a global's setter off an instance would
+/// read as per-clock state.
 class Clock {
   public:
     /// Construct a clock of the given type.
@@ -87,6 +88,29 @@ class Clock {
     /// Whether the clock initialised. False for a clock built with an invalid
     /// type; the same predicate as `Node::is_valid()` / `Timer::is_valid()`.
     bool is_valid() const { return nros_clock_is_valid(&clock_); }
+
+    /// Whether a `/clock` source is driving this clock — `rclcpp::Clock::
+    /// ros_time_is_active()`.
+    ///
+    /// False for anything but a `NROS_CLOCK_ROS_TIME` clock, and false for a
+    /// ROS-time clock with no override installed (it is reading the system
+    /// clock). Infallible for the reason `now()` is: the report is a
+    /// predicate, not a status the caller has to unpack.
+    bool ros_time_is_active() const {
+        bool enabled = false;
+        if (nros_is_enabled_ros_time_override(&clock_, &enabled) != 0) {
+            return false;
+        }
+        return enabled;
+    }
+
+    /// Whether the clock has produced a time yet — `rclcpp::Clock::started()`.
+    ///
+    /// For a ROS-time clock this is "the simulator has published at least one
+    /// `/clock` sample"; a system or steady clock has started as soon as it is
+    /// valid. (`rclcpp::Clock::wait_until_started` is deliberately absent —
+    /// RFC-0021 forbids a blocking helper that does not drive the executor.)
+    bool started() const { return nros_clock_time_started(&clock_); }
 
   private:
     nros_clock_t clock_;

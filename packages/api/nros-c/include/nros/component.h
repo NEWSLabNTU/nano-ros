@@ -49,7 +49,8 @@
  * `nros_cpp_config_generated.h` the build mirrors onto the include path (a hard
  * dep of every typed C component, which links nros-cpp). The static fallbacks
  * below are nuttx-era and have already drifted (native's action-server struct is
- * 120 bytes, not 80) — an under-sized buffer lets `nros_cpp_action_server_register`
+ * 128 bytes since issue 0796 added the accepted-goal callback slot, against a
+ * nuttx snapshot of 88) — an under-sized buffer lets `nros_cpp_action_server_register`
  * overrun it and clobber the adjacent struct field (e.g. a stashed executor
  * handle → NULL → `complete_goal` returns INVALID_ARGUMENT). Pull the generated
  * sizes when the header is reachable; the mirrored real header wins over the
@@ -261,6 +262,10 @@ typedef int32_t (*nros_c_goal_callback_t)(const uint8_t goal_id[16], const uint8
                                           size_t len, void* ctx);
 /** Cancel callback: returns a `nros_c_cancel_response_t`. */
 typedef int32_t (*nros_c_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+/** Accepted-goal callback (issue 0796): fires once per accepted goal, after the
+ *  accept reply has reached the client — for ACCEPT_AND_EXECUTE and
+ *  ACCEPT_AND_DEFER alike. ABI-identical to `nros_cpp_accepted_callback_t`. */
+typedef void (*nros_c_accepted_callback_t)(const uint8_t goal_id[16], void* ctx);
 
 /* Raw action-server FFI (C-ABI symbols from nros-cpp; node + executor scoped). */
 int32_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
@@ -271,6 +276,17 @@ int32_t nros_cpp_action_server_register(void* storage, void* executor_handle,
                                         const char* type_hash, uint8_t sched_context);
 int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_t goal_cb,
                                              nros_c_cancel_callback_t cancel_cb, void* ctx);
+/* issue 0796 — the accepted-goal hook the C++ callback tier was missing. A
+ * SEPARATE entry point rather than a fourth parameter on the call above: that
+ * declaration is mirrored in three headers and called directly by C
+ * components, so growing it would have broken every caller. `ctx` is the same
+ * shared slot `set_callbacks` writes. THIRD mirror of this declaration
+ * (nros_cpp_ffi.h skips it — cbindgen renders `Option<fn>` as an opaque struct
+ * — and action_server.hpp is the other); the cross-include TU in
+ * `just check-c` is what catches a half-updated set. */
+int32_t nros_cpp_action_server_set_accepted_callback(void* handle,
+                                                     nros_c_accepted_callback_t accepted_cb,
+                                                     void* ctx);
 /* issue 0796 — `status` was hardcoded `Succeeded` in the shim, so an aborted
  * goal reached the client as succeeded. THIRD mirror of this declaration
  * (nros_cpp_ffi.h and action_server.hpp are the others); the cross-include TU

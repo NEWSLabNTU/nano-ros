@@ -783,15 +783,21 @@ impl<
     /// cancel-goal request. `sequence_number` must match the value
     /// returned by [`try_recv_cancel_request`](Self::try_recv_cancel_request).
     ///
-    /// `return_code` is the overall RPC status (`CancelResponse::Ok`
+    /// `return_code` is the overall RPC status (`CancelReturnCode::Ok`
     /// = at least one cancel honoured; other variants = whole-request
     /// failure). `accepted` lists the goals that transition to
     /// `Canceling`; this function flips their stored status before
     /// publishing the status array.
+    ///
+    /// Issue 0796 — the parameter is a [`nros_core::CancelReturnCode`], not
+    /// the per-goal [`nros_core::CancelResponse`] a cancel callback returns.
+    /// The two were one type and their discriminants overlap with opposite
+    /// meanings (`Reject`/`Ok` are both 0), so this signature is what stops a
+    /// per-goal answer being written into the RPC field.
     pub fn send_cancel_reply(
         &mut self,
         sequence_number: i64,
-        return_code: nros_core::CancelResponse,
+        return_code: nros_core::CancelReturnCode,
         accepted: &[GoalId],
     ) -> Result<(), NodeError> {
         for id in accepted {
@@ -831,6 +837,9 @@ impl<
         &mut self,
         cancel_handler: impl FnOnce(&GoalId, GoalStatus) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
+        // (issue 0796) the handler answers about ONE goal; the reply below
+        // carries the RPC-level return code. They are different types with
+        // overlapping discriminants, so the translation is explicit.
         let buf_start = self.cancel_buffer.as_ptr() as usize;
         // Phase 120: NoData == steady-state idle; map to Ok(None).
         let request = match self
@@ -857,26 +866,28 @@ impl<
         let current_status = self.find_goal_status(&goal_id);
         let response = cancel_handler(&goal_id, current_status);
 
-        if response == nros_core::CancelResponse::Ok {
+        let accepted = response == nros_core::CancelResponse::Accept;
+        if accepted {
             self.set_goal_status(&goal_id, GoalStatus::Canceling);
         }
 
         // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
+        let return_code = if accepted {
+            nros_core::CancelReturnCode::Ok
+        } else {
+            nros_core::CancelReturnCode::Rejected
+        };
         let mut writer =
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
-            .write_i8(response as i8)
+            .write_i8(return_code as i8)
             .map_err(|_| NodeError::Serialization)?;
 
-        let num_canceling = if response == nros_core::CancelResponse::Ok {
-            1u32
-        } else {
-            0u32
-        };
+        let num_canceling = if accepted { 1u32 } else { 0u32 };
         writer
             .write_u32(num_canceling)
             .map_err(|_| NodeError::Serialization)?;
-        if response == nros_core::CancelResponse::Ok {
+        if accepted {
             write_goal_id(&mut writer, &goal_id)?;
             writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
             writer.write_u32(0).map_err(|_| NodeError::Serialization)?;

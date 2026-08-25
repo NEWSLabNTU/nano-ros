@@ -37,7 +37,7 @@
   ],
   "c:accepted_callback_t": {
     "verdict": "divergence",
-    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. OUR LANGUAGES DISAGREE: C takes this third callback at `nros_action_server_init` and Rust takes it at `DeclaredNode::create_action_server_with_callbacks(goal, cancel, accepted)`, but `nros::ActionServer<A>` has NO way to set one -- only `set_goal_callback` and `set_cancel_callback`. A C++ user who accepts-and-defers a goal is never told it was accepted; rclcpp_action's `Server` requires the accepted callback. Phase 379 W3."
+    "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. RESOLVED (issue 0796): our three languages agree again. C takes this third callback at `nros_action_server_init`, Rust takes it at `DeclaredNode::create_action_server_with_callbacks(goal, cancel, accepted)`, and `nros::ActionServer<A>` now has `set_accepted_callback` / `set_accepted_callback_with_ctx` -- matching its existing per-callback setter shape rather than C's all-at-once init. Until then a C++ user who returned ACCEPT_AND_DEFER was never told the goal had been accepted, which is the point at which a deferred goal is supposed to start executing. The hook fires after the accept reply has reached the client, for ACCEPT_AND_EXECUTE and ACCEPT_AND_DEFER alike. Phase 379 W3."
   },
   "c:action_*wait_set*": {
     "verdict": "declined",
@@ -54,7 +54,7 @@
   },
   "c:action_cancel_goal": {
     "verdict": "divergence",
-    "why": "OUR LANGUAGES DISAGREE: rclcpp_action returns a future from `Client::async_cancel_goal`; ours sends the CancelGoal request and reports the outcome through the client's cancel channel (RFC-0021, no futures) -- Rust's `ActionClient::cancel_goal` returns a `Promise` the caller drives with the executor. That part is a divergence with a reason. What is not: C++ has no client-side cancel in its callback tier at all. `nros::ActionClient<A>` has no cancel method, only `nros::PollingActionClient<A>::send_cancel_request` on the L1 tier, so a C++ application written against the callback tier cannot cancel a goal it started while C and Rust can. Phase 379 W3."
+    "why": "OUR LANGUAGES DISAGREE ON SHAPE, no longer on presence: rclcpp_action returns a future from `Client::async_cancel_goal`; ours sends the CancelGoal request and reports the outcome through the client's cancel channel (RFC-0021, no futures) -- Rust's `ActionClient::cancel_goal` returns a `Promise` the caller drives with the executor. That part is a divergence with a reason. The part that was NOT: C++ had no client-side cancel in its callback tier at all. Fixed by issue 0796 -- `nros::ActionClient<A>` now has `cancel_goal(goal_id)` plus `try_recv_cancel_response(CancelReturnCode&)`, the same fire-then-read shape as this C entry point, so all three languages can cancel a goal they started. `nros::PollingActionClient<A>::send_cancel_request` remains the L1 tier's spelling. Phase 379 W3."
   },
   "c:action_cancel_request_t": {
     "verdict": "divergence",
@@ -362,11 +362,11 @@
   },
   "c:cancel_response_t": {
     "verdict": "divergence",
-    "why": "the cancel callback's per-goal ACCEPT/REJECT decision, matching rclcpp_action::CancelResponse (with the same off-by-one in the discriminants as `c:goal_response_t`). See `c:cancel_return_code_t` for the collision this creates across our own languages."
+    "why": "the cancel callback's per-goal ACCEPT/REJECT decision, matching rclcpp_action::CancelResponse (with the same off-by-one in the discriminants as `c:goal_response_t`, and the same reasons for keeping it -- see `cpp:CancelResponse`). `nros_cancel_return_code_t` is the RPC-level sibling; issue 0796 made Rust and C++ adopt this pair of names too, so the collision `c:cancel_return_code_t` used to describe is gone."
   },
   "c:cancel_return_code_t": {
     "verdict": "divergence",
-    "why": "OUR LANGUAGES DISAGREE: the `action_msgs/srv/CancelGoal` RPC-level return code (OK / REJECTED / UNKNOWN_GOAL / GOAL_TERMINATED), distinct from the per-goal `nros_cancel_response_t` above -- the C header says so itself. But our Rust spells this same RPC-level enum `CancelResponse` (`nros_core::CancelResponse::{Ok,Rejected,UnknownGoal,GoalTerminated}`), which is the name C and C++ use for the PER-GOAL decision -- and `CallbackCtx::set_cancel_response` then takes the RPC-level enum to express a per-goal accept/reject. Two concepts, three languages, one name used for both. C is the only one that names them apart, and it is the one that needed a doc comment to explain the split. Phase 379 W5."
+    "why": "the `action_msgs/srv/CancelGoal` RPC-level return code (OK / REJECTED / UNKNOWN_GOAL / GOAL_TERMINATED), distinct from the per-goal `nros_cancel_response_t` above -- the C header says so itself. rclc has no counterpart: rcl_action hands the caller the generated `CancelGoal_Response` and the value is a field on it. RESOLVED (issue 0796): our Rust used to spell this same RPC-level enum `CancelResponse`, the name C and C++ use for the PER-GOAL decision, and `CallbackCtx::set_cancel_response` then took the RPC-level enum to express a per-goal accept/reject. Two concepts, three languages, one name. C was the only one that named them apart, and it is the one that needed a doc comment to explain the split -- so the other two followed it: `nros_core::CancelReturnCode` / `nros::CancelReturnCode` for the RPC status, `CancelResponse` for the per-goal decision everywhere. `set_cancel_response` now takes the per-goal one. Phase 379 W5."
   },
   "c:feedback_callback_t": {
     "verdict": "divergence",
@@ -386,7 +386,7 @@
   },
   "c:goal_response_t": {
     "verdict": "divergence",
-    "why": "the goal callback's accept/reject/defer decision. rclcpp_action's `GoalResponse` has the same three cases; rclc's action server returns a bare `bool`. Ours is an enum because ACCEPT_AND_DEFER and ACCEPT_AND_EXECUTE are different arena transitions. NOTE the discriminants do not match rclcpp_action's: ours are 0/1/2, rclcpp_action's are 1/2/3, and the enumerators are `NROS_GOAL_REJECT` vs `REJECT`. The correlator sees only the name, so this pair reports as `same`."
+    "why": "the goal callback's accept/reject/defer decision. rclcpp_action's `GoalResponse` has the same three cases; rclc's action server returns a bare `bool`. Ours is an enum because ACCEPT_AND_DEFER and ACCEPT_AND_EXECUTE are different arena transitions. NOTE the discriminants do not match rclcpp_action's: ours are 0-based (0/1/2), rclcpp_action's are 1-based (1/2/3), and the enumerators are `Reject` vs `REJECT`. The correlator sees only the NAME, so this pair reports as `same`; enumerator comparison is a feature it does not have, which is why the fact lives here. DECIDED (issue 0796) NOT to align, for two reasons. (1) These are not preferences but a C ABI: the value crosses three FFI seams as an integer -- a `#[repr(i8)]` Rust enum returned directly from `extern \"C\"` trampolines, `nros_c_goal_response_t` / `nros_c_cancel_response_t` in component.h, and an `enum class : int32_t` in C++ -- so renumbering is the kind of break that produces NO compile error anywhere, just a half-rebuilt tree that starts deciding accept where it meant reject. (2) It would buy nothing anyway: a ported `switch` still names `rclcpp_action::GoalResponse::REJECT`, so it must be edited regardless, and once edited it uses OUR enumerators and gets the right value under either numbering. Only code that hardcodes the integers is affected, and that code is already wrong. Against that, `Reject` = 0 is load-bearing: the arena's decision slots are zero-initialised static storage with no allocator and no constructor, and the null-callback path yields `Default`, so 0 MUST mean reject. Making 0 invalid would make \"nobody answered\" mean accept."
   },
   "c:goal_status_t": {
     "verdict": "divergence",
@@ -430,7 +430,7 @@
   },
   "cpp:ActionServer::complete_goal": {
     "verdict": "divergence",
-    "why": "OUR LANGUAGES DISAGREE: `nros::ActionServer<A>::complete_goal(goal_id, result)` takes no status and the shim hardcodes one -- `nros_cpp_action_server_complete_goal` passes `GoalStatus::Succeeded` unconditionally (packages/api/nros-cpp/src/action.rs). So the C++ CALLBACK tier cannot abort or cancel a goal at all, while C has `nros_action_abort` / `nros_action_canceled`, the C++ POLLING tier has `PollingActionServer::complete_goal(goal_id, status, result)`, and Rust has `ActionExecutor::complete_goal_raw(.., status, ..)`. Three of our four action server surfaces take the status and the fourth reports SUCCEEDED for an aborted goal. Not a platform constraint -- a missing parameter."
+    "why": "RESOLVED (issue 0796): `nros::ActionServer<A>::complete_goal(goal_id, status, result)` now takes the terminal status, in the same parameter order as `PollingActionServer::complete_goal` and the C API's `nros_action_server_complete_goal_raw`; a two-argument overload forwards `Succeeded` so existing calls keep compiling. It used to take no status and the shim passed `GoalStatus::Succeeded` unconditionally, so the C++ CALLBACK tier could not abort or cancel a goal at all -- it reported an aborted goal to the client as succeeded -- while C had `nros_action_abort` / `nros_action_canceled`, the C++ POLLING tier took a status, and Rust did too. Three of four surfaces took it and the fourth lied; it was never a platform constraint, just a missing parameter."
   },
   "cpp:ActionServer::for_each_active_goal": {
     "verdict": "extension",
@@ -439,6 +439,14 @@
   "cpp:ActionServerOptions": {
     "verdict": "extension",
     "why": "what a device varies per action server (scheduling context) where rclcpp_action would use `rcl_action_server_options_t`. See the service stage's `cpp:ClientOptions`."
+  },
+  "cpp:CancelResponse": {
+    "verdict": "divergence",
+    "why": "the cancel callback's PER-GOAL accept/reject decision, name-for-name rclcpp_action's `CancelResponse`. NOTE the discriminants do not match rclcpp_action's: ours are 0-based (0/1/2), rclcpp_action's are 1-based (1/2/3), and the enumerators are `Reject` vs `REJECT`. The correlator sees only the NAME, so this pair reports as `same`; enumerator comparison is a feature it does not have, which is why the fact lives here. DECIDED (issue 0796) NOT to align, for two reasons. (1) These are not preferences but a C ABI: the value crosses three FFI seams as an integer -- a `#[repr(i8)]` Rust enum returned directly from `extern \"C\"` trampolines, `nros_c_goal_response_t` / `nros_c_cancel_response_t` in component.h, and an `enum class : int32_t` in C++ -- so renumbering is the kind of break that produces NO compile error anywhere, just a half-rebuilt tree that starts deciding accept where it meant reject. (2) It would buy nothing anyway: a ported `switch` still names `rclcpp_action::GoalResponse::REJECT`, so it must be edited regardless, and once edited it uses OUR enumerators and gets the right value under either numbering. Only code that hardcodes the integers is affected, and that code is already wrong. Against that, `Reject` = 0 is load-bearing: the arena's decision slots are zero-initialised static storage with no allocator and no constructor, and the null-callback path yields `Default`, so 0 MUST mean reject. Making 0 invalid would make \"nobody answered\" mean accept. Additionally (issue 0796): this name meant two different things across our own languages until the split. C++ and C used it for the per-goal decision while Rust's `nros_core::CancelResponse` was the `action_msgs/srv/CancelGoal` RPC return code, and `CallbackCtx::set_cancel_response` took the RPC enum to express a per-goal decision -- `CancelResponse::Ok` meaning \"cancel this goal\". Rust now follows C's naming: `CancelResponse` per-goal, `CancelReturnCode` for the RPC. The two overlap on value with OPPOSITE meanings (`Reject` and `Ok` are both 0), so they are deliberately distinct types in all three languages and a cast between them is never a no-op. See `c:cancel_return_code_t` and `cpp:CancelReturnCode`."
+  },
+  "cpp:CancelReturnCode": {
+    "verdict": "extension",
+    "why": "the `action_msgs/srv/CancelGoal` RPC-level return code (Ok / Rejected / UnknownGoal / GoalTerminated) as a C++ enum. rclcpp_action has no such type: the return code reaches an rclcpp user as an `int8_t` FIELD on the generated `CancelGoal::Response` message, with the four values as generated constants, because rclcpp has runtime typesupport and hands the user the message. We have no runtime typesupport on this seam -- `PollingActionServer::send_cancel_reply` and `ActionClient::try_recv_cancel_response` move the raw byte -- so the enum is how the four legal values get named at all. Added by issue 0796 alongside the client-side cancel that produces one; before it, the byte travelled as a bare `int8_t` whose doc comment pointed at `nros::CancelResponse`, which is the PER-GOAL decision and has only two values. Mirrors C's `nros_cancel_return_code_t` and Rust's `nros_core::CancelReturnCode`."
   },
   "cpp:Client::Client<ActionT>": {
     "verdict": "divergence",
@@ -449,8 +457,8 @@
     "why": "the non-blocking half of `cpp:Client::wait_for_action_server`, and our C++ has no readiness predicate on either action client. C has `nros_action_client_action_server_is_ready` and Rust has `ActionClient::action_server_is_ready`, so this is a C++ gap rather than a decision. Phase 379 W3."
   },
   "cpp:Client::async_cancel_goal": {
-    "verdict": "gap",
-    "why": "cancelling a goal from the callback-tier C++ client. `nros::ActionClient<A>` has no cancel method; C has `nros_action_cancel_goal`, Rust has `ActionClient::cancel_goal`, and C++ has only the L1 `PollingActionClient::send_cancel_request`. The async SHAPE is a divergence (RFC-0021, no futures); the absence in C++ is a gap. See `c:action_cancel_goal`. Phase 379 W3."
+    "verdict": "divergence",
+    "why": "cancelling a goal from the callback-tier C++ client. Present since issue 0796 as `nros::ActionClient<A>::cancel_goal(goal_id)` + `try_recv_cancel_response(CancelReturnCode&)`; it was a GAP before that, with C (`nros_action_cancel_goal`) and Rust (`ActionClient::cancel_goal`) both having one and C++ having only the L1 `PollingActionClient::send_cancel_request`. What remains is the SHAPE: rclcpp_action returns a `std::shared_future`, and RFC-0021 has no runtime to await one, so ours is fire-the-request then read the reply when the executor has spun. See `c:action_cancel_goal`. Phase 379 W3."
   },
   "cpp:Client::async_cancel_goals_before": {
     "verdict": "declined",
@@ -467,6 +475,10 @@
   "cpp:GoalInfo": {
     "verdict": "declined",
     "why": "rclcpp_action's alias for `action_msgs::msg::GoalInfo` (goal id + acceptance stamp). See `c:action_goal_info_t`: the stamp is the arena's, not the caller's. A C++ user loses the acceptance timestamp."
+  },
+  "cpp:GoalResponse": {
+    "verdict": "divergence",
+    "why": "the goal callback's accept/reject/defer decision, name-for-name rclcpp_action's `GoalResponse` with the same three cases. NOTE the discriminants do not match rclcpp_action's: ours are 0-based (0/1/2), rclcpp_action's are 1-based (1/2/3), and the enumerators are `Reject` vs `REJECT`. The correlator sees only the NAME, so this pair reports as `same`; enumerator comparison is a feature it does not have, which is why the fact lives here. DECIDED (issue 0796) NOT to align, for two reasons. (1) These are not preferences but a C ABI: the value crosses three FFI seams as an integer -- a `#[repr(i8)]` Rust enum returned directly from `extern \"C\"` trampolines, `nros_c_goal_response_t` / `nros_c_cancel_response_t` in component.h, and an `enum class : int32_t` in C++ -- so renumbering is the kind of break that produces NO compile error anywhere, just a half-rebuilt tree that starts deciding accept where it meant reject. (2) It would buy nothing anyway: a ported `switch` still names `rclcpp_action::GoalResponse::REJECT`, so it must be edited regardless, and once edited it uses OUR enumerators and gets the right value under either numbering. Only code that hardcodes the integers is affected, and that code is already wrong. Against that, `Reject` = 0 is load-bearing: the arena's decision slots are zero-initialised static storage with no allocator and no constructor, and the null-callback path yields `Default`, so 0 MUST mean reject. Making 0 invalid would make \"nobody answered\" mean accept. See `c:goal_response_t` for the C spelling and `rust:GoalResponse` for the Rust one."
   },
   "cpp:GoalUUID": {
     "verdict": "gap",
@@ -574,7 +586,7 @@
   },
   "rust:ActionClient::cancel_goal": {
     "verdict": "extension",
-    "why": "the client-side cancel, present in C and Rust and absent from the C++ callback tier. See `c:action_cancel_goal`."
+    "why": "the client-side cancel, present in all three languages since issue 0796 (C++ was the one that lacked it). Returns a `Promise<CancelReturnCode>` -- the `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal `CancelResponse` a server's cancel callback returns. See `c:action_cancel_goal`."
   },
   "rust:ActionClient::cancel_goals_prior_to": {
     "verdict": "divergence",
@@ -698,7 +710,7 @@
   },
   "rust:ActionServer::complete_goal": {
     "verdict": "extension",
-    "why": "takes `(goal_id, status, result)` -- as C's `nros_action_succeed`/`_abort`/`_canceled` do and as C++'s POLLING tier does. The one surface that does not is `nros::ActionServer<A>::complete_goal`; see `cpp:ActionServer::complete_goal`."
+    "why": "takes `(goal_id, status, result)` -- as C's `nros_action_succeed`/`_abort`/`_canceled` do, as C++'s POLLING tier does, and as `nros::ActionServer<A>::complete_goal` does since issue 0796; see `cpp:ActionServer::complete_goal`. All four surfaces now agree on the parameter and its order."
   },
   "rust:ActionServer::get_goal": {
     "verdict": "divergence",
@@ -774,11 +786,11 @@
   },
   "rust:CancelResponse": {
     "verdict": "extension",
-    "why": "the `action_msgs/srv/CancelGoal` return codes (Ok / Rejected / UnknownGoal / GoalTerminated), which is the wire contract, not an invention. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead. Its sibling `GoalResponse` -- declared 40 lines below it in the same file -- is in the action stage; only this one landed here."
+    "why": "the cancel callback's PER-GOAL accept/reject decision (`Reject` / `Accept`), the twin of `GoalResponse`. Issue 0796 gave this name back to the per-goal concept: it used to be the `action_msgs/srv/CancelGoal` RPC return code, which is now `CancelReturnCode`. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead, whose `CancelResponse` is the same per-goal concept under 1-based discriminants (see `cpp:CancelResponse` for why ours stay 0-based). NOTE `nros::CancelReturnCode` is not re-exported from the `nros` facade yet -- `nros_node::CancelReturnCode` is the reachable path -- so `ActionClient::cancel_goal`'s promise type cannot be NAMED from `nros::` alone; a one-line re-export is owed."
   },
   "rust:CancelResponse::from_i8": {
     "verdict": "extension",
-    "why": "decodes the wire value, `None` for an unknown code. See `rust:CancelResponse`."
+    "why": "decodes the per-goal decision, `None` for anything but 0/1. See `rust:CancelResponse`; the RPC return code has its own `CancelReturnCode::from_i8` for the wire value."
   },
   "rust:CancelResponse::is_accepted": {
     "verdict": "divergence",
@@ -803,6 +815,14 @@
   "rust:CancelResponseCode::is_rejected": {
     "verdict": "divergence",
     "why": "rclrs 0.7.0 models a goal's life as a TYPESTATE chain -- `RequestedGoal` -> `AcceptedGoal` -> `ExecutingGoal` -> `TerminatedGoal`, each a distinct type whose methods are only the transitions legal from that state, with the goal moved from one to the next. Ours keeps goals in a STATIC ARENA addressed by UUID (`nros_goal_uuid_t` / `GoalId`), and the server asks the arena about a goal rather than holding it. The constraint is that a typestate chain hands the application an owning handle per goal, and with no allocator and a fixed-capacity arena the storage cannot follow the handle -- MAX_GOALS is declared at build time and the arena outlives every borrow of it. RFC-0069. Note ROS 2 does not agree with ITSELF here: rclcpp_action uses `async_send_goal` and shared `ClientGoalHandle`, rclrs 0.7.0 uses `request_goal` and the typestate chain, so 'match ROS 2' has no single answer for actions -- W5 has to pick a side and say which."
+  },
+  "rust:CancelReturnCode": {
+    "verdict": "extension",
+    "why": "the `action_msgs/srv/CancelGoal` RPC status (Ok / Rejected / UnknownGoal / GoalTerminated), split out from `CancelResponse` by issue 0796 \u2014 those were two concepts under one name, and `CallbackCtx::set_cancel_response` took the RPC enum to express a per-goal decision. C already named them apart (`nros_cancel_response_t` vs `nros_cancel_return_code_t`); Rust and C++ now follow. rclcpp_action has no separate type because its `CancelResponse` IS the per-goal decision and the RPC status is a field of the generated `CancelGoal::Response` message, which we do not surface as a message. Exported from `nros` so `ActionClient::cancel_goal`'s `Promise<CancelReturnCode>` can be named."
+  },
+  "rust:CancelReturnCode::from_i8": {
+    "verdict": "extension",
+    "why": "decodes the wire byte into `CancelReturnCode`; see `rust:CancelReturnCode`. The split exposed a latent inversion here \u2014 `try_handle_cancel` was writing the per-goal answer straight into the RPC reply, which was correct only while the two shared a type."
   },
   "rust:CompletedGoal": {
     "verdict": "extension",

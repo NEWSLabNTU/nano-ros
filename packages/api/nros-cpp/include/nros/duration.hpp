@@ -27,34 +27,14 @@
 // `INT32_MAX` below is spelled unqualified for that reason.
 #include <stdint.h>
 
+// `nros_duration_from_nanoseconds` — the C entry point `to_msg` decomposes
+// through. `nros_generated.h` carries its own `extern "C"` guard.
+#include "nros/clock.h"
+
 namespace nros {
 
 /// Nanoseconds in one second. Named once here; `time.hpp` reuses it.
 constexpr int64_t NANOSECONDS_PER_SECOND = 1000000000LL;
-
-namespace detail {
-
-/// Split a signed nanosecond count into the `(sec, nanosec)` pair a
-/// `builtin_interfaces` message carries.
-///
-/// `nanosec` is always in `[0, 1e9)`, so the seconds field FLOORS rather than
-/// truncating toward zero. That matters only for negative spans, which is why
-/// the C `nros_time_from_nanoseconds` (which truncates, and so renders
-/// `-0.5 s` as `sec = 0, nanosec = 500000000` — i.e. `+0.5 s`) is not reused
-/// for a duration. A timestamp is non-negative and keeps using the C entry
-/// point; see `Time::to_msg`.
-inline void split_nanoseconds(int64_t ns, int32_t& sec, uint32_t& nanosec) {
-    int64_t s = ns / NANOSECONDS_PER_SECOND;
-    int64_t rem = ns % NANOSECONDS_PER_SECOND;
-    if (rem < 0) {
-        s -= 1;
-        rem += NANOSECONDS_PER_SECOND;
-    }
-    sec = static_cast<int32_t>(s);
-    nanosec = static_cast<uint32_t>(rem);
-}
-
-} // namespace detail
 
 /// A signed span of time, held as nanoseconds.
 ///
@@ -150,11 +130,9 @@ class Duration {
     /// nros::Duration::from_seconds(0.1).to_msg(msg.lifespan);
     /// ```
     template <typename DurationMsgT> void to_msg(DurationMsgT& out) const {
-        int32_t sec = 0;
-        uint32_t nanosec = 0;
-        detail::split_nanoseconds(ns_, sec, nanosec);
-        out.sec = sec;
-        out.nanosec = nanosec;
+        nros_duration_t d = nros_duration_from_nanoseconds(ns_);
+        out.sec = d.sec;
+        out.nanosec = d.nanosec;
     }
 
   private:

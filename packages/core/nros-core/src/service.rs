@@ -3,7 +3,7 @@
 //! Services provide synchronous request/response communication.
 //! A service client sends a request and waits for a response from a service server.
 
-use crate::{NanoRosError, types::RosService};
+use crate::types::RosService;
 
 /// Service server handle
 ///
@@ -85,10 +85,11 @@ pub struct ServiceRequest<'a, S: RosService> {
     pub raw_data: &'a [u8],
 }
 
-/// Result type for service calls.
-///
-/// Wraps `Result<T, NanoRosError>` for convenience in service handler signatures.
-pub type ServiceResult<T> = Result<T, NanoRosError>;
+// issue 0783 — `ServiceResult<T> = Result<T, NanoRosError>` used to live here.
+// It was the only consumer of `NanoRosError` in the tree and had no consumers of
+// its own; both went with the dead error module (see `lib.rs`). A service
+// handler's error type is `nros::NodeError`, which is where the alias would have
+// to point if one were wanted again.
 
 /// Synchronous service handler function pointer.
 ///

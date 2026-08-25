@@ -35,7 +35,18 @@ extern crate alloc;
 
 pub mod action;
 pub mod clock;
-pub mod error;
+// issue 0783 — there is no `error` module here any more, and its absence is the
+// decision. It held `NanoRosError { code: RclReturnCode, context, nested }`, a
+// phase-16 rclrs-shaped error, plus `RclReturnCode` (an `rcl_ret_t` numeric
+// mirror), `ErrorContext`, `NestedError`, `NanoRosErrorFilter` and
+// `TakeFailedAsNone`. Phase 84.D1 settled `NodeError` (nros-node) as the single
+// user-facing error and deferred "folding NanoRosError into NodeError"; the fold
+// never happened and nothing ever called the type. It was reachable from no
+// public API: the `nros` facade never re-exported it, and this crate's own
+// `RosAction::register_protocol_types` returns `Result<(), ()>` with a comment
+// saying it cannot name an error type — with `NanoRosError` sitting in the same
+// crate. RFC-0036's Errors row described it as the Rust user error for two
+// years, which is the cost this deletion removes.
 pub mod lifecycle;
 pub mod logger;
 pub mod message_info;
@@ -44,17 +55,14 @@ pub mod time;
 pub mod types;
 
 pub use action::{
-    ActionClient, ActionServer, CancelResponse, GoalId, GoalInfo, GoalResponse, GoalStatus,
-    GoalStatusStamped, RosAction,
+    ActionClient, ActionServer, CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse,
+    GoalStatus, GoalStatusStamped, RosAction,
 };
 pub use clock::{Clock, ClockType};
-pub use error::{
-    ErrorContext, NanoRosError, NanoRosErrorFilter, NestedError, RclReturnCode, TakeFailedAsNone,
-};
 pub use lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo};
-pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
+pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceServer};
 pub use time::{Duration, Time};
 pub use types::{BorrowedMessage, RosMessage, RosService};
 

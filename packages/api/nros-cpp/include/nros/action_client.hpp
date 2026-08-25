@@ -18,6 +18,11 @@
 #include "nros/result.hpp"
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
+// Issue 0796 — `CancelReturnCode` (the `action_msgs/srv/CancelGoal` RPC status
+// `cancel_goal` resolves to) is declared beside its per-goal sibling
+// `CancelResponse` in action_server.hpp, which is also where
+// polling_action_server.hpp reaches for them.
+#include "nros/action_server.hpp"
 
 // Phase 118.D: FFI declarations sourced from cbindgen-generated
 // `nros_cpp_ffi.h`. cbindgen renders Rust `*const [u8; 16]` /
@@ -313,6 +318,40 @@ template <typename A> class ActionClient {
         }
         return Result(nros_cpp_action_client_send_goal_async(
             storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id)));
+    }
+
+    /// Cancel a goal (non-blocking) — issue 0796.
+    ///
+    /// Sends the `action_msgs/srv/CancelGoal` request and returns; read the
+    /// RPC outcome with `try_recv_cancel_response()` once the executor has
+    /// spun. Mirrors C's `nros_action_cancel_goal` and Rust's
+    /// `ActionClient::cancel_goal` — rclcpp_action's `async_cancel_goal`
+    /// returns a future, which RFC-0021 has no runtime to await.
+    ///
+    /// Until this existed, a C++ application written against the CALLBACK
+    /// tier could start a goal and had no way to stop it: cancel was only on
+    /// the L1 `PollingActionClient::send_cancel_request`.
+    ///
+    /// @param goal_id  16-byte goal UUID from send_goal() / send_goal_async().
+    /// @return Result indicating the request was sent.
+    Result cancel_goal(const uint8_t goal_id[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_cancel_goal(
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
+    }
+
+    /// Try to read the reply to a `cancel_goal()` (non-blocking).
+    ///
+    /// @param out  Receives the RPC return code on success.
+    /// @return Result::success() when a reply was consumed;
+    ///         ErrorCode::TryAgain when none has arrived yet.
+    Result try_recv_cancel_response(CancelReturnCode& out) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        int8_t code = 0;
+        nros_cpp_ret_t ret = nros_cpp_action_client_try_recv_cancel_response(storage_, &code);
+        if (ret != 0) return Result(ret);
+        out = static_cast<CancelReturnCode>(code);
+        return Result::success();
     }
 
     /// Request the result for a goal asynchronously (non-blocking).

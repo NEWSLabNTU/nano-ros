@@ -1541,7 +1541,9 @@ fn test_add_action_server_registers() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
+            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                nros_core::CancelResponse::Accept
+            },
         )
         .unwrap();
 
@@ -1559,7 +1561,9 @@ fn test_action_server_spin_once_no_requests() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
+            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                nros_core::CancelResponse::Accept
+            },
         )
         .unwrap();
 
@@ -1578,7 +1582,9 @@ fn test_action_server_registers_and_spins() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
+            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                nros_core::CancelResponse::Accept
+            },
         )
         .unwrap();
 
@@ -1614,7 +1620,9 @@ fn test_drop_with_mixed_entries() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/act",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
+            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                nros_core::CancelResponse::Accept
+            },
         )
         .unwrap();
 
@@ -4896,5 +4904,168 @@ fn registering_past_capacity_reports_the_knob_and_frees_on_removal() {
         counter.load(core::sync::atomic::Ordering::SeqCst),
         crate::config::MAX_SHUTDOWN_CBS,
         "every occupied slot runs exactly once"
+    );
+}
+
+// ============================================================================
+// Issue 0796 — the raw action server's post-accept hook
+// ============================================================================
+
+/// How many times the accepted-goal hook fired, and for which goal.
+///
+/// Statics rather than a captured counter because the hook is an
+/// `extern "C" fn` — the same constraint that makes the C and C++ tiers pass a
+/// context pointer. The test is single-threaded and resets both up front.
+static ACCEPTED_CALLS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+static ACCEPTED_UUID_FIRST_BYTE: core::sync::atomic::AtomicU8 =
+    core::sync::atomic::AtomicU8::new(0);
+
+unsafe extern "C" fn defer_every_goal(
+    _goal_id: *const nros_core::GoalId,
+    _data: *const u8,
+    _len: usize,
+    _ctx: *mut core::ffi::c_void,
+) -> nros_core::GoalResponse {
+    nros_core::GoalResponse::AcceptAndDefer
+}
+
+unsafe extern "C" fn reject_every_goal(
+    _goal_id: *const nros_core::GoalId,
+    _data: *const u8,
+    _len: usize,
+    _ctx: *mut core::ffi::c_void,
+) -> nros_core::GoalResponse {
+    nros_core::GoalResponse::Reject
+}
+
+unsafe extern "C" fn refuse_every_cancel(
+    _goal_id: *const nros_core::GoalId,
+    _status: nros_core::GoalStatus,
+    _ctx: *mut core::ffi::c_void,
+) -> nros_core::CancelResponse {
+    nros_core::CancelResponse::Reject
+}
+
+unsafe extern "C" fn count_accepted(
+    goal_id: *const nros_core::GoalId,
+    _ctx: *mut core::ffi::c_void,
+) {
+    use core::sync::atomic::Ordering::SeqCst;
+    ACCEPTED_CALLS.fetch_add(1, SeqCst);
+    ACCEPTED_UUID_FIRST_BYTE.store(unsafe { (*goal_id).uuid[0] }, SeqCst);
+}
+
+/// A `send_goal` wire frame: `[CDR-LE header][fixed uint8[16] goal_id]`.
+/// The goal FIELDS would follow; this action's callbacks ignore them.
+#[cfg(test)]
+fn mk_send_goal_req(goal_id: &nros_core::GoalId) -> ([u8; 256], usize) {
+    let mut b = [0u8; 256];
+    b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+    b[4..20].copy_from_slice(&goal_id.uuid);
+    (b, 20)
+}
+
+/// Issue 0796 — a goal accepted with `AcceptAndDefer` must reach the
+/// accepted-goal hook exactly once.
+///
+/// This is the mechanism the C++ callback tier was missing: it registered
+/// `accepted_callback: None`, so a C++ user who deferred a goal was never told
+/// it had been accepted — the moment they are supposed to start executing it.
+/// The hook is registered unconditionally now and dispatched here, in
+/// `action_server_raw_try_process`.
+///
+/// Three things are pinned: it fires (once, for the right goal), it fires
+/// AFTER the accept reply is on the wire (a long-running body must not delay
+/// acceptance), and a REJECTED goal does not reach it at all.
+#[test]
+fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
+    use super::{
+        action_core::ActionServerCore,
+        arena::{ActionServerRawArenaEntry, action_server_raw_try_process},
+    };
+    use crate::mock::MockPublisher;
+    use core::sync::atomic::Ordering::SeqCst;
+    use nros_core::GoalId;
+
+    const GB: usize = 128;
+    const RB: usize = 128;
+    const FB: usize = 128;
+    const MG: usize = 2;
+
+    ACCEPTED_CALLS.store(0, SeqCst);
+    ACCEPTED_UUID_FIRST_BYTE.store(0, SeqCst);
+
+    let core: ActionServerCore<GB, RB, FB, MG> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+    let mut entry: ActionServerRawArenaEntry<GB, RB, FB, MG> = ActionServerRawArenaEntry {
+        core,
+        goal_callback: defer_every_goal,
+        cancel_callback: refuse_every_cancel,
+        accepted_callback: Some(count_accepted),
+        context: core::ptr::null_mut(),
+    };
+    let ptr = (&mut entry) as *mut _ as *mut u8;
+
+    // No request pending → no work, and certainly no accept.
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    assert!(!did_work, "an idle server must report no work");
+    assert_eq!(ACCEPTED_CALLS.load(SeqCst), 0);
+
+    let g = GoalId { uuid: [0xA5u8; 16] };
+    let (req, len) = mk_send_goal_req(&g);
+    entry.core.send_goal_server.load(req, len);
+
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    assert!(did_work);
+    assert_eq!(
+        ACCEPTED_CALLS.load(SeqCst),
+        1,
+        "a deferred goal must reach the accepted callback exactly once"
+    );
+    assert_eq!(
+        ACCEPTED_UUID_FIRST_BYTE.load(SeqCst),
+        0xA5,
+        "the hook must be told WHICH goal was accepted"
+    );
+
+    // The accept reply is on the wire, and the goal is live in the arena —
+    // i.e. the hook ran after acceptance, not instead of it.
+    {
+        let sent = entry.core.send_goal_server.sent.borrow();
+        assert_eq!(sent.len(), 1, "exactly one accept reply");
+        assert_eq!(sent[0].1[4], 1, "the reply must say ACCEPTED");
+    }
+    assert_eq!(entry.core.active_goals.len(), 1);
+
+    // Spinning again with nothing pending must not re-fire the hook.
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    assert!(!did_work);
+    assert_eq!(
+        ACCEPTED_CALLS.load(SeqCst),
+        1,
+        "the hook is per-acceptance, not per-spin"
+    );
+
+    // A REJECTED goal must not reach it.
+    entry.goal_callback = reject_every_goal;
+    let g2 = GoalId { uuid: [0x5Au8; 16] };
+    let (req2, len2) = mk_send_goal_req(&g2);
+    entry.core.send_goal_server.load(req2, len2);
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    assert!(did_work);
+    assert_eq!(
+        ACCEPTED_CALLS.load(SeqCst),
+        1,
+        "a rejected goal must not reach the accepted callback"
+    );
+    assert_eq!(
+        entry.core.active_goals.len(),
+        1,
+        "still only the first goal"
     );
 }

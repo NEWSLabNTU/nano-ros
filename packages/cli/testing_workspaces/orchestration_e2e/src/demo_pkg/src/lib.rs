@@ -63,7 +63,7 @@ pub mod talker {
                 // Action goal/cancel decision body: the ctx sink kind selects which
                 // setter applies (one succeeds, the other is a no-op here).
                 let _ = ctx.set_goal_response(GoalResponse::AcceptAndExecute);
-                let _ = ctx.set_cancel_response(CancelResponse::Ok);
+                let _ = ctx.set_cancel_response(CancelResponse::Accept);
             }
         }
     }

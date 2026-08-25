@@ -18,8 +18,9 @@ nano-ros deliberately mirrors the ROS 2 client libraries — Rust ≈ rclrs 0.7.
 C ≈ rclc, C++ ≈ rclcpp — so a ROS 2 developer can read and write nano-ros code.
 But `no_std` / embedded / no-allocator / no-exceptions constraints force a set of
 **deliberate divergences**. Today they are scattered across RFC-0018/0021/0022/
-0002 and prose notes, with no single reference — and stale notes still label the
-Rust error `RclrsError` when it is actually `NanoRosError`. This RFC is the
+0002 and prose notes, with no single reference — and stale notes have twice
+mislabelled the Rust error (`RclrsError`, then `NanoRosError`; it is
+`NodeError`). This RFC is the
 **one authoritative catalog** of what differs, why, and what a porting user must
 adjust. It is a reference, not a new decision: each row points to the RFC that
 owns the decision.
@@ -48,12 +49,24 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 | ROS 2 | nano-ros | why | owner |
 |---|---|---|---|
 | rclcpp throws `std::exception` subclasses | C++ returns `nros::Result` + `NROS_TRY(expr)` early-return macro | `-fno-exceptions` on Zephyr/FreeRTOS/bare-metal | RFC-0018 |
-| rclrs `RclrsError` | Rust `NanoRosError { code: RclReturnCode, context, nested }`; `RclReturnCode` mirrors `rcl_ret_t` numerics as a Rust enum | result-only, `no_std`, C-ABI-compatible codes | `nros-core/src/error.rs` |
-| `rcl_ret_t` int | C `nros_ret_t` enum (`NROS_RET_OK=0`, …); RMW layer `rmw_ret_t` (`0 … -18`) | explicit numeric ABI | RFC-0035 (rmw) |
+| rclrs `RclrsError` — source-chained, carries an owned `RclErrorMsg` copied out of rcl's thread-local error state, implements `std::error::Error` | Rust **`nros::NodeError`**, a flat enum. Its most common variant is `NodeError::Transport(TransportError)`, so handling one means naming both; the facade exports the two together and the prelude carries them. No numeric code and no message — those two types are the whole vocabulary | `no_std`: no per-thread formatted-message buffer on a target whose task stack is measured in kilobytes, and no allocation for a source chain. `NodeError` does implement `core::error::Error` (phase-359), so `dyn Error` works on embedded | `nros-node/src/executor/types.rs` (`NodeError`), `nros-rmw` (`TransportError`) |
+| `rcl_ret_t` int | C `nros_ret_t` enum (`NROS_RET_OK=0`, `-1 … -16`); RMW layer `rmw_ret_t` (`0 … -18`) | explicit numeric ABI. Note it is **our own** numeric space, not `rcl_ret_t`'s values — and it exists only at the C/C++ ABI. The Rust API matches an enum and has no numeric code at all | RFC-0035 (rmw) |
 
-> **Naming note:** older prose still calls the Rust error `RclrsError`. The
-> actual type is `NanoRosError` (+ `RclReturnCode`). Treat this RFC as the
-> authority; correct any surviving stale reference.
+> **Naming note — third correction, and the last one this row should need.**
+> This RFC first called the Rust error `RclrsError`; a 2026-06 note corrected
+> that to `NanoRosError`. **The correction was also wrong**, in the way that
+> mattered more: `NanoRosError` was a phase-16 rclrs-shaped error
+> (`{ code: RclReturnCode, context, nested }`) that the `nros` facade never
+> exported and no API ever returned. Phase 84.D1 had already settled `NodeError`
+> as "the single user-facing error in every `nros-node` return signature" and
+> deferred folding `NanoRosError` into it; the fold never happened, and the RFC
+> kept documenting the type that lost. Issue 0783 deleted `NanoRosError`,
+> `RclReturnCode`, `ErrorContext`, `NestedError`, `NanoRosErrorFilter`,
+> `TakeFailedAsNone` and `ServiceResult` from `nros-core` rather than export
+> them — a type a user can name but never receive is the same defect one step
+> further along. The row above now names types `scripts/api-parity.py` extracts
+> from the facade, which is why the next drift will be caught by a run rather
+> than by a reader.
 
 ### Domain ID
 
@@ -100,9 +113,12 @@ crates — correlates them by normalised name, and reports every item that does
 not correspond. `just api-parity` runs it; `docs/reference/api-surface/*.json`
 holds the recorded ROS 2 side so it runs on a host with no ROS install.
 
-The reason is this RFC's own history. It shipped calling the Rust error
-`RclrsError` when the type had been `NanoRosError` for months, and had to add a
-note correcting itself. Issue 0338 is the same failure one level down:
+The reason is this RFC's own history, and it is worse than the first telling.
+It shipped calling the Rust error `RclrsError`, and added a note correcting
+itself to `NanoRosError` — a type that was in the crate and in no API. Two
+labels, two years, and the name a user actually meets (`NodeError`) appeared in
+neither; issue 0783 is the third correction, and the first one a run could have
+made. Issue 0338 is the same failure one level down:
 `Executor::spin` meant the OPPOSITE of `rclcpp::Executor::spin` here, and a
 person reading found it, once. A catalog of API divergences that only a reader
 can check will drift, because the API moves and the prose does not.
@@ -139,7 +155,8 @@ meanwhile, where deleting one re-opens every row it covers.
 ## Alternatives considered
 
 - **Keep divergences in per-RFC notes only.** Rejected — no single porting
-  reference; stale mislabels (the `RclrsError` name) go uncaught.
+  reference; stale mislabels (the `RclrsError` name, then `NanoRosError`) go
+  uncaught, twice in the same row.
 - **Aim for byte-for-byte ROS 2 API parity.** Rejected — impossible under
   `no_std`/no-exceptions; the divergences are the point of the project.
 
@@ -170,6 +187,13 @@ meanwhile, where deleting one re-opens every row it covers.
 
 ## Changelog
 
+- 2026-08-25 — the Errors row named its type for the third time and, for the
+  first time, one the checker can see: **`nros::NodeError` + `nros::TransportError`**.
+  `NanoRosError` and `RclReturnCode` were not renamed, they were DELETED
+  (issue 0783) — nothing produced them and the facade never exported them, so
+  the row had documented a dead type since phase 84.D1 settled `NodeError`.
+  Also recorded that our numeric ABI (`NROS_RET_*`) is its own space rather
+  than `rcl_ret_t`'s, and that the Rust API has no numeric code at all.
 - 2026-08 — the catalog gained a checker (`scripts/api-parity.py`, phase-379)
   and a ledger (`docs/reference/api-parity-ledger.json`). Recorded the first
   run's finding that the C++ lane has no argument divergences at all, the C lane

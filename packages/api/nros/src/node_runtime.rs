@@ -1288,7 +1288,7 @@ unsafe extern "C" fn action_cancel_trampoline(
     ctx: *mut core::ffi::c_void,
 ) -> crate::CancelResponse {
     let actx = unsafe { &*(ctx as *const ActionServerCtx) };
-    let mut resp = crate::CancelResponse::Rejected;
+    let mut resp = crate::CancelResponse::Reject;
     let resolver = CellResolver {
         cell: actx.cell.as_ref(),
     };
@@ -1761,6 +1761,15 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
         NodeError::RequestInFlight => "RequestInFlight",
         NodeError::NoSchedContextSlot => "NoSchedContextSlot",
         NodeError::InvalidSchedContextBinding => "InvalidSchedContextBinding",
+        // issue 0790 added this variant and did not add the arm; the exhaustive
+        // match above did exactly what its doc comment says it is for, and the
+        // lanes that were run could not see it (`--all-targets` enables `test`,
+        // which pulls in a different cfg path, and `cargo doc` does no
+        // exhaustiveness checking, so the parity lane stayed green over it).
+        NodeError::ShutdownCallbacksFull => {
+            "ShutdownCallbacksFull (the executor's pre/on-shutdown callback table is \
+             full — raise NROS_EXECUTOR_MAX_SHUTDOWN_CBS)"
+        }
     }
 }
 

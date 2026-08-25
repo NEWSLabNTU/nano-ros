@@ -963,7 +963,12 @@ pub type RawAcceptedCallback =
 /// # Safety
 /// - `goal_id` is valid for the duration of the call
 ///
-/// Returns a `CancelResponse` value (0=Ok, 1=Rejected, 2=UnknownGoal, 3=GoalTerminated).
+/// Returns the PER-GOAL decision `nros_core::CancelResponse` (0=Reject,
+/// 1=Accept) — the same two values C's `nros_cancel_response_t` and C++'s
+/// `nros::CancelResponse` use. Issue 0796: this used to return the
+/// `action_msgs/srv/CancelGoal` RPC return code (now `CancelReturnCode`), so a
+/// callback answering one goal spoke in whole-request status codes and the
+/// server wrote its answer straight into the reply's `return_code` field.
 pub type RawCancelCallback = unsafe extern "C" fn(
     goal_id: *const nros_core::GoalId,
     status: nros_core::GoalStatus,

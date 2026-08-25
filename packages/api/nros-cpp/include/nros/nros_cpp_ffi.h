@@ -2047,6 +2047,40 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8_t (*goal_id)[16]);
 
 /**
+ * Cancel a goal (non-blocking) — issue 0796.
+ *
+ * Sends the `action_msgs/srv/CancelGoal` request for `goal_id` and returns.
+ * The RPC's return code arrives later; drain it with
+ * [`nros_cpp_action_client_try_recv_cancel_response`].
+ *
+ * The callback tier had no cancel at all: C has `nros_action_cancel_goal`,
+ * Rust has `ActionClient::cancel_goal`, and C++ had only the L1 polling
+ * tier's `PollingActionClient::send_cancel_request` — so a C++ application
+ * written against the callback tier could start a goal it could not stop.
+ * This is the same shape as C's: fire the request, read the outcome later.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_cancel_goal(void *handle, const uint8_t (*goal_id)[16]);
+
+/**
+ * Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
+ *
+ * Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
+ * 2 = UnknownGoal, 3 = GoalTerminated — `nros::CancelReturnCode`, not the
+ * per-goal `nros::CancelResponse`; issue 0796) to `out_return_code`.
+ *
+ * Returns `NROS_CPP_RET_OK` when a reply was consumed,
+ * `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_try_recv_cancel_response(void *handle,
+                                                               int8_t *out_return_code);
+
+/**
  * Poll action client for pending replies (non-blocking).
  *
  * Checks for goal acceptance reply, feedback, and result reply.
@@ -2198,8 +2232,12 @@ int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
 
 /**
  * Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
- * request. `return_code` matches `nros_core::CancelResponse`
- * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated).
+ * request. `return_code` matches `nros_core::CancelReturnCode`
+ * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
+ * `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
+ * `nros::CancelResponse` accept/reject a cancel callback returns (issue
+ * 0796; the two used to share a name and their discriminants overlap with
+ * opposite meanings).
  * `accepted` points to `accepted_count` 16-byte goal-id arrays.
  */
 nros_cpp_ret_t nros_cpp_action_server_send_cancel_reply_raw(void *storage,

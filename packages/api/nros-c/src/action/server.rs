@@ -295,15 +295,19 @@ pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
 
     let Some(cb) = internal.c_cancel_callback else {
         // No cancel callback — accept by default.
-        return nros_node::CancelResponse::Ok;
+        return nros_node::CancelResponse::Accept;
     };
 
     let goal_handle = handle_from_goal_id(goal_id);
     let c_response = cb(internal.server_ptr, &goal_handle, internal.c_context);
-    // C: REJECT=0, ACCEPT=1 ; Rust: Ok=0 (accepted), Rejected=1
+    // issue 0796 — one-to-one now: C's REJECT=0/ACCEPT=1 and Rust's
+    // `CancelResponse::{Reject,Accept}` are the same per-goal decision with the
+    // same discriminants. This used to translate into the RPC-level return
+    // code (`Ok`/`Rejected`), which is why it needed a comment explaining that
+    // "Ok" meant "accepted".
     match c_response {
-        nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_node::CancelResponse::Ok,
-        nros_cancel_response_t::NROS_CANCEL_REJECT => nros_node::CancelResponse::Rejected,
+        nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_node::CancelResponse::Accept,
+        nros_cancel_response_t::NROS_CANCEL_REJECT => nros_node::CancelResponse::Reject,
     }
 }
 
@@ -1263,8 +1267,10 @@ pub unsafe extern "C" fn nros_action_server_try_recv_cancel_request_raw(
 /// Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
 /// the per-goal `nros_cancel_response_t` (ACCEPT/REJECT) used by the
 /// L2 callback path. These four discriminants mirror
-/// `nros_core::CancelResponse` and the `action_msgs/srv/CancelGoal`
-/// wire-CDR `return_code` field.
+/// `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
+/// wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
+/// `CancelResponse` until it was split; this pair of C names is what the
+/// Rust names now follow.)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_cancel_return_code_t {
@@ -1299,13 +1305,15 @@ pub unsafe extern "C" fn nros_action_server_send_cancel_reply_raw(
             None => return NROS_RET_INVALID_ARGUMENT,
         };
         let cancel_resp = match return_code {
-            nros_cancel_return_code_t::NROS_CANCEL_RC_OK => nros::CancelResponse::Ok,
-            nros_cancel_return_code_t::NROS_CANCEL_RC_REJECTED => nros::CancelResponse::Rejected,
+            nros_cancel_return_code_t::NROS_CANCEL_RC_OK => nros_node::CancelReturnCode::Ok,
+            nros_cancel_return_code_t::NROS_CANCEL_RC_REJECTED => {
+                nros_node::CancelReturnCode::Rejected
+            }
             nros_cancel_return_code_t::NROS_CANCEL_RC_UNKNOWN_GOAL => {
-                nros::CancelResponse::UnknownGoal
+                nros_node::CancelReturnCode::UnknownGoal
             }
             nros_cancel_return_code_t::NROS_CANCEL_RC_GOAL_TERMINATED => {
-                nros::CancelResponse::GoalTerminated
+                nros_node::CancelReturnCode::GoalTerminated
             }
         };
         // Build a stack-resident slice of GoalIds from the caller's

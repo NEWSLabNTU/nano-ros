@@ -2,10 +2,11 @@
 id: 789
 title: "ROS time exists in Rust and not in C, so a C image cannot be driven by a
   simulator's /clock (the C++ clock surface half is fixed)"
-status: open
+status: resolved
 type: bug
 area: api
-related: [rfc-0036, rfc-0073, phase-379, phase-209, issue-0788]
+related: [rfc-0036, rfc-0073, phase-379, phase-209, issue-0788, issue-0799]
+resolved_in: "2026-08-25"
 ---
 
 ## Problem
@@ -103,20 +104,50 @@ per-user generated type.
 before: ROS time is real only in Rust, so the predicate would be a constant. See
 `c:enable_ros_time_override`.
 
-## The other half — ROS time in C — is NOT fixed
+## Fixed 2026-08-25 — the ROS-time half
 
-Rust's `Clock` can be driven by a simulator's `/clock`; C still has none of the
-override switches, so a C image cannot be simulated while a Rust one can. That
-remains open and is the substance of what is left here.
+Six C entry points, in `packages/api/nros-c/src/clock.rs`, spelled as rcl spells
+them so a ported node keeps its source:
 
-## Direction (for the remaining half)
+| C | rcl | Rust it mirrors |
+| --- | --- | --- |
+| `nros_enable_ros_time_override(clock)` | `rcl_enable_ros_time_override` | `Clock::set_ros_time_override(0)` when none is active |
+| `nros_disable_ros_time_override(clock)` | `rcl_disable_ros_time_override` | `Clock::clear_ros_time_override` |
+| `nros_is_enabled_ros_time_override(clock, bool*)` | `rcl_is_enabled_ros_time_override` | `Clock::is_ros_time_override_active` |
+| `nros_set_ros_time_override(clock, int64_t)` | `rcl_set_ros_time_override` | `Clock::set_ros_time_override` |
+| `nros_get_ros_time_override(clock, int64_t*)` | — | `Clock::get_ros_time_override` (the `Option` becomes `NROS_RET_NOT_FOUND`) |
+| `nros_clock_time_started(clock)` | `rcl_clock_time_started` | — (rcl's own implementation: read the clock, report non-zero) |
 
-ROS time in C, or a written decision that C images are not simulatable — but
-written down, because today the absence is silent. The Rust side
-(`Clock::set_ros_time_override`, `clear_ros_time_override`,
-`is_ros_time_override_active`, `get_ros_time_override`) is the shape to mirror;
-the C clock is opaque, so the switches would be entry points rather than fields.
+They drive **`nros_core::Clock`'s global, not a second copy**, so a process whose
+C and Rust nodes share an image cannot hold two answers to "what time is it".
+`nros_clock_get_now` / `_get_now_ns` read the override on a
+`NROS_CLOCK_ROS_TIME` clock and fall back to the system clock as before.
 
-Also still open from this family, and cheap now that the C++ types exist:
-`Clock::{started, ros_time_is_active}` — both would be constants until the
-override switches exist, which is why they were not supplied with the rest.
+**One model difference from rcl, and it is Rust's model that wins.** rcl keeps an
+ENABLED flag and a VALUE separately; ours keeps one negative-sentinel value,
+because that is what Rust has had since the clock shipped and a second model in C
+is the split this issue is about. So `nros_set_ros_time_override` also enables,
+there is no state where a stored value is inert, and a NEGATIVE time is
+`NROS_RET_INVALID_ARGUMENT` (it is the sentinel; ROS time is since the epoch).
+The override is process-global rather than per-clock for the reason the Rust
+ledger rows already give: with no allocator a clock cannot own a separately
+shared time source.
+
+`nros::Clock::ros_time_is_active()` and `nros::Clock::started()` land on the C++
+side over the same switches — the two members left as gaps *because* C had none.
+The setters stay C free functions rather than C++ members: they drive a global,
+and hanging a global's setter off an instance would read as per-clock state.
+`wait_until_started` remains declined (RFC-0021 forbids a blocking helper that
+does not drive the executor); its predicate is now available to poll.
+
+**Ledger:** `c:{enable,disable,is_enabled,set}_ros_time_override`,
+`c:clock_time_started`, `cpp:Clock::started` and `cpp:Clock::ros_time_is_active`
+were `gap` and are now `same` — the rows are deleted. Two new `extension` rows
+(`c:get_ros_time_override`, `c:duration_from_nanoseconds`). The twelve time-jump
+rows that gave "the simulation case needs ROS time, which C does not have either"
+as half their reason were rewritten: the reason is now that nobody asked to be
+TOLD the clock stepped, which is a different and still-true claim.
+
+Found on the way: `nros_time_from_nanoseconds` encodes negative times wrong —
+**issue 0799**, fixed with this.
+

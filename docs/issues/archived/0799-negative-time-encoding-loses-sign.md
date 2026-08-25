@@ -3,10 +3,11 @@ id: 799
 title: "`nros_time_from_nanoseconds` truncates and takes an absolute value, so
   negative times encode wrong — −0.5 s round-trips as +0.5 s, and time
   arithmetic that crosses zero is silently incorrect"
-status: open
+status: resolved
 type: bug
 area: api, core
 related: [rfc-0073, phase-379, issue-0789]
+resolved_in: "2026-08-25"
 ---
 
 ## Problem
@@ -86,3 +87,35 @@ Worth adding at the same time:
   C++ `Duration::to_msg` open-codes the split;
 * a check on `sec`'s `as i32` narrowing, which silently wraps beyond ±68 years
   of nanoseconds.
+
+## Fixed 2026-08-25
+
+`split_nanoseconds` in `packages/api/nros-c/src/clock.rs` is now the single
+decomposition, `div_euclid` / `rem_euclid`, and both `nros_time_from_nanoseconds`
+and the new `nros_duration_from_nanoseconds` go through it. −1.7 s encodes as
+`{sec: -2, nanosec: 3e8}` and −0.5 s as `{sec: -1, nanosec: 5e8}`, so the round
+trip through `nros_time_to_nanoseconds` is the identity and `nros_time_add` /
+`nros_time_sub` keep their sign across zero.
+
+**The `as i32` narrowing saturates rather than wrapping.** Past ±68 years of
+nanoseconds an `int32` seconds field cannot hold the value, and the old cast
+turned that into a time 136 years in the OTHER direction — the same silent sign
+flip one magnitude up. The entry point returns a value and has no error channel,
+and a `panic!` in a `no_std` C entry point aborts an image over a timestamp, so
+the choice is between wrapping and clamping: it clamps to `{i32::MAX,
+999999999}` / `{i32::MIN, 0}`, which keeps the encoding monotone.
+
+**The test is the deliverable.** `round_trips_over_negative_zero_subsecond_and_multisecond`
+asserts, over a 24-value edge table plus 20 000 LCG-generated values at five
+magnitudes and both signs: `nanosec ∈ [0, 1e9)`, exact round trip, `sec` equal to
+the floor, and the decoded sign equal to the input sign — the last stated
+separately because "−0.5 s comes back as +0.5 s" is the user-visible symptom.
+Mutation-checked: with the old encoder pasted back, 4 of the 5 new tests fail
+(`round trip lost -1: encoded as nros_time_t { sec: 0, nanosec: 1 }`), and all
+31 `nros-c` lib tests pass with the fix restored.
+
+`nros-cpp`'s `Duration::to_msg` now delegates to `nros_duration_from_nanoseconds`;
+`detail::split_nanoseconds` and the comment explaining why it could not delegate
+are gone. `Time::to_msg`'s "a timestamp is non-negative, so the C decomposition
+is exact here" is gone too — the decomposition is exact either way now.
+

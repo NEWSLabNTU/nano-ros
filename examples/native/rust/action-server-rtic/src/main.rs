@@ -108,7 +108,7 @@ fn main() {
         }
 
         // Handle cancel requests
-        let _ = server.try_handle_cancel(|_id, _status| nros::CancelResponse::Ok);
+        let _ = server.try_handle_cancel(|_id, _status| nros::CancelResponse::Accept);
 
         std::thread::sleep(std::time::Duration::from_millis(10));
     }

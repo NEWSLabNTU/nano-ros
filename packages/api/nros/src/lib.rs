@@ -684,7 +684,7 @@ pub use nros_rmw::{
     ClientTrait, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy,
     QosOverride, QosOverrideRole, QosOverrideValue, QosPolicyMask, QosReliabilityPolicy,
     QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode,
-    Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig, TransportError,
+    Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig,
 };
 
 /// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
@@ -852,11 +852,34 @@ pub use nros_node::{
     BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
     BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, ExecutorConfig,
     ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
-    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawCancelCallback,
-    RawGoalCallback, RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot,
-    ShutdownCallbackFn, ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Trigger, baked_domain_from_c_abi,
+    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, RawCancelCallback, RawGoalCallback,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn,
+    ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
+    Trigger, baked_domain_from_c_abi,
 };
+
+// ---------------------------------------------------------------------------
+// The error vocabulary (issue 0783). Both re-exports are unconditional.
+//
+// Every fallible call in the Rust user API returns `NodeError`, and
+// `NodeError::Transport(TransportError)` is its most common variant — so
+// handling one means naming both. They used to be exported from two unrelated
+// blocks (`NodeError` with the boot/executor types, `TransportError` with the
+// transport traits), which is a discoverability nit rather than a capability
+// gap: both were always reachable, and `prelude` already listed them together.
+// Nothing here changes what `nros::` exports.
+//
+// There is deliberately NO numeric code type beside them. A Rust caller matches
+// a flat enum; the numeric vocabulary is the C ABI's `nros_ret_t` /
+// `NROS_RET_*` (0, -1..-16), which is its own space and not `rcl_ret_t`'s.
+// nros-core carried an `rcl_ret_t` mirror (`RclReturnCode`) and an error that
+// wrapped it (`NanoRosError`); neither was ever reachable from this facade and
+// neither had a producer, so issue 0783 deleted them rather than exporting a
+// type a user could name and never receive. RFC-0036's Errors row now describes
+// what these two are.
+// ---------------------------------------------------------------------------
+pub use nros_node::NodeError;
+pub use nros_rmw::TransportError;
 
 // RFC-0052 / phase-296 W3b — on-target contract-monitor types. Baked
 // `system_monitors.rs` uses the fully-qualified `::nros_node::executor::
@@ -958,9 +981,16 @@ pub use nros_node::SpinPeriodResult;
 // Re-export service types
 pub use nros_core::{ServiceClient, ServiceServer};
 
-// Re-export action types
+// Re-export action types.
+//
+// issue 0796 — `CancelResponse` (the per-goal Reject/Accept decision) and
+// `CancelReturnCode` (the `action_msgs/srv/CancelGoal` RPC status) are two
+// concepts that shared one name until the split. Both are exported: without
+// `CancelReturnCode` here, `ActionClient::cancel_goal`'s `Promise<CancelReturnCode>`
+// could not be NAMED from `nros::` alone.
 pub use nros_core::{
-    CancelResponse, GoalId, GoalInfo, GoalResponse, GoalStatus, GoalStatusStamped, RosAction,
+    CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse, GoalStatus,
+    GoalStatusStamped, RosAction,
 };
 
 // Re-export lifecycle types (always available, no_std compatible)

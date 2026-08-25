@@ -67,7 +67,9 @@ is propagated through the feature chain but does not add any API surface.
 **Actions:**
 - `node.create_action_server::<A>(name)` / `node.create_action_client::<A>(name)`
 - `action_client.send_goal(&goal)` — returns `Promise<GoalId>`
-- `action_client.cancel_goal(&goal_id)` — returns `Promise<CancelResponse>`
+- `action_client.cancel_goal(&goal_id)` — returns `Promise<CancelReturnCode>`
+  (the `action_msgs/srv/CancelGoal` RPC status; the per-goal accept/reject a
+  server's cancel callback returns is the separate `CancelResponse` — issue 0796)
 - `action_client.get_result(&goal_id)` — returns `Promise<(GoalStatus, Result)>`
 - Full goal lifecycle: send, cancel, get result, feedback, status
 
@@ -103,7 +105,7 @@ is propagated through the feature chain but does not add any API surface.
 **Other:**
 - `LifecycleState`, `LifecycleTransition`, `LifecyclePollingNode`
 - `Logger` (uses `core::sync::atomic`)
-- `GoalId`, `GoalStatus`, `GoalResponse`, `CancelResponse`
+- `GoalId`, `GoalStatus`, `GoalResponse`, `CancelResponse`, `CancelReturnCode`
 - `QosSettings`, `TopicInfo`, `ServiceInfo`
 - `SafetyValidator`, `IntegrityStatus` (with `safety-e2e` feature)
 - Sync primitives: `spin::Mutex` or `critical-section` (feature-selected)
@@ -131,13 +133,20 @@ protocol layer requires it.
 | API                                                           | Location             | Why                                                     |
 |---------------------------------------------------------------|----------------------|---------------------------------------------------------|
 | `Clock::now()` (system/steady clock)                          | nros-core/clock.rs   | Uses `std::time::SystemTime` / `UNIX_EPOCH`             |
-| `std::error::Error` for `NanoRosError`, `RclReturnCode`       | nros-core/error.rs   | Trait requires std                                      |
 | `ExecutorConfig::from_env()`                                  | nros-node/types.rs   | Uses `std::env::var()` + `Box::leak()`                  |
 | `Executor::spin_blocking(options)`                            | nros-node/spin.rs    | Uses `std::thread::sleep()`, `Arc<AtomicBool>`          |
 | `Executor::spin_period(duration)`                             | nros-node/spin.rs    | Uses `std::time::Instant`, `std::thread::sleep()`       |
 | `Executor::halt_flag()`                                       | nros-node/spin.rs    | Returns `Arc<AtomicBool>` for cross-thread cancellation |
 | `SpinPeriodResult`                                            | nros-node/types.rs   | Contains `std::time::Duration`                          |
 | `ParameterVariant` for `std::string::String`, `std::vec::Vec` | nros-params/types.rs | Convenience conversions for std types                   |
+
+**Error traits are NOT on this list.** A row here used to read
+"`std::error::Error` for `NanoRosError`, `RclReturnCode` — trait requires std".
+Both halves stopped being true: phase-359 moved the impls to
+`core::error::Error` (stable since Rust 1.81, and `std::error::Error` has been a
+re-export of it since), so an embedded build gets the trait; and issue 0783
+deleted both types, which no public API ever returned. The user error is
+`nros::NodeError` + `nros::TransportError`, and neither needs `std`.
 
 ## Typical Configurations
 

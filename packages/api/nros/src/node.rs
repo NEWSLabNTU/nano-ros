@@ -1855,6 +1855,14 @@ impl<'a> CallbackCtx<'a> {
 
     /// Set the action cancel-callback's accept/reject decision (W.5.3). `Err` when
     /// the callback is not a cancel decision.
+    ///
+    /// Issue 0796 — `CancelResponse` here is the PER-GOAL decision
+    /// (`Reject` / `Accept`), the twin of [`GoalResponse`] and the same two
+    /// values C's `nros_cancel_response_t` and C++'s `nros::CancelResponse`
+    /// carry. It used to be the `action_msgs/srv/CancelGoal` RPC return code
+    /// (now `nros_core::CancelReturnCode`), so answering "cancel this goal"
+    /// was spelled `CancelResponse::Ok` — a whole-request status code used to
+    /// decide one goal.
     pub fn set_cancel_response(&mut self, response: CancelResponse) -> NodeResult<()> {
         match &mut self.decision {
             Some(DecisionSink::Cancel(slot)) => {
@@ -3227,21 +3235,21 @@ mod tests {
             ctx.set_goal_response(GoalResponse::AcceptAndExecute)
                 .unwrap();
             // Wrong-kind setter on a goal ctx errors.
-            assert!(ctx.set_cancel_response(CancelResponse::Ok).is_err());
+            assert!(ctx.set_cancel_response(CancelResponse::Accept).is_err());
         }
         assert!(matches!(gr, GoalResponse::AcceptAndExecute));
 
-        let mut cr = CancelResponse::Rejected;
+        let mut cr = CancelResponse::Reject;
         {
             let mut ctx = CallbackCtx::with_cancel_decision(&[], &resolver, &mut cr);
-            ctx.set_cancel_response(CancelResponse::Ok).unwrap();
+            ctx.set_cancel_response(CancelResponse::Accept).unwrap();
         }
-        assert!(matches!(cr, CancelResponse::Ok));
+        assert!(matches!(cr, CancelResponse::Accept));
 
         // A timer/sub ctx (no decision sink) rejects both.
         let mut ctx3 = CallbackCtx::new(&[], &resolver);
         assert!(ctx3.set_goal_response(GoalResponse::Reject).is_err());
-        assert!(ctx3.set_cancel_response(CancelResponse::Ok).is_err());
+        assert!(ctx3.set_cancel_response(CancelResponse::Accept).is_err());
     }
 
     // W.5.6 — the tick hook publishes (immediate) + drives executor-backed action
