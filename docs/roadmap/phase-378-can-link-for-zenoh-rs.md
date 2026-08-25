@@ -3,9 +3,10 @@
 **Status (2026-08-25). W0-W6 DONE. W7 IMPLEMENTED AND BLOCKED — the mechanism
 works and cannot be switched on.**
 
-**A ROS 2 node under `RMW_IMPLEMENTATION=rmw_zenoh_cpp` publishes over CAN and a
-zenoh-pico peer receives it**, with the stock `rmw_zenoh_cpp` binary and no ROS
-rebuild — only a substituted `libzenohc.so`. The RFC-0081 §3.2 bus question is
+**Two ROS 2 nodes talk to each other over CAN with no router and no TCP at all**,
+and a ROS 2 node publishes to a zenoh-pico peer over the same bus — with the
+stock `rmw_zenoh_cpp` binary and no ROS rebuild, only a substituted
+`libzenohc.so`. The RFC-0081 §3.2 bus question is
 now a measurement, and the answer is worse than the RFC allowed for: the
 mitigation it predicted does not exist.
 
@@ -373,6 +374,28 @@ The feature set must match what the vendored library was built with —
 `unstable` and `shared_memory` are the two that move struct layouts. Transport
 features do not.
 
+### ROS to ROS over CAN, with a control
+
+The run above proves ROS → zenoh-pico. It does **not** prove two ROS nodes
+talking to each other over CAN, because both attach to the same local
+`rmw_zenohd` over TCP and would have used that path regardless. Tested
+separately, with the TCP path removed entirely: no router process, `connect`
+emptied, and a CAN endpoint as the **only** `listen` endpoint.
+
+| | talker published | listener heard |
+| --- | ---: | ---: |
+| both peers in one band | 19 | **19** |
+| **control:** peers in disjoint bands (`match`/`mask`) | 19 | **0** |
+
+The control is what makes the first row mean anything. Both processes ran
+normally in both cases and both kept transmitting — 248 frames from the talker,
+46 from the isolated listener — so the silence is the CAN link's identifier
+filter separating them, not a crash or a misconfiguration. If any other path
+existed, the listener would still have heard.
+
+**And a third sighting of §3.2**: the talker emitted **248 frames in both runs**,
+identical, whether or not anything on the bus could hear it.
+
 ### The §3.2 measurement, and the mitigation that is not there
 
 Two runs, identical in every way except the island peer's subscription:
@@ -500,7 +523,7 @@ closed the gap.
   within one frame, or the discrepancy is explained.~~ 47.25, from an identical
   4-frames-per-message split — not within one frame, identical.
 
-**W6.**
+**W6.** All met, plus a ROS-to-ROS case the criteria did not ask for.
 * `zenoh-c` builds with the feature and `rmw_zenoh_cpp` links against it.
 * A ROS 2 application with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint
   in its **session** config — not its router config, RFC-0081 §3.1 — publishes a
