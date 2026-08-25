@@ -5,7 +5,7 @@ title: "Nothing computes a message's serialized size bound, so a dropped take
 status: open
 type: gap
 area: rmw, codegen
-related: [issue-0757, rfc-0023, rfc-0054, phase-380]
+related: [issue-0757, issue-0741, rfc-0023, rfc-0054, phase-380]
 ---
 
 ## Problem
@@ -324,3 +324,25 @@ bound that is merely self-consistent proves nothing; one checked against the
 writer that produced the bytes is worth having.
 
 Both encodings must be covered, or defect (1) above passes the suite.
+
+
+## A live failure that this gap makes undiagnosable: issue 0741
+
+`test_xrce_service_ros2_client` fails with
+
+```
+[RTPS_READER_HISTORY Error] Change payload size of '28' bytes is larger than
+the history payload size of '15' bytes and cannot be resized.
+```
+
+Four layers were eliminated by direct inspection before anyone noticed the
+common thread: nano-ros never advertises a size (the XRCE replier is declared
+with type NAMES only), the type names are correct, the Agent advertises a flat
+`TopicPubSubType::m_typeSize = 1024 + 4`, and the Fast-DDS / rmw_fastrtps
+versions match an environment where the same test passes.
+
+Every one of those eliminations is really the same sentence this issue opens
+with: **nothing here computes the bound**, so 15 cannot be traced to a
+computation that got it wrong. That makes 0741 a concrete, currently-red
+consumer of this gap — useful as a test case if a size-bound API lands, and a
+reason to weight this higher than a pure parity item.

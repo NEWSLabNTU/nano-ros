@@ -5,7 +5,7 @@ title: "`test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the
 status: open
 type: bug
 area: rmw, testing
-related: [issue-0736]
+related: [issue-0736, issue-0776]
 ---
 
 ## Symptom
@@ -710,3 +710,24 @@ environmental still differs and it is none of the components anyone has checked.
 
 Recommend the third. Four eliminations in, inference has a poor record on this
 issue.
+
+## Cross-link: issue 0776 is the missing piece this investigation kept hitting
+
+Filed independently, and it names exactly the hole every hypothesis here ran
+into: **nothing in this tree computes a message's serialized size bound.**
+Upstream has `rmw_get_serialized_message_size(typesupport, bounds, size_t *out)`;
+we have no equivalent, no generated `MAX_SERIALIZED` constant, and buffers are
+sized by integrator-guessed env knobs rather than a bound derived from the type.
+
+That reframes the four eliminations recorded above. Each one asked "who
+advertises 15?" and answered "not this layer" — nano-ros does not advertise a
+size at all (bin profile, names only), the type names are correct, the Agent
+advertises a flat 1028, and the Fast-DDS versions match a passing environment.
+The reason the question kept coming back unanswered is that **no layer here
+computes the number**, so there is nothing to be wrong in the way the
+investigation assumed.
+
+It does not immediately explain the host split — two hosts reproduce, two do not,
+and a missing capability is the same on all four. But anyone resuming this should
+read 0776 first: it is the difference between "find the bug that computes 15" and
+"nothing computes anything, so the 15 comes from a peer's default".
