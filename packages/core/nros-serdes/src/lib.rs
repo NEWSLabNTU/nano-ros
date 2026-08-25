@@ -37,6 +37,7 @@ pub mod cdr;
 pub mod error;
 pub mod primitives;
 pub mod schema;
+pub mod size;
 pub mod traits;
 
 #[cfg(test)]

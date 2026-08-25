@@ -1,8 +1,8 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-24). NOT STARTED — design only. Deferred deliberately from
-phase-376 W4, which established that this is not an ABI question. Issue 0776 is
-the gap; this doc is the plan.**
+**Status (2026-08-26). W1 LANDED. W2-W5 open, and W0 below is a newly measured
+PREREQUISITE.** Deferred deliberately from phase-376 W4, which established that
+this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
 
 ## Why
 
@@ -82,7 +82,31 @@ implementation or they will drift.
 
 ## Work items
 
-**W1 — the calculator.** `size_bound()` over `FIELDS`, both encoding versions.
+**W0 — `FIELDS` does not exist everywhere (measured 2026-08-26).** This doc
+claimed above that "the input already exists … every generated message". It does
+not: **27 of 64** generated message structs in `packages/interfaces` carry no
+`const FIELDS`, including `builtin_interfaces/Time`, `builtin_interfaces/Duration`
+and every `rcl-interfaces` srv type. Only three crates emit it
+(`nros-diagnostic-msgs`, `nros-std-msgs-diag`, `nros-builtin-interfaces-diag`);
+`time.rs` was last generated 2026-03-18, before the schema emitter that
+`generator/common.rs` now carries.
+
+This gates the items that follow, and gates them asymmetrically:
+
+* W1 works wherever `FIELDS` exists and is unaffected.
+* W2's "for every type in `packages/interfaces`" can cover 37 of 64 today, so
+  a green W2 would be reporting on a subset without saying so.
+* **W4 is the one that matters.** A build-time assertion that cannot see a
+  type's schema does not fail — it has nothing to check. A subscription to a
+  `FIELDS`-less type would pass the build and keep dropping samples, which is
+  precisely the silent-coverage shape this repo treats as worse than a red.
+
+So W0 is: regenerate the affected crates (or find why that path skips the
+emitter), and make a missing schema LOUD at the point W4 consults it rather
+than absent. Do it before W4, not after.
+
+**W1 — the calculator. LANDED (`nros-serdes::size`).** `size_bound()` over
+`FIELDS`, both encoding versions.
 Per-field contributions are tabulated in issue 0776. Three things that are easy
 to get wrong and must be tested, not assumed:
 
@@ -94,6 +118,28 @@ to get wrong and must be tested, not assumed:
   UNDER-reports, which is the dangerous direction: an under-reported bound sizes
   a buffer too small and reintroduces the exact drop this phase exists to stop.
 * **`+ 4` encapsulation is top-level only**, not per nested struct.
+
+Landed as `packages/core/nros-serdes/src/size.rs`: `SizeBound { bytes, bounded,
+plain }`, `size_bound(fields, version, current_alignment)` threading the offset,
+and `max_serialized_size(fields, version) -> Option<usize>` which adds the
+top-level encapsulation header and answers `None` when unbounded.
+
+Every rule was read out of `CdrWriter` rather than the CDR spec, and the tests
+compare the bound against bytes the writer actually produced — a
+self-consistent bound proves nothing. Both encodings, 8 tests.
+
+Two things the measurement corrected:
+
+* **A single `int64` is NOT a discriminator between the encodings.** For
+  `[u8, i64]` both come to 20 bytes: XCDR2's DHEADER costs exactly the 4 bytes
+  its alignment cap saves. My first version of that test asserted they differ,
+  failed, and would have kept passing with the cap deleted had I written it the
+  other way round. The test now uses two `int64`s (the saving scales, the
+  DHEADER does not) and the coincidence is pinned by its own test so nobody
+  simplifies it back.
+* **Negative controls, both dangerous directions.** Deleting the per-struct
+  XCDR2 DHEADER fails 4 tests; removing the alignment cap fails the encoding
+  test. Checked by injecting each defect, not by inspection.
 
 **W2 — the property test.** Self-consistency proves nothing. For every type in
 `packages/interfaces`, serialize a MAXIMAL instance and assert
