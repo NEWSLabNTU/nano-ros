@@ -858,3 +858,30 @@ reader creation — still needs a failing run to log, and 1-in-13 makes that
 expensive to catch. Raising `FASTDDS_LOG_LEVEL=Info` produced no additional
 Fast-DDS output on a passing run, so the log capture will need to be armed
 inside the harness and left on, rather than run by hand until it trips.
+## 54 orphaned `add_two_ints_server` processes were live on this host (2026-08-26)
+
+Housekeeping that bears directly on this issue's open hypothesis.
+
+`ps` on the green host found **54 `add_two_ints_server` processes**, all
+reparented to init, the youngest 56 minutes old and the oldest running **five
+days**. Every one of them is a DDS participant that has been sitting on the bus
+across an unknown number of test runs.
+
+That is precisely the foreign-peer hypothesis this issue arrived at — "a second
+XRCE agent or ROS node already running, holding the reply topic with a
+differently-registered type" — and issue 0707's class ("an orphan from the last
+run joins the next one"), which was filed FROM this failure.
+
+Two things follow, and they point in opposite directions:
+
+* **It does not explain the failure here**, because this host is the GREEN one:
+  8/8 with all 54 orphans live. If a stale participant were sufficient to cause
+  the 15-byte history, this host should have been red for days.
+* **It does mean every measurement taken on this host — green or red — was
+  taken with 54 unaccounted participants on the bus.** The bus-snapshot arming
+  added on 2026-08-21 prints what the test can see at failure time; nothing has
+  ever recorded what was on the bus during a PASS.
+
+The orphans are now killed. Anyone re-measuring on either host should check
+`pgrep -c -f add_two_ints_server` first — a clean bus is a precondition this
+issue never stated and never had.

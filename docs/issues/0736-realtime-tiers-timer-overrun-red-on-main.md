@@ -903,3 +903,33 @@ watched appear would be exactly the "written against a hope" shape this campaign
 has been removing. Whoever next runs that cell should look for it — if the
 kernel-sporadic diagnosis is right, it should appear on the failing runs and not
 on the passing ones, which is itself a check on the diagnosis.
+
+## Load is NOT the confound — re-measured on a quiet machine (2026-08-26)
+
+Every number in this issue was taken on a host carrying **64 orphaned
+`cargo nextest` shell wrappers**, spinning at `RN` with PPID 1, some for five
+days: load average **70.9** on 48 cores. CLAUDE.md warns in as many words that
+"full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3
+in-sweep, passed solo)", so that is a confound this issue had no right to
+ignore.
+
+Killed them (plus 54 orphaned `add_two_ints_server` processes), waited for the
+load to fall to ~7, rebuilt the fixture, and re-ran:
+
+```
+run1  PASS
+run2  FAIL  51 / 22   (2.3x)
+run3  FAIL  53 / 21   (2.5x)
+run4  FAIL  72 / 26   (2.8x)
+run5  FAIL  63 / 26   (2.4x)
+```
+
+The same 2.0–2.9 band as every loaded measurement, and the same roughly
+1-in-5 pass rate. **The shortfall is not environmental.** It reproduces on an
+idle machine, so the kernel-sporadic isolation (4/4 FAIL with
+`apply_tier_sporadic`, 3/3 PASS without) stands as the explanation and is not
+an artifact of a busy host.
+
+Recorded because "it was just load" is the cheapest available excuse for a
+flaky QEMU cell, it was genuinely true of the environment, and it is still not
+the answer here.
