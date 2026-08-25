@@ -132,6 +132,21 @@ responses because they carry ~32 KB of heapless arrays that cannot sit on an
 RTOS task stack. Both dissolve into the same carved-storage answer, so
 alloc-free is reachable rather than aspirational.
 
-Phase-382 carries the work items and the acceptance, including the one that
-would have caught the legacy store's own unexercised claim: an example that
-actually places the table in a named linker section.
+Phase-382 carries the work items and the acceptance. It has since been EXPLORED
+and re-planned: three of the first plan's load-bearing claims were wrong, and
+the exploration found a defect bigger than the one this issue is about —
+
+**every `ros2 param set` against an nros node puts a 1,192,968-byte local on the
+calling task's stack**, today, on every platform. `handle_request_boxed` boxes
+only the REPLY; the request is deserialized by value into a stack local, and
+`SetParametersRequest` is larger than the reply the boxing exists for.
+`param-services` is live on Zephyr. That is now phase-382 W1', and it lands
+independently of any store change.
+
+Also corrected: adopting the executor store is NOT free for arrays. The legacy
+store records the caller's pointer verbatim and `parameter.h` documents that
+identity as load-bearing — `parameter.hpp` reads each block's capacity from an
+out-of-band word in front of the returned pointer. `nros_params` copies into
+`heapless::Vec<T, 32>`. So unification either keeps a borrowed array variant or
+is a breaking C ABI change; that decision is phase-382 W0 and blocks everything
+after it.

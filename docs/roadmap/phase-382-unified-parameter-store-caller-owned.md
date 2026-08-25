@@ -1,6 +1,12 @@
 # Phase 382 — one parameter store, caller-owned and alloc-free
 
-**Status (2026-08-25). NOT STARTED — designed, scoped out of issue 0793.**
+**Status (2026-08-25). NOT STARTED — designed, EXPLORED, and re-planned.** The
+first plan (W1–W6, below the line) would not have survived contact: three of its
+load-bearing claims were wrong and one acceptance criterion was unsatisfiable
+under its own mechanism. What follows is the corrected plan; the corrections are
+kept rather than deleted because each names a trap an implementer would
+otherwise re-discover.
+
 Issue 0793 found two disjoint C parameter stores and asked which to delete. The
 answer is neither: conciliate them into one API that keeps what each does well.
 
@@ -24,9 +30,10 @@ So the documented, exampled, C++-wrapped path is the invisible one, and the path
 
 Two facts make conciliation cheap rather than a rewrite:
 
-* **`nros_params::ParameterValue` already covers all ten types**, arrays
-  included. The 4-scalar limit is in the C *entry points*, not the store — so
-  adopting it loses no capability.
+* **`nros_params::ParameterValue` covers all ten types**, arrays included — the
+  4-scalar limit is in the C *entry points*, not the store. But see W0: for
+  ARRAYS this is not a free adoption, and the first plan's claim that it "loses
+  no capability" was wrong.
 * **The store is already a fixed array**, not a heap structure. The `alloc::`
   uses in `nros-params` are edge conversions (`impl ParameterVariant for
   String`/`Vec<T>`), never storage.
@@ -37,13 +44,28 @@ Not the store. Two separate reasons, both about placement rather than dynamic
 sizing:
 
 1. The executor holds `params: Option<alloc::boxed::Box<ParamState>>`.
-2. The service handlers return `Box<Response>` **because the response types
-   contain ~32 KB of heapless arrays** and a value that size cannot go on an
-   RTOS task stack (`parameter_services.rs:313,346,383,453` each say so).
+2. The service handlers return `Box<Response>` because the response types are
+   enormous — measured, not estimated: `GetParametersResponse` is **1,176,072**
+   bytes, `DescribeParametersResponse` 55,304, `ListParametersResponse` 33,808.
+   Two of the six box responses of **272 and 72 bytes**, which is pure waste.
+3. **A third reason the first plan never listed:**
+   `ParamState.services: Option<Box<dyn ParamServiceProcessor>>`, whose concrete
+   `ParameterServiceServers` carries 6 × 2 × 4096 ≈ **49 KB** of buffers.
 
-Reason 2 is the interesting one: it is a *stack* problem, and the answer to a
-stack problem on a device with no heap is caller-owned storage — the same answer
-the parameter table itself wants. So both reasons dissolve into one mechanism.
+### And the request side is worse, and nothing addresses it
+
+`ServiceTrait::handle_request_boxed` boxes only the REPLY:
+
+```rust
+let req = S::Request::deserialize(&mut reader)?;   // by value — a STACK local
+let reply = handler(&req);                          // only this is boxed
+```
+
+`SetParametersRequest` is **1,192,968 bytes**. So every `ros2 param set` against
+an nros node puts a 1.19 MB local on the calling task's stack today, on every
+platform, unboxed — larger than the reply the boxing exists for, and four times
+the whole 285 KB store issue 0756 was about. `param-services` is live on Zephyr.
+Fixing only the reply leaves the worse half in place.
 
 ## The mechanism already exists
 
@@ -54,61 +76,197 @@ executor borrows, and a `#[repr(C)] ExecutorStorage<CBS, SC, ARENA>` reference
 layout is unit-tested against the carve. Issue 0563 added a seventh table
 (remaps) the same way.
 
-**The parameter table and the service response scratch become the eighth and
-ninth.** That yields, without inventing anything:
+**The parameter table becomes the eighth carved region** — a fixed
+`MAX_PARAMETERS` count, the shape issue 0563 used, NOT an `ExecutorSizing`
+field. That yields alloc-freedom, caller placement of the backing, and
+`ros2 param` visibility.
 
-* caller-chosen capacity — a field on `ExecutorSizing`, not `NROS_MAX_PARAMETERS`
-* caller-chosen placement — it is the caller's backing buffer, so it can live in
-  `.sram2` or wherever the board wants
-* alloc-free — no `Box` for the table, and the 32 KB response scratch has a home
-  that is neither stack nor heap
-* `ros2 param` visibility — it IS the executor's store, which the
-  `rcl_interfaces` servers already read
+**There is no ninth table.** The first plan carved "the 32 KB response scratch";
+exploration measured the responses and the number is wrong by ~37×
+(`GetParametersResponse` is 1,176,072 bytes, not ~32 KB — and two handlers box
+responses of 272 and 72 bytes). The right answer is not a bigger scratch, it is
+not to build the value at all — see W1' below.
 
-## Work items
+**Caller-chosen CAPACITY is deferred to its own phase.** `ExecutorSizing` is a
+public `Copy` struct with public fields built by struct literals, and
+`executor_storage_layout(cbs, sc, arena)` is `pub` with three positional args and
+five in-tree callers. Worse, `ExecutorInlineStorage.backing` sizes the C/C++
+`_opaque`: `NROS_EXECUTOR_SIZE` is 89,576 today, and a default 32-slot table
+would add ~273 KB — a 4× `.bss` growth for every C/C++ image whether it uses
+parameters or not, flowing straight through the sizes-header mirror (the
+0088→0114→0122→0123→0245→0268 recurrence class). `cfg`-gating it on
+`param-services` to dodge that is worse: it makes the executor's SIZE
+feature-dependent, which is issue 0665's probe-vs-link trap at 273 KB instead of
+16 bytes.
 
-**W1 — `ParameterServer` borrows its table.** `[Option<ParameterEntry>;
-MAX_PARAMETERS]` → `&'s mut [Option<ParameterEntry>]`. `MAX_PARAMETERS` survives
-as the default sizing, not as the only sizing.
 
-**W2 — carve the table and the response scratch.** Add both to
-`ExecutorSizing`/`ExecutorStorage`/`ExecutorSlices`/`carve`, with the layout
-unit test extended — that test is what keeps the const-fn carve and the
-`#[repr(C)]` reference honest.
+## Work items (re-planned after exploration)
 
-**W3 — drop the two `alloc` reasons.** `ParamState` inline rather than `Box`ed;
-handlers write into the carved scratch rather than returning `Box<Response>`.
-Then delete the `compile_error!` in `nros-node/src/lib.rs:250` and prove
-`param-services` builds without `alloc`.
+### W0 — settle the ARRAY question. Blocking; nothing downstream is designable first.
 
-**W4 — one C surface.** The rich `nros_param_*` family (all ten types) becomes
-the API, operating on the executor's store. `nros_executor_declare_param_*`
-becomes deprecated aliases or is deleted. `nros_param_server_set_callback` —
-the accept/reject veto, today installed where no service reads it — lands on the
-path a remote `ros2 param set` actually takes, which is what issue 0793 wanted.
+`parameter.h:261-287` documents array pointer identity as **load-bearing**, not
+incidental: `nros_param_declare_*_array` records the caller's `data` pointer
+verbatim and never copies, `get` returns *that same pointer*, and
+`nros/parameter.hpp` recovers each block's capacity by reading an out-of-band
+word immediately in FRONT of the returned pointer. The header says in as many
+words that changing this requires changing `parameter.hpp` in the same commit.
 
-**W5 — the consumers.** `nros::ParameterServer` (C++), both C examples, and the
-C++ `ComponentNode` parameter surface, which today has `declare`/`get` and **no
-setter at all**.
+`nros_params::ParameterValue` **copies** into `heapless::Vec<T, MAX_ARRAY_LEN=32>`.
+So naive unification:
 
-**W6 — the ledger.** 32 `gap` and 22 `rename` rows in
-`docs/reference/api-parity-ledger/param.json`; several assert the split this
-phase removes. `just check-api-parity` must stay green.
+1. caps arrays at 32 elements, where the legacy store has no cap at all because
+   the memory is the caller's;
+2. breaks pointer identity, so every C++ `set_parameter(Seq)` fails — loudly,
+   thanks to the defensive pool check, but completely;
+3. is pinned by a live test (`parameters_roundtrip` greps
+   `mpc_weights[0]=4.000000 n=4`).
 
-## Acceptance
+Decide: keep a BORROWED array variant (pointer + len) in the unified store
+alongside the copying one, or accept a breaking C ABI change and do the
+capacity-in-server-state fix `parameter.h` already names as "the proper fix".
+This determines whether W6' is a migration or a break.
+
+### W1' — the streaming service seam. Biggest win, independent of all storage work.
+
+Add `ServiceTrait::handle_request_raw`, taking `&mut CdrReader` / `&mut CdrWriter`
+instead of a by-value request and a boxed reply. It works because:
+
+* **No dheaders anywhere in `rcl_interfaces`** — plain sequential CDR, so
+  hand-written field writes are byte-identical to the generated impls;
+* `EmbeddedServiceServer` owns `req_buffer` and `reply_buffer` as disjoint
+  fields, so a handler can hold `&req` and `&mut reply` at once;
+* `CdrReader::read_string()` already borrows from the receive buffer.
+
+`GetParameters` then needs **no scratch at all**: read the count, per name borrow
+the `&nros_params::ParameterValue` from the store and write its fields straight
+out. No wire value is ever constructed. `SetParameters` applies one parameter at
+a time; peak stack becomes one internal `ParameterValue` (8,464 B) — **141×
+better than today's 1.19 MB**.
+
+Guard the one real risk — hand-written writes drifting from the generated
+`Serialize` — with a round-trip test that deserialises the streamed bytes back
+into the generated type, keeping today's by-value handler as a test-only oracle.
+
+`handle_request_boxed` is also used by **lifecycle_services** (5 sites, its own
+`compile_error!`), so this seam fixes both. Scope it that way from the start.
+
+### W2' — `ParameterServer` borrows its table
+
+`[Option<ParameterEntry>; MAX_PARAMETERS]` → `&'s mut [Option<ParameterEntry>]`.
+Known fallout, all of which the first plan missed:
+
+* **`ParameterEntry` is private** and the carve lives in `nros-node`, which
+  cannot name it. Decide up front: make it `pub`, move the carve into
+  `nros-params`, or add a `ParameterTable<'s>` newtype. This is the first wall.
+* `impl Default` must go; `pub const fn new()` becomes `new_in(&mut [...])` —
+  20+ call sites including the lib.rs doctest, `ghost_checks`, and the
+  **`#[cfg(kani)]` proofs**, so `just verify-kani` must be re-run.
+* `ghost.max == 32` is asserted literally and becomes `s.entries.len()`.
+* Six builder types gain a second lifetime (`LegacyParameterBuilder`,
+  `ParameterBuilder`, `MandatoryParameter`, `OptionalParameter`,
+  `ReadOnlyParameter`, `UndeclaredParameters`), rippling to
+  `Executor::parameter`.
+* `init_in_place` becomes dead — its whole reason (issue 0756's 285 KB stack
+  temporary) dissolves. Move its rationale into the carve's comment rather than
+  deleting the history.
+* `Executor` is already `Executor<'s>`, so `params: Option<ParamState<'s>>` is
+  expressible. That part works.
+
+### W3' — carve it, as a FIXED region
+
+`MAX_PARAMETERS` count, no `ExecutorSizing` change — the issue-0563 shape.
+Report `NROS_EXECUTOR_SIZE` before and after in the commit, as 0563 did.
+
+**Extend the layout test first.** `layout_matches_typed_repr_c` asserts only the
+whole struct's `size` and `align` — a carve that permuted two same-size tables
+would pass. The first plan called it "what keeps the carve and the `#[repr(C)]`
+reference honest"; it does not. Add per-field `offset_of!` assertions (stable
+since 1.77). Note `carve_yields_right_lengths_and_inits` is `#[cfg(feature =
+"alloc")]`, so an alloc-free table's carve test needs a home outside that gate.
+
+W3's original wording — "`ParamState` inline rather than `Box`ed" — would trip
+`executor_stays_small_enough_to_construct_on_a_stack` (`size_of::<Executor>()
+≤ 6 KiB`) by 285 KB. It must be **carved**, never inline.
+
+### W4' — remove the remaining `alloc` reasons
+
+De-`Box` `ParamState` and `ParameterServiceServers` (the ~49 KB of buffers needs
+a home — carve it, or the `compile_error!` cannot go). Then delete
+`nros-node/src/lib.rs:250`'s `compile_error!` and prove `param-services` builds
+without `alloc`.
+
+### W5' — one C surface, and the veto on the path a remote set takes
+
+There are **three** C-visible families, not two: `nros_param_*`,
+`nros_executor_*_param_*`, and `nros_cpp_register_parameter_services` /
+`nros_cpp_declare_param` / `nros_cpp_get_param_*` in `params_shim.rs`.
+
+`nros_params` has **no callback concept at all** — there is no slot to move the
+veto into. Adding one brings three sub-problems the first plan did not see:
+
+* `SetParameterResult` has no "rejected by callback" variant, and
+  `impl From<SetParameterResult> for ParameterError` ends in
+  `_ => panic!(...)` — so the first remote rejection would **panic the node**.
+  Fix in the same commit.
+* `handle_set_parameters_atomically` bypasses `set` in its pre-check, so a veto
+  living only inside `set` would be skipped during validation and fire during
+  apply, **breaking atomicity**. It needs a `would_accept(&self, name, &value)`
+  the pre-check also calls.
+* rclcpp's equivalent returns a *reason string* and supports *multiple*
+  callbacks; ours is one `bool` slot. Decide here, because W7's rename rows
+  depend on it.
+
+### W6' — the consumers, including two that have no executor
+
+* `nros::ParameterServer<Cap>` owns `nros_parameter_t storage_[Capacity]`
+  inline, is non-movable, is constructed with **no executor handle**, and
+  **discards the init return**. A borrow from executor storage has no handle to
+  take and nowhere to report failure.
+* `ComponentNode` embeds it at `Capacity = 256` — 256 × 8,536 B ≈ **2.2 MB** if
+  it becomes the unified type. It also has **no setter of any kind**. And
+  `adopt_launch_seed_` exists *only* because the two stores are separate
+  (issue 0745); unification should delete it, or it double-writes.
+* **`examples/native/c/parameters` has no executor, no node and no
+  `nros_support_init`.** There is no migration that keeps its spelling — an
+  executor-owned store cannot serve a program with no executor. Either the
+  example gains a runtime (changing what it demonstrates, and its fixture) or
+  the standalone store survives for exactly this shape.
+* `custom-transport-loopback` is worse: the server is a member of a file-scope
+  struct bulk-`memset` to zero and `init`ed *before* `nros_support_init`.
+
+### W7' — the ledger
+
+32 `gap` and 22 `rename` rows in `param.json`, several asserting the split this
+phase removes. `just check-api-parity` stays green.
+
+### Deferred to its own phase — caller-chosen CAPACITY
+
+`ExecutorSizing` + `executor_storage_layout`'s positional args + `_opaque` +
+the sizes-header mirror. It is a C-ABI change, not a table, and bundling it is
+what made this phase look four times its size.
+
+## Acceptance (corrected)
 
 * A parameter declared through the one C API is visible to `ros2 param list` and
   settable by `ros2 param set`, in a live interop cell.
-* The accept/reject callback fires for a remote set.
-* `param-services` builds with `--no-default-features` and no `alloc`.
-* A caller can place the parameter table in a named linker section, and there is
-  an example that does — otherwise the capability is claimed and untested, which
-  is how the legacy store's own placement property ended up with no in-tree
-  consumer exercising it.
+* The accept/reject callback fires for a remote set — and for the atomic path.
+* `param-services` builds with no `alloc`.
+* `SetParametersRequest` no longer appears as a stack local: measure the
+  handler's peak stack before and after, and put both numbers in the commit.
+* ~~"A caller can place the parameter table in a named linker section, and there
+  is an example that does."~~ **Unsatisfiable as written and removed.** Under the
+  eighth-table design the table lives in the *executor's* backing, so a caller
+  places the whole backing or nothing. Either restate it as "the caller places
+  the executor backing, parameters included" — which is true and already
+  testable — or give the table its own buffer, at which point it is not the
+  eighth table and W3' is a different design.
 
 ## What this deliberately does not do
 
 Domain and locator in the baked boot config (issue 0794) are a different
-producer question. And the `EnvRung` asymmetry noted there — the namespace has
-two ladder rungs where the domain has three — should be settled in RFC-0045, not
-here.
+producer question. The `EnvRung` asymmetry noted there belongs in RFC-0045.
+
+`MAX_PARAMS_PER_REQUEST = 64` must equal a frozen codegen literal, and the
+store-vs-wire mismatch (`MAX_ARRAY_LEN=32` against wire 64) is issue 0323's live
+behaviour. Streaming makes it moot for the handlers; unification does **not**
+remove it.
