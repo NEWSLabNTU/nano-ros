@@ -607,9 +607,20 @@ typedef struct nros_rmw_vtable_t {
      *  `size_cb` once to learn the total payload length, allocates
      *  a single slot of that size in its outbound buffer, then
      *  invokes `chunk_cb` repeatedly to fill the slot in chunks
-     *  until the buffer is full. Saves the per-publisher staging
-     *  buffer on RAM-constrained nodes — useful for large messages
-     *  on MCUs where the staging buffer dominates `.bss`.
+     *  until the buffer is full. What it saves is the CALLER-side
+     *  buffer holding a whole serialised message.
+     *
+     *  That justification used to read "saves the per-publisher
+     *  staging buffer … where the staging buffer dominates `.bss`",
+     *  which described a design this tree does not have (issue 0782).
+     *  There is no per-publisher buffer and none of it is in `.bss`:
+     *  `EmbeddedPublisher::publish` serialises into a per-CALL STACK
+     *  array of `DEFAULT_TX_BUF` (= `NROS_SUBSCRIPTION_BUFFER_SIZE`,
+     *  1024 by default), and the runtime's own NULL-slot fallback
+     *  stages into a 4 KiB stack array and refuses anything larger.
+     *  The saving is real and it is STACK — which on an MCU with
+     *  small per-task stacks is the tighter budget of the two — but a
+     *  reason has to name the thing it is about.
      *
      *  Callback contract:
      *    * `size_cb(*out_total_len, user_ctx)` — write the exact

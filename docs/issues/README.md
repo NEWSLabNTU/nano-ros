@@ -3732,7 +3732,7 @@ its actual target argument. See `0781-*`. (2026-08-24)
 buffer on MCUs; XRCE implements it as `malloc(total)` of the whole payload and returns MESSAGE_TOO_LARGE
 past one stream slot, so on the target class the slot exists for it swaps a static buffer for a same-sized
 heap one. zenoh grows a writer to full size. Same family as 0777: a memory claim in the ABI no backend
-keeps. See `0782-*`. (2026-08-24)
+keeps. See `0782-*`. (2026-08-24) **Checked 2026-08-25**: core claim holds, three things in the report do not. "Strictly worse" is wrong — XRCE has NO abort for a prepared output stream, so staging is what validates that `chunk_cb` delivered what `size_cb` promised before anything reaches the wire, and both are CALLER-supplied. The code's stated reason (the 4-byte CDR header strip) is solvable with a 4-byte scratch and is not the binding one. And the slot's own justification named a per-publisher `.bss` buffer that does not exist — the staging is per-CALL STACK, both in `publish` and in the runtime's fallback; corrected in the header. Three options recorded; the choice is a trade, not a fix.
 
 **#0785** (rmw, open 2026-08-24) — `create_session` carries `domain_id` and nothing else from Humble's
 eight-field `rmw_init_options_t`. Two are real gaps: `localhost_only` (a discovery-scope control that maps
