@@ -78,6 +78,11 @@ files not 5, and `network_glue.c`'s own label looks wrong. See `0769-*`.
 
 Recently resolved (2026-08-25): **#0764** — the fixture staleness probe compared MTIMES while the build compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moved without its content changing read STALE and rebuilding could NOT clear it — the build right to do nothing, the probe right that the mtime was older, the two answering different questions. Not the documented treadmill, whose "rebuild affected fixtures" remedy is a no-op here by construction; 16 tier-1 tests failed on it. The fix was WIRING, not construction: `candidates_changed_content_policy` + `.nros-srcbaseline` already existed and TWO of the three probe arms already used them (zephyr since #147, cargo dep-info since phase-353 W2) — only the cmake/ninja arm never got it. Third turn of the shape CLAUDE.md cites as its own example (#222 → #328 → #764: helper added, `binaries/mod.rs` not wired), so the file was swept — every raw mtime compare now FEEDS the content decision instead of returning a verdict. Verified BOTH ways, which matters because a probe that forgives everything turns museum binaries into silent passes: `touch` (sha unchanged) stays fresh, a one-line real edit goes STALE. Fixed in `493440c65`. See `archived/0764-*`. (2026-08-25)
 
+Recently resolved (2026-08-25): **#0755** (cmake) — the entry's DEPLOY now reaches
+`board-facts`, so a multi-deploy `system.toml` resolves instead of silently skipping; the
+facts memo is keyed per (board, deploy), which the old one-answer cache could not express.
+See `archived/0755-*`.
+
 **#0777** (rmw/memory, open 2026-08-24) — seven declared RMW-ABI differences justified themselves with "no
 runtime allocation to pre-size; pools are baked", which is true of ONE backend in five: cyclonedds
 `ddsrt_malloc`s per publish and `ddsrt_calloc`s per take (`publisher.cpp:202,235`, `subscriber.cpp:143`),
@@ -524,11 +529,6 @@ re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-
 
 
 
-**#0755** (cmake, open 2026-08-22) — `NanoRosBoardFacts.cmake` never forwards the entry's DEPLOY even
-though `nano_ros_add_executable` knows it and the verb accepts `--deploy`; when a bringup's system.toml
-carries several deploys on one board that resolve differently, the verb's (correct) ambiguity refusal is
-soft-skipped by the wrapper and board facts silently vanish from the image. Thread DEPLOY through to a
-`--deploy` flag like `--board`. See `0755-*`. (2026-08-22)
 
 
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
