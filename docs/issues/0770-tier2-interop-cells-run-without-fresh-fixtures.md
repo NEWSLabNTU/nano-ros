@@ -9,36 +9,35 @@ area: testing
 related: [issue-0482, issue-0445, issue-0488, issue-0786]
 ---
 
-## Independent corroboration (2026-08-25)
+## A retracted "corroboration" (2026-08-25), and what it actually shows
 
-Hit again on a separate host in the same chain, and worth recording because the
-second instance narrows the cause.
+An earlier revision of this issue claimed a second sighting on another host:
+native cyclonedds fixtures (`native/cpp/listener`, `native/c/service-client`)
+going STALE under tier 2. **That was wrong and is retracted.** The real
+`ci-matrix` run had ZERO stale verdicts. Those STALEs came from bare
+`cargo nextest` invocations, where `NROS_TEST_COORDS` is unset, so
+`run_coords()` returns `None`, `require_in_lane` returns early, and every
+resolved fixture must be fresh. Correct behaviour for a run outside any lane —
+not this bug.
 
-`examples/native/cpp/listener/build-cyclonedds/cpp_listener` and
-`examples/native/c/service-client/build-cyclonedds/c_service_client` both went
-STALE under a tier-2 run after a `lane=tier2` build reported all eight modules
-OK. The newer input in each case was a cyclonedds source
-(`third-party/dds/cyclonedds/src/ddsrt/src/atomics.c` after a submodule bump,
-and `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp` after an
-edit). `build-test-fixtures lane=native` cleared both, exactly as reported here.
+Worth keeping because it sharpens what this issue is NOT. Those rows attribute
+fine: `native/cpp/listener` has three rows whose `artifact_root`s are distinct
+(`build-zenoh` / `build-xrce` / `build-cyclonedds`), `linux,cpp,cyclonedds` is
+not in tier 2's 14-coordinate cover, and in a real lane run it therefore SKIPS.
+The machinery works wherever a row exists.
 
-So this is not specific to `interop::CELLS` or to XRCE: it reaches any native
-cell whose fixture the tier-2 build lane does not refresh. A cyclonedds source
-edit is a good way to provoke it, because it stales native fixtures across
-several languages at once while the 1-wise lane refreshes only some.
+So this issue is specifically about cells with **no `fixtures.toml` row**:
+`attribute_path` returns `None`, the caller's contract for `None` is "never
+skip", and the lane's build cover never included them either. Row present ⇒
+handled. Row absent ⇒ this bug. That is the whole boundary, and it means the fix
+must come from giving these cells an attributable coordinate or from widening
+the build cover — not from touching attribution, which is behaving as designed.
 
-**And issue 0786 is the silent half of this same split.** There, two tests
-hand-joined their fixture path instead of resolving it, so they never reached
-`require_prebuilt_binary_fresh_cmake` at all — the out-of-lane stale artifact
-did not fail, it RAN, and a five-day-old binary read as a runtime regression.
-Fixing 0786 to resolve properly is what turned those two native fixtures into
-the loud STALE verdicts above. That is the right direction (loud beats silent),
-but it means 0786's fix INCREASES the surface this issue covers rather than
-reducing it: cells that used to paper over the build/run mismatch now report it.
-
-Useful framing for whoever takes this: 0786 was "the test never asked", this is
-"the lane answered inconsistently". Only the second needs `nros_lane_build_lane`
-and `CiLane::run_scope` to agree.
+Issue 0786 is the sibling worth reading alongside: there the tests hand-joined a
+fixture path, so they never reached `require_in_lane` at all and a stale
+artifact RAN. Fixing them to resolve gives them attribution, so in a lane run
+they now skip or fail honestly. That shrinks this problem rather than enlarging
+it — an earlier note here claimed the opposite, also wrongly.
 
 ## Problem
 
@@ -77,6 +76,60 @@ Every tier-2 sweep on a tree whose native lane is stale reports these
 cells as FAILED with a message that reads like a build-system defect,
 and the junit real-failure count includes them — a red a human must
 re-diagnose per run (this run: ~8 named failures, all one cause).
+
+## Reproduction attempt, 2026-08-25 — does NOT reproduce on current main
+
+Ran the exact chain on a fresh tree. After `just build-test-fixtures lane=tier2`,
+with `NROS_TEST_COORDS` pointed at tier 2's own coords file (14 coordinates,
+which is what `ci-matrix` does):
+
+| test | result |
+| --- | --- |
+| `interop_e2e` | **10/10 pass, 0 stale** |
+| `xrce_ros2_interop` | 7 `[SKIPPED:lane]`, 0 stale |
+| `c_xrce_api` | 5 `[SKIPPED:lane]`, 0 stale |
+
+The skips are correct and specific, e.g.
+
+```
+[SKIPPED:lane] out of lane: examples/native/rust/service-client is at coordinate
+linux,rust,xrce, which this run's lane does not select, so
+`just build-test-fixtures lane=<this lane>` deliberately did not build it.
+```
+
+**Why the machinery already handles this.** These fixtures resolve through
+`build_example` / `build_example_rmw`, which call `select_row()` and then
+`require_prebuilt_row_binary`, whose first act is
+`require_coord_in_lane(&row.coord, &row.dir)` — keyed on the ROW's coordinate,
+not on the artifact path. So it is immune to the path-attribution problem
+entirely, and an interop cell narrows exactly like a matrix cell. Those
+`require_coord_in_lane` call sites landed 2026-08-19/20 (`e986e07be`,
+`9260d5bec`, `a12c6ebd7`) — **before** this report, so the report is not simply
+predating the fix, and that is worth someone else's eyes.
+
+**The confound to rule out first.** A stale tree presents IDENTICALLY to this
+bug: pull anything, and every fixture built before the pull reads STALE, in-lane
+or not. I reproduced ~9 such verdicts on this very tree and briefly mistook them
+for this issue — twice, once via a bogus "ambiguous artifact root" theory and
+once via a "rows=0" attribution check that was matching a POST-redirect group
+path against pre-redirect leaf roots. Both were my analysis error, not the code.
+Distinguishing signature:
+
+* **stale tree** — the "newer" file is a repo SOURCE (`vtable.cpp`, a submodule
+  bump). Rebuilding the SAME lane clears it.
+* **this bug** — the fixture's coordinate is genuinely outside the lane's build
+  cover, so rebuilding the same lane does NOT clear it, and only a wider lane
+  (`native`, `all`) does. The reporter's note that `lane=native` cleared it is
+  consistent with EITHER, because `native` is also simply a later build.
+
+So the decisive datum, if this recurs: after `lane=tier2` build → `lane=tier2`
+run, is the fixture still stale? If yes, this is real. If a second `lane=tier2`
+build clears it, it was the treadmill.
+
+**Not closed.** One host's non-reproduction does not disprove the report, and
+the reporter's `newslab-241` run is real evidence I cannot see. Left open with
+the above so the next sighting can be classified in one step instead of
+re-derived.
 
 ## Direction
 
