@@ -6175,10 +6175,10 @@ impl<'s> Executor<'s> {
                 let crate::parameter_services::ParamState {
                     server, services, ..
                 } = &mut **params;
-                if let Some(services) = services {
-                    if let Ok(n) = services.process_services(server) {
-                        result.services_handled += n;
-                    }
+                if let Some(services) = services
+                    && let Ok(n) = services.process_services(server)
+                {
+                    result.services_handled += n;
                 }
             }
         }
