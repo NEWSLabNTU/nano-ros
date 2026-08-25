@@ -214,7 +214,28 @@ impl PlanNode {
 /// Callers must have already emitted `#include <nros/boot_config.h>`.
 pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), String> {
     use std::fmt::Write as _;
-    let (set_flags, node_name) = if plan.nodes.len() == 1 {
+    // Escape a literal for embedding in a C string — backslash and quote.
+    fn escape_c(raw: &str) -> String {
+        raw.replace('\\', "\\\\").replace('"', "\\\"")
+    }
+
+    // issue 0794 — this used to set NROS_BOOT_SET_NODE_NAME and nothing else,
+    // while the blob defines four fields and the reader
+    // (`nros-node/src/executor/types.rs`) branches on all four. So a launch file
+    // that declared a namespace produced an image that came up at `/`, silently:
+    // the field, the bit, the packer and the reader all existed and worked, and
+    // only the producer was missing. RFC-0046 makes launch authoritative for node
+    // identity, and it was authoritative for the name alone.
+    //
+    // `domain_id` and `locator` STAY hardcoded, and that is a scope statement
+    // rather than an oversight: neither exists anywhere in `Plan` — `domain_id`
+    // appears exactly once in this whole crate, as the literal below. Both are
+    // properties of the IMAGE rather than of a node, so wiring them means
+    // deciding where they come from first (see the issue).
+    let mut flags: Vec<&'static str> = Vec::new();
+    let mut node_name = String::new();
+    let mut namespace = String::new();
+    if plan.nodes.len() == 1 {
         let n = &plan.nodes[0];
         let raw = n.name.as_deref().unwrap_or(&n.exec);
         // Guard: the C field is `char node_name[64]` — 63 usable bytes + NUL.
@@ -225,11 +246,26 @@ pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), Stri
                 raw.len(),
             ));
         }
-        // Escape the literal for embedding in a C string — backslash and quote.
-        let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
-        ("NROS_BOOT_SET_NODE_NAME", escaped)
+        node_name = escape_c(raw);
+        flags.push("NROS_BOOT_SET_NODE_NAME");
+
+        if let Some(ns) = n.namespace.as_deref() {
+            // `char namespace_[64]` — same 63-byte budget as the name.
+            if ns.len() > 63 {
+                return Err(format!(
+                    "node namespace '{}' is {} bytes; the .nros_boot_config namespace_ field holds at most 63 bytes + NUL",
+                    ns,
+                    ns.len(),
+                ));
+            }
+            namespace = escape_c(ns);
+            flags.push("NROS_BOOT_SET_NAMESPACE");
+        }
+    }
+    let set_flags = if flags.is_empty() {
+        "0".to_string()
     } else {
-        ("0", String::new())
+        flags.join(" | ")
     };
     let _ = writeln!(
         out,
@@ -245,7 +281,7 @@ pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), Stri
              .domain_id  = 0,\n\
              .node_name  = \"{node_name}\",\n\
              .locator    = \"\",\n\
-             .namespace_ = \"\",\n\
+             .namespace_ = \"{namespace}\",\n\
          }};",
     );
     Ok(())
@@ -1206,6 +1242,68 @@ contracts: {}
 
     /// Phase 269 (W4) — resolve_plan_sched on a plan with no tiers, no overrides,
     /// and no callback groups is a no-op (resolved_tiers stays None).
+    /// issue 0794 — the emitter set `NROS_BOOT_SET_NODE_NAME` and nothing else,
+    /// so a launch-declared namespace never reached the image while the field,
+    /// the bit, the packer and the READER all existed and worked. This asserts
+    /// the producer half, in both directions.
+    #[test]
+    fn a_launch_declared_namespace_reaches_the_baked_boot_config() {
+        use std::path::PathBuf;
+        fn plan_with(namespace: Option<&str>) -> Plan {
+            Plan {
+                board: "native".into(),
+                nodes: vec![PlanNode {
+                    pkg: "talker_pkg".into(),
+                    exec: "talker".into(),
+                    name: Some("talker".into()),
+                    namespace: namespace.map(str::to_string),
+                    class_name: None,
+                    class_header: None,
+                    lang: Some("c".into()),
+                    shape: None,
+                    qos_overrides: Vec::new(),
+                    params: Vec::new(),
+                    remaps: Vec::new(),
+                    callback_groups: Vec::new(),
+                    sched_context: None,
+                    group_tiers: Default::default(),
+                }],
+                depfile_paths: vec![],
+                bringup: "demo".into(),
+                launch_file: PathBuf::from("/tmp/x.launch.xml"),
+                lifecycle: None,
+                param_services: false,
+                safety: None,
+                tiers: Default::default(),
+                node_overrides: Vec::new(),
+                resolved_tiers: None,
+            }
+        }
+
+        let mut with_ns = String::new();
+        emit_boot_config_static(&mut with_ns, &plan_with(Some("/robot1"))).unwrap();
+        assert!(
+            with_ns.contains(".namespace_ = \"/robot1\""),
+            "the namespace must be baked, not dropped:\n{with_ns}"
+        );
+        assert!(
+            with_ns.contains("NROS_BOOT_SET_NAMESPACE"),
+            "the reader branches on the BIT, so baking the field without it \
+             changes nothing:\n{with_ns}"
+        );
+
+        // The other direction: no namespace declared means the bit stays clear,
+        // so the reader falls through to the next rung of RFC-0045's ladder
+        // rather than reading an empty string as "configured to root".
+        let mut without = String::new();
+        emit_boot_config_static(&mut without, &plan_with(None)).unwrap();
+        assert!(
+            !without.contains("NROS_BOOT_SET_NAMESPACE"),
+            "an undeclared namespace must not set the bit:\n{without}"
+        );
+        assert!(without.contains("NROS_BOOT_SET_NODE_NAME"));
+    }
+
     #[test]
     fn resolve_plan_sched_no_tiers_is_noop() {
         use std::path::PathBuf;

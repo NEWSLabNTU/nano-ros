@@ -20,6 +20,7 @@
 #ifndef NROS_BOOT_CONFIG_H
 #define NROS_BOOT_CONFIG_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -127,6 +128,57 @@ static inline const char* nros_boot_config_node_name(const struct nros_baked_boo
     if (c->magic != NROS_BOOT_CONFIG_MAGIC || c->version != NROS_BOOT_CONFIG_VERSION) return NULL;
     if ((c->set_flags & NROS_BOOT_SET_NODE_NAME) == 0) return NULL;
     return c->node_name;
+}
+
+/**
+ * Return a pointer to the baked node namespace, or NULL.
+ *
+ * issue 0794 — the blob has always carried four fields and C exposed one
+ * accessor, so even a correctly-baked namespace could not be read from C.
+ * Same contract as nros_boot_config_node_name(): NULL when @p c is NULL, the
+ * magic or version does not match, or the `NROS_BOOT_SET_NAMESPACE` bit is
+ * clear.  NUL-padded; treat it as at most 64 bytes.
+ */
+static inline const char* nros_boot_config_namespace(const struct nros_baked_boot_config* c) {
+    if (c == NULL) return NULL;
+    if (c->magic != NROS_BOOT_CONFIG_MAGIC || c->version != NROS_BOOT_CONFIG_VERSION) return NULL;
+    if ((c->set_flags & NROS_BOOT_SET_NAMESPACE) == 0) return NULL;
+    return c->namespace_;
+}
+
+/**
+ * Return a pointer to the baked middleware locator, or NULL.
+ *
+ * NUL-padded; treat it as at most 96 bytes.  NOTE the entry emitter does not
+ * yet SET this field (issue 0794): the accessor is correct and will report
+ * NULL until a producer exists, which is the honest answer rather than a
+ * zero-length string that reads as "configured empty".
+ */
+static inline const char* nros_boot_config_locator(const struct nros_baked_boot_config* c) {
+    if (c == NULL) return NULL;
+    if (c->magic != NROS_BOOT_CONFIG_MAGIC || c->version != NROS_BOOT_CONFIG_VERSION) return NULL;
+    if ((c->set_flags & NROS_BOOT_SET_LOCATOR) == 0) return NULL;
+    return c->locator;
+}
+
+/**
+ * Read the baked ROS domain id into @p out.
+ *
+ * Returns `true` when the value was written, `false` when @p c or @p out is
+ * NULL, the magic or version does not match, or `NROS_BOOT_SET_DOMAIN` is
+ * clear.  An out-parameter rather than a sentinel return because 0 is a VALID
+ * domain — the same reason `NROS_DOMAIN_ID_EXPLICIT_ZERO` exists on the init
+ * path (issues 0206/0227).
+ *
+ * As with the locator, no producer sets this field yet (issue 0794).
+ */
+static inline bool nros_boot_config_domain_id(const struct nros_baked_boot_config* c,
+                                              uint32_t* out) {
+    if (c == NULL || out == NULL) return false;
+    if (c->magic != NROS_BOOT_CONFIG_MAGIC || c->version != NROS_BOOT_CONFIG_VERSION) return false;
+    if ((c->set_flags & NROS_BOOT_SET_DOMAIN) == 0) return false;
+    *out = c->domain_id;
+    return true;
 }
 
 #ifdef __cplusplus

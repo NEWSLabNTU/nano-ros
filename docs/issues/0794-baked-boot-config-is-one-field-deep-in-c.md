@@ -75,10 +75,43 @@ consulted from C. Rust's `BootConfig::from_baked` reads all four.
 * `scripts/api-parity.py --topic boot`, and the `gap` row on
   `rust:BOOT_SET_NAMESPACE` in `docs/reference/api-parity-ledger/boot.json`.
 
+## Partially fixed 2026-08-25
+
+**The namespace is now produced and readable.** `emit_boot_config_static` sets
+`NROS_BOOT_SET_NAMESPACE` and bakes `namespace_` whenever the plan node carries
+one, and `nros_boot_config_namespace()` reads it back. Both directions are
+pinned by `a_launch_declared_namespace_reaches_the_baked_boot_config`, which
+also asserts the negative case — an undeclared namespace must leave the bit
+CLEAR, so the reader falls through to the next rung rather than reading an empty
+string as "configured to root". Mutation-checked: dropping the bit fails it.
+
+**All four C accessors now exist** — `nros_boot_config_{node_name,namespace,
+locator,domain_id}`. `domain_id` takes an out-parameter and returns `bool`
+rather than using a sentinel, because 0 is a valid domain (the same reason
+`NROS_DOMAIN_ID_EXPLICIT_ZERO` exists on the init path).
+
+## Still open: domain and locator have no producer
+
+This is a scope statement, not an oversight. **Neither exists anywhere in
+`Plan`** — `domain_id` appears exactly once in the whole `nros-cli-core` crate,
+as the hardcoded literal in the emitter. So the emitter cannot bake what it is
+never told.
+
+The reason they are harder than the namespace is that they are properties of the
+**image**, not of a node: a namespace belongs to one node and the plan already
+carries it per node, while a domain and a locator are one per session. Wiring
+them means deciding where they come from — `system.toml`, the board, or a CLI
+flag — and that decision has not been taken.
+
+Their accessors return NULL / `false` until then, which is the honest answer:
+the alternative is an empty string that reads as "configured empty".
+
 ## Direction
 
-Not decided here. The narrow fix is to compute `set_flags` from the plan's
-resolved identity rather than from the node name alone, and to add the three
-missing C accessors. The wider question is whether `EnvRung` should carry a
-namespace at all — if it should not, then the ladder has three rungs for one
-field and one rung for another, and RFC-0045 should say so.
+* Decide where a baked domain and locator come from, then thread them into
+  `Plan` and set their bits.
+* **The ladder is uneven and RFC-0045 does not say so.** `EnvRung` has no
+  namespace field at all, so the namespace has two rungs (explicit, baked) where
+  the domain has three (explicit, env, baked). Either that is deliberate — a
+  namespace is identity and should not be overridable by the environment — or it
+  is an accident. Whichever, the RFC should state it.
