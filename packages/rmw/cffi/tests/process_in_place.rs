@@ -327,3 +327,64 @@ fn in_place_unsupported_when_slots_null() {
         "NULL process slot → Err (runtime falls back to buffered)"
     );
 }
+
+// ---- issue 0781: the capability is the CONJUNCTION of probe and slot ----
+//
+// Neither mechanism subsumes the other, so both arms need a test. 0781 proposed
+// deleting the probe and deriving the capability from `process_raw_in_place`
+// nullity; `nros-rmw-metadata` is the counterexample, and the first test below
+// is its shape reduced to a stub.
+
+#[test]
+fn in_place_unsupported_when_probe_says_no_behind_a_live_slot() {
+    let _g = GUARD.lock().unwrap();
+    SUPPORTS.store(0, Ordering::SeqCst);
+    TAKE_REMAINING.store(1, Ordering::SeqCst);
+
+    // The `RustBackendAdapter` shape: `VTABLE` is a `const`, so
+    // `process_raw_in_place` is installed for EVERY `R: RustBackend` while the
+    // answer stays a runtime method. `nros-rmw-zenoh` returns true here and
+    // `nros-rmw-metadata` takes the `false` default — same nullity, different
+    // capability. Deriving from nullity would route metadata into in-place
+    // dispatch, where the trait default returns `MessageTooLarge` on every take.
+    let mut vt = base_vtable();
+    vt.subscription_supports_in_place = Some(scripted_supports);
+    vt.process_raw_in_place = Some(scripted_process);
+    let vt: &'static NrosRmwVtable = Box::leak(Box::new(vt));
+    let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vt) };
+    assert_eq!(ret, NROS_RMW_RET_OK);
+
+    let sub = open_subscriber("/inplace_probe_no");
+    assert!(
+        !Subscription::supports_process_in_place(&sub),
+        "a non-NULL process_raw_in_place must not override a probe that says no"
+    );
+
+    SUPPORTS.store(1, Ordering::SeqCst);
+}
+
+#[test]
+fn in_place_unsupported_when_probe_says_yes_over_a_null_slot() {
+    let _g = GUARD.lock().unwrap();
+    SUPPORTS.store(1, Ordering::SeqCst);
+
+    // The other arm: the probe was the whole answer before 0781, so this
+    // backend chose in-place dispatch and then failed every take against a
+    // slot that was never there.
+    let mut vt = base_vtable();
+    vt.subscription_supports_in_place = Some(scripted_supports);
+    vt.process_raw_in_place = None;
+    let vt: &'static NrosRmwVtable = Box::leak(Box::new(vt));
+    let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), vt) };
+    assert_eq!(ret, NROS_RMW_RET_OK);
+
+    let mut sub = open_subscriber("/inplace_slot_null");
+    assert!(
+        !Subscription::supports_process_in_place(&sub),
+        "a probe answering yes must not promise a slot the vtable does not carry"
+    );
+    assert!(
+        Subscription::process_raw_in_place(&mut sub, |_| {}).is_err(),
+        "and the call itself still errors, so the buffered path is the only route"
+    );
+}

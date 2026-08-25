@@ -204,8 +204,21 @@ ADDED = {
         "slot exists for, XRCE's is a same-sized heap allocation in place of the "
         "static buffer — see the follow-up issue"
     ),
-    "subscription_supports_in_place": "probe: can this backend hand out its receive buffer directly",
-    "process_raw_in_place": "dispatch from the transport's own buffer — no copy on a target with no spare RAM",
+    "subscription_supports_in_place": (
+        "the in-place capability, which slot nullity cannot carry: "
+        "`RustBackendAdapter::<R>::VTABLE` is a `const` and installs "
+        "`process_raw_in_place` for every `R: RustBackend`, while the answer is a "
+        "runtime `&self` method because `CffiSubscription` multiplexes over "
+        "whichever backend registered — zenoh true, metadata false, same nullity "
+        "(issue 0781)"
+    ),
+    "process_raw_in_place": (
+        "a SCOPED borrow: it ends when the callback returns, so there is no "
+        "release token to leak. Upstream's `rmw_take_loaned_message` is unscoped, "
+        "and a caller who forgets the return retires one entry of a fixed-depth "
+        "receive ring on a target that will never reclaim it. Not 'no copy' — "
+        "upstream has a name for that and we carry it (issue 0781)"
+    ),
 }
 
 # RETURN-type differences, declared. Separate from ARG_DEVIATIONS because the

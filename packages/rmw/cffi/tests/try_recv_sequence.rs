@@ -42,6 +42,12 @@ const QUEUE: [&[u8]; 8] = [
 
 // ---- Stub backend wiring ----
 
+// `RAW_CURSOR` and `SEQ_CALLS_NATIVE` are file-globals that several tests in
+// this binary both reset and assert on, so they must not run concurrently.
+// Without this the suite went red roughly one run in one under load, always on
+// whichever test read a cursor a sibling had just advanced.
+static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 static SEQ_CALLS_NATIVE: AtomicUsize = AtomicUsize::new(0);
 static RAW_CURSOR: AtomicUsize = AtomicUsize::new(0);
 
@@ -382,6 +388,7 @@ fn open_subscriber(name: &str, vtable: &'static NrosRmwVtable) -> nros_rmw_cffi:
 
 #[test]
 fn try_recv_sequence_native_batch() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     SEQ_CALLS_NATIVE.store(0, Ordering::SeqCst);
     RAW_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_native", &VTABLE_NATIVE);
@@ -409,6 +416,7 @@ fn try_recv_sequence_native_batch() {
 
 #[test]
 fn try_recv_sequence_loop_fallback() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     RAW_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_fallback", &VTABLE_FALLBACK);
 
@@ -435,6 +443,7 @@ fn try_recv_sequence_loop_fallback() {
 
 #[test]
 fn try_recv_raw_no_data_maps_to_none() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     let mut sub = open_subscriber("tb_seq_no_data", &VTABLE_NO_DATA);
 
     let mut buf = [0u8; PER_MSG_CAP];
@@ -445,6 +454,7 @@ fn try_recv_raw_no_data_maps_to_none() {
 
 #[test]
 fn try_recv_sequence_rejects_zero_per_msg_cap() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     RAW_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_zero_cap", &VTABLE_FALLBACK);
 

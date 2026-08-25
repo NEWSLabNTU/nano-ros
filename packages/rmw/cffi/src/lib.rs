@@ -1790,18 +1790,27 @@ impl Session for CffiSession {
         sub_state.backend_data = view.backend_data;
         sub_state.can_loan_messages = view.can_loan_messages;
         // Phase 231 (RFC-0038) — cache the in-place capability once.
-        sub_state.supports_in_place = match sub_state.vtable.subscription_supports_in_place {
-            Some(f) => {
-                let mut v = sub_state.make_view();
-                // Phase 376 W3.d step A — a backend that FAILS the probe is not
-                // one that supports in-place: both answer false, but only one of
-                // them is an error, and the status now says which.
-                let mut supports = false;
-                let rc = unsafe { f(&mut v, &mut supports) };
-                rc == NROS_RMW_RET_OK && supports
-            }
-            None => false,
-        };
+        // The capability is the CONJUNCTION of the probe and the slot that
+        // would serve it (issue 0781). The probe alone was the whole answer,
+        // so a backend answering true with a NULL `process_raw_in_place` chose
+        // the in-place dispatch path and then failed every take; and the slot
+        // alone cannot answer, because `RustBackendAdapter::<R>::VTABLE` is a
+        // `const` that installs `process_raw_in_place` for every `R` while the
+        // Rust-side answer is a runtime method (zenoh true, metadata false
+        // behind the same nullity). Neither mechanism subsumes the other.
+        sub_state.supports_in_place = sub_state.vtable.process_raw_in_place.is_some()
+            && match sub_state.vtable.subscription_supports_in_place {
+                Some(f) => {
+                    let mut v = sub_state.make_view();
+                    // Phase 376 W3.d step A — a backend that FAILS the probe is not
+                    // one that supports in-place: both answer false, but only one of
+                    // them is an error, and the status now says which.
+                    let mut supports = false;
+                    let rc = unsafe { f(&mut v, &mut supports) };
+                    rc == NROS_RMW_RET_OK && supports
+                }
+                None => false,
+            };
         Ok(sub_state)
     }
 

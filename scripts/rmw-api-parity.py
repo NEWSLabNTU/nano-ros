@@ -88,9 +88,9 @@ MAP = {
     "rmw_borrow_loaned_message": ("vtable", "borrow_loaned_message"),
     "rmw_return_loaned_message_from_publisher": ("vtable", "return_loaned_message_from_publisher"),
     "rmw_publish_loaned_message": ("vtable", "publish_loaned_message"),
-    "rmw_take_loaned_message": ("vtable", "take_loaned_message"),
-    "rmw_return_loaned_message_from_subscription": ("vtable", "return_loaned_message_from_subscription"),
-    "rmw_take_loaned_message_with_info": ("vtable", "take_loaned_message_with_info"),
+    "rmw_take_loaned_message": ("vtable", "take_loaned_message (slot carried, no backend fills it — issue 0781)"),
+    "rmw_return_loaned_message_from_subscription": ("vtable", "return_loaned_message_from_subscription (idem)"),
+    "rmw_take_loaned_message_with_info": ("vtable", "take_loaned_message_with_info (idem)"),
     # ---- Events ----
     "rmw_publisher_event_init": ("vtable", "publisher_event_init"),
     "rmw_subscription_event_init": ("vtable", "subscription_event_init"),

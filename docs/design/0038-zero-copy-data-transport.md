@@ -454,7 +454,7 @@ backend calls.
 | Layer | `process_raw_in_place` today | Plan |
 | --- | --- | --- |
 | executor / arena | selects via `supports_process_in_place()` | done (Wave 0.2) — dormant until `CffiSubscriber` says yes |
-| `CffiSubscriber` (the held handle) | falls back (default) | **forward** to a new vtable slot; `supports_process_in_place` = slot non-NULL — **the activation gate** |
+| `CffiSubscriber` (the held handle) | falls back (default) | **forward** to a new vtable slot; `supports_process_in_place` = slot non-NULL **and** the `subscription_supports_in_place` probe answering yes (the conjunction stated above) — **the activation gate**. Landed as the probe alone; the nullity half was restored by issue 0781 |
 | CFFI vtable (`nros_rmw_vtable_t`) | no slot | **add** one append-to-tail in-place slot (RFC-0035 + `abi_version` bump) |
 | zenoh-pico C backend | n/a | **populate** the slot → call the Rust `ZenohSubscriber` leaf |
 | zpico `ZenohSubscriber` (Rust leaf) | implemented (subscriber.rs:1043) | the leaf the slot invokes; gains size-class pools (D1) |

@@ -507,7 +507,17 @@ typedef struct nros_rmw_vtable_t {
      *  Deviation from upstream, declared: upstream loans a typed
      *  `void **loaned_message`; ours is a byte view plus an opaque
      *  token to release, because there is no typesupport on target
-     *  and the backend owns the buffer until `sub_release`. */
+     *  and the backend owns the buffer until `sub_release`.
+     *
+     *  **No backend fills this slot today** (Cyclone NULL, XRCE NULL, and the
+     *  Rust adapter leaves it at `EMPTY_VTABLE`), so every `try_borrow` through
+     *  the C ABI takes the copy fallback. The slot is carried, not deleted,
+     *  because it is the only shape that can hand a view to a caller which
+     *  outlives the call — `nros-c` / `nros-cpp` `try_borrow` — where
+     *  `process_raw_in_place`'s scoped callback cannot reach. Zenoh's native
+     *  zero-copy receive is live but arrives through Rust
+     *  `SlotBorrowing for ZenohSubscriber`, not through here. Recorded so
+     *  "the slot exists" is not read as "the capability works": issue 0781. */
     rmw_ret_t (*take_loaned_message)(const rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
@@ -680,21 +690,60 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ---- */
 
     /** Capability query: does this subscription support process_raw_in_place()?
-     *  Returns 1 if yes, 0 if no. The runtime consults this at subscription
-     *  registration to choose in-place dispatch over the buffered (copying)
-     *  path. NULL function pointer = treated as unsupported (buffered path). */
-    /** Phase 376 W3.d step A — capability out, status returned.
-     *  `*out_supports` is written only on `NROS_RMW_RET_OK`. */
+     *  The runtime consults it once at subscription registration to choose
+     *  in-place dispatch over the buffered (copying) path.
+     *
+     *  `*out_supports` is written only on `NROS_RMW_RET_OK` (Phase 376 W3.d
+     *  step A — capability out, status returned).
+     *
+     *  **The capability is the CONJUNCTION** of this probe answering true and
+     *  `process_raw_in_place` being non-NULL. Either alone is unsupported.
+     *
+     *  Why the probe is not redundant with that nullity (issue 0781 proposed
+     *  deleting it, and this is the counterexample that stopped it):
+     *  `RustBackendAdapter::<R>::VTABLE` is a `const`, so it installs
+     *  `process_raw_in_place` for EVERY `R: RustBackend` — the slot is non-NULL
+     *  whatever the backend can do. The Rust-side answer is a runtime `&self`
+     *  method (`Subscription::supports_process_in_place`) because
+     *  `CffiSubscription` multiplexes over whichever backend registered, so it
+     *  cannot become an associated const the vtable initializer could branch
+     *  on. Today `nros-rmw-zenoh` says true and `nros-rmw-metadata` takes the
+     *  `false` default behind an identically-shaped vtable: two backends, same
+     *  nullity, different capability. Deriving from nullity would route
+     *  metadata's subscriptions into in-place dispatch and every take would
+     *  return `MessageTooLarge` from the trait default.
+     *
+     *  A C backend that knows its answer at compile time (XRCE says true,
+     *  Cyclone leaves both NULL) may express it with nullity alone; the
+     *  conjunction makes that spelling correct without making it the only one.
+     *
+     *  NULL function pointer = treated as unsupported (buffered path). */
     rmw_ret_t (*subscription_supports_in_place)(
         rmw_subscription_t *subscription,
         bool *out_supports);
 
     /** Borrow one ready message in place: hand its raw CDR bytes to `cb` (with
-     *  the opaque `ctx`) for the duration of the call, then release the slot —
-     *  no copy into a caller buffer. Returns 1 if a message was processed (`cb`
-     *  invoked), NROS_RMW_RET_NO_DATA if none was ready, or a negative error.
-     *  `cb` MUST NOT re-enter this subscription's receive. NULL function
-     *  pointer = unsupported (the runtime uses the buffered path). */
+     *  the opaque `ctx`) for the duration of the call, then release the slot.
+     *  `cb` MUST NOT re-enter this subscription's receive.
+     *
+     *  Deviation from upstream, declared. Avoiding the copy is NOT the reason —
+     *  upstream already has a name for that, `rmw_take_loaned_message`, and we
+     *  carry it (`take_loaned_message`). What this shape buys is that the
+     *  borrow is SCOPED: it ends when `cb` returns, so there is no release
+     *  token to hold and nothing a caller can forget. Upstream's loan is
+     *  unscoped — a caller who misses
+     *  `rmw_return_loaned_message_from_subscription` retires one entry of a
+     *  fixed-depth receive ring for good, and a target with no reclaim and no
+     *  swap does not get that entry back. That is the RTOS constraint; "no
+     *  copy" is a property both shapes share.
+     *
+     *  Both are carried because they answer different callers: this one serves
+     *  dispatch from inside the executor, where the callback frame is the
+     *  natural scope, and the loan pair serves `nros-c` / `nros-cpp`, whose
+     *  `try_borrow` hands a view back to a caller that outlives the call.
+     *
+     *  NULL function pointer = unsupported (the runtime uses the buffered
+     *  path); see `subscription_supports_in_place` for the conjunction. */
     /** Phase 376 W3.d step A — "did it process one" moves to an
      *  out-parameter and the return is a plain status.
      *

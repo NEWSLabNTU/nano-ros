@@ -3721,12 +3721,26 @@ buffer, no lock, and no delivery on Cyclone's worker thread. Test provokes a rea
 asserting a stub. Also corrected `has_data`'s untrue "must not mutate subscription state". See
 `archived/0780-*`.
 
-**#0781** (rmw tech-debt, open 2026-08-24) — one in-place-dispatch capability spread over five slots.
-`subscription_supports_in_place` re-encodes what slot NULLITY already says (both impls ignore their
-subscription argument and return a constant; the shim already maps a missing `process_raw_in_place` to
-false), and the upstream-named subscription loan pair is NULL in every backend. `process_raw_in_place`'s
-reason also describes upstream's `rmw_take_loaned_message` rather than the leak-proof scoped borrow that is
-its actual target argument. See `0781-*`. (2026-08-24)
+Recently resolved (2026-08-26): **#0781** (rmw tech-debt) — one in-place-dispatch capability, five slots.
+Item 1 was REJECTED with a counterexample: deriving the capability from `process_raw_in_place` nullity would
+break `nros-rmw-metadata`. `RustBackendAdapter::<R>::VTABLE` is a `const`, so it installs that slot for EVERY
+`R: RustBackend` while the answer stays a runtime method (`CffiSubscription` multiplexes, so it cannot be an
+associated const) — zenoh true, metadata false, same nullity. The survey read the two backends whose source
+spells the capability out and missed the `const` that writes a vtable for all of them. What WAS wrong: the
+doc said "NULL = unsupported" and no code read it that way, so a backend answering the probe yes over a NULL
+slot chose in-place dispatch and failed every take. RFC-0038 had specified the conjunction from the start;
+the implementation landed half. Now conjoined, with a test per arm (the yes-over-NULL one fails against the
+pre-fix code). Loan pair KEPT — dead on the producer side, but the only shape that can hand a view to a
+caller outliving the call (`nros-c`/`nros-cpp` `try_borrow`), with the no-producer state now recorded in the
+header and the parity detail. `process_raw_in_place`'s reason rewritten around the leak-proof scoped borrow.
+Adjacent finding filed as #0800. See `archived/0781-*`.
+
+**#0800** (rmw tech-debt, open 2026-08-26) — 42 of 74 vtable slots are NULL in every backend, and the parity
+map's `vtable` bucket counts them answered because it means "a slot exists". Three kinds are mixed:
+optional-with-a-runtime-default (`get_implementation_identifier`), answered-at-another-layer (the graph
+queries), and real gaps — `set_log_severity` shipped in this campaign with a slot, a dispatcher and stub
+tests but no backend body. Needs a declared table with a reason per slot plus a two-way gate, not a check
+that fires on all 42 and gets baselined into silence. See `0800-*`. (2026-08-26)
 
 Recently resolved (2026-08-25): **#0782** (rmw/memory) — XRCE's `publish_streamed` `malloc`ed the whole
 message on every publish: the only message-sized, per-publish allocation in that backend, on heaps that fail
