@@ -2,7 +2,7 @@
 id: 777
 title: "\"Pools are baked\" is true of one backend in five — every RMW deviation
   reason built on that clause was false"
-status: open
+status: resolved
 type: bug
 area: rmw, memory
 related: [phase-376, issue-0776]
@@ -105,3 +105,87 @@ ours to design (no allocator, no typesupport — something like
 `subscription_set_sample_pool(sub, max_serialized_size, depth)`), not upstream's
 symbol to adopt.
 
+
+## Direction item 2, done 2026-08-26 — the measurement, and it is re-runnable
+
+`scripts/rmw-alloc-sites.py` (lane `just check-rmw-alloc-sites`, on the fast
+line). It attributes every allocation call in a backend's own sources to its
+enclosing function and splits them by whether that function is reached per
+MESSAGE or at entity creation. `--check` fails on a steady-state allocation with
+no declared reason, so the next one has to be argued for instead of merged. A
+prose count would have rotted exactly the way the clause this issue is about
+rotted.
+
+| backend | steady-state | create / init |
+| --- | --- | --- |
+| cyclonedds | **6** | 6 |
+| xrce | **0** | 9 |
+| uorb | **0** | 3 |
+
+The table in the Problem section is now stale in one row and it is worth saying
+which: **XRCE reached zero when issue 0782 landed.** Its one per-publish
+`malloc` was the streamed-publish staging buffer, and removing it left every
+remaining allocation in an `xrce_*_create` / `*_init`. uORB never had one. So
+"pools are baked" is now true of two backends of five rather than one — still
+not the four it was claimed for.
+
+Cyclone's six, and what each would cost to remove:
+
+- `publisher_publish_raw:262` — `ddsrt_malloc(body_len)`, **message-sized, per
+  publish**. It copies `data + 4` to strip the CDR encapsulation header, and it
+  looks droppable: `dds_istream_init` takes a `const void *`, so the stream could
+  point into the caller's buffer, which is exactly the shape issue 0782 used to
+  delete XRCE's. **It is not droppable, and the reason is alignment.**
+  `dds_cdr_alignto` rounds the stream INDEX and reads at `m_buffer + m_index`,
+  so an 8-aligned index only produces an 8-aligned address when the BASE is
+  8-aligned. `ddsrt_malloc` guarantees that; `data + 4` is 4-aligned at best, so
+  any message carrying an `int64`/`double` would take an unaligned 64-bit read.
+  The copy is load-bearing. Recorded because the removal is attractive, wrong,
+  and would have passed every test on x86.
+- `publisher_publish_raw:295` and `subscription_take:149` —
+  `ddsrt_calloc(1, desc->m_size)`, the typed sample. **Fixed size, known at
+  create time.** These are the two this issue named, and they are removable:
+  hold one per publisher and per subscription, and per operation call
+  `dds_stream_free_sample` + re-zero rather than free. That does not remove what
+  `dds_stream_read_sample` allocates internally for variable-length fields, so
+  it is a full fix only for fixed-size message types — which is most of what an
+  embedded image publishes.
+- `write_typed:638`, `:652` and the `write_fibonacci_get_result_response:480`
+  nested inside it — the request/reply analogue of the publish path, so per
+  request and per reply.
+
+Not measured, and not measurable here: allocations inside the middleware
+libraries. Cyclone allocates below `dds_write`/`dds_take` and zenoh-pico
+allocates per message in its own C. An image on either calls a general allocator
+per message whatever this tool reports — the split is about which allocations
+are OURS to remove, not about how many happen.
+
+One correction to the Problem table: the cffi shim's per-loan
+`alloc::vec![0u8; len]` (now `lib.rs:2211`, in `SlotLending::try_lend_slot`) is
+not a fallback that sometimes fires. `borrow_loaned_message` is NULL in every
+backend vtable (issue 0800), so it is the path, always.
+
+## Direction item 3, decided 2026-08-26
+
+**No backend is `core`-only, and two are allocation-free on the data plane.**
+Stated that way because "is a `no_std` image claimed?" turns out to be two
+questions with different answers, and conflating them is how the original clause
+got written:
+
+- **Crate flavour.** ARCHITECTURE §2's terminal state for the core crates is
+  `core` and `core+alloc`. Every backend allocates at entity creation, so every
+  backend needs `alloc`. All four are `core+alloc` backends. Nothing here claims
+  or needs `core`-only, and no future work should try to make cyclonedds or
+  zenoh reach it.
+- **Steady-state behaviour, which is the one that decides real-time
+  reasoning.** XRCE and uORB do not allocate after setup: an image on either may
+  reason about worst-case latency and heap exhaustion as if the heap were frozen
+  once the graph is up. **cyclonedds and zenoh may not**, and neither may any
+  image using the cffi lending fallback. Their data plane calls a general
+  allocator per message, so their worst case includes whatever the allocator's
+  is, and a long-running image on a fragmenting heap can fail on a publish that
+  succeeded a million times.
+
+That distinction is now what the seven declarations rest on, and it is checked:
+`--check` fails when a backend gains a steady-state allocation, which is the
+event that would make this paragraph false.

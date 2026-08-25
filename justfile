@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3716,6 +3716,16 @@ check-rmw-api-parity:
 check-rmw-abi-shape:
     @python3 scripts/rmw-abi-shape.py --self-test
     @python3 scripts/rmw-abi-shape.py --check
+
+# issue 0777 — seven ABI deviations were justified by "pools are baked", a claim
+# true of one backend in five. The conclusion held; the reason did not. This is
+# the re-run: every allocation site in a backend, split by whether it is on the
+# per-message path or at entity creation. `--check` fails on a steady-state
+# allocation with no declared reason, so a new one is argued for rather than
+# merged. Source-only, no ROS install, fast line.
+check-rmw-alloc-sites:
+    @python3 scripts/rmw-alloc-sites.py --self-test
+    @python3 scripts/rmw-alloc-sites.py --check
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and

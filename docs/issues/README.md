@@ -97,15 +97,22 @@ Recently resolved (2026-08-25): **#0755** (cmake) — the entry's DEPLOY now rea
 facts memo is keyed per (board, deploy), which the old one-answer cache could not express.
 See `archived/0755-*`.
 
-**#0777** (rmw/memory, open 2026-08-24) — seven declared RMW-ABI differences justified themselves with "no
-runtime allocation to pre-size; pools are baked", which is true of ONE backend in five: cyclonedds
-`ddsrt_malloc`s per publish and `ddsrt_calloc`s per take (`publisher.cpp:202,235`, `subscriber.cpp:143`),
-zenoh allocates inside zenoh-pico, xrce per streamed publish, and the cffi shim itself does
-`vec![0u8; len]` per fallback loan (`lib.rs:2025`); only uORB matches. The CONCLUSION survives — upstream's
-allocation argument is an opaque per-impl handle nothing here can produce — the SECOND replacement reason, the first (`rcutils_allocator_t`) having been false too — but the
-premise was false and was reused six times after it was written, which is how one unchecked sentence
-becomes an invisible property of the design. Clause retired from all seven. Open question: whether a
-`no_std`-reachable image is claimed for cyclone/zenoh at all. See `0777-*`. (2026-08-24)
+Recently resolved (2026-08-26): **#0777** (rmw/memory) — seven declared RMW-ABI differences justified
+themselves with "no runtime allocation to pre-size; pools are baked", true of ONE backend in five. The
+conclusion survived (upstream's allocation argument is an opaque per-impl handle nothing here can produce);
+the premise did not, and had been reused six times. Both replacement reasons written for it were ALSO false
+before one held, which is the finding. Now measured rather than asserted: `scripts/rmw-alloc-sites.py`
+(`just check-rmw-alloc-sites`, fast line) attributes every allocation to its enclosing function and splits
+per-message from entity-creation — cyclonedds 6 steady-state, xrce 0 (it reached zero when #0782 landed),
+uorb 0 — and `--check` fails on a new steady-state site with no declared reason. Two of cyclone's six are
+`ddsrt_calloc(1, desc->m_size)`, fixed size and knowable at create time, so removable by holding one sample
+per entity; the message-sized one at `publisher.cpp:262` is NOT, and the reason is recorded because the
+removal is attractive and wrong — `dds_cdr_alignto` aligns the stream INDEX and reads at `m_buffer +
+m_index`, so pointing at `data + 4` instead of a `ddsrt_malloc` copy gives unaligned 64-bit reads for any
+message with an int64/double, passing every x86 test. Item 3 decided: no backend is `core`-only (all four
+need `alloc` at entity creation, and ARCHITECTURE §2's terminal state is `core+alloc`), but XRCE and uORB
+ARE allocation-free on the data plane, and cyclonedds/zenoh are not — so real-time and heap-exhaustion
+reasoning may assume a frozen heap on the first two only. See `archived/0777-*`.
 
 Recently resolved (2026-08-25): **#0778** (rmw) — a client could not learn the id of the request it just
 sent, so two in-flight calls were indistinguishable and each backend invented a policy (cyclonedds
