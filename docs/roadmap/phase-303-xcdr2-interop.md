@@ -1,5 +1,12 @@
 # Phase 303 — XCDR2 + extensibility: modern ROS 2 wire interop
 
+**Status (2026-07-26). PARKED — machinery built and tested, no active
+driver.** The premise was refuted and the issue this phase named as its root
+(#0267) was resolved under the phase-309 line instead. Kept out of `archived/`
+because the XCDR2 work is intended to be picked up for a per-type
+`@appendable` opt-in; it is parked, not finished. Detail in the callout
+below, which is the original notice and remains authoritative.
+
 > **⚠️ PREMISE REFUTED + DRIVER RESOLVED ELSEWHERE (2026-07-26).** Read the
 > **CORRECTION** section below FIRST. Two things changed after this phase was
 > written: (1) a default Jazzy peer is **FINAL/XCDR1**, not XCDR2/appendable — so

@@ -1,6 +1,6 @@
 # Phase 292 — ASI reference-consumer revisit: FVP entry parity, consumer-wall intake, S32Z board
 
-Status: **Draft — 2026-07-16** · Counterpart of ASI `docs/roadmap/
+**Status (2026-07-16). Draft.** · Counterpart of ASI `docs/roadmap/
 phase-3-modern-nano-ros-migration.md` (autoware-safety-island, `nano-ros`
 branch) · Touches phase-215 (board import), 217 (FVP lane), 236 (ASI is the
 named reference consumer), 287 (ament verbs on zephyr).
