@@ -92,6 +92,26 @@ add_test(
     COMMAND nros_rmw_cyclonedds_pubsub_smoke
 )
 
+# Issue 0780 — polled status events, provoked for real (a 50 ms deadline and a
+# publisher that stops). Reuses the test_string descriptor above.
+add_executable(nros_rmw_cyclonedds_status_events
+    status_events.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_status_events
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_status_events
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_status_events
+    COMMAND nros_rmw_cyclonedds_status_events
+)
+
 # Phase 117.6.B raw-CDR data round-trip via publish_raw / try_recv_raw.
 add_executable(nros_rmw_cyclonedds_data_roundtrip
     data_roundtrip.cpp

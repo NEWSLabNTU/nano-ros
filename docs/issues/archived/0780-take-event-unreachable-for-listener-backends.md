@@ -2,7 +2,7 @@
 id: 780
 title: "`rmw_take_event` is declined on a premise this ABI contradicts, and the
   one backend that would need it has no other way to deliver a status event"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-376, issue-0460]
@@ -129,4 +129,59 @@ the fast line): the `/*slot*/` comment sequence must be an ordered subsequence
 of the header's field order — subsequence because an initialiser may stop early
 and let C++ zero-fill, ordered because it may never name them out of sequence.
 Proven to fire by swapping two adjacent entries.
+
+## Resolved 2026-08-25 — cyclonedds delivers status events, by POLLING
+
+`subscription_take_event` and `publisher_take_event` are implemented in the
+cyclonedds backend. No listeners, no buffer, no lock.
+
+Cyclone offers both listeners and status getters, and for this backend the
+getters are strictly better:
+
+* **`dds_get_*_status` RESETS its `*_change` counters as it reads them.** That
+  IS take semantics. The event is consumed by the read, so there is nothing to
+  buffer and no depth to bound.
+* **A listener would fire on Cyclone's own worker thread**, and this backend
+  has nowhere safe to hand that to — its `drive_io` is a sleep. That fact is
+  precisely what made the decline wrong; solving it with a listener would have
+  reintroduced the same problem plus a buffer and a lock.
+
+So `*_event_init` stays NULL here and the two poll slots carry the whole
+surface. A caller polls them the way it already polls `has_data`.
+
+Mapping:
+
+| kind | entity | Cyclone getter |
+| --- | --- | --- |
+| `LIVELINESS_CHANGED` | reader | `dds_get_liveliness_changed_status` |
+| `REQUESTED_DEADLINE_MISSED` | reader | `dds_get_requested_deadline_missed_status` |
+| `MESSAGE_LOST` | reader | `dds_get_sample_lost_status` |
+| `LIVELINESS_LOST` | writer | `dds_get_liveliness_lost_status` |
+| `OFFERED_DEADLINE_MISSED` | writer | `dds_get_offered_deadline_missed_status` |
+
+An entity asked for the other side's kind gets `INVALID_ARGUMENT`, not
+`taken = false`: answering "no events" would let the caller's mistake run
+forever looking like quiet.
+
+**Saturating conversions, deliberately.** `rmw_liveliness_changed_status_t` is
+16-bit where DDS is 32-bit, and `rmw_count_status_t::total_count_change` is
+UNSIGNED where DDS's is signed. Counts saturate rather than wrap — a wrapped
+count reads as a plausible small number, which is worse than a pegged one that
+visibly means "at least this many".
+
+## The test provokes a real event
+
+`status_events.cpp` sets a 50 ms deadline on both ends, publishes ONCE and then
+stops, and waits for `REQUESTED_DEADLINE_MISSED`. It then asserts the same
+event is NOT taken twice — that the read consumed it — and that both
+cross-entity kind errors are reported.
+
+A test that only checked "the slot exists and answers `taken = false`" would
+have passed against the NULL slot it replaces. 19/19 in the cyclonedds suite.
+
+## Not changed
+
+zenoh keeps `*_event_init` and leaves these NULL: it delivers through the
+callback and has a context to do it from, so a poll would be redundant there.
+That is the per-backend choice the slot exists to allow.
 

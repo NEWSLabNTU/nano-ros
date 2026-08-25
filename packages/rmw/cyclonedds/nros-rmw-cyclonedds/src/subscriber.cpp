@@ -321,6 +321,106 @@ rmw_ret_t subscription_take_sequence(const rmw_subscription_t* subscriber, uint8
     return NROS_RMW_RET_OK;
 }
 
+// ---------------------------------------------------------------------------
+// Status events (issue 0780)
+// ---------------------------------------------------------------------------
+//
+// POLLED, not listened for. Cyclone offers both, and for this backend polling
+// is strictly better:
+//
+//   * `dds_get_*_status` RESETS the `*_change` counters as it reads them,
+//     which is exactly `take` semantics — the event is consumed by the read,
+//     so there is nothing to buffer and nothing to bound.
+//   * a listener would fire on Cyclone's own worker thread, and this backend
+//     has no safe context to hand that to: its `drive_io` is a sleep. That is
+//     the fact that made `take_event`'s decline wrong in the first place
+//     (issue 0780) — solving it with a listener would have reintroduced the
+//     very problem, plus a buffer and a lock.
+//
+// So `*_event_init` stays NULL here and these two slots carry the surface. A
+// caller polls them the way it already polls `has_data`.
+
+namespace {
+
+/// DDS counts are 32-bit; `rmw_liveliness_changed_status_t` is 16-bit. Saturate
+/// rather than truncate: a wrapped count reads as a plausible small number and
+/// is worse than a pegged one, which is visibly "at least this many".
+uint16_t sat_u16(uint32_t v) {
+    return v > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(v);
+}
+int16_t sat_i16(int32_t v) {
+    if (v > INT16_MAX) return INT16_MAX;
+    if (v < INT16_MIN) return INT16_MIN;
+    return static_cast<int16_t>(v);
+}
+/// `rmw_count_status_t::total_count_change` is UNSIGNED; DDS's is signed. These
+/// counters only ever grow, so a negative is a Cyclone-side surprise rather
+/// than a value to propagate — clamp at 0 and report no event.
+uint32_t sat_u32(int32_t v) {
+    return v < 0 ? 0u : static_cast<uint32_t>(v);
+}
+
+} // namespace
+
+rmw_ret_t subscription_take_event(const rmw_subscription_t* subscription,
+                                       rmw_event_type_t kind, rmw_event_payload_t* out,
+                                       bool* taken) {
+    if (out == nullptr || taken == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *taken = false;
+    if (subscription == nullptr || subscription->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    SubState* state = as_state(subscription);
+    if (state == nullptr || state->reader <= 0) return NROS_RMW_RET_INVALID_ARGUMENT;
+
+    switch (kind) {
+        case NROS_RMW_EVENT_LIVELINESS_CHANGED: {
+            dds_liveliness_changed_status_t st{};
+            if (dds_get_liveliness_changed_status(state->reader, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (st.alive_count_change == 0 && st.not_alive_count_change == 0) {
+                return NROS_RMW_RET_OK;
+            }
+            out->liveliness_changed.alive_count = sat_u16(st.alive_count);
+            out->liveliness_changed.not_alive_count = sat_u16(st.not_alive_count);
+            out->liveliness_changed.alive_count_change = sat_i16(st.alive_count_change);
+            out->liveliness_changed.not_alive_count_change = sat_i16(st.not_alive_count_change);
+            *taken = true;
+            return NROS_RMW_RET_OK;
+        }
+        case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED: {
+            dds_requested_deadline_missed_status_t st{};
+            if (dds_get_requested_deadline_missed_status(state->reader, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+            out->count.total_count = st.total_count;
+            out->count.total_count_change = sat_u32(st.total_count_change);
+            *taken = true;
+            return NROS_RMW_RET_OK;
+        }
+        case NROS_RMW_EVENT_MESSAGE_LOST: {
+            dds_sample_lost_status_t st{};
+            if (dds_get_sample_lost_status(state->reader, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+            out->count.total_count = st.total_count;
+            out->count.total_count_change = sat_u32(st.total_count_change);
+            *taken = true;
+            return NROS_RMW_RET_OK;
+        }
+        // Publisher-side kinds on a subscription are a caller error, not an
+        // empty poll: answering `taken = false` would let the mistake run
+        // forever looking like "no events".
+        case NROS_RMW_EVENT_LIVELINESS_LOST:
+        case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
+        default:
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+}
+
 rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
     // Phase 376 W3.d step A — flag out, status returned.
     if (out_has_data == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;

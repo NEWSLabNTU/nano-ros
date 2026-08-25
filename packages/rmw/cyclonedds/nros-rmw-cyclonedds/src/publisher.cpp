@@ -196,6 +196,53 @@ rmw_ret_t publisher_destroy(rmw_publisher_t* publisher) {
     return NROS_RMW_RET_OK;
 }
 
+// Status events (issue 0780), publisher side. POLLED — see the long note in
+// `subscriber.cpp`: `dds_get_*_status` resets the change counters as it reads
+// them, which IS take semantics, and a listener would fire on Cyclone's worker
+// thread with nowhere safe to hand it to.
+rmw_ret_t publisher_take_event(const rmw_publisher_t* publisher, rmw_event_type_t kind,
+                                    rmw_event_payload_t* out, bool* taken) {
+    if (out == nullptr || taken == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *taken = false;
+    if (publisher == nullptr || publisher->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    PubState* state = as_state(publisher);
+    if (state == nullptr || state->writer <= 0) return NROS_RMW_RET_INVALID_ARGUMENT;
+
+    switch (kind) {
+        case NROS_RMW_EVENT_LIVELINESS_LOST: {
+            dds_liveliness_lost_status_t st{};
+            if (dds_get_liveliness_lost_status(state->writer, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+            out->count.total_count = st.total_count;
+            out->count.total_count_change = static_cast<uint32_t>(st.total_count_change);
+            *taken = true;
+            return NROS_RMW_RET_OK;
+        }
+        case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED: {
+            dds_offered_deadline_missed_status_t st{};
+            if (dds_get_offered_deadline_missed_status(state->writer, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+            out->count.total_count = st.total_count;
+            out->count.total_count_change = static_cast<uint32_t>(st.total_count_change);
+            *taken = true;
+            return NROS_RMW_RET_OK;
+        }
+        // Subscription-side kinds on a publisher: a caller error, reported as
+        // one rather than as an eternally empty poll.
+        case NROS_RMW_EVENT_LIVELINESS_CHANGED:
+        case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED:
+        case NROS_RMW_EVENT_MESSAGE_LOST:
+        default:
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+}
+
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
                                      size_t len) {
     if (publisher == nullptr || data == nullptr || len < 4) {

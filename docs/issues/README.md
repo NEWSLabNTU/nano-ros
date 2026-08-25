@@ -3712,13 +3712,14 @@ Recently resolved (2026-08-05 cycle) — #248, #382, #392, #398, #411, #412, #41
 
 Recently resolved (2026-08-25): **#0779** — fifteen test files sat behind a crate-level `#![cfg(feature = "…")]` that no recipe enabled. Unlike `required-features` (#0652) cargo BUILDS these, so nextest ran a binary with zero tests and reported green — a stronger false signal than a skipped target; the two `lending` files had stopped COMPILING a phase earlier and nothing noticed. All six features are now wired, `check-required-features-tests` runs 73 tests with no suite reporting zero, and the gate's BASELINE is EMPTY. Two lessons recorded: (1) the issue's own one-feature-per-file table was a TRAP — three of the files need conjunctions (`platform-posix`+`link-custom`, `std`+`bridge-stub`, `std`+`unix-mock`), and a lane passing only the named feature builds the target, runs nothing and looks wired, so read each file's `#![cfg(...)]` and confirm the test COUNT moves; (2) `c-stub-test` needed repairs, not a flag — `abi_layout_check.c` had not compiled since phase-321 W2.e moved the crate (#0490 fixed the sibling `rerun-if-changed` spelling in the same file and left the `-I`), and `c_stub_platform` asserted a call count for a trait that had since shrunk. See `archived/0779-*`. (2026-08-25)
 
-**#0780** (rmw, open 2026-08-24) — `rmw_take_event` declined on two clauses that both fail. "A poll would be
-blind without a wait set" contradicts `has_data`, whose own doc calls a wait-set-free poll the model here;
-"our callback runs on the safe context inside `drive_io`" is true of no backend — zenoh fires from
-`try_recv_raw`/`has_data`, and cyclone's DDS listeners fire on Cyclone's worker while its `drive_io` is a
-sleep with no callback path (the comment claiming otherwise names an `Activator` that does not exist). So
-the backend a ROS-interop image actually uses cannot deliver a QoS status event at all. See `0780-*`.
-(2026-08-24) **ABI half landed 2026-08-25**: `subscription_take_event` / `publisher_take_event` are slots (NULL everywhere, which for cyclonedds is honest — it registers no DDS listeners yet), and both false clauses plus `has_data`'s untrue "must not mutate subscription state" are corrected where the decisions live. Implementing cyclonedds' listeners is what closes it. Also gated the positional-vtable hazard the slot insertion exposed (`check-rmw-vtable-order`).
+Recently resolved (2026-08-25): **#0780** (rmw) — `rmw_take_event` was declined on two clauses that both
+failed: "a poll would be blind without a wait set" contradicts `has_data`, whose doc calls a wait-set-free
+poll the model here, and "our callback runs on the safe context inside `drive_io`" was true of no backend.
+cyclonedds could not deliver a QoS status event at all. Now two slots, implemented by POLLING —
+`dds_get_*_status` resets its change counters as it reads them, which IS take semantics, so no listener, no
+buffer, no lock, and no delivery on Cyclone's worker thread. Test provokes a real deadline miss rather than
+asserting a stub. Also corrected `has_data`'s untrue "must not mutate subscription state". See
+`archived/0780-*`.
 
 **#0781** (rmw tech-debt, open 2026-08-24) — one in-place-dispatch capability spread over five slots.
 `subscription_supports_in_place` re-encodes what slot NULLITY already says (both impls ignore their

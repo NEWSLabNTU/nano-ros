@@ -191,6 +191,13 @@ rmw_ret_t           client_destroy(rmw_client_t *client);
 // Phase 130.8 — non-blocking send/recv split (phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair is the
 // one request/reply path).
+/* Issue 0780 — polled status events. */
+rmw_ret_t subscription_take_event(const rmw_subscription_t *subscription,
+                                       rmw_event_type_t kind, rmw_event_payload_t *out,
+                                       bool *taken);
+rmw_ret_t publisher_take_event(const rmw_publisher_t *publisher, rmw_event_type_t kind,
+                                    rmw_event_payload_t *out, bool *taken);
+
 rmw_ret_t service_send_request_raw(const rmw_client_t *client,
                                         const uint8_t *request,
                                         size_t req_len, int64_t *sequence_id);

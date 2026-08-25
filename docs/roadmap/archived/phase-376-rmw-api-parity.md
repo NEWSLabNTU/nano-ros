@@ -851,7 +851,7 @@ claim; each is a thing the audit FOUND while checking it.
 | --- | --- | --- |
 | 0776 | no serialized-size bound — the one contract symbol with no slot, deferred with its issue id so `--check` can be honest about it. Design + work items in phase-380 | large |
 | 0778 | cyclonedds still holds ONE outstanding request; the abandon is now visible rather than silent. Needs a pending TABLE mirroring the server's `slots`. Also: `take_request`/`send_response`'s `int64_t` is a slot INDEX there, and an unanswered request leaks one | medium |
-| 0780 | `take_event` declined on two clauses that both fail; cyclonedds cannot deliver a QoS status event at all | medium |
+| ~~0780~~ | **RESOLVED** — two slots, implemented in cyclonedds by POLLING `dds_get_*_status` (which resets its change counters as it reads, so no listener/buffer/lock). Test provokes a real deadline miss | done |
 | 0781 | one in-place-dispatch capability spread over five slots; a probe that re-encodes what slot nullity already says | medium |
 | 0782 | `publish_streamed` exists to avoid a `.bss` staging buffer and XRCE `malloc`s the whole payload | medium |
 | 0785 | `create_session` carries one of Humble's eight `rmw_init_options_t` fields; `localhost_only` and `enclave` are gaps, and the second makes a GROUPED answer hollow | medium |
