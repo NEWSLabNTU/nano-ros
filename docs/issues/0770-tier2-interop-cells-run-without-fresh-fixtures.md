@@ -6,8 +6,39 @@ title: "tier-2 runs the native interop cells against fixtures its own build
 status: open
 type: bug
 area: testing
-related: [issue-0482, issue-0445, issue-0488]
+related: [issue-0482, issue-0445, issue-0488, issue-0786]
 ---
+
+## Independent corroboration (2026-08-25)
+
+Hit again on a separate host in the same chain, and worth recording because the
+second instance narrows the cause.
+
+`examples/native/cpp/listener/build-cyclonedds/cpp_listener` and
+`examples/native/c/service-client/build-cyclonedds/c_service_client` both went
+STALE under a tier-2 run after a `lane=tier2` build reported all eight modules
+OK. The newer input in each case was a cyclonedds source
+(`third-party/dds/cyclonedds/src/ddsrt/src/atomics.c` after a submodule bump,
+and `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp` after an
+edit). `build-test-fixtures lane=native` cleared both, exactly as reported here.
+
+So this is not specific to `interop::CELLS` or to XRCE: it reaches any native
+cell whose fixture the tier-2 build lane does not refresh. A cyclonedds source
+edit is a good way to provoke it, because it stales native fixtures across
+several languages at once while the 1-wise lane refreshes only some.
+
+**And issue 0786 is the silent half of this same split.** There, two tests
+hand-joined their fixture path instead of resolving it, so they never reached
+`require_prebuilt_binary_fresh_cmake` at all — the out-of-lane stale artifact
+did not fail, it RAN, and a five-day-old binary read as a runtime regression.
+Fixing 0786 to resolve properly is what turned those two native fixtures into
+the loud STALE verdicts above. That is the right direction (loud beats silent),
+but it means 0786's fix INCREASES the surface this issue covers rather than
+reducing it: cells that used to paper over the build/run mismatch now report it.
+
+Useful framing for whoever takes this: 0786 was "the test never asked", this is
+"the lane answered inconsistently". Only the second needs `nros_lane_build_lane`
+and `CiLane::run_scope` to agree.
 
 ## Problem
 
