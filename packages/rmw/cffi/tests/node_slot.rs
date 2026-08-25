@@ -36,7 +36,9 @@ unsafe fn first_byte(p: *const c_char) -> usize {
     if p.is_null() {
         0
     } else {
-        unsafe { *p as u8 as usize }
+        // Read the byte through `u8` rather than `c_char`: `c_char` is signed on
+        // x86_64 and unsigned on aarch64, so neither literal spelling is portable.
+        unsafe { *p.cast::<u8>() as usize }
     }
 }
 

@@ -112,7 +112,7 @@ fn the_reason_is_written_truncated_and_terminated() {
     pubq.reliability = generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8;
     subq.reliability = generated::NROS_RMW_RELIABILITY_RELIABLE as u8;
 
-    let mut buf = [0i8; 256];
+    let mut buf = [0 as core::ffi::c_char; 256];
     let mut compat = generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_OK;
     let rc = unsafe {
         rmw_qos_profile_check_compatible(pubq, subq, &mut compat, buf.as_mut_ptr(), buf.len())
@@ -126,7 +126,7 @@ fn the_reason_is_written_truncated_and_terminated() {
     // A buffer far too small must still yield the VERDICT and a terminated
     // string — truncation is not failure, because returning BUFFER_TOO_SMALL
     // would cost the caller the half of the answer that matters.
-    let mut tiny = [0i8; 8];
+    let mut tiny = [0 as core::ffi::c_char; 8];
     let mut compat2 = generated::rmw_qos_compatibility_type_t::RMW_QOS_COMPATIBILITY_OK;
     let rc = unsafe {
         rmw_qos_profile_check_compatible(pubq, subq, &mut compat2, tiny.as_mut_ptr(), tiny.len())
