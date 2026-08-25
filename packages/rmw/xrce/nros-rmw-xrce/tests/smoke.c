@@ -15,9 +15,9 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_xrce.h"
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static const nros_rmw_vtable_t *g_received_vtable = NULL;
 
@@ -80,6 +80,90 @@ size_t nros_platform_udp_send(const void *sock, const uint8_t *buf, size_t len,
     (void) buf;
     (void) len;
     (void) endpoint;
+    return 0;
+}
+
+/* Issue 0782 — the streamed-publish chunk loop.
+ *
+ * `xrce_publisher_publish_streamed` used to `malloc(total)` and memcpy the
+ * header-stripped body into the reserved slot; it now writes straight into the
+ * stream. The index arithmetic that replaced the memcpy spans two destinations
+ * — a 4-byte encapsulation-header scratch, then the caller's slot — and is the
+ * only part of that path a host with no XRCE agent can exercise. Left untested
+ * it would have been verified by reading, which is how issue 0787's four
+ * defects reached main.
+ */
+/* Issue 0782 — declared locally rather than by including `internal.h`, which
+ * pulls in the whole micro-XRCE SDK include path this test deliberately does
+ * not carry. A signature that drifts from the definition is a link error, not
+ * silent breakage. */
+size_t xrce_drive_streamed_body(uint8_t *body, size_t body_len, size_t total,
+                                void (*chunk_cb)(uint8_t *out_buf, size_t cap,
+                                                 size_t *out_written, void *user_ctx),
+                                void *user_ctx);
+
+static const uint8_t *g_src;
+static size_t g_src_len;
+static size_t g_src_pos;
+static size_t g_max_chunk;
+
+static void feed_chunk(uint8_t *out, size_t cap, size_t *written, void *ctx) {
+    (void) ctx;
+    size_t n = g_src_len - g_src_pos;
+    if (n > cap) n = cap;
+    if (n > g_max_chunk) n = g_max_chunk;
+    memcpy(out, g_src + g_src_pos, n);
+    g_src_pos += n;
+    *written = n;
+}
+
+static int check_stream_loop(void) {
+    /* 4-byte encap header + 10 body bytes. */
+    static const uint8_t payload[14] = {0xAA, 0xBB, 0xCC, 0xDD, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    /* Drive it at several chunk sizes: 1 forces the header to be absorbed over
+     * four separate callbacks, 3 straddles the header/body boundary, 64 takes
+     * everything the cap allows. */
+    const size_t sizes[] = {1, 2, 3, 4, 5, 64};
+    for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
+        uint8_t body[10];
+        memset(body, 0xEE, sizeof(body));
+        g_src = payload;
+        g_src_len = sizeof(payload);
+        g_src_pos = 0;
+        g_max_chunk = sizes[i];
+
+        size_t consumed =
+            xrce_drive_streamed_body(body, sizeof(body), sizeof(payload), feed_chunk, NULL);
+        if (consumed != sizeof(payload)) {
+            fprintf(stderr, "FAIL: chunk=%zu consumed %zu, want %zu\n", sizes[i], consumed,
+                    sizeof(payload));
+            return 1;
+        }
+        if (memcmp(body, payload + 4, sizeof(body)) != 0) {
+            fprintf(stderr, "FAIL: chunk=%zu body mismatch — the header was not stripped\n",
+                    sizes[i]);
+            return 1;
+        }
+    }
+
+    /* EOF before `total`: report what was consumed so the caller can zero the
+     * rest and error, rather than publishing uninitialised stream memory. */
+    uint8_t body[10];
+    memset(body, 0xEE, sizeof(body));
+    g_src = payload;
+    g_src_len = 9; /* header + 5 body bytes, then EOF */
+    g_src_pos = 0;
+    g_max_chunk = 64;
+    size_t consumed =
+        xrce_drive_streamed_body(body, sizeof(body), sizeof(payload), feed_chunk, NULL);
+    if (consumed != 9) {
+        fprintf(stderr, "FAIL: short delivery consumed %zu, want 9\n", consumed);
+        return 1;
+    }
+    if (memcmp(body, payload + 4, 5) != 0) {
+        fprintf(stderr, "FAIL: short delivery lost the bytes it DID receive\n");
+        return 1;
+    }
     return 0;
 }
 
@@ -194,6 +278,10 @@ int main(void) {
         fprintf(stderr,
                 "FAIL: take_request on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)tr);
+        return EXIT_FAILURE;
+    }
+
+    if (check_stream_loop() != 0) {
         return EXIT_FAILURE;
     }
 

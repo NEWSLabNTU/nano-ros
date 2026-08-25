@@ -853,7 +853,7 @@ claim; each is a thing the audit FOUND while checking it.
 | 0778 | cyclonedds still holds ONE outstanding request; the abandon is now visible rather than silent. Needs a pending TABLE mirroring the server's `slots`. Also: `take_request`/`send_response`'s `int64_t` is a slot INDEX there, and an unanswered request leaks one | medium |
 | ~~0780~~ | **RESOLVED** — two slots, implemented in cyclonedds by POLLING `dds_get_*_status` (which resets its change counters as it reads, so no listener/buffer/lock). Test provokes a real deadline miss | done |
 | 0781 | one in-place-dispatch capability spread over five slots; a probe that re-encodes what slot nullity already says | medium |
-| 0782 | `publish_streamed` exists to avoid a `.bss` staging buffer and XRCE `malloc`s the whole payload | medium |
+| ~~0782~~ | **RESOLVED** — XRCE streams straight into the reserved slot with a 4-byte header scratch; the per-publish allocation is gone. Scope restated first (the slot works; zenoh's half withdrawn) | done |
 | 0785 | `create_session` carries one of Humble's eight `rmw_init_options_t` fields; `localhost_only` and `enclave` are gaps, and the second makes a GROUPED answer hollow | medium |
 | 0777 | the "pools are baked" clause and its first replacement were both false; the CAPABILITY question (cyclone allocates twice per message with a knowable size) stays open | small + a design question |
 | 0779 | fifteen test files behind a `#![cfg(feature)]` no lane enables; `lending` wired, five features baselined | testing |

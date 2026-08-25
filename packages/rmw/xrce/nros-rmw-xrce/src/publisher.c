@@ -10,6 +10,7 @@
 
 #include "nros/rmw_ret.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -169,6 +170,52 @@ rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t *publisher,
  * the reported byte count. Once the full `total` is delivered the
  * session is flushed so the bytes reach the agent immediately
  * (mirrors `publish_raw`). */
+/* Issue 0782 — the chunk-drive loop, factored out so it can be TESTED.
+ *
+ * It is four lines of index arithmetic across two destinations (a throwaway
+ * encapsulation-header scratch, then the caller's stream slot) and it is the
+ * only part of the streaming publish that a host without an XRCE agent can
+ * exercise at all. Left inline it would have been verified by reading.
+ *
+ * Writes the caller's payload MINUS its leading 4-byte CDR encapsulation
+ * header into `body[0 .. body_len)`. Returns how many payload bytes were
+ * consumed in total (header included), which equals `total` on success and
+ * less when `chunk_cb` reported EOF early.
+ */
+size_t xrce_drive_streamed_body(uint8_t *body, size_t body_len, size_t total,
+                                void (*chunk_cb)(uint8_t *out_buf, size_t cap,
+                                                 size_t *out_written, void *user_ctx),
+                                void *user_ctx) {
+    size_t consumed = 0;
+    uint8_t encap[XRCE_CDR_HEADER_LEN];
+    (void)body_len;
+
+    while (consumed < total) {
+        uint8_t *dst;
+        size_t cap;
+        if (consumed < XRCE_CDR_HEADER_LEN) {
+            /* Still inside the encapsulation header: absorb into scratch and
+             * drop it. `cap` is deliberately tiny — the contract lets the
+             * backend call `chunk_cb` as many times as it likes. */
+            dst = encap + consumed;
+            cap = XRCE_CDR_HEADER_LEN - consumed;
+        } else {
+            dst = body + (consumed - XRCE_CDR_HEADER_LEN);
+            cap = total - consumed;
+        }
+        size_t written = 0;
+        chunk_cb(dst, cap, &written, user_ctx);
+        if (written == 0) {
+            break; /* EOF from the caller before `total` */
+        }
+        if (written > cap) {
+            written = cap; /* defensive clamp against a misbehaving cb */
+        }
+        consumed += written;
+    }
+    return consumed;
+}
+
 rmw_ret_t xrce_publisher_publish_streamed(
         rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
@@ -194,35 +241,27 @@ rmw_ret_t xrce_publisher_publish_streamed(
     /* XRCE-DDS interop: the executor's serialized `total` bytes start with the
      * 4-byte CDR encapsulation header, which must NOT be on the XRCE wire (the
      * agent owns the DDS representation header). Same contract as `publish_raw`
-     * / the subscriber re-prepend. We can't strip from the zero-copy stream
-     * region after the fact, so stage the full message, then copy the
-     * header-stripped body into the reserved (`total - 4`) slot. */
+     * / the subscriber re-prepend.
+     *
+     * Issue 0782 — this used to `malloc(total)`, stage the whole message and
+     * memcpy the header-stripped body into the reserved slot. That was the ONLY
+     * message-sized, per-publish allocation in this backend: every other
+     * allocation here is create-time entity state, bounded and knowable at
+     * design time. A variable-size allocation on the publish path is the
+     * classic way to fragment a small FreeRTOS / Zephyr / NuttX heap, and a
+     * caller reaching for `publish_streamed` is doing it precisely to CONTROL
+     * memory — so handing it a hidden heap allocation inverted the point of the
+     * slot.
+     *
+     * The header does not need a staging buffer, only somewhere to put four
+     * bytes. Reserve `total - 4` up front, absorb the encapsulation header
+     * through a 4-byte scratch, then let `chunk_cb` write the body STRAIGHT
+     * into the stream slot. No allocation of any size. */
     if (total < XRCE_CDR_HEADER_LEN) {
         return NROS_RMW_RET_ERROR; /* malformed: no room for a CDR header */
     }
-    uint8_t *stage = (uint8_t *)malloc(total);
-    if (stage == NULL) {
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-    size_t staged = 0;
-    while (staged < total) {
-        size_t cap = total - staged;
-        size_t written = 0;
-        chunk_cb(stage + staged, cap, &written, user_ctx);
-        if (written == 0) {
-            break; /* EOF from the user before `total` was met */
-        }
-        if (written > cap) {
-            written = cap; /* defensive clamp against a misbehaving cb */
-        }
-        staged += written;
-    }
-    if (staged != total) {
-        free(stage);
-        return NROS_RMW_RET_ERROR; /* size_cb / chunk_cb disagreed */
-    }
-
     size_t body_len = total - XRCE_CDR_HEADER_LEN;
+
     ucdrBuffer ub;
     uint16_t req = uxr_prepare_output_stream(
         &st->session, st->output_reliable, ps->datawriter_oid,
@@ -230,16 +269,34 @@ rmw_ret_t xrce_publisher_publish_streamed(
     if (req == UXR_INVALID_REQUEST_ID) {
         /* `body_len` exceeds a single stream slot. No fragmented path
          * in the K.2 backend yet — same gap as `publish_raw`. */
-        free(stage);
         return NROS_RMW_RET_MESSAGE_TOO_LARGE;
     }
     if ((size_t)(ub.final - ub.iterator) < body_len) {
-        free(stage);
         return NROS_RMW_RET_MESSAGE_TOO_LARGE;
     }
-    memcpy(ub.iterator, stage + XRCE_CDR_HEADER_LEN, body_len);
+
+    /* From here the slot is COMMITTED: `uxr` has no cancel for a prepared
+     * output stream, so whatever is in it goes out on the next
+     * `uxr_run_session_time`. A caller whose `chunk_cb` stops short of the
+     * `total` its own `size_cb` promised therefore cannot be un-published —
+     * the best available is to zero the remainder so the peer sees
+     * deterministic padding rather than uninitialised stream memory, and to
+     * report the error. zenoh's implementation of this slot CAN abort
+     * (`z_bytes_writer_drop`); this one cannot, and that asymmetry is the
+     * price of removing the staging buffer. Issue 0782 records it. */
+    size_t consumed = xrce_drive_streamed_body(ub.iterator, body_len, total, chunk_cb, user_ctx);
+    bool short_delivery = consumed != total;
+
+    if (short_delivery) {
+        size_t body_written =
+            consumed > XRCE_CDR_HEADER_LEN ? consumed - XRCE_CDR_HEADER_LEN : 0;
+        memset(ub.iterator + body_written, 0, body_len - body_written);
+        ub.iterator += body_len;
+        (void)uxr_run_session_time(&st->session, 0);
+        return NROS_RMW_RET_ERROR; /* size_cb / chunk_cb disagreed */
+    }
+
     ub.iterator += body_len;
-    free(stage);
 
     (void)uxr_run_session_time(&st->session, 0);
     return NROS_RMW_RET_OK;

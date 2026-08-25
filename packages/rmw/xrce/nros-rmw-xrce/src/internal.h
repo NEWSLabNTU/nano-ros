@@ -329,6 +329,12 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node, const char* topic_name,
                                      const rmw_publisher_options_t* options,
                                      rmw_publisher_t* out);
 rmw_ret_t xrce_publisher_destroy(rmw_publisher_t* publisher);
+/* Issue 0782 — exposed for the smoke test: the streamed-publish chunk loop,
+ * which is the only part of that path reachable without an XRCE agent. */
+size_t xrce_drive_streamed_body(uint8_t* body, size_t body_len, size_t total,
+                                void (*chunk_cb)(uint8_t* out_buf, size_t cap,
+                                                 size_t* out_written, void* user_ctx),
+                                void* user_ctx);
 rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
                                           size_t len);
 /* Phase 124.E.3 — streamed publish via `uxr_prepare_output_stream`. */

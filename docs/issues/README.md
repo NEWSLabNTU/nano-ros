@@ -3728,11 +3728,15 @@ false), and the upstream-named subscription loan pair is NULL in every backend. 
 reason also describes upstream's `rmw_take_loaned_message` rather than the leak-proof scoped borrow that is
 its actual target argument. See `0781-*`. (2026-08-24)
 
-**#0782** (rmw/memory, open 2026-08-24) — `publish_streamed` exists to avoid a per-publisher `.bss` staging
-buffer on MCUs; XRCE implements it as `malloc(total)` of the whole payload and returns MESSAGE_TOO_LARGE
-past one stream slot, so on the target class the slot exists for it swaps a static buffer for a same-sized
-heap one. zenoh grows a writer to full size. Same family as 0777: a memory claim in the ABI no backend
-keeps. See `0782-*`. (2026-08-24) **Checked 2026-08-25**: core claim holds, three things in the report do not. "Strictly worse" is wrong — XRCE has NO abort for a prepared output stream, so staging is what validates that `chunk_cb` delivered what `size_cb` promised before anything reaches the wire, and both are CALLER-supplied. The code's stated reason (the 4-byte CDR header strip) is solvable with a 4-byte scratch and is not the binding one. And the slot's own justification named a per-publisher `.bss` buffer that does not exist — the staging is per-CALL STACK, both in `publish` and in the runtime's fallback; corrected in the header. Three options recorded; the choice is a trade, not a fix. **Scope restated**: not "the slot fails its promise" — both implementations DO spare the caller a whole-message buffer, and zenoh even aborts cleanly on short delivery. The defect is narrower: XRCE's is the only MESSAGE-SIZED, PER-PUBLISH allocation in that backend (everything else is create-time entity state), on targets whose heaps are small and fail by fragmentation. Clean fix exists; zenoh's version proves the shape. The zenoh half of the report is withdrawn.
+Recently resolved (2026-08-25): **#0782** (rmw/memory) — XRCE's `publish_streamed` `malloc`ed the whole
+message on every publish: the only message-sized, per-publish allocation in that backend, on heaps that fail
+by fragmentation. Now streams straight into the reserved stream slot with a 4-byte header scratch — no
+allocation at all. Cost, recorded at the commit point: `uxr` has no cancel for a prepared slot, so a caller
+that under-delivers gets zero-padding plus an error where the staging buffer used to allow a clean refusal
+(zenoh's version CAN abort). The chunk arithmetic is factored out and driven at six chunk sizes plus a
+short-delivery case, because it is the only part of that path reachable without an agent. Scope was restated
+first: the slot itself works, and the zenoh half of the original report was withdrawn.
+See `archived/0782-*`.
 
 **#0785** (rmw, open 2026-08-24) — `create_session` carries `domain_id` and nothing else from Humble's
 eight-field `rmw_init_options_t`. Two are real gaps: `localhost_only` (a discovery-scope control that maps

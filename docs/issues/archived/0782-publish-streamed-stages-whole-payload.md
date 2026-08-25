@@ -2,7 +2,7 @@
 id: 782
 title: "XRCE's `publish_streamed` heap-allocates the whole message on every
   publish — the only message-sized, per-publish allocation in that backend"
-status: open
+status: resolved
 type: bug
 area: rmw, memory
 related: [phase-376, issue-0777]
@@ -157,4 +157,43 @@ abort. zenoh's version is the proof that the shape works.
 The zenoh criticism in the original report is withdrawn: `z_owned_bytes_writer_t`
 accumulating internally is the middleware's own buffer, and every backend must
 hold the message somewhere between serialisation and the wire.
+
+## Resolved 2026-08-25 — the allocation is gone
+
+Option (1). `xrce_publisher_publish_streamed` reserves `total - 4` in the
+output stream, absorbs the 4-byte CDR encapsulation header through a
+stack scratch, and lets `chunk_cb` write the body STRAIGHT into
+`ub.iterator`. No allocation of any size on the publish path.
+
+What remains in that backend is create-time entity state (`calloc` in
+`publisher_create`, freed in destroy) — bounded, once per entity, knowable at
+design time. The message-sized per-publish allocation, which was the whole
+defect, is gone.
+
+### The cost, stated where it happens
+
+`uxr` has no cancel for a prepared output stream: once reserved, the slot goes
+out on the next `uxr_run_session_time`. So a caller whose `chunk_cb` stops
+short of the `total` its own `size_cb` promised can no longer be un-published.
+The backend zero-fills the remainder — deterministic padding rather than
+uninitialised stream memory — and returns an error. zenoh's implementation CAN
+abort (`z_bytes_writer_drop`); this one cannot, and that asymmetry is what the
+staging buffer used to buy. It is recorded in a comment at the commit point
+rather than left for the next reader to discover.
+
+### Tested, not reasoned about
+
+The index arithmetic spans two destinations (header scratch, then the caller's
+slot) and was the easy thing to get wrong. It is factored into
+`xrce_drive_streamed_body` and driven by the smoke test at chunk sizes 1, 2, 3,
+4, 5 and 64 — 1 forces the header to be absorbed over four separate callbacks,
+3 straddles the header/body boundary — plus a short-delivery case asserting the
+consumed count and that the bytes which DID arrive were kept.
+
+That helper exists to be testable: this is the only part of the streamed path a
+host without an XRCE agent can reach, and leaving it inline would have meant
+verifying it by reading — which is how issue 0787's four defects reached main.
+Confirmed the test fails on a wrong offset before trusting it.
+
+The full path (a real agent, a real stream slot) is still tier-2 territory.
 
