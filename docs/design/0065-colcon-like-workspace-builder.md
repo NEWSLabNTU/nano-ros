@@ -11,7 +11,9 @@ superseded-by: null
 
 # RFC-0065 — A colcon-like builder: `nros build`, and the entry stops being hand-written
 
-**Amends:** [RFC-0024](0024-multi-node-workspace-layout.md) §2.4 + §9 (the
+**Amends:** [RFC-0026](0026-example-directory-layout.md) (a copied-out
+*workspace* now requires `nros build`; single-package leaves are unchanged),
+[RFC-0024](0024-multi-node-workspace-layout.md) §2.4 + §9 (the
 `nros build` rejection — see *Reconciliation* below), RFC-0048 (ament/CMake
 integration + presets), RFC-0026 (examples are standalone copy-out projects),
 [RFC-0070](0070-build-cache-layout.md) R1 (`install/` → `dist/`).
@@ -235,7 +237,8 @@ What is *not* derivable, and where each thing goes:
 | --- | --- |
 | RTOS config overlays — `prj.conf`, `prj-<rmw>.conf`, `boards/*.overlay`, `sdkconfig.defaults` | the **bringup package**, under `boards/<board>/` |
 | panic handler, `[profile.release]` | **declarations on the image** — D5 |
-| a genuinely unforeseen hand-written entry | `nros materialize` — D5, one-way |
+| a genuinely unforeseen hand-written entry | `nros materialize` — D5, shape-stamped |
+| third-party code that must be linked | a **support package** — D12 |
 
 Overlays are indexed by board × RMW (`prj-zenoh.conf`, `prj-cyclonedds.conf`),
 never by entry — evidence they were never entry property. They move to the
@@ -273,15 +276,40 @@ per-board build profile. The custom spin loop already has its own supported
 seam, RFC-0024 §11.8.
 
 `nros materialize <image>` remains for the genuinely unforeseen. It writes the
-generated entry into `src/<name>_entry/` as a real, owned package, and it is
-**one-way and says so**: the builder afterwards uses that package verbatim and
-never regenerates it, so a later nano-ros release that improves the generated
-entry will not reach it.
+generated entry into `src/<name>_entry/` as a real, owned package, and the
+builder afterwards uses that package rather than regenerating it.
 
-Two obligations follow. It **requires a test proving a materialised entry still
-builds** — a decorative escape silently deletes capability. And when a user
-reaches for it, that is evidence of a generator gap: the fix is usually a new
-declarative key, not a second materialised package.
+**What materialising does and does not freeze — this is narrower than it
+looks.** A materialised entry is a one-line `nros::main!(launch = "…")`, and
+that macro reads the launch XML **at expansion time** (its tracked inputs are
+"launch.xml, every `package.xml` the pkg-index walked"). The RMW and capability
+selection likewise flows through the `*_nros_selection` facade that `nros sync`
+regenerates. So adding a node to a launch file reaches a materialised entry on
+the next compile: **the derivation stays live.**
+
+What freezes is the *shell* — `#![no_std]` / `#![no_main]`, the panic handler,
+board boilerplate like `esp_app_desc!()`, `[profile.release]`, and
+`[[bin]]`-vs-`[lib]`. If nano-ros later changes what an entry for a given board
+must *look like*, a materialised one silently keeps the old shape. That is issue
+0798's class one layer up — a hardcoded entry while the system around it moved.
+
+So materialising needs a **shape stamp, not a second mode**: the materialised
+package records the generator version and the board shape it was cut for, and
+`nros build` warns when that shape has since moved. It also **requires a test
+proving a materialised entry still builds** — a decorative escape silently
+deletes capability.
+
+> **Considered and rejected: a third "vendored" mode** (committed generated
+> output with a freshness gate, the `nros-rmw-cffi/src/generated.rs` +
+> `check-abi-bindings` pattern). It was proposed for the safety-critical case,
+> on the reasoning that ISO 26262 / IEC 61508 treat code generators like
+> compilers ("the procedure applies to compilers and code generators", "each new
+> version of an off-line support tool shall be qualified") and therefore want the
+> emitted code under configuration control. But materialising **already** places
+> the entry package under version control, and — per the paragraph above — the
+> part a safety argument actually cares about is not frozen by it. A third mode
+> would add a gate, a command and a doc section to cover a gap the second mode
+> does not leave.
 
 ### D5.1 — `[image]` is a base section
 
@@ -491,6 +519,62 @@ exactly like the in-tree ones, and the authoring story belongs to
 boundary explicitly because an overlay directory otherwise reads as covering it,
 and someone will try.
 
+### D12 — Third-party code enters through a package, and force-linking is a keyword
+
+Three shapes, and they do not want the same answer:
+
+| what | where | works today |
+| --- | --- | --- |
+| an app-level library a node uses (sensor lib, CAN stack) | a **node package** dependency — flows transitively into the image | yes, unchanged |
+| an SoC/board-level vendor layer (NXP RTD/MCAL) | a **board crate** (D11) | yes |
+| code with **no referencing symbol** — vectors, driver init tables, a `.a` needing whole-archive | a **support package**, below | new |
+
+The third row is the one the design must answer, because dead-code elimination
+drops it and — under D4 — there is no entry `CMakeLists.txt` for a user to add a
+link line to.
+
+**The code lives in an ordinary package; force-linking is a declared keyword the
+builder implements.**
+
+```cmake
+# src/rtd_mcal_pkg/CMakeLists.txt
+nano_ros_support_library(rtd_mcal
+    SRCS     generated/*.c
+    INCLUDES include
+    WHOLE_ARCHIVE)
+```
+
+**Why a keyword and not a flag the user writes.** We whole-archive today through
+a raw `-Wl,--whole-archive,$<TARGET_FILE:…>` (`NanoRosLink.cmake`), and issue
+0475 records what that costs: CMake cannot see a file inside a flag string, so
+the construct carries **no rebuild edge** — a backend edit relinked the old
+object, and the only cure was `rm -rf` on the build dir. Asking users to
+hand-write it is asking them to reproduce a defect we have already paid for.
+Behind the keyword the builder emits the flag **and** the `LINK_DEPENDS` that
+gives it an edge.
+
+Owning the spelling also buys a migration for free. Our CMake floor is **3.22**,
+so the portable `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` generator expression (3.24+,
+which CMake's own docs say projects should prefer "instead of manual
+implementations") is out of reach today. When the floor rises, the keyword's
+implementation changes and **no user file does**.
+
+ESP-IDF reached the same conclusion independently:
+`idf_component_register(SRCS … WHOLE_ARCHIVE)` is a declared keyword on the
+component, not a flag its author writes. Zephyr, which has no equivalent, has an
+open issue asking for a way into its whole-archive group and a bug report titled
+*"Linking static library with use of `zephyr_link_libraries` may end with
+undefined symbol error"*.
+
+**A vendor tool's output is committed, never invoked by us.** NXP RTD is
+configured in EB tresos Studio / S32CT, which generates MCAL C from `.xdm`
+config *before* the build, across GCC/IAR/DIAB/GHS. `nros build` does not run
+it. The `.xdm` is user intent and the generated C is their tool's artifact;
+both live in the support package and both are committed. This is the same
+per-(board, application) generated-source shape D11 found in MCUXpresso Config
+Tools, so the two decisions share one answer: **a package, authored by the user,
+holding what a vendor tool emitted.**
+
 ## What the user authors
 
 ```
@@ -559,6 +643,71 @@ between them. Every move edited a hand-maintained `SUBDIRS` list or `[workspace]
 members`. If a tree-walking builder would have made that fold `git mv` plus a
 bringup edit, the design holds.
 
+## Users this must serve
+
+Three personas, walked end to end. Each found something the decisions above did
+not cover.
+
+### Newcomer — clones, builds, runs, reads
+
+The six-command ritual becomes one, and there is no root manifest to understand
+before anything compiles. That is the whole win and it is real.
+
+**The loss is pedagogical, not technical.** Today a newcomer opens
+`src/native_entry/src/main.rs`, sees one line — `nros::main!(launch =
+"demo_bringup:system.launch.xml")` — and has the model. Under D4 that file is in
+`build/<coord>/` instead. Mitigation is documentation, not design: the generated
+entry is a readable file and the book should point at it by path.
+
+**One tested contract changes meaning and must say so.** RFC-0026 makes each
+example a standalone copy-out template with "its own `Cargo.toml` +
+`.cargo/config.toml` + `CMakeLists.txt`, no workspace walk-up", and the contract
+is CI-checked (`just zephyr check-copy-out`). Under D4 a copied-out **workspace**
+has neither a root manifest nor entry packages, so `cargo build -p native_entry`
+stops resolving and `nros build` becomes required. **Single-package leaves are
+unaffected** — they keep their own root per D3, and still build with plain
+cargo/cmake. RFC-0065 amends RFC-0026 to state that split explicitly, because a
+CI-checked contract must not quietly change what it promises.
+
+### Production — reproducible, auditable, offline
+
+**Generated output must be deterministic, and nothing above said so.** A
+reproducible build needs bit-identical output across machines, and generated
+files depending on host state is the classic breaker — timestamps, absolute
+paths, unstable ordering. The generated root and entry must carry none of them.
+There is in-tree precedent for the discipline: issue 0320 made model paths
+content-addressed and added `check-no-absolute-model-paths`, and the same gate
+shape applies here.
+
+**`dist/manifest.toml` is the natural SBOM anchor.** Current guidance is that
+the authoritative SBOM should be immutable and linked to the exact artifact
+shipped, and generated from the final artifact rather than from a manifest
+alone. Ours should therefore carry the generator version and input hashes
+alongside the artifact list D8 already requires.
+
+**Offline is not yet stated as a guarantee.** D2 gives verify-only behaviour on
+a non-TTY, which covers CI *by inference from how the build was invoked*. A
+production build wants a property it can state — see Open questions.
+
+### Safety-critical — everything in the safety argument under configuration control
+
+ISO 26262 and IEC 61508 treat a code generator the way they treat a compiler:
+tool qualification "applies to compilers and code generators as much as to
+modelling, test and analysis tools", and "each new version of an off-line
+support tool shall be qualified".
+
+The conclusion this persona forced was **not** a new mode — see the rejected
+"vendored" note under D5. `nros materialize` already places the entry package
+under version control, and the derivation it appears to freeze is in fact still
+live. What the persona did buy is the **shape stamp** in D5: without it, a
+materialised entry drifts from the generator silently, which is exactly the
+thing a safety argument cannot tolerate.
+
+Note also that this repository's `examples/workspaces/safety/` is about **E2E
+message integrity** (a CRC on `/chatter`), not certification. The
+safety-critical persona here is the downstream consumer — the autoware safety
+island work — not that workspace.
+
 ## Related work
 
 Surveyed 2026-08-25. Each row changed or confirmed a decision; none is cited
@@ -573,6 +722,10 @@ decoratively.
 | **Buildroot** | one defconfig per board; `BR2_EXTERNAL` limited to one at a time | the pole we are not choosing. Efficient "when the product definition is stable"; nano-ros systems span boards |
 | **ESP-IDF** | `flasher_args.json` + `flash_project_args`; `SDKCONFIG_DEFAULTS` list | precedent for D8's manifest, including its failure mode (manifest fell behind artifacts under secure boot v2) and D10's knob |
 | **Zephyr** sysbuild | `sysbuild.conf` with `SB_CONFIG_BOOTLOADER_MCUBOOT=y` | the bootloader declaration is Zephyr's own file, so D8 adds no key of ours |
+| **ESP-IDF** components | `idf_component_register(SRCS … WHOLE_ARCHIVE)` — force-linking is a declared keyword, not an author-written flag | shape of D12 |
+| **CMake ≥ 3.24** | `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>`; docs prefer it "instead of manual implementations" | D12's future implementation. Out of reach at our 3.22 floor, which is why the keyword must own the spelling |
+| **NXP RTD / EB tresos** | `.xdm` config → generated MCAL C, produced *before* the build, across GCC/IAR/DIAB/GHS | D12's "vendor tool output is committed, never invoked by us"; same shape as MCUXpresso in D11 |
+| **ISO 26262 / IEC 61508** | tool qualification "applies to compilers and code generators"; "each new version … shall be qualified" | motivated the rejected third D5 mode, and kept the shape stamp that replaced it |
 | **Arduino CLI** | FQBN `VENDOR:ARCHITECTURE:BOARD_ID[:MENU_ID=OPTION_ID]` | a board id can carry **options**, which D9's opaque key cannot. Not adopted — no in-tree board needs it yet, and it is additive later |
 
 ## Fit against real frameworks
@@ -603,6 +756,12 @@ were checked in depth. ThreadX and the FreeRTOS vendor distributions
 
 ## Open questions
 
+- **Whether `--offline` becomes an explicit flag.** D2's non-TTY verify-only
+  covers CI, but production wants a guarantee stated independently of how the
+  build was invoked, and SBOM practice is explicit that eliminating network
+  access during the build is the fix for phantom dependencies. The alternative
+  — make offline the default and put provisioning behind `--fetch` — is
+  stronger still but reverses D2 and costs the newcomer their one-command start.
 - **Deprecation window length for `[deploy.*]` → `[image.*]`**, and whether
   `nros doctor` warns or `nros build` does.
 - **Whether the repo's own nine workspace roots migrate** as part of this work,
@@ -628,6 +787,16 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26** — persona pass (newcomer / production / safety-critical).
+  **Third D5 mode proposed and rejected**: materialising already puts the entry
+  package under version control, and `nros::main!` derives at EXPANSION time, so
+  the derivation is not frozen — only the shell is. Replaced by a **shape
+  stamp** so that drift warns instead of passing silently (issue 0798's class).
+  Adds **D12** — third-party code enters through a package, and force-linking is
+  a declared keyword rather than a user-written `-Wl,--whole-archive`, because
+  that construct has no rebuild edge (issue 0475) and our 3.22 CMake floor rules
+  out the portable genex. Amends RFC-0026 for copied-out workspaces; records the
+  determinism requirement production needs; adds the offline question.
 - **2026-08-25 (d)** — closed the sysbuild open question by reading Zephyr
   v3.7.0's `sysbuild_kconfig.cmake` rather than its docs: `sysbuild.conf` IS
   resolved through `APPLICATION_CONFIG_DIR`, sysbuild caches that variable so
