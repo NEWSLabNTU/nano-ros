@@ -1284,7 +1284,7 @@ pub struct Executor<'s> {
     #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
     pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
-    pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
+    pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
     #[cfg(feature = "lifecycle-services")]
     pub(crate) lifecycle:
         Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
@@ -6713,35 +6713,58 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Allocate a `ParamState` without building one on the stack first.
+    /// Produce the parameter slot table the executor's store will borrow.
     ///
-    /// Issue 0756 — `ParamState` is dominated by `ParameterServer`, which is
-    /// 285,192 bytes at the default `MAX_PARAMETERS=32` and 2,281,480 at 256
-    /// (`ParameterValue` is sized by its `StringArray` variant, so every slot
-    /// costs ~8.5 KiB regardless of what it holds). `Box::new(ParamState {..})`
-    /// materialises all of that on the caller's stack before copying it into
-    /// the allocation, because Rust has no placement-new. On the Zephyr lane
-    /// that silently overran the thread stack: an image built with 256 slots
-    /// boots to `dds_create_participant` and hangs with no fault and no
-    /// output, while 32 — which fits the 512 KiB main stack the cyclonedds
-    /// snippet asks for — runs clean.
+    /// phase-382 W2' — `ParameterServer` no longer OWNS its slots; it borrows
+    /// a caller-placed [`nros_params::ParameterTable`]. W3' carves that table
+    /// out of the caller's executor backing, at which point this function goes
+    /// away. Until then the executor has no caller-supplied home to borrow
+    /// from, so it makes one: a single heap allocation, leaked, one per
+    /// executor that touches parameters. The leak is what buys the `'static`
+    /// the borrow needs without making `ParamState` self-referential (a
+    /// `ParamState` that owned the storage AND a server borrowing it is not
+    /// expressible), and it is bounded — `ensure_parameter_store` runs this
+    /// at most once per executor.
     ///
-    /// Initialising through the allocation bounds the largest stack temporary
-    /// at one `Option<ParameterEntry>`, so the knob no longer decides whether
-    /// boot survives.
+    /// Issue 0756 — the placement dance is still here because the SIZE is
+    /// still here; it only moved off `ParameterServer` and onto
+    /// `ParameterStorage`. That storage is 285,184 bytes at the default
+    /// `MAX_PARAMETERS=32` and 2,281,472 at 256 (`ParameterValue` is sized by
+    /// its `StringArray` variant, so every slot costs ~8.5 KiB regardless of
+    /// what it holds). `Box::new(ParameterStorage::new())` materialises all of
+    /// that on the caller's stack before copying it into the allocation,
+    /// because Rust has no placement-new. On the Zephyr lane that silently
+    /// overran the thread stack: an image built with 256 slots boots to
+    /// `dds_create_participant` and hangs with no fault and no output, while
+    /// 32 — which fits the 512 KiB main stack the cyclonedds snippet asks for
+    /// — runs clean. Initialising through the allocation bounds the largest
+    /// stack temporary at one slot, so the knob no longer decides whether boot
+    /// survives.
+    fn leak_parameter_storage() -> nros_params::ParameterTable<'static> {
+        let mut uninit = alloc::boxed::Box::<nros_params::ParameterStorage>::new_uninit();
+        // Safety: `new_uninit` gives a correctly-sized, correctly-aligned
+        // allocation for exactly this type, and `init_in_place` writes every
+        // slot exactly once before `assume_init` observes it.
+        unsafe {
+            nros_params::ParameterStorage::init_in_place(uninit.as_mut_ptr());
+            alloc::boxed::Box::leak(uninit.assume_init()).as_table()
+        }
+    }
+
+    /// Build the executor's `ParamState`.
+    ///
+    /// phase-382 W2' — this is a plain `Box::new` again: `ParameterServer` is
+    /// now a table borrow plus a count, so `ParamState` is tens of bytes and
+    /// nothing about constructing one depends on `MAX_PARAMETERS`. The bulk
+    /// (and issue 0756's placement requirement with it) lives in
+    /// [`leak_parameter_storage`](Self::leak_parameter_storage).
     fn new_param_state(
         services: Option<alloc::boxed::Box<dyn crate::parameter_services::ParamServiceProcessor>>,
-    ) -> alloc::boxed::Box<crate::parameter_services::ParamState> {
-        let mut uninit = alloc::boxed::Box::<crate::parameter_services::ParamState>::new_uninit();
-        // Safety: `new_uninit` gives a correctly-sized, correctly-aligned
-        // allocation for exactly this type; every field is written exactly once
-        // below before `assume_init`.
-        unsafe {
-            let state = uninit.as_mut_ptr();
-            nros_params::ParameterServer::init_in_place(core::ptr::addr_of_mut!((*state).server));
-            core::ptr::addr_of_mut!((*state).services).write(services);
-            uninit.assume_init()
-        }
+    ) -> alloc::boxed::Box<crate::parameter_services::ParamState<'s>> {
+        alloc::boxed::Box::new(crate::parameter_services::ParamState {
+            server: nros_params::ParameterServer::new_in(Self::leak_parameter_storage()),
+            services,
+        })
     }
 
     /// Declare a parameter with a value. Returns `true` if successful.
@@ -6782,12 +6805,12 @@ impl<'s> Executor<'s> {
     }
 
     /// Get a reference to the parameter server (if registered).
-    pub fn params(&self) -> Option<&nros_params::ParameterServer> {
+    pub fn params(&self) -> Option<&nros_params::ParameterServer<'s>> {
         self.params.as_ref().map(|p| &p.server)
     }
 
     /// Get a mutable reference to the parameter server (if registered).
-    pub fn params_mut(&mut self) -> Option<&mut nros_params::ParameterServer> {
+    pub fn params_mut(&mut self) -> Option<&mut nros_params::ParameterServer<'s>> {
         self.params.as_mut().map(|p| &mut p.server)
     }
 
@@ -6815,7 +6838,7 @@ impl<'s> Executor<'s> {
     pub fn parameter<'a, T: nros_params::ParameterVariant>(
         &'a mut self,
         name: &'a str,
-    ) -> Result<nros_params::ParameterBuilder<'a, T>, NodeError> {
+    ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
         let server = self
             .params
             .as_mut()

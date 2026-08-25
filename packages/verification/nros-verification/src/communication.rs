@@ -183,7 +183,7 @@ pub struct ExParamServerGhost(ParamServerGhost);
 /// After `declare` (when `count < max`): count increments by 1 and stays
 /// within capacity. After `remove` (when `count > 0`): count decrements by 1.
 ///
-/// Source (server.rs:112-138, declare_with_descriptor):
+/// Source (`server.rs`, `declare_with_descriptor`):
 /// ```ignore
 /// pub fn declare_with_descriptor(...) -> bool {
 ///     // ... find empty slot ...
@@ -192,12 +192,12 @@ pub struct ExParamServerGhost(ParamServerGhost);
 /// }
 /// ```
 ///
-/// Source (server.rs:243-251, remove):
+/// Source (`server.rs`, `remove`):
 /// ```ignore
 /// pub fn remove(&mut self, name: &str) -> bool {
 ///     // ... find entry ...
-///     self.entries[i] = None;
-///     self.count -= 1;  // line 246
+///     self.table.entries[i] = None;   // phase-382 W2': slots are BORROWED
+///     self.count -= 1;
 ///     true
 /// }
 /// ```

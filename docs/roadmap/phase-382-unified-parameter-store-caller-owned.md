@@ -256,7 +256,34 @@ into the generated type, keeping today's by-value handler as a test-only oracle.
 `handle_request_boxed` is also used by **lifecycle_services** (5 sites, its own
 `compile_error!`), so this seam fixes both. Scope it that way from the start.
 
-### W2' — `ParameterServer` borrows its table
+### W2' — `ParameterServer` borrows its table. **LANDED 2026-08-26.**
+
+`size_of::<ParameterServer>()`: **285,192 -> 24**. The bulk did not vanish, it
+MOVED to `ParameterStorage<N = MAX_PARAMETERS>` (285,184 at 32 slots) — a type
+the caller places and lends. `ParameterTable<'s>` is the newtype in between:
+`nros-node` can name the storage without seeing `ParameterEntry`, which stays
+crate-private.
+
+What the borrow forced beyond the seven known items:
+
+* **The executor has no caller-supplied home to borrow from yet, so it makes
+  one.** `Executor::leak_parameter_storage` heap-allocates one
+  `ParameterStorage`, initialises it THROUGH the pointer (issue 0756's dance,
+  now on the type that is actually big) and leaks it: one allocation per
+  executor that touches parameters, deleted by W3' when the table comes out of
+  the executor backing. A `ParamState` that owned the storage AND a server
+  borrowing it is not expressible, and `Executor::params()` hands out a
+  `&ParameterServer` that `node_runtime`'s `ComponentCell` stores as a raw
+  pointer, so the server cannot be a temporary either.
+* `new_param_state` is a plain `Box::new` again — `ParamState<'s>` is tens of
+  bytes now, so the placement initialiser it needed is gone from THERE and
+  survives only on `ParameterStorage`.
+* `ParameterServer::new_in` ADOPTS the table: `count` is recovered by scanning
+  occupied slots rather than assumed zero, so a table handed to a second server
+  (or arriving pre-seeded, which is what W3' carving + issue 0745's early
+  launch seeding will do) keeps count and slots in step.
+* No `Default` on `ParameterStorage` either: `Default::default()` is a
+  by-value expression, i.e. the same 0756 shape one name over.
 
 `[Option<ParameterEntry>; MAX_PARAMETERS]` → `&'s mut [Option<ParameterEntry>]`.
 Known fallout, all of which the first plan missed:

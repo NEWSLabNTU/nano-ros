@@ -1013,11 +1013,15 @@ pub use nros_bridge as bridge;
 #[cfg(feature = "config")]
 pub use nros_bridge::run_from_config;
 
-// Re-export parameter types
+// Re-export parameter types.
+//
+// phase-382 W2' — `ParameterStorage` / `ParameterTable` are here because the
+// store's slots are CALLER-OWNED: anyone constructing a `ParameterServer`
+// outside an executor has to place the storage and lend it.
 pub use nros_params::{
     MandatoryParameter, OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor,
-    ParameterError, ParameterServer, ParameterType, ParameterValue, ParameterVariant,
-    ReadOnlyParameter, SetParameterResult,
+    ParameterError, ParameterServer, ParameterStorage, ParameterTable, ParameterType,
+    ParameterValue, ParameterVariant, ReadOnlyParameter, SetParameterResult,
 };
 /// Prelude module for convenient imports
 ///
@@ -1081,7 +1085,7 @@ pub mod prelude {
     pub use crate::SpinPeriodResult;
 
     // Re-export parameter types
-    pub use crate::{ParameterServer, ParameterType, ParameterValue};
+    pub use crate::{ParameterServer, ParameterStorage, ParameterType, ParameterValue};
 
     // Re-export typed parameter API (rclrs-compatible builder pattern)
     pub use crate::{

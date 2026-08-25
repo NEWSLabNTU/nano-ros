@@ -1090,15 +1090,19 @@ pub struct TimerGhost {
 ///
 /// Mirrors private fields in `nros-params/src/server.rs`:
 ///
-/// Source (server.rs:47-52):
 /// ```ignore
-/// pub struct ParameterServer {
-///     entries: [Option<ParameterEntry>; MAX_PARAMETERS],
+/// pub struct ParameterServer<'s> {
+///     table: ParameterTable<'s>,   // -> &'s mut [Option<ParameterEntry>]
 ///     count: usize,
 /// }
 /// ```
 ///
-/// `MAX_PARAMETERS = 32` (server.rs:13).
+/// phase-382 W2' — the slots are CALLER-OWNED, so `max` is the borrowed
+/// table's LENGTH, not `MAX_PARAMETERS`. The build-time knob (32 by default)
+/// only picks the size of a `ParameterStorage`, which is the usual — but not
+/// the only — thing a server is handed. `ghost_from_server` reads
+/// `table.capacity()`; a proof that hard-codes 32 is asserting the default
+/// storage, not the type.
 pub struct ParamServerGhost {
     /// Number of parameters currently stored
     pub count: usize,

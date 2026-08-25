@@ -1,14 +1,23 @@
 //! Parameter server for nros
 //!
 //! This crate provides a ROS 2 compatible parameter server for embedded systems.
-//! Parameters are stored in static memory with compile-time configurable capacity.
+//! Parameters live in storage the CALLER places and lends to the server
+//! ([`ParameterStorage`] / [`ParameterTable`]); [`MAX_PARAMETERS`] is only the
+//! default capacity of that storage.
 //!
 //! # Example
 //!
 //! ```
-//! use nros_params::{ParameterDescriptor, ParameterServer, ParameterType, ParameterValue};
+//! use nros_params::{
+//!     ParameterDescriptor, ParameterServer, ParameterStorage, ParameterType, ParameterValue,
+//! };
 //!
-//! let mut server = ParameterServer::new();
+//! // phase-382 W2' — storage is CALLER-OWNED: place it (a `static`, a struct
+//! // field, a local), then lend it. `ParameterStorage` defaults to
+//! // `MAX_PARAMETERS` slots; any length works, and the server's capacity is
+//! // whatever it is handed.
+//! let mut storage = ParameterStorage::<8>::new();
+//! let mut server = ParameterServer::new_in(storage.as_table());
 //!
 //! // Declare a simple parameter
 //! server.declare("max_speed", ParameterValue::Double(1.0));
@@ -49,7 +58,7 @@ pub mod typed;
 pub mod types;
 
 // Re-export main types
-pub use server::{LegacyParameterBuilder, ParameterServer};
+pub use server::{LegacyParameterBuilder, ParameterServer, ParameterStorage, ParameterTable};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
     ReadOnlyParameter, UndeclaredParameters,

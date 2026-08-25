@@ -1717,7 +1717,7 @@ pub struct CallbackCtx<'a> {
     /// Read with [`parameter`](Self::parameter). Gated so it is zero-cost when
     /// `param-services` is off.
     #[cfg(feature = "param-services")]
-    params: Option<&'a crate::ParameterServer>,
+    params: Option<&'a crate::ParameterServer<'a>>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -1826,7 +1826,7 @@ impl<'a> CallbackCtx<'a> {
     /// The dispatch site calls this after construction (the store reaches the callback via
     /// the component cell, not the constructor args). No-op-equivalent when `None`.
     #[cfg(feature = "param-services")]
-    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer>) {
+    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer<'a>>) {
         self.params = params;
     }
 
@@ -2067,7 +2067,7 @@ pub struct TickCtx<'a> {
     /// driver (`tick_one_cell` already holds the executor). `None` until
     /// `[param_services]` registers the store. Read with [`parameter`](Self::parameter).
     #[cfg(feature = "param-services")]
-    params: Option<&'a crate::ParameterServer>,
+    params: Option<&'a crate::ParameterServer<'a>>,
 }
 
 impl<'a> TickCtx<'a> {
@@ -2089,7 +2089,7 @@ impl<'a> TickCtx<'a> {
     /// Phase 264 W4c — thread the executor's volatile parameter store in (the tick
     /// driver holds the executor directly). No-op-equivalent when `None`.
     #[cfg(feature = "param-services")]
-    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer>) {
+    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer<'a>>) {
         self.params = params;
     }
 
@@ -3173,7 +3173,11 @@ mod tests {
         assert_eq!(ctx_none.parameter::<i64>("speed"), None);
 
         // Seed a store with the typed value a `ros2 param set speed 7` would land on.
-        let mut server = crate::ParameterServer::new();
+        // phase-382 W2' — the slots are the caller's; a local `ParameterStorage`
+        // is the shape a test wants, sized for what it actually declares rather
+        // than the build-time `MAX_PARAMETERS` default.
+        let mut storage = crate::ParameterStorage::<4>::new();
+        let mut server = crate::ParameterServer::new_in(storage.as_table());
         assert!(server.declare("speed", crate::ParameterValue::Integer(7)));
 
         let mut ctx = CallbackCtx::new(&[], &resolver);

@@ -169,9 +169,11 @@ struct ComponentCell {
     // executor is unreachable when they fire), so the store address is threaded HERE by
     // `apply_param_services`' post-pass (mirrors the `run_ticks` disjoint borrow). Null
     // until param services are registered. Stable for the executor's life: the server
-    // lives in a `Box<ParamState>` and is a fixed-size array (no realloc on declare).
+    // lives in a `Box<ParamState>`, and since phase-382 W2' its SLOTS live in
+    // caller-owned storage it merely borrows — a fixed-length table either way, so a
+    // declare never moves anything this pointer or a stored `&ParameterValue` names.
     #[cfg(feature = "param-services")]
-    param_server: core::cell::Cell<*const nros_params::ParameterServer>,
+    param_server: core::cell::Cell<*const nros_params::ParameterServer<'static>>,
 }
 
 impl ComponentCell {
@@ -179,7 +181,7 @@ impl ComponentCell {
     /// `apply_param_services` threads it in. The deref is sound: single-threaded
     /// executor, param services mutate the server only outside callback dispatch.
     #[cfg(feature = "param-services")]
-    fn param_server(&self) -> Option<&nros_params::ParameterServer> {
+    fn param_server(&self) -> Option<&nros_params::ParameterServer<'static>> {
         let ptr = self.param_server.get();
         if ptr.is_null() {
             None

@@ -1345,8 +1345,11 @@ impl ParamServiceProcessor for ParameterServiceServers {
 /// Holds parameter server state for the executor.
 ///
 /// Stored outside the arena so it doesn't consume `MAX_CBS` slots.
-pub(crate) struct ParamState {
-    pub(crate) server: ParameterServer,
+pub(crate) struct ParamState<'s> {
+    /// phase-382 W2' — the server BORROWS its slot table now, so `ParamState`
+    /// carries the storage's lifetime. `'s` is the executor's own borrow
+    /// lifetime, which is what W3' will hand the carved table under.
+    pub(crate) server: ParameterServer<'s>,
     /// Issue 0745 — `None` until `register_parameter_services` attaches the
     /// six service servers. The STORE half exists earlier: launch-param
     /// seeding (`declare_parameter`) runs BEFORE any node is constructed —
@@ -1359,6 +1362,28 @@ pub(crate) struct ParamState {
 mod tests {
     use super::*;
     use nros_rcl_interfaces::msg::Parameter;
+
+    /// A parameter server over freshly leaked heap storage.
+    ///
+    /// phase-382 W2' — the store is CALLER-OWNED now, so a test that wants a
+    /// server has to place its slots somewhere. The factories below return
+    /// the server by value, so the slots must outlive the frame that built
+    /// them: leak one allocation, exactly as `Executor::leak_parameter_storage`
+    /// does until W3' carves the table out of the executor backing.
+    /// Initialising through the pointer keeps the 285 KB off the test
+    /// thread's stack (issue 0756) rather than merely getting away with it.
+    #[inline(never)]
+    fn leaked_server() -> ParameterServer<'static> {
+        let mut uninit = Box::<nros_params::ParameterStorage>::new_uninit();
+        // Safety: `new_uninit` is correctly sized and aligned for this type,
+        // and `init_in_place` writes every slot before `assume_init` observes
+        // it.
+        let table = unsafe {
+            nros_params::ParameterStorage::init_in_place(uninit.as_mut_ptr());
+            Box::leak(uninit.assume_init()).as_table()
+        };
+        ParameterServer::new_in(table)
+    }
 
     #[test]
     fn test_value_conversion_bool() {
@@ -1408,7 +1433,7 @@ mod tests {
     fn test_get_parameters_handler() {
         use alloc::boxed::Box;
 
-        let mut server = ParameterServer::new();
+        let mut server = leaked_server();
         server.declare("speed", InternalValue::Double(1.0));
         server.declare("enabled", InternalValue::Bool(true));
 
@@ -1432,7 +1457,7 @@ mod tests {
     fn test_set_parameters_handler() {
         use alloc::boxed::Box;
 
-        let mut server = ParameterServer::new();
+        let mut server = leaked_server();
         server.declare("speed", InternalValue::Double(1.0));
 
         // Use Box for request due to large heapless::Vec size (~1MB+)
@@ -1455,7 +1480,7 @@ mod tests {
     fn test_list_parameters_handler() {
         use alloc::boxed::Box;
 
-        let mut server = ParameterServer::new();
+        let mut server = leaked_server();
         server.declare("robot.speed", InternalValue::Double(1.0));
         server.declare("robot.name", InternalValue::from_string("bot1").unwrap());
         server.declare("sensor.range", InternalValue::Double(10.0));
@@ -1471,7 +1496,7 @@ mod tests {
     fn test_get_parameter_types_handler() {
         use alloc::boxed::Box;
 
-        let mut server = ParameterServer::new();
+        let mut server = leaked_server();
         server.declare("speed", InternalValue::Double(1.0));
         server.declare("count", InternalValue::Integer(5));
 
@@ -1733,8 +1758,8 @@ mod tests {
     /// The store the read-only services are exercised against: one parameter
     /// of every type, a dotted name, and a string at the capacity bound.
     #[inline(never)]
-    fn populated_server() -> Box<ParameterServer> {
-        let mut server = Box::new(ParameterServer::new());
+    fn populated_server() -> ParameterServer<'static> {
+        let mut server = leaked_server();
         for (name, value) in every_wire_value() {
             // The two rejection shapes have no stored form; skip them here.
             if let Ok(internal) = from_rcl_value(&value) {
@@ -1758,8 +1783,8 @@ mod tests {
     /// A store whose parameters carry descriptors — both range kinds, the
     /// read-only flag, dynamic typing — plus one with no descriptor at all.
     #[inline(never)]
-    fn described_server() -> Box<ParameterServer> {
-        let mut server = Box::new(ParameterServer::new());
+    fn described_server() -> ParameterServer<'static> {
+        let mut server = leaked_server();
         server.declare_with_descriptor(
             "speed",
             InternalValue::Double(1.0),
@@ -2034,7 +2059,7 @@ mod tests {
             // Once against an empty store (everything declares) and once
             // against one with descriptors (read-only, ranges, fixed types).
             for build in [
-                (|| Box::new(ParameterServer::new())) as fn() -> Box<ParameterServer>,
+                (leaked_server as fn() -> ParameterServer<'static>),
                 described_server,
             ] {
                 let mut streaming_server = build();

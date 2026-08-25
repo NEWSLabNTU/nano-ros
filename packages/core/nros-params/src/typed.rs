@@ -3,6 +3,8 @@
 //! This module provides a fluent builder pattern for declaring typed parameters
 //! in a ROS 2 node, aligning with the rclrs API.
 
+#[cfg(test)]
+use crate::ParameterStorage;
 use crate::{
     ParameterDescriptor, ParameterRange, ParameterServer, ParameterType, SetParameterResult,
 };
@@ -78,9 +80,11 @@ impl RangeConvertible for f64 {
 }
 
 /// Builder for declaring a typed parameter
-pub struct ParameterBuilder<'a, T: ParameterVariant> {
-    /// Reference to the parameter server
-    server: &'a mut ParameterServer,
+pub struct ParameterBuilder<'a, 's, T: ParameterVariant> {
+    /// Borrow of the parameter server. phase-382 W2' — the server itself
+    /// borrows its table, so every handle onto it carries BOTH lifetimes:
+    /// `'a` is this borrow, `'s` is the caller-owned storage underneath.
+    server: &'a mut ParameterServer<'s>,
     /// Parameter name
     name: &'a str,
     /// Default value
@@ -95,9 +99,9 @@ pub struct ParameterBuilder<'a, T: ParameterVariant> {
     _phantom: core::marker::PhantomData<T>,
 }
 
-impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
+impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// Create a new parameter builder
-    pub fn new(server: &'a mut ParameterServer, name: &'a str) -> Self {
+    pub fn new(server: &'a mut ParameterServer<'s>, name: &'a str) -> Self {
         Self {
             server,
             name,
@@ -162,7 +166,7 @@ impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
     ///
     /// Read-only parameters cannot be changed after declaration.
     /// A default value must be provided.
-    pub fn read_only(self) -> Result<ReadOnlyParameter<'a, T>, ParameterError> {
+    pub fn read_only(self) -> Result<ReadOnlyParameter<'a, 's, T>, ParameterError> {
         // Must have a default value for read-only parameters
         let default_value = self
             .default
@@ -193,7 +197,7 @@ impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
     /// Declare a mandatory parameter
     ///
     /// If no default value is provided, it must be set externally before use.
-    pub fn mandatory(self) -> Result<MandatoryParameter<'a, T>, ParameterError> {
+    pub fn mandatory(self) -> Result<MandatoryParameter<'a, 's, T>, ParameterError> {
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
             .ok_or(ParameterError::StorageFull)?;
         descriptor.description.clear();
@@ -215,7 +219,7 @@ impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
     }
 
     /// Declare an optional parameter
-    pub fn optional(self) -> Result<OptionalParameter<'a, T>, ParameterError> {
+    pub fn optional(self) -> Result<OptionalParameter<'a, 's, T>, ParameterError> {
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
             .ok_or(ParameterError::StorageFull)?;
         descriptor.description.clear();
@@ -238,14 +242,14 @@ impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
 }
 
 /// A parameter that must always have a value
-pub struct MandatoryParameter<'a, T: ParameterVariant> {
-    server: &'a mut ParameterServer,
+pub struct MandatoryParameter<'a, 's, T: ParameterVariant> {
+    server: &'a mut ParameterServer<'s>,
     name: String<{ crate::MAX_PARAM_NAME_LEN }>,
     _phantom: core::marker::PhantomData<T>,
 }
 
-impl<'a, T: ParameterVariant> MandatoryParameter<'a, T> {
-    pub(crate) fn new(server: &'a mut ParameterServer, name: &'a str) -> Self {
+impl<'a, 's, T: ParameterVariant> MandatoryParameter<'a, 's, T> {
+    pub(crate) fn new(server: &'a mut ParameterServer<'s>, name: &'a str) -> Self {
         let mut n = String::new();
         n.push_str(name).unwrap();
         Self {
@@ -283,14 +287,14 @@ impl<'a, T: ParameterVariant> MandatoryParameter<'a, T> {
 }
 
 /// A parameter that may or may not have a value
-pub struct OptionalParameter<'a, T: ParameterVariant> {
-    server: &'a mut ParameterServer,
+pub struct OptionalParameter<'a, 's, T: ParameterVariant> {
+    server: &'a mut ParameterServer<'s>,
     name: String<{ crate::MAX_PARAM_NAME_LEN }>,
     _phantom: core::marker::PhantomData<T>,
 }
 
-impl<'a, T: ParameterVariant> OptionalParameter<'a, T> {
-    pub(crate) fn new(server: &'a mut ParameterServer, name: &'a str) -> Self {
+impl<'a, 's, T: ParameterVariant> OptionalParameter<'a, 's, T> {
+    pub(crate) fn new(server: &'a mut ParameterServer<'s>, name: &'a str) -> Self {
         let mut n = String::new();
         n.push_str(name).unwrap();
         Self {
@@ -322,14 +326,14 @@ impl<'a, T: ParameterVariant> OptionalParameter<'a, T> {
 }
 
 /// A parameter whose value cannot be changed after declaration
-pub struct ReadOnlyParameter<'a, T: ParameterVariant> {
-    server: &'a mut ParameterServer,
+pub struct ReadOnlyParameter<'a, 's, T: ParameterVariant> {
+    server: &'a mut ParameterServer<'s>,
     name: String<{ crate::MAX_PARAM_NAME_LEN }>,
     _phantom: core::marker::PhantomData<T>,
 }
 
-impl<'a, T: ParameterVariant> ReadOnlyParameter<'a, T> {
-    pub(crate) fn new(server: &'a mut ParameterServer, name: &'a str) -> Self {
+impl<'a, 's, T: ParameterVariant> ReadOnlyParameter<'a, 's, T> {
+    pub(crate) fn new(server: &'a mut ParameterServer<'s>, name: &'a str) -> Self {
         let mut n = String::new();
         n.push_str(name).unwrap();
         Self {
@@ -352,12 +356,12 @@ impl<'a, T: ParameterVariant> ReadOnlyParameter<'a, T> {
 ///
 /// This struct is returned by `Node::use_undeclared_parameters()` and allows
 /// for dynamic retrieval of parameter values by name without explicit declaration.
-pub struct UndeclaredParameters<'a> {
-    server: &'a mut ParameterServer,
+pub struct UndeclaredParameters<'a, 's> {
+    server: &'a mut ParameterServer<'s>,
 }
 
-impl<'a> UndeclaredParameters<'a> {
-    pub fn new(server: &'a mut ParameterServer) -> Self {
+impl<'a, 's> UndeclaredParameters<'a, 's> {
+    pub fn new(server: &'a mut ParameterServer<'s>) -> Self {
         Self { server }
     }
 
@@ -388,7 +392,8 @@ mod tests {
 
     #[test]
     fn test_mandatory_parameter_with_default() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
             .default(42)
             .description("A test parameter")
@@ -400,7 +405,8 @@ mod tests {
 
     #[test]
     fn test_mandatory_parameter_set() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let mut param = ParameterBuilder::<i64>::new(&mut server, "test_param")
             .default(0)
             .mandatory()
@@ -412,7 +418,8 @@ mod tests {
 
     #[test]
     fn test_optional_parameter_none() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
             .optional()
             .expect("Failed to declare parameter");
@@ -422,7 +429,8 @@ mod tests {
 
     #[test]
     fn test_optional_parameter_with_default() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
             .default(42)
             .optional()
@@ -433,7 +441,8 @@ mod tests {
 
     #[test]
     fn test_optional_parameter_set() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let mut param = ParameterBuilder::<i64>::new(&mut server, "test_param")
             .optional()
             .expect("Failed to declare parameter");
@@ -444,7 +453,8 @@ mod tests {
 
     #[test]
     fn test_read_only_parameter() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<i64>::new(&mut server, "readonly_param")
             .default(42)
             .description("A read-only parameter")
@@ -456,7 +466,8 @@ mod tests {
 
     #[test]
     fn test_read_only_parameter_requires_default() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let result = ParameterBuilder::<i64>::new(&mut server, "readonly_param").read_only();
 
         assert_eq!(result.err(), Some(ParameterError::NotFound));
@@ -464,7 +475,8 @@ mod tests {
 
     #[test]
     fn test_integer_range_constraint() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let mut param = ParameterBuilder::<i64>::new(&mut server, "ranged_param")
             .default(50)
             .integer_range(0, 100, 1)
@@ -479,7 +491,8 @@ mod tests {
 
     #[test]
     fn test_float_range_constraint() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let mut param = ParameterBuilder::<f64>::new(&mut server, "float_param")
             .default(0.5)
             .float_range(0.0, 1.0, 0.0)
@@ -494,7 +507,8 @@ mod tests {
 
     #[test]
     fn test_range_convenience_integer() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<i64>::new(&mut server, "ranged_param")
             .default(50)
             .range(0..=100)
@@ -507,7 +521,8 @@ mod tests {
 
     #[test]
     fn test_range_convenience_float() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let param = ParameterBuilder::<f64>::new(&mut server, "float_param")
             .default(0.5)
             .range(0.0..=1.0)
@@ -520,7 +535,8 @@ mod tests {
 
     #[test]
     fn test_parameter_description() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let _param = ParameterBuilder::<i64>::new(&mut server, "described_param")
             .default(42)
             .description("This is a test description")
@@ -538,7 +554,8 @@ mod tests {
 
     #[test]
     fn test_bool_parameter() {
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
         let mut param = ParameterBuilder::<bool>::new(&mut server, "bool_param")
             .default(false)
             .mandatory()
@@ -553,7 +570,8 @@ mod tests {
     fn test_undeclared_parameters() {
         use crate::ParameterValue;
 
-        let mut server = ParameterServer::new();
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
 
         // Set some values using set_or_declare (simulating external parameter loading)
         server.set_or_declare("flag", ParameterValue::Bool(true));
