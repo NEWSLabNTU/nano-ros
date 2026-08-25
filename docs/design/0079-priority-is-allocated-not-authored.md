@@ -558,9 +558,28 @@ play_launch schedules processes from outside. Same target, different problem
 
 ## Open questions
 
-* **`reserved.foreign` verification.** A plan can claim lwIP's `tcpip_thread`
-  sits at N. Nothing checks it. A runtime probe that enumerates threads and
-  compares against the plan would close it — on ports that can enumerate.
+* **`reserved.foreign` verification — ANSWERED for POSIX (2026-08-25), open
+  elsewhere.** `scripts/dev/priority-thread-probe.py <pid>` enumerates a live
+  image's threads from `/proc/<pid>/task/*/stat` and classifies each against
+  its port's plan. Run on the native realtime entry it finds FOUR threads, all
+  ours — the boot tier on the main thread, `nros-tier-high`, and zenoh-pico's
+  read and lease tasks — and nothing else holding a real-time priority. So
+  POSIX's `reserved.foreign` is EMPTY, and the plan now says so as
+  `reserved.foreign = []`.
+
+  That spelling is deliberate. An ABSENT band means nobody looked; an EMPTY one
+  means somebody looked and found nothing, and the loader keeps the two apart
+  (`empty_bands`) so a later reader cannot mistake the second for the first.
+
+  Still open on the RTOS ports, which is where it matters most: lwIP's
+  `tcpip_thread` and NuttX's work queues are real foreign occupants whose
+  positions those plans can only ASSERT. Each needs its own enumerator —
+  procfs does not exist there — and until one lands those bands are claims.
+
+  Worth noting the probe also reads correctly on an unprivileged host, where
+  every thread is `SCHED_OTHER` and therefore in no band by construction. That
+  is not a vacuous pass: it is the same fact the tiers' own EPERM line reports,
+  seen from the kernel's side.
 * **Do profiles need a per-port override?** A `responsive` tier may want
   different realization on a 2-priority kernel than on a 255-priority one.
 * **Headroom policy.** Spread allocations evenly across the pool, or pack them

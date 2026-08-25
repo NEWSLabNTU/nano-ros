@@ -57,6 +57,16 @@ def load_plans():
             elif line.startswith("reserved."):
                 name = line.split("=", 1)[0].strip().split(".", 1)[1]
                 m = PAIR_RE.search(line)
+                if m is None:
+                    # `reserved.foo = []` — an EXPLICITLY EMPTY band. Different
+                    # from an absent one: absent means nobody looked, empty
+                    # means somebody looked and found nothing (RFC-0079's
+                    # `reserved.foreign` on POSIX, measured with
+                    # dev/priority-thread-probe.py). Recorded so the
+                    # distinction survives, and skipped by every range check
+                    # because there is no range to be in.
+                    plan.setdefault("empty_bands", []).append(name)
+                    continue
                 plan["reserved"][name] = (int(m.group(1)), int(m.group(2)))
             elif line.startswith("pool."):
                 name = line.split("=", 1)[0].strip().split(".", 1)[1]

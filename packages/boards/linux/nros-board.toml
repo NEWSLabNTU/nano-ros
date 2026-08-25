@@ -53,3 +53,19 @@ reserved.transport = [90, 99]
 # What tiers may be allocated. The existing pins (10, 40, 80) already live here
 # — this plan describes where they were, it does not move them.
 pool.app = [1, 89]
+
+# RFC-0079's `reserved.foreign` — threads nano-ros does not create — is EMPTY
+# here, and that is a measured claim rather than an omission.
+#
+# `scripts/dev/priority-thread-probe.py <pid>` enumerates a live image's
+# threads out of `/proc/<pid>/task/*/stat` and classifies each against this
+# plan. On the native realtime entry it finds four, all ours: the boot tier on
+# the main thread, `nros-tier-high`, and zenoh-pico's read and lease tasks.
+# Nothing else in the process holds a real-time priority, so there is no
+# foreign band to reserve.
+#
+# The distinction matters because on the RTOS ports there ARE foreign
+# occupants (lwIP's `tcpip_thread`, NuttX work queues) whose positions those
+# plans can only assert. POSIX is the one port where the claim is checkable
+# today, and this is it checked.
+reserved.foreign = []
