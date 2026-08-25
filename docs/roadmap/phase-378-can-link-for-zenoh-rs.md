@@ -396,6 +396,45 @@ existed, the listener would still have heard.
 **And a third sighting of §3.2**: the talker emitted **248 frames in both runs**,
 identical, whether or not anything on the bus could hear it.
 
+### What does NOT work over CAN, and why it is not the link's fault
+
+Tested after the ROS-to-ROS result, because "two nodes exchange a topic" is a
+much smaller claim than "ROS 2 works over CAN".
+
+| ROS 2 feature | over CAN | evidence |
+| --- | --- | --- |
+| Topics (pub/sub) | **works** | 19/19, plus a negative control |
+| Services | **does not** | `add_two_ints_client`: "service not available" forever |
+| Actions | **does not** | built on services |
+| Parameters | **does not** | built on services |
+| Graph introspection | **does not** | `ros2 node list` empty; `ros2 topic list` shows only the CLI's own topics, not `/chatter` |
+
+The cause is one line of routing, and it is architectural:
+
+```sh
+$ for f in zenoh/src/net/routing/hat/*/*.rs; do grep -c mcast_groups $f; done
+hat/linkstate_peer/pubsub.rs: 1
+hat/p2p_peer/pubsub.rs:       2
+hat/router/pubsub.rs:         1
+```
+
+`mcast_groups` appears **only in `pubsub.rs`**, in every hat. `queries.rs`,
+`token.rs` and `interests.rs` never mention multicast. **A zenoh multicast
+transport carries pushed data and nothing else** — no queries, no liveliness
+tokens, no interests. rmw_zenoh builds the ROS graph from liveliness tokens and
+resolves services through queries, so both die.
+
+This is not a CAN limitation and no CAN link can fix it. It is what
+`Z_LINK_CAP_TRANSPORT_MULTICAST` costs, and RFC-0080 chose multicast because
+unicast could not complete a handshake on a datagram medium. The choice was
+right and this is its price.
+
+**For the safety island specifically**, the traffic that matters — stop
+commands, MRM state, gear and mode reports, subscribed telemetry — is all
+pub/sub, and pub/sub works. Anything reaching for a service, an action or a
+parameter across the CAN segment does not, and that is a design constraint to
+plan around rather than a bug to wait on.
+
 ### The §3.2 measurement, and the mitigation that is not there
 
 Two runs, identical in every way except the island peer's subscription:
@@ -567,6 +606,47 @@ candump -td vcan0
 
 **Tier 4 — the system.** MR-CANHUBK344 across a transceiver to a Linux host.
 Shared with phase-377 W6; one hardware session validates both ends.
+
+## 4b. Feature completeness
+
+What is done, what is blocked, and what is merely untested. Blocked items have
+been diagnosed to a specific line; untested ones have not been attempted.
+
+**Blocked above the link, all diagnosed:**
+
+* **Queries and liveliness do not route to a multicast face**, so ROS services,
+  actions, parameters and graph introspection do not work over CAN. Needs
+  routing changes in `queries.rs` / `token.rs`.
+* **Routes to a multicast group ignore subscriptions** (§3.2), so bus cost is
+  the publisher's whole output. No interceptor runs on a multicast face either,
+  so there is no configuration lever.
+* **W7 priority mapping cannot be switched on**: `Join` with per-priority SNs is
+  99 bytes against a 63-byte MTU.
+
+**Implemented but never exercised:**
+
+* **Classic CAN**, MTU 7. The code path exists and warns loudly; it has had no
+  end-to-end test, and zenoh's ~16-byte per-fragment overhead exceeds the MTU,
+  so it is expected to be unusable rather than merely slow. Worth either proving
+  or refusing outright at open.
+* **More than two peers on one bus.** Every test so far has been a pair.
+* **Bus-off and interface-down recovery.** The read path fails the transport on
+  error; whether a session recovers when a controller returns has not been
+  tested, and on a vehicle bus it will happen.
+* **Real hardware.** Tier 4 is untouched in both phases. Every latency and
+  bandwidth figure so far is either analytic or measured on `vcan`, which has no
+  bit rate and no arbitration.
+* **Reliability semantics.** The link declares itself best-effort and the
+  multicast transport does not retransmit, so a ROS `RELIABLE` topic is not
+  reliable end to end across a CAN segment. On `vcan` delivery was 100%, which
+  proves nothing about a loaded bus.
+
+**Delivery hygiene:**
+
+* `feat/can-link` (the 1.10.0 line for upstream) does **not** carry W4-W7; only
+  `feat/can-link-1.8` is current.
+* The zenoh-c patch and the built `libzenohc.so` exist only in a scratchpad.
+* No upstream PR has been opened.
 
 ## 5. Risks
 
