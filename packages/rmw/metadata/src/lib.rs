@@ -203,11 +203,19 @@ impl ServiceTrait for MetadataService {
 impl ClientTrait for MetadataClient {
     type Error = TransportError;
 
-    fn send_request_raw(&mut self, _request: &[u8]) -> Result<(), Self::Error> {
-        Ok(())
+    /// issue 0778 — the trait now hands the caller the request id it just
+    /// issued, so a client can match a reply to its own call. This backend
+    /// never delivers anything (it exists so a metadata probe can OPEN a
+    /// session without a transport), so the id is a constant: there is no
+    /// second outstanding request for it to be confused with.
+    fn send_request_raw(&mut self, _request: &[u8]) -> Result<i64, Self::Error> {
+        Ok(0)
     }
 
-    fn try_recv_reply_raw(&mut self, _reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+    fn try_recv_reply_raw(
+        &mut self,
+        _reply_buf: &mut [u8],
+    ) -> Result<Option<(usize, i64)>, Self::Error> {
         Ok(None)
     }
 }
