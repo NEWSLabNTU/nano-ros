@@ -130,10 +130,37 @@ On a bus whose usable payload is 1.41 Mbit/s (RFC-0080 §8) this, not the link,
 is the dominant bandwidth risk. It is also **upstream behaviour we inherit**,
 not something the link can fix from below without a layering violation.
 
-**Position: measure it, do not pre-solve it.** Phase-378 W6 captures `candump`
-under the real ROS application and reports what actually crosses. Only then is
-it clear whether the answer is an egress interceptor, an upstream fix in the
-peer hat, or nothing at all because the application's publication set is small.
+**Measured in phase-378 W6, and it is exactly as bad as the code reads.** A ROS 2
+`talker` under `rmw_zenoh_cpp`, with the island peer subscribed to `island/**`
+so that **nothing** it published could match, still put **every** frame on the
+bus: 233 frames, byte-identical to the run where the island subscribed to `**`.
+The island received 0 messages and paid for all of them.
+
+**And the mitigation this section predicted does not exist.** An egress
+interceptor cannot help, because *no* interceptor runs on a multicast face:
+
+```rust
+/// zenoh/src/net/routing/interceptor/access_control.rs:849
+fn new_transport_multicast(&self, _transport: &TransportMulticast) -> Option<EgressInterceptor> {
+    tracing::debug!("Transport Multicast is disabled in interceptor");
+    None
+}
+```
+
+`access_control.rs`, `downsampling.rs`, `low_pass.rs` and `qos_overwrite.rs` all
+do the same for both directions. An ACL naming `link_protocols: ["can"]` parses,
+loads, and does nothing — verified by running one.
+
+So the levers are only these, and none is a configuration change:
+
+* **Bound the session's publication set.** Bus cost is the total output of
+  whatever session holds the CAN link, not the island's subscriptions. A
+  purpose-built bridge node that publishes only what should cross is the one
+  answer available today, and it is a topology decision rather than a fix.
+* **Fix it upstream**, either by making the route to a multicast group respect
+  subscriptions, or by enabling interceptors on multicast faces. The second is
+  the smaller change and would give `link_protocols: ["can"]` its intended
+  meaning.
 
 ### 3.3 zenoh-rs can do what zenoh-pico structurally cannot
 

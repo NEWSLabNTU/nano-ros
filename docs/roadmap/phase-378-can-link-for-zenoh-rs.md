@@ -1,6 +1,12 @@
 # Phase 378 — A CAN link for zenoh-rs
 
-**Status (2026-08-25). W0-W5 DONE. W6-W7 not started.**
+**Status (2026-08-25). W0-W6 DONE. W7 not started.**
+
+**A ROS 2 node under `RMW_IMPLEMENTATION=rmw_zenoh_cpp` publishes over CAN and a
+zenoh-pico peer receives it**, with the stock `rmw_zenoh_cpp` binary and no ROS
+rebuild — only a substituted `libzenohc.so`. The RFC-0081 §3.2 bus question is
+now a measurement, and the answer is worse than the RFC allowed for: the
+mitigation it predicted does not exist.
 
 **A zenoh-pico peer and a zenoh-rs peer exchange pub/sub across `vcan0`, both
 directions, including a 189-byte payload over a 63-byte MTU.** That is the claim
@@ -71,7 +77,7 @@ is pinned by tests before any socket exists**.
 | **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | **done** |
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **done, passes** |
 | **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | **done, passes** |
-| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | unblocked, not started |
+| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | **done, passes** |
 | **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
 
 W1 is the gate that matters for interop. W4 is the gate that matters for the
@@ -274,7 +280,92 @@ publishes, a router forwards the whole graph. But the original instinct to put
 CAN on the router was **not wrong on 1.8** — it is wrong on 1.10, and a design
 that assumed either version would be wrong on the other.
 
-### What W6 now looks like
+### W6 results (2026-08-25)
+
+`ros2 run demo_nodes_cpp talker` under `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, with a
+CAN listen endpoint in its session config, publishing to a zenoh-pico peer on
+`vcan0`. The stock `rmw_zenoh_cpp` and `rmw_zenohd` binaries, unmodified.
+
+| topic | messages the island received over CAN |
+| --- | ---: |
+| `0/chatter/std_msgs::msg::dds_::String_/…` | 17 |
+| `0/rosout/rcl_interfaces::msg::dds_::Log_/…` | 17 |
+| `0/parameter_events/…ParameterEvent_/…` | 5 |
+
+**No ROS rebuild was needed.** `librmw_zenoh_cpp.so` and `rmw_zenohd` carry
+`libzenohc.so` as a plain `DT_NEEDED` with **no RPATH and no RUNPATH**, and the
+vendored library has **no `DT_SONAME`**, so prepending a directory to
+`LD_LIBRARY_PATH` after sourcing `setup.bash` substitutes it wholesale. Adding a
+cargo feature changes no C API, so the ABI is unchanged.
+
+The build recipe, with the trap in it:
+
+```sh
+# zenoh-c 1.8.0, matching ros-humble-zenoh-cpp-vendor 0.1.9
+# Cargo.toml: transport_can = ["zenoh/transport_can"], plus a
+#   [patch."https://github.com/eclipse-zenoh/zenoh.git"] pointing at the fork.
+# THE TRAP: build-resources/opaque-types/ has its OWN manifest and is handed the
+#   parent's Cargo.lock. Without the same patch there, the two disagree about
+#   where zenoh comes from, the size-probe build yields nothing, and the failure
+#   surfaces much later and unrecognisably as
+#   "no sigatures found for building generic z_take_from_loaned".
+cargo build --release --features unstable,shared-memory,transport_can
+```
+
+The feature set must match what the vendored library was built with —
+`/opt/ros/humble/opt/zenoh_cpp_vendor/include/zenoh_configure.h` lists it, and
+`unstable` and `shared_memory` are the two that move struct layouts. Transport
+features do not.
+
+### The §3.2 measurement, and the mitigation that is not there
+
+Two runs, identical in every way except the island peer's subscription:
+
+| island subscribes to | messages it received | frames on the bus |
+| --- | ---: | ---: |
+| `**` | 39 | **233** |
+| `island/**` (matches nothing) | 0 | **233** |
+
+**Byte-identical frame counts.** The island paid the full bus cost for traffic it
+had not asked for and could not use. That is RFC-0081 §3.2 stated as a number:
+bus load is the total output of whatever session holds the CAN link, and the
+island's subscriptions do not enter into it.
+
+At 336 µs per full CAN FD frame (RFC-0080's model), 226 frames over the talker's
+17 seconds is **0.45% bus load** — trivial, because a 1 Hz talker is trivial.
+The number that matters is the ratio, and it was 0% useful.
+
+**The fix RFC-0081 predicted does not exist.** An ACL naming
+`link_protocols: ["can"]` — which parses only because this link registers an
+`InterceptorLink` variant — loads cleanly and changes nothing. Reading why:
+
+```rust
+/// zenoh/src/net/routing/interceptor/access_control.rs:849
+fn new_transport_multicast(&self, _transport: &TransportMulticast) -> Option<EgressInterceptor> {
+    tracing::debug!("Transport Multicast is disabled in interceptor");
+    None
+}
+```
+
+`access_control.rs`, `downsampling.rs`, `low_pass.rs` and `qos_overwrite.rs` all
+return `None` for both directions on a multicast transport. **No interceptor
+runs on a multicast face at all**, so none of the config-level levers —
+filtering, downsampling a bulk topic, QoS rewriting — is available to a CAN link.
+
+That is worth stating plainly because downsampling in particular looked like the
+answer to RFC-0080 §8's Odometry problem, and it is not.
+
+What remains:
+
+* **Bound the publication set by topology.** Put the CAN link on a purpose-built
+  bridge node that publishes only what should cross, not on a general-purpose
+  application session. Available today; a design decision, not a fix.
+* **Fix it upstream.** Either make the route to a multicast group respect
+  subscriptions, or enable interceptors on multicast faces. The second is much
+  the smaller change and would give `link_protocols: ["can"]` the meaning it
+  already appears to have.
+
+### What W6 looked like beforehand
 
 Reading zenoh-c 1.8.0 and 1.10.0 shrank this wave considerably:
 
