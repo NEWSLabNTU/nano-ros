@@ -780,9 +780,18 @@ impl QosSettings {
     );
 
     /// Parameters QoS profile (matches rmw_qos_profile_parameters)
+    /// Mirrors `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE,
+    /// **VOLATILE**.
+    ///
+    /// issue 0793 — this said `TransientLocal` until 2026-08-25, disagreeing
+    /// both with upstream (`/opt/ros/<distro>/include/rmw/rmw/qos_profiles.h`)
+    /// and with our own second copy of the same profile, `nros::qos::PARAMETERS`,
+    /// which was already correct. Two copies of one profile that disagree is the
+    /// defect; the wrong one being the one named after the upstream constant is
+    /// what made it hard to see.
     pub const QOS_PROFILE_PARAMETERS: Self = Self::build(
         QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::TransientLocal,
+        QosDurabilityPolicy::Volatile,
         QosHistoryPolicy::KeepLast,
         1000,
     );
@@ -2583,11 +2592,22 @@ mod tests {
         );
     }
 
+    /// issue 0793 — this asserted `TransientLocal`, which PINNED THE DEFECT:
+    /// upstream `rmw_qos_profile_parameters` is KEEP_LAST(1000) + RELIABLE +
+    /// **VOLATILE** (`/opt/ros/<distro>/include/rmw/rmw/qos_profiles.h`), and
+    /// our own second copy of the profile, `nros::qos::PARAMETERS`, was already
+    /// correct. The test agreed with the wrong copy, so the disagreement between
+    /// the two survived every run.
     #[test]
     fn test_qos_profile_parameters() {
         let qos = QosSettings::QOS_PROFILE_PARAMETERS;
         assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(
+            qos.durability,
+            QosDurabilityPolicy::Volatile,
+            "rmw_qos_profile_parameters is VOLATILE; transient-local would make \
+             every parameter server retain for late joiners, which ROS 2 does not do"
+        );
         assert_eq!(qos.depth, 1000);
     }
 

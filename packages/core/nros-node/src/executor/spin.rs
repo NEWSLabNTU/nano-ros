@@ -6391,8 +6391,15 @@ impl<'s> Executor<'s> {
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
             }
+            // issue 0793 — the parameter services get the PARAMETER profile
+            // (`rmw_qos_profile_parameters`: KEEP_LAST(1000), reliable,
+            // volatile), not the generic services one. `QOS_PROFILE_PARAMETERS`
+            // existed with the right depth and had no caller, so every parameter
+            // server ran on a depth-10 queue while ROS 2 gives them 1000 — which
+            // matters exactly when a tool sets many parameters at once, the case
+            // the deep queue is for.
             session
-                .create_service(&info, QosSettings::services_default())
+                .create_service(&info, QosSettings::parameters_default())
                 .map_err(NodeError::Transport)
         }
 

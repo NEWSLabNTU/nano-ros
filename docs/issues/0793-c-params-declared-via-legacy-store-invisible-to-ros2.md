@@ -79,14 +79,25 @@ campaign built a checker rather than another prose catalog.
   on the two cases it does not cover, and the inherent setters return one while
   the typed wrappers return the other.
 
-## Also found: a dead constant
+## Also found, and FIXED 2026-08-25: two copies of one QoS profile, disagreeing
 
-`QOS_PROFILE_PARAMETERS` exists with the correct transient-local/depth-1000
-values, and `register_parameter_services` passes `QosSettings::services_default()`
-instead. So the constant is unused and the parameter services run on the wrong
-profile — a late-joining `ros2 param list` may not see a device's parameters at
-all. This is the `parameter_services_default` gap the service stage recorded,
-with its cause identified.
+`QOS_PROFILE_PARAMETERS` had no caller — `register_parameter_services` passed
+`QosSettings::services_default()` — so every parameter server ran on a depth-10
+queue where ROS 2 gives them 1000. That matters exactly when a tool sets many
+parameters at once, which is what the deep queue is for. Now wired to
+`parameters_default()`.
+
+**And this issue was wrong about why.** It said the profile was transient-local
+"so a late-joining tool still sees declared parameters". Upstream
+`rmw_qos_profile_parameters` is KEEP_LAST(1000) + RELIABLE + **VOLATILE**
+(verified in `/opt/ros/<distro>/include/rmw/rmw/qos_profiles.h`). We had **two
+copies** of the profile that disagreed: `nros::qos::PARAMETERS` (correct,
+volatile) and `QosSettings::QOS_PROFILE_PARAMETERS` (transient-local, wrong) —
+and the one named after the upstream constant was the wrong one.
+
+Worse, `test_qos_profile_parameters` **asserted the wrong value**, so the
+disagreement between our two copies survived every test run. A test that pins a
+defect is the reason it lasted. Both are corrected.
 
 ## Evidence
 

@@ -841,7 +841,7 @@
   },
   "rust:QoSProfile::parameter_services_default": {
     "verdict": "gap",
-    "why": "the parameter services use a distinct QoS profile in ROS 2 (transient-local, so a late-joining tool still sees declared parameters). We register the parameter servers with the plain services profile, so a tool that starts after the device will not see them until it asks again. Phase 379 W3; see the param stage."
+    "why": "ROS 2 gives the parameter services their own profile \u2014 `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
   },
   "rust:QoSProfile::services_default": {
     "verdict": "rename",
