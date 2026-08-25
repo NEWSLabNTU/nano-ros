@@ -561,3 +561,99 @@ fn interop_bindings_g4_peer_consistent_with_cell() {
         bad.join("\n")
     );
 }
+
+/// G5 — lane narrowability. Every interop cell's coordinate must be produced by
+/// at least one `fixtures.toml` row.
+///
+/// # What this protects (issue 0770)
+///
+/// A lane asks two different questions — which fixtures must be FRESH (its
+/// coordinate cover) and which must EXIST (a property of the run, issue 0482).
+/// They stay consistent only because the fixture resolver can NARROW: an
+/// out-of-lane coordinate reports `[SKIPPED:lane]` instead of being demanded
+/// fresh from a build that was told not to produce it.
+///
+/// That narrowing is keyed on a manifest ROW. `require_prebuilt_row_binary`
+/// calls `require_coord_in_lane(&row.coord, …)`, and the path-keyed sibling
+/// attributes an artifact back to a row before deciding. Either way, **a
+/// coordinate no row produces cannot be narrowed** — `attribute_path` returns
+/// `None`, whose documented contract is "never skip", so such a cell is
+/// silently required in EVERY lane while no lane's build cover necessarily
+/// contains it. The failure then surfaces far away, as a stale-fixture verdict
+/// that reads like a build-system defect (issue 0445's absorbing message) and
+/// gets re-diagnosed once per sweep.
+///
+/// Interop cells are the ones at risk, because by RFC-0051 they deliberately
+/// have no `[[fixture]]` row of their OWN — the peer is ephemeral and the nano
+/// side is a plain example. That is fine precisely as long as the nano side's
+/// coordinate is still manifest-backed, which is what this asserts.
+///
+/// # Why it compares tokens through the shared mappings
+///
+/// `PlatformId::fixture_tokens()` is a SLICE, and `Rmw` deliberately has no
+/// blessed `Display` (the same value is spelled `cyclone` by native consumers
+/// and `cyclonedds` in the manifest). So this maps forward through
+/// `fixture_tokens()` and backward through this file's own `rmw_from_str`,
+/// rather than lowercasing an enum name — an ad-hoc normalisation of exactly
+/// that kind reported two false violations while this gate was being written
+/// (`ZephyrNativeSim` → `zephyrnativesim`, which matches nothing).
+///
+/// # Two exemptions, both load-bearing
+///
+/// **`workspace_fixture` rows count.** They carry a coordinate and narrow
+/// through `attribute_workspace_id` / `require_workspace_in_lane` rather than
+/// by path, which is a different mechanism but the same guarantee. Counting
+/// only `kind = "fixture"` falsely flagged `zephyr-qos-rust-zenoh`, whose
+/// coordinate is backed by seven workspace rows and zero plain ones.
+///
+/// **`Tier::CarveOut` cells are skipped.** A carve-out records a lane that
+/// deliberately does not exist, so demanding a fixture row for it would be
+/// demanding the thing the carve-out exists to say we do not build. That is
+/// what `zephyr-qos-cpp-cyclone-CARVED` is, and its recorded reason says so.
+///
+/// Note what is NOT exempted: `builder = "west"` rows are absent from
+/// `manifest_rows()` because west leaves are built module-level and are
+/// deliberately unattributable. A Runtime cell that could only be backed by a
+/// west row would therefore still fail here — correctly, because nothing could
+/// narrow it.
+#[test]
+fn interop_bindings_g5_cells_are_lane_narrowable() {
+    let rows = nros_tests::fixtures::lane::manifest_rows();
+    // Precondition, not decoration: an empty manifest would make every cell
+    // below "unbacked" and this test would fail for the wrong reason — or, if
+    // the loop were inverted, pass having checked nothing.
+    assert!(
+        rows.iter().any(|r| r.kind == "fixture"),
+        "no fixture rows parsed from the manifest — the check below would be vacuous"
+    );
+
+    let mut bad = Vec::new();
+    for c in interop::CELLS {
+        // A carve-out is a recorded absence of a lane; it has no fixture on
+        // purpose. See the doc comment.
+        if matches!(c.cell.tier, Tier::CarveOut(_)) {
+            continue;
+        }
+        let platform_tokens = c.cell.platform.fixture_tokens();
+        let lang = c.cell.lang.as_str();
+        let backed = rows.iter().any(|r| {
+            (r.kind == "fixture" || r.kind == "workspace_fixture")
+                && platform_tokens.contains(&r.coord.0.as_str())
+                && r.coord.1 == lang
+                && rmw_from_str(&r.coord.2) == Some(c.cell.rmw)
+        });
+        if !backed {
+            bad.push(format!(
+                "{}: coordinate {:?}/{}/{:?} is produced by NO fixtures.toml row, \
+                 so no lane can narrow it — it will be required fresh in every \
+                 lane whose build may not cover it",
+                c.id, platform_tokens, lang, c.cell.rmw
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "interop G5 (lane-narrowability) violations:\n{}",
+        bad.join("\n")
+    );
+}
