@@ -19,8 +19,17 @@ transport_can` succeeds, default builds are unchanged, and clippy is clean. The
 golden frames are byte-exact against the zenoh-pico encoder, so the two
 implementations are pinned to one wire format before any socket was involved.
 
-Work landed on branch `feat/can-link` of the zenoh fork as
-`a6cc88f` "feat(link): add a CAN and CAN FD multicast link".
+**The work now targets zenoh 1.8.0, not 1.10.0.** The installed ROS packages —
+`ros-humble-rmw-zenoh-cpp` 0.1.9 and `ros-humble-zenoh-cpp-vendor` 0.1.9 — ship
+`libzenohc.so` at **zenoh-c 1.8.0**, and `rmw_zenoh_cpp` is compiled against
+those headers, so the link has to be built on the zenoh the ROS side actually
+uses. Branch `feat/can-link-1.8`, cut from `release/1.8.0`; `feat/can-link`
+keeps the 1.10.0 line for the eventual upstream PR.
+
+The port cost almost nothing, which is itself a result: `LinkMulticastTrait`,
+`LinkKind` and `LinkManagerBuilderMulticast::make` are **identical** across the
+two minors. Two conflicts, both version-pin noise in `Cargo.toml` files. All 42
+unit tests, W4 and W5 pass unchanged on 1.8.0.
 
 Implements [RFC-0081](../design/0081-can-link-for-zenoh-rs.md), which is the
 host half of [RFC-0080](../design/0080-can-link-for-zenoh-pico.md). Phase-377
@@ -62,7 +71,7 @@ is pinned by tests before any socket exists**.
 | **W3** | `LinkKind::Can`, `LinkManagerBuilderMulticast` arm, `transport_can` feature through `zenoh-link` / `zenoh-transport` / `zenoh` | a zenoh session accepts a `can/...` endpoint | **done** |
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, pub/sub, payload well above the MTU | the transport's own fragmentation drives the link, end to end | **done, passes** |
 | **W5** | E2E interop on `vcan0`: zenoh-pico peer against zenoh-rs peer, `candump` capture | the claim that actually matters | **done, passes** |
-| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | blocked, see below |
+| **W6** | zenoh-c feature pass-through; ROS 2 app with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and a CAN endpoint in `ZENOH_SESSION_CONFIG_URI`; `candump` under real load | the delivery chain works, and RFC-0081 §3.2 becomes a number | unblocked, not started |
 | **W7** | Per-message priority: priority reaches the link write, identifier laid out priority-major | RFC-0080 §4.2's blocker is removed on the Rust side | not started |
 
 W1 is the gate that matters for interop. W4 is the gate that matters for the
@@ -242,12 +251,50 @@ Note also the follow-on error, `Invalid zid length received`, which appears once
 after the rejection. It is a consequence of the dropped association, not a
 second fault; chasing it first would have wasted the afternoon.
 
-### Why W6 cannot be done from this machine
+### The 1.8.0 port (2026-08-25)
 
-`zenoh-c` and `rmw_zenoh` are not checked out here, and neither is vendored into
-the ASI tree — the chain `zenoh → zenoh-c → zenoh-cpp → rmw_zenoh_cpp` needs at
-least the first of those cloned before the feature pass-through can be written or
-tested. This is the schedule risk §5 names, arriving on schedule.
+| check | 1.10.0 | 1.8.0 |
+| --- | --- | --- |
+| `cargo test -p zenoh-link-can` | 42 pass | 42 pass |
+| W4, 189 B and 4 KiB | 100/100, 0 corrupt | 100/100, 0 corrupt |
+| W5, zenoh-rs → zenoh-pico | works | works |
+| W5, zenoh-pico → zenoh-rs, 189 B fragmented | works | works, payloads exactly 189 B |
+| clippy, default build | clean | clean |
+
+**One behaviour differs between the two minors, and it matters.** RFC-0081 §3.1
+found that on 1.10 multicast-group faces exist only in the `peer` hat, so a
+router builds the face and silently never routes to it. **On 1.8 the router hat
+does route to multicast groups** — `hat/router/pubsub.rs:1211` inserts the group
+into the data route exactly as the peer hats do — so a CAN endpoint on
+`ZENOH_ROUTER_CONFIG_URI` would work on the version ROS ships.
+
+Prefer the session anyway. The unfiltered-route problem (§3.2) applies to both
+hats and is far worse on a router: a peer session forwards only what it
+publishes, a router forwards the whole graph. But the original instinct to put
+CAN on the router was **not wrong on 1.8** — it is wrong on 1.10, and a design
+that assumed either version would be wrong on the other.
+
+### What W6 now looks like
+
+Reading zenoh-c 1.8.0 and 1.10.0 shrank this wave considerably:
+
+* `transport_can = ["zenoh/transport_can"]` beside `transport_vsock` is the
+  entire feature change;
+* **no CMake change** — `ZENOHC_CARGO_FLAGS` already passes cargo flags through;
+* zenoh-c pins zenoh **by git branch**, not crates.io, so repointing it at the
+  fork is four lines.
+
+And because a cargo feature adds no C API, a 1.8.0 `libzenohc.so` built with
+`transport_can` should be substitutable beneath the **stock** `rmw_zenoh_cpp`
+with no ROS rebuild at all. That is the W6 hypothesis and it is cheap to test.
+
+The earlier claim that this wave was blocked on cloning repositories was wrong
+in its reasoning even though the conclusion held at the time: the blocker was
+never zenoh-c, it was that the fork was on 1.10.0 while the ROS stack was on
+1.6.2. Reinstalling the ROS packages moved that to 1.8.0 and porting the link
+closed the gap.
+
+
 
 ## 3. Acceptance criteria
 

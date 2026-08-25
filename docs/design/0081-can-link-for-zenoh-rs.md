@@ -87,18 +87,30 @@ error.
 
 ## 3. Three things reading zenoh-rs changed
 
-### 3.1 CAN must attach to a session, not a router
+### 3.1 Whether CAN can attach to a router is version-dependent
 
-Multicast-group faces exist **only in the `peer` hat**. `hat/peer/mod.rs:152`
-defines `multicast_groups()`; `hat/router/` and `hat/client/` never mention
-`mcast_groups`. A runtime in `mode: "router"` — which is what `rmw_zenohd` is —
-builds the face in `gateway.rs:357` and then never routes anything to it.
+**On zenoh 1.10**, multicast-group faces exist only in the `peer` hat.
+`hat/peer/mod.rs:152` defines `multicast_groups()`; `hat/router/` and
+`hat/client/` never mention `mcast_groups`. A runtime in `mode: "router"` —
+which is what `rmw_zenohd` is — builds the face in `gateway.rs:357` and then
+never routes anything to it. Nothing errors, logs, or warns; the symptom is
+silence.
 
-So the CAN endpoint goes in the **session** config
-(`ZENOH_SESSION_CONFIG_URI`, `mode: "peer"`), not the router config
-(`ZENOH_ROUTER_CONFIG_URI`). A ROS 2 application session then holds two links:
-TCP to the local `rmw_zenohd` for the other applications on the host, and CAN
-for the island.
+**On zenoh 1.8**, which is what the ROS packages actually ship (§4.7), the
+router hat does route to multicast groups:
+`hat/router/pubsub.rs:1211` inserts the group into the data route exactly as the
+peer hats do, and the hats are `router`, `linkstate_peer`, `p2p_peer` and
+`client`. So a CAN endpoint on `ZENOH_ROUTER_CONFIG_URI` works there.
+
+**Prefer the session anyway.** §3.2 applies to both hats, and it is far worse on
+a router: a peer session forwards only what it publishes, while a router
+forwards the whole graph's traffic onto the bus. The CAN endpoint therefore
+belongs in `ZENOH_SESSION_CONFIG_URI` with `mode: "peer"`, and a ROS 2
+application session holds two links — TCP to the local `rmw_zenohd` for the
+other applications on the host, and CAN for the island.
+
+Recording the difference because it is a behaviour change between two zenoh
+minors, and a design that assumed either one would be wrong on the other.
 
 ### 3.2 A multicast face receives every route, unfiltered
 
@@ -244,12 +256,32 @@ does not ask for it changes.
 zenoh (Rust, this RFC)  →  zenoh-c  →  zenoh-cpp  →  rmw_zenoh_cpp
 ```
 
-so `zenoh-c` must expose `transport_can` in its own `Cargo.toml` feature list
-and its CMake feature plumbing, and the ASI build must select it. **This is real
-work in a second repository** and it is why phase-378 has a wave for it. It is
-also the point at which "upstream-shaped" earns its keep: a `transport_can`
-feature that looks like `transport_serial` needs no argument in zenoh-c beyond
-"same as the others".
+`zenoh-c` turned out to be nearly free, which an earlier draft of this section
+overstated. Checked against zenoh-c 1.8.0 and 1.10.0:
+
+* its `Cargo.toml` already carries one line per transport, so
+  `transport_can = ["zenoh/transport_can"]` beside `transport_vsock` is the
+  whole feature change;
+* **no CMake change is needed** — `ZENOHC_CARGO_FLAGS` passes arbitrary cargo
+  flags through, so `-DZENOHC_CARGO_FLAGS="--features=transport_can"` suffices;
+* it pins zenoh **by git branch**, not crates.io
+  (`zenoh = { version = "1.8.0", git = "...", branch = "release/1.8.0" }`), so
+  repointing it at a fork is four lines.
+
+**The version is what costs.** The installed ROS stack determines which zenoh
+this work must target:
+
+| | version |
+| --- | --- |
+| `ros-humble-rmw-zenoh-cpp` | 0.1.9 |
+| `ros-humble-zenoh-cpp-vendor` → `libzenohc.so` | **1.8.0** |
+
+`rmw_zenoh_cpp` is compiled against those headers, so the link must be built on
+zenoh **1.8.0** for the resulting `libzenohc.so` to be substitutable. A feature
+addition does not change the C ABI — `transport_can` adds no C API — so a 1.8.0
+`libzenohc.so` built with the feature on should drop in beneath the stock
+`rmw_zenoh_cpp` without rebuilding the ROS packages. That is the hypothesis
+phase-378 W6 tests.
 
 ## 5. Testability
 
