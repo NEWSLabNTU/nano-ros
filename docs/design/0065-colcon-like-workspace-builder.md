@@ -148,7 +148,7 @@ pure wrapping.
 nros build [<image>] [--board <board>] [-- <native build args>]
 
   1. DISCOVER   walk package.xml → pkg index → topological order
-  2. RESOLVE    the image: argument > sole declaration > list and fail
+  2. RESOLVE    the image: argument > [system] default_images > list and fail
   3. PREFLIGHT  toolchains / SDKs / sources present?
   4. GENERATE   msg bindings + system model + the ROOT BUILD FILE → build/<coord>/
   5. EXEC       cmake --build / cargo build / west build — stderr untouched
@@ -157,6 +157,28 @@ nros build [<image>] [--board <board>] [-- <native build args>]
 Stages 1–3 exist today (`nros-pkg-index`, `nros ws order`, `nros setup`, `nros
 doctor`, `nros sync`). Stage 4's root emitter and the driver that sequences them
 are the new code.
+
+**Bare `nros build` never guesses and never surprises.** `[system]
+default_images` names the default set; absent it, a workspace with several
+images lists them and fails. `--all` builds every image.
+
+```
+$ nros build
+error: this workspace declares 8 images and no default.
+
+  native   zephyr    freertos    nuttx
+  robot1   robot2    esp32-qemu  threadx-linux
+
+  build one:   nros build native
+  build all:   nros build --all
+  or declare:  [system] default_images = ["native"]
+```
+
+PlatformIO's `default_envs` is the model, with one deliberate divergence: `pio
+run` builds **every** environment when none is named, and that is wrong here.
+`examples/workspaces/rust` declares eight images across three cross toolchains,
+so an accidental bare invocation would be a very expensive way to learn the
+default. One declaration per multi-image workspace is the cheaper trade.
 
 ### D2 — Provisioning asks once, and never in CI
 
@@ -212,20 +234,61 @@ What is *not* derivable, and where each thing goes:
 | not derivable | home |
 | --- | --- |
 | RTOS config overlays — `prj.conf`, `prj-<rmw>.conf`, `boards/*.overlay`, `sdkconfig.defaults` | the **bringup package**, under `boards/<board>/` |
-| panic handler, `[profile.release]`, a custom spin loop (RFC-0024 §11.8) | `nros eject`, below |
+| panic handler, `[profile.release]` | **declarations on the image** — D5 |
+| a genuinely unforeseen hand-written entry | `nros materialize` — D5, one-way |
 
 Overlays are indexed by board × RMW (`prj-zenoh.conf`, `prj-cyclonedds.conf`),
 never by entry — evidence they were never entry property. They move to the
 bringup package, which already owns `system.toml` and `launch/`, matching the
 nav2/Autoware convention of a bringup package carrying `config/`.
 
-### D5 — `nros eject` is the escape hatch, and it is load-bearing
+### D5 — Declarative escapes first; materialising is the last resort
 
-`nros eject <image>` writes the generated entry into `src/<name>_entry/` as a
-real, owned package; the builder afterwards treats it as an ordinary input. This
-is the only home for a hand-written panic handler, profile override, or custom
-spin loop, so **it requires a test proving an ejected entry still builds** — a
-decorative eject would silently delete capability.
+**An earlier draft of this RFC made `nros eject` the primary escape hatch. The
+closest prior art ran that experiment and abandoned it.** Expo shipped `eject`,
+found it was *"a one-way door for most projects"*, and replaced it with
+Continuous Native Generation — where `eject` is now *"historical vocabulary"*.
+Their stated reason is the one that applies to us directly: *"If you modify the
+generated directories manually then you risk losing your changes the next time
+you run `prebuild --clean`. **Instead, use config plugins.**"*
+
+So the escapes that are **known** become declarations on the image, and never
+leave generation:
+
+```toml
+[image.freertos]
+kind  = "embedded"
+board = "mps2-an385-freertos"
+panic = "semihosting"          # was: extern crate panic_semihosting;
+
+[image.esp32-qemu]
+kind    = "embedded"
+board   = "esp32-qemu"
+panic   = "esp-backtrace"      # was: use esp_backtrace as _;
+profile = { opt-level = "z", lto = true }
+```
+
+That covers every escape the survey found (D4): the panic handler and the
+per-board build profile. The custom spin loop already has its own supported
+seam, RFC-0024 §11.8.
+
+`nros materialize <image>` remains for the genuinely unforeseen. It writes the
+generated entry into `src/<name>_entry/` as a real, owned package, and it is
+**one-way and says so**: the builder afterwards uses that package verbatim and
+never regenerates it, so a later nano-ros release that improves the generated
+entry will not reach it.
+
+Two obligations follow. It **requires a test proving a materialised entry still
+builds** — a decorative escape silently deletes capability. And when a user
+reaches for it, that is evidence of a generator gap: the fix is usually a new
+declarative key, not a second materialised package.
+
+### D5.1 — `[image]` is a base section
+
+Following PlatformIO's `[env]` / `[env:NAME]` split, a bare `[image]` table
+carries keys shared by every image, and `[image.<id>]` overrides them. Without
+it, an eight-image workspace repeats its RMW, edition and profile eight times —
+and eight copies of one fact is how they start disagreeing.
 
 ### D6 — `[deploy.<id>]` becomes `[image.<id>]`
 
@@ -264,7 +327,7 @@ nouns; `--target` is not a flag `nros build` defines.
 nros build                    # sole image, or list and fail
 nros build robot1             # one declared image
 nros build --board <b>        # every image on that board
-nros eject robot1             # materialize the entry package
+nros materialize robot1       # own the generated entry (one-way)
 ```
 
 ### D8 — Output layout
@@ -291,6 +354,26 @@ MCUboot bootloader, same key, same partition table" — so on any board with a
 bootloader the product is ≥2 artifacts with config that must stay in sync. A
 `dist/` layout assuming one file would have to be re-cut the first time anyone
 ships a signed image.
+
+**Who declares that a board wants a bootloader: Zephyr already decided.** An
+application asks for one with a `sysbuild.conf` carrying
+`SB_CONFIG_BOOTLOADER_MCUBOOT=y`, optionally with a `sysbuild/mcuboot.conf`
+merge fragment. So the presence of that file in the board's config directory
+**is** the declaration, and `nros build` passes `--sysbuild` when it is there.
+We invent no key of our own. (What still needs testing rather than assuming: the
+Zephyr documentation states `APPLICATION_CONFIG_DIR` covers Kconfig fragments
+and devicetree overlays, and is **silent on `sysbuild.conf`**. Until that is
+verified, D10's sysbuild half is unproven — see Open questions.)
+
+**`manifest.toml` must be consumed, never globbed, and must be complete.**
+ESP-IDF's `flasher_args.json` is the precedent — "project flash information in
+JSON format, used by `idf.py` and other tools" — alongside `flash_project_args`,
+consumable directly as `esptool @build/flash_project_args`. It also supplies the
+cautionary tale: a filed bug reads *"flasher_args.json is missing entry for
+`bootloader` when built with secure boot v2"*. The manifest silently fell behind
+the artifacts when a feature was added. So the invariant is a **gate**: every
+file in `dist/<image>/` is named by that image's manifest, and an unnamed
+artifact fails the build rather than being flashed by a glob that guessed.
 
 `dist/` is deliberately not `install/`: that name promises an environment to
 source, which nano-ros will never have, and a ROS user's first move would be a
@@ -445,6 +528,22 @@ between them. Every move edited a hand-maintained `SUBDIRS` list or `[workspace]
 members`. If a tree-walking builder would have made that fold `git mv` plus a
 bringup edit, the design holds.
 
+## Related work
+
+Surveyed 2026-08-25. Each row changed or confirmed a decision; none is cited
+decoratively.
+
+| system | what it does | effect here |
+| --- | --- | --- |
+| **PlatformIO** | `[env]` base + `[env:NAME]` sections + `default_envs`; `pio run` builds all when none named | shape of D6/D5.1/D1. Adopted the base section and `default_images`; **rejected** build-all-by-default (eight images over three cross toolchains is too expensive an accident) |
+| **Expo** (prebuild / CNG) | shipped `eject`, found it a one-way door, replaced it with always-generate + config plugins; `eject` is now "historical vocabulary" | **reversed D5.** Declarative escapes first; materialising is last resort and marked one-way |
+| **micro-ROS** | `create_firmware_ws.sh [RTOS] [Platform]`, per-pair config dirs, `configure_firmware.sh` pre-build step | confirms D9's pairing and the generate-then-handoff shape; differs by making one workspace per target |
+| **Yocto** multiconfig | many MACHINEs from one tree; "separate TMPDIR for the different multiconfigs is strongly recommended" | confirms D8's per-coordinate build tree, and that one-tree-many-boards is a solved shape |
+| **Buildroot** | one defconfig per board; `BR2_EXTERNAL` limited to one at a time | the pole we are not choosing. Efficient "when the product definition is stable"; nano-ros systems span boards |
+| **ESP-IDF** | `flasher_args.json` + `flash_project_args`; `SDKCONFIG_DEFAULTS` list | precedent for D8's manifest, including its failure mode (manifest fell behind artifacts under secure boot v2) and D10's knob |
+| **Zephyr** sysbuild | `sysbuild.conf` with `SB_CONFIG_BOOTLOADER_MCUBOOT=y` | the bootloader declaration is Zephyr's own file, so D8 adds no key of ours |
+| **Arduino CLI** | FQBN `VENDOR:ARCHITECTURE:BOARD_ID[:MENU_ID=OPTION_ID]` | a board id can carry **options**, which D9's opaque key cannot. Not adopted — no in-tree board needs it yet, and it is additive later |
+
 ## Fit against real frameworks
 
 Checked 2026-08-25 against upstream documentation rather than against our own
@@ -477,16 +576,23 @@ were checked in depth. ThreadX and the FreeRTOS vendor distributions
   `nros doctor` warns or `nros build` does.
 - **Whether the repo's own nine workspace roots migrate** as part of this work,
   or only new user workspaces get the builder. Migrating them is the real proof
-  it works; not migrating them leaves two shapes in one tree.
-- **How `nros eject` names what it writes** when several images share a launch
-  file but differ in args.
-- **Whether sysbuild config is authored or derived.** D8 accepts a set of
-  artifacts, but says nothing about who declares that a board wants MCUboot.
-  Candidates: a key in `[image.<id>]`, or the presence of sysbuild files in the
-  board's overlay dir. The second is more framework-respecting and less
-  explicit.
-- **How `dist/manifest.toml` is consumed.** Flash and run paths must read it
-  rather than glob, or the set degenerates back into a convention.
+  it works; not migrating them leaves two shapes in one tree. Yocto multiconfig
+  shows one-tree-many-boards is a solved shape, so the question is sequencing
+  and risk, not feasibility.
+- **How `nros materialize` names what it writes** when several images share a
+  launch file but differ in args.
+- **Does `APPLICATION_CONFIG_DIR` reach `sysbuild.conf`?** D8 derives the
+  bootloader declaration from that file's presence in the board's config
+  directory, and D10 puts that directory outside the app tree. The Zephyr docs
+  cover Kconfig fragments and DT overlays and say nothing about sysbuild, so
+  this is the one load-bearing claim in D8/D10 that is **assumed rather than
+  verified**. It is a half-hour experiment and should be the first thing the
+  phase does; if it fails, sysbuild config stays in a generated app dir and D10
+  applies only to the app's own config.
+- **What `panic` accepts.** D5 makes it a declaration, so its value set is now
+  API. `semihosting` / `esp-backtrace` / `abort` / `halt` covers every in-tree
+  entry, but a user crate reference (`panic = "my_crate::handler"`) is the
+  obvious next request and decides whether the key is an enum or a path.
 
 ## Non-goals
 
@@ -499,6 +605,16 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-25 (c)** — related-work pass; two decisions reconsidered. **D5
+  reversed**: Expo shipped `eject`, found it a one-way door, and replaced it
+  with always-generate + declarative plugins, so known escapes (`panic`,
+  `profile`) become image keys and `nros materialize` is the marked-one-way last
+  resort. **D1 refined**: `[system] default_images` after PlatformIO's
+  `default_envs`, but list-and-fail rather than its build-everything default.
+  Adds D5.1 (`[image]` base section). Answers the sysbuild-declaration question
+  from Zephyr's own `sysbuild.conf`, and the manifest question from ESP-IDF's
+  `flasher_args.json` — including a completeness gate, since that manifest is on
+  record falling behind its artifacts. New *Related work* table.
 - **2026-08-25 (b)** — framework-fit research pass. `dist/` becomes a SET plus a
   manifest (D8) because Zephyr sysbuild's standard case is app + MCUboot with
   shared key and partition table; "one unified image" retired from the framing.
