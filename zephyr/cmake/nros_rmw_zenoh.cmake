@@ -55,6 +55,15 @@ zephyr_include_directories(${ZENOH_PICO_DIR}/include)
 # Zephyr platform backend
 zephyr_compile_definitions(ZENOH_ZEPHYR)
 
+# Opt-in zenoh-pico internal logging. -DNROS_ZENOH_DEBUG=<1..4> on the west
+# command line; nothing changes without it. zenoh-pico's own CMakeLists sets
+# ZENOH_DEBUG, but nano-ros compiles those sources itself, so that path never
+# reaches this build and there was no way to see why a declaration failed.
+if(DEFINED NROS_ZENOH_DEBUG AND NOT NROS_ZENOH_DEBUG STREQUAL "")
+    zephyr_compile_definitions(ZENOH_DEBUG=${NROS_ZENOH_DEBUG})
+    message(STATUS "nano-ros: zenoh-pico logging at ZENOH_DEBUG=${NROS_ZENOH_DEBUG}")
+endif()
+
 # Router-backed client-to-client routing requires interest declarations
 # so zenohd knows which peers should receive each keyexpr. Keep matching
 # callbacks disabled on Zephyr; they are not needed for routing and can
