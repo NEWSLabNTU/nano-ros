@@ -79,8 +79,10 @@ When a project grows beyond one node, continue with
 - **Rust-first with C API** — the core is written in Rust for memory safety
   and ergonomics, with a thin C FFI (Foreign Function Interface) layer
   following rclc conventions.
-- **True `no_std`** — runs on bare-metal Cortex-M3 with no heap allocator.
-  The `alloc` and `std` features are opt-in.
+- **True `no_std`** — runs on bare-metal Cortex-M3; the `alloc` and `std`
+  features are opt-in. Whether the IMAGE needs an allocator is the backend's
+  call, not the core's: XRCE is fully static, zenoh-pico wants one (a bump
+  allocator suffices on bare-metal), and Cyclone DDS requires a real heap.
 - **Standalone tooling** — `nros generate-rust` produces message
   bindings without a ROS 2 installation (bundled interface definitions).
 - **Formally verified** — 148 Kani bounded model checking harnesses and 83

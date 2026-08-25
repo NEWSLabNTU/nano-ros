@@ -6,7 +6,7 @@ Three design choices shape almost everything else:
 
 ## 1. The RMW layer was rewritten, not adopted
 
-ROS 2's `rmw.h` assumes a libc heap, an OS scheduler with preemptable threads, dynamic loaders, and middleware-owned background dispatch. None of those hold on a Cortex-M3 with 64 KB of RAM. nano-ros defines its own RMW abstraction (`nros-rmw`) that pushes I/O buffers to the caller, replaces wait sets with explicit `drive_io()`, drops dynamic graph discovery, and selects the backend at compile time.
+ROS 2's `rmw.h` assumes a libc heap, an OS scheduler with preemptable threads, dynamic loaders, and middleware-owned background dispatch. None of those hold on a Cortex-M3 with 64 KB of RAM. nano-ros defines its own RMW abstraction (`nros-rmw`) that pushes I/O buffers to the caller, replaces wait sets with explicit `drive_io()`, and selects the backend at LINK time — reached through a registered C ABI vtable (RFC-0054), so a backend can be written in C or C++ as well as Rust. Graph discovery was dropped originally and is being added back deliberately, as visitor callbacks rather than caller-owned tables (phase-376 W4).
 
 → [RMW API Design](rmw.md)
 
