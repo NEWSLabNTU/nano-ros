@@ -1,7 +1,7 @@
 ---
 id: 782
-title: "`publish_streamed` exists to avoid a per-publisher staging buffer, and
-  XRCE implements it with a `malloc` of the whole payload"
+title: "XRCE's `publish_streamed` heap-allocates the whole message on every
+  publish — the only message-sized, per-publish allocation in that backend"
 status: open
 type: bug
 area: rmw, memory
@@ -115,4 +115,46 @@ smaller and safer. Not choosing here: the ABI is honest now either way, and the
 choice belongs with whoever owns the XRCE target's memory budget.
 
 zenoh's half of the report is unchanged and unverified in this pass.
+
+## Scope, restated 2026-08-25
+
+The title and the original framing were both about the wrong thing, so here is
+what this issue actually covers after checking all four backends.
+
+**It is NOT "the slot fails to deliver its promise."** The promise — after the
+header correction above — is that the CALLER never has to hold a whole
+serialised message. Measured:
+
+| backend | slot | caller holds whole message? |
+| --- | --- | --- |
+| cyclonedds | NULL | no slot; runtime stages 4 KiB on the STACK, refuses more |
+| uORB | NULL | same fallback |
+| zenoh | implemented | **no** — `chunk_cb` fills a 1 KiB stack chunk repeatedly |
+| xrce | implemented | **no** — `chunk_cb` fills a heap buffer XRCE owns |
+
+Both implementations deliver the caller-side saving. zenoh does it properly and
+even aborts cleanly on a short delivery (`z_bytes_writer_drop`), which is the
+atomicity XRCE cannot have.
+
+**It IS this:** XRCE's implementation is the only place in that backend that
+allocates *a message-sized block on the hot path*. Every other allocation there
+is create-time entity state — once per entity, `sizeof(state)`, bounded and
+knowable at design time. `publish_streamed` allocates **once per publish, sized
+by the message**, on targets (FreeRTOS / Zephyr / NuttX) whose heaps are small
+and whose failure mode is fragmentation rather than an OOM killer. On Zephyr the
+Rust-side arena defaults to 16 KiB.
+
+So the harm is: a caller choosing this slot to control memory gets a
+variable-size hot-path heap allocation it did not ask for and cannot see, and a
+`BAD_ALLOC` at run time where the fallback would have given a bound known at
+link time.
+
+That is a real defect, it is narrow, and it has a clean fix — stream straight
+into `ub.iterator` with a 4-byte header scratch, which removes the allocation
+entirely. The cost is validate-before-commit, and only because `uxr` has no
+abort. zenoh's version is the proof that the shape works.
+
+The zenoh criticism in the original report is withdrawn: `z_owned_bytes_writer_t`
+accumulating internally is the middleware's own buffer, and every backend must
+hold the message somewhere between serialisation and the wire.
 
