@@ -396,6 +396,78 @@ existed, the listener would still have heard.
 **And a third sighting of §3.2**: the talker emitted **248 frames in both runs**,
 identical, whether or not anything on the bus could hear it.
 
+### More than two peers, and what limits "many" (2026-08-26)
+
+Every test up to here had been a pair, which cannot exercise peer identity: with
+two peers, "the other one" is unambiguous however the address is derived.
+
+**Four zenoh peers on one bus.** Each tracks the other three, told apart only by
+the identifier in the frames they send. One publisher, three subscribers, all
+three receive **100/100 intact**, and the publisher hears nothing of itself. The
+test asserts the peer count **exactly**, not at-least — see the footgun below.
+
+**Three ROS 2 nodes on one bus**, CAN-only, no router: talker published 17, both
+listeners heard **17/17**.
+
+Convergence takes one `join_interval` (2.5 s), not the instant a peer opens: a
+peer learns about those already present only when the next periodic `Join` comes
+round, so immediately after startup the peer counts are a staircase by open
+order. That is expected, and worth knowing before someone reads it as a bug.
+
+#### What actually limits the number of peers
+
+Measured, three idle peers over a 20-second window: **24 frames, 8 per peer** —
+exactly one `Join` per peer per 2.5 s.
+
+| | per peer |
+| --- | ---: |
+| steady-state discovery | **0.4 frames/s** = 0.013% of a 500k/2M CAN FD bus |
+| one-time declaration burst, per ROS node | ~170 frames ≈ 57 ms of airtime |
+
+**Discovery is not the limit.** At 2 793 frames/s of bus capacity, per-peer
+keepalive alone would not saturate until thousands of peers. Twenty nodes all
+starting at once cost about a second of solid bus, once.
+
+The real limits, in the order they bite:
+
+1. **Data volume, made worse by §3.2.** Every peer's *entire* publication set
+   crosses the bus whether anything subscribes or not. Bus load is the sum of
+   what all peers publish, and there is no filtering. This is the binding
+   constraint and the only one that scales badly.
+2. **Every peer decodes every frame.** With `mask=0` each node's CPU sees all
+   bus traffic. On an MCU that matters well before bandwidth does.
+3. **Physical bus limits.** Transceiver loading caps a segment at tens of nodes,
+   independently of any of this.
+4. **Identifier space is not a limit.** 11 bits give 2 048 addresses with
+   `prio_bits=0`, 256 with `prio_bits=3`.
+
+#### The practical scheme for many peers: bands
+
+`match`/`mask` partition one physical bus into **independent zenoh networks**.
+This was proved as the negative control for the ROS-to-ROS test: two peers in
+disjoint bands, both transmitting, neither hearing the other.
+
+That gives a real deployment pattern. Put each functional group in its own
+identifier band; a node then decodes only its own group's traffic (limit 2), and
+groups do not merge into one flat zenoh network (limit 1). It does **not** save
+bus bandwidth — the frames are still on the wire — so it addresses processing
+and blast radius, not airtime.
+
+Combined with the rule that a lower identifier wins arbitration, a band layout
+is also a priority layout, which is RFC-0079's problem in this address space and
+should be allocated rather than authored ad hoc.
+
+#### A footgun worth writing down
+
+The `ros2` CLI spawns a **background daemon that inherits
+`ZENOH_SESSION_CONFIG_URI`**. One `ros2 node list` left a daemon sitting on the
+CAN bus for half an hour after the command returned, emitting `Join`s under the
+identifier from a throwaway config. It was found only because the four-peer test
+asserts an exact peer count and reported four remotes where three were expected.
+
+On a vehicle bus this is a silent extra participant holding an identifier — and
+therefore an arbitration priority — that nobody allocated.
+
 ### What does NOT work over CAN, and why it is not the link's fault
 
 Tested after the ROS-to-ROS result, because "two nodes exchange a topic" is a
@@ -625,11 +697,13 @@ been diagnosed to a specific line; untested ones have not been attempted.
 
 **Implemented but never exercised:**
 
-* **Classic CAN**, MTU 7. The code path exists and warns loudly; it has had no
-  end-to-end test, and zenoh's ~16-byte per-fragment overhead exceeds the MTU,
-  so it is expected to be unusable rather than merely slow. Worth either proving
-  or refusing outright at open.
-* **More than two peers on one bus.** Every test so far has been a pair.
+* ~~**Classic CAN**, MTU 7.~~ **Removed.** It is refused at parse (`dbitrate=0`)
+  and at open (an interface that will not negotiate FD), and a classic frame on
+  the bus is now treated as another device's traffic rather than decoded. A
+  7-byte MTU against ~16 bytes of per-fragment overhead is not a slow link, it
+  is a non-functional one, and there was no point chasing a below-MTU job.
+* ~~**More than two peers on one bus.**~~ **Done**: four zenoh peers and three
+  ROS 2 nodes, above.
 * **Bus-off and interface-down recovery.** The read path fails the transport on
   error; whether a session recovers when a controller returns has not been
   tested, and on a vehicle bus it will happen.
