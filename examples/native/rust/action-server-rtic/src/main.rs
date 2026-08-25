@@ -89,7 +89,11 @@ fn main() {
 
                     let result = FibonacciResult { sequence };
                     nros_info!(&LOGGER, "Goal succeeded");
-                    server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+                    // Issue 0796 — `complete_goal` reports a result the
+                    // server could not retain for a later `get_result`.
+                    if let Err(e) = server.complete_goal(&goal_id, GoalStatus::Succeeded, result) {
+                        nros_error!(&LOGGER, "complete_goal failed: {:?}", e);
+                    }
                 }
 
                 // Handle get_result requests after completing

@@ -13,7 +13,7 @@
 //! (XRCE build, `--no-default-features --features rmw-xrce`).
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use log::info;
+use log::{error, info};
 use nros::prelude::*;
 
 extern crate nros_platform_cffi as _;
@@ -87,8 +87,12 @@ fn main() -> ! {
                     sequence: tracked[i].seq.clone(),
                 };
                 info!("Goal completed (concurrent): {:?}", result.sequence);
-                // Flushes any get_result held for this goal.
-                server.complete_goal(&id, GoalStatus::Succeeded, result);
+                // Flushes any get_result held for this goal. Issue 0796 —
+                // this reports a result the server cannot retain; a silent
+                // failure here is exactly what hid the slab leak.
+                if let Err(e) = server.complete_goal(&id, GoalStatus::Succeeded, result) {
+                    error!("complete_goal failed: {:?}", e);
+                }
                 let _ = tracked.swap_remove(i);
             } else {
                 i += 1;

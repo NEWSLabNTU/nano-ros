@@ -1424,8 +1424,11 @@ impl ActionExecutor for RuntimeActions<'_> {
     ) -> NodeResult<()> {
         let handle = self.handle(action_entity)?;
         let executor = unsafe { &mut *self.executor };
-        handle.complete_goal_raw(executor, goal_id, status, result);
-        Ok(())
+        // issue 0796 — a result too large for the server's RESULT_BUF is
+        // reported rather than silently dropped.
+        handle
+            .complete_goal_raw(executor, goal_id, status, result)
+            .map_err(|_| NodeDeclError::Runtime)
     }
 
     fn publish_feedback_raw(

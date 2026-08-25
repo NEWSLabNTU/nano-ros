@@ -3295,7 +3295,8 @@ fn test_get_result_deferred_per_goal_concurrent() {
     // Complete g2 FIRST (out of arrival order) → flush only g2's held request,
     // with g2's token (seq 1) — not g1's.
     let res2 = [0xBBu8; 8];
-    core.complete_goal_raw(&g2, GoalStatus::Succeeded, &res2);
+    core.complete_goal_raw(&g2, GoalStatus::Succeeded, &res2)
+        .unwrap();
     {
         let sent = core.get_result_server.sent.borrow();
         assert_eq!(sent.len(), 1);
@@ -3307,7 +3308,8 @@ fn test_get_result_deferred_per_goal_concurrent() {
 
     // Complete g1 → flush g1's held request with g1's token (seq 0).
     let res1 = [0xAAu8; 8];
-    core.complete_goal_raw(&g1, GoalStatus::Succeeded, &res1);
+    core.complete_goal_raw(&g1, GoalStatus::Succeeded, &res1)
+        .unwrap();
     {
         let sent = core.get_result_server.sent.borrow();
         assert_eq!(sent.len(), 2);
@@ -3337,7 +3339,8 @@ fn test_get_result_after_completion_replies_immediately() {
     let g = GoalId { uuid: [7u8; 16] };
     // Goal completes before any get_result arrives.
     let res = [0xCCu8; 8];
-    core.complete_goal_raw(&g, GoalStatus::Succeeded, &res);
+    core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+        .unwrap();
     assert_eq!(core.pending_get_results.len(), 0);
     assert_eq!(core.get_result_server.sent.borrow().len(), 0);
 
@@ -3352,6 +3355,330 @@ fn test_get_result_after_completion_replies_immediately() {
     let sent = core.get_result_server.sent.borrow();
     assert_eq!(sent.len(), 1);
     assert_eq!(&sent[0].1[8..8 + res.len()], &res);
+}
+
+// ============================================================================
+// Issue 0796 — the completed-result slab must RECLAIM
+// ============================================================================
+
+/// A `get_result` request wire frame: `[CDR-LE header][fixed uint8[16] goal_id]`.
+#[cfg(test)]
+fn mk_get_result_req(goal_id: &nros_core::GoalId) -> ([u8; 256], usize) {
+    let mut b = [0u8; 256];
+    b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+    b[4..20].copy_from_slice(&goal_id.uuid);
+    (b, 20)
+}
+
+/// Reply layout is `[4-byte CDR header][i8 status][3 pad][result CDR]`, so the
+/// status byte is at 4 and the result bytes start at 8.
+#[cfg(test)]
+const REPLY_STATUS_OFF: usize = 4;
+#[cfg(test)]
+const REPLY_RESULT_OFF: usize = 8;
+
+/// Fetch `goal_id`'s result and return `(status_byte, result_bytes)` from the
+/// single reply the mock recorded. Clears the mock's reply log, which holds
+/// only 8 entries and DROPS the overflow — a loop that trusted `sent.len()`
+/// would stop seeing replies rather than fail.
+#[cfg(test)]
+fn fetch_result<const G: usize, const R: usize, const F: usize, const M: usize>(
+    core: &mut super::action_core::ActionServerCore<G, R, F, M>,
+    goal_id: &nros_core::GoalId,
+    default_result: &[u8],
+    want_len: usize,
+) -> (u8, heapless::Vec<u8, 256>) {
+    let (req, len) = mk_get_result_req(goal_id);
+    core.get_result_server.load(req, len);
+    core.try_handle_get_result_raw(default_result).unwrap();
+    let (status, bytes) = {
+        let sent = core.get_result_server.sent.borrow();
+        assert_eq!(sent.len(), 1, "expected exactly one reply for this fetch");
+        let mut out: heapless::Vec<u8, 256> = heapless::Vec::new();
+        out.extend_from_slice(&sent[0].1[REPLY_RESULT_OFF..REPLY_RESULT_OFF + want_len])
+            .unwrap();
+        (sent[0].1[REPLY_STATUS_OFF], out)
+    };
+    core.get_result_server.sent.borrow_mut().clear();
+    (status, bytes)
+}
+
+/// Issue 0796, problem 1 — completing goals whose results TOTAL more than
+/// `RESULT_BUF` must keep delivering.
+///
+/// The pre-fix slab was a bump allocator with no free: `result_slab_used` only
+/// ever moved forward, so once the accumulated results crossed `RESULT_BUF`
+/// every later completion was dropped on the floor (`stored = false`, no entry
+/// pushed, `complete_goal_raw` returning `()`), and every subsequent
+/// `get_result` was answered `UNKNOWN` with the default payload. Here
+/// `RESULT_BUF` is 128 and each result is 40 bytes, so the third completion
+/// fills it and the fourth is where the old code starts lying.
+#[test]
+fn action_results_keep_being_delivered_past_the_slab_capacity() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    // GOAL_BUF 256, RESULT_BUF 128, FEEDBACK_BUF 128, MAX_GOALS 4.
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    const RESULT_LEN: usize = 40;
+    // 10 goals x 40 bytes = 400 bytes through a 128-byte slab.
+    const GOALS: u8 = 10;
+    let default_result = [0u8; 4];
+
+    for i in 1..=GOALS {
+        let g = GoalId { uuid: [i; 16] };
+        let res = [0xA0u8.wrapping_add(i); RESULT_LEN];
+
+        core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+            .unwrap_or_else(|e| panic!("goal {i} could not be stored: {e:?}"));
+
+        let (status, bytes) = fetch_result(&mut core, &g, &default_result, RESULT_LEN);
+        assert_eq!(
+            status,
+            GoalStatus::Succeeded as u8 as i8 as u8,
+            "goal {i} was answered with a non-terminal status - the slab dropped it"
+        );
+        assert_eq!(
+            &bytes[..],
+            &res[..],
+            "goal {i} was answered with the wrong result bytes"
+        );
+
+        // The reclamation is real, not just "it still answers": live bytes
+        // never exceed the slab, and the entry table never exceeds MAX_GOALS.
+        assert!(core.result_slab_used() <= 128);
+        assert!(core.completed_result_count() <= 4);
+    }
+}
+
+/// Same overflow, through the DEFERRED path: the client sends `get_result`
+/// while the goal is still active (what `rclcpp_action` does), so the reply is
+/// flushed by `complete_goal_raw`.
+///
+/// Pre-fix this was the worse half of the bug — the flush was inside
+/// `if stored`, so a client that had already asked was never answered at all
+/// and waited on its result future forever.
+#[test]
+fn deferred_get_result_is_answered_past_the_slab_capacity() {
+    use super::action_core::{ActionServerCore, RawActiveGoal};
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    const RESULT_LEN: usize = 40;
+    let default_result = [0u8; 4];
+
+    for i in 1..=10u8 {
+        let g = GoalId { uuid: [i; 16] };
+        let res = [0x50u8.wrapping_add(i); RESULT_LEN];
+
+        core.active_goals
+            .push(RawActiveGoal {
+                goal_id: g,
+                status: GoalStatus::Executing,
+            })
+            .ok()
+            .unwrap();
+
+        // Client asks while the goal is still running -> deferred.
+        let (req, len) = mk_get_result_req(&g);
+        core.get_result_server.load(req, len);
+        core.try_handle_get_result_raw(&default_result).unwrap();
+        assert_eq!(core.pending_get_results.len(), 1, "goal {i} not deferred");
+        assert_eq!(core.get_result_server.sent.borrow().len(), 0);
+
+        core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+            .unwrap_or_else(|e| panic!("goal {i} could not be stored: {e:?}"));
+
+        assert_eq!(
+            core.pending_get_results.len(),
+            0,
+            "goal {i}: the held get_result was never flushed"
+        );
+        {
+            let sent = core.get_result_server.sent.borrow();
+            assert_eq!(sent.len(), 1, "goal {i}: no reply reached the waiter");
+            assert_eq!(
+                &sent[0].1[REPLY_RESULT_OFF..REPLY_RESULT_OFF + RESULT_LEN],
+                &res[..],
+                "goal {i}: waiter got the wrong result bytes"
+            );
+        }
+        core.get_result_server.sent.borrow_mut().clear();
+    }
+}
+
+/// A completed result survives until the slab is actually under pressure, and
+/// when something must go the FETCHED result goes first.
+///
+/// Issue 0796's eviction contract: a delivered result does not pin storage, and
+/// a client that never asks cannot wedge the server.
+#[test]
+fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    // 128-byte slab: exactly three 40-byte results fit.
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    const RESULT_LEN: usize = 40;
+    let default_result = [0u8; 4];
+    let g = |i: u8| GoalId { uuid: [i; 16] };
+    let payload = |i: u8| [i; RESULT_LEN];
+
+    for i in 1..=3u8 {
+        core.complete_goal_raw(&g(i), GoalStatus::Succeeded, &payload(i))
+            .unwrap();
+    }
+    assert_eq!(core.completed_result_count(), 3);
+    assert_eq!(core.result_slab_used(), 120);
+
+    // Nothing has been evicted yet: a client that asks AFTER completion still
+    // gets its result, including the oldest one.
+    let (status, bytes) = fetch_result(&mut core, &g(2), &default_result, RESULT_LEN);
+    assert_eq!(status, GoalStatus::Succeeded as u8 as i8 as u8);
+    assert_eq!(&bytes[..], &payload(2)[..]);
+
+    // A fourth completion needs 40 bytes and only 8 are free -> reclaim. g2 was
+    // fetched, so g2 is what goes, NOT the older-but-unfetched g1.
+    core.complete_goal_raw(&g(4), GoalStatus::Succeeded, &payload(4))
+        .unwrap();
+
+    assert!(core.has_completed_result(&g(1)), "unfetched g1 was evicted");
+    assert!(core.has_completed_result(&g(3)), "unfetched g3 was evicted");
+    assert!(core.has_completed_result(&g(4)));
+    assert!(
+        !core.has_completed_result(&g(2)),
+        "the already-delivered g2 should have been reclaimed first"
+    );
+
+    // Compaction rewrote the survivors' offsets correctly - each still reads back
+    // as its own payload.
+    for i in [1u8, 3, 4] {
+        let (status, bytes) = fetch_result(&mut core, &g(i), &default_result, RESULT_LEN);
+        assert_eq!(status, GoalStatus::Succeeded as u8 as i8 as u8, "g{i}");
+        assert_eq!(&bytes[..], &payload(i)[..], "g{i} read back corrupted");
+    }
+
+    // The evicted goal is answered honestly (UNKNOWN + default), never left
+    // hanging.
+    let (status, _) = fetch_result(&mut core, &g(2), &default_result, default_result.len());
+    assert_eq!(status, GoalStatus::Unknown as u8 as i8 as u8);
+}
+
+/// A result larger than `RESULT_BUF` can never be retained — that is the one
+/// remaining failure, and `complete_goal_raw` now REPORTS it (issue 0796: it
+/// returned `()`).  The waiting requester is still answered, from the caller's
+/// own bytes.
+#[test]
+fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
+    use super::{
+        action_core::{ActionServerCore, RawActiveGoal},
+        types::NodeError,
+    };
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    let g = GoalId { uuid: [9u8; 16] };
+    let res = [0x77u8; 200]; // > RESULT_BUF (128)
+    core.active_goals
+        .push(RawActiveGoal {
+            goal_id: g,
+            status: GoalStatus::Executing,
+        })
+        .ok()
+        .unwrap();
+
+    let (req, len) = mk_get_result_req(&g);
+    core.get_result_server.load(req, len);
+    core.try_handle_get_result_raw(&[0u8; 4]).unwrap();
+    assert_eq!(core.pending_get_results.len(), 1);
+
+    let err = core
+        .complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+        .expect_err("a result larger than RESULT_BUF must not report success");
+    assert!(matches!(err, NodeError::BufferTooSmall));
+
+    // ... and the client that was already waiting is not stranded.
+    assert_eq!(core.pending_get_results.len(), 0);
+    let sent = core.get_result_server.sent.borrow();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        &sent[0].1[REPLY_RESULT_OFF..REPLY_RESULT_OFF + res.len()],
+        &res[..]
+    );
+}
+
+/// `expire_completed_results` is the eager analogue of
+/// `rcl_action_expire_goals()`: it reclaims exactly the delivered results and
+/// leaves the rest.
+#[test]
+fn expire_completed_results_reclaims_only_delivered_results() {
+    use super::action_core::ActionServerCore;
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher,
+        MockPublisher,
+    );
+
+    const RESULT_LEN: usize = 40;
+    let g = |i: u8| GoalId { uuid: [i; 16] };
+    let payload = |i: u8| [i; RESULT_LEN];
+    for i in 1..=3u8 {
+        core.complete_goal_raw(&g(i), GoalStatus::Succeeded, &payload(i))
+            .unwrap();
+    }
+
+    // Nothing fetched yet -> nothing to expire.
+    assert_eq!(core.expire_completed_results(), 0);
+    assert_eq!(core.result_slab_used(), 120);
+
+    let _ = fetch_result(&mut core, &g(1), &[0u8; 4], RESULT_LEN);
+    let _ = fetch_result(&mut core, &g(3), &[0u8; 4], RESULT_LEN);
+
+    assert_eq!(core.expire_completed_results(), 2);
+    assert_eq!(core.completed_result_count(), 1);
+    assert_eq!(core.result_slab_used(), RESULT_LEN);
+    assert!(core.has_completed_result(&g(2)));
+
+    // The survivor was compacted down to offset 0 and still reads back intact.
+    let (_, bytes) = fetch_result(&mut core, &g(2), &[0u8; 4], RESULT_LEN);
+    assert_eq!(&bytes[..], &payload(2)[..]);
 }
 
 // ============================================================================

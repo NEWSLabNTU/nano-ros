@@ -2458,19 +2458,27 @@ impl<
     /// Complete a goal and store the result.
     ///
     /// Also publishes the updated `GoalStatusArray` on the status topic.
+    ///
+    /// # Errors
+    ///
+    /// `NodeError::Serialization` if `result` does not serialize, or
+    /// `NodeError::BufferTooSmall` if the serialized result exceeds
+    /// `RESULT_BUF` and so cannot be retained for a later `get_result`.
+    /// Issue 0796: this returned `()`, so both failures were invisible — and
+    /// the second one used to strand every client waiting on the result.
     pub fn complete_goal(
         &mut self,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
         result: A::Result,
-    ) {
-        // Serialize result for the core slab
+    ) -> Result<(), NodeError> {
+        // Serialize result for the core slab. Issue 0796: a serialization
+        // failure used to degrade to a zero-length result stored as if it were
+        // the real one; it is now reported.
         let mut tmp = [0u8; RESULT_BUF];
         let mut writer = CdrWriter::new(&mut tmp);
-        let result_len = match result.serialize(&mut writer) {
-            Ok(()) => writer.position(),
-            Err(_) => 0,
-        };
+        let serialized = result.serialize(&mut writer);
+        let result_len = writer.position();
 
         // Remove typed goal parallel to core's active_goals removal
         if let Some(pos) = self
@@ -2482,14 +2490,33 @@ impl<
             self.typed_goals.swap_remove(pos);
         }
 
-        self.core
-            .complete_goal_raw(goal_id, status, &tmp[..result_len]);
+        let stored = match serialized {
+            Ok(()) => self
+                .core
+                .complete_goal_raw(goal_id, status, &tmp[..result_len]),
+            Err(_) => {
+                // Still retire the goal (terminal status, waiting requesters)
+                // with an empty payload, then report the failure.
+                let _ = self.core.complete_goal_raw(goal_id, status, &[]);
+                Err(NodeError::Serialization)
+            }
+        };
 
-        let _ = self.completed_goals.push(CompletedGoal {
-            goal_id: *goal_id,
-            status,
-            result,
-        });
+        // Issue 0796 — the typed mirror is reclaimed with the core it mirrors.
+        // `completed_goals` was push-only: after MAX_GOALS completions every
+        // later push was silently dropped, so the table said "the last four
+        // goals" while actually holding "the first four, forever".
+        self.completed_goals
+            .retain(|c| self.core.has_completed_result(&c.goal_id));
+        if self.core.has_completed_result(goal_id) {
+            let _ = self.completed_goals.push(CompletedGoal {
+                goal_id: *goal_id,
+                status,
+                result,
+            });
+        }
+
+        stored
     }
 
     /// Try to handle a cancel_goal request.

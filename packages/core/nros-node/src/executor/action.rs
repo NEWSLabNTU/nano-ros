@@ -387,7 +387,12 @@ pub struct ActionServerHandle<A: RosAction> {
     pub(crate) entry_index: usize,
     publish_feedback_fn:
         unsafe fn(*mut u8, &nros_core::GoalId, &A::Feedback) -> Result<(), NodeError>,
-    complete_goal_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus, A::Result),
+    complete_goal_fn: unsafe fn(
+        *mut u8,
+        &nros_core::GoalId,
+        nros_core::GoalStatus,
+        A::Result,
+    ) -> Result<(), NodeError>,
     set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&ActiveGoal<A>)),
@@ -436,19 +441,27 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// The goal is moved from the active set to the completed-results
     /// slab. Clients waiting on a result will receive the response.
     /// `status` should be one of `Succeeded`, `Aborted`, or `Canceled`.
+    ///
+    /// # Errors
+    ///
+    /// `NodeError::BufferTooSmall` when the handle slot has been removed from
+    /// the executor, or when the serialized result exceeds the server's
+    /// `RESULT_BUF` and so cannot be retained for a later `get_result` (issue
+    /// 0796 — this used to return `()` and swallow both).
     pub fn complete_goal(
         &self,
         executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
         result: A::Result,
-    ) {
-        if let Some(meta) = executor.entries[self.entry_index].as_ref() {
-            let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
-            unsafe {
-                let data_ptr = arena_ptr.add(meta.offset);
-                (self.complete_goal_fn)(data_ptr, goal_id, status, result);
-            }
+    ) -> Result<(), NodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(NodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.complete_goal_fn)(data_ptr, goal_id, status, result)
         }
     }
 
@@ -772,8 +785,13 @@ pub struct ActionServerRawHandle {
     pub(crate) entry_index: usize,
     publish_feedback_fn:
         unsafe fn(*mut u8, &nros_core::GoalId, *const u8, usize) -> Result<(), NodeError>,
-    complete_goal_fn:
-        unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus, *const u8, usize),
+    complete_goal_fn: unsafe fn(
+        *mut u8,
+        &nros_core::GoalId,
+        nros_core::GoalStatus,
+        *const u8,
+        usize,
+    ) -> Result<(), NodeError>,
     set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&RawActiveGoal)),
@@ -817,7 +835,7 @@ impl ActionServerRawHandle {
             _: nros_core::GoalStatus,
             _: *const u8,
             _: usize,
-        ) {
+        ) -> Result<(), NodeError> {
             unreachable!("ActionServerRawHandle::complete_goal called on invalid handle")
         }
         unsafe fn unreachable_set_goal_status(
@@ -891,25 +909,33 @@ impl ActionServerRawHandle {
     /// Complete a goal with raw CDR result bytes (untyped variant).
     ///
     /// Moves the goal from the active set to the completed-results slab.
+    ///
+    /// # Errors
+    ///
+    /// `NodeError::BufferTooSmall` when the handle slot has been removed from
+    /// the executor, or when `result_data` exceeds the server's `RESULT_BUF`
+    /// and so cannot be retained for a later `get_result` (issue 0796 — this
+    /// used to return `()` and swallow both).
     pub fn complete_goal_raw(
         &self,
         executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
         result_data: &[u8],
-    ) {
-        if let Some(meta) = executor.entries[self.entry_index].as_ref() {
-            let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
-            unsafe {
-                let data_ptr = arena_ptr.add(meta.offset);
-                (self.complete_goal_fn)(
-                    data_ptr,
-                    goal_id,
-                    status,
-                    result_data.as_ptr(),
-                    result_data.len(),
-                );
-            }
+    ) -> Result<(), NodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(NodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.complete_goal_fn)(
+                data_ptr,
+                goal_id,
+                status,
+                result_data.as_ptr(),
+                result_data.len(),
+            )
         }
     }
 

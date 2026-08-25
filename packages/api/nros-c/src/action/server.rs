@@ -563,14 +563,17 @@ pub unsafe extern "C" fn nros_action_succeed(
     // CDR header when replying to get_result requests).
     let result_fields = strip_cdr_header(result_data);
 
-    handle.complete_goal_raw(
+    // issue 0796 — a result the server cannot retain (larger than the action
+    // server's RESULT_BUF) is now reported instead of silently dropped.
+    match handle.complete_goal_raw(
         executor,
         &goal_id,
         nros_node::GoalStatus::Succeeded,
         result_fields,
-    );
-
-    NROS_RET_OK
+    ) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Mark a goal as aborted with an optional result.
@@ -604,14 +607,17 @@ pub unsafe extern "C" fn nros_action_abort(
     // C serialize produces [CDR_HEADER][fields] — strip the header.
     let result_fields = strip_cdr_header(result_data);
 
-    handle.complete_goal_raw(
+    // issue 0796 — a result the server cannot retain (larger than the action
+    // server's RESULT_BUF) is now reported instead of silently dropped.
+    match handle.complete_goal_raw(
         executor,
         &goal_id,
         nros_node::GoalStatus::Aborted,
         result_fields,
-    );
-
-    NROS_RET_OK
+    ) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Mark a goal as canceled with an optional result.
@@ -645,14 +651,17 @@ pub unsafe extern "C" fn nros_action_canceled(
     // C serialize produces [CDR_HEADER][fields] — strip the header.
     let result_fields = strip_cdr_header(result_data);
 
-    handle.complete_goal_raw(
+    // issue 0796 — a result the server cannot retain (larger than the action
+    // server's RESULT_BUF) is now reported instead of silently dropped.
+    match handle.complete_goal_raw(
         executor,
         &goal_id,
         nros_node::GoalStatus::Canceled,
         result_fields,
-    );
-
-    NROS_RET_OK
+    ) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Execute a goal (transition to `Executing`).
@@ -1189,8 +1198,11 @@ pub unsafe extern "C" fn nros_action_server_complete_goal_raw(
         let id = nros::GoalId { uuid: *goal_id };
         let rust_status = c_status_to_rust(status);
         let slice = core::slice::from_raw_parts(result_cdr, result_len);
-        core.complete_goal_raw(&id, rust_status, slice);
-        NROS_RET_OK
+        // issue 0796 — see `nros_action_succeed`.
+        match core.complete_goal_raw(&id, rust_status, slice) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {

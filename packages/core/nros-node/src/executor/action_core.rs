@@ -110,6 +110,13 @@ pub struct PendingGetResult {
 }
 
 /// Completed goal result metadata — indexes into the result slab.
+///
+/// Entries are kept in **completion order**, which is also **increasing
+/// `offset` order**: results are appended at `result_slab_used` and the slab is
+/// compacted in place whenever an entry is reclaimed. Every reclamation path
+/// preserves that ordering (`heapless::Vec::remove` / `retain`, never
+/// `swap_remove`) because [`ActionServerCore::compact_result_slab`] moves
+/// survivors *down* and would clobber a not-yet-moved entry otherwise.
 #[derive(Clone, Copy)]
 pub struct CompletedResultEntry {
     /// Unique identifier for the completed goal.
@@ -120,6 +127,15 @@ pub struct CompletedResultEntry {
     pub offset: usize,
     /// Length of the serialised result in bytes.
     pub len: usize,
+    /// `true` once a `get_result` reply carrying this result has been sent —
+    /// either the deferred flush in
+    /// [`ActionServerCore::complete_goal_raw`] or the immediate reply in
+    /// [`ActionServerCore::try_handle_get_result_raw`].
+    ///
+    /// Issue 0796: this is the reclamation priority. A delivered result has
+    /// served its purpose (rcl would let its `result_timeout` retire it), so it
+    /// is evicted before any result nobody has fetched yet.
+    pub delivered: bool,
 }
 
 /// Phase 122.3.c.6.d — information about a peeked cancel-goal
@@ -214,7 +230,15 @@ pub struct ActionServerCore<
     /// seq-keyed reply contract (Cyclone native; XRCE/Zenoh per Phase 237).
     pub(crate) pending_get_results: heapless::Vec<PendingGetResult, MAX_GOALS>,
     /// Slab storage for completed result CDR bytes.
+    ///
+    /// A bump region whose survivors are compacted on reclamation — see
+    /// [`CompletedResultEntry`] and
+    /// [`reserve_result_space`](Self::reserve_result_space).
     pub(crate) result_slab: [u8; RESULT_BUF],
+    /// Bytes of [`result_slab`](Self::result_slab) currently held by the
+    /// entries in `completed_results`. Compaction keeps the live bytes in
+    /// `[0, result_slab_used)` with no holes, so this is exactly the sum of the
+    /// entries' `len`.
     pub(crate) result_slab_used: usize,
     pub(crate) goal_buffer: [u8; GOAL_BUF],
     pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
@@ -434,9 +458,181 @@ impl<
         let _ = self.publish_status_array();
     }
 
+    /// Compact the result slab: walk the retained entries in offset order,
+    /// move each survivor down to the first free byte, and rewrite its offset.
+    ///
+    /// Issue 0796. `completed_results` is ordered by `offset` (see
+    /// [`CompletedResultEntry`]), so `write <= entry.offset` at every step and
+    /// the `copy_within` can never clobber an entry that has not moved yet.
+    /// Bounded work: at most `MAX_GOALS` (default 4) moves totalling at most
+    /// `RESULT_BUF` bytes, and only on a reclamation.
+    fn compact_result_slab(&mut self) {
+        let mut write = 0usize;
+        for entry in self.completed_results.iter_mut() {
+            debug_assert!(
+                write <= entry.offset,
+                "completed_results must stay in increasing-offset order"
+            );
+            if entry.offset != write {
+                self.result_slab
+                    .copy_within(entry.offset..entry.offset + entry.len, write);
+                entry.offset = write;
+            }
+            write += entry.len;
+        }
+        self.result_slab_used = write;
+    }
+
+    /// Drop the retained result for `goal_id`, if any, and compact.
+    /// Returns `true` when an entry was dropped.
+    fn drop_completed_result(&mut self, goal_id: &GoalId) -> bool {
+        match self
+            .completed_results
+            .iter()
+            .position(|e| e.goal_id.uuid == goal_id.uuid)
+        {
+            Some(idx) => {
+                self.completed_results.remove(idx);
+                self.compact_result_slab();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Reclaim exactly one completed result. Returns `false` when there is
+    /// nothing left to reclaim.
+    ///
+    /// **Eviction policy** (issue 0796). rcl keeps a terminated goal's result
+    /// until it has been collected *and* a per-goal `result_timeout` elapses,
+    /// then `rcl_action_expire_goals()` reclaims it. We have no clock in the
+    /// core — every RTOS port spells one differently and the core is `no_std`
+    /// with no time source threaded through it — so reclamation is **on demand
+    /// and priority-ordered** instead of timed:
+    ///
+    /// 1. the oldest **delivered** result (a client already has these bytes;
+    ///    this is the case rcl's timeout is really for), else
+    /// 2. the oldest result overall.
+    ///
+    /// Rule 1 means a fetched result never pins storage. Rule 2 means a client
+    /// that asks for nothing cannot wedge the server: its stale result is
+    /// displaced by newer ones rather than blocking every later goal. A goal
+    /// evicted under rule 2 whose client asks *later* is answered
+    /// `GoalStatus::Unknown` with the default result by
+    /// [`try_handle_get_result_raw`](Self::try_handle_get_result_raw) — degraded,
+    /// but an answer, where the pre-0796 code left the requester hanging
+    /// forever.
+    fn evict_one_completed_result(&mut self) -> bool {
+        if self.completed_results.is_empty() {
+            return false;
+        }
+        let idx = self
+            .completed_results
+            .iter()
+            .position(|e| e.delivered)
+            .unwrap_or(0);
+        self.completed_results.remove(idx);
+        self.compact_result_slab();
+        true
+    }
+
+    /// Make room for one more entry of `needed` bytes, reclaiming completed
+    /// results as required.
+    ///
+    /// `Err(NodeError::BufferTooSmall)` means the result can never be retained
+    /// because it exceeds `RESULT_BUF` outright — an empty slab would not hold
+    /// it either, so the caller must raise the action server's `RESULT_BUF`.
+    /// That is the ONLY failure: a full slab or a full entry table is
+    /// reclaimed, not refused.
+    fn reserve_result_space(&mut self, needed: usize) -> Result<(), NodeError> {
+        if needed > RESULT_BUF {
+            return Err(NodeError::BufferTooSmall);
+        }
+        loop {
+            if self.completed_results.len() < MAX_GOALS
+                && RESULT_BUF - self.result_slab_used >= needed
+            {
+                return Ok(());
+            }
+            if !self.evict_one_completed_result() {
+                // Unreachable while `needed <= RESULT_BUF` and `MAX_GOALS >= 1`,
+                // but the loop must not spin on a degenerate instantiation.
+                return Err(NodeError::BufferTooSmall);
+            }
+        }
+    }
+
+    /// Mark `goal_id`'s retained result as fetched, making it the first
+    /// candidate for reclamation.
+    fn mark_result_delivered(&mut self, goal_id: &GoalId) {
+        for entry in self.completed_results.iter_mut() {
+            if entry.goal_id.uuid == goal_id.uuid {
+                entry.delivered = true;
+                break;
+            }
+        }
+    }
+
+    /// Reclaim every completed result whose `get_result` reply has already been
+    /// sent — nano-ros's analogue of `rcl_action_expire_goals()`. Returns the
+    /// number of entries reclaimed.
+    ///
+    /// Calling this is **optional**: [`complete_goal_raw`](Self::complete_goal_raw)
+    /// reclaims on demand, so a server that never calls it still runs forever.
+    /// It exists for a server that would rather return the memory eagerly (e.g.
+    /// before a long idle period) than at the next completion.
+    pub fn expire_completed_results(&mut self) -> usize {
+        let before = self.completed_results.len();
+        self.completed_results.retain(|e| !e.delivered);
+        let removed = before - self.completed_results.len();
+        if removed > 0 {
+            self.compact_result_slab();
+        }
+        removed
+    }
+
+    /// Number of completed results currently retained.
+    pub fn completed_result_count(&self) -> usize {
+        self.completed_results.len()
+    }
+
+    /// Bytes of the result slab currently held by retained results.
+    pub fn result_slab_used(&self) -> usize {
+        self.result_slab_used
+    }
+
+    /// `true` while `goal_id`'s completed result is still retained (i.e. a
+    /// `get_result` for it would be answered from the slab rather than as
+    /// `Unknown`).
+    pub fn has_completed_result(&self, goal_id: &GoalId) -> bool {
+        self.completed_results
+            .iter()
+            .any(|e| e.goal_id.uuid == goal_id.uuid)
+    }
+
     /// Complete a goal: remove from active, store raw result CDR in slab,
     /// publish status.
-    pub fn complete_goal_raw(&mut self, goal_id: &GoalId, status: GoalStatus, result_cdr: &[u8]) {
+    ///
+    /// # Errors
+    ///
+    /// `NodeError::BufferTooSmall` when `result_cdr` is larger than
+    /// `RESULT_BUF` and therefore cannot be retained for a later `get_result`.
+    /// Any client already waiting on `~/_action/get_result` is still answered
+    /// (straight from `result_cdr`), and the terminal status is still
+    /// published — but a *later* `get_result` for this goal gets
+    /// `GoalStatus::Unknown`. Raise the server's `RESULT_BUF`.
+    ///
+    /// Issue 0796: this returned `()`, so the pre-fix slab exhaustion — the
+    /// server silently dropping every result once the bump allocator hit
+    /// `RESULT_BUF`, and silently stranding every waiting requester with it —
+    /// was invisible to the caller. A full slab is no longer a failure at all
+    /// (it is reclaimed), and the one remaining failure is reported.
+    pub fn complete_goal_raw(
+        &mut self,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result_cdr: &[u8],
+    ) -> Result<(), NodeError> {
         // Remove from active goals
         if let Some(pos) = self
             .active_goals
@@ -446,42 +642,72 @@ impl<
             self.active_goals.swap_remove(pos);
         }
 
-        // Store result CDR in the slab
-        let offset = self.result_slab_used;
-        let end = offset + result_cdr.len();
-        let stored = if end <= RESULT_BUF {
-            self.result_slab[offset..end].copy_from_slice(result_cdr);
-            self.result_slab_used = end;
-            let _ = self.completed_results.push(CompletedResultEntry {
-                goal_id: *goal_id,
-                status,
-                offset,
-                len: result_cdr.len(),
-            });
-            true
-        } else {
-            false
+        // Re-completing a goal replaces its retained result rather than
+        // stacking a second copy of it in the slab.
+        self.drop_completed_result(goal_id);
+
+        // Store result CDR in the slab, reclaiming older results if needed.
+        let stored = match self.reserve_result_space(result_cdr.len()) {
+            Ok(()) => {
+                let offset = self.result_slab_used;
+                let end = offset + result_cdr.len();
+                self.result_slab[offset..end].copy_from_slice(result_cdr);
+                self.result_slab_used = end;
+                // `reserve_result_space` guaranteed a free entry slot.
+                let pushed = self
+                    .completed_results
+                    .push(CompletedResultEntry {
+                        goal_id: *goal_id,
+                        status,
+                        offset,
+                        len: result_cdr.len(),
+                        delivered: false,
+                    })
+                    .is_ok();
+                debug_assert!(pushed, "reserve_result_space must leave an entry slot");
+                Some((offset, result_cdr.len()))
+            }
+            Err(_) => None,
         };
 
         // Phase 237 — flush any get_result requests that arrived while this goal
-        // was still active. The result is now in the slab; reply to each held
-        // requester via its retained `sequence_number`.
-        if stored {
-            let len = result_cdr.len();
-            let mut i = 0;
-            while i < self.pending_get_results.len() {
-                if self.pending_get_results[i].goal_id.uuid == goal_id.uuid {
-                    let seq = self.pending_get_results[i].sequence_number;
-                    // swap_remove moves the last entry into slot `i`; re-check `i`.
-                    let _ = self.pending_get_results.swap_remove(i);
-                    let _ = self.reply_get_result_from_slab(seq, status, offset, len);
-                } else {
-                    i += 1;
-                }
+        // was still active. Reply to each held requester via its retained
+        // `sequence_number`.
+        //
+        // Issue 0796: this used to be skipped entirely when the result could not
+        // be stored, so an oversized (or, pre-fix, merely unlucky) result left
+        // an `rclcpp_action` client waiting on its result future forever. The
+        // waiter is now answered from `result_cdr` directly when the slab could
+        // not take it — the bytes are right here; only the *retention* failed.
+        let mut delivered_any = false;
+        let mut i = 0;
+        while i < self.pending_get_results.len() {
+            if self.pending_get_results[i].goal_id.uuid == goal_id.uuid {
+                let seq = self.pending_get_results[i].sequence_number;
+                // swap_remove moves the last entry into slot `i`; re-check `i`.
+                let _ = self.pending_get_results.swap_remove(i);
+                let sent = match stored {
+                    Some((offset, len)) => {
+                        self.reply_get_result_from_slab(seq, status, offset, len)
+                    }
+                    None => self.reply_get_result_bytes(seq, status, result_cdr),
+                };
+                delivered_any |= sent.is_ok();
+            } else {
+                i += 1;
             }
+        }
+        if delivered_any {
+            self.mark_result_delivered(goal_id);
         }
 
         let _ = self.publish_status_array();
+
+        if stored.is_some() {
+            Ok(())
+        } else {
+            Err(NodeError::BufferTooSmall)
+        }
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
@@ -708,6 +934,9 @@ impl<
             // Completed: send status + stored result CDR from the slab.
             let (off, len, status) = (entry.offset, entry.len, entry.status);
             self.reply_get_result_from_slab(sequence_number, status, off, len)?;
+            // Issue 0796 — the client now holds these bytes, so this entry
+            // becomes the first candidate for reclamation.
+            self.mark_result_delivered(&goal_id);
         } else if self
             .active_goals
             .iter()
@@ -733,26 +962,28 @@ impl<
             }
         } else {
             // Unknown goal → reply immediately with UNKNOWN + default result.
-            let mut writer =
-                crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
-            writer
-                .write_i8(GoalStatus::Unknown as i8)
-                .map_err(|_| NodeError::Serialization)?;
-            writer.align(4).map_err(|_| NodeError::Serialization)?;
-            let pos = writer.position();
-            if pos + default_result_cdr.len() > GOAL_BUF {
-                return Err(NodeError::BufferTooSmall);
-            }
-            self.goal_buffer[pos..pos + default_result_cdr.len()]
-                .copy_from_slice(default_result_cdr);
-            let reply_len = pos + default_result_cdr.len();
-
-            self.get_result_server
-                .send_reply(sequence_number, &self.goal_buffer[..reply_len])
-                .map_err(|_| NodeError::ServiceReplyFailed)?;
+            // Issue 0796: a goal whose result was reclaimed (evicted by a newer
+            // completion) lands here too. That is deliberate — an honest
+            // `Unknown` beats an unanswered query.
+            self.reply_get_result_bytes(sequence_number, GoalStatus::Unknown, default_result_cdr)?;
         }
 
         Ok(Some(goal_id))
+    }
+
+    /// Write the `get_result` reply prologue — `[CDR header][status i8][pad to
+    /// 4]` — into `goal_buffer` and return the offset the result bytes go at.
+    ///
+    /// The align-to-4 matters: the result CDR starts with a `u32` sequence
+    /// length the reader will `align(4)` to.
+    fn write_get_result_header(&mut self, status: GoalStatus) -> Result<usize, NodeError> {
+        let mut writer =
+            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
+        writer
+            .write_i8(status as i8)
+            .map_err(|_| NodeError::Serialization)?;
+        writer.align(4).map_err(|_| NodeError::Serialization)?;
+        Ok(writer.position())
     }
 
     /// Build + send a `get_result` reply — `[status i8][align(4)][result CDR]`
@@ -767,21 +998,36 @@ impl<
         slab_offset: usize,
         slab_len: usize,
     ) -> Result<(), NodeError> {
-        let mut writer =
-            crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
-        writer
-            .write_i8(status as i8)
-            .map_err(|_| NodeError::Serialization)?;
-        // Align to 4 after the status byte: the result CDR starts with a u32
-        // sequence length the reader will `align(4)` to.
-        writer.align(4).map_err(|_| NodeError::Serialization)?;
-        let pos = writer.position();
+        let pos = self.write_get_result_header(status)?;
         if pos + slab_len > GOAL_BUF {
             return Err(NodeError::BufferTooSmall);
         }
         self.goal_buffer[pos..pos + slab_len]
             .copy_from_slice(&self.result_slab[slab_offset..slab_offset + slab_len]);
         let reply_len = pos + slab_len;
+        self.get_result_server
+            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .map_err(|_| NodeError::ServiceReplyFailed)
+    }
+
+    /// Same reply, from a caller-owned slice instead of the slab.
+    ///
+    /// Used for the `Unknown` reply and — issue 0796 — for a waiter whose
+    /// result was too large to retain: the bytes exist in the caller's buffer
+    /// even when the slab could not take a copy. `bytes` must NOT alias
+    /// `self` (the slab path is [`reply_get_result_from_slab`]).
+    fn reply_get_result_bytes(
+        &mut self,
+        sequence_number: i64,
+        status: GoalStatus,
+        bytes: &[u8],
+    ) -> Result<(), NodeError> {
+        let pos = self.write_get_result_header(status)?;
+        if pos + bytes.len() > GOAL_BUF {
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.goal_buffer[pos..pos + bytes.len()].copy_from_slice(bytes);
+        let reply_len = pos + bytes.len();
         self.get_result_server
             .send_reply(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)

@@ -160,7 +160,7 @@
   },
   "c:action_expire_goals": {
     "verdict": "gap",
-    "why": "rcl reclaims a completed goal's result after `result_timeout` (15 min by default) and reports which goals expired. We have no expiry AND no reclamation: `ActionServerCore::complete_goal_raw` appends the result CDR to a fixed slab and `result_slab_used` only ever grows (packages/core/nros-node/src/executor/action_core.rs). Once the slab is full the store silently fails -- `complete_goal_raw` returns `()` -- and every later goal's result is dropped while the server keeps reporting success. A long-running device needs the reclamation half of this even if it never wants the timeout. Phase 379 W3."
+    "why": "rcl reclaims a completed goal's result after `result_timeout` (15 min by default) and reports which goals expired. Issue 0796 gave us the RECLAMATION half -- `ActionServerCore` compacts the result slab and evicts completed results (delivered-first, then oldest) whenever a completion needs room, plus an eager `expire_completed_results()` -- so the slab no longer only grows and the overflow is no longer silent (`complete_goal_raw` returns `Result`). What is still theirs-only is the C ENTRY POINT and the TIMEOUT: there is no `nros_action_expire_goals`, and the trigger is memory pressure rather than a clock, because the core is `no_std` with no time source threaded through it. A caller cannot ask 'which goals expired' and cannot set a per-goal `result_timeout`. Phase 379 W3."
   },
   "c:action_get_*names_and_types*": {
     "verdict": "declined",
@@ -738,7 +738,7 @@
   },
   "rust:ActionServerCore": {
     "verdict": "divergence",
-    "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. It is also where the unbounded-result-slab problem lives; see `c:action_expire_goals`."
+    "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. It also owns result reclamation (`expire_completed_results` / `completed_result_count` / `result_slab_used` / `has_completed_result`, issue 0796) -- rcl puts that behind `rcl_action_expire_goals`; see `c:action_expire_goals`."
   },
   "rust:ActionServerHandle": {
     "verdict": "divergence",
@@ -806,7 +806,7 @@
   },
   "rust:CompletedGoal": {
     "verdict": "extension",
-    "why": "a retired goal's status and typed result, held until the client's get_result request is answered. rclcpp_action keeps the same state inside the goal handle it allocated. See `c:action_expire_goals` for what is missing at the other end."
+    "why": "a retired goal's status and typed result, held until the client's get_result request is answered or the entry is reclaimed under slab pressure (issue 0796 -- the typed mirror is pruned with the core entry it mirrors, and used to be push-only). rclcpp_action keeps the same state inside the goal handle it allocated. See `c:action_expire_goals` for the timeout half we still do not have."
   },
   "rust:ExecutingGoal": {
     "verdict": "divergence",

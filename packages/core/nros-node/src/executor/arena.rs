@@ -2113,12 +2113,13 @@ pub(crate) unsafe fn as_complete_goal<
     goal_id: &nros_core::GoalId,
     status: nros_core::GoalStatus,
     result: A::Result,
-) where
+) -> Result<(), NodeError>
+where
     A: RosAction,
 {
     let entry =
         unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
-    entry.server.complete_goal(goal_id, status, result);
+    entry.server.complete_goal(goal_id, status, result)
 }
 
 /// Action server: set goal status via arena entry.
@@ -2203,10 +2204,10 @@ pub(crate) unsafe fn as_raw_complete_goal<
     status: nros_core::GoalStatus,
     result_data: *const u8,
     result_len: usize,
-) {
+) -> Result<(), NodeError> {
     let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     let result_cdr = unsafe { core::slice::from_raw_parts(result_data, result_len) };
-    entry.core.complete_goal_raw(goal_id, status, result_cdr);
+    entry.core.complete_goal_raw(goal_id, status, result_cdr)
 }
 
 /// Raw action server: set goal status via arena entry.

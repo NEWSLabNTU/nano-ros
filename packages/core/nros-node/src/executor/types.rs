@@ -1763,6 +1763,16 @@ impl ShutdownCallbackHandle {
 }
 
 /// One occupied row of a shutdown-hook table.
+///
+/// Gated exactly as `executor::spin` is (`mod.rs`: `#[cfg(any(has_rmw, test))]`),
+/// because that module holds the only constructor. Without the gate a build
+/// with no RMW backend linked — `cargo check -p nros-node --lib` — compiles the
+/// type and not `Executor`, and `-D dead-code` fails on a struct nothing can
+/// build. The public vocabulary beside it (`ShutdownCallbackFn`,
+/// `ShutdownPhase`, `ShutdownCallbackHandle`) stays ungated: those are named in
+/// signatures a caller writes, and a handle type that vanishes with the backend
+/// would be worse than one that is merely unused.
+#[cfg(any(has_rmw, test))]
 #[derive(Clone, Copy)]
 pub(crate) struct ShutdownHook {
     pub(crate) callback: ShutdownCallbackFn,

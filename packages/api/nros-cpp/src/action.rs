@@ -449,8 +449,12 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     let Some(status) = nros::GoalStatus::from_i8(status as i8) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    h.complete_goal_raw(&mut ctx.executor, &id, status, result_fields);
-    NROS_CPP_RET_OK
+    // issue 0796 — a result the server cannot retain (larger than the action
+    // server's RESULT_BUF) is now reported instead of silently dropped.
+    match h.complete_goal_raw(&mut ctx.executor, &id, status, result_fields) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
 }
 
 /// Iterate over every goal currently live in the arena.
@@ -2253,8 +2257,11 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
         6 => nros::GoalStatus::Aborted,
         _ => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
-    core.complete_goal_raw(&id, status, slice);
-    NROS_CPP_RET_OK
+    // issue 0796 — see `nros_cpp_action_server_complete_goal`.
+    match core.complete_goal_raw(&id, status, slice) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
 }
 
 /// Phase 122.3.c.6.d / .d — L1 polling: peek a pending
