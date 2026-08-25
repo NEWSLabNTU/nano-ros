@@ -401,6 +401,55 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
  * parks (never returns — the boot thread is the session owner and must outlive
  * all borrowed executors). Signature is `void* (*)(void*)` to match
  * pthread_create's entry type. */
+/* issue 0736 — REPORT when the kernel sporadic server is throttling this tier.
+ *
+ * The issue's own conclusion is that the residual rate shortfall isolates to
+ * NuttX's `SCHED_SPORADIC` server (4/4 FAIL with `apply_tier_sporadic`, 3/3 PASS
+ * without) and that "the kernel side has no equivalent" of the executor's
+ * throttle report: it throttles silently and nothing in the image can see it.
+ * This closes that gap.
+ *
+ * DIRECTLY OBSERVED, not inferred. The POSIX sporadic server demotes a thread to
+ * `sched_ss_low_priority` when its budget is exhausted, and this port sets that
+ * floor to `sched_get_priority_min(SCHED_FIFO)`. A thread running at the floor
+ * when it declared a higher priority IS a thread the kernel has throttled — and
+ * a demoted thread still runs, so it can sample itself. (`sporadic_s.suspended`
+ * would be the other signal and is useless here: a suspended thread cannot
+ * observe itself.)
+ *
+ * That distinction matters on this issue specifically, which has retracted one
+ * conclusion already for resting on an experiment with no control. This asks the
+ * kernel what priority the thread is at, and reports the answer.
+ *
+ * Reported ONCE per tier. A tier that dips to the floor for one period and one
+ * that never recovers are the same first message; the second is visible as the
+ * message arriving early and the tier's rate never improving. Repeating it every
+ * spin would bury the run in output at 1000 Hz.
+ */
+static void nros_nuttx_report_sporadic_throttle(const char* name, int declared_priority,
+                                                int* already_reported) {
+#ifdef CONFIG_SCHED_SPORADIC
+    if (*already_reported) {
+        return;
+    }
+    struct sched_param now;
+    if (sched_getparam(0, &now) != 0) {
+        return;
+    }
+    int floor_prio = sched_get_priority_min(SCHED_FIFO);
+    if (now.sched_priority <= floor_prio && declared_priority > floor_prio) {
+        *already_reported = 1;
+        printf("nros: sporadic budget throttled by the KERNEL tier=`%s` prio=%d (declared %d) — "
+               "the SCHED_SPORADIC budget is exhausted and this tier is running at the floor\n",
+               (name != NULL) ? name : "?", now.sched_priority, declared_priority);
+    }
+#else
+    (void)name;
+    (void)declared_priority;
+    (void)already_reported;
+#endif
+}
+
 static void* nuttx_tier_thread(void* arg) {
     nros_nuttx_tier_ctx_t* ctx = (nros_nuttx_tier_ctx_t*)arg;
 
@@ -490,11 +539,15 @@ static void* nuttx_tier_thread(void* arg) {
      * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
      * run. The gap costs nothing while the spins do block. */
     uint64_t gap_state = 0;
+    /* issue 0736 — see nros_nuttx_report_sporadic_throttle. */
+    int throttle_reported = 0;
+    int declared_prio = nuttx_clamp_priority(ctx->priority);
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
         nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
         gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             ctx->spin_period_us);
+        nros_nuttx_report_sporadic_throttle(ctx->name, declared_prio, &throttle_reported);
     }
 
     /* Unreachable — the spin loop never exits; satisfies the non-void return. */

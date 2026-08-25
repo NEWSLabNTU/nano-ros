@@ -799,3 +799,57 @@ No separation, against a 3x bar. **The conclusion stands and is now measured:**
 transport priority is not what holds this tier to a fraction of its rate. The
 kernel sporadic isolation (4/4 FAIL with `apply_tier_sporadic`, 3/3 PASS
 without) remains the explanation.
+
+## The kernel-side gap, closed (2026-08-25) — the throttle now announces itself
+
+The section above ends: "**The kernel side has no equivalent**: NuttX's sporadic
+server throttles silently and nothing in the image can currently see it. That is
+the gap a fix should close." This closes it.
+
+`nros_nuttx_report_sporadic_throttle` in `nuttx_run_tiers.c`, called once per
+spin, prints ONCE per tier:
+
+```
+nros: sporadic budget throttled by the KERNEL tier=`high` prio=1 (declared 110)
+      — the SCHED_SPORADIC budget is exhausted and this tier is running at the floor
+```
+
+### Why this is an observation and not another inference
+
+This issue has already retracted one conclusion for resting on an experiment
+with no control, so the mechanism was checked in the kernel's own source rather
+than taken from POSIX prose:
+
+* `sched/sched/sched_sporadic.c:143` — on budget exhaustion NuttX calls
+  `nxsched_reprioritize(tcb, sporadic->low_priority)`;
+* this port sets `sched_ss_low_priority = sched_get_priority_min(SCHED_FIFO)`
+  (`nros_nuttx_apply_current_sporadic`), so the floor is the minimum FIFO
+  priority;
+* a demoted thread STILL RUNS, so it can sample itself with `sched_getparam(0)`.
+
+A thread observing itself at the floor while it declared a higher priority *is*
+a thread the kernel has throttled. That is read from the scheduler, not deduced
+from a rate.
+
+`sporadic_s.suspended` is the other candidate signal and is useless for this: a
+suspended thread cannot observe itself.
+
+### Verification boundary — NOT yet observed firing
+
+Stated plainly because this issue's history rewards it. What has been verified:
+
+* the predicate matches the kernel implementation (source above);
+* the file compiles clean against the real NuttX arm export headers
+  (`arm-none-eabi-gcc -fsyntax-only`, 0 errors).
+
+What has NOT: the message has never been seen to print. Doing so needs the
+nuttx-arm rust `realtime_tiers` cell, and this tree is currently configured
+`arm-smp` (issue 0750) so it needs a kernel reconfigure first — and the cell is
+FLAKY by this issue's own measurement (1 pass in ~6), so a single run proves
+nothing in either direction.
+
+No test asserts the marker, deliberately: a cell asserting a line nobody has
+watched appear would be exactly the "written against a hope" shape this campaign
+has been removing. Whoever next runs that cell should look for it — if the
+kernel-sporadic diagnosis is right, it should appear on the failing runs and not
+on the passing ones, which is itself a check on the diagnosis.
