@@ -37,7 +37,22 @@ impl XrceAgent {
     /// # Arguments
     /// * `port` - UDP port to listen on
     pub fn start(port: u16) -> TestResult<Self> {
-        let binary = xrce_agent_binary_path();
+        // Issue 0741 — say WHICH agent this run used, once, before it matters.
+        // Two can be installed at a time and the resolution order picks one
+        // silently; the failure mode it produces (a 15-byte reader history for
+        // a 28-byte reply) names neither the agent nor its Fast-DDS, so the
+        // provenance has been reconstructed by hand on every host that hit it.
+        // `eprintln!` rather than `nros_log`: this must reach a test log the
+        // reader already has (nextest captures stderr and prints it on
+        // failure), and the sibling fixture diagnostics in this crate print the
+        // same way. A `nros_log` record needs an initialised logger that a bare
+        // test binary does not have, so it went nowhere when tried.
+        let (binary, provenance) = xrce_agent_binary_with_provenance();
+        eprintln!(
+            "xrce agent: {} — {}",
+            binary.display(),
+            provenance.describe()
+        );
 
         let mut cmd = std::process::Command::new(&binary);
         // Phase 160.H.1.2 — `-v6` enables Agent verbose logging
@@ -121,22 +136,77 @@ impl Drop for XrceAgent {
     }
 }
 
+/// Which agent got resolved, and whether it is paired with the sourced ROS.
+///
+/// Issue 0741. Two agents can be installed at once and the resolution order
+/// below silently prefers one: `build/xrce-agent/` (built by `just xrce setup`
+/// against the sourced ROS's own Fast-DDS — "zero skew") over the `nros setup`
+/// store, whose SDK pin BUNDLES its own Fast-DDS and loads it through a
+/// relocatable launcher. Measured on one host: the store agent bundles Fast-DDS
+/// **2.14.6** while the ROS peer on the same machine is **2.6.11** — a
+/// Jazzy-era library registering the DDS type a Humble reader sizes itself
+/// from.
+///
+/// Whether that skew is fatal is exactly what issue 0741 is still deciding: it
+/// is fatal on one host and harmless on three others, and both agents pass here.
+/// What is NOT in doubt is that a run should SAY which one it used. Five axes
+/// were compared by hand across hosts before the libraries themselves were
+/// reached, and every one of those comparisons started by asking someone to
+/// work out which agent their machine had picked.
+///
+/// Same shape as issue 0774 one component over: a resolver that finds A binary
+/// is not a resolver that found the RIGHT one, and the failure surfaces layers
+/// away (there, a SEGV; here, a 15-byte history on a 28-byte reply).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XrceAgentProvenance {
+    /// `build/xrce-agent/` — built against the sourced ROS, no Fast-DDS skew.
+    RosPaired,
+    /// The `nros setup` SDK store — bundles its own Fast-DDS.
+    SdkStore,
+    /// Bare `MicroXRCEAgent` from `PATH`; provenance unknown.
+    SystemPath,
+}
+
+impl XrceAgentProvenance {
+    /// One line, safe to print on every run.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Self::RosPaired => "built against the sourced ROS (no Fast-DDS skew)",
+            Self::SdkStore => {
+                "the `nros setup` SDK pin, which BUNDLES its own Fast-DDS (a version skew against the ROS peer is possible — issue 0741)"
+            }
+            Self::SystemPath => "found on PATH; its Fast-DDS pairing is unknown",
+        }
+    }
+}
+
+/// [`xrce_agent_binary_path`], plus WHERE it came from.
+pub fn xrce_agent_binary_with_provenance() -> (std::path::PathBuf, XrceAgentProvenance) {
+    let local = crate::build_dir(crate::kind::XRCE_AGENT, &[]).join("MicroXRCEAgent");
+    if local.exists() {
+        return (local, XrceAgentProvenance::RosPaired);
+    }
+    if let Some(store) = crate::nros_store_bin("xrce-agent", "MicroXRCEAgent") {
+        return (store, XrceAgentProvenance::SdkStore);
+    }
+    (
+        std::path::PathBuf::from("MicroXRCEAgent"),
+        XrceAgentProvenance::SystemPath,
+    )
+}
+
 /// Get the path to the XRCE Agent binary.
 ///
 /// Checks for a locally-built agent at `build/xrce-agent/MicroXRCEAgent`
 /// first, then the `nros setup` store (`xrce-agent` tool), then falls back to
 /// `MicroXRCEAgent` on the system PATH.
+///
+/// Derived from [`xrce_agent_binary_with_provenance`] so the two orders cannot
+/// drift — the resolution rule has one spelling.
 pub fn xrce_agent_binary_path() -> std::path::PathBuf {
     // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`; the shell
     // half moved in the same commit.
-    let local = crate::build_dir(crate::kind::XRCE_AGENT, &[]).join("MicroXRCEAgent");
-    if local.exists() {
-        return local;
-    }
-    if let Some(store) = crate::nros_store_bin("xrce-agent", "MicroXRCEAgent") {
-        return store;
-    }
-    std::path::PathBuf::from("MicroXRCEAgent")
+    xrce_agent_binary_with_provenance().0
 }
 
 /// Check if the XRCE Agent binary is available (local build or system PATH).

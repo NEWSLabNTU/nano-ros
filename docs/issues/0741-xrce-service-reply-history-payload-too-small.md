@@ -84,6 +84,58 @@ cmake-generator defect that never touches it.
 So the difference is the host, not the tree — which is the same split #0737 hit,
 and worth stating so the two are not investigated as one thing.
 
+## Fourth environment, 2026-08-26 — green, and the resolver now SAYS which agent ran
+
+Ran the issue's command on a fourth host/tree (`2eb276e46`) after `just
+setup-cli` + `build-test-fixtures lane=native`: `test_xrce_service_ros2_client`
+passes and the whole binary is **8/8**. Fourth green environment against one red.
+
+**The skew is present here and is not sufficient.** This host's store agent is
+the same Jazzy-era pairing the "Version skew, measured" section above documents
+(bundled Fast-DDS **2.14.6**; ROS peer **2.6.11**). Since
+`xrce_agent_binary_path()` prefers `build/xrce-agent/` over the store, both are
+swappable on one tree, so this was measured directly rather than argued — same
+host, same fresh fixtures, whole binary each time:
+
+    ROS-paired agent (2.6.11)    -> 8/8 pass
+    SDK store agent (2.14.6 skew) -> 8/8 pass
+
+That does not contradict "Proven (2026-08-21)" — an agent with zero skew works
+on the RED host. It adds the other half: **skew alone does not cause the
+failure**, because a skewed agent passes everywhere else. Whatever the red host
+has is something the skew interacts WITH, not the skew by itself.
+
+**What I did not reproduce, and the warning it repeats.** My first run here did
+fail — with `Test fixture is STALE … newer: packages/api/nros/src/node_metadata.rs`,
+which is not this issue's symptom: no `RTPS_READER_HISTORY` error, no 15-byte
+history, the fixture never started. I nearly logged it as a reproduction. The
+one-line discriminator: a real instance shows the Fast-DDS error from the ROS
+CLIENT; a stale tree shows a resolver error before anything runs.
+
+### Change made: the agent announces its provenance
+
+Every axis in this issue was compared by hand across hosts, and each comparison
+began with someone working out which agent their machine had picked — a
+question the run itself never answered. It does now:
+
+```
+xrce agent: /…/build/xrce-agent/MicroXRCEAgent — built against the sourced ROS (no Fast-DDS skew)
+xrce agent: /…/.nros/sdk/xrce-agent/2.4.3-nros1/bin/MicroXRCEAgent — the `nros setup` SDK pin,
+            which BUNDLES its own Fast-DDS (a version skew against the ROS peer is possible — issue 0741)
+```
+
+`XrceAgentProvenance` distinguishes the ROS-paired build, the SDK store, and a
+bare `PATH` agent, and `xrce_agent_binary_path()` is derived from it so the
+resolution order keeps one spelling. Note what this corrects: `ca224e271` is
+titled "the harness agent is always Fast-DDS-paired with the sourced ROS", and
+that holds only for hosts that ran `just xrce setup` — `nros setup --tool
+xrce-agent` installs the bundled pin, and nothing said so. Same shape as issue
+0774 one component over: finding A binary is not finding the RIGHT one, and the
+failure lands layers away.
+
+If the red host is still red, its log now names the agent and the pairing in one
+line, which is the first thing to paste next time.
+
 ## Reproduce
 
 ```
