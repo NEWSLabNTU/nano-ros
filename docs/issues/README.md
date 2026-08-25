@@ -210,14 +210,7 @@ overflowed it silently. Fixed in `dd79d3125`. Archived here: that commit resolve
 in `docs/issues/`, which `check-issue-index` reads as an open issue whose frontmatter says resolved — main
 was red on it. See `archived/0756-*`. (2026-08-22)
 
-**#0767** (testing, open 2026-08-23) — `publish_streamed`'s two tests share three process globals
-(`NATIVE_CALLS`, `FALLBACK_CALLS`, `NATIVE_RECORD`) and `cargo test` runs a binary's tests on parallel
-THREADS, so the native test's `assert_eq!(FALLBACK_CALLS, 0)` races the fallback test: measured ok/ok/ok/
-FAILED/ok and FAILED/ok/FAILED/ok/ok, roughly 1 in 3. Invisible to `just check` because nextest gives each
-test its own PROCESS — a test that depends on process-global state is correct under nextest and wrong
-under cargo, and the gate everybody runs is the one that cannot see it. Found during phase-376 W4; first
-read as a regression from that work because a single stashed run passed, which was luck. Fix: give each
-test its own counters — the stub already receives a `void *ctx` to hang them on. See `0767-*`. (2026-08-23)
+Recently resolved (2026-08-25): **#0767** — `publish_streamed`'s two tests shared four process globals and `cargo test` runs a binary's tests on parallel THREADS, so one test's reset landed inside the other's measurement. Reproduced before fixing, because this issue's own lesson is that one green proves nothing about an intermittent failure — six runs passed, twenty gave 17/3. Serialized on a poison-tolerant `TEST_LOCK`; after: 20/20. Invisible to `just check` because nextest gives each test its own PROCESS, so the gate everybody runs is the one that cannot see this class and the crate-local `cargo test` is the one that can. NOTE the fix diverges from this issue's proposal (per-test counters on the stub `ctx`): that is viable and keeps parallelism, but `backend_data` is currently a sentinel and both vtables deliberately share one `publish_raw` — the very thing the native test checks is not reached — so it stays available rather than done. See `archived/0767-*`. (2026-08-25)
 
 Recently resolved (2026-08-23): **#0759** (build/testing) — host and distrobox shared build artifacts
 while having distinct compilers and libc, with nothing checking the two toolchains are compatible.

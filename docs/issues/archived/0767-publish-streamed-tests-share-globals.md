@@ -3,7 +3,7 @@ id: 767
 title: "`publish_streamed`'s two tests share process globals and run in parallel,
   so a bare `cargo test` fails ~1 in 5 — invisible to nextest, which gives each
   test its own process"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0673]
@@ -78,3 +78,62 @@ Until then, the honest statement is: **this crate's tests are correct under
 nextest and racy under `cargo test`**, and `just check` only ever runs the
 former.
 
+
+## Resolved (2026-08-25) — serialized, measured 3/20 → 0/20
+
+Reproduced first, because the issue's own lesson is that a single green proves
+nothing about an intermittent failure. Six runs passed, which would have been
+enough to call it fixed by someone else and close this. Twenty runs:
+
+    BEFORE   20 runs: 17 pass, 3 fail
+    AFTER    20 runs: 20 pass, 0 fail
+
+### Fix
+
+A `TEST_LOCK: Mutex<()>` beside the four statics it protects, taken at the top of
+both tests. Serializing rather than splitting the file or giving each test its
+own counters, because the assertion this is protecting is inherently
+process-wide:
+
+```rust
+assert_eq!(FALLBACK_CALLS.load(Ordering::SeqCst), 0,
+           "native slot must not fall through to publish_raw");
+```
+
+That is a claim about the whole process, and it is only checkable when nothing
+else in the process is publishing.
+
+**This is NOT the fix this issue proposed**, and the difference is worth stating
+rather than glossing. The proposal was to give each test its own counters, hung
+on the `void *ctx` the stub receives. That is viable and keeps the two tests
+running in PARALLEL, which serializing gives up — and the resulting assertion
+("MY publisher did not fall through") is arguably the more precise claim, not a
+weaker one.
+
+I did not take it because the plumbing is not as ready as the one-line
+suggestion reads: `stub_create_publisher` sets `backend_data` itself to a
+sentinel (`0xa5a5`), the two `static` vtables are shared per-PATH rather than
+per-test, and both deliberately share one `publish_raw` — which is the very thing
+the native test is checking is not reached. Threading per-test state through that
+means repurposing `backend_data` and touching every stub, for a test that runs in
+microseconds and whose parallelism buys nothing.
+
+So: lock now, measured; the ctx refactor stays available if someone later wants
+these tests parallel or finds the process-wide assertion too coarse.
+
+The guard ignores mutex poisoning (`unwrap_or_else(|e| e.into_inner())`). Without
+that, a panicking test poisons the lock and the OTHER test then fails with a
+poison error rather than its own assertion — one real failure reported as two,
+with the cause hidden.
+
+### The asymmetry is the durable part
+
+`just check` and `just test-all` run **nextest**, which gives each test its own
+PROCESS; two processes cannot share an `AtomicUsize`, so the race is unreachable
+there and the suite is honestly green. It is reachable only by the bare
+`cargo test` someone runs while iterating on one crate.
+
+So the gate everybody runs is the one that cannot see this class, and the
+developer loop is the one that can. A test depending on process-global state is
+correct under nextest and wrong under cargo — worth remembering the next time a
+crate-local `cargo test` disagrees with CI.

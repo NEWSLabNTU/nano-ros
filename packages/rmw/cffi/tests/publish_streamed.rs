@@ -38,6 +38,31 @@ static FALLBACK_RECORD: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 static NATIVE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FALLBACK_CALLS: AtomicUsize = AtomicUsize::new(0);
 
+/// issue 0767 — the four statics above are PROCESS-global, and both tests below
+/// reset them on entry and then assert exact counts. Under `cargo test` the two
+/// run on parallel THREADS of one process, so one test's reset lands inside the
+/// other's measurement: measured 3 failures in 20 runs before this lock.
+///
+/// It is invisible to `just check` and `just test-all`, which use nextest —
+/// nextest gives each test its own PROCESS, and two processes cannot share an
+/// `AtomicUsize`. So the suite is honestly green and the failure is reachable
+/// only by the bare `cargo test` someone runs while iterating on this crate.
+/// The gate everybody runs is the one that cannot see this.
+///
+/// Serializing is the fix that keeps the assertions meaning what they say:
+/// `FALLBACK_CALLS == 0` in the native test is a claim about the whole process,
+/// and it is only checkable when nothing else is publishing.
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Take [`TEST_LOCK`], ignoring poisoning.
+///
+/// A panicking test poisons the mutex; without this the OTHER test then fails
+/// with a poison error instead of its own assertion, turning one real failure
+/// into two and hiding which was which.
+fn serialize() -> std::sync::MutexGuard<'static, ()> {
+    TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 // ----- stubs reused across both vtables --------------------------------------
 
 unsafe extern "C" fn stub_open(
@@ -298,6 +323,7 @@ fn open_publisher(name: &str, vt: &'static NrosRmwVtable) -> nros_rmw_cffi::Cffi
 
 #[test]
 fn publish_streamed_native_path() {
+    let _serial = serialize(); // issue 0767 — see TEST_LOCK
     NATIVE_RECORD.lock().unwrap().clear();
     FALLBACK_RECORD.lock().unwrap().clear();
     NATIVE_CALLS.store(0, Ordering::SeqCst);
@@ -353,6 +379,7 @@ fn publish_streamed_native_path() {
 
 #[test]
 fn publish_streamed_fallback_path() {
+    let _serial = serialize(); // issue 0767 — see TEST_LOCK
     NATIVE_RECORD.lock().unwrap().clear();
     FALLBACK_RECORD.lock().unwrap().clear();
     NATIVE_CALLS.store(0, Ordering::SeqCst);
