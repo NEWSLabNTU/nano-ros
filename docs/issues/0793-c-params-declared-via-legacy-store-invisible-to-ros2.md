@@ -6,7 +6,7 @@ title: "C ships two disjoint parameter stores — parameters declared on the
 status: open
 type: bug
 area: api, params
-related: [rfc-0036, phase-379, issue-0788]
+related: [rfc-0036, phase-379, phase-382, issue-0788]
 ---
 
 ## Problem
@@ -107,10 +107,31 @@ claim), `packages/core/nros-params/src/server.rs`,
 `scripts/api-parity.py --topic param`, and
 `docs/reference/api-parity-ledger/param.json` — 32 gaps, 22 renames.
 
-## Direction
+## Direction — decided 2026-08-25: conciliate, do not delete
 
-Not decided here. The first question is whether the legacy store should be
-**deleted** rather than joined: it duplicates a capability the executor-owned
-store has, it is the one a `parameter.h` reader reaches first, and every
-consequence above follows from it existing. If it stays, it needs to feed the
-services, and its callback needs to be on the path a remote set actually takes.
+Filed as **phase-382**. The measured picture inverts this issue's framing: the
+legacy store has THREE in-tree consumers (the C++ wrapper and two examples) and
+the executor-owned one has **none**, so "delete the legacy store" would delete
+the path everyone actually uses.
+
+Neither is deleted. One API takes the best of each:
+
+* from the executor store — `ros2 param` visibility, and a `ParameterValue` that
+  already covers all ten `rcl_interfaces` types (the 4-scalar limit is in the C
+  entry points, not the store);
+* from the legacy store — **caller-owned capacity and placement**, and no
+  `alloc`.
+
+The mechanism is not new: phase-271 already moved six executor tables into
+caller-owned storage via `ExecutorSizing`/`carve`/`ExecutorSlices`, and issue
+0563 added a seventh. The parameter table becomes the eighth.
+
+`param-services`' `alloc` requirement turns out to be about PLACEMENT, not
+dynamic sizing — the executor `Box`es `ParamState`, and the handlers `Box`
+responses because they carry ~32 KB of heapless arrays that cannot sit on an
+RTOS task stack. Both dissolve into the same carved-storage answer, so
+alloc-free is reachable rather than aspirational.
+
+Phase-382 carries the work items and the acceptance, including the one that
+would have caught the legacy store's own unexercised claim: an example that
+actually places the table in a named linker section.
