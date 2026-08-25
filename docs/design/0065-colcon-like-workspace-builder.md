@@ -360,10 +360,41 @@ application asks for one with a `sysbuild.conf` carrying
 `SB_CONFIG_BOOTLOADER_MCUBOOT=y`, optionally with a `sysbuild/mcuboot.conf`
 merge fragment. So the presence of that file in the board's config directory
 **is** the declaration, and `nros build` passes `--sysbuild` when it is there.
-We invent no key of our own. (What still needs testing rather than assuming: the
-Zephyr documentation states `APPLICATION_CONFIG_DIR` covers Kconfig fragments
-and devicetree overlays, and is **silent on `sysbuild.conf`**. Until that is
-verified, D10's sysbuild half is unproven — see Open questions.)
+We invent no key of our own.
+
+**Verified in Zephyr's source, because its documentation does not say.** The
+docs describe `APPLICATION_CONFIG_DIR` as covering Kconfig fragments and
+devicetree overlays and are silent on sysbuild, so this was read from
+`share/sysbuild/cmake/modules/sysbuild_kconfig.cmake` (Zephyr v3.7.0,
+`36940db938a`):
+
+```cmake
+zephyr_get(APPLICATION_CONFIG_DIR)        # sysbuild honours it, and caches it
+                                          # "in order for the setting to
+                                          #  propagate to images"
+zephyr_get(SB_APPLICATION_CONFIG_DIR)     # sysbuild-specific override
+if(DEFINED SB_APPLICATION_CONFIG_DIR)
+  set(APPLICATION_CONFIG_DIR ${SB_APPLICATION_CONFIG_DIR})
+endif()
+set_ifndef(APPLICATION_CONFIG_DIR ${APP_DIR})
+...
+# "sysbuild.conf is an optional file, because sysbuild is an opt-in feature."
+zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR} KCONF SB_CONF_FILE
+            NAMES "sysbuild.conf" SUFFIX ${FILE_SUFFIX})
+```
+
+Three facts follow, all favourable:
+
+* `sysbuild.conf` **is** looked up in `APPLICATION_CONFIG_DIR`, so D10's
+  external config directory carries the sysbuild declaration with no extra
+  machinery;
+* one `APPLICATION_CONFIG_DIR` reaches **both** sysbuild and the images beneath
+  it, because sysbuild forces it into the cache;
+* presence-based detection is Zephyr's own model, not our inference — the file
+  is optional precisely because sysbuild is opt-in.
+
+`SB_APPLICATION_CONFIG_DIR` and `SB_CONF_FILE` remain as escape hatches if
+sysbuild config ever needs to live apart from the app's.
 
 **`manifest.toml` must be consumed, never globbed, and must be complete.**
 ESP-IDF's `flasher_args.json` is the precedent — "project flash information in
@@ -581,14 +612,6 @@ were checked in depth. ThreadX and the FreeRTOS vendor distributions
   and risk, not feasibility.
 - **How `nros materialize` names what it writes** when several images share a
   launch file but differ in args.
-- **Does `APPLICATION_CONFIG_DIR` reach `sysbuild.conf`?** D8 derives the
-  bootloader declaration from that file's presence in the board's config
-  directory, and D10 puts that directory outside the app tree. The Zephyr docs
-  cover Kconfig fragments and DT overlays and say nothing about sysbuild, so
-  this is the one load-bearing claim in D8/D10 that is **assumed rather than
-  verified**. It is a half-hour experiment and should be the first thing the
-  phase does; if it fails, sysbuild config stays in a generated app dir and D10
-  applies only to the app's own config.
 - **What `panic` accepts.** D5 makes it a declaration, so its value set is now
   API. `semihosting` / `esp-backtrace` / `abort` / `halt` covers every in-tree
   entry, but a user crate reference (`panic = "my_crate::handler"`) is the
@@ -605,6 +628,11 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-25 (d)** — closed the sysbuild open question by reading Zephyr
+  v3.7.0's `sysbuild_kconfig.cmake` rather than its docs: `sysbuild.conf` IS
+  resolved through `APPLICATION_CONFIG_DIR`, sysbuild caches that variable so
+  one setting reaches the images too, and presence-based opt-in is Zephyr's own
+  model. D10's sysbuild half is now evidence, not assumption.
 - **2026-08-25 (c)** — related-work pass; two decisions reconsidered. **D5
   reversed**: Expo shipped `eject`, found it a one-way door, and replaced it
   with always-generate + declarative plugins, so known escapes (`panic`,
