@@ -51,14 +51,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0797** (ci, open 2026-08-25) — nightly is red on every real run and five of eight jobs abort in
-2-5 s: the matrix provisions the CLI by hand (`cargo build … --bin nros`) and never runs
-`just setup-launch-resolve`, so `nros sync` refuses with "`nros-launch-resolve` is not next to the
-`nros` binary". The refusal is CORRECT (0409: exiting 0 without a resolver silently dropped params
-from 22 models) — the bug is the missing step. Nightly therefore exercises one platform, not six.
-Unresolved: the recipe builds into `nros-launch-resolve/target/release` while nightly's `nros` is in
-`cli/target/release`, so confirm WHERE CI needs it or the step will pass and the job still fail.
-See `0797-*`. (2026-08-25)
+Recently resolved (2026-08-25): **#0797** — nightly was red on every real run with five of eight jobs aborting in 2-5 s: the matrix provisioned the CLI by hand (`cargo build … --bin nros`) and never built `nros-launch-resolve`, so `nros sync` refused and nightly exercised ONE platform, not six. The refusal is correct (0409) — the bug was the missing step. Fixed by `just setup-launch-resolve` in all FOUR provisioning blocks (a fix to the single block this issue quoted would have left three jobs failing identically). The issue's own unresolved question is answered: `ws.rs::resolver_from` searches a SIBLING of `nros` (arm 2 — the wording in the error, which would send you to copy the binary) and ALSO `<repo>/packages/cli/nros-launch-resolve/target/release/` via `ancestors().nth(4)` (arm 3), which is exactly where the recipe writes — so no copying is needed. Verified by running `nros` from nightly's path through a real `nros sync`. `pr-checks`/`host-tests` carry the same block and are deliberately NOT patched: only nightly is red, so they do not reach the refusal. See `archived/0797-*`. (2026-08-25)
 
 **#0772** (platform/boards, open 2026-08-24) — FreeRTOS/lwIP has no wall-clock epoch, so an image there stamps from its BOOT epoch and a validating peer rejects it — the same defect #0758 fixed on Zephyr. The demand is the SAME consumer, not a speculative one: `board-support.toml` records `nros-board-s32z270-freertos` (Cortex-R52) as the "ASI phase-4 W5.b consumer", and 0758's closing note that "no FreeRTOS consumer has asked" was read off the Zephyr side alone. NOT a port of the Zephyr code: lwIP ships SNTP but our build compiles no `src/apps/*`, and its API is a background daemon with a compile-time callback macro — there is no synchronous `sntp_simple` equivalent, so 0758 W4's "acquired before the first stamp" guarantee does not carry and the clock flips mid-run. Verification is hardware-only (no emulator models the S32Z270 RTU); prove the mechanism on an mps2-an385 lwIP image instead. See `0772-*`. (2026-08-24)
 

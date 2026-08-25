@@ -1,7 +1,7 @@
 ---
 id: 797
 title: "Five nightly jobs abort in 2-5 s: the matrix builds only `--bin nros` and never provisions `nros-launch-resolve`"
-status: open
+status: resolved
 type: bug
 area: ci
 related: [issue-0409, issue-0285, issue-0037]
@@ -95,3 +95,44 @@ Nightly's cost profile has been measured (phase-371): container init ~500 s
 across jobs, the CLI rebuilt per job ~420 s, `threadx_riscv64` 837 s of build.
 All of that is real, and all of it is secondary — a red nightly that aborts in
 seconds is not slow, it is absent.
+
+## Resolved (2026-08-25) — `just setup-launch-resolve` in all FOUR nightly blocks
+
+### The unresolved detail, answered
+
+This issue said to confirm where CI needs the binary before fixing, because the
+error says "next to the `nros` binary" while the recipe builds elsewhere —
+"otherwise the step runs, reports success, and the job still fails".
+
+Traced in `ws.rs::resolver_from`. The search has three arms and never uses
+`$PATH`:
+
+1. `$NROS_LAUNCH_RESOLVE`;
+2. a SIBLING of the running `nros` — this is the arm the error message's wording
+   describes, and the one that would send you to copy the binary;
+3. `<repo>/packages/cli/nros-launch-resolve/target/release/`, reached via
+   `dir.ancestors().nth(4)` from the running exe.
+
+Nightly's `nros` lands in `packages/cli/target/release`, so `nth(4)` is the repo
+root and arm 3 resolves to exactly where `setup-launch-resolve` writes. **No
+copying, no `$NROS_LAUNCH_RESOLVE`, no layout change** — the recipe alone is
+sufficient. Confirmed by running it: `nros` at nightly's path plus a real
+`nros sync examples/workspaces/features` → "sync: done."
+
+Also checked `CARGO_TARGET_DIR` is unset in the workflow; the recipe honours it
+(issue 0400) and would otherwise write outside arm 3's path.
+
+### FOUR blocks, not one
+
+`grep -c` found the provisioning block **4 times** in `nightly.yml`. A fix to the
+one quoted in this issue would have left three jobs failing exactly as before.
+
+### The other two workflows are deliberately NOT touched
+
+The same block appears once in `pr-checks.yml` and twice in `host-tests.yml`.
+They are not patched, and that is a decision rather than an oversight: only
+nightly is red. The refusal fires only when `nros sync` meets an unresolved
+SystemModel, so those lanes evidently do not reach it — adding a ~30 s cargo
+build to every PR to pre-empt a failure that is not occurring is a cost with no
+evidence behind it. If one of them ever hits the same refusal, this section is
+the note that it needs the same one-line step.
