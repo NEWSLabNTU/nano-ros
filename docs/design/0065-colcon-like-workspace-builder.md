@@ -72,10 +72,16 @@ build` walks a package tree and builds each package into its own artifact,
 producing `build/` + `install/` with per-package shared libraries composed at
 runtime.
 
-nano-ros reads the **launch tree** and produces **one unified image for a target
-board**. There is no per-package shared library, no `install/` to source, no
-runtime composition. Packages are inputs to a whole-system bake, not
+nano-ros reads the **launch tree** and performs **one whole-system bake per
+(bringup, board)**. There is no per-package shared library, no `install/` to
+source, no runtime composition. Packages are inputs to that bake, not
 independently deployable units.
+
+The bake's product is a **set of artifacts, usually of size one** — see D8. A
+bare-metal or host target yields a single executable; a production Zephyr target
+yields the application plus its bootloader, sharing a signing key and partition
+table. Treating the singleton as the general case is what would need undoing
+later, so it is not assumed here.
 
 So the borrowing is the FRONT of colcon (discover packages by walking the tree;
 require no hand-maintained root manifest; put output under `build/`), not the
@@ -268,10 +274,108 @@ vocabulary (platform, rmw, feature-sig) — **never a new ad-hoc suffix**. One
 configure per coordinate, so switching board or RMW selects a different tree
 rather than thrashing one.
 
-Finished artifacts land in **`dist/<image>/`**. Deliberately not `install/`:
-that name promises an environment to source, which nano-ros will never have, and
-a ROS user's first move would be a `source dist/setup.bash` that cannot exist.
-This amends RFC-0070 R1, which names `install/` for workspace scope.
+Finished artifacts land in **`dist/<image>/`**, and that directory holds a
+**set** plus a manifest naming which member is flashable:
+
+```
+dist/zephyr-nrf52840/          dist/native/
+  manifest.toml                  manifest.toml
+  app.signed.hex                 demo          # a set of one — same shape
+  mcuboot.hex
+  merged.hex
+```
+
+The singleton is not a special case; it is a set of one. This falls out of
+Zephyr **sysbuild**, whose most common configuration is "build my app and an
+MCUboot bootloader, same key, same partition table" — so on any board with a
+bootloader the product is ≥2 artifacts with config that must stay in sync. A
+`dist/` layout assuming one file would have to be re-cut the first time anyone
+ships a signed image.
+
+`dist/` is deliberately not `install/`: that name promises an environment to
+source, which nano-ros will never have, and a ROS user's first move would be a
+`source dist/setup.bash` that cannot exist. This amends RFC-0070 R1, which
+names `install/` for workspace scope.
+
+### D9 — A board is a (machine, platform) pair, and the registry resolves it
+
+Two platforms on one SoC are **two boards**. The tree already encodes this and
+already paid for it: `PlatformId` in `matrix.rs` enumerates `Linux`,
+`ZephyrNativeSim`, `ZephyrQemuCortexM`, `FreertosMps2`, `FreertosPosix`,
+`QemuBaremetal`, `NuttxArm`, `NuttxRiscv`, `ThreadxLinux`, `ThreadxRiscv64`,
+`Esp32Qemu`, `Fvp` — (machine, platform) pairs under a name that says
+"platform". mps2-an385 alone appears three times, as `QemuBaremetal`,
+`FreertosMps2` and `ZephyrQemuCortexM`. `matrix.rs` records the cost of learning
+this:
+
+> phase-337 W2 added this because "Zephyr" previously meant exactly one config:
+> `native_sim/native/64` … **That is a board, not a platform** — and the
+> difference is not academic.
+
+Bringing that one witness up surfaced **five real defects**, every one invisible
+to native_sim. micro-ROS reached the same conclusion independently: its entry
+point is `create_firmware_ws.sh [RTOS] [Platform]`, with per-pair config
+folders (`config/freertos/crazyflie21`).
+
+Board **identity** therefore splits per platform always. Board **crate** count
+does not have to follow: `nros-board-zephyr` serves three boards and
+`nros-board-nuttx-qemu` two, because Zephyr and NuttX own their own board
+abstractions and our crate is a shim over theirs, while baremetal and FreeRTOS
+have no such tree so we carry it. Identity is user-facing; crate count is
+implementation.
+
+**One vocabulary at the surface.** `[image.*].board` today mixes seven nano-ros
+keys with one raw Zephyr string (`native_sim/native/64`) — the same conflation
+phase-337 W2 removed from `PlatformId`, still live one layer up. The user always
+writes a nano-ros board id; `board-support.toml` carries the framework's own
+board string for platforms that have one, and the builder resolves it. Nothing
+authored in a bringup is a framework's private vocabulary.
+
+### D10 — Overlays reach the framework through its own external-config knob
+
+nano-ros knows **no overlay filenames**. Per platform it knows one thing: which
+knob receives an external config directory.
+
+| framework | knob |
+| --- | --- |
+| Zephyr / west | `APPLICATION_CONFIG_DIR`, plus `EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE` for absolute paths |
+| ESP-IDF | `SDKCONFIG_DEFAULTS` (a list; env var or CMake var) |
+| NuttX | `CONFIG_APPS_DIR` |
+| FreeRTOS / ThreadX / baremetal | none — the board crate owns the config header |
+
+Zephyr's `APPLICATION_CONFIG_DIR` is documented as taking *all* configuration
+files from the named directory, so pointing it at
+`src/<bringup>/boards/<board>/` preserves Zephyr's own `boards/<board>.conf`
+auto-discovery with no copying.
+
+**A path whitelist is explicitly rejected.** Zephyr's overlay surface is open
+and grows with releases — `.conf`, `.overlay`, `dts/bindings/`, `snippets/`,
+`Kconfig` — so a whitelist would silently drop a file the user added. That is
+the silent-drop class this repository keeps paying for; the framework, not
+nano-ros, decides what a file in its config directory means.
+
+Note the split by **author**, which is what makes this small: the board's
+*baseline* config is nano-ros's and already ships in the board crate
+(`nros-board-freertos-posix/config/FreeRTOSConfig.h`, the NuttX `defconfig`,
+`cmake/zephyr/<board>.conf`). The overlay is a user **delta** on top, and today
+only Zephyr has a non-empty one. The other platforms' knobs stay unused until
+something needs them.
+
+### D11 — A custom board is a board crate, not an overlay
+
+Vendor SDKs generate per-board **source**, not just config: MCUXpresso Config
+Tools emit `pin_mux.c/h` and `clock_config.c/h` into a project `board/` folder
+("if you don't structure this correctly, your project won't work correctly with
+the Config tools"), and note that pin-mux files are *"always customized for each
+application"*. STM32CubeMX has the same shape via `.ioc`. An out-of-tree NuttX
+board needs `Kconfig` + `defconfig` + `Make.defs` + `Makefile`.
+
+None of that is configuration, so none of it belongs in
+`src/<bringup>/boards/<board>/`. **A custom board is authored as a board crate**,
+exactly like the in-tree ones, and the authoring story belongs to
+[RFC-0012](0012-board-bsp-integration-architecture.md), not here. This RFC states the
+boundary explicitly because an overlay directory otherwise reads as covering it,
+and someone will try.
 
 ## What the user authors
 
@@ -341,6 +445,32 @@ between them. Every move edited a hand-maintained `SUBDIRS` list or `[workspace]
 members`. If a tree-walking builder would have made that fold `git mv` plus a
 bringup edit, the design holds.
 
+## Fit against real frameworks
+
+Checked 2026-08-25 against upstream documentation rather than against our own
+ports, because our ports are the thing under test.
+
+**Fits.** Every framework we target already has a first-class knob for "config
+lives outside the source tree" — Zephyr's `APPLICATION_CONFIG_DIR`, ESP-IDF's
+`SDKCONFIG_DEFAULTS` list, NuttX's `CONFIG_APPS_DIR`. So D10 uses upstream
+features, not workarounds, and the single-bringup design does not fight the
+per-framework principle.
+
+**Precedent.** micro-ROS keys on `[RTOS] [Platform]` and configures firmware in
+a pre-build step before handing off — the same pairing and the same
+generate-then-handoff shape. It differs in creating **one firmware workspace per
+target**, where this RFC keeps one workspace spanning targets. That is the
+harder road, taken deliberately: a nano-ros system spans boards (the multi-host
+case), and per-target workspaces cannot express it.
+
+**Does not fit, and is answered above.** Zephyr sysbuild makes the product a set
+(D8). Vendor-generated board init is per-(board, application) source, not config
+(D11).
+
+**Unresolved.** Nothing found yet contradicts D1–D11, but only three frameworks
+were checked in depth. ThreadX and the FreeRTOS vendor distributions
+(MCUXpresso, STM32Cube) were checked only for their board-init shape.
+
 ## Open questions
 
 - **Deprecation window length for `[deploy.*]` → `[image.*]`**, and whether
@@ -350,6 +480,13 @@ bringup edit, the design holds.
   it works; not migrating them leaves two shapes in one tree.
 - **How `nros eject` names what it writes** when several images share a launch
   file but differ in args.
+- **Whether sysbuild config is authored or derived.** D8 accepts a set of
+  artifacts, but says nothing about who declares that a board wants MCUboot.
+  Candidates: a key in `[image.<id>]`, or the presence of sysbuild files in the
+  board's overlay dir. The second is more framework-respecting and less
+  explicit.
+- **How `dist/manifest.toml` is consumed.** Flash and run paths must read it
+  rather than glob, or the set degenerates back into a convention.
 
 ## Non-goals
 
@@ -362,6 +499,14 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-25 (b)** — framework-fit research pass. `dist/` becomes a SET plus a
+  manifest (D8) because Zephyr sysbuild's standard case is app + MCUboot with
+  shared key and partition table; "one unified image" retired from the framing.
+  Adds D9 (board = (machine, platform), registry-resolved, one surface
+  vocabulary), D10 (overlays reach a framework through its own
+  external-config knob; a path whitelist is rejected), D11 (a custom board is a
+  board crate — vendor tools generate board SOURCE, which is RFC-0012's
+  territory). New *Fit against real frameworks* section.
 - **2026-08-25** — rewritten with the decisions D1–D8. Adds the RFC-0024 §2.4
   reconciliation (exec, not wrap), the colcon-reuse rejection with the RFC-0070
   measurement, the entry×board pairing and entry synthesis (D4/D5), the
