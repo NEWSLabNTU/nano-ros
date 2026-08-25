@@ -783,3 +783,68 @@ It does not immediately explain the host split — two hosts reproduce, two do n
 and a missing capability is the same on all four. But anyone resuming this should
 read 0776 first: it is the difference between "find the bug that computes 15" and
 "nothing computes anything, so the 15 comes from a peer's default".
+## Re-measured 2026-08-26 — 1 failure in 13, and three hypotheses eliminated
+
+This host reproduced the symptom exactly once and has not since. The number
+matters because this issue has been reasoning from "deterministic on reproducing
+hosts", which is not what it does here.
+
+```
+[RTPS_READER_HISTORY Error] Change payload size of '28' bytes is larger than
+the history payload size of '15' bytes and cannot be resized.
+  -> Function can_change_be_added_nts
+```
+
+| run | result |
+| --- | --- |
+| first run after a fresh `build-test-fixtures lane=native` | **FAIL, 15.9 s** |
+| 6 consecutive, no changes | 6 pass, ~2.8 s each |
+| 5 consecutive under CPU load (6 spinners) | 5 pass |
+| first run after ANOTHER full fixture build | pass, 5.1 s |
+
+**1 / 13.**
+
+### Eliminated by controlled runs
+
+* **CPU load / slow scheduling** — 5/5 pass under six spinning load generators.
+  The failing run took 15.9 s against a 2.8 s steady state, so slowness looked
+  causal; induced slowness does not reproduce it.
+* **First-run-after-rebuild** — the one failure was the first run after a
+  rebuild, which is a tempting story. Tested directly: a second full fixture
+  build followed immediately by the test PASSED. Refuted.
+* **Stale Fast-DDS shared memory** — `/dev/shm` holds 99 `fastrtps_*` segments,
+  all dated five days earlier. They were present during the failure AND during
+  all twelve passes, so they separate nothing.
+
+### The contamination this issue should know about
+
+Before the rebuild, this test had been answering with an ABSORBED STALE verdict
+for three days — `NOT RUN: 7th consecutive stale verdict for this fixture, first
+3d ago` (issue 0445). A STALE verdict replaces whatever the fixture would have
+done at runtime.
+
+So any "does not reproduce" recorded on a host whose fixture was stale is not
+evidence of non-reproduction — the test never ran. Several of this issue's
+green measurements were taken across hosts and dates without recording fixture
+freshness, and at least the ones from such a window cannot be read as greens.
+That may be part of why "two hosts reproduce, two do not" never resolved into an
+axis: some of the greens may be absences rather than passes.
+
+Issue 0764 (fixed 2026-08-25) removed one large source of false STALE, so
+measurements taken from now on are cleaner than the ones above it in this file.
+
+### And sweeps mask it
+
+`.config/nextest.toml` gives `binary(xrce_ros2_interop)` **`retries = 2`**. At a
+1-in-13 rate a sweep will almost always show FLAKY-then-pass rather than a
+failure, which is consistent with the tier-1 run that logged this test as
+`FLAKY 3/3`. Anyone hunting this must run with `--retries 0`, as the Reproduce
+section already says — and should not read a green sweep as evidence.
+
+### What this does not do
+
+It does not find the 15. The next step this issue names — a Fast-DDS log at
+reader creation — still needs a failing run to log, and 1-in-13 makes that
+expensive to catch. Raising `FASTDDS_LOG_LEVEL=Info` produced no additional
+Fast-DDS output on a passing run, so the log capture will need to be armed
+inside the harness and left on, rather than run by hand until it trips.
