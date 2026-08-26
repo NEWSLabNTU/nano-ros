@@ -211,6 +211,43 @@ fn a_cargo_image_generates_the_root_when_the_workspace_has_none() {
 }
 
 #[test]
+fn zephyr_overlays_go_through_extra_conf_file_never_conf_file() {
+    // phase-383 W5.a, and the correction that produced it: Zephyr's
+    // configuration_files.cmake puts boards/ and socs/ auto-discovery inside
+    // `if(NOT DEFINED CONF_FILE)`, so passing CONF_FILE suppresses both. Our
+    // own zephyr entries suppress it today.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let bd = tmp
+        .path()
+        .join("src/demo_bringup/boards/native_sim_native_64");
+    write(&bd.join("prj.conf"), "CONFIG_X=y\n");
+    write(&bd.join("prj-edf.conf"), "CONFIG_SCHED_DEADLINE=y\n");
+    let sys = tmp.path().join("src/demo_bringup/system.toml");
+    let text = std::fs::read_to_string(&sys).unwrap();
+    write(
+        &sys,
+        &text.replace(
+            "[image.zephyr]\nboard = \"native_sim/native/64\"",
+            "[image.zephyr]\nboard = \"native_sim/native/64\"\nconf = [\"prj-edf.conf\"]",
+        ),
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let shown = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(shown.contains("-DEXTRA_CONF_FILE="), "{shown}");
+    assert!(shown.contains("prj-edf.conf"), "{shown}");
+    assert!(
+        shown.contains("-DAPPLICATION_CONFIG_DIR="),
+        "the board config dir must be named: {shown}"
+    );
+    assert!(
+        !shown.contains("-DCONF_FILE="),
+        "CONF_FILE would suppress boards/ and socs/ discovery: {shown}"
+    );
+}
+
+#[test]
 fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // The asymmetry RFC-0065 D3 now records: cmake has no root/member hierarchy
     // rule, so its generated root DOES live at build/<coord>/ where D8 wants

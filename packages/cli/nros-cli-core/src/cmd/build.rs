@@ -224,6 +224,26 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 a.extend(args.native_args.iter().cloned());
                 Some(Handoff::new("cmake", a).in_dir(&root))
             }
+            Driver::West => {
+                // W5 — overlays reach Zephyr through EXTRA_CONF_FILE and
+                // APPLICATION_CONFIG_DIR. Never CONF_FILE: that suppresses
+                // Zephyr's own boards/ and socs/ discovery entirely.
+                let overlays = crate::builder::zephyr::resolve(&bringup_dir, &board, &image)
+                    .map_err(|e| eyre::eyre!("{e}"))?;
+                let mut a = vec!["build".to_string(), "-b".to_string(), board.clone()];
+                if overlays.sysbuild {
+                    a.push("--sysbuild".to_string());
+                }
+                a.push(bringup_dir.display().to_string());
+                let west_opts = crate::builder::zephyr::west_args(&overlays);
+                if !west_opts.is_empty() || !args.native_args.is_empty() {
+                    // Everything after `--` is a cmake option for the app.
+                    a.push("--".to_string());
+                    a.extend(west_opts);
+                    a.extend(args.native_args.iter().cloned());
+                }
+                Some(Handoff::new("west", a).in_dir(&root))
+            }
             _ => Some(native_handoff(driver, &root, &bringup_dir, &board, args)),
         };
 
