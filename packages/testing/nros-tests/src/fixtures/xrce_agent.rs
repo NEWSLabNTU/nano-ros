@@ -184,6 +184,18 @@ impl XrceAgentProvenance {
 pub fn xrce_agent_binary_with_provenance() -> (std::path::PathBuf, XrceAgentProvenance) {
     let local = crate::build_dir(crate::kind::XRCE_AGENT, &[]).join("MicroXRCEAgent");
     if local.exists() {
+        // issue 0741 — the PATH does not decide the provenance, the CONTENT
+        // does. `scripts/xrce-agent/build.sh` publishes to this one path two
+        // different ways: a real ROS-paired build, OR an 85-byte forwarding
+        // wrapper (`#!/bin/sh\nexec "<store>/MicroXRCEAgent" "$@"`) around the
+        // SDK store agent, which BUNDLES its own Fast-DDS. Classifying by path
+        // alone reported the wrapper as "no Fast-DDS skew" while running the
+        // very skew it claims to exclude — and 0741's central measurement
+        // ("ROS-paired 8/8, SDK store 8/8, so skew alone is not the cause")
+        // compared two arms that may have been the same binary.
+        if let Some(target) = forwarding_wrapper_target(&local) {
+            return (target, XrceAgentProvenance::SdkStore);
+        }
         return (local, XrceAgentProvenance::RosPaired);
     }
     if let Some(store) = crate::nros_store_bin("xrce-agent", "MicroXRCEAgent") {
@@ -193,6 +205,22 @@ pub fn xrce_agent_binary_with_provenance() -> (std::path::PathBuf, XrceAgentProv
         std::path::PathBuf::from("MicroXRCEAgent"),
         XrceAgentProvenance::SystemPath,
     )
+}
+
+/// If `path` is the `/bin/sh` forwarding wrapper `build.sh` writes for a store
+/// agent, return what it execs. `None` for a real binary.
+///
+/// Deliberately narrow: it matches the exact two-line shape that script emits,
+/// so an unrelated executable shell script is not silently reinterpreted.
+fn forwarding_wrapper_target(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let text = std::fs::read_to_string(path).ok()?;
+    if !text.starts_with("#!/bin/sh") {
+        return None;
+    }
+    let exec_line = text.lines().find(|l| l.trim_start().starts_with("exec "))?;
+    let start = exec_line.find('"')? + 1;
+    let end = exec_line[start..].find('"')? + start;
+    Some(std::path::PathBuf::from(&exec_line[start..end]))
 }
 
 /// Get the path to the XRCE Agent binary.

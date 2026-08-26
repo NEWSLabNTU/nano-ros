@@ -964,3 +964,74 @@ Two things follow, and they point in opposite directions:
 The orphans are now killed. Anyone re-measuring on either host should check
 `pgrep -c -f add_two_ints_server` first — a clean bus is a precondition this
 issue never stated and never had.
+
+## Fifth environment, 2026-08-26 — green, plus a wire baseline and a defect in
+## this issue's own instrumentation
+
+Ran the issue's command on a fifth host/tree after `just setup-cli` +
+`build-test-fixtures-leaves native`: `test_xrce_service_ros2_client` passes and
+the whole binary is **8/8**, solo AND in-sweep. Five green environments against
+one red.
+
+(My first attempt "reproduced" nothing — it hit `Test fixture is STALE`, which
+is the discriminator this issue already records. Worth noting it caught me too.)
+
+### The number this issue has never had from a green host
+
+`tshark -i lo -f udp` during a passing run, then reading the SEDP announcements:
+
+| topic | `PID_TYPE_MAX_SIZE_SERIALIZED` |
+| --- | ---: |
+| `rq/add_two_intsRequest` | **20** |
+| `rr/add_two_intsReply` | **1028** |
+
+20 is exactly the request the issue predicts (16-byte request header + 4-byte
+encapsulation). **1028 is 1024 + 4 — a fixed buffer bound, not a computed type
+size.** The red host refused a 28-byte sample into a 15-byte history; a green
+host advertises 1028, so 28 fits with room to spare.
+
+**Where the bound comes from matters.** `uxr_buffer_create_topic_bin` sends only
+a topic name and a type name — no size crosses the XRCE wire at all. So neither
+1028 nor 15 originates in nano-ros: **the AGENT chooses it** when it creates the
+DDS type. That makes the agent's type registration the variable, and it is
+consistent with 15 being a bound some other agent build computes.
+
+### The provenance line can lie, and it lied here
+
+`scripts/xrce-agent/build.sh` publishes to `build/xrce-agent/MicroXRCEAgent` two
+different ways: a genuine ROS-paired build, **or** an 85-byte forwarding wrapper
+
+    #!/bin/sh
+    exec "/…/.nros/sdk/xrce-agent/2.4.3-nros1/bin/MicroXRCEAgent" "$@"
+
+around the SDK store agent, which bundles its own Fast-DDS.
+`xrce_agent_binary_with_provenance()` classified by PATH alone, so on this host
+the run printed
+
+    xrce agent: …/build/xrce-agent/MicroXRCEAgent — built against the sourced ROS
+                (no Fast-DDS skew)
+
+while executing the bundled-Fast-DDS agent — the exact skew it claims to
+exclude.
+
+**This undermines the measurement in the section above.** "ROS-paired agent
+(2.6.11) -> 8/8 pass / SDK store agent (2.14.6 skew) -> 8/8 pass" was offered as
+proof that skew alone does not cause the failure. If that host's
+`build/xrce-agent/` entry was also a wrapper, both arms ran the SAME binary and
+the comparison measured nothing. It needs re-running with the corrected
+provenance before its conclusion can stand.
+
+Fixed here: provenance now reads the file's CONTENT and resolves the wrapper to
+its target, so a wrapper reports `SdkStore` with the skew warning. The matcher is
+deliberately narrow (the exact two-line shape `build.sh` emits) so an unrelated
+shell script is not silently reinterpreted.
+
+### What the red host should measure next
+
+1. `ls -la build/xrce-agent/MicroXRCEAgent` — 85 bytes means the wrapper, and
+   every "ROS-paired" arm recorded on that host is suspect.
+2. tshark the failing run and read `rtps.param.type_max_size_serialized` for
+   `rr/add_two_intsReply`. If it is 15 rather than 1028, the defect is the
+   agent's type registration and the client is an innocent bystander.
+3. Compare the agent binaries by content, not by path.
+
