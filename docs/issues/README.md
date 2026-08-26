@@ -51,8 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0821** (rmw, open 2026-08-27) — the board takes a USAGE FAULT with `pc=0` at exactly 2 x
-`Z_TRANSPORT_LEASE`: the auto-reconnect teardown runs INSIDE the task it is dismantling. See `0821-*`.
+Recently resolved (2026-08-27): **#0821** (rmw/platform) — the S32K344 took a USAGE FAULT at exactly
+2 x Z_TRANSPORT_LEASE with an exception frame of ALL ZEROES (pc, lr, xpsr, every FPU register). xpsr=0
+is impossible for a real frame, so the CPU unstacked one out of dead memory: a blown stack, not a bad
+pointer. Bisected on hardware one variable at a time — it was NOT the lease teardown (compiled out,
+still faulted), NOT `_z_reopen` (AUTO_RECONNECT=0, still faulted), NOT thread termination, and NOT task
+stack slot exhaustion (4 -> 12, still faulted). Each of those only moved the crash. `main`'s 8 KiB is
+the cause: it sits at 4860/8192 in steady state and the expiry path is deeper than anything it does
+while publishing, so it runs into zeroed .bss. `CONFIG_MAIN_STACK_SIZE=16384` alone gives 237 publishes
+across 3 full expiry/reconnect cycles with zero faults, clean with AND without the MPU guard. Raising
+it needed `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` first, because `NROS_ZEPHYR_STACK_SIZE` derived from
+CONFIG_MAIN_STACK_SIZE and multiplied into every task stack (the link previously failed, "region `RAM'
+overflowed by 21588 bytes"). Residual recorded, not buried: a THREAD_ANALYZER+INIT_STACKS build
+survived six cycles at the original 8 KiB and that is unexplained. See `archived/0821-*`. (2026-08-27)
 
 Recently resolved (2026-08-27): **#0822** (rmw) — zenoh-pico's Zephyr port picked thread stacks with
 `thread_stack_area[thread_index++]` over a fixed 4-entry array, with `thread_index` never reset and

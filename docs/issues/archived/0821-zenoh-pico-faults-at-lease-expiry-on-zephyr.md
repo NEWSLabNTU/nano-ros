@@ -1,11 +1,12 @@
 ---
 id: 821
 title: "The board takes a USAGE FAULT with pc=0 at exactly 2 x Z_TRANSPORT_LEASE —
-  the auto-reconnect teardown runs inside the task it is dismantling"
-status: open
+  main's 8 KiB stack cannot absorb the expiry path"
+status: resolved
 type: bug
 area: rmw
-related: [issue-0822, phase-391]
+resolved_in: config
+related: [issue-0822, issue-0810, phase-391]
 ---
 
 ## Problem
@@ -64,7 +65,7 @@ construction, and it is entered on every expiry.
 
 ## What this is NOT
 
-**Not [issue 0822](archived/0822-zephyr-thread-stack-slots-unbounded.md).** That is a
+**Not [issue 0822](0822-zephyr-thread-stack-slots-unbounded.md).** That is a
 real, separate defect in the same area (thread stacks handed out past the end
 of a fixed array). It was found while chasing this fault and fixed, and the
 fault still reproduces with slots to spare and no exhaustion diagnostic.
@@ -209,7 +210,57 @@ and `k_thread` bookkeeping (`THREAD_MONITOR`), not stack content. Until that is
 explained the "lease task stack" theory is the leading candidate, not the
 answer.
 
-## Blocked measurement
+## Resolved: main's stack, isolated one variable at a time
+
+`CONFIG_MAIN_STACK_SIZE=8192` -> `16384`, with nano-ros's task stacks pinned at
+the old 8192 so nothing else moves:
+
+| change (everything else at baseline) | publishes | faults |
+| --- | --- | --- |
+| baseline | 40 | fault at 20 s |
+| task stack slots 4 -> 12 | 40 | fault at 20 s |
+| `Z_FEATURE_AUTO_RECONNECT=0` | 40 | fault at 20 s |
+| **`CONFIG_MAIN_STACK_SIZE=16384`** | **237** | **none, 3 full cycles** |
+| the same, plus `CONFIG_HW_STACK_PROTECTION=y` | 233 | none, 4 full cycles |
+| the same, guard removed again | 232 | none, 4 full cycles |
+
+The MPU guard is not part of the fix — it is clean with and without — so this
+is a genuine stack shortfall, not a layout accident that the guard happened to
+mask.
+
+That also explains the register dump. `main` was measured at 4860 / 8192 (59 %)
+in steady state; the expiry path is deeper than anything it does while
+publishing normally, it runs off the end into zeroed `.bss`, and the next
+exception unstacks a frame of all zeroes -- which is exactly `pc = 0`,
+`xpsr = 0`. The fault is reported against whatever thread was current at the
+time, which is why it kept naming `idle` rather than the code that broke it.
+
+It was never the lease task's teardown, never `_z_reopen`, and never thread
+termination; each of those was eliminated on hardware first, and each
+elimination was really just moving the crash rather than removing it.
+
+### What the fix needed first
+
+`NROS_ZEPHYR_STACK_SIZE` in `zephyr/nros_platform_zephyr_shims.c` derives from
+`CONFIG_MAIN_STACK_SIZE`, so raising main also multiplied into every task
+stack: 8192 -> 16384 previously failed to link, *"region `RAM' overflowed by
+21588 bytes"*. `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` and
+`CONFIG_NROS_ZEPHYR_TASK_SLOTS` now break that coupling, verified to scale the
+array exactly (slots x size).
+
+### Residual, not swept under the rug
+
+A `CONFIG_THREAD_ANALYZER` + `CONFIG_INIT_STACKS` build survived six cycles at
+the ORIGINAL 8 KiB main stack. Neither option changes a stack size, so it was
+masking the overflow rather than preventing it — but that is not explained, and
+anyone re-testing this should not treat that build as evidence of health.
+
+Related: the depth comes largely from `Executor::assemble` building the whole
+`Executor` by value on the caller's stack (`spin.rs:1396`), which is
+[issue 0810](../0810-executor-arena-sized-by-worst-case-shape.md)'s neighbourhood.
+Fixing that would buy the headroom back.
+
+## Blocked measurement (historical — now unblocked)
 
 The direct check — `CONFIG_HW_STACK_PROTECTION=y` to get a named
 "Stack overflow" naming the thread — cannot run: with the guard enabled `main`

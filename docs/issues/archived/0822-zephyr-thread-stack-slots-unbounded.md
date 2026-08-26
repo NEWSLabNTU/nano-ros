@@ -60,7 +60,7 @@ a thread-exit hook this API does not have.
 ## Scope — this did not fix the fault it was found under
 
 Found while chasing
-[issue 0821](../0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md) (a USAGE
+[issue 0821](0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md) (a USAGE
 FAULT at exactly `2 x Z_TRANSPORT_LEASE`). It is a genuinely separate defect
 that the same reconnect loop would have reached shortly afterwards — 0821
 still reproduces with this fixed, with slots to spare and no exhaustion

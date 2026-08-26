@@ -247,6 +247,39 @@ config NROS_ZENOH_SOCKET_TIMEOUT_MS
       must lower this (5 ms => ~200 tx windows/s) at the cost of more
       read-task wakeups.
 
+config NROS_ZEPHYR_TASK_STACK_SIZE
+    int "nano-ros Zephyr task stack size (bytes, 0 = inherit MAIN_STACK_SIZE)"
+    default 0
+    help
+      NROS_ZEPHYR_STACK_SIZE in zephyr/nros_platform_zephyr_shims.c — the stack
+      given to every task nano-ros creates on Zephyr, which on a zenoh image is
+      the read task, the lease task and the tx-flush task. It defaults to
+      CONFIG_MAIN_STACK_SIZE, which couples two unrelated budgets: raising
+      main's stack because MAIN needs it also multiplies into
+      NROS_ZEPHYR_TASK_SLOTS stacks of the same size.
+
+      On a 320 KiB part that is a link failure rather than a tuning nuisance.
+      Measured on mr_canhubk3/s32k344: MAIN_STACK_SIZE 8192 -> 16384 overflowed
+      RAM by 21588 bytes, entirely because four zenoh stacks grew with it.
+
+      It also makes CONFIG_HW_STACK_PROTECTION unusable on a tight image — the
+      guard region pushes main over at boot, so the one tool that names an
+      overflowing thread cannot be enabled.
+
+      0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
+      deepest call chain, which is the expiry teardown, independently of main.
+
+config NROS_ZEPHYR_TASK_SLOTS
+    int "nano-ros Zephyr task stack slots"
+    default 4
+    help
+      NROS_ZEPHYR_MAX_THREADS — how many task stacks are reserved. The index
+      into them only ever RISES: `nros_zephyr_task_create` bounds-checks and
+      returns -1 when they run out, but nothing releases a slot when a task
+      ends. A workload that recreates tasks (any reconnect) therefore consumes
+      these permanently. Total cost is
+      NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_SIZE.
+
 config NROS_ZENOH_LEASE_MS
     int "zenoh-pico transport lease (ms)"
     default 10000

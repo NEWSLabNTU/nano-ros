@@ -83,6 +83,19 @@ zephyr_library_named(nros)
 # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
 # sys_rand_get, getaddrinfo) that nros-platform-zephyr needs to call via FFI.
 zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c)
+
+# Task stacks for `nros_zephyr_task_create`. Both tokens are #ifndef-guarded in
+# the shim; NROS_ZEPHYR_STACK_SIZE otherwise derives from CONFIG_MAIN_STACK_SIZE,
+# which couples main's budget to every task nano-ros creates and makes main's
+# stack effectively unraisable on a tight image. That in turn makes
+# CONFIG_HW_STACK_PROTECTION unusable there, which is the one tool that names an
+# overflowing thread (issue 0821). 0 keeps the inherited default.
+if(DEFINED CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE AND NOT CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE EQUAL 0)
+    zephyr_compile_definitions(NROS_ZEPHYR_STACK_SIZE=${CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE})
+endif()
+if(CONFIG_NROS_ZEPHYR_TASK_SLOTS)
+    zephyr_compile_definitions(NROS_ZEPHYR_MAX_THREADS=${CONFIG_NROS_ZEPHYR_TASK_SLOTS})
+endif()
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c

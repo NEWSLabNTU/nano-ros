@@ -85,6 +85,8 @@ endif()
 if(CONFIG_NROS_ZENOH_LEASE_MS)
     zephyr_compile_definitions(Z_TRANSPORT_LEASE=${CONFIG_NROS_ZENOH_LEASE_MS})
 endif()
+
+
 if(CONFIG_NROS_ZENOH_LEASE_FACTOR)
     zephyr_compile_definitions(Z_TRANSPORT_LEASE_EXPIRE_FACTOR=${CONFIG_NROS_ZENOH_LEASE_FACTOR})
 endif()
