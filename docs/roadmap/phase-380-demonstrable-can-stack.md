@@ -1,6 +1,13 @@
 # Phase 380 — A demonstrable CAN stack
 
-**Status (2026-08-26). PROPOSED — nothing started.**
+**Status (2026-08-26). W0-W7 DONE. The container works.**
+
+`docker/can-demo/run.sh --zenoh <fork>` builds the stack and runs the demo: a
+ROS 2 topic crosses a CAN bus to another ROS 2 node **and** to a zenoh-pico
+peer, with no router and no TCP endpoint anywhere. Talker published 19, listener
+heard 19, the pico peer heard the same topic, frames on all three identifiers.
+`--negative` runs the control and it fails as it must; a genuine failure exits
+nonzero naming the cause.
 
 Implements [RFC-0082](../design/0082-a-demonstrable-can-stack.md). First phase of
 the upstreaming campaign: build the artifact that makes the argument, before
@@ -33,17 +40,56 @@ the revision phase-378 used.
 
 | | What | Proves | State |
 | --- | --- | --- | --- |
-| **W0** | Branch `feat/can-link-ros` off `2687c5135`; port the six commits; full suite plus `vcan0` E2E on the host | the link works at the revision ROS actually builds, which phase-378 never tested | |
-| **W1** | Retire `feat/can-link-1.8`; confirm `feat/can-link` still green on `main` | one source, two live targets, no drift | |
-| **W2** | Dockerfile builder: zenoh-c `05bd370` patched and built, CAN presence verified in the artifact | the ABI-matched library builds reproducibly from pinned sources | |
-| **W3** | Dockerfile builder: zenoh-pico with `Z_FEATURE_LINK_CAN=1`, `BATCH_MULTICAST_SIZE=63` | the island end builds in the image | |
-| **W4** | Runtime stage, configs, `vcan0` in the container's own netns, ROS talker → ROS listener | ROS 2 over CAN inside a container, no router, no TCP | |
-| **W5** | Add the zenoh-pico peer; three peers on one bus | the island story, end to end, in one command | |
-| **W6** | Self-verification: assert counts, print frame tallies, exit nonzero on failure | it is evidence rather than a log dump | |
-| **W7** | `README.md` + `run.sh`; state plainly what it does not prove | a stranger can run it and not be misled | |
+| **W0** | Branch `feat/can-link-ros` off `2687c5135`; port the six commits; full suite plus `vcan0` E2E on the host | the link works at the revision ROS actually builds, which phase-378 never tested | **done** |
+| **W1** | Retire `feat/can-link-1.8`; confirm `feat/can-link` still green on `main` | one source, two live targets, no drift | **done** |
+| **W2** | Dockerfile builder: zenoh-c `05bd370` patched and built, CAN presence verified in the artifact | the ABI-matched library builds reproducibly from pinned sources | **done** |
+| **W3** | Dockerfile builder: zenoh-pico with `Z_FEATURE_LINK_CAN=1`, `BATCH_MULTICAST_SIZE=63` | the island end builds in the image | **done** |
+| **W4** | Runtime stage, configs, `vcan0` in the container's own netns, ROS talker → ROS listener | ROS 2 over CAN inside a container, no router, no TCP | **done** |
+| **W5** | Add the zenoh-pico peer; three peers on one bus | the island story, end to end, in one command | **done** |
+| **W6** | Self-verification: assert counts, print frame tallies, exit nonzero on failure | it is evidence rather than a log dump | **done** |
+| **W7** | `README.md` + `run.sh`; state plainly what it does not prove | a stranger can run it and not be misled | **done** |
 
 W0 is the gate. If the link does not work at `2687c5135` the container premise
 is wrong and the stack choice has to be revisited before anything is built on it.
+
+### Results (2026-08-26)
+
+**W0 — the gate.** The link works at `2687c5135`, the revision ROS actually
+builds and which phase-378 never tested: 53 unit tests, all five `vcan0`
+end-to-end tests, clippy clean, default build unchanged, and zenoh-pico interop
+both ways with a fragmented 189-byte payload. The six commits cherry-picked with
+no conflicts.
+
+**W1.** `feat/can-link-1.8` retired after verifying its commit set was identical
+to the ROS branch's. Two lines remain: `feat/can-link` on `main` for the PR,
+`feat/can-link-ros` for the container.
+
+**W2-W7 — the container.** Two build-time discoveries, both now commented where
+they bite:
+
+* **Both zenoh-c manifests must be touched**, because its build script hands the
+  `opaque-types` helper crate the parent's `Cargo.lock` while that crate keeps
+  its own manifest.
+* **The dependency must be rewritten to a path, not redirected with `[patch]`.**
+  A `[patch]` leaves the original git source in place for cargo to resolve, and
+  that same build script invokes the sub-build with `--offline`, where resolving
+  `branch = "main"` from a cached checkout fails outright. This is a real
+  difference from the host-side script, which works only because nothing there
+  forces cargo offline.
+
+Verified in all three directions, which is the point of building it this way:
+
+| run | expectation | result |
+| --- | --- | --- |
+| default | listener and pico both hear the topic | **PASS**, exit 0 |
+| `--negative` | disjoint bands, listener hears nothing | **PASS**, exit 0 |
+| no `--cap-add=NET_ADMIN` | genuine failure | **exit 1**, cause named |
+
+Two entrypoint bugs the negative run caught, worth recording because both would
+have produced a green demo that proved less than it claimed: the readiness poll
+hardcoded the listener's identifier, so when the band moved it timed out instead
+of reporting the real result; and `grep -c` prints `0` *and* exits 1, so
+`|| echo 0` made the count `"0\n0"` and every integer test choked on it.
 
 ## 3. Acceptance criteria
 
