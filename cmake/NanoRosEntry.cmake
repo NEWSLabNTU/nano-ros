@@ -54,6 +54,13 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
 # workspace umbrella (phase-366). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureSet.cmake")
+# `nano_ros_support_library` / `nano_ros_link_support_libraries` — RFC-0065 D12,
+# phase-383 W7.e/W7.f. Included HERE because this module is the seam BOTH the
+# standalone path and the workspace-pkg guard (`_nros_import_once`) go through,
+# so a support package's `CMakeLists.txt` can call the keyword wherever it sits.
+# include_guard(GLOBAL)'d, and it defines only functions — no directory vars to
+# lose when this include's frame pops (the `_NROS_ENTRY_DIR` hazard).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSupportLibrary.cmake")
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -709,6 +716,17 @@ function(nano_ros_entry)
 \"lang\": \"${_lang_tag}\"}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_APPLICATIONS_JSON "${_entry}")
     _nros_metadata_emit()
+
+    # phase-383 W7.e — RFC-0065 D12: under D4 the entry package is GENERATED, so
+    # a user has no `CMakeLists.txt` here to add a link line to. The entry is the
+    # image, therefore the entry is the consumer of every support package this
+    # configure declared. Registering unconditionally is safe and deliberate:
+    # `_nano_ros_support_flush()` returns immediately when no support library
+    # exists, and the attach itself is deferred to the end of the top-level
+    # scope, so the support package may be read before OR after this one.
+    if(TARGET ${_NRA_NAME} AND COMMAND nano_ros_link_support_libraries)
+        nano_ros_link_support_libraries(${_NRA_NAME})
+    endif()
 endfunction()
 
 # ---------------------------------------------------------------------------
