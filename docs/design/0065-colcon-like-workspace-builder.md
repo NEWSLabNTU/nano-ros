@@ -194,7 +194,7 @@ naming the package and the manual step.
 
 | board | driver | stage 4 emits |
 | --- | --- | --- |
-| pure-Rust package set | **cargo** | a synthesized `[workspace] members` root |
+| pure-Rust package set | **cargo** | a synthesized `[workspace] members` root — **at `<ws>/Cargo.toml`, not under `build/`** (see below) |
 | any C/C++ package in the set | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
 | zephyr | **west** | nothing — sets env, `exec west build -b <board>` |
 | esp32 | **idf.py** | nothing — same shape |
@@ -203,6 +203,29 @@ Mixed is not a fourth case. RFC-0024 §6.3 already settled it: *"cargo can be
 consumed as a cmake target (via Corrosion); cmake cannot be consumed as a cargo
 target. So when the graph crosses languages, cmake wins."* One cmake configure
 per workspace is what preserves the single corrosion cargo tree.
+
+**Correction, 2026-08-26 (phase-383 W3.a): the CARGO root cannot live under
+`build/`.** An earlier draft of this RFC assumed every generated root is a
+build artefact like any other. Cargo rejects that twice over — a package
+belongs to exactly one workspace, resolved by walking UP from the package, and
+members must sit BELOW the workspace root:
+
+```text
+error: package `<ws>/src/helper/Cargo.toml` is a member of the wrong workspace
+error: workspace member `…` is not hierarchically below the workspace root
+       `<ws>/build/posix-zenoh`
+```
+
+So the cargo root is `<ws>/Cargo.toml` and the cmake root is
+`build/<coord>/CMakeLists.txt`. The asymmetry is cargo's, not a design choice.
+
+Two consequences. The generated cargo root shares a path with a user's
+hand-written one, so the builder **never overwrites an existing `[workspace]`
+root** — it uses it, and generates only when none exists; D13's migration is
+therefore a deletion, not a cutover. And stage 5 runs **from the workspace
+root** regardless, because cargo finds `.cargo/config.toml` by walking up from
+the CWD, and the leaf `[patch.crates-io]` redirects `nros sync` writes live
+there.
 
 **The rule that covers every exception:** *stage 4 emits a root only where a root
 would otherwise be hand-written.* west and ESP-IDF apps keep their own files
@@ -1004,6 +1027,13 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26 (f)** — **D3 corrected while implementing it** (phase-383 W3.a):
+  the cargo root cannot live under `build/`. Cargo resolves a package's
+  workspace by walking UP and requires members to sit BELOW the root, so the
+  cargo root is `<ws>/Cargo.toml` while the cmake root stays under `build/`.
+  Consequences recorded in D3: an existing `[workspace]` root is used and never
+  overwritten (so D13's migration is a deletion), and stage 5 runs from the
+  workspace root so `.cargo/config.toml` is still found.
 - **2026-08-26 (e)** — **D6 corrected on first contact with the code**: the
   `[deploy.*]` → `[image.*]` move is a SPLIT, not a rename. `[deploy.*]` is an
   upstream `deny_unknown_fields` type (ros-launch-manifest v0.1.11) whose own

@@ -9,10 +9,12 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). W1 COMPLETE. W2 all but W2.d (preflight) — `nros build`
-exists and builds Zephyr/ESP-IDF images today; cargo/cmake images resolve fully
-and report that stage 4 is unwritten. Fixed issue 0809 (two walks, two
-`.nros-ignore` spellings) which blocked W2.b. W3 (cargo root emitter) is next.**
+**Status (2026-08-26). W1 COMPLETE. W2 complete but W2.d (preflight). W3
+complete but W3.b (the entry emitter) — the cargo root is generated, or an
+authored one is used untouched. `nros build` builds Zephyr/ESP-IDF today and
+drives cargo for native Rust workspaces. Fixed issue 0809 en route, and
+corrected RFC-0065 D3: the cargo root cannot live under `build/` because cargo
+requires members below their root. W4 (cmake root) is next.**
 
 ## Goal
 
@@ -170,7 +172,7 @@ syntax error in `talker_pkg` yields identical stderr under both.
 
 Carries **F10**.
 
-- [ ] **W3.a** Emit `build/<coord>/Cargo.toml` with `[workspace] members` from
+- [x] **W3.a** Emit `build/<coord>/Cargo.toml` with `[workspace] members` from
       W2.a's union, `exclude` for west/idf entries, and the workspace-level
       `[patch]` set `nros sync` already computes.
 - [ ] **W3.b** **Emit the Rust entry** (RFC-0065 D4 — the heart of this
@@ -184,15 +186,15 @@ Carries **F10**.
       produce this shape for `nros codegen entry`; this wave gives them
       `(image, board)` as input instead of a hand-written package.
 
-- [ ] **W3.c** Output is **deterministic**: no timestamps, no absolute paths,
+- [x] **W3.c** Output is **deterministic**: no timestamps, no absolute paths,
       stable ordering. Gate it the way issue 0320 gated model paths —
       `check-no-absolute-model-paths` is the pattern to copy. A production
       build's reproducibility depends on this and nothing else in the phase
       enforces it.
-- [ ] **W3.d** `nros build a b c` builds several images in one invocation.
+- [x] **W3.d** `nros build a b c` builds several images in one invocation.
       **F10**: `nano-ros-rt-eval`'s `just build` is
       `cargo build -p native_entry -p peer_entry`.
-- [ ] **W3.e** Bare `nros build` honours `default_images`; absent it, a
+- [x] **W3.e** Bare `nros build` honours `default_images`; absent it, a
       multi-image workspace lists them and **fails**. `--all` opts in.
       `nano-ros-rt-eval`'s manifest documents why: a bare workspace build
       "would try [the cross-target member] for the host and fail".
