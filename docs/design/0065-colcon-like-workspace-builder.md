@@ -538,6 +538,63 @@ exactly like the in-tree ones, and the authoring story belongs to
 boundary explicitly because an overlay directory otherwise reads as covering it,
 and someone will try.
 
+### D13 — Migration is a third wave, and the old paths are retired
+
+The builder ships first and proves itself on new workspaces; **all nine of the
+repository's own workspace roots migrate once the feature is complete**; the
+hand-written paths are then **retired**, not left as a second supported shape.
+
+Ordering matters more than speed here. Migrating during development would mean
+re-migrating on every design change, and leaving the old paths alive
+indefinitely is how a tree ends up with two ways to build — the thing this RFC
+exists to remove. Yocto multiconfig settles that one-tree-many-boards is
+feasible, so the risk is sequencing, not design.
+
+### D14 — `--offline` is a scoped, honest guarantee
+
+A production build wants to state that it performed **no network I/O**: its
+inputs were what was on disk, and nothing was fetched while it ran. Three
+distinct needs sit behind that — SBOM correctness (a fetched dependency appears
+in no lockfile, so the SBOM describes the lockfile faithfully while the ghost
+never shows), reproducibility (a remote input can change between builds), and
+air-gapped environments (which need a loud failure, not a DNS timeout).
+
+**Five paths in this build can reach the network, not one:**
+
+| path | status |
+| --- | --- |
+| `nros setup` in stage 3 | what D2 governs |
+| `cargo` | mitigated — `scripts/bin/cargo` injects `--locked` project-wide; `--frozen` is `--locked --offline` |
+| cmake `FetchContent` for Corrosion | **live hole** — see below |
+| `west update` | not `west build`, but a stale workspace triggers it |
+| git submodules | provisioning-time |
+
+The Corrosion fallback is the one that matters, because it fires **inside stage
+5**, after the builder has handed off. `NanoRosCorrosion.cmake` describes itself:
+
+```cmake
+# the caller falls through to FetchContent, which is the offline-hostile but …
+FetchContent_Declare(Corrosion
+    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+```
+
+A configure with no matching prefix in the SDK store silently becomes a git
+clone, and issue 0500 already records that both provisioning paths "print
+success either way".
+
+**So the flag promises exactly two things**: stages 1–4 perform no network I/O,
+and stage 5 is invoked with the native tool's own offline spelling where one
+exists — `cargo --frozen`, and Corrosion resolved from the store or a **named
+failure** rather than a clone. It does **not** promise that an arbitrary user
+`CMakeLists.txt` refrains from fetching; a guarantee that cannot be kept is
+worse than none.
+
+The value is therefore not the flag but what it converts: **silent fallbacks
+become loud failures.** Vocabulary reuses what exists rather than minting a
+third word — `nros setup --check` is already "verify, name what is missing,
+fetch nothing", and issue 0676 records the `--offline`-vs-`--frozen` ruling for
+cargo.
+
 ### D12 — Third-party code enters through a package, and force-linking is a keyword
 
 Three shapes, and they do not want the same answer:
@@ -775,26 +832,11 @@ were checked in depth. ThreadX and the FreeRTOS vendor distributions
 
 ## Open questions
 
-Four of the original set were closed by evidence already in the tree; what
-remains is one scope call and one narrowed decision.
+**None.** Every question the drafts raised is now either a decision or a
+finding. This section is kept as the record of how each was closed, because two
+of them were closed by correcting a mistake rather than by choosing.
 
-- **Do the repo's own nine workspace roots migrate** as part of this work, or
-  only new user workspaces get the builder? Migrating them is the real proof it
-  works; not migrating leaves two shapes in one tree. Yocto multiconfig settles
-  that one-tree-many-boards is feasible, so this is purely sequencing and risk —
-  and it roughly doubles or halves the campaign.
-
-- **Does `--offline` get its own flag, or reuse what exists?** Two in-tree
-  precedents narrow this. `nros setup --check` is already the "verify, name what
-  is missing, fetch nothing" spelling, and `scripts/bin/cargo` records a ruling
-  on the vocabulary (issue 0676): *"`--offline` is NOT in this list,
-  deliberately. It restricts cargo to the local cache; it does NOT pin
-  resolution … `--frozen` stays: it means `--locked --offline` by definition."*
-  So the recommendation is to reuse `--check` semantics in stage 3 rather than
-  mint a third word — leaving only whether production also wants a single
-  top-level flag that states the guarantee.
-
-### Closed since the first draft
+### Closed
 
 - ~~What `panic` accepts~~ — it is the **existing** RFC-0077 policy enum
   (`platform` / `halt` / `own`), forwarded rather than redefined. See D5.
@@ -810,6 +852,19 @@ remains is one scope call and one narrowed decision.
   question presupposed a launch-file-derived name, which D6 superseded.
 - ~~Does `APPLICATION_CONFIG_DIR` reach `sysbuild.conf`~~ — yes; read from
   Zephyr v3.7.0's `sysbuild_kconfig.cmake`. See D8.
+- ~~Whether the repo's nine workspace roots migrate~~ — yes, as a third wave
+  after the feature is complete, and the old paths are then retired. **D13**.
+- ~~Whether `--offline` becomes a flag~~ — yes, as a deliberately scoped
+  guarantee, and its value is converting silent fallbacks into loud failures.
+  **D14**.
+- ~~Whether an `install/` tree exists~~ — no; `dist/<image>/` holding a set plus
+  a manifest. **D8**.
+- ~~How the per-package build is driven~~ — by the board, not the language mix.
+  **D3**.
+- ~~Where the target is declared~~ — `[image.<id>]` in the bringup's
+  `system.toml`, which already carried the triple. **D6**.
+- ~~Incremental behaviour~~ — one build tree per coordinate, never per package.
+  **D8**.
 
 ## Non-goals
 
@@ -822,6 +877,13 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26 (c)** — last two open questions become decisions. **D13**:
+  migration is a third wave — builder first, then all nine repository
+  workspaces, then the hand-written paths are RETIRED rather than kept as a
+  second supported shape. **D14**: `--offline` is a deliberately scoped
+  guarantee covering stages 1–4 plus the native tool's own offline spelling,
+  after finding that Corrosion's `FetchContent` fallback fires inside stage 5
+  and turns a missing store prefix into a silent git clone.
 - **2026-08-26 (b)** — open-question audit. Closed three from evidence already
   in the tree: `panic` is the **existing** RFC-0077 policy enum and D5's
   `"semihosting"` example was a category error (corrected); the deprecation
