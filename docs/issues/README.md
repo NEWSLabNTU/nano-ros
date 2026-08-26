@@ -667,13 +667,14 @@ through the bundle-aware resolver; the provisioning contract loads from either f
 family descriptor so `resolve_deploy` — shared by board-facts and the site-config gate — sees them.
 See `archived/0729-*`. (2026-08-20)
 
-**#0726** (build, open 2026-08-20) — the fixture build hardcodes `outer=4` and strips its own
-jobserver from children (`env -u MAKEFLAGS`), so 32 cores are statically split 4x8 and capacity cannot
-be reclaimed as stages drain. Measured on the lane=tier2 joblog: wall 1449 s, of which **655 s (45%)**
-runs ONE stage at an 8/32 = 25% ceiling; mean usable ceiling 20.7/32 = **65%**, and that is a ceiling
-not a measurement. `threadx_riscv64` alone is 1302 s. An `NROS_JOBSERVER=1` launcher already exists
-that shares FIFO tokens instead — unused, and its "needs pinned make 4.4" gate may be stale (system
-make is 4.4.1). Campaign issue; 0721 (gate I/O) already landed under it. See `0726-*`. (2026-08-20)
+Recently resolved (2026-08-26): **#0726** (build) — the premise was wrong and measuring it was the
+value. Lineage-scoped sampling of the build's OWN processes found mean 0.1 runnable, median 0, and
+92.6% of samples with nothing on CPU — permission to run was never the scarce resource, so no
+launcher change could help. The pooled launcher is kept opt-in (`NROS_BUILD_POOL=1`); the gate
+fan-out was REVERTED after it turned out to defeat cargo's shared target dir (serial 84 s vs
+fan-out >516 s). Kept: `nros_grep_q` + its ratchet, 0721's traversal fixes, two lineage samplers,
+and several real bugs. Six retractions and four lessons in phase-371's CLOSING SUMMARY.
+See `archived/0726-*`. (2026-08-26)
 
 Recently resolved (2026-08-20): **#0721** — gate scripts walked built trees to find tracked files, and the
 gate forbidding it could not read Python. Closed after RE-MEASURING: five of the seven scripts in the

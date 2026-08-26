@@ -1,7 +1,7 @@
 ---
 id: 726
 title: "The fixture build statically partitions 32 cores into 4x8, so 45% of its wall clock runs at a 25% CPU ceiling"
-status: open
+status: resolved
 type: performance
 area: build
 related: [issue-0648, issue-0721, issue-0466, issue-0616, issue-0500]
@@ -505,3 +505,29 @@ What survives, because it does not depend on live process sampling:
 * the CMake configure trace — a single-process profile, immune to what else is
   on the box, which is why it is the finding this campaign now rests on:
   `nros_resolve_corrosion` is 20 s of a 33 s leaf configure.
+
+## Resolved (2026-08-26): the premise was wrong, and measuring it was the value
+
+This issue opened on "the fixture build statically partitions 32 cores into 4x8,
+so 45% of its wall clock runs at a 25% CPU ceiling". That ceiling is real, and it
+is not why the build is slow.
+
+Lineage-scoped measurement — the build's OWN processes, 1327 samples — found
+**mean 0.1 runnable, median 0, and 92.6% of samples with nothing on CPU at all**.
+Permission to run was never the scarce resource, so no launcher change could have
+helped. The pooled launcher built for this issue works and is kept opt-in
+(`NROS_BUILD_POOL=1`); the gate fan-out built for it was REVERTED after it turned
+out to defeat cargo's shared target directory.
+
+Full accounting, including six retractions and the four durable lessons, is in
+[phase-371](../roadmap/phase-371-build-cpu-utilization.md)'s CLOSING SUMMARY.
+
+What came out of it and stays: the `nros_grep_q` error/non-match class and its
+ratchet gate, issue 0721's traversal fixes (>300 s -> 3 s on one gate), two
+lineage-scoped samplers, and several real bugs surfaced by running gates
+concurrently.
+
+Closing rather than continuing because the last five measurements each retired a
+proposed optimisation rather than enabling one. The remaining work — 0721's
+unconverted walk sites, nightly's unexamined cost profile, a cold-tree occupancy
+measurement — is ordinary and does not need a campaign.

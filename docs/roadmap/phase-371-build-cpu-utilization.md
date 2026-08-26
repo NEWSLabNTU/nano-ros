@@ -1,13 +1,10 @@
 # Phase 371 — fixture-build CPU utilization
 
-**Status (2026-08-20). In progress.** Two fixes landed (gate fan-out, pooled
-launcher — both opt-in). The campaign has now had FOUR explanations overturned
-by measurement, including its own most recent one: the 33 s leaf configure was a
-COLD-CACHE one-off, and a repeat configure into a fresh build dir is 2.0 s then
-1.0 s. No dominant cause is currently established. Implements the audit in
-[issue 0726](../issues/0726-fixture-build-cpu-underutilized.md); see also
-[0721](../issues/0721-gate-traversal-io-unbounded.md) (gate I/O) and
-[0648](../issues/archived/0648-cargo-package-cache-lock-serialises-the-fanout.md).
+**Status (2026-08-26). CLOSED.** The premise was wrong and the campaign proved
+it. Read the CLOSING SUMMARY at the bottom first — the sections above are a
+chronological log in which six conclusions were retracted, including two whose
+fixes had already shipped, so any individual section may be superseded by a later
+one.
 
 Goal: saturate the machine while building fixtures.
 
@@ -551,3 +548,93 @@ change before measuring it properly. The 45 s -> 7 s number was reproduced three
 times, which felt like enough — but all three runs shared the same warm
 precondition, so repetition confirmed nothing. **Repeating a measurement is not
 the same as varying its preconditions.**
+
+
+---
+
+# CLOSING SUMMARY (2026-08-26)
+
+Read this instead of the log above. The log is kept because the retractions are
+the most useful part of it, but several of its sections argue for things later
+sections disprove.
+
+## The premise was wrong
+
+The campaign opened on "the fixture build statically partitions 32 cores into
+4x8, so 45% of its wall clock runs at a 25% CPU ceiling" — i.e. the build is
+CPU-starved by scheduling. It is not.
+
+Lineage-scoped measurement (1327 samples, the build's OWN processes only):
+
+| | |
+| --- | --- |
+| alive | mean 36.3 |
+| **runnable** | **mean 0.1, median 0** |
+| samples with NOTHING on CPU | **92.6%** |
+
+Permission to run was never the scarce resource. Every scheduling change this
+phase made — pooled launcher, token sharing, stage overlap — allocates
+permission.
+
+## What LANDED and is worth keeping
+
+* **`nros_grep_q` + `check-grep-q-error-conflation`** (134 sites baselined).
+  `grep` exits 1 for "no match" and >=2 for an ERROR; `if !` cannot tell them
+  apart, so a forked grep that failed to start became a confident, specific,
+  FALSE claim about the source tree — green->red under load only. Found because
+  running gates concurrently exposed it.
+* **Traversal I/O fixes (issue 0721)** — `check-no-std-stdio` >300 s -> 3 s,
+  `check-example-leaf-target-dirs` >90 s -> 2 s, and
+  `check-no-tracked-file-find` widened to read Python, which has since caught a
+  new site. `examples/` is 828 GB on disk; `rglob` over it never finished, the
+  index answers in 0.002 s.
+* **Measurement tooling** — `sample-build-lineage.sh` and
+  `sample-build-wchan.sh`, both scoped by process lineage and validated against
+  a known tree before use.
+* **Three real bugs** surfaced by running gates concurrently, plus the
+  `env_compat.hpp` FreeRTOS-only include that was breaking every other platform.
+
+## What was REVERTED or RETRACTED — do not re-attempt without reading why
+
+| claim | verdict |
+| --- | --- |
+| gate fan-out is 45 s -> 7 s, make it default | **REVERTED.** The fan-out invokes `just <gate>` per gate, which defeats cargo's shared target dir. Serial 84 s vs fan-out >516 s on the same tree. The 7 s figure was measured on a target dir a preceding SERIAL run had warmed. |
+| `~/.cargo` caching in CI, "correct on first principles" | **RETRACTED.** CI timings show no cargo-download step to speed up. |
+| `nros_resolve_corrosion` is 20 s of every leaf configure | **RETRACTED.** Cold-cache one-off; a repeat configure into a fresh build dir is 2.0 s then 1.0 s. |
+| the gate phase costs 481 s | **RETRACTED.** 90 s warm; the 481 s was cold and contended. |
+| cmake dominates, 22.6% I/O waits | **WITHDRAWN.** Measured a concurrent Autoware container build, not ours. |
+| three real reds on main | **RETRACTED.** Unmet preconditions (stale CLI, moved submodule pin). |
+
+## The durable lessons
+
+1. **Repeating a measurement is not varying its preconditions.** The 45 s -> 7 s
+   number was reproduced three times and was wrong all three, because every run
+   shared the same warm target dir.
+2. **Scope samplers by process LINEAGE, not by name.** Two samplers were wrong
+   before either produced a usable number: one matched its own command line via
+   `pgrep -f`, the other counted an unrelated build's compilers.
+3. **Failing solo separates a concurrency artifact from a real failure — it does
+   NOT separate a real failure from an unmet precondition.**
+   `just check-tier-preconditions` reports all of those at once.
+4. **Cold vs warm is a 5x spread on this tree**, and a single measurement taken
+   just after disturbing it is not evidence.
+
+## What remains, for whoever wants it
+
+Ranked, with the dead items already removed:
+
+* **Issue 0721's 86 unconverted walk sites.** Value went UP: `d_alloc_parallel`
+  in the wchan data is dentry contention from concurrent path lookup.
+* **Nightly, not pr-checks.** pr-checks is a 200 s job; nightly is 1681 s and
+  five of its eight jobs were aborting in 2-5 s (issue 0797, since fixed). Its
+  cost profile — container init ~500 s across jobs, the CLI rebuilt per job
+  ~420 s, `threadx_riscv64` 837 s of build — is unexamined.
+* **A cold-tree occupancy measurement.** Everything here is warm-tree and
+  gate-dominated; nothing is known about the compile phase.
+
+## Why this is CLOSED rather than continued
+
+Its last five measurements each RETIRED a proposed optimisation rather than
+enabling one. That is a real result — the build is not where this project's time
+goes — but it is also the signal to stop. The remaining items above are ordinary
+work and do not need a campaign around them.
