@@ -6914,7 +6914,7 @@ impl<'s> Executor<'s> {
     /// executor.spin_blocking(SpinOptions::default())?;
     ///
     /// // Spin with 5-second timeout
-    /// executor.spin_blocking(SpinOptions::new().timeout_ms(5000))?;
+    /// executor.spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_secs(5)))?;
     ///
     /// // Single iteration
     /// executor.spin_blocking(SpinOptions::spin_once())?;
@@ -6943,7 +6943,7 @@ impl<'s> Executor<'s> {
         // do about it. An UNTIMED `spin_blocking` still runs until halt, which
         // is a promise this build can keep.
         let start_us = self.now_us();
-        if opts.timeout_ms.is_some() && start_us.is_none() {
+        if opts.timeout.is_some() && start_us.is_none() {
             nros_log::nros_error!(
                 nros_log::get_logger("nros"),
                 "spin_blocking: a timeout was requested but this build has no clock \
@@ -6951,7 +6951,9 @@ impl<'s> Executor<'s> {
             );
             return Err(NodeError::NotInitialized);
         }
-        let timeout_us = opts.timeout_ms.map(|ms| ms * 1_000);
+        // `as_micros()` rather than a hand-rolled `ms * 1_000`: the multiply
+        // was unchecked, and the unit conversion is `Duration`'s job.
+        let timeout_us = opts.timeout.map(|d| d.as_micros() as u64);
         let mut total_callbacks = 0usize;
 
         self.halt_flag

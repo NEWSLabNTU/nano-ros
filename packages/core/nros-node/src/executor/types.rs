@@ -115,8 +115,16 @@ pub struct SpinPeriodResult {
 /// to control when the spin loop exits.
 #[derive(Debug, Clone, Default)]
 pub struct SpinOptions {
-    /// Stop after this duration (in milliseconds)
-    pub timeout_ms: Option<u64>,
+    /// Stop after this duration.
+    ///
+    /// phase-379 W5 — a `Duration`, not a `u64` of milliseconds. The `_ms`
+    /// suffix was inconsistent with the two methods that consume these options
+    /// (`Executor::spin_once` and `Executor::spin` already take
+    /// `core::time::Duration`) as well as with rclrs's `SpinOptions::timeout`.
+    /// Milliseconds ARE the unit the platform ABI's wait primitives take, but
+    /// that conversion belongs at the ABI boundary, where it already happens —
+    /// not in the public option a user writes.
+    pub timeout: Option<core::time::Duration>,
     /// Only process immediately available work (single iteration)
     pub only_next: bool,
     /// Stop after processing this many callbacks total
@@ -127,22 +135,27 @@ impl SpinOptions {
     /// Create default spin options (spin forever until halted)
     pub const fn new() -> Self {
         Self {
-            timeout_ms: None,
+            timeout: None,
             only_next: false,
             max_callbacks: None,
         }
     }
 
-    /// Set a timeout duration
-    pub const fn timeout_ms(mut self, ms: u64) -> Self {
-        self.timeout_ms = Some(ms);
+    /// Set a timeout duration.
+    ///
+    /// Matches rclrs's `SpinOptions::timeout(Duration)`. Stays `const` — ours
+    /// is a strict superset there, and `Duration::from_millis` is const-stable
+    /// well below this workspace's MSRV, so `SpinOptions::new().timeout(
+    /// Duration::from_millis(50))` is usable in a const context.
+    pub const fn timeout(mut self, timeout: core::time::Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
     /// Only process one round of work (equivalent to spin_once)
     pub const fn spin_once() -> Self {
         Self {
-            timeout_ms: None,
+            timeout: None,
             only_next: true,
             max_callbacks: None,
         }

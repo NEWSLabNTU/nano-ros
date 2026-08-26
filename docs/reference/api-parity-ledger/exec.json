@@ -1025,20 +1025,6 @@
     "verdict": "extension",
     "why": "stop after N callbacks in one blocking spin. rclrs bounds a spin by time or by a promise resolving; a bounded-WCET RTOS task needs a bound on WORK, because the time bound only tells it when to give up, not how much it may have already done. See `rust:SpinOptions::timeout_ms`."
   },
-  "rust:SpinOptions::timeout": {
-    "verdict": "rename",
-    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours is `SpinOptions::timeout_ms` -- a public `Option<u64>` field plus a `pub const fn timeout_ms(u64)` builder (`packages/core/nros-node/src/executor/types.rs:119,137`). `core::time::Duration` is available in no_std, so nothing forces the milliseconds -- and our own `Executor::spin_once` and `Executor::spin` already take a `Duration`, so the `_ms` suffix is inconsistent inside our own Rust API as well as against rclrs. Ours half: `rust:SpinOptions::timeout_ms` -- CORRECTION 2026-08-26: it is recorded in THIS shard (exec.json) and `--check` is green with it there; the older claim that the report filed it under the `other` stage 'so it cannot be recorded here' is stale. Phase 379 W5; facts gathered 2026-08-26, the decision is still a human's -- see `blocker`.",
-    "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "NEEDS A HUMAN, one question: may the PUBLIC Rust option carry the platform ABI's unit when its two sibling entry points already do not? Everything else is settled (verified 2026-08-26). (1) THE TWO ROWS DO NOT DISAGREE ON FACT, only on layer. This row is right that `Executor::spin_once(&mut self, timeout: core::time::Duration)` (nros-node/src/executor/spin.rs:5368) and `Executor::spin(&mut self, timeout: Duration) -> !` (spin.rs:6272) take `Duration`. The ours-half row (`rust:SpinOptions::timeout_ms`, verdict extension) is right that ms is the ABI unit: spin.rs:5369 converts straight back (`timeout.as_millis().min(i32::MAX as u128) as i32`) into `drive_io(i32)`, and the platform hook is `RuntimeHooks::spin_once(&mut self, timeout_ms: u32)` (nros-platform/src/board/runtime.rs:94). Both true; the public layer has already chosen `Duration` twice. (2) THE `const fn` OBJECTION DOES NOT HOLD: MSRV is 1.75 (root Cargo.toml:525) and `Duration::from_millis` has been a `const fn` since Rust 1.32, so `pub const fn timeout(mut self, d: Duration) -> Self` compiles unchanged at MSRV; `Duration` is `Copy`, so the by-value `mut self` builder shape survives verbatim. (3) BLAST RADIUS IS 9 SITES, ALL IN-TREE: field reads at executor/tests.rs:1670,1678; builder calls at executor/tests.rs:1677,1737,1811; ONE consumption, spin.rs:6946 + 6954 (`opts.timeout_ms.map(|ms| ms * 1_000)`, whose unchecked multiply an `as_micros()` would delete); one doc example, spin.rs:6917; two book sites, book/src/concepts/rtos-cooperation.md:50,112. NO struct-literal construction outside types.rs, NO C or C++ exposure (`SpinOptions` appears in neither nros-c nor nros-cpp), no example, fixture or generated code. (4) IT IS A PUBLIC RUST BREAK EITHER WAY -- the field is `pub`, so a rename of the builder alone would not hide it."
-    }
-  },
-  "rust:SpinOptions::timeout_ms": {
-    "verdict": "extension",
-    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours takes milliseconds as a `u64`, which is the unit the platform ABI's wait primitives take on every port. So the OPTION matches (the type `SpinOptions` correlates) and only the setter does not."
-  },
   "rust:SpinOptions::until_promise_resolved": {
     "verdict": "declined",
     "why": "rclrs spins until a promise resolves, hiding the executor inside the wait. RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`. Ours inverts the call: `promise.wait(&mut executor, timeout)`, which cannot deadlock because the caller must hand over the executor to be driven. See the service stage's `cpp:Client::async_send_request`."

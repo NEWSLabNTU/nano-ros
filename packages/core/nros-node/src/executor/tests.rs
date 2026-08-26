@@ -1667,15 +1667,17 @@ fn test_spin_one_period_exact() {
 #[test]
 fn test_spin_options_default() {
     let opts = SpinOptions::default();
-    assert!(opts.timeout_ms.is_none());
+    assert!(opts.timeout.is_none());
     assert!(!opts.only_next);
     assert!(opts.max_callbacks.is_none());
 }
 
 #[test]
 fn test_spin_options_builders() {
-    let opts = SpinOptions::new().timeout_ms(5000).max_callbacks(10);
-    assert_eq!(opts.timeout_ms, Some(5000));
+    let opts = SpinOptions::new()
+        .timeout(core::time::Duration::from_secs(5))
+        .max_callbacks(10);
+    assert_eq!(opts.timeout, Some(core::time::Duration::from_secs(5)));
     assert_eq!(opts.max_callbacks, Some(10));
     assert!(!opts.only_next);
 
@@ -1734,7 +1736,7 @@ fn spin_blocking_with_a_timeout_and_no_clock_errors() {
     executor.clock_us_fn = None;
 
     let err = executor
-        .spin_blocking(SpinOptions::new().timeout_ms(50))
+        .spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_millis(50)))
         .expect_err("a timeout with no clock must fail, not spin forever");
     assert_eq!(err, NodeError::NotInitialized);
 }
@@ -1808,7 +1810,8 @@ fn test_spin_blocking_timeout() {
     let mut executor: Executor = executor_with_clock(session);
 
     let start = std::time::Instant::now();
-    let result = executor.spin_blocking(SpinOptions::new().timeout_ms(50));
+    let result =
+        executor.spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_millis(50)));
     assert!(result.is_ok());
     // Should exit within a reasonable time after 50ms timeout
     assert!(start.elapsed() < std::time::Duration::from_secs(2));
