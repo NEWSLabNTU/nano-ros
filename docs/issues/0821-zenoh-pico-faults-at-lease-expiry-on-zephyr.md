@@ -80,13 +80,90 @@ should be settled before anyone trusts the config as a mitigation.**
 **Not fixed by `CONFIG_NROS_ZENOH_LEASE_MS`.** Raising the lease only moves
 the fault later, exactly proportionally, as the table above shows.
 
+## Eliminated (2026-08-27)
+
+**Not `_z_reopen`.** Built with `Z_FEATURE_AUTO_RECONNECT=0`, so the weak
+upgrade and the reopen are compiled out of `_zp_unicast_failed` entirely. The
+board still faulted, at `00:00:20.133`, identically. So the reopen-from-inside
+-the-dying-task shape is real but is NOT what kills it — whatever does happens
+in the teardown before that, or in `_z_task_exit` after it.
+
+## The register dump says stack, not control flow
+
+Every register in the frame is zero — r0-r3, r12, lr, **xpsr**, all of s[0..15],
+fpscr, pc. `xpsr = 0x00000000` is impossible for a real exception frame; the
+Thumb bit alone is always set. So the CPU did not jump somewhere wrong and
+fault — it **unstacked an exception frame out of zeroed memory**. That is a
+dead or clobbered stack pointer, which reframes this from "null function
+pointer" to "a stack was destroyed".
+
+Note also `Current thread: idle`, not the lease task, which fits: the damage is
+observed at a context switch rather than at the instruction that caused it.
+
+## Enabling the MPU guard finds a DIFFERENT overflow
+
+`CONFIG_HW_STACK_PROTECTION` was **off** in this image despite
+`CONFIG_ARM_MPU=y`, so stack overflows were silent corruption. Turning it on
+gets a named fault immediately — but at boot, not at expiry, and in a place
+with nothing to do with zenoh:
+
+```
+***** MPU FAULT ***** Data Access Violation
+>>> ZEPHYR FATAL ERROR 2: Stack overflow on CPU 0
+Current thread: 0x2040c818 (main)
+pc  0x00433db0  compiler_builtins::arm::__aeabi_memset4
+lr  0x0042a6a6  <nros_node::executor::spin::Executor>::assemble
+                packages/core/nros-node/src/executor/spin.rs:1396
+```
+
+`Executor::assemble` returns `Self { ... }` — the whole `Executor`, with its
+fixed-size tables, is built **by value on the caller's stack** and memset
+there before being moved. On `main`'s 8 KiB that is close enough to the limit
+that adding an MPU guard region tips it over. This is a nano-ros defect in its
+own right and is filed separately from this issue's fault.
+
+**And `main` cannot simply be given more stack**, because zenoh-pico's Zephyr
+port ties its own task stacks to it:
+
+```c
+#define Z_PTHREAD_STACK_SIZE_DEFAULT CONFIG_MAIN_STACK_SIZE
+K_THREAD_STACK_ARRAY_DEFINE(thread_stack_area, Z_THREADS_NUM /* 4 */, Z_PTHREAD_STACK_SIZE_DEFAULT);
+```
+
+Raising `CONFIG_MAIN_STACK_SIZE` 8192 -> 16384 therefore also quadruples into
+4 x 16 KiB of zenoh stacks, and the image fails to link: *"region `RAM'
+overflowed by 21588 bytes"*.
+
+## The fault is build-sensitive, which is itself evidence
+
+Built with `CONFIG_THREAD_ANALYZER` + `CONFIG_INIT_STACKS`, the fault **does
+not reproduce**: 230 publishes, zero faults across a 120 s run, where the
+baseline build dies at 40 publishes. Peak stack use reported at the end:
+
+| thread | usage |
+| --- | --- |
+| `main` | 4860 / 8192 (59 %) |
+| `sysworkq` | 216 / 4096 (5 %) |
+| `idle` | 48 / 320 (15 %) |
+
+A defect that disappears when stacks are pattern-filled and a sampling thread
+is added is characteristic of **memory corruption / use of uninitialised
+stack**, not of a deterministic logic error. Consistent with the all-zero
+exception frame: uninitialised stack on this target reads as zero, and a
+frame unstacked from it gives exactly `pc = 0`.
+
+Caveat on that run, stated because it weakens the result: the analyzer
+enumerated only `main`, `sysworkq`, `idle` and `thread_analyzer` — **no zenoh
+read or lease task** — so the session may not have been established at all,
+and "230 publishes" may be the app publishing into a dead session rather than
+a healthy link. Not yet distinguished.
+
 ## Next step
 
-The one-flag experiment that would confirm the teardown outright is
-`Z_FEATURE_AUTO_RECONNECT=0`: if the board then survives expiry (session
-simply ends, no reopen), the fault is in the reopen-from-inside-the-task path
-and the fix is to hand the reconnect to a thread that is not the one being
-torn down. Not yet run.
+Establish whether the surviving run had a live session (check the router for a
+transport, not just the board for publishes). If it did not, the
+non-reproduction is meaningless and the analyzer build needs re-running with
+the link confirmed up.
 
 ## Impact
 
