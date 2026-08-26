@@ -41,6 +41,7 @@ Compiles. **No CI lane can boot it** — real hardware or a license-gated model 
 
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
+| `nros-board-mps3-an536-freertos` | — | aeon | Cortex-R52 FreeRTOS on QEMU's mps3-an536, dual-core part. Boots, networks over LAN9118/lwIP, and delivers CycloneDDS pub/sub end to end (phase-385 W2/W3/W5). Tier 3 only because no runtime matrix cell exists yet (W4 partial); it is not build-only in the usual sense. W6 is open: two guests on a shared virtual LAN stall when the second participant appears. |
 | `nros-board-s32z270-freertos` | — | *unassigned* | S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port. |
 | `nros-board-zephyr` | Fvp | *unassigned* | **Gated SDK: `arm-fvp`.** License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for. |
 
