@@ -1210,7 +1210,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         let data = self
             .feedback_subscriber
             .try_recv_raw(&mut self.feedback_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
+            .map_err(NodeError::Transport)?;
 
         let len = match data {
             Some(len) => len,

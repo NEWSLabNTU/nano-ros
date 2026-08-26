@@ -653,6 +653,14 @@ re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-
 
 
 
+**#0819** (rmw, open 2026-08-26) — XRCE payloads at/above the 4096 transport MTU are DELIVERED CORRUPTED
+rather than refused. With `NROS_XRCE_BUFFER_SIZE` raised so the receive ring is not the constraint,
+3584-byte payloads arrive 10/10 valid and 4096-byte payloads arrive 10/10 INVALID — `try_recv_raw` returns
+`Ok(Some(len))`, no counter moves, and only an application that validates its own payload can tell. Found
+while correcting phase-384, whose 1024-byte cliff turned out to be `XRCE_BUFFER_SIZE` (ours, raisable, and
+it refuses LOUDLY with `MessageTooLarge`); raising past that one exposes this one, which does not refuse at
+all. Truncation point not yet located in the client. See `0819-*`. (2026-08-26)
+
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
 reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
 size of '15' bytes`. The server starts and listens (its startup output is in the assert precisely to rule

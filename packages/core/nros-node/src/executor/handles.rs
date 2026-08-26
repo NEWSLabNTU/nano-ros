@@ -1100,7 +1100,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         match self
             .handle
             .try_recv_raw(&mut self.buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?
+            .map_err(NodeError::Transport)?
         {
             Some(len) => {
                 // W3b.5 — record take-age for contracted endpoints.
@@ -1119,7 +1119,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
             .try_recv_raw(&mut self.buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+            .map_err(NodeError::Transport)
     }
 
     /// Get the receive buffer (valid after `try_recv_raw`).
@@ -1340,7 +1340,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
             .try_recv_raw(&mut self.buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+            .map_err(NodeError::Transport)
     }
 
     /// Phase 128.F.4 — raw receive that also surfaces the incoming
@@ -1361,7 +1361,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     ) -> Result<Option<(usize, usize)>, NodeError> {
         self.handle
             .try_recv_raw_with_attachment(&mut self.buffer, att_buf)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+            .map_err(NodeError::Transport)
     }
 
     /// Phase 252 / issue 0073 — raw receive that also returns the E2E
@@ -1377,7 +1377,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         use nros_rmw::Subscription as _;
         self.handle
             .try_recv_validated(&mut self.buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+            .map_err(NodeError::Transport)
     }
 
     /// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued
