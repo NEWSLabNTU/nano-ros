@@ -77,3 +77,79 @@ The same sweep found no delivery difference between any arm, including the
 most of their period, so priority ordering never binds. Justifying the value
 of the floor needs a saturating workload and a latency measure, not a message
 count. That question is RFC-0079's open one and stays open.
+
+## Narrowing, 2026-08-26 — the attr is NOT where the value is lost
+
+Two things are now established without privileges, and together they eliminate
+the hypothesis this issue proposed.
+
+### 1. The attribute carries the requested priority, through the copy
+
+`zpico_set_task_config`'s exact POSIX sequence, replayed standalone — `memset`,
+`pthread_attr_init`, then `zpico_posix_fifo_set_priority`'s three setters, then
+the session's `s->read_task_attr = g_default_read_task_attr` struct assignment:
+
+```
+FIFO range: [1, 99]
+after init                   policy=OTHER inherit=INHERIT prio=0
+setters rc: policy=0 inherit=0 param=0
+after set_priority(90)       policy=FIFO inherit=EXPLICIT prio=90
+after struct copy            policy=FIFO inherit=EXPLICIT prio=90
+```
+
+All three setters return 0, and the byte-copy of a glibc `pthread_attr_t`
+preserves policy, inherit-mode and param. This needs no capability: setting
+fields on an attribute object never does, which is why it is checkable on a host
+where the real path cannot run at all.
+
+So neither the `memset`-before-`pthread_attr_init` nor the struct assignment
+loses the value. (The copy does duplicate glibc's internal extension pointer,
+which is a latent double-free hazard on `pthread_attr_destroy` — worth its own
+look, but not this bug.)
+
+### 2. The forwarding chain does not drop it either
+
+Read at the pinned zenoh-pico commit:
+
+```
+zpico_open:   read_opts = s->read_task_configured ? &s->read_task_opts : NULL
+zp_start_read_task(api.c:2152)      -> _zp_start_read_task(.., opt.task_attributes)
+_zp_start_read_task(session.c:450)  -> _zp_unicast_start_read_task(&zn->_tp, attr, task)
+_zp_unicast_start_read_task(read.c) -> _z_task_init(task, attr, ..)
+_z_task_init(unix/system.c:131)     -> pthread_create(task, attr, fun, arg)
+```
+
+Nothing nulls, rewrites or re-inits the attribute along it.
+
+### 3. Therefore the stated hypothesis is out
+
+The Notes say priority 1 "is exactly what `zpico_posix_rt_permitted()` puts on
+the calling thread while probing, which is what an inheriting spawn would pick
+up". A spawn inherits only when the attr is NULL or carries
+`PTHREAD_INHERIT_SCHED`. Section 1 shows it carries `PTHREAD_EXPLICIT_SCHED`,
+and section 2 shows it arrives.
+
+**Unless `read_task_configured` is false** — then `read_opts` is NULL, the
+attribute never reaches `pthread_create`, and the thread inherits exactly as
+described. That is the one branch left standing, and it is what the next
+instrumented run should print first: `g_default_read_task_configured` and
+whether `read_opts` is NULL at the `zp_start_read_task` call.
+
+Two other candidates eliminated while here: the weak `zpico_set_task_config`
+stub is FreeRTOS-only (`nros-board-freertos/c/freertos_c_entry.c`, not linked on
+Linux — the phase-386 weak-body class does not apply), and `nros-board-linux`
+passes a literal `TRANSPORT_BAND_FLOOR = 90`, so nothing normalises it on the
+way in.
+
+### Why it was not confirmed here
+
+This host cannot run the path at all: `RLIMIT_RTPRIO` is 0 soft / 0 hard and
+there is no `CAP_SYS_NICE`, so `zpico_posix_rt_permitted()` returns 0 and
+`zpico_posix_fifo_set_priority` early-returns. Confirming needs
+`setcap cap_sys_nice+ep` on the entry binary, which needs root.
+
+### Correction to this issue's Notes
+
+`TEMP-0079-DIAG` is **not in the tree** — `git grep` finds neither it nor
+`NROS_TMP_TRANSPORT_PRIO`, the runtime override the four measured arms varied.
+Whoever picks this up cannot re-run the table as written without restoring both.
