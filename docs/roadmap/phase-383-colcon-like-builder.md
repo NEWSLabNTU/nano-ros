@@ -9,11 +9,10 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). W1 COMPLETE — `[image.<id>]` schema, `[image_defaults]`
-overlay, default-image selection, `panic` validation, board resolution and the
-deprecation lint. 24 module tests, 595 lib tests green, clippy clean. W2 next,
-and it must settle the `Deploy.extra` coupling recorded below before W3/W4
-consume the resolved model.**
+**Status (2026-08-26). W1 COMPLETE. W2 all but W2.d (preflight) — `nros build`
+exists and builds Zephyr/ESP-IDF images today; cargo/cmake images resolve fully
+and report that stage 4 is unwritten. Fixed issue 0809 (two walks, two
+`.nros-ignore` spellings) which blocked W2.b. W3 (cargo root emitter) is next.**
 
 ## Goal
 
@@ -136,16 +135,16 @@ Carries **F4, F9**. Delivers `nros build` for the cases needing **no**
 generation (west, ESP-IDF, copy-out leaves), so the pipeline is proven before
 any emitter exists.
 
-- [ ] **W2.a** Stage 1 discovery = the `package.xml` walk **UNION the cargo
+- [x] **W2.a** Stage 1 discovery = the `package.xml` walk **UNION the cargo
       members already visible**. **F4**: `nano-ros-rt-eval/src/island_clock/`
       is `Cargo.toml` + `src/` with no `package.xml`; a members list derived
       from the walk alone drops it and the build dies on an unresolved path
       dependency.
-- [ ] **W2.b** Honour `.nros-ignore` / `COLCON_IGNORE` in the walk. **F9**:
+- [x] **W2.b** Honour `.nros-ignore` / `COLCON_IGNORE` in the walk. **F9**:
       `nano-ros-rt-eval` vendors nano-ros as a submodule and `touch`es
       `.nros-ignore` so the walk does not descend into it. `nros-pkg-index`
       already knows both markers — assert it, do not re-implement it.
-- [ ] **W2.c** Wire stages 1→2→3→5 with **no stage 4**: resolve the image,
+- [x] **W2.c** Wire stages 1→2→3→5 with **no stage 4**: resolve the image,
       preflight, then `exec` the framework tool. Zephyr and ESP-IDF need no
       generated root (RFC-0065 D3), so this is a complete, shippable
       `nros build` for them.
@@ -156,7 +155,7 @@ any emitter exists.
       naming the package and the manual `nros setup` line. Reuse
       `nros setup --check`'s existing "verify, name what is missing, fetch
       nothing" path rather than a second implementation.
-- [ ] **W2.e** Stage 5 is `execvp`, not a pipe, not `Command::output()`. The
+- [x] **W2.e** Stage 5 is `execvp`, not a pipe, not `Command::output()`. The
       test asserts that a deliberately broken source produces **byte-identical
       stderr** to the native tool invoked directly. This is the whole RFC-0024
       §2.4 reconciliation; if it is a pipe, the amendment is void.
@@ -417,8 +416,25 @@ of `board`/`target` is not, and needs one of: passing the image set into
 `apply_to_launch` as a second input (an upstream change), or having nano-ros
 populate `Deploy.extra` from `[image.*]` after the resolver returns.
 
-**W2 must settle this before W3/W4 consume the resolved model.** It is the one
-place where the clean conceptual split meets a dirty implementation seam.
+**RESOLVED 2026-08-26, and it was smaller than this first read.** Measured
+rather than assumed: upstream writes `kind`, `target`, `framework`, `profile`,
+`optimize`, `features`, `deploy_name` into `extra`, and nano-ros reads exactly
+three keys anywhere in the tree — `kind` (Str), `edf` (Bool), `cores` (Int).
+
+The intersection is **`kind` alone**, and `kind` is PLACEMENT: it stays in
+`[deploy.*]`, which is upstream's table and is not being retired. So moving
+build fields out empties `extra` of keys nano-ros reads NOWHERE, and no shim is
+needed in either direction.
+
+Two by-products worth keeping:
+
+* `edf` and `cores` are read but **cannot be authored** — `DeployBlock` is
+  `deny_unknown_fields` and declares neither. A dead knob, reachable only by
+  hand-editing a resolved model.
+* the proc-macro path does NOT go through `model_ingest::load_model`; it parses
+  the YAML itself. Any future patch of the resolved model must target the
+  artifact (the `stamp_resolver_pin` precedent), not the loader, or it reaches
+  only half the consumers.
 
 Second-highest risk site: `scripts/check-site-config.py --write` GENERATES
 `[deploy.<n>.nros]` blocks, so it must be retargeted or the gate will fight the
