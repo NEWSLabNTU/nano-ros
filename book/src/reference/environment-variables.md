@@ -118,23 +118,60 @@ guidance and platform guides for target-specific sizing.
 | `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS`.                      | `30000`          | nros-smoltcp  |
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`.                       | `10000`          | nros-smoltcp  |
 
-### XRCE-DDS (`XRCE_*`)
+### XRCE-DDS (`NROS_XRCE_*`)
 
-| Variable                               | Description                                                              | Default        | Crate         |
-|----------------------------------------|--------------------------------------------------------------------------|----------------|---------------|
-| `XRCE_TRANSPORT_MTU`                   | Custom transport MTU; also sizes stream buffers (4x MTU) and UDP staging | `4096` / `512` | xrce-sys      |
-| `XRCE_MAX_SUBSCRIBERS`                 | Max concurrent subscribers                                               | `8`            | nros-rmw-xrce |
-| `XRCE_MAX_SERVICE_SERVERS`             | Max concurrent service servers                                           | `4`            | nros-rmw-xrce |
-| `XRCE_MAX_SERVICE_CLIENTS`             | Max concurrent service clients                                           | `4`            | nros-rmw-xrce |
-| `XRCE_BUFFER_SIZE`                     | Per-slot static buffer size                                              | `1024`         | nros-rmw-xrce |
-| `XRCE_STREAM_HISTORY`                  | Reliable stream history depth (must be >= 2)                             | `4`            | nros-rmw-xrce |
-| `XRCE_ENTITY_CREATION_TIMEOUT_MS`      | Timeout for entity creation                                              | `1000`         | nros-rmw-xrce |
-| `XRCE_SERVICE_REPLY_TIMEOUT_MS`        | Timeout for service replies                                              | `1000`         | nros-rmw-xrce |
-| `XRCE_SERVICE_REPLY_RETRIES`           | Number of service reply retries                                          | `5`            | nros-rmw-xrce |
-| `XRCE_MAX_SESSION_CONNECTION_ATTEMPTS` | Max session connection attempts                                          | `10`           | xrce-sys      |
-| `XRCE_MIN_SESSION_CONNECTION_INTERVAL` | Min interval between connection attempts (ms)                            | `25`           | xrce-sys      |
-| `XRCE_MIN_HEARTBEAT_TIME_INTERVAL`     | Min heartbeat interval (ms)                                              | `100`          | xrce-sys      |
-| `XRCE_UDP_META_COUNT`                  | In-flight UDP packets per direction (smoltcp)                            | `4`            | xrce-smoltcp  |
+These are read by `nros-rmw-xrce-cffi`'s build script, either from the
+environment or — on Zephyr — from `CONFIG_<name>` in `.config`. They set C
+`#define`s of the same name **without** the `NROS_` prefix; the define is not
+itself an environment variable, so exporting `XRCE_BUFFER_SIZE` has no effect
+and reports no error.
+
+| Variable                           | Description                                                                 | Default | Min | Crate         |
+|------------------------------------|-----------------------------------------------------------------------------|---------|-----|---------------|
+| `NROS_XRCE_BUFFER_SIZE`            | Per-slot receive buffer. See the note below — this is the receive ceiling.   | `1024`  | 64  | nros-rmw-xrce |
+| `NROS_XRCE_SUBSCRIBER_RING_DEPTH`  | Queued samples per subscriber                                               | `32`    | 1   | nros-rmw-xrce |
+| `NROS_XRCE_MAX_SUBSCRIBERS`        | Max concurrent subscribers                                                  | `8`     | 1   | nros-rmw-xrce |
+| `NROS_XRCE_MAX_SERVICE_SERVERS`    | Max concurrent service servers                                              | `4`     | 1   | nros-rmw-xrce |
+| `NROS_XRCE_MAX_SERVICE_CLIENTS`    | Max concurrent service clients                                              | `4`     | 1   | nros-rmw-xrce |
+| `NROS_XRCE_STREAM_HISTORY`         | Reliable stream history depth; sizes the per-session output buffer          | `16`    | 4   | nros-rmw-xrce |
+| `NROS_XRCE_CUSTOM_TRANSPORT_MTU`   | Custom transport MTU; stream buffers are `MTU x STREAM_HISTORY`             | `4096`  | 128 | nros-rmw-xrce |
+
+Dropping `MAX_SUBSCRIBERS`, `MAX_SERVICE_*` and `SUBSCRIBER_RING_DEPTH` to 1,
+`BUFFER_SIZE` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512
+takes the session struct from ~390 KB to ~10-20 KB.
+
+#### `NROS_XRCE_BUFFER_SIZE` is the XRCE receive ceiling
+
+A subscriber's receive ring entry is a fixed `uint8_t data[XRCE_BUFFER_SIZE]`,
+so **a subscription's own buffer size cannot raise it**: asking for
+`create_subscription_sized::<M, 16384>` still stops at 1024, because the 16384
+buffer is the destination of a copy that never happens. A sample that does not
+fit is refused on take with `MessageTooLarge`.
+
+The static cost is `XRCE_SUBSCRIBER_RING_DEPTH x XRCE_BUFFER_SIZE` per
+subscriber, which is why the default is small — raise it deliberately, and
+consider lowering the ring depth at the same time.
+
+Raising it stops helping at the transport MTU: at 4096 samples arrive
+*corrupted* rather than refused, with no error and no counter. That is
+[issue 0819](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/0819-xrce-payloads-near-the-mtu-arrive-corrupted.md),
+open at time of writing. Keep payloads comfortably below the MTU.
+
+#### Compile-time only (not environment variables)
+
+These are `#define`s in `packages/rmw/xrce/nros-rmw-xrce/src/internal.h` with no
+env or Kconfig knob. Changing them means editing that header.
+
+| Define                            | Description                             | Default |
+|-----------------------------------|-----------------------------------------|---------|
+| `XRCE_ENTITY_CREATION_TIMEOUT_MS` | Timeout for entity creation             | `1000`  |
+| `XRCE_SERVICE_REPLY_TIMEOUT_MS`   | Per-attempt service reply timeout       | `50`    |
+| `XRCE_SERVICE_REPLY_TOTAL_MS`     | Total service reply budget              | `5000`  |
+| `XRCE_SESSION_FLUSH_TIMEOUT_MS`   | Session flush timeout                   | `100`   |
+| `XRCE_SESSION_CREATION_RETRIES`   | Session creation retries                | `3`     |
+| `XRCE_MAX_PENDING_REPLIES`        | In-flight service replies               | `4`     |
+| `XRCE_SERVICE_REQUEST_RING_DEPTH` | Queued service requests per server      | `4`     |
+| `XRCE_DEFAULT_AGENT_PORT`         | Default agent port                      | `2018`  |
 
 ### Core (`NROS_*`)
 

@@ -126,12 +126,31 @@ large-buffer variant should be a `fixtures.toml` row with
 large-buffer row already does for `ZPICO_SUBSCRIBER_BUFFER_SIZE` — the axis and
 its precedent both exist.
 
-**W3 — document the knob.** `NROS_XRCE_BUFFER_SIZE` is real, is validated in
-`nros-rmw-xrce-cffi/build.rs`, and is findable today only by reading that build
-script. It belongs in the book beside `ZPICO_SUBSCRIBER_BUFFER_SIZE`, with the
-static cost stated (`XRCE_SUBSCRIBER_RING_DEPTH × XRCE_BUFFER_SIZE` per
-subscriber, which is why the default is small) and with the 0819 ceiling named
-as the point past which raising it stops helping.
+**W3 — DONE, and the knob was not merely undocumented.** It was documented
+under a name that does nothing.
+
+`book/src/reference/environment-variables.md` had an XRCE section listing
+thirteen `XRCE_*` variables. **Not one of them is an environment variable.**
+They are the C `#define` names; the build script reads `NROS_XRCE_*` via
+`knob()`, which checks `$NROS_XRCE_<name>` then `CONFIG_NROS_XRCE_<name>` and
+never the bare spelling. So a reader who found the ceiling, looked it up, and
+exported `XRCE_BUFFER_SIZE=8192` would get no effect and no error — the failure
+mode of the documentation matched the failure mode of the bug.
+
+Two defaults were also wrong (`STREAM_HISTORY` documented `4`, actually `16`;
+`SERVICE_REPLY_TIMEOUT_MS` documented `1000`, actually `50`), one real knob was
+missing entirely (`NROS_XRCE_SUBSCRIBER_RING_DEPTH`), and five rows named things
+that are not settable at all.
+
+The section is rewritten: seven real knobs with defaults AND minimums, a
+separate table for the compile-time-only defines so the distinction is on the
+page rather than implied, the ring's static cost
+(`XRCE_SUBSCRIBER_RING_DEPTH × XRCE_BUFFER_SIZE` per subscriber), the fact that
+a subscription's own `RX_BUF` cannot raise it, and issue 0819 named as the point
+past which raising it stops helping.
+
+Audited the rest of the page while there: all 46 remaining documented names do
+appear in the sources. The XRCE section was the broken one.
 
 **W4 — DONE, and it is what corrected the phase.** The premise sweep, above.
 

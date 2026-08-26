@@ -168,6 +168,9 @@ static ZENOH_STRESS_TEST_LARGE_BUF_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-stress-test binary
 static XRCE_STRESS_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the xrce-stress-test binary built with a large receive ring
+static XRCE_STRESS_TEST_LARGE_BUF_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the qemu-bsp-large-msg-test binary
 static QEMU_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -5498,6 +5501,39 @@ pub fn xrce_stress_test_binary() -> PathBuf {
             nros_tests_skip(msg)
         }
         Err(e) => panic!("Failed to build xrce-stress-test: {e:?}"),
+    }
+}
+
+/// Build the xrce-stress-test binary with a large receive ring (8192B, cached).
+///
+/// phase-384 W2. Uses `NROS_XRCE_BUFFER_SIZE=8192`, mirroring the
+/// `ZPICO_SUBSCRIBER_BUFFER_SIZE` row for stress-zenoh. The XRCE ring entry is
+/// a fixed `uint8_t data[XRCE_BUFFER_SIZE]` (`nros-rmw-xrce/src/internal.h`), so
+/// the caller's own `RX_BUF` cannot raise it — this env knob is the only lever,
+/// and this row is what proves it works.
+pub fn build_xrce_stress_test_large_buf() -> TestResult<&'static Path> {
+    XRCE_STRESS_TEST_LARGE_BUF_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_row(
+                "packages/testing/nros-bench/stress-xrce",
+                &crate::fixtures::groups::FixtureVariant::plain()
+                    .with_env(&[("NROS_XRCE_BUFFER_SIZE", "8192")]),
+            )?;
+            let rel = PathBuf::from(format!("{}/xrce-stress-test", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-stress-test binary path (large receive ring).
+#[rstest::fixture]
+pub fn xrce_stress_test_large_buf_binary() -> PathBuf {
+    match build_xrce_stress_test_large_buf() {
+        Ok(p) => p.to_path_buf(),
+        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+            nros_tests_skip(msg)
+        }
+        Err(e) => panic!("Failed to build xrce-stress-test (large-buf): {e:?}"),
     }
 }
 

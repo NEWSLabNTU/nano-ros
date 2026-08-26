@@ -1711,6 +1711,16 @@ lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
 env = { ZPICO_SUBSCRIBER_BUFFER_SIZE = "8192" }
 
+# phase-384 W2 — large-ring variant of stress-xrce. The XRCE receive ring entry
+# is a fixed `uint8_t data[XRCE_BUFFER_SIZE]`, so a subscription's own RX_BUF
+# cannot raise it; this env knob is the only lever, and this row is what proves
+# a payload over the 1024 default is delivered intact once it is raised.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-bench/stress-xrce"
+env = { NROS_XRCE_BUFFER_SIZE = "8192" }
+
 # ===========================================================================
 # qemu-arm-baremetal — Rust (cortex-m3; cross target via each example's
 # .cargo/config.toml = thumbv7m-none-eabi, so no --target here). Default

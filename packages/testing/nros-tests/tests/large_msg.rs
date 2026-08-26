@@ -11,7 +11,8 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         ManagedProcess, XrceAgent, ZenohRouter, or_skip, qemu_large_msg_test_binary,
-        require_xrce_agent, require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
+        require_xrce_agent, require_zenohd, xrce_stress_test_binary,
+        xrce_stress_test_large_buf_binary, zenoh_stress_test_binary,
         zenoh_stress_test_large_buf_binary, zenohd_unique,
     },
 };
@@ -288,6 +289,133 @@ fn test_zenoh_e2e_large_receive(
         invalid, 0,
         "Expected 0 invalid, got {}.\nOutput:\n{}",
         invalid, output,
+    );
+}
+
+// =============================================================================
+// phase-384 W2 — the XRCE receive ring is a ceiling, and it must say so
+// =============================================================================
+
+/// Run one nano -> Agent -> nano exchange and return the listener's output.
+fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> String {
+    use std::process::Command;
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut listener_cmd = Command::new(binary);
+    listener_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", topic)
+        .env("MODE", "listener")
+        .env("PAYLOAD_SIZE", payload)
+        .env("EXPECTED_COUNT", "10")
+        .env("TIMEOUT_SECS", "20");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-ring-listener")
+        .expect("Failed to start listener");
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(10))
+        .expect("XRCE listener did not become ready");
+
+    let mut talker_cmd = Command::new(binary);
+    talker_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("STRESS_TOPIC", topic)
+        .env("MODE", "talker")
+        .env("PAYLOAD_SIZE", payload)
+        .env("PUBLISH_COUNT", "10")
+        .env("PUBLISH_INTERVAL_MS", "100");
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-ring-talker")
+        .expect("Failed to start talker");
+
+    let output = listener.collect_until("RECV_DONE:", Duration::from_secs(25));
+    talker.kill();
+    listener.kill();
+    drop(agent);
+    output
+}
+
+/// A payload over `XRCE_BUFFER_SIZE` must be refused by NAME.
+///
+/// The ceiling is ours — `XRCE_BUFFER_SIZE` (1024) in
+/// `packages/rmw/xrce/nros-rmw-xrce/src/internal.h`, checked in the topic
+/// callback as `len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE`. The stress
+/// binary's `PAYLOAD_SIZE` includes the 4-byte CDR header that the publish side
+/// strips, so the predicate is exactly `PAYLOAD_SIZE > 1024` and 1025 is the
+/// first refused size.
+///
+/// What this test actually guards is the ERROR NAME, not the refusal. Before
+/// phase-384 W1 the backend's `MessageTooLarge` was rewritten to
+/// `DeserializationError` by a `map_err(|_| ...)` on a code path that
+/// deserializes nothing — so the one diagnostic that names its own remedy
+/// (raise `NROS_XRCE_BUFFER_SIZE`) was replaced by one that sends the reader
+/// looking at the serializer. Two drafts of phase-384 chased the Agent because
+/// of it. Asserting only "delivery fails" would pass on that tree.
+#[rstest]
+fn xrce_payload_over_the_ring_is_refused_by_name(xrce_stress_test_binary: PathBuf) {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
+
+    let output = xrce_roundtrip(&xrce_stress_test_binary, "1025", "/stress_xrce_ring_over");
+
+    let too_large = count_pattern(&output, "MessageTooLarge");
+    let mislabelled = count_pattern(&output, "DeserializationError");
+    let delivered = count_pattern(&output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+
+    assert_eq!(
+        delivered, 0,
+        "1025 bytes is over the 1024-byte ring and must not be delivered.\nOutput:\n{output}",
+    );
+    assert_eq!(
+        mislabelled, 0,
+        "the raw take reported DeserializationError for a transport error — the \
+         phase-384 W1 regression. It deserializes nothing; the backend said \
+         MessageTooLarge.\nOutput:\n{output}",
+    );
+    assert!(
+        too_large >= 5,
+        "expected the refusal to name itself (MessageTooLarge), got {too_large} \
+         occurrence(s).\nOutput:\n{output}",
+    );
+}
+
+/// …and raising `NROS_XRCE_BUFFER_SIZE` delivers the same payload intact.
+///
+/// This is the half that proves the ceiling is a CONFIGURATION limit and not the
+/// Agent's — phase-384's original premise was that the Agent's hardcoded
+/// `m_typeSize = 1024 + 4` dropped these samples, which no env knob on our side
+/// could affect. 2048 bytes over the same Agent, ring raised to 8192: delivered.
+///
+/// Asserts VALIDITY, not just arrival: issue 0819 is a size at which samples
+/// arrive with `Ok(Some(len))` and wrong bytes, so a count-only assertion would
+/// pass straight through it.
+#[rstest]
+fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_binary: PathBuf) {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
+
+    let output = xrce_roundtrip(
+        &xrce_stress_test_large_buf_binary,
+        "2048",
+        "/stress_xrce_ring_raised",
+    );
+
+    let delivered = count_pattern(&output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
+    let invalid = count_pattern(&output, "valid=false");
+
+    assert!(
+        delivered >= 5,
+        "2048 bytes fits an 8192-byte ring and must be delivered; got {delivered}.\n\
+         Output:\n{output}",
+    );
+    assert_eq!(
+        invalid, 0,
+        "samples arrived but did not survive the trip ({invalid} invalid) — that is \
+         issue 0819's signature at a size well below it.\nOutput:\n{output}",
     );
 }
 
