@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3726,6 +3726,16 @@ check-rmw-abi-shape:
 check-rmw-alloc-sites:
     @python3 scripts/rmw-alloc-sites.py --self-test
     @python3 scripts/rmw-alloc-sites.py --check
+
+# issue 0800 — "the slot exists" was reading as "the capability works": 42 slots
+# had no producer, mixing optional-by-design with real gaps so no reader could
+# tell them apart. This splits by producer AND consumer. A slot nothing writes
+# and nothing reads is legitimate — an ABI mirroring upstream reserves the shape
+# first — but it must be a DECISION, so it belongs to a declared family. Source
+# -only, no ROS install, fast line.
+check-rmw-slot-producers:
+    @python3 scripts/check-rmw-slot-producers.py --self-test
+    @python3 scripts/check-rmw-slot-producers.py --check
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and

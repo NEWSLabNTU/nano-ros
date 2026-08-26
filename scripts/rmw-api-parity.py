@@ -459,6 +459,38 @@ def self_test():
     return 0
 
 
+
+def _producer_note():
+    """`vtable` means a SLOT exists, never that a backend fills it.
+
+    Issue 0800: the loan trio and `set_log_severity` were each counted answered
+    here while no backend implemented them, because the bucket answers "where
+    do we answer this" and a declared slot IS where. Rather than overload the
+    bucket — `check_against_vtable` would reject a `gap` for a slot that
+    exists, correctly — the second dimension is printed beside it.
+    """
+    try:
+        spec = _util.spec_from_file_location(
+            "_producers", os.path.join(ROOT, "scripts", "check-rmw-slot-producers.py")
+        )
+        mod = _util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        kinds = mod.scan()
+    except Exception as exc:  # noqa: BLE001 - a report must not die on its footnote
+        return f"  (slot-producer breakdown unavailable: {exc})"
+    counts = {}
+    for k in kinds.values():
+        counts[k] = counts.get(k, 0) + 1
+    return (
+        "  NOTE  `vtable` counts a SLOT, not a backend that fills one. Of "
+        f"{len(kinds)} slots:\n"
+        f"        {counts.get('produced', 0)} filled by some backend, "
+        f"{counts.get('default', 0)} NULL with documented behaviour, "
+        f"{counts.get('inert', 0)} written and read by nothing.\n"
+        "        `just check-rmw-slot-producers` is that dimension (issue 0800)."
+    )
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--contract", action="store_true", help="re-derive from an installed impl")
@@ -498,6 +530,8 @@ def main(argv):
     print(f"rmw implementation contract: {total} symbol(s)")
     for b in BUCKETS:
         print(f"  {b:9s} {counts[b]:3d}")
+    print()
+    print(_producer_note())
     print()
     for bucket in ("gap", "declined"):
         items = [r for r in rows if r[0] == bucket]

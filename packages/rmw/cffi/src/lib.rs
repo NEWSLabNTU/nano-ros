@@ -1339,14 +1339,51 @@ static NODE_TABLE: [NodeSlot; MAX_NODES] = {
 /// Release every node this session claimed. Called from `destroy_session`: a
 /// static table that is never reclaimed would let a long-running image that
 /// opens and closes sessions exhaust it.
-fn release_session_nodes(session_key: usize) {
+/// Hand this session's node slots back, telling the backend first.
+///
+/// Issue 0800 — `create_node` was dispatched and `destroy_node` never was, so a
+/// backend that allocated state in the create leaked it on every session close:
+/// the shim forgot the node and the backend was never told it was gone. Nothing
+/// caught it because `destroy_node` had no producer AND no consumer, which is
+/// the state that reads as "optional slot" and is indistinguishable from
+/// "nobody wired the other half".
+///
+/// Order matters: the nodes go before `destroy_session`, because a backend's
+/// node state hangs off its session state.
+fn release_session_nodes(
+    session_key: usize,
+    vtable: &'static NrosRmwVtable,
+    session_view: &mut NrosRmwSession,
+) {
     if session_key == 0 {
         return;
     }
     for slot in NODE_TABLE.iter() {
-        if slot.session_key.load(Ordering::Acquire) == session_key {
-            slot.session_key.store(0, Ordering::Release);
+        if slot.session_key.load(Ordering::Acquire) != session_key {
+            continue;
         }
+        // SAFETY: written once by the claiming thread before the slot became
+        // findable, and this session owns it.
+        let backend_data = unsafe { *slot.backend_data.get() };
+        if let Some(destroy) = vtable.destroy_node
+            && !backend_data.is_null()
+        {
+            let mut view = node_view_of(slot, session_view);
+            // SAFETY: `view` describes a node this session created through
+            // `create_node`, and the session is still open.
+            let ret = unsafe { destroy(&mut view) };
+            if ret != NROS_RMW_RET_OK {
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_cffi"),
+                    "destroy_node failed with {}; the backend may still hold node state",
+                    ret
+                );
+            }
+        }
+        // SAFETY: same slot ownership as above; cleared before the slot is
+        // published as free so a re-claim cannot see a stale pointer.
+        unsafe { *slot.backend_data.get() = core::ptr::null_mut() };
+        slot.session_key.store(0, Ordering::Release);
     }
 }
 
@@ -1923,8 +1960,8 @@ impl Session for CffiSession {
         // Phase 376 W5/B1 — hand the node slots back BEFORE the backend loses
         // its session state. A static table that is never reclaimed would let a
         // long-running image that opens and closes sessions exhaust it.
-        release_session_nodes(self.backend_data as usize);
         let mut view = self.make_view();
+        release_session_nodes(self.backend_data as usize, self.vtable, &mut view);
         let ret = unsafe {
             (self
                 .vtable

@@ -1,7 +1,7 @@
 ---
 id: 800
-title: "42 of 74 vtable slots have no producer in any backend, and the parity map
-  counts them answered because a slot exists"
+title: "34 of 74 vtable slots are written by nothing and read by nothing, and
+  the parity map counted them answered because a slot exists"
 status: open
 type: tech-debt
 area: rmw
@@ -75,3 +75,79 @@ designated `.name = value,` / `name: value,` style (xrce, rust_adapter).
 Multi-line initializer entries are not matched by that scan; none exist today,
 but a real gate must handle them rather than silently undercounting — an
 undercount here reads as a gap that is not there.
+
+## Corrected measurement, 2026-08-26 — the number was 42, and it was the wrong number
+
+"42 with no producer" mixed three states, which is why the issue said a reader
+cannot tell which kind a slot is. Splitting by the second question — does
+anything READ the slot — separates them, and both halves are derived from the
+tree rather than declared:
+
+| | count | meaning |
+| --- | --- | --- |
+| produced | 32 | a backend's vtable assigns it |
+| default | 8 | consumed, no producer, header documents what NULL does |
+| unimplemented | 0 | consumed, no producer, NULL behaviour undocumented |
+| **inert** | **34** | **no producer AND no consumer** |
+
+So the headline is not "42 have no producer". It is that **34 of 74 slots are
+written by nothing and read by nothing** — declared in the header, generated
+into the Rust bindings, and touched by no code in the tree. Reserving a slot's
+position and shape before anything fills it is legitimate for an ABI that
+mirrors upstream; what was missing is that nothing distinguished reserved from
+working.
+
+`scripts/check-rmw-slot-producers.py` (`just check-rmw-slot-producers`, fast
+line) is that distinction, and it is two-way: an inert slot in no declared
+family fails, and a family naming a slot that stopped being inert fails.
+
+### What the split found that the count could not
+
+**`destroy_node` was a leak, not a reservation.** `create_node` is consumed
+(`lib.rs:1510`) and `destroy_node` was consumed nowhere, so `close()` cleared
+the shim's node slot and never told the backend. Any backend allocating state in
+`create_node` lost it on every session close. It read as an optional slot
+precisely because it had no producer AND no consumer — the state this issue is
+about. Fixed: `release_session_nodes` now dispatches `destroy_node` for each
+node the session created, before `destroy_session` (a backend's node state hangs
+off its session state), and the header documents what a NULL slot means there.
+Test `closing_a_session_destroys_the_nodes_it_created` fails against the pre-fix
+code, 0 destroys against 2.
+
+**`graph.cpp` existing is not the graph queries being implemented.** The parity
+map and CLAUDE.md both suggest the graph functions are answered one layer down
+in `nros-rmw-cyclonedds/src/graph.cpp`. That file exports `graph_init`,
+`graph_track_{writer,reader}`, `graph_publish` — it PUBLISHES this node's
+participant info so other nodes can see it. It implements none of
+`get_node_names`, `count_publishers`, or the `*_names_and_types` family. Those
+nine plus the two counts are inert, and reading the graph back means holding a
+discovered view of every peer, which is why they are reserved rather than
+planned.
+
+### Item 4, done differently than proposed
+
+The issue asked the parity map to distinguish "a slot exists" from "a backend
+fills it". Not by changing the bucket: `check_against_vtable` rejects a `gap`
+whose slot exists, and it is right to — the bucket answers "where do we answer
+this", and a declared slot IS where. So the second dimension is printed beside
+the first instead. `rmw-api-parity.py` now reports:
+
+```
+  vtable     70
+  ...
+  NOTE  `vtable` counts a SLOT, not a backend that fills one. Of 74 slots:
+        32 filled by some backend, 8 NULL with documented behaviour,
+        34 written and read by nothing.
+```
+
+70 can no longer be read as 70 working.
+
+### Still open
+
+Item 3, the kind-3 gaps with an obvious backend primitive. `destroy_node` was
+the one that was actually broken and is fixed. `set_log_severity` remains: slot,
+dispatcher and stub tests since phase-376 W5, no backend body, though Cyclone
+has `dds_set_log_mask`, zenoh-pico has a log level and the XRCE client has one.
+Its NULL behaviour IS documented (the runtime answers `UNSUPPORTED`), so the ABI
+is honest about it — it is a missing feature, not a lie, which is why it did not
+block closing the rest.

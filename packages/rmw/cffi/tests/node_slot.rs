@@ -18,6 +18,10 @@ use nros_rmw_cffi::{
     NrosRmwSession, NrosRmwVtable, generated, nros_rmw_cffi_register_named,
 };
 
+// The call counters below are file-globals, so the tests in this binary must
+// not run concurrently — one test's `create_node` would be counted by another.
+static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 static CREATE_NODE_CALLS: AtomicUsize = AtomicUsize::new(0);
 /// Every name `create_node` was handed, in order, as a fixed-size log so the
 /// test can assert WHICH nodes were announced and not merely how many.
@@ -49,6 +53,15 @@ unsafe extern "C" fn stub_create_node(
     // A backend writes its own state here; a non-null value proves the shim
     // carries it back into the node it hands the create_* slots.
     unsafe { (*out).backend_data = 0x0DE5_usize as *mut core::ffi::c_void };
+    NROS_RMW_RET_OK
+}
+
+static DESTROY_NODE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static DESTROY_NODE_BACKEND_DATA: AtomicUsize = AtomicUsize::new(0);
+
+unsafe extern "C" fn stub_destroy_node(node: *mut NrosRmwNode) -> i32 {
+    DESTROY_NODE_CALLS.fetch_add(1, Ordering::SeqCst);
+    DESTROY_NODE_BACKEND_DATA.store(unsafe { (*node).backend_data } as usize, Ordering::SeqCst);
     NROS_RMW_RET_OK
 }
 
@@ -201,6 +214,7 @@ static VT: NrosRmwVtable = NrosRmwVtable {
     destroy_session: Some(stub_close),
     drive_io: Some(stub_drive),
     create_node: Some(stub_create_node),
+    destroy_node: Some(stub_destroy_node),
     create_publisher: Some(stub_create_publisher),
     destroy_publisher: Some(stub_dpub),
     create_subscription: Some(fill::csub),
@@ -233,6 +247,13 @@ fn topic_on<'a>(node: &'a str, name: &'a str) -> TopicInfo<'a> {
 
 #[test]
 fn create_node_fires_once_per_distinct_node() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    // Counters are cumulative across this binary's tests and `SEEN` is indexed
+    // by the call count, so both start from a known state under the guard.
+    CREATE_NODE_CALLS.store(0, Ordering::SeqCst);
+    for cell in SEEN.iter() {
+        cell.store(0, Ordering::SeqCst);
+    }
     let rc = unsafe { nros_rmw_cffi_register_named(c"node-slot".as_ptr(), &VT) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     let mut session =
@@ -269,5 +290,45 @@ fn create_node_fires_once_per_distinct_node() {
         LAST_NODE_BACKEND_DATA.load(Ordering::SeqCst),
         0x0DE5_usize,
         "the backend_data create_node wrote must reach create_publisher"
+    );
+}
+
+/// Issue 0800 — `create_node` was dispatched and `destroy_node` never was, so a
+/// backend that allocated state in the create never heard that the node was
+/// gone. Nothing caught it: the slot had no producer AND no consumer, which
+/// looks exactly like an optional slot nobody needs.
+#[test]
+fn closing_a_session_destroys_the_nodes_it_created() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    let rc = unsafe { nros_rmw_cffi_register_named(c"node-destroy".as_ptr(), &VT) };
+    assert_eq!(rc, NROS_RMW_RET_OK);
+
+    let before = DESTROY_NODE_CALLS.load(Ordering::SeqCst);
+    {
+        let mut session =
+            CffiSession::open_named("node-destroy", "", 0, 0, "fallback").expect("open_named");
+        let _p = session
+            .create_publisher(&topic_on("gamma", "/g"), QosSettings::default())
+            .expect("publisher");
+        let _q = session
+            .create_publisher(&topic_on("delta", "/d"), QosSettings::default())
+            .expect("publisher on a second node");
+        assert_eq!(
+            DESTROY_NODE_CALLS.load(Ordering::SeqCst),
+            before,
+            "nothing is destroyed while the session is open"
+        );
+        session.close().expect("close");
+    }
+
+    assert_eq!(
+        DESTROY_NODE_CALLS.load(Ordering::SeqCst) - before,
+        2,
+        "each node the session created must be handed back to the backend"
+    );
+    assert_eq!(
+        DESTROY_NODE_BACKEND_DATA.load(Ordering::SeqCst),
+        0x0DE5_usize,
+        "destroy_node must receive the backend_data create_node wrote, not a null view"
     );
 }

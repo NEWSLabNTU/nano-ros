@@ -1116,7 +1116,16 @@ typedef struct nros_rmw_vtable_t {
     /** Upstream `rmw_destroy_node`.
      *
      *  Releases the backend's `backend_data`; the shell stays valid until its
-     *  owner drops it. */
+     *  owner drops it. Called for every node the session created, from
+     *  `close()`, BEFORE `destroy_session` — a backend's node state hangs off
+     *  its session state, so the order is not free.
+     *
+     *  NULL slot: nothing is called and the runtime simply forgets the node.
+     *  Correct only for a backend that allocates nothing in `create_node`;
+     *  a backend that fills `backend_data` there must fill this too, or it
+     *  leaks one node's state per session close (issue 0800 — this slot had a
+     *  producer in no backend and a consumer nowhere, so the leak was
+     *  indistinguishable from an optional slot nobody needed). */
     rmw_ret_t (*destroy_node)(rmw_node_t *node);
 
     /** Upstream `rmw_set_log_severity`. Exact parity.
