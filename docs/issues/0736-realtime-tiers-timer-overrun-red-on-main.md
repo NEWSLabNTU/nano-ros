@@ -933,3 +933,84 @@ an artifact of a busy host.
 Recorded because "it was just load" is the cheapest available excuse for a
 flaky QEMU cell, it was genuinely true of the environment, and it is still not
 the answer here.
+
+## The kernel-throttle marker CANNOT fire for the failing row (2026-08-27)
+
+The section above ends: "Whoever next runs that cell should look for it — if the
+kernel-sporadic diagnosis is right, it should appear on the failing runs and not
+on the passing ones." Ran it. The marker does not appear — **and that is not
+evidence about the kernel**, because it could never have appeared.
+
+NuttX has TWO tier loops:
+
+* the C one, `nros-board-nuttx-qemu/c/nuttx_run_tiers.c`, where
+  `nros_nuttx_report_sporadic_throttle` was added — and it is `static`;
+* the Rust one, `nros-board-nuttx/src/lib.rs::run_tiers` ->
+  `nuttx_run_one_tier` -> `nuttx_spin_tier_forever`.
+
+The failing row is **nuttx-arm/rust**, whose own assertion names its path:
+"QemuArmVirt::run_tiers (std::thread per tier)". It runs the RUST loop, which
+never calls the C reporter. The proposed verification was unrunnable as written,
+and "never been observed printing" needs no kernel theory to explain.
+
+Same shape as three other findings this week: a mechanism added to one of two
+paths (issue 0800's slots with no producer AND no consumer, 0804's `or_skip`
+reachable only through two rstest fixtures, 0803's `_z_task_init` supplied by
+the alias on one platform and by zenoh-pico on another).
+
+### A second reason the detector is weak, independent of the first
+
+It samples `sched_getparam(0)` on the tier's OWN thread. For pid 0 NuttX returns
+`rtcb->sched_priority` (`sched/sched/sched_getparam.c`), the live value, so the
+FIELD is right. The SAMPLING is not: a thread demoted to
+`sched_ss_low_priority` is precisely the thread the scheduler will not run, so
+the window in which it is both demoted and executing to observe itself is small.
+The note above — "a demoted thread STILL RUNS, so it can sample itself" — holds
+only when nothing higher is runnable, which is not this workload. Even in the
+right loop, silence from this detector would be weak evidence.
+
+### Reproduced here, and the harness that made it possible
+
+| run | /ctrl | /telem | ratio |
+| --- | --- | --- | --- |
+| 1 | 58 | 28 | 2.07x |
+| 2 | 41 | 17 | 2.41x |
+| 3 | 36 | 28 | 1.29x |
+| 4 | 42 | 17 | 2.47x |
+| 5 | 64 | 25 | 2.56x |
+
+The documented 1.8-2.9 band, flaky exactly as recorded. Two things were needed
+to get the row to RUN at all, both worth writing down:
+
+* `just build-test-fixtures lane=native` first. Without it every nuttx-arm row
+  reports `[SKIPPED] int32-sink fixture not built: ... STALE` — the NATIVE peer,
+  not the nuttx image. The first attempt here read "17 row(s) ran, 17 skipped"
+  and exercised nothing, which is this issue's own method note biting again.
+* a router. This host has no ROS (it lives in the distrobox), so
+  `tmp/zenohd-via-box.sh` runs the box's `rmw_zenohd` and is pointed at by
+  `NROS_RMW_ZENOHD`. `router_command` passes NO argv — the whole configuration
+  arrives in `ZENOH_CONFIG_OVERRIDE` — so a pass-through wrapper is enough.
+
+### An unbiased observer, attempted and NOT completed
+
+The fix for the sampling bias is to have the OTHER tier watch the sporadic one:
+`sched_getparam(pid)` on a non-calling task reads that TCB directly and does not
+require the watched thread to be scheduled. Wired into the Rust loop, it
+published its target (`watching tid=7`) and then **never sampled** — neither the
+success print nor the `sched_getparam` failure print appeared, so the sample
+call site never executed although `apply_tier_sporadic`, 90 lines earlier in the
+same function, did.
+
+That points at a further path split inside `nuttx_spin_tier_forever` (the boot
+tier reaches it from `run_tiers` directly at one call site, spawned tiers from
+`nuttx_run_one_tier` at another). Recorded as a LEAD, not a conclusion — the
+instrumentation is reverted and nothing in the product changed.
+
+### What the next reader should do
+
+1. Put the throttle report in the RUST loop, or make one loop call the other's.
+   Until then no run says anything about the kernel-sporadic diagnosis.
+2. Make the observation cross-thread, for the bias reason above.
+3. Only then re-open the question the issue has been circling: whether
+   `budget_us = 5000 / period_us = 10000` is unsatisfiable on this target, or
+   the kernel is mis-serving a satisfiable declaration.
