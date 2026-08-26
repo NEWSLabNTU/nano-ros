@@ -17,3 +17,4 @@
 
 pub mod discover;
 pub mod handoff;
+pub mod plan;

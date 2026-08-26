@@ -12,6 +12,7 @@ use clap::Subcommand;
 pub mod board;
 pub mod board_facts;
 pub mod bringup;
+pub mod build;
 pub mod check;
 pub mod check_workspace;
 pub mod codegen;
@@ -43,6 +44,12 @@ pub mod release;
 
 #[derive(Debug, Subcommand)]
 pub enum Cmd {
+    /// Build a nano-ros workspace: discover packages, resolve the image,
+    /// preflight, generate the root, and hand off to the native tool
+    /// (RFC-0065 / phase-383). The final stage is an `exec`, so compiler
+    /// diagnostics are byte-identical to running cargo/cmake/west directly.
+    Build(build::Args),
+
     /// Scaffold a new nano-ros project (talker / listener / service / action)
     New(new::Args),
 

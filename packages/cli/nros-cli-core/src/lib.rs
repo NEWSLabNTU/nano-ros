@@ -84,6 +84,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         return Err(eyre::eyre!("{msg}"));
     }
     match cmd {
+        cmd::Cmd::Build(args) => cmd::build::run(args),
         cmd::Cmd::New(args) => cmd::new::run(args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
         cmd::Cmd::GenerateRust(args) => cmd::generate::run_rust(args),
