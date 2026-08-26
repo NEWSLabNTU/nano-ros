@@ -1,7 +1,6 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-26). W1 LANDED. W2-W5 open, and W0 below is a newly measured
-PREREQUISITE.** Deferred deliberately from phase-376 W4, which established that
+**Status (2026-08-26). W0 + W1 LANDED. W2-W5 open.** Deferred deliberately from phase-376 W4, which established that
 this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
 
 ## Why
@@ -82,7 +81,7 @@ implementation or they will drift.
 
 ## Work items
 
-**W0 — `FIELDS` does not exist everywhere (measured 2026-08-26).** This doc
+**W0 — `FIELDS` does not exist everywhere. LANDED (2026-08-26).** This doc
 claimed above that "the input already exists … every generated message". It does
 not: **27 of 64** generated message structs in `packages/interfaces` carry no
 `const FIELDS`, including `builtin_interfaces/Time`, `builtin_interfaces/Duration`
@@ -104,6 +103,40 @@ This gates the items that follow, and gates them asymmetrically:
 So W0 is: regenerate the affected crates (or find why that path skips the
 emitter), and make a missing schema LOUD at the point W4 consults it rather
 than absent. Do it before W4, not after.
+
+**Done. 64 of 64 now carry `FIELDS`.** The cause was vintage, not a conditional
+emitter: `nros-builtin-interfaces` (0 of 2) and `nros-builtin-interfaces-diag`
+(2 of 2) are the SAME two messages, and the difference is that the `-diag` crate
+was regenerated 2026-07-17 while the other dates to 2026-03-18. Three crates had
+simply never been regenerated since the emitter landed. `just
+generate-rcl-interfaces` + `just generate-lifecycle-msgs` closed it.
+
+Regenerating brought two things this phase did not ask for, both wanted:
+
+* **XCDR2 support these crates did not have.** Their `serialize` /
+  `deserialize` had no DHEADER wrap at all (phase-303 W4 / #0267), so they could
+  not speak XCDR2 — and W1's bound distinguishes the two encodings for exactly
+  those types.
+* **A wire-visible name fix.** `TYPE_NAME` was
+  `nros_builtin_interfaces::msg::dds_::Time_` — the `--rename` this repo applies
+  to avoid crate-name collisions had leaked into the DDS type name peers match
+  on at discovery. It is now `builtin_interfaces::msg::dds_::Time_`, matching the
+  July-generated crates and `nros-lifecycle-msgs`, which never had the leak.
+  Checked that nothing pins the old spelling.
+
+Two traps worth naming for whoever regenerates next:
+
+* The recipes REPLACE the generated `Cargo.toml`, dropping workspace inheritance
+  (`version.workspace`, `edition.workspace`), `license` / `repository` /
+  `description`, and `[package.metadata.ros]`. The lifecycle recipe says so in a
+  closing NOTE; the rcl one does not. Restore the committed manifests after
+  regenerating — this landing kept sources only.
+* Codegen output is not rustfmt-clean; `check-workspace-fmt` catches it.
+
+Guarded by `check-generated-schema-coverage` on the fast line, so the 27-of-64
+state cannot return silently. Its message names the regeneration recipes and the
+`Cargo.toml` trap, because a gate that only says "no" costs the next person the
+same hour.
 
 **W1 — the calculator. LANDED (`nros-serdes::size`).** `size_bound()` over
 `FIELDS`, both encoding versions.

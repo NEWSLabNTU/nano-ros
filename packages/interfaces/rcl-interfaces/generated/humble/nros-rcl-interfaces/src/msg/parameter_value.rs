@@ -22,6 +22,9 @@ pub struct ParameterValue {
 
 impl Serialize for ParameterValue {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         writer.write_u8(self.type_)?;
         writer.write_bool(self.bool_value)?;
         writer.write_i64(self.integer_value)?;
@@ -47,13 +50,17 @@ impl Serialize for ParameterValue {
         for item in &self.string_array_value {
             writer.write_string(item.as_str())?;
         }
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for ParameterValue {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             type_: reader.read_u8()?,
             bool_value: reader.read_bool()?,
             integer_value: reader.read_i64()?,
@@ -103,18 +110,89 @@ impl Deserialize for ParameterValue {
                 let mut vec = heapless::Vec::new();
                 for _ in 0..len {
                     let s = reader.read_string()?;
-                    vec.push(
-                        heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?,
-                    )
-                    .map_err(|_| DeserError::CapacityExceeded)?;
+                    let elem =
+                        heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
 impl RosMessage for ParameterValue {
     const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::ParameterValue_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+}
+
+// ââ nros_serdes::Message â runtime field schema âââââââââââââââââââââââââââââ
+// Consumed by RMW backends that build wire-type descriptors at runtime
+// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+
+#[allow(non_upper_case_globals)]
+pub const FT_BYTE_ARRAY_VALUE_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Uint8;
+#[allow(non_upper_case_globals)]
+pub const FT_BOOL_ARRAY_VALUE_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Bool;
+#[allow(non_upper_case_globals)]
+pub const FT_INTEGER_ARRAY_VALUE_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Int64;
+#[allow(non_upper_case_globals)]
+pub const FT_DOUBLE_ARRAY_VALUE_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Float64;
+#[allow(non_upper_case_globals)]
+pub const FT_STRING_ARRAY_VALUE_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::String;
+impl ::nros_serdes::Message for ParameterValue {
+    const TYPE_NAME: &'static str = "rcl_interfaces/msg/ParameterValue";
+    const FIELDS: &'static [::nros_serdes::Field] = &[
+        ::nros_serdes::Field {
+            name: "type",
+            ty: ::nros_serdes::FieldType::Uint8,
+            offset: ::core::mem::offset_of!(ParameterValue, type_),
+        },
+        ::nros_serdes::Field {
+            name: "bool_value",
+            ty: ::nros_serdes::FieldType::Bool,
+            offset: ::core::mem::offset_of!(ParameterValue, bool_value),
+        },
+        ::nros_serdes::Field {
+            name: "integer_value",
+            ty: ::nros_serdes::FieldType::Int64,
+            offset: ::core::mem::offset_of!(ParameterValue, integer_value),
+        },
+        ::nros_serdes::Field {
+            name: "double_value",
+            ty: ::nros_serdes::FieldType::Float64,
+            offset: ::core::mem::offset_of!(ParameterValue, double_value),
+        },
+        ::nros_serdes::Field {
+            name: "string_value",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(ParameterValue, string_value),
+        },
+        ::nros_serdes::Field {
+            name: "byte_array_value",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_BYTE_ARRAY_VALUE_ELEM),
+            offset: ::core::mem::offset_of!(ParameterValue, byte_array_value),
+        },
+        ::nros_serdes::Field {
+            name: "bool_array_value",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_BOOL_ARRAY_VALUE_ELEM),
+            offset: ::core::mem::offset_of!(ParameterValue, bool_array_value),
+        },
+        ::nros_serdes::Field {
+            name: "integer_array_value",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_INTEGER_ARRAY_VALUE_ELEM),
+            offset: ::core::mem::offset_of!(ParameterValue, integer_array_value),
+        },
+        ::nros_serdes::Field {
+            name: "double_array_value",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_DOUBLE_ARRAY_VALUE_ELEM),
+            offset: ::core::mem::offset_of!(ParameterValue, double_array_value),
+        },
+        ::nros_serdes::Field {
+            name: "string_array_value",
+            ty: ::nros_serdes::FieldType::Sequence(&FT_STRING_ARRAY_VALUE_ELEM),
+            offset: ::core::mem::offset_of!(ParameterValue, string_array_value),
+        },
+    ];
 }

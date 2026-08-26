@@ -467,7 +467,7 @@ check-fast: _check-skip-reset \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
-    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models \
+    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-generated-schema-coverage \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
@@ -1516,6 +1516,17 @@ check-board-cargo-config-applied:
 # issue 0606 — every `[deploy.*].board` resolves to exactly ONE descriptor. The
 # field carries the DOWNSTREAM ecosystem's board id, so the descriptor covering
 # it must claim that spelling; otherwise the deploy resolves to nothing and
+# Phase 380 W0 — every COMMITTED generated message must carry `Message::FIELDS`.
+#
+# The schema is what `nros_serdes::size` computes a serialized-size bound from,
+# and a missing one is SILENT: phase-380 W4's build-time buffer assertion has
+# nothing to check and passes, so the subscription drops samples at runtime
+# instead. Measured before W0: 27 of 64 structs had none, purely because three
+# crates predated the schema emitter and nobody said so.
+[private]
+check-generated-schema-coverage:
+    @python3 scripts/check-generated-schema-coverage.py
+
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
 [private]
 check-deploy-board-resolves:
