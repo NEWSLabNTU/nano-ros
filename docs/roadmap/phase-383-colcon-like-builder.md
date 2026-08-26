@@ -9,13 +9,19 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-27). W1–W8 COMPLETE.** `nros build` runs all five stages,
-generates the workspace root and the entry package, and is verified against two
-downstream trees nobody here wrote — `nano-ros-rt-eval` (two bringups, a
-cargo-only member, a west app in a pure-Rust workspace) and
-`autoware-safety-island` (pure C/C++, three FreeRTOS entries, a self-gating NXP
-package). W8 found three W1–W7 defects; all are fixed. Remaining: **W9**
-(migrate the nine in-tree workspaces) and **W10** (retire the old paths).
+**Status (2026-08-27). W1–W8 COMPLETE. W9.a COMPLETE — all 16 bringups declare
+`[image.*]`, 99 images, every one resolving.** The W10 chain is PROVEN on one
+real workspace: `examples/workspaces/rust` built with its hand-written root and
+entry deleted and the generated pair compiling. That proof found three more
+defects (all fixed) and was then reverted — the tree is unchanged.
+
+**What remains needs a validated build cycle, not more code:** W9.b (retarget
+`examples/fixtures.toml`'s rows at `nros build`), W9.c (`just build-test-fixtures
+lane=tier2` then `just ci-matrix`), and W10.a–W10.c (delete nine roots and ~100
+entry packages, then add the gate that keeps them gone). Those are one
+irreversible sweep gated on a multi-hour tier-2 run, and starting it blind is
+how a tree ends up half-migrated. W10.d (the docs sweep) is independent and
+still open.
 
 ## Goal
 
@@ -389,9 +395,12 @@ found only because these trees are not uniform the way ours are.
 
 ## W9 — Migrate the nine (RFC-0065 D13, stage 2)
 
-- [ ] **W9.a** Migrate all nine workspace roots and their entry packages, one
+- [x] **W9.a** Migrate all nine workspace roots and their entry packages, one
       commit per workspace so a regression bisects to one.
 - [ ] **W9.b** Update `examples/fixtures.toml` rows to invoke `nros build`.
+      **Not started deliberately.** 337 rows drive every fixture build in the
+      repo; retargeting them is only verifiable by the tier-2 run in W9.c, and
+      an unverified change here breaks every lane at once.
       A row already describes `(image, board)`, so it becomes an invocation
       rather than a description of one.
 - [ ] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
