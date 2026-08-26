@@ -16,6 +16,7 @@
 //! Those targets go 1→2→3→5 with no generation at all.
 
 pub mod cargo_root;
+pub mod cmake_root;
 pub mod discover;
 pub mod handoff;
 pub mod plan;

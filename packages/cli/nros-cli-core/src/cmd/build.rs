@@ -184,8 +184,46 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // registry — issue 0378 by a different road.
                 Some(Handoff::new("cargo", a).in_dir(&root))
             }
-            // W4.
-            Driver::CMake => None,
+            Driver::CMake => {
+                // Unlike cargo, cmake imposes no root/member hierarchy rule, so
+                // this root DOES live under build/<coord> (RFC-0065 D8).
+                let manifest_dir = root.join("build").join(coordinate(&platform, &image));
+                let spec = crate::builder::cmake_root::CmakeRootSpec {
+                    workspace: root.clone(),
+                    system: bringup.clone(),
+                    platform: platform.clone(),
+                    board: image.board.clone(),
+                    rmw: image.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
+                    toolchain_file: descriptor.cmake.as_ref().map(|c| c.toolchain_file.clone()),
+                    nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
+                    excluded: framework_entry_dirs(&found, &catalog),
+                };
+                crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
+                    .map_err(|e| eyre::eyre!("{e}"))?;
+                let rel_src = manifest_dir
+                    .strip_prefix(&root)
+                    .unwrap_or(&manifest_dir)
+                    .display()
+                    .to_string();
+                // Configure and build in one handoff: `cmake --build` on a
+                // fresh tree needs the configure first, and splitting them
+                // would need TWO execs — which stage 5 cannot do, since the
+                // first replaces the process.
+                let mut a = vec![
+                    "-S".to_string(),
+                    rel_src.clone(),
+                    "-B".to_string(),
+                    format!("{rel_src}/cmake"),
+                ];
+                // The preamble path is passed rather than discovered inside the
+                // generated file, so the generated file stays workspace-agnostic.
+                let preamble = bringup_dir.join("cmake/preamble.cmake");
+                if preamble.is_file() {
+                    a.push(format!("-DNROS_WS_PREAMBLE={}", preamble.display()));
+                }
+                a.extend(args.native_args.iter().cloned());
+                Some(Handoff::new("cmake", a).in_dir(&root))
+            }
             _ => Some(native_handoff(driver, &root, &bringup_dir, &board, args)),
         };
 
@@ -239,7 +277,6 @@ pub fn run(args: Args) -> Result<()> {
 /// Used by the cmake root (W4). The cargo root cannot use it: cargo pins its
 /// workspace manifest to the workspace root, so there is no per-coordinate
 /// cargo root to name.
-#[allow(dead_code)]
 fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -> String {
     match image.rmw.as_deref() {
         Some(rmw) => format!("{platform}-{rmw}"),

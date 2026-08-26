@@ -211,6 +211,38 @@ fn a_cargo_image_generates_the_root_when_the_workspace_has_none() {
 }
 
 #[test]
+fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
+    // The asymmetry RFC-0065 D3 now records: cmake has no root/member hierarchy
+    // rule, so its generated root DOES live at build/<coord>/ where D8 wants
+    // every artefact. Only cargo is pinned to the workspace root.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    // Give a package a CMakeLists so the workspace crosses languages: cmake
+    // wins whenever it does (RFC-0024 §6.3).
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake, "cmake wins a mixed graph");
+
+    let generated = tmp.path().join("build/posix-zenoh/CMakeLists.txt");
+    assert!(generated.is_file(), "root written under build/");
+    let body = std::fs::read_to_string(&generated).unwrap();
+    assert!(body.contains("nano_ros_workspace("), "{body}");
+    assert!(body.contains("ORDER_FROM_DEPENDS"), "{body}");
+    assert!(body.contains("talker_pkg"), "{body}");
+    assert!(
+        !body.contains(tmp.path().to_str().unwrap()),
+        "no absolute path (W3.c): {body}"
+    );
+
+    let shown = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(shown.starts_with("cmake -S build/posix-zenoh"), "{shown}");
+}
+
+#[test]
 fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
     // RFC-0065 D2 — a missing prerequisite fails at stage 3, naming the command
     // that fixes it, rather than mid-compile.
