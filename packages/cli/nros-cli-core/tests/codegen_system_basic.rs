@@ -12,7 +12,40 @@ use std::{
 
 use nros_cli_core::cmd::codegen_system::{self, AheadOfVendor, Args};
 
+/// Scope model discovery to the fixture, once per test process.
+///
+/// `model_search_paths` consults ambient `$OUT_DIR`, which is correct when the
+/// caller IS the build script of the crate whose model is being resolved — the
+/// zephyr module and the pio extra_script both shell this verb that way. It is
+/// wrong here: `nros-cli-core` has a build script, so the test process inherits
+/// an `OUT_DIR` belonging to a DIFFERENT crate, and the build-output candidate
+/// is keyed on the bringup's directory NAME. Both this fixture and whatever
+/// last generated into that directory call their bringup `demo_bringup`, so
+/// discovery matched across two unrelated workspaces and loaded the stale
+/// model: one test asserted the wrong provenance path, and another ingested
+/// components that do not exist in this fixture and failed with the issue-0398
+/// group_tiers diagnostic.
+///
+/// Pointing `OUT_DIR` at an empty per-process directory removes the collision
+/// without changing the search ORDER these tests exist to exercise.
+fn isolate_model_discovery() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let dir = std::env::temp_dir().join(format!("codegen-system-outdir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // SAFETY: called once, before any test body spawns a thread that reads
+        // the environment; every reader here is this process's own resolution.
+        unsafe {
+            std::env::set_var("OUT_DIR", &dir);
+            std::env::remove_var("NROS_MODEL_DIR");
+        }
+    });
+}
+
 fn temp_root(tag: &str) -> PathBuf {
+    isolate_model_discovery();
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
