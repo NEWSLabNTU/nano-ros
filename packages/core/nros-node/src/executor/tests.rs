@@ -108,7 +108,9 @@ impl RosMessage for TestMsg {
 // `RosMessage + Message` under `rmw-cyclonedds`) still accept this
 // test fixture. The codegen template emits both impls for real msg
 // crates; here we mirror it by hand.
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestMsg {
     const TYPE_NAME: &'static str = "test/msg/TestMsg";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
@@ -1409,7 +1411,9 @@ impl RosMessage for TestGoal {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestGoal {
     const TYPE_NAME: &'static str = "test/action/TestAction_Goal";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
@@ -1443,7 +1447,9 @@ impl RosMessage for TestResult {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestResult {
     const TYPE_NAME: &'static str = "test/action/TestAction_Result";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
@@ -1477,7 +1483,9 @@ impl RosMessage for TestFeedback {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestFeedback {
     const TYPE_NAME: &'static str = "test/action/TestAction_Feedback";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
@@ -2704,7 +2712,9 @@ impl RosMessage for TestServiceRequest {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestServiceRequest {
     const TYPE_NAME: &'static str = "test/srv/TestService_Request";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
@@ -2733,7 +2743,9 @@ impl RosMessage for TestServiceReply {
     const TYPE_HASH: &'static str = "test_hash";
 }
 
-#[cfg(rmw_needs_type_descriptors)]
+// phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+// now required by `MessageForRmw` on EVERY backend, because that is where
+// a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestServiceReply {
     const TYPE_NAME: &'static str = "test/srv/TestService_Reply";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {

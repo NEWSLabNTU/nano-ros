@@ -2366,7 +2366,9 @@ mod builder_tests {
     // bound AND the runtime register call succeeds. `DescriptorBuilder`
     // rejects empty `FIELDS` with `BuildError::EmptySchema`; pretend
     // there's one byte so the bridge stub returns a non-NULL pointer.
-    #[cfg(rmw_needs_type_descriptors)]
+    // phase-380 W4 — was `#[cfg(rmw_needs_type_descriptors)]`: the schema is
+    // now required by `MessageForRmw` on EVERY backend, because that is where
+    // a subscription's build-time size bound comes from.
     impl nros_serdes::schema::Message for TestMsg {
         const TYPE_NAME: &'static str = "test/msg/TestMsg";
         const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {

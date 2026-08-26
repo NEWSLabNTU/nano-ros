@@ -1,8 +1,6 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-26). W0-W3 and W5 LANDED; W4 PARTIAL — the predicate exists
-and is proven, its universal wiring is blocked on a trait-bound decision
-described below.** Deferred deliberately from phase-376 W4, which established that
+**Status (2026-08-26). COMPLETE — W0-W5 all landed.** Deferred deliberately from phase-376 W4, which established that
 this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
 
 ## Why
@@ -186,7 +184,7 @@ first defect passes the suite.
 what lets `report_dropped_take` name the number instead of saying "raise the
 knob", and what lets a publisher check before it publishes.
 
-**W4 — use it. PARTIAL.** A build-time assertion that a subscription's buffer can hold its
+**W4 — use it. LANDED.** A build-time assertion that a subscription's buffer can hold its
 own message type, so a too-small buffer fails the BUILD rather than dropping
 samples in the field. This is the item that pays for the other three; W1–W3
 without it just compute a number nobody consults.
@@ -229,33 +227,50 @@ Also on `schema::Message`, as PROVIDED consts computed from `FIELDS`:
 `MAX_SERIALIZED_SIZE_XCDR1`, `MAX_SERIALIZED_SIZE_XCDR2`, `IS_PLAIN`. Two sizes
 because there are genuinely two.
 
-## W4, and the bound that blocks it
+## W4 — landed, and the bound did not block it after all
 
-`size::buffer_fits::<M>(rx_buf, version)` is const and **proven to fail a
-build** — an `assert!(buffer_fits::<Time>(4, Xcdr1))` stops compilation with the
-caller's own message, which is the entire mechanism W4 asks for. It answers
-`false` for an unbounded type rather than guessing.
+`size::bound_fits::<M>(rx_buf)` is const, and `create_subscription_with_qos` —
+the site every `create_subscription*` form funnels through — now carries
 
-What is NOT done is making every subscription consult it. `Subscription<M,
-RX_BUF>` bounds `M: RosMessage`, a DIFFERENT trait from `schema::Message`, and
-the schema is where the bound comes from. Tightening that bound is not a
-refactor: measured 2026-08-26, hand-written `RosMessage` types with NO schema
-exist and compile today — `nros-core/src/service.rs` and the component-runtime
-tests among them. Adding the bound breaks them.
+```rust
+const { assert!(nros_serdes::size::bound_fits::<M>(DEFAULT_RX_BUF_SIZE), "...") }
+```
 
-So the choice is a real one and belongs to whoever owns that API:
+so a subscription whose receive buffer provably cannot hold its own message type
+fails the BUILD instead of dropping ACKed samples in the field.
 
-1. require `schema::Message` on `Subscription` and give the remaining
-   hand-written types a schema (they are few, and W0's gate would then cover
-   them);
-2. add a `Subscription::<M, RX_BUF>::assert_fits()` a caller opts into;
-3. emit the assertion from codegen at the sites where the concrete type is
-   known and always has a schema.
+**`bound_fits`, not `buffer_fits`, and the distinction is load-bearing.**
+`buffer_fits` answers "is this GUARANTEED to fit", so an unbounded type is
+`false` — no finite buffer fits a `String`. Asserting THAT at a subscription
+site was my first attempt and would have refused the most common message in ROS.
+`bound_fits` answers "can we PROVE it will not fit", so an unbounded type
+passes. Both are kept, named, because the wrong one is silently plausible at
+either call site. Both encodings are checked and the larger taken: the peer
+picks the encoding at runtime, so sizing from XCDR1 alone is a trap.
 
-(3) gets the guarantee with no API change and is the likely answer, but it is a
-codegen change with its own review. Recording it rather than picking it at the
-end of a long session — an assertion nobody consults is exactly what this phase
-said W1-W3 would be without W4, and a rushed bound change is worse.
+**The trait-bound obstacle was real, and smaller than this doc claimed.** An
+earlier revision said hand-written `RosMessage` types with no schema exist and
+that tightening `MessageForRmw` would break them. Both halves needed correcting,
+in opposite directions:
+
+* A first re-check said the tightening was FREE. That was wrong — it did not
+  pass `--all-targets`, so it never compiled the tests where those types live.
+* The real cost is **seven** `#[cfg(test)]` fixtures in `nros-node` and `nros`,
+  and six of them **already had a schema impl**, gated
+  `#[cfg(rmw_needs_type_descriptors)]` with a comment explaining it exists "so
+  `TypedPublisherBuilder::build` resolves under the cyclonedds-tightened bound".
+  The codebase had already solved this for one backend.
+
+So `MessageForRmw` now requires `schema::Message` on EVERY backend rather than
+only where a descriptor registry needed it, and those six impls simply lose
+their cfg gate; the seventh (`nros/src/node.rs`'s empty `TestMsg`) gains a
+two-line one. No production type was affected — generated messages have carried
+a schema since W0.
+
+Verified by injecting `assert!(false)` and building a real subscriber
+(`examples/native/rust/listener`): the constant IS monomorphised at genuine
+call sites. With the real predicate that same build passes, which is the case
+that matters — its `StringMsg` is unbounded, so it must NOT be refused.
 
 ## What this does NOT fix
 

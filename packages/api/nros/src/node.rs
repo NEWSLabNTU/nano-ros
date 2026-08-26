@@ -926,6 +926,29 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         topic: &str,
         qos: QosSettings,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
+        // Phase 380 W4 — a subscription whose receive buffer provably cannot
+        // hold its own message type fails the BUILD, not the field.
+        //
+        // Without this the sample is received, ACKed, and then dropped, and
+        // `report_dropped_take` can only say "raise the knob" because nothing
+        // knows what value would have worked (issues 0757, 0776). The number is
+        // known at compile time for any BOUNDED type, so the check costs
+        // nothing at runtime and cannot be forgotten at a call site.
+        //
+        // `bound_fits`, not `buffer_fits`: an UNBOUNDED type passes, because
+        // there is nothing to prove and no finite buffer fits a `String` — the
+        // other predicate would refuse the most common message in ROS. Both
+        // encodings are checked and the larger taken; the peer chooses the
+        // encoding at runtime, so sizing from XCDR1 alone is a trap.
+        const {
+            assert!(
+                nros_serdes::size::bound_fits::<M>(nros_node::config::DEFAULT_RX_BUF_SIZE),
+                "this message type's maximum serialized size exceeds \
+                 NROS_SUBSCRIPTION_BUFFER_SIZE — every sample would be received, \
+                 ACKed and then DROPPED. Raise the knob to at least the type's \
+                 bound (`<M as nros_serdes::schema::Message>::MAX_SERIALIZED_SIZE_XCDR2`)."
+            )
+        }
         register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
@@ -2444,6 +2467,16 @@ mod tests {
     impl RosMessage for TestMsg {
         const TYPE_NAME: &'static str = "test_msgs::msg::dds_::Test_";
         const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    // Phase 380 W4 — `MessageForRmw` now also requires a field schema, because
+    // that is where a subscription's size bound comes from. `TestMsg` is an
+    // empty struct, so its schema is the empty slice and its bound is just the
+    // encapsulation header — which is exactly what the build assertion should
+    // see for it.
+    impl nros_serdes::schema::Message for TestMsg {
+        const TYPE_NAME: &'static str = "test_msgs/msg/Test";
+        const FIELDS: &'static [nros_serdes::schema::Field] = &[];
     }
 
     struct TestService;

@@ -298,6 +298,39 @@ pub const fn buffer_fits<M: crate::schema::Message>(
     }
 }
 
+/// Phase 380 W4 — the BUILD-ASSERTION predicate: `false` only when the type is
+/// provably too large for `rx_buf`.
+///
+/// Distinct from [`buffer_fits`], and the difference is the whole reason both
+/// exist:
+///
+/// * `buffer_fits` answers "is this GUARANTEED to fit", so an unbounded type is
+///   `false` — no finite buffer fits a `String`.
+/// * this answers "can we PROVE it will not fit", so an unbounded type is
+///   `true` — there is nothing to check, and failing the build for every
+///   `std_msgs/String` subscription would be absurd.
+///
+/// Asserting `buffer_fits` at a subscription site was my first attempt and
+/// would have refused the most common message in ROS. Kept as two named
+/// functions rather than one with a flag, because the wrong one is silently
+/// plausible at either call site.
+///
+/// Checks BOTH encodings and takes the larger: the encoding is a runtime
+/// property of the peer, so a buffer sized from XCDR1 alone is a trap — XCDR2
+/// adds a DHEADER per struct and is the bigger of the two for nested types.
+pub const fn bound_fits<M: crate::schema::Message>(rx_buf: usize) -> bool {
+    let x1 = match M::MAX_SERIALIZED_SIZE_XCDR1 {
+        Some(n) => n,
+        None => return true, // unbounded: nothing to prove
+    };
+    let x2 = match M::MAX_SERIALIZED_SIZE_XCDR2 {
+        Some(n) => n,
+        None => return true,
+    };
+    let largest = if x1 > x2 { x1 } else { x2 };
+    rx_buf >= largest
+}
+
 /// Phase 380 W5 — is this type loan-eligible?
 ///
 /// A loan hands out a pointer into the transport's own memory, which is sound

@@ -84,10 +84,10 @@ pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
 impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
 
 #[cfg(not(rmw_needs_type_descriptors))]
-pub trait MessageForRmw: RosMessage {}
+pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
 
 #[cfg(not(rmw_needs_type_descriptors))]
-impl<T> MessageForRmw for T where T: RosMessage {}
+impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
 
 // ============================================================================
 // register_type::<M>() — the K.7.6.b hook
