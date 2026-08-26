@@ -10,15 +10,20 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub struct Empty {}
 
 impl Serialize for Empty {
-    // Empty message - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    // Empty message â under XCDR2 an appendable struct still carries a DHEADER
+    // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for Empty {
-    // Empty message - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    // Empty message â read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 }

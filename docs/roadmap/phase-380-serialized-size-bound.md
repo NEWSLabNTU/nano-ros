@@ -1,6 +1,8 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-26). W0 + W1 LANDED. W2-W5 open.** Deferred deliberately from phase-376 W4, which established that
+**Status (2026-08-26). W0-W3 and W5 LANDED; W4 PARTIAL — the predicate exists
+and is proven, its universal wiring is blocked on a trait-bound decision
+described below.** Deferred deliberately from phase-376 W4, which established that
 this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
 
 ## Why
@@ -174,25 +176,86 @@ Two things the measurement corrected:
   XCDR2 DHEADER fails 4 tests; removing the alignment cap fails the encoding
   test. Checked by injecting each defect, not by inspection.
 
-**W2 — the property test.** Self-consistency proves nothing. For every type in
+**W2 — the property test. LANDED.** Self-consistency proves nothing. For every type in
 `packages/interfaces`, serialize a MAXIMAL instance and assert
 `buf.len() <= MAX_SERIALIZED_SIZE`, with equality where `plain`. `compat_tests.rs`
 already asserts byte offsets, so the machinery exists. Both encodings, or W1's
 first defect passes the suite.
 
-**W3 — the instance size.** `serialized_size(&self)`, sharing W1's walk. This is
+**W3 — the instance size. LANDED.** `serialized_size(&self)`, sharing W1's walk. This is
 what lets `report_dropped_take` name the number instead of saying "raise the
 knob", and what lets a publisher check before it publishes.
 
-**W4 — use it.** A build-time assertion that a subscription's buffer can hold its
+**W4 — use it. PARTIAL.** A build-time assertion that a subscription's buffer can hold its
 own message type, so a too-small buffer fails the BUILD rather than dropping
 samples in the field. This is the item that pays for the other three; W1–W3
 without it just compute a number nobody consults.
 
-**W5 — `plain` for loans.** `is_plain` falls out of W1 and answers a question two
+**W5 — `plain` for loans. LANDED.** `is_plain` falls out of W1 and answers a question two
 existing vtable slots already ask (`borrow_loaned_message`,
 `subscription_supports_in_place`). Wire it there rather than letting a second
 notion of "fixed layout" grow.
+
+## What landed, 2026-08-26
+
+**W2** — `packages/testing/nros-tests/tests/serialized_size_bound.rs` walks the
+REAL `FIELDS` of the committed generated corpus and checks the bound against
+`writer.position()`, both encodings: 14 bounded (type, encoding) pairs, 22
+unbounded correctly answering `None`. The walk drives the writer from the SCHEMA
+rather than from constructed values — 64 hand-written maximal literals would rot
+and silently shrink coverage — and
+`xcdr2_dheader_matches_generated_serialize` pins the one structural thing that
+could differ, against the type's own `Serialize`.
+
+Its floor (`checked >= 14`) is MEASURED, not chosen: it was 20 on first writing,
+which was a guess, and the guess failing is what prompted counting. Most ROS
+types reach a `string` and are unbounded.
+
+**W3** — `size::serialized_size(&value, version)` runs the real writer with its
+stores disabled (`CdrWriter::measuring`). Exact by construction: same alignment,
+same DHEADERs, same `len + 1` string prefix, because it is the same code rather
+than a second walk that could not see actual string lengths anyway. Six store
+sites plus the padding loop are guarded; a sweep asserts none is left
+unguarded, after `write_u8`'s single-byte store was missed by a
+`copy_from_slice` grep and found by the test panicking.
+
+**W5** — `size::is_loan_eligible::<M>()` is `M::IS_PLAIN`, so eligibility and
+size-exactness cannot disagree. Wiring it into `borrow_loaned_message` /
+`subscription_supports_in_place` is left to whoever owns those slots; the point
+of W5 was to stop a second notion of "fixed layout" growing, and there is now
+one definition to reference.
+
+Also on `schema::Message`, as PROVIDED consts computed from `FIELDS`:
+`MAX_SERIALIZED_SIZE_XCDR1`, `MAX_SERIALIZED_SIZE_XCDR2`, `IS_PLAIN`. Two sizes
+because there are genuinely two.
+
+## W4, and the bound that blocks it
+
+`size::buffer_fits::<M>(rx_buf, version)` is const and **proven to fail a
+build** — an `assert!(buffer_fits::<Time>(4, Xcdr1))` stops compilation with the
+caller's own message, which is the entire mechanism W4 asks for. It answers
+`false` for an unbounded type rather than guessing.
+
+What is NOT done is making every subscription consult it. `Subscription<M,
+RX_BUF>` bounds `M: RosMessage`, a DIFFERENT trait from `schema::Message`, and
+the schema is where the bound comes from. Tightening that bound is not a
+refactor: measured 2026-08-26, hand-written `RosMessage` types with NO schema
+exist and compile today — `nros-core/src/service.rs` and the component-runtime
+tests among them. Adding the bound breaks them.
+
+So the choice is a real one and belongs to whoever owns that API:
+
+1. require `schema::Message` on `Subscription` and give the remaining
+   hand-written types a schema (they are few, and W0's gate would then cover
+   them);
+2. add a `Subscription::<M, RX_BUF>::assert_fits()` a caller opts into;
+3. emit the assertion from codegen at the sites where the concrete type is
+   known and always has a schema.
+
+(3) gets the guarantee with no API change and is the likely answer, but it is a
+codegen change with its own review. Recording it rather than picking it at the
+end of a long session — an assertion nobody consults is exactly what this phase
+said W1-W3 would be without W4, and a rushed bound change is worse.
 
 ## What this does NOT fix
 

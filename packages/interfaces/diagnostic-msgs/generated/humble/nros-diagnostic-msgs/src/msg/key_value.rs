@@ -14,15 +14,22 @@ pub struct KeyValue {
 
 impl Serialize for KeyValue {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         writer.write_string(self.key.as_str())?;
         writer.write_string(self.value.as_str())?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for KeyValue {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             key: {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
@@ -31,7 +38,9 @@ impl Deserialize for KeyValue {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

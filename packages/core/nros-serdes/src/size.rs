@@ -228,6 +228,89 @@ pub const fn max_serialized_size(
     }
 }
 
+/// Phase 380 W3 — the EXACT serialized size of THIS message.
+///
+/// Two questions get asked about size and they are not the same one:
+///
+/// | question | asked by | this module |
+/// | --- | --- | --- |
+/// | how large can this TYPE ever be? | build-time buffer sizing | [`max_serialized_size`] |
+/// | how large is THIS message? | a publisher before publishing; a drop report | `serialized_size` |
+///
+/// The second is the only honest answer for an unbounded type, where the first
+/// is `None` — a `String` field has no maximum, but the string in hand has a
+/// length. It is what lets a drop report name the number that would have worked
+/// instead of saying "raise the knob".
+///
+/// Exact by construction: it runs the REAL writer with its stores disabled
+/// (`CdrWriter::measuring`), so the count comes from the same code that emits
+/// the bytes. A second walk of the schema could not see the actual string
+/// lengths and sequence counts, and would be a second implementation to keep in
+/// step besides.
+///
+/// Includes the encapsulation header, matching [`max_serialized_size`], so the
+/// two are directly comparable — which is the whole point at a call site
+/// deciding whether a message fits.
+pub fn serialized_size<T: crate::traits::Serialize>(
+    value: &T,
+    version: EncodingVersion,
+) -> Result<usize, crate::error::SerError> {
+    let mut w = crate::cdr::CdrWriter::measuring(&mut [], version);
+    value.serialize(&mut w)?;
+    Ok(ENCAPSULATION_HEADER_BYTES + w.position())
+}
+
+/// Phase 380 W4 — does a receive buffer of `rx_buf` bytes fit every message of
+/// this type?
+///
+/// `true` when the type is bounded and the bound fits. **`false` when the type
+/// is UNBOUNDED**, deliberately: no finite buffer fits a `String`, so the
+/// honest answer to "is this guaranteed to fit" is no. A caller that wants
+/// "fits unless proven otherwise" is asking a different question and should
+/// look at [`serialized_size`] per message.
+///
+/// Const, so a call site can put it in a `const { assert!(...) }` and turn a
+/// runtime drop into a build error:
+///
+/// ```ignore
+/// const { assert!(buffer_fits::<Odometry>(RX_BUF, EncodingVersion::Xcdr1)) };
+/// ```
+///
+/// # Why this is not simply a bound on `Subscription`
+///
+/// `Subscription<M, RX_BUF>` bounds `M: RosMessage`, which is a DIFFERENT trait
+/// from [`crate::schema::Message`] — and measured 2026-08-26, hand-written
+/// `RosMessage` types with no schema DO exist (`nros-core/src/service.rs`, the
+/// component-runtime tests). Tightening that bound would break them, so the
+/// assertion is opt-in at sites where the schema is known rather than universal
+/// at a site where it is not. See the phase doc for what closing that gap needs.
+pub const fn buffer_fits<M: crate::schema::Message>(
+    rx_buf: usize,
+    version: EncodingVersion,
+) -> bool {
+    let bound = match version {
+        EncodingVersion::Xcdr1 => M::MAX_SERIALIZED_SIZE_XCDR1,
+        EncodingVersion::Xcdr2 => M::MAX_SERIALIZED_SIZE_XCDR2,
+    };
+    match bound {
+        Some(n) => rx_buf >= n,
+        None => false,
+    }
+}
+
+/// Phase 380 W5 — is this type loan-eligible?
+///
+/// A loan hands out a pointer into the transport's own memory, which is sound
+/// only when the layout is fixed: no length prefix to chase, no variable
+/// member. That is exactly [`SizeBound::plain`], so the answer falls out of W1
+/// rather than becoming a second notion of "fixed layout" maintained by hand —
+/// which is the drift `borrow_loaned_message` and
+/// `subscription_supports_in_place` would otherwise each grow their own version
+/// of.
+pub const fn is_loan_eligible<M: crate::schema::Message>() -> bool {
+    M::IS_PLAIN
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

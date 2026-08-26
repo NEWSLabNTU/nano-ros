@@ -16,22 +16,31 @@ pub struct ColorRGBA {
 
 impl Serialize for ColorRGBA {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         writer.write_f32(self.r)?;
         writer.write_f32(self.g)?;
         writer.write_f32(self.b)?;
         writer.write_f32(self.a)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for ColorRGBA {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             r: reader.read_f32()?,
             g: reader.read_f32()?,
             b: reader.read_f32()?,
             a: reader.read_f32()?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

@@ -13,16 +13,25 @@ pub struct Byte {
 
 impl Serialize for Byte {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         writer.write_u8(self.data)?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for Byte {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             data: reader.read_u8()?,
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

@@ -14,21 +14,30 @@ pub struct Header {
 
 impl Serialize for Header {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) Ã¢ÂÂ DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         self.stamp.serialize(writer)?;
         writer.write_string(self.frame_id.as_str())?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for Header {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) Ã¢ÂÂ read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             stamp: Deserialize::deserialize(reader)?,
             frame_id: {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

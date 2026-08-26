@@ -13,19 +13,25 @@ pub struct AddDiagnosticsRequest {
 
 impl Serialize for AddDiagnosticsRequest {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         writer.write_string(self.load_namespace.as_str())?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for AddDiagnosticsRequest {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             load_namespace: {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 
@@ -56,21 +62,27 @@ pub struct AddDiagnosticsResponse {
 
 impl Serialize for AddDiagnosticsResponse {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         writer.write_bool(self.success)?;
         writer.write_string(self.message.as_str())?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for AddDiagnosticsResponse {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             success: reader.read_bool()?,
             message: {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

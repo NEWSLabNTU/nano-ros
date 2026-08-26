@@ -14,18 +14,25 @@ pub struct DiagnosticArray {
 
 impl Serialize for DiagnosticArray {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) Ã¢ÂÂ DHEADER wrap for XCDR2 appendable structs.
+        // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
+        let __dh = writer.begin_dheader()?;
         self.header.serialize(writer)?;
         writer.write_u32(self.status.len() as u32)?;
         for item in &self.status {
             item.serialize(writer)?;
         }
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for DiagnosticArray {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        // phase-303 W4 (#0267) Ã¢ÂÂ read the XCDR2 DHEADER (no-op under XCDR1);
+        // end_dheader skips any unknown trailing members (forward compat).
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             header: Deserialize::deserialize(reader)?,
             status: {
                 let len = reader.read_u32()? as usize;
@@ -36,7 +43,9 @@ impl Deserialize for DiagnosticArray {
                 }
                 vec
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

@@ -4,5 +4,6 @@
 
 #![no_std]
 #![allow(dead_code)]
+#![allow(clippy::all)]
 
 pub mod msg;

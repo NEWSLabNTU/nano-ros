@@ -74,6 +74,15 @@ pub struct CdrWriter<'a> {
     origin: usize,
     /// CDR encoding version — drives DHEADER emission + the alignment cap.
     version: EncodingVersion,
+    /// Phase 380 W3 — MEASURE mode: advance `pos` exactly as a real write
+    /// would, and copy nothing.
+    ///
+    /// This is how `serialized_size` stays exact: it is not a second
+    /// implementation that could disagree with the writer, it IS the writer,
+    /// with the stores turned off. Every alignment rule, every DHEADER, every
+    /// `len + 1` string prefix is therefore counted by the same code that emits
+    /// it, and a change to one cannot drift from the other.
+    measure: bool,
 }
 
 impl<'a> CdrWriter<'a> {
@@ -84,6 +93,7 @@ impl<'a> CdrWriter<'a> {
             pos: 0,
             origin: 0,
             version: EncodingVersion::Xcdr1,
+            measure: false,
         }
     }
 
@@ -101,6 +111,7 @@ impl<'a> CdrWriter<'a> {
             pos,
             origin: 0,
             version: EncodingVersion::Xcdr1,
+            measure: false,
         })
     }
 
@@ -117,6 +128,7 @@ impl<'a> CdrWriter<'a> {
             pos,
             origin: 0,
             version: EncodingVersion::Xcdr2,
+            measure: false,
         })
     }
 
@@ -136,6 +148,7 @@ impl<'a> CdrWriter<'a> {
             pos: 4,
             origin: 4,
             version: EncodingVersion::Xcdr1,
+            measure: false,
         })
     }
 
@@ -153,7 +166,38 @@ impl<'a> CdrWriter<'a> {
             pos: 4,
             origin: 4,
             version: EncodingVersion::Xcdr2,
+            measure: false,
         })
+    }
+
+    /// Phase 380 W3 — a writer that counts bytes and stores none.
+    ///
+    /// `serialized_size` needs the EXACT size of one message, which a type-level
+    /// bound cannot give for an unbounded type and which a second walk of the
+    /// schema could only approximate. Running the real writer with its stores
+    /// disabled makes the count exact by construction: same alignment, same
+    /// DHEADERs, same `len + 1` string prefix, because it is the same code.
+    ///
+    /// Pass an empty slice — the buffer is never touched:
+    ///
+    /// ```ignore
+    /// let mut w = CdrWriter::measuring(&mut [], EncodingVersion::Xcdr1);
+    /// value.serialize(&mut w)?;
+    /// let bytes = w.position();
+    /// ```
+    ///
+    /// The encapsulation header is NOT counted: like the real constructors'
+    /// `origin`, a measuring writer starts at 0. Add
+    /// [`crate::size::ENCAPSULATION_HEADER_BYTES`] for the payload a publisher
+    /// hands the transport.
+    pub fn measuring(buf: &'a mut [u8], version: EncodingVersion) -> Self {
+        Self {
+            buf,
+            pos: 0,
+            origin: 0,
+            version,
+            measure: true,
+        }
     }
 
     /// The CDR encoding version this writer emits.
@@ -177,7 +221,9 @@ impl<'a> CdrWriter<'a> {
                     return Err(SerError::BufferTooSmall);
                 }
                 let at = self.pos;
-                self.buf[at..at + 4].copy_from_slice(&[0, 0, 0, 0]);
+                if !self.measure {
+                    self.buf[at..at + 4].copy_from_slice(&[0, 0, 0, 0]);
+                }
                 self.pos += 4;
                 Ok(DHeaderMark(Some(at)))
             }
@@ -191,7 +237,9 @@ impl<'a> CdrWriter<'a> {
     pub fn end_dheader(&mut self, mark: DHeaderMark) -> Result<(), SerError> {
         if let Some(at) = mark.0 {
             let size = (self.pos - (at + 4)) as u32;
-            self.buf[at..at + 4].copy_from_slice(&size.to_le_bytes());
+            if !self.measure {
+                self.buf[at..at + 4].copy_from_slice(&size.to_le_bytes());
+            }
         }
         Ok(())
     }
@@ -205,6 +253,12 @@ impl<'a> CdrWriter<'a> {
     /// Get remaining capacity
     #[inline]
     pub fn remaining(&self) -> usize {
+        if self.measure {
+            // Nothing is stored, so nothing can overflow — a measuring pass must
+            // never report BufferTooSmall or it would stop counting early and
+            // under-report, which is the dangerous direction.
+            return usize::MAX;
+        }
         self.buf.len().saturating_sub(self.pos)
     }
 
@@ -229,7 +283,9 @@ impl<'a> CdrWriter<'a> {
         }
         // Fill padding with zeros
         for i in 0..padding {
-            self.buf[self.pos + i] = 0;
+            if !self.measure {
+                self.buf[self.pos + i] = 0;
+            }
         }
         self.pos += padding;
         Ok(())
@@ -241,7 +297,9 @@ impl<'a> CdrWriter<'a> {
         if self.remaining() < 1 {
             return Err(SerError::BufferTooSmall);
         }
-        self.buf[self.pos] = value;
+        if !self.measure {
+            self.buf[self.pos] = value;
+        }
         self.pos += 1;
         Ok(())
     }
@@ -264,7 +322,9 @@ impl<'a> CdrWriter<'a> {
         if self.remaining() < bytes.len() {
             return Err(SerError::BufferTooSmall);
         }
-        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        if !self.measure {
+            self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        }
         self.pos += bytes.len();
         Ok(())
     }
@@ -276,7 +336,9 @@ impl<'a> CdrWriter<'a> {
         if self.remaining() < 2 {
             return Err(SerError::BufferTooSmall);
         }
-        self.buf[self.pos..self.pos + 2].copy_from_slice(&value.to_le_bytes());
+        if !self.measure {
+            self.buf[self.pos..self.pos + 2].copy_from_slice(&value.to_le_bytes());
+        }
         self.pos += 2;
         Ok(())
     }
@@ -288,7 +350,9 @@ impl<'a> CdrWriter<'a> {
         if self.remaining() < 4 {
             return Err(SerError::BufferTooSmall);
         }
-        self.buf[self.pos..self.pos + 4].copy_from_slice(&value.to_le_bytes());
+        if !self.measure {
+            self.buf[self.pos..self.pos + 4].copy_from_slice(&value.to_le_bytes());
+        }
         self.pos += 4;
         Ok(())
     }
@@ -300,7 +364,9 @@ impl<'a> CdrWriter<'a> {
         if self.remaining() < 8 {
             return Err(SerError::BufferTooSmall);
         }
-        self.buf[self.pos..self.pos + 8].copy_from_slice(&value.to_le_bytes());
+        if !self.measure {
+            self.buf[self.pos..self.pos + 8].copy_from_slice(&value.to_le_bytes());
+        }
         self.pos += 8;
         Ok(())
     }

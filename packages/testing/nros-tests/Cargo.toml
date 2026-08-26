@@ -507,3 +507,17 @@ required-features = ["phase216-substrate"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Phase 380 W2 — the size-bound property test walks the REAL schemas of every
+# committed generated message, so it needs all four families. Dev-deps: a test
+# crate depending on generated crates is not a cycle (they depend on
+# `nros-serdes`, not on this) and nothing downstream sees them.
+nros-serdes = { path = "../../core/nros-serdes" }
+nros-builtin-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces" }
+nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces" }
+nros-lifecycle-msgs = { path = "../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs" }
+nros-std-msgs-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag" }
+nros-diagnostic-msgs = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs" }
+nros-builtin-interfaces-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag" }
+

@@ -11,14 +11,18 @@ pub struct SelfTestRequest {}
 
 impl Serialize for SelfTestRequest {
     // Empty request - no fields to serialize
-    fn serialize(&self, _writer: &mut CdrWriter) -> Result<(), SerError> {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        let __dh = writer.begin_dheader()?;
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for SelfTestRequest {
     // Empty request - no fields to deserialize
-    fn deserialize(_reader: &mut CdrReader) -> Result<Self, DeserError> {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        reader.end_dheader(__dh)?;
         Ok(Self {})
     }
 }
@@ -47,19 +51,23 @@ pub struct SelfTestResponse {
 
 impl Serialize for SelfTestResponse {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        let __dh = writer.begin_dheader()?;
         writer.write_string(self.id.as_str())?;
         writer.write_u8(self.passed)?;
         writer.write_u32(self.status.len() as u32)?;
         for item in &self.status {
             item.serialize(writer)?;
         }
+        writer.end_dheader(__dh)?;
         Ok(())
     }
 }
 
 impl Deserialize for SelfTestResponse {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        Ok(Self {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
             id: {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
@@ -74,7 +82,9 @@ impl Deserialize for SelfTestResponse {
                 }
                 vec
             },
-        })
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }
 

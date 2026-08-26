@@ -142,6 +142,33 @@ pub trait Message: Sized {
 
     /// Field schema in declaration order.
     const FIELDS: &'static [Field];
+
+    /// Phase 380 — the largest this type can serialize to, per encoding, or
+    /// `None` when it is unbounded.
+    ///
+    /// PROVIDED, computed from [`Self::FIELDS`] by `crate::size`, so a generated
+    /// message gets it for free and cannot state a number that disagrees with
+    /// its own schema. There are two because there are genuinely two: the
+    /// encodings pad 8-byte primitives differently and XCDR2 adds a DHEADER per
+    /// struct, so one constant would be silently wrong for one of them.
+    ///
+    /// `None` means "no bound exists", never "unknown" — do not size a buffer
+    /// from a fallback. For an unbounded type ask `size::serialized_size` about
+    /// the message in hand instead.
+    const MAX_SERIALIZED_SIZE_XCDR1: Option<usize> =
+        crate::size::max_serialized_size(Self::FIELDS, crate::cdr::EncodingVersion::Xcdr1);
+
+    /// See [`Self::MAX_SERIALIZED_SIZE_XCDR1`].
+    const MAX_SERIALIZED_SIZE_XCDR2: Option<usize> =
+        crate::size::max_serialized_size(Self::FIELDS, crate::cdr::EncodingVersion::Xcdr2);
+
+    /// No variable-length member anywhere: the size above is EXACT and the type
+    /// is loan-eligible (phase-380 W5).
+    ///
+    /// Encoding-independent — "has a `String` or an unbounded sequence" does not
+    /// depend on how it is packed — so unlike the sizes there is only one.
+    const IS_PLAIN: bool =
+        crate::size::size_bound(Self::FIELDS, crate::cdr::EncodingVersion::Xcdr1, 0).plain;
 }
 
 #[cfg(test)]
