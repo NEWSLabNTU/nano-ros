@@ -78,3 +78,37 @@ out    = "rust_safety_listener_model.yaml"
 launch = "rust_safety_talker.launch.xml"
 out    = "rust_safety_talker_model.yaml"
 
+
+# --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
+# Derived from the entry packages that existed at migration time; each
+# entry's `deploy` token picked its board, and its `launch` its topology.
+[image_defaults]
+rmw = "zenoh"
+
+[image.native_c_safety_listener]
+board = "native"
+launch = "c_safety_listener.launch.xml"
+
+[image.native_c_safety_talker]
+board = "native"
+launch = "c_safety_talker.launch.xml"
+
+[image.native_cpp_safety_listener]
+board = "native"
+launch = "cpp_safety_listener.launch.xml"
+
+[image.native_cpp_safety_talker]
+board = "native"
+launch = "cpp_safety_talker.launch.xml"
+
+[image.native_rust_safety_listener]
+board = "native"
+launch = "safety_listener.launch.xml"
+
+[image.native_rust_safety_talker]
+board = "native"
+launch = "safety_talker.launch.xml"
+
+[image.zephyr_rust_safety]
+board = "zephyr"
+launch = "rust_safety.launch.xml"

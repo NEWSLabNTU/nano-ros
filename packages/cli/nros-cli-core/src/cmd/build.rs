@@ -153,6 +153,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     let mut out = Vec::new();
     for (bringup, bringup_dir, image_id, image) in resolved {
         let qual = plan::qualified(&bringup, &image_id);
+        let want_entry = crate::builder::entry::package_name(&image_id);
         let descriptor =
             crate::orchestration::image::resolve_image_board(&catalog, &image_id, &image)
                 .map_err(|e| eyre::eyre!("{e}"))?;
@@ -203,6 +204,27 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 crate::builder::cargo_root::ensure(&found, &root, &excluded, &extra)
                     .map_err(|e| eyre::eyre!("{e}"))?;
                 let mut a = vec!["build".to_string()];
+                // Build ONLY this image's entry. A bare `cargo build` at the
+                // root builds every member, and nano-ros-rt-eval's own manifest
+                // records why that is wrong: a cross-target member "would try
+                // [it] for the host and fail".
+                if let Some(d) = &entry_dir
+                    && let Some(name) = d.file_name().and_then(|n| n.to_str())
+                {
+                    a.push("-p".to_string());
+                    a.push(name.to_string());
+                } else if root.join("src").join(&want_entry).is_dir() {
+                    a.push("-p".to_string());
+                    a.push(want_entry.clone());
+                }
+                // A cross board pins a triple, and dropping it builds the image
+                // for the HOST — silently, since cargo is happy to. phase-383
+                // W9 caught this on the freertos image, whose board declares
+                // thumbv7m-none-eabi.
+                if let Some(triple) = descriptor.target.as_deref() {
+                    a.push("--target".to_string());
+                    a.push(triple.to_string());
+                }
                 if let Some(profile) = image.profile.as_deref() {
                     // `--profile` rather than `--release`: a named profile is
                     // what `[image.<id>].profile` declares, and `release` is

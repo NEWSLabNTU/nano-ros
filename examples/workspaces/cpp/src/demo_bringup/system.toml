@@ -158,3 +158,38 @@ sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
 [deploy.mps2-an385-freertos.nros]
 netstack = "lwip"
 sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
+
+# --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
+# Derived from the entry packages that existed at migration time; each
+# entry's `deploy` token picked its board, and its `launch` its topology.
+[image_defaults]
+rmw = "zenoh"
+
+[image.freertos_posix]
+board = "freertos-posix"
+
+[image.native]
+board = "native"
+launch = "…`"
+
+[image.native_action_client]
+board = "native"
+launch = "action_client.launch.xml"
+
+[image.native_action_server]
+board = "native"
+launch = "action_server.launch.xml"
+
+[image.native_service_client]
+board = "native"
+launch = "service_client.launch.xml"
+
+[image.native_service_server]
+board = "native"
+launch = "service_server.launch.xml"
+
+[image.threadx]
+board = "threadx-linux"
+
+[image.zephyr]
+board = "native_sim/native/64"

@@ -211,3 +211,104 @@ out    = "mixed_custom_msg_talker_model.yaml"
 [[model]]
 launch = "mixed_custom_msg_listener.launch.xml"
 out    = "mixed_custom_msg_listener_model.yaml"
+
+# --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
+# Derived from the entry packages that existed at migration time; each
+# entry's `deploy` token picked its board, and its `launch` its topology.
+[image_defaults]
+rmw = "zenoh"
+
+[image.native_c_custom_msg_listener]
+board = "native"
+launch = "c_custom_msg_listener.launch.xml"
+
+[image.native_c_custom_msg_talker]
+board = "native"
+launch = "c_custom_msg_talker.launch.xml"
+
+[image.native_c_lifecycle]
+board = "native"
+launch = "c_lifecycle.launch.xml"
+
+[image.native_c_params]
+board = "native"
+
+[image.native_c_qos_listener]
+board = "native"
+launch = "c_qos_listener.launch.xml"
+
+[image.native_c_qos_talker]
+board = "native"
+launch = "c_qos_talker.launch.xml"
+
+[image.native_cpp_custom_msg_listener]
+board = "native"
+launch = "cpp_custom_msg_listener.launch.xml"
+
+[image.native_cpp_custom_msg_talker]
+board = "native"
+launch = "cpp_custom_msg_talker.launch.xml"
+
+[image.native_cpp_lifecycle]
+board = "native"
+launch = "cpp_lifecycle.launch.xml"
+
+[image.native_cpp_params]
+board = "native"
+launch = "cpp_params.launch.xml"
+
+[image.native_cpp_qos_listener]
+board = "native"
+launch = "cpp_qos_listener.launch.xml"
+
+[image.native_cpp_qos_talker]
+board = "native"
+launch = "cpp_qos_talker.launch.xml"
+
+[image.native_mixed_custom_msg_listener]
+board = "native"
+launch = "mixed_custom_msg_listener.launch.xml"
+
+[image.native_mixed_custom_msg_talker]
+board = "native"
+launch = "mixed_custom_msg_talker.launch.xml"
+
+[image.native_mixed_qos_listener]
+board = "native"
+launch = "mixed_qos_listener.launch.xml"
+
+[image.native_mixed_qos_talker]
+board = "native"
+launch = "mixed_qos_talker.launch.xml"
+
+[image.native_rust_custom_msg]
+board = "native"
+launch = "rust_custom_msg.launch.xml"
+
+[image.native_rust_lifecycle]
+board = "native"
+launch = "rust_lifecycle.launch.xml"
+
+[image.native_rust_params]
+board = "native"
+launch = "rust_params.launch.xml"
+
+[image.native_rust_qos]
+board = "native"
+launch = "rust_qos.launch.xml"
+
+[image.native_rust_remap]
+board = "native"
+launch = "rust_remap.launch.xml"
+
+[image.zephyr_rust_lifecycle]
+board = "zephyr"
+launch = "rust_lifecycle.launch.xml"
+
+[image.zephyr_rust_params]
+board = "zephyr"
+launch = "rust_params.launch.xml"
+
+[image.zephyr_rust_qos]
+board = "zephyr"
+launch = "rust_qos.launch.xml"

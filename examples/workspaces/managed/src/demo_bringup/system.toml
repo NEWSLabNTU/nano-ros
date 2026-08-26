@@ -26,3 +26,12 @@ name = "managed_talker"
 
 [deploy.native]
 kind = "self"
+
+# --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
+# Derived from the entry packages that existed at migration time; each
+# entry's `deploy` token picked its board, and its `launch` its topology.
+[image_defaults]
+rmw = "zenoh"
+
+[image.native_managed]
+board = "native"
