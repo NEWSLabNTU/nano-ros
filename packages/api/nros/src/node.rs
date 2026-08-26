@@ -940,9 +940,16 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         // other predicate would refuse the most common message in ROS. Both
         // encodings are checked and the larger taken; the peer chooses the
         // encoding at runtime, so sizing from XCDR1 alone is a trap.
+        // Only where `MessageForRmw` guarantees a schema. The other arm accepts a
+        // hand-written `RosMessage` with none (see `rmw_type_registry`), and
+        // requiring one there would make codegen mandatory for a user's own
+        // message type — too large a price for a build assertion. Backends that
+        // register type descriptors already demand the schema, so this is free
+        // there and absent elsewhere; `size::bound_fits` stays public so a
+        // caller can assert it explicitly.
         const {
             assert!(
-                nros_serdes::size::bound_fits::<M>(nros_node::config::DEFAULT_RX_BUF_SIZE),
+                nros_node::rmw_type_registry::subscription_buffer_ok::<M>(),
                 "this message type's maximum serialized size exceeds \
                  NROS_SUBSCRIPTION_BUFFER_SIZE — every sample would be received, \
                  ACKed and then DROPPED. Raise the knob to at least the type's \

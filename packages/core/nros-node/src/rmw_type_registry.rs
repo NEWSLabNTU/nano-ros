@@ -83,11 +83,20 @@ pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
 #[cfg(rmw_needs_type_descriptors)]
 impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
 
+// phase-380 W4 — this arm deliberately does NOT require `schema::Message`.
+//
+// I tightened it to match the descriptor arm so the subscription size assertion
+// could be universal, and it broke a documented user-facing pattern: a
+// hand-written message type that implements `RosMessage` + `Serialize` +
+// `Deserialize` and no schema. `examples/native/rust/custom-msg` exists to
+// demonstrate exactly that, and its `SensorReading` stopped compiling. Requiring
+// a schema here would make codegen mandatory for anyone subscribing to their own
+// type, which is a much larger decision than a build assertion is worth.
 #[cfg(not(rmw_needs_type_descriptors))]
-pub trait MessageForRmw: RosMessage + nros_serdes::schema::Message {}
+pub trait MessageForRmw: RosMessage {}
 
 #[cfg(not(rmw_needs_type_descriptors))]
-impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {}
+impl<T> MessageForRmw for T where T: RosMessage {}
 
 // ============================================================================
 // register_type::<M>() — the K.7.6.b hook
@@ -133,4 +142,25 @@ pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
         })?;
     }
     Ok(())
+}
+
+/// Phase 380 W4 — can a default-sized receive buffer hold every message of `M`?
+///
+/// `true` when it can, when `M` is unbounded (nothing to prove), AND on backends
+/// whose `MessageForRmw` does not carry a schema — there the question cannot be
+/// asked at all, so the honest answer for a build assertion is "no objection".
+///
+/// The cfg lives here because this is where it is defined; `create_subscription`
+/// calls this unconditionally and gets a compile-time `true` where the schema is
+/// absent. Keeping the branch here rather than at the call site is what stops a
+/// second spelling of "does this backend have schemas" growing in the API crate.
+#[cfg(rmw_needs_type_descriptors)]
+pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
+    nros_serdes::size::bound_fits::<M>(crate::config::DEFAULT_RX_BUF_SIZE)
+}
+
+/// See the documented sibling — no schema on this backend, so no check.
+#[cfg(not(rmw_needs_type_descriptors))]
+pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
+    true
 }

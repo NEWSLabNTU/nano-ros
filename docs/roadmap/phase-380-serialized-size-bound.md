@@ -1,6 +1,7 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-26). COMPLETE — W0-W5 all landed.** Deferred deliberately from phase-376 W4, which established that
+**Status (2026-08-26). W0-W3, W5 landed; W4 landed CONDITIONALLY — see the
+correction below.** Deferred deliberately from phase-376 W4, which established that
 this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
 
 ## Why
@@ -226,6 +227,40 @@ one definition to reference.
 Also on `schema::Message`, as PROVIDED consts computed from `FIELDS`:
 `MAX_SERIALIZED_SIZE_XCDR1`, `MAX_SERIALIZED_SIZE_XCDR2`, `IS_PLAIN`. Two sizes
 because there are genuinely two.
+
+## W4 correction (2026-08-26) — the bound DID block it, and broke a user pattern
+
+The section below is kept because its reasoning is the record, but its
+conclusion was wrong and was reverted the same day.
+
+Tightening `MessageForRmw` to require `schema::Message` on every backend broke
+`examples/native/rust/custom-msg`, whose `SensorReading` is a HAND-WRITTEN
+message type implementing `RosMessage` + `Serialize` + `Deserialize` and no
+schema. That example exists precisely to demonstrate that pattern, so the change
+would have made codegen mandatory for anyone subscribing to a message they wrote
+themselves — a far larger decision than a build assertion justifies.
+
+It was found by a fixture build, not by my checks, and the reason is worth
+recording: I verified the tightening with `cargo clippy --all-targets` over
+`packages/`, which does not compile `examples/`. Twice in one session I called
+this change free on the strength of a sweep that could not see the thing it
+would break.
+
+**What is landed instead.** `MessageForRmw` is unchanged. The assertion calls
+`nros_node::rmw_type_registry::subscription_buffer_ok::<M>()`, which computes the
+bound where the backend's `MessageForRmw` already carries a schema
+(`rmw_needs_type_descriptors`) and returns `true` where it does not. So the
+guarantee is automatic on descriptor backends, absent elsewhere, and no user
+pattern is withdrawn. `size::bound_fits` stays public for an explicit assertion.
+
+The cfg branch lives in `rmw_type_registry` beside the trait it describes rather
+than at the call site, so "does this backend have schemas" keeps one spelling.
+
+**What that leaves open.** A hand-written message type gets no build-time buffer
+check on any backend, and no backend without descriptors gets one at all.
+Closing that means either giving `schema::Message` to hand-written types (a
+codegen/ergonomics question) or accepting the assertion as descriptor-only. That
+is a real decision and it is not this phase's to force.
 
 ## W4 — landed, and the bound did not block it after all
 
