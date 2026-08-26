@@ -44,6 +44,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::board_descriptor::{BoardCatalog, BoardDescriptor, DeployResolution};
+
 /// `[image]` / `[image.<id>]` — a buildable image.
 ///
 /// `deny_unknown_fields` for upstream's stated reason: a mistyped key must be
@@ -398,5 +400,293 @@ mod selection_tests {
             e.contains("own"),
             "error points at the policy that admits it: {e}"
         );
+    }
+}
+
+/// Resolve an image's `board` to a descriptor (phase-383 W1.e, RFC-0065 D9).
+///
+/// **Delegates to [`BoardCatalog::resolve_deploy`]; it does not re-implement
+/// resolution.** That function is the single rule issue 0606 established after
+/// three consumers — the site-config gate, `board-facts`, and the
+/// standalone-leaf path — each grew a private opinion about what a board is
+/// called. A fourth opinion here would be the same defect with a new name.
+///
+/// The one thing added is the ERROR: `resolve_deploy` answers `Unknown` /
+/// `Ambiguous` without knowing which image asked, and a user needs the image id
+/// to find the line to fix.
+///
+/// Note this is also why D9 needs no new registry field. A descriptor already
+/// carries the downstream ecosystem's board id among its `names` — Zephyr's
+/// `native_sim/native/64` sits beside `zephyr` in
+/// `packages/boards/zephyr/nros-board.toml` — so both spellings already resolve
+/// to one descriptor.
+pub fn resolve_image_board<'c>(
+    catalog: &'c BoardCatalog,
+    image_id: &str,
+    image: &ImageBlock,
+) -> Result<&'c BoardDescriptor, String> {
+    let Some(board) = image.board.as_deref() else {
+        return Err(format!(
+            "`[image.{image_id}]` declares no `board`. An image is a \
+             (launch, args, board) bake; without a board there is nothing to \
+             compile for."
+        ));
+    };
+    match catalog.resolve_deploy(board) {
+        DeployResolution::Board(d) => Ok(d),
+        DeployResolution::Ambiguous(labels) => Err(format!(
+            "`[image.{image_id}] board = \"{board}\"` is ambiguous — {} descriptors claim it: {}",
+            labels.len(),
+            labels.join(", ")
+        )),
+        DeployResolution::Unknown => {
+            let mut known: Vec<&str> = catalog
+                .descriptors()
+                .iter()
+                .flat_map(|d| d.names.iter().map(String::as_str))
+                .collect();
+            known.sort_unstable();
+            known.dedup();
+            Err(format!(
+                "`[image.{image_id}] board = \"{board}\"` matches no board. \
+                 Known boards: {}. Out-of-tree boards are added through \
+                 `$NROS_EXTRA_BOARD_PATH`.",
+                known.join(", ")
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod board_tests {
+    use super::*;
+
+    /// Local mirror of the descriptor file's shape — `BoardFile` is private,
+    /// and widening production visibility for a test's convenience is the
+    /// wrong trade.
+    #[derive(serde::Deserialize)]
+    struct BoardFile {
+        #[serde(rename = "board")]
+        boards: Vec<BoardDescriptor>,
+    }
+
+    const BOARDS: &str = r##"
+[[board]]
+names = ["zephyr", "native_sim/native/64"]
+platform = "zephyr"
+toolchain = "stable"
+platform_feature = "platform-zephyr"
+link_kind = "none"
+entry_kind = "zephyr-staticlib"
+
+[[board]]
+names = ["mps2-an385-freertos"]
+platform = "freertos"
+toolchain = "stable"
+platform_feature = "platform-freertos"
+link_kind = "none"
+entry_kind = "board-run"
+"##;
+
+    fn catalog() -> BoardCatalog {
+        let f: BoardFile = toml::from_str(BOARDS).expect("parse");
+        BoardCatalog::from_descriptors(f.boards)
+    }
+
+    fn image_with_board(b: &str) -> ImageBlock {
+        ImageBlock {
+            board: Some(b.to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn resolves_a_nano_ros_board_id() {
+        let cat = catalog();
+        let d = resolve_image_board(&cat, "freertos", &image_with_board("mps2-an385-freertos"))
+            .expect("resolves");
+        assert_eq!(d.platform_feature, "platform-freertos");
+    }
+
+    #[test]
+    fn resolves_the_framework_board_string_as_an_alias() {
+        // D9 needs no new registry field: the descriptor already carries the
+        // downstream ecosystem's id among its `names`.
+        let cat = catalog();
+        let d = resolve_image_board(&cat, "zephyr", &image_with_board("native_sim/native/64"))
+            .expect("resolves");
+        assert_eq!(d.platform_feature, "platform-zephyr");
+    }
+
+    #[test]
+    fn both_spellings_reach_the_same_descriptor() {
+        let cat = catalog();
+        let a = resolve_image_board(&cat, "z", &image_with_board("zephyr")).expect("a");
+        let b =
+            resolve_image_board(&cat, "z", &image_with_board("native_sim/native/64")).expect("b");
+        assert_eq!(a.platform_feature, b.platform_feature);
+    }
+
+    #[test]
+    fn an_unknown_board_names_the_image_and_lists_what_is_known() {
+        let cat = catalog();
+        let e = resolve_image_board(&cat, "freertos", &image_with_board("mps2-an385-freertoss"))
+            .expect_err("must reject");
+        assert!(e.contains("[image.freertos]"), "names the image: {e}");
+        assert!(e.contains("mps2-an385-freertos"), "lists known boards: {e}");
+    }
+
+    #[test]
+    fn an_image_without_a_board_says_why_that_is_not_buildable() {
+        let cat = catalog();
+        let e = resolve_image_board(&cat, "native", &ImageBlock::default()).expect_err("reject");
+        assert!(e.contains("declares no `board`"), "{e}");
+    }
+}
+
+/// Build fields on an upstream `[deploy.<id>]` that `[image.<id>]` now owns
+/// (phase-383 W1.f).
+///
+/// `kind`, `nodes` and `launch` are absent by design: those are PLACEMENT, they
+/// stay upstream's, and they are not being retired.
+pub const DEPRECATED_DEPLOY_BUILD_FIELDS: &[&str] = &[
+    "board",
+    "target",
+    "rmw",
+    "domain_id",
+    "locator",
+    "profile",
+    "optimize",
+    "features",
+];
+
+/// One deprecation warning per `[deploy.<id>]` still carrying build fields with
+/// no `[image.<id>]` beside it.
+///
+/// Follows phase-222's shipped pattern: warn on every invocation while still
+/// working, `NROS_SUPPRESS_DEPRECATION=1` to opt out, removal at a VERSION
+/// boundary rather than after a period.
+///
+/// Measured before writing this: across 63 `[deploy.*]` blocks in the tree, not
+/// one uses `rmw`, `domain_id`, `locator`, `profile`, `optimize` or `features`.
+/// Only `board` and `target` fire in practice, which is why this is a lint and
+/// not a migration.
+/// Suppression is a PARAMETER, not an env read inside the function: a lint that
+/// consults ambient state cannot be tested deterministically when the suite
+/// runs in one process. [`deprecation_suppressed`] is the one place that reads
+/// the variable.
+#[must_use]
+pub fn deprecated_deploy_build_field_warnings(
+    deploy_blocks: &BTreeMap<String, Vec<String>>,
+    images: &BTreeMap<String, ImageBlock>,
+    suppressed: bool,
+) -> Vec<String> {
+    if suppressed {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (id, present) in deploy_blocks {
+        if images.contains_key(id) {
+            continue;
+        }
+        let mut hits: Vec<&str> = present
+            .iter()
+            .map(String::as_str)
+            .filter(|f| DEPRECATED_DEPLOY_BUILD_FIELDS.contains(f))
+            .collect();
+        if hits.is_empty() {
+            continue;
+        }
+        hits.sort_unstable();
+        out.push(format!(
+            "[deploy.{id}] carries build field(s) {} — these move to \
+             `[image.{id}]`. `[deploy.*]` keeps PLACEMENT (kind / nodes / \
+             launch) and is not being retired. Set NROS_SUPPRESS_DEPRECATION=1 \
+             to silence.",
+            hits.join(", ")
+        ));
+    }
+    out
+}
+
+/// Whether the caller asked for deprecation warnings to be silenced.
+/// phase-222's spelling, reused verbatim.
+#[must_use]
+pub fn deprecation_suppressed() -> bool {
+    std::env::var_os("NROS_SUPPRESS_DEPRECATION").is_some()
+}
+
+#[cfg(test)]
+mod deprecation_tests {
+    use super::*;
+
+    fn blocks(pairs: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
+        pairs
+            .iter()
+            .map(|(id, fs)| {
+                (
+                    (*id).to_string(),
+                    fs.iter().map(|f| (*f).to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_build_field_without_an_image_warns_once() {
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("freertos", &["kind", "board"])]),
+            &BTreeMap::new(),
+            false,
+        );
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].contains("board"), "names the field: {}", w[0]);
+        assert!(
+            w[0].contains("[image.freertos]"),
+            "names the replacement: {}",
+            w[0]
+        );
+    }
+
+    #[test]
+    fn placement_only_blocks_never_warn() {
+        // robot1/robot2 are the whole PLACEMENT-ONLY population in-tree, and
+        // they must stay silent forever: their table is upstream's.
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("robot1", &["kind", "nodes", "launch"])]),
+            &BTreeMap::new(),
+            false,
+        );
+        assert!(w.is_empty(), "placement must not warn: {w:?}");
+    }
+
+    #[test]
+    fn a_migrated_block_stops_warning() {
+        let mut images = BTreeMap::new();
+        images.insert("freertos".to_string(), ImageBlock::default());
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("freertos", &["kind", "board"])]),
+            &images,
+            false,
+        );
+        assert!(w.is_empty(), "{w:?}");
+    }
+
+    #[test]
+    fn suppression_silences_every_warning() {
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("freertos", &["board"])]),
+            &BTreeMap::new(),
+            true,
+        );
+        assert!(w.is_empty(), "{w:?}");
+    }
+
+    #[test]
+    fn target_is_a_build_field_and_kind_is_not() {
+        assert!(DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"target"));
+        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"kind"));
+        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"nodes"));
+        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"launch"));
     }
 }

@@ -9,10 +9,11 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). IN PROGRESS — W1.a–W1.d landed (`3c50cfa6f`): the
-`[image.<id>]` schema, `[image_defaults]` overlay, default-image selection and
-`panic` validation, 15 unit tests. W1.e (board resolution) and W1.f
-(deprecation) remain.**
+**Status (2026-08-26). W1 COMPLETE — `[image.<id>]` schema, `[image_defaults]`
+overlay, default-image selection, `panic` validation, board resolution and the
+deprecation lint. 24 module tests, 595 lib tests green, clippy clean. W2 next,
+and it must settle the `Deploy.extra` coupling recorded below before W3/W4
+consume the resolved model.**
 
 ## Goal
 
@@ -73,7 +74,7 @@ nothing else is owed.
 Carries **F3, F7, F8**. Nothing else can start: every later wave reads this
 schema.
 
-- [ ] **W1.a** Add a **new, nano-ros-owned** `[image.<id>]` table (RFC-0065 D6)
+- [x] **W1.a** Add a **new, nano-ros-owned** `[image.<id>]` table (RFC-0065 D6)
       to `SystemToml` in
       `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`.
       **Not a rename**: `[deploy.*]` is
@@ -85,26 +86,34 @@ schema.
       `demo_bringup/ablation/*.toml` are whole alternate system configs).
       `deny_unknown_fields` on our side too, matching upstream's reasoning that
       a mistyped key must error rather than silently drop.
-- [ ] **W1.b** Add the `[image]` base table (RFC-0065 D5.1) merged under each
+- [x] **W1.b** Add the `[image]` base table (RFC-0065 D5.1) merged under each
       `[image.<id>]`, so an eight-image workspace states its RMW and edition
       once. Precedent: PlatformIO's `[env]` / `[env:NAME]`.
-- [ ] **W1.c** Add `[system] default_images`. **F7**: a workspace may declare
+- [x] **W1.c** Add `[system] default_images`. **F7**: a workspace may declare
       several bringups (`nano-ros-rt-eval` has `demo_bringup` AND
       `load_bringup`), so resolve `default_images` per bringup and require
       `nros build <image>` to be unambiguous across all of them — a duplicate
       image id across two bringups is a hard error naming both files.
-- [ ] **W1.d** `panic` is the **existing** RFC-0077 policy enum
+- [x] **W1.d** `panic` is the **existing** RFC-0077 policy enum
       (`platform`|`halt`|`own`), forwarded to `nros::main!`. Do not invent
       values; `"semihosting"` is a crate, not a policy.
-- [ ] **W1.e** Resolve `board` through `packages/boards/board-support.toml`
+- [x] **W1.e** Resolve `board` through `packages/boards/board-support.toml`
       (RFC-0065 D9): the user always writes a nano-ros board id, and the
       registry carries the framework's own board string for platforms that have
       one. `[image.*].board` today mixes seven nano-ros keys with one raw Zephyr
       string (`native_sim/native/64`) — the conflation phase-337 W2 removed from
-      `PlatformId`, still live one layer up. Add `framework_board` to the
-      registry rows that need it; `check-board-tiers` already validates the
-      file's completeness.
-- [ ] **W1.f** Deprecate the **build fields inside `[deploy.*]`** — never the
+      `PlatformId`, still live one layer up.
+
+      **Landed smaller than planned.** No registry field was needed: a
+      descriptor already carries the downstream ecosystem's id among its
+      `names` — `packages/boards/zephyr/nros-board.toml` lists
+      `["zephyr", "native_sim/native/64"]` — so both spellings already resolve
+      to one descriptor. Resolution delegates to
+      `BoardCatalog::resolve_deploy`, the single rule issue 0606 established
+      after three consumers each grew a private opinion about what a board is
+      called; a fourth would be that defect with a new name. The only addition
+      is an error naming the IMAGE, which `resolve_deploy` cannot know.
+- [x] **W1.f** Deprecate the **build fields inside `[deploy.*]`** — never the
       table, which stays upstream's placement declaration. A `[deploy.<id>]`
       carrying `board`/`rmw`/`profile`/`optimize`/`features` with no
       `[image.<id>]` beside it warns once per invocation naming the replacement,
