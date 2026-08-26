@@ -262,16 +262,35 @@ leave generation:
 [image.freertos]
 kind  = "embedded"
 board = "mps2-an385-freertos"
-panic = "semihosting"          # was: extern crate panic_semihosting;
+panic = "halt"                 # RFC-0077 policy, forwarded to nros::main!
 
 [image.esp32-qemu]
 kind    = "embedded"
 board   = "esp32-qemu"
-panic   = "esp-backtrace"      # was: use esp_backtrace as _;
+panic   = "own"                # a support package carries the handler — D12
 profile = { opt-level = "z", lto = true }
 ```
 
-That covers every escape the survey found (D4): the panic handler and the
+**`panic` is not a new vocabulary — it is the existing one, forwarded.**
+`nros::main!` already takes `panic = "platform" | "halt" | "own"`
+([RFC-0077](0077-image-runtime-is-the-images-choice.md), phase-366 W7.a): a
+**policy**, not a crate name. Routing to `nros_platform_panic`, parking the
+core, or declaring that this image supplies its own `#[panic_handler]`. An
+earlier draft of this RFC wrote `panic = "semihosting"` / `"esp-backtrace"`,
+which is a category error — those are the crates an entry pulls in *under* the
+`own` policy, and inventing a second spelling for a shipped key is precisely the
+"second spelling instead of a shared helper" defect this repository keeps
+paying for.
+
+The composition matters: under D4 the entry is generated, so `panic = "own"`
+means *something else in the image* must carry the handler — and D12's support
+package is exactly that slot. The two escapes meet rather than duplicating.
+
+RFC-0077's own title, "The image runtime is the image's choice", is independent
+support for D6: the runtime policy was already understood as a property of the
+**image**, before this RFC named the table.
+
+That covers every escape the survey found (D4): the panic policy and the
 per-board build profile. The custom spin loop already has its own supported
 seam, RFC-0024 §11.8.
 
@@ -756,25 +775,41 @@ were checked in depth. ThreadX and the FreeRTOS vendor distributions
 
 ## Open questions
 
-- **Whether `--offline` becomes an explicit flag.** D2's non-TTY verify-only
-  covers CI, but production wants a guarantee stated independently of how the
-  build was invoked, and SBOM practice is explicit that eliminating network
-  access during the build is the fix for phantom dependencies. The alternative
-  — make offline the default and put provisioning behind `--fetch` — is
-  stronger still but reverses D2 and costs the newcomer their one-command start.
-- **Deprecation window length for `[deploy.*]` → `[image.*]`**, and whether
-  `nros doctor` warns or `nros build` does.
-- **Whether the repo's own nine workspace roots migrate** as part of this work,
-  or only new user workspaces get the builder. Migrating them is the real proof
-  it works; not migrating them leaves two shapes in one tree. Yocto multiconfig
-  shows one-tree-many-boards is a solved shape, so the question is sequencing
-  and risk, not feasibility.
-- **How `nros materialize` names what it writes** when several images share a
-  launch file but differ in args.
-- **What `panic` accepts.** D5 makes it a declaration, so its value set is now
-  API. `semihosting` / `esp-backtrace` / `abort` / `halt` covers every in-tree
-  entry, but a user crate reference (`panic = "my_crate::handler"`) is the
-  obvious next request and decides whether the key is an enum or a path.
+Four of the original set were closed by evidence already in the tree; what
+remains is one scope call and one narrowed decision.
+
+- **Do the repo's own nine workspace roots migrate** as part of this work, or
+  only new user workspaces get the builder? Migrating them is the real proof it
+  works; not migrating leaves two shapes in one tree. Yocto multiconfig settles
+  that one-tree-many-boards is feasible, so this is purely sequencing and risk —
+  and it roughly doubles or halves the campaign.
+
+- **Does `--offline` get its own flag, or reuse what exists?** Two in-tree
+  precedents narrow this. `nros setup --check` is already the "verify, name what
+  is missing, fetch nothing" spelling, and `scripts/bin/cargo` records a ruling
+  on the vocabulary (issue 0676): *"`--offline` is NOT in this list,
+  deliberately. It restricts cargo to the local cache; it does NOT pin
+  resolution … `--frozen` stays: it means `--locked --offline` by definition."*
+  So the recommendation is to reuse `--check` semantics in stage 3 rather than
+  mint a third word — leaving only whether production also wants a single
+  top-level flag that states the guarantee.
+
+### Closed since the first draft
+
+- ~~What `panic` accepts~~ — it is the **existing** RFC-0077 policy enum
+  (`platform` / `halt` / `own`), forwarded rather than redefined. See D5.
+- ~~Deprecation window for `[deploy.*]` → `[image.*]`~~ — phase-222 already
+  ran this migration and its pattern is reused verbatim: a `--help` suffix
+  naming the replacement and the removal version, a one-line stderr warning on
+  every invocation that still delegates, `NROS_SUPPRESS_DEPRECATION=1` for CI
+  lanes, `nros doctor` flagging it in config files, integration tests covering
+  all three surfaces, and deletion at the next minor version — **a version
+  boundary, not a time period**.
+- ~~How `nros materialize` names what it writes~~ — D6 made the **image** the
+  named unit, so `nros materialize robot1` writes `src/robot1_entry/`. The
+  question presupposed a launch-file-derived name, which D6 superseded.
+- ~~Does `APPLICATION_CONFIG_DIR` reach `sysbuild.conf`~~ — yes; read from
+  Zephyr v3.7.0's `sysbuild_kconfig.cmake`. See D8.
 
 ## Non-goals
 
@@ -787,6 +822,13 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26 (b)** — open-question audit. Closed three from evidence already
+  in the tree: `panic` is the **existing** RFC-0077 policy enum and D5's
+  `"semihosting"` example was a category error (corrected); the deprecation
+  window reuses phase-222's shipped pattern, keyed to a version boundary; and
+  materialize naming was already answered by D6 making the image the named unit.
+  Narrowed the offline question against `nros setup --check` and issue 0676's
+  `--offline`-vs-`--frozen` ruling. One scope call left open.
 - **2026-08-26** — persona pass (newcomer / production / safety-critical).
   **Third D5 mode proposed and rejected**: materialising already puts the entry
   package under version control, and `nros::main!` derives at EXPANSION time, so
