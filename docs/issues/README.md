@@ -53,14 +53,14 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 Recently resolved (2026-08-25): **#0797** — nightly was red on every real run with five of eight jobs aborting in 2-5 s: the matrix provisioned the CLI by hand (`cargo build … --bin nros`) and never built `nros-launch-resolve`, so `nros sync` refused and nightly exercised ONE platform, not six. The refusal is correct (0409) — the bug was the missing step. Fixed by `just setup-launch-resolve` in all FOUR provisioning blocks (a fix to the single block this issue quoted would have left three jobs failing identically). The issue's own unresolved question is answered: `ws.rs::resolver_from` searches a SIBLING of `nros` (arm 2 — the wording in the error, which would send you to copy the binary) and ALSO `<repo>/packages/cli/nros-launch-resolve/target/release/` via `ancestors().nth(4)` (arm 3), which is exactly where the recipe writes — so no copying is needed. Verified by running `nros` from nightly's path through a real `nros sync`. `pr-checks`/`host-tests` carry the same block and are deliberately NOT patched: only nightly is red, so they do not reach the refusal. See `archived/0797-*`. (2026-08-25)
 
-**#0801** (rmw/boards, open 2026-08-26) — `CONFIG_NROS_DOMAIN_ID` reaches the node token and NOT the
-entities, so one session registers across TWO domains: the SESSION opens from `RmwConfig` carrying the
-Kconfig value while ENTITIES resolve through `nros-c`'s `resolve_session_and_domain`, which reads the C-ABI
-`support.domain_id` (0 = unset) and otherwise falls back to a hardcoded 0. Nasty because the domain is the
-FIRST element of every key `rmw_zenoh` matches on, so the split is invisible at every layer that reports
-anything — session opens, entities register, router accepts, board publishes, and `ros2 topic list` simply
-never matches, with no error anywhere. Measured on S32K344 over serial: `ros2 topic echo` worked 1 run in 6
-with the board provably healthy each time. See `0801-*`. (2026-08-26)
+Recently resolved (2026-08-26): **#0801** — `CONFIG_NROS_DOMAIN_ID` reached the node token and not the
+entities, so one session registered across TWO domains and `ros2 topic list` simply never matched — no error
+anywhere, because the domain is the FIRST element of every key `rmw_zenoh` compares. Fixed by giving every
+arena `TopicInfo` the executor's domain (`429d5a581`); on S32K344 over serial the receive path worked on
+hardware for the first time. Method note from the hunt, worth more than the fix: a SENTINEL value proves
+whether code RAN, while diffing a built image only proves whether it CHANGED — two candidate sites were
+eliminated correctly but for the wrong reason (byte-identical images), reasoning that would have misled just
+as easily the other way. See `archived/0801-*`. (2026-08-26)
 
 **#0772** (platform/boards, open 2026-08-24) — FreeRTOS/lwIP has no wall-clock epoch, so an image there stamps from its BOOT epoch and a validating peer rejects it — the same defect #0758 fixed on Zephyr. The demand is the SAME consumer, not a speculative one: `board-support.toml` records `nros-board-s32z270-freertos` (Cortex-R52) as the "ASI phase-4 W5.b consumer", and 0758's closing note that "no FreeRTOS consumer has asked" was read off the Zephyr side alone. NOT a port of the Zephyr code: lwIP ships SNTP but our build compiles no `src/apps/*`, and its API is a background daemon with a compile-time callback macro — there is no synchronous `sntp_simple` equivalent, so 0758 W4's "acquired before the first stamp" guarantee does not carry and the clock flips mid-run. Verification is hardware-only (no emulator models the S32Z270 RTU); prove the mechanism on an mps2-an385 lwIP image instead. See `0772-*`. (2026-08-24)
 
