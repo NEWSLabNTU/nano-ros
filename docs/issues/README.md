@@ -53,6 +53,10 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 Recently resolved (2026-08-25): **#0797** — nightly was red on every real run with five of eight jobs aborting in 2-5 s: the matrix provisioned the CLI by hand (`cargo build … --bin nros`) and never built `nros-launch-resolve`, so `nros sync` refused and nightly exercised ONE platform, not six. The refusal is correct (0409) — the bug was the missing step. Fixed by `just setup-launch-resolve` in all FOUR provisioning blocks (a fix to the single block this issue quoted would have left three jobs failing identically). The issue's own unresolved question is answered: `ws.rs::resolver_from` searches a SIBLING of `nros` (arm 2 — the wording in the error, which would send you to copy the binary) and ALSO `<repo>/packages/cli/nros-launch-resolve/target/release/` via `ancestors().nth(4)` (arm 3), which is exactly where the recipe writes — so no copying is needed. Verified by running `nros` from nightly's path through a real `nros sync`. `pr-checks`/`host-tests` carry the same block and are deliberately NOT patched: only nightly is red, so they do not reach the refusal. See `archived/0797-*`. (2026-08-25)
 
+Recently resolved (2026-08-26): **#0770** (testing) — NOT REPRODUCED. The reporter (me)
+ran the decisive build-then-run protocol with the cyclone-source provocation: zero stale
+verdicts. Two mechanisms already cover it, both predating the report. See `archived/0770-*`.
+
 Recently resolved (2026-08-26): **#0801** — `CONFIG_NROS_DOMAIN_ID` reached the node token and not the
 entities, so one session registered across TWO domains and `ros2 topic list` simply never matched — no error
 anywhere, because the domain is the FIRST element of every key `rmw_zenoh` compares. Fixed by giving every
@@ -173,7 +177,6 @@ on the topic could be the one asserted against) and a private copy of `topic_end
 0690's bug after the library's copy was fixed. Mutation-verified both ways; NOT reproduced under sweep load,
 so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
-**#0770** (testing, open 2026-08-24) — tier-2 runs the native interop cells against fixtures its build lane never refreshed (the #482 exists-vs-fresh split, resurfaced for `interop::CELLS`); ~8 one-cause reds per sweep on a stale native lane. See `0770-*`.
 
 
 **#0798** (examples, open 2026-08-25) — `examples/workspaces/c`'s root routes `s32z270-freertos` to a FreeRTOS entry that hardcodes `BOARD`/`DEPLOY mps2-an385-freertos`, so all three arms of `_nra_board_active` are false: the image links with NO platform glue and no locator bake — issue 0735's "configure succeeded, the build succeeded, the image was wrong" one arm over. Latent, not red: the only s32z270 fixture row targets the C++ workspace, which phase-372 W2 DID fix (`BOARD ${NANO_ROS_BOARD}`). The class is the implicit (entry × board) pairing that RFC-0065 makes derived. See `0798-*`.

@@ -3,7 +3,7 @@ id: 770
 title: "tier-2 runs the native interop cells against fixtures its own build
   lane did not refresh — the #482 exists-vs-fresh split, resurfaced for
   `interop::CELLS`"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0482, issue-0445, issue-0488, issue-0786]
@@ -143,3 +143,48 @@ rule verbatim.
 Note `matrix_fixture_coverage.rs` G1–G4 gate the CELLS↔fixtures
 correspondence; whichever side moves, the gate should grow a case for
 "every cell a lane RUNS has its fixture in that lane's BUILD cover".
+
+## Not reproduced — closing as the treadmill confound (2026-08-26)
+
+I filed this. Running the decisive experiment the addendum above asks for, on
+the host whose sweep produced the original report, it does not reproduce.
+
+**Protocol** (the confound-free one stated above, plus the provocation the
+second sighting identified):
+
+1. tree synced and FROZEN — no pull from here on, since a pull is the confound;
+2. `just setup-cli` + `just setup-launch-resolve` first, so no other
+   precondition could masquerade;
+3. `touch packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp` —
+   mtime only, no content change. This is the provocation named above: ONE
+   cyclone source stales native fixtures across several languages, while a
+   1-wise lane refreshes only some;
+4. `just build-test-fixtures lane=tier2`;
+5. `just ci-matrix`.
+
+**Result: zero STALE test verdicts, `Real failures: 0 / 0`.** The only
+occurrences of the word in the run are the preflight's own two lines —
+`2 C/C++ fixture cell(s) were STALE and have now been rebuilt (cmake)` and
+`15 rust fixture(s) … rebuilt by cargo` — i.e. the machinery saw the
+provocation, rebuilt what it staled, and no test ever met a stale artifact.
+
+**Why the report was wrong.** Two mechanisms already deliver what this issue's
+Direction asks for, and BOTH predate the report:
+
+* `require_coord_in_lane` narrows an interop cell by its ROW coordinate, not by
+  artifact path (the addendum's finding; landed 2026-08-19/20);
+* `scripts/check-fixtures-stale.sh` probes freshness and REBUILDS stale cells
+  in the preflight rather than refusing them (issue 0681, landed 2026-08-19).
+
+So the run-scope/build-cover disagreement this issue describes is handled — by
+rebuilding rather than by narrowing, which is the stronger of the two answers.
+My sighting came from a session in which I pulled repeatedly mid-chain (the
+same session produced several stale-CLI reds from exactly that), and
+`lane=native` "clearing" it is explained by `native` simply being a LATER
+build — the ambiguity the addendum warned about, which my report could not
+distinguish and I did not test for at the time.
+
+**Kept for the next sighting:** the classification rule above still stands. If
+a fixture is STALE after a `lane=tier2` build → `lane=tier2` run, and a SECOND
+same-lane build does not clear it, that is this bug and it is real. Reopen with
+that datum rather than re-deriving it.
