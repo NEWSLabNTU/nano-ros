@@ -333,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn an_excluded_entry_is_not_a_member_but_IS_excluded() {
+    fn an_excluded_entry_is_not_a_member_but_is_excluded() {
         // west entries are `exclude`d by hand today for a concrete reason: a
         // Zephyr staticlib cannot be built for the host. And merely leaving one
         // OUT of `members` is not enough — cargo walks up from a package to
