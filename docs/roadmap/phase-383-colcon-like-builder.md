@@ -11,7 +11,7 @@
 
 **Status (2026-08-26). W1, W2, W4, W5 COMPLETE. W3 complete except W3.b (the
 entry emitter). W6 COMPLETE. W7 complete except
-W7.b (blocked on W3.b) and W7.e/W7.f (the cmake support library, in progress).
+W7.b, which is blocked on W3.b.
 `nros build` runs all five stages for cargo, cmake, west and ESP-IDF images.
 Remaining: W3.b, then W8–W10's migration. Fixed issue 0809 en route; corrected
 RFC-0065 D3, D6 and D10 against what the tools actually do.**
@@ -319,12 +319,12 @@ Carries **F6**.
       permanently.
 - [x] **W7.d** A test that a materialised entry still builds. A decorative
       escape silently deletes capability.
-- [ ] **W7.e** `nano_ros_support_library(<name> SRCS … INCLUDES … WHOLE_ARCHIVE)`
+- [x] **W7.e** `nano_ros_support_library(<name> SRCS … INCLUDES … WHOLE_ARCHIVE)`
       (RFC-0065 D12). The keyword emits the flag **and** the `LINK_DEPENDS` —
       issue 0475 is the reason users must not hand-write it. Our CMake floor is
       3.22, so `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` (3.24+) is unavailable; owning
       the spelling means the floor can rise later with no user edit.
-- [ ] **W7.f** Add `LINKER_FRAGMENTS` to the same function. **F6**: D12 covered
+- [x] **W7.f** Add `LINKER_FRAGMENTS` to the same function. **F6**: D12 covered
       libraries but not `.ld` fragments, and ASI has four. Zephyr's
       `zephyr_linker_sources()` is the seam.
 
