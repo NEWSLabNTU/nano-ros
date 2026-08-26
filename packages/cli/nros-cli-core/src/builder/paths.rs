@@ -9,7 +9,8 @@
 //!
 //! Every generated file this crate writes must carry relative paths only.
 //! Reproducible builds require bit-identical output across machines, and a
-//! path under `/home/aeon` is the single most common way that fails.
+//! path under a developer's home directory is the single most common way
+//! that fails.
 
 use std::path::Path;
 
@@ -98,8 +99,8 @@ mod tests {
         // that motivated this phase do it.
         assert_eq!(
             relative(
-                Path::new("/home/u/ws/build/native"),
-                Path::new("/home/u/nano-ros/packages/api/nros")
+                Path::new("/opt/u/ws/build/native"),
+                Path::new("/opt/u/nano-ros/packages/api/nros")
             )
             .as_deref(),
             Some("../../../nano-ros/packages/api/nros")
