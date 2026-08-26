@@ -18,7 +18,9 @@
 pub mod cargo_root;
 pub mod cmake_root;
 pub mod discover;
+pub mod dist;
 pub mod handoff;
+pub mod materialize;
 pub mod plan;
 pub mod preflight;
 pub mod zephyr;

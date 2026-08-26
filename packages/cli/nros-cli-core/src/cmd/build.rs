@@ -161,6 +161,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         // ---- stage 4 ----------------------------------------------------
         let handoff = match driver {
             Driver::Cargo => {
+                // W7.a — the declarative escapes reach cargo here. `panic` is
+                // forwarded to the ENTRY (the macro consumes it) rather than to
+                // cargo; `profile` names a cargo profile.
+                if let Some(p) = image.panic.as_deref() {
+                    crate::orchestration::image::validate_panic(Some(p))
+                        .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
+                }
                 // The cargo root lives at the WORKSPACE root, not under
                 // build/ — cargo requires members to sit below their root and
                 // resolves a package's workspace by walking up. An existing
@@ -169,6 +176,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 crate::builder::cargo_root::ensure(&found, &root, &excluded)
                     .map_err(|e| eyre::eyre!("{e}"))?;
                 let mut a = vec!["build".to_string()];
+                if let Some(profile) = image.profile.as_deref() {
+                    // `--profile` rather than `--release`: a named profile is
+                    // what `[image.<id>].profile` declares, and `release` is
+                    // just one of its legal values.
+                    a.push("--profile".to_string());
+                    a.push(profile.to_string());
+                }
                 if args.offline {
                     // `--frozen` is `--locked --offline` by definition; issue
                     // 0676 records why `--offline` alone is the wrong spelling
