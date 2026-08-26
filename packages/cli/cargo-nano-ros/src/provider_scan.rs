@@ -92,7 +92,20 @@ fn is_pruned_dir(name: &str) -> bool {
 /// Marker files that exclude a subtree, honoured as colcon and ament spell them
 /// plus our own. Buying the convention: a user who already knows `COLCON_IGNORE`
 /// should not have to learn a second spelling to get the same effect.
-const IGNORE_MARKERS: &[&str] = &["COLCON_IGNORE", "AMENT_IGNORE", "NROS_IGNORE"];
+// issue 0809 — `.nros-ignore` is the spelling that EXISTS. `NROS_IGNORE` was
+// this walk's guess at nano-ros's marker; issue 0621 then established
+// `.nros-ignore` in `nros-pkg-index` and did not sweep here, so the repo root's
+// own `.nros-ignore` — written so a vendored nano-ros stops polluting a
+// consumer's package graph — was honoured by one walk and not the other. Both
+// spellings are accepted rather than one replaced: `NROS_IGNORE` may exist in a
+// consumer tree that predates 0621, and silently dropping support would be the
+// same defect pointed the other way.
+const IGNORE_MARKERS: &[&str] = &[
+    "COLCON_IGNORE",
+    "AMENT_IGNORE",
+    "NROS_IGNORE",
+    ".nros-ignore",
+];
 
 /// A package that announces at least one provision.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -881,6 +894,38 @@ mod tests {
         let names: Vec<_> = r.providers.iter().map(|p| p.package.as_str()).collect();
         assert_eq!(names, vec!["real"]);
         assert_eq!(r.packages_seen(), 1, "the skipped ones were never parsed");
+    }
+
+    /// issue 0809 — the dotted spelling is the one that EXISTS on disk.
+    ///
+    /// The repo root's own `.nros-ignore` (issue 0621, so a vendored nano-ros
+    /// stops polluting a consumer's package graph) was honoured by
+    /// `nros-pkg-index` and NOT by this walk, which had guessed `NROS_IGNORE`.
+    /// Both are accepted now: a consumer tree predating 0621 may carry the
+    /// undotted one, and dropping it would be the same defect reversed.
+    #[test]
+    fn both_nros_ignore_spellings_are_honoured() {
+        for marker in [".nros-ignore", "NROS_IGNORE"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            write(
+                &root.join("vendored/nano-ros/packages/x/package.xml"),
+                &provider_xml("vendored_pkg", "rmw", "nope"),
+            );
+            write(&root.join("vendored/nano-ros").join(marker), "");
+            write(
+                &root.join("src/real/package.xml"),
+                &provider_xml("real", "rmw", "real"),
+            );
+
+            let r = scan_root(root, 0).unwrap();
+            let names: Vec<_> = r.providers.iter().map(|p| p.package.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["real"],
+                "`{marker}` must stop the walk descending"
+            );
+        }
     }
 
     /// A malformed package.xml is reported without taking the scan down with

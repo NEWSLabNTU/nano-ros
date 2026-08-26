@@ -15,4 +15,5 @@
 //! drivers, and a copy-out leaf ships its own root by contract (RFC-0026).
 //! Those targets go 1→2→3→5 with no generation at all.
 
+pub mod discover;
 pub mod handoff;
