@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-27): **#0822** (rmw) — zenoh-pico's Zephyr port picked thread stacks with
+`thread_stack_area[thread_index++]` over a fixed 4-entry array, with `thread_index` never reset and
+never bounds checked, so the fifth task an image created got a stack one whole stack past the end and
+every task after that reached further into adjacent `.bss` with no diagnostic. Four slots covers a
+steady session (read + lease task); a RECONNECT spends them, two at a time, so the second reconnect is
+already out of bounds. Replaced with a claim/release slot table; exhaustion is now a clean
+`_Z_ERR_SYSTEM_TASK_FAILED`. Release is on `join`, never on `free`, because the lease-expiry teardown
+DETACHES tasks before freeing them and a detached thread may still be running — releasing there would
+hand a live thread's stack to the next task. Residue recorded rather than hidden: a detach-teardown
+still retires its slot for the life of the image. Found while chasing #0821 and did NOT fix it — that
+fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
+
 **#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
 
 **#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.
