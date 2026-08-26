@@ -2815,13 +2815,22 @@ impl<'s> Executor<'s> {
         let monitors = self.monitor_table;
         let age_monitors = self.age_table;
         let epoch = self.epoch_us_fn;
+        let domain_id = self.domain_id;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::BackendMismatch)?;
         // SAFETY: short-lived scoped reference. `Node::new` takes
         // `&mut ConcreteSession`; lifetime is bound to this fn's
         // body via the closure's borrow of `node`.
-        let mut node = NodeHandle::new(name, ns, session, 0);
+        // issue 0801 (second half) — the executor's domain, NOT a literal 0.
+        // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
+        // `NodeHandle::new` sites, so an entity created through a node HANDLE
+        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
+        // arena path declared on the configured one. Same split the issue is
+        // about, one constructor over: `loan_e2e` publishes through a handle and
+        // subscribes through the arena, so it delivered on domain 0 and on
+        // nothing else.
+        let mut node = NodeHandle::new(name, ns, session, domain_id);
         // RFC-0052 W3b.4/.5 — seed the baked monitor tables so contracted
         // publishers/subscribers attach their cells without entry glue.
         node.set_monitors(monitors);
@@ -2887,7 +2896,21 @@ impl<'s> Executor<'s> {
             self.node_builder(name).build()?;
         }
 
-        let mut node = NodeHandle::new(node_name, self.namespace.clone(), &mut self.session, 0);
+        // issue 0801 (second half) — the executor's domain, NOT a literal 0.
+        // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
+        // `NodeHandle::new` sites, so an entity created through a node HANDLE
+        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
+        // arena path declared on the configured one. Same split the issue is
+        // about, one constructor over: `loan_e2e` publishes through a handle and
+        // subscribes through the arena, so it delivered on domain 0 and on
+        // nothing else.
+        let domain_id = self.domain_id;
+        let mut node = NodeHandle::new(
+            node_name,
+            self.namespace.clone(),
+            &mut self.session,
+            domain_id,
+        );
         node.set_monitors(self.monitor_table);
         node.set_age_monitors(self.age_table, self.epoch_us_fn);
         Ok(node)
@@ -2959,10 +2982,19 @@ impl<'s> Executor<'s> {
         let monitors = self.monitor_table;
         let age_monitors = self.age_table;
         let epoch = self.epoch_us_fn;
+        let domain_id = self.domain_id;
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::NodeTableFull)?;
-        let mut node = NodeHandle::new(node_name, namespace, session, 0);
+        // issue 0801 (second half) — the executor's domain, NOT a literal 0.
+        // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
+        // `NodeHandle::new` sites, so an entity created through a node HANDLE
+        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
+        // arena path declared on the configured one. Same split the issue is
+        // about, one constructor over: `loan_e2e` publishes through a handle and
+        // subscribes through the arena, so it delivered on domain 0 and on
+        // nothing else.
+        let mut node = NodeHandle::new(node_name, namespace, session, domain_id);
         node.set_monitors(monitors);
         node.set_age_monitors(age_monitors, epoch);
         Ok(node)

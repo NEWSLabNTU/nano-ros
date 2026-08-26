@@ -153,3 +153,40 @@ misled just as easily in the other direction.
 
 The lesson worth keeping: a sentinel value proves whether code RAN. Diffing a
 built image only proves whether it CHANGED, and those are not the same question.
+
+## Reopened and closed again, 2026-08-26 — the sweep stopped one constructor short
+
+The fix above corrected the **eleven arena `TopicInfo`s** in `spin.rs`. It left
+the **three `NodeHandle::new` call sites in the same file** passing a literal
+`0` for the domain:
+
+| site | fn |
+| --- | --- |
+| `spin.rs:2824` | `with_node` / `with_node_try` |
+| `spin.rs:2890` | `node` |
+| `spin.rs:2965` | `node_on` |
+
+So the split this issue is named for survived one constructor over: an entity
+created through the ARENA declared on the configured domain, while an entity
+created through a node HANDLE still declared on 0.
+
+`loan_e2e::loan_commit_delivers_to_subscriber` sits exactly on the seam — it
+publishes through a handle (`with_node_try` → `create_publisher_raw`) and
+subscribes through the arena builder — so after the first fix it delivered on
+domain 0 and on **no other domain at all**. Measured: passes at `domain_id(0)`,
+fails at 199 and at 42. It was green before the arena fix because both halves
+were uniformly wrong.
+
+That is this issue's own shape recurring inside its own fix, and the reason is
+the one CLAUDE.md names: the sweep covered the site where the symptom was seen
+(hardware, cross-process, arena) and not the class. The class is "a domain
+written as a literal", and it now has none in `spin.rs`.
+
+Fixed by threading `self.domain_id` into all three. Verified with
+`just test-zpico-multisession`: 2/2 loan cells pass where one failed, plus
+`zenoh_integration::two_sessions_deliver_cross_session_through_router`.
+
+Sweep: `rg 'NodeHandle::new' packages/core/nros-node/src/` — the one remaining
+literal `0` is in a `#[cfg(test)]` helper in `executor/node.rs`, which asserts
+nothing about domains.
+
