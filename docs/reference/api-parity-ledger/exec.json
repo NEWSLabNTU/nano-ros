@@ -307,6 +307,10 @@
     "verdict": "divergence",
     "why": "rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`."
   },
+  "cpp:ComponentNode::create_callback_group": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::create_callback_group`, forwarding to the owned node; the divergence itself is recorded in full at `cpp:Node::create_callback_group` -- ours takes the group NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079), rclcpp's takes a `CallbackGroupType` concurrency policy that a single-task run-to-completion executor cannot represent. This row is the same divergence one type over; the owning TYPE name is the extra question (`cpp:ComponentNode`)."
+  },
   "cpp:Executor::add_callback_group": {
     "verdict": "declined",
     "why": "RFC-0047: a callback group here is a NAME, not an object the executor holds. The group structure is declared in code (`Node::create_callback_group(\"ctrl\")`) and the group -> tier POLICY is declared in the workspace `system.toml`; the executor carries a config-seeded `group -> sched_context` table and binds each callback to its group's context at REGISTRATION, once, into a fixed arena. There is no group object to add to or remove from an executor, and no membership that can change after registration."
@@ -431,6 +435,10 @@
     "verdict": "declined",
     "why": "rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
   },
+  "cpp:GuardCondition::attach_std_closure": {
+    "verdict": "extension",
+    "why": "INTERNAL, not user API, `NROS_CPP_STD`-only -- 'Not intended for user code', in the header's own words. The guard-condition twin of `cpp:Timer::attach_std_closure`, and that row carries the reasoning: our runtime callback is a raw C function pointer, so the heap-allocated `std::function<void()>` it points into needs an owner with the right lifetime on this side. Reported at all only because the extractor now compiles a `-DNROS_CPP_STD=1` translation unit (issue 0818)."
+  },
   "cpp:GuardCondition::exchange_in_use_by_wait_set_state": {
     "verdict": "declined",
     "why": "rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
@@ -526,6 +534,26 @@
   "cpp:WeakCallbackGroupsToNodesMap": {
     "verdict": "declined",
     "why": "an `std::map` of weak group pointers to the nodes they came from, so an rclcpp executor can drop a group when its node dies. no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. RFC-0047: a callback group here is a NAME, not an object the executor holds. The group structure is declared in code (`Node::create_callback_group(\"ctrl\")`) and the group -> tier POLICY is declared in the workspace `system.toml`; the executor carries a config-seeded `group -> sched_context` table and binds each callback to its group's context at REGISTRATION, once, into a fixed arena. There is no group object to add to or remove from an executor, and no membership that can change after registration."
+  },
+  "cpp:create_executor": {
+    "verdict": "extension",
+    "why": "the `NROS_CPP_STD` `std::string` overload of `Executor::create`, as a free function because a header cannot add a member to a class defined in another one -- that is the whole reason the `std_compat.hpp` conveniences are free functions taking the object as their first argument, and it applies equally to `cpp:executor_spin_once`, `cpp:executor_spin_for` and `cpp:create_guard_condition`. rclcpp has no free executor factory: its executors are ordinary objects, usually `std::make_shared<SingleThreadedExecutor>()`. The constraint that makes ours a factory at all is recorded at `cpp:Executor::create` (caller-owned inline storage, no allocator). A `no_std` consumer does not get this spelling."
+  },
+  "cpp:create_guard_condition": {
+    "verdict": "extension",
+    "why": "the `NROS_CPP_STD` `std::function<void()>` free-function form of `Node::create_guard_condition`, whose reason for existing is recorded at `cpp:Node::create_guard_condition` -- the cross-thread / ISR wake source, created on the node so it lands in the owning executor's arena. This overload adds only the closure: the runtime takes a raw `void(*)(void*)`, so the `std::function` is heap-owned and parked on the object by `cpp:GuardCondition::attach_std_closure`. A `no_std` consumer does not get it; the always-available spelling takes a plain callback and a `void* ctx`."
+  },
+  "cpp:executor_spin": {
+    "verdict": "extension",
+    "why": "DEPRECATED and due for deletion -- do not read it as surface we intend to keep. It is a `[[deprecated]]` alias for `cpp:executor_spin_for`, kept for one release by issue 0338 when `Executor::spin()` was moved to rclcpp's meaning (block until shutdown) and the old bounded two-argument spin needed somewhere to land. `NROS_CPP_STD`-only, like the rest of the `std_compat.hpp` free functions. rclcpp has no free `executor_spin`; the nearest is `rclcpp::spin(node)`, whose node argument we decline at `cpp:spin_once`."
+  },
+  "cpp:executor_spin_for": {
+    "verdict": "extension",
+    "why": "the `NROS_CPP_STD` `std::chrono` overload of `Executor::spin_for`, free-standing for the reason at `cpp:create_executor`. The operation itself is the extension, and `cpp:Executor::spin_for` argues it: a bounded loop that keeps WAITING for work until the budget is spent, which neither `spin_some(max_duration)` nor `spin_all(max_duration)` does. A `no_std` consumer does not get this spelling."
+  },
+  "cpp:executor_spin_once": {
+    "verdict": "extension",
+    "why": "the `NROS_CPP_STD` `std::chrono::milliseconds` overload of `Executor::spin_once`, spelled as a free function taking the executor first for the reason given at `cpp:create_executor` -- `std_compat.hpp` cannot add a member to `Executor`. It is a UNIT overload, not a new operation: the method it forwards to correlates as `same` against rclcpp's `Executor::spin_once`. rclcpp needs no equivalent because it takes `std::chrono` natively; ours takes `int32_t` milliseconds so the method is reachable from a freestanding build with no `<chrono>`. A `no_std` consumer does not get this spelling. Note the naming caveat at `cpp:spin_once`: our one-cycle verb has rclcpp's `spin_some` semantics."
   },
   "cpp:spin_once": {
     "verdict": "divergence",

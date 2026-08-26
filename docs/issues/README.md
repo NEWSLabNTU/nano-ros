@@ -65,17 +65,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 **#0816** (tooling, open 2026-08-26) — the book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property. See `0816-*`.
 
-**#0818** (api/tooling, open 2026-08-26) — a green `api-parity.py --check` is being read as "the C++
-surface is accounted for", and it is silent about two whole families. The extractor compiles ONE TU,
-`#include "nros/nros.hpp"`, which never includes `component_node.hpp` (measured: ZERO ledger rows
-repo-wide contain `ComponentNode`, while that header holds ~half the C++ `create_timer` sites and the
-`NROS_COMPONENT_*` macro) and never defines `NROS_CPP_STD`, so `std_compat.hpp` is included-but-
-compiled-out. Not hypothetical: it produced two wrong rows in one day — W5 group A renamed
-`make_publisher` -> `create_publisher` against a row recording no collision when `nros::create_publisher`
-already existed in `std_compat.hpp`, and `cpp:create_timer`'s row claimed "the fix is ADDING a free
-function" that has existed all along. Compounded because `just check-cpp` compiles every header
-standalone WITHOUT `NROS_CPP_STD` too, so the coexistence of the two is exercised by neither the tool
-nor the C++ lane. See `0818-*`.
+Recently resolved (2026-08-26): **#0818** (api/tooling) — a green `api-parity.py --check` was being
+read as "the C++ surface is accounted for" while being silent about two whole families. The extractor
+compiled ONE TU, `#include "nros/nros.hpp"`, which never includes `component_node.hpp` (ZERO ledger
+rows repo-wide contained `ComponentNode`) and never defined `NROS_CPP_STD`, so `std_compat.hpp` was
+included-but-compiled-out. It produced two wrong rows in one day. Fixed by extracting the UNION of
+three TUs, with the std flavour extracted SEPARATELY and tagged `std_only` (a `no_std` consumer does
+not get those symbols, so folding them in would trade one wrong answer for another). 11 + 17 items
+were invisible; closing it produced 46 unledgered rows, now written — 11 of which are TYPE-NAME
+artifacts (`ComponentNode::*` are `rclcpp::Node` methods under our type's name), not inventions.
+Note the first attempt REINTRODUCED the bug: de-duping the union by `qual` dropped overloads and
+member lists, so `nros::spin` read `differs` when it is `systematic` — this issue's own failure one
+level down. See `archived/0818-*`. (2026-08-26)
 
 Recently resolved (2026-08-26): **#0817** (platform) — sixteen allocation sites in the Zephyr port
 called `k_malloc`/`k_free` directly instead of the `nros_platform_alloc` funnel RFC-0034 D6 defines

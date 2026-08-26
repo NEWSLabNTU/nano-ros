@@ -436,6 +436,10 @@
     "verdict": "divergence",
     "why": "our spelling of rclcpp_action's `SendGoalOptions`. rclcpp attaches the goal-response / feedback / result callbacks to a SINGLE send_goal call; ours binds them to the CLIENT (RFC-0041, callbacks bind to the entity at declaration), so a client that sends many goals installs them once. The nested `SendGoalOptions` struct keeps rclcpp's name for the three-callback bundle."
   },
+  "cpp:ActionClientStorage": {
+    "verdict": "extension",
+    "why": "the action-client twin of `cpp:ActionServerStorage`: `alignas(8) uint8_t bytes[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE]`, declared by the component, passed to `cpp:create_action_client_raw` or `cpp:bind_action_client`. USER-FACING -- `examples/workspaces/cpp/src/action_client_pkg` declares one."
+  },
   "cpp:ActionServer": {
     "verdict": "divergence",
     "why": "rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Ours is additionally constructed into caller-owned storage by `Node::create_action_server` rather than reached through `make_shared` -- the `out-param-first` and `no-shared-ptr` rules; see the pubsub stage's `cpp:Publisher::Publisher<M>`."
@@ -451,6 +455,10 @@
   "cpp:ActionServerOptions": {
     "verdict": "extension",
     "why": "what a device varies per action server (scheduling context) where rclcpp_action would use `rcl_action_server_options_t`. See the service stage's `cpp:ClientOptions`."
+  },
+  "cpp:ActionServerStorage": {
+    "verdict": "extension",
+    "why": "the caller-owned byte buffer a component must declare per raw action server -- `alignas(8) uint8_t bytes[NROS_CPP_ACTION_SERVER_STORAGE_SIZE]`, app lifetime, held by the executor arena. No allocator, so the server object has to live somewhere the component owns; rclcpp_action's `create_server` returns a heap `SharedPtr`. USER-FACING -- `examples/workspaces/cpp/src/action_server_pkg` declares one and passes `.bytes`. See `cpp:ServiceClientStorage` for the same shape one entity over."
   },
   "cpp:CancelResponse": {
     "verdict": "divergence",
@@ -536,9 +544,33 @@
     "verdict": "extension",
     "why": "the generated dispatch path for sending a goal from inside a component's tick. Machinery `nros::node!` expands into; see issue 0784 and the service stage's `rust:ClientDispatch::call_raw`."
   },
+  "cpp:bind_action_client": {
+    "verdict": "extension",
+    "why": "RFC-0043's component seam for an action client, and the one member of the family that also creates a TIMER. It binds `on_goal_response(bool, const uint8_t[16])`, `on_feedback(const uint8_t[16], const uint8_t*, size_t)` and `on_result(const uint8_t[16], int32_t, const uint8_t*, size_t)` by identity, then registers a component-owned poll timer -- because an action client's replies arrive as GET-query replies that `spin_once` does NOT drain (issue-0047), so something has to call `nros_cpp_action_client_poll` every `poll_ms`. rclcpp_action needs no equivalent: its callbacks go in a `SendGoalOptions` bundle per goal (`cpp:ActionClient::set_callbacks` records that difference) and its waitable is driven by the executor. USER-FACING -- exercised by the Zephyr `action-client` example and `rtos_e2e`."
+  },
+  "cpp:bind_action_server_raw": {
+    "verdict": "extension",
+    "why": "RFC-0043's component seam for an action server: binds the members `int32_t C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)` and `int32_t C::on_cancel(const uint8_t goal_id[16])` by identity onto `cpp:create_action_server_raw`, with no-alloc trampolines and the component as `ctx`. USER-FACING -- `examples/workspaces/cpp/src/action_server_pkg/src/FibServer.cpp` writes it. rclcpp_action passes `std::function`s to `create_server`; there is no allocator here. See `cpp:bind_subscription` for the family. The goal is identified by a 16-byte UUID rather than an owning handle -- `c:action_execute` records why."
+  },
   "cpp:convert": {
     "verdict": "declined",
     "why": "converts between `rclcpp_action::GoalUUID` and `rcl_action_goal_info_t`. Both sides of that conversion are rcl types; our RMW seam is the vtable (RFC-0035), not rcl. See the pubsub stage's rows on rcl handle accessors."
+  },
+  "cpp:create_action_client": {
+    "verdict": "divergence",
+    "why": "this IS rclcpp_action's `create_client`, under a name forced by namespaces. rclcpp_action puts the action entities in their OWN namespace, so its factory can be called `create_client` beside `rclcpp::create_client`; we ship one namespace, `nros`, where `create_client` is already the SERVICE client, so ours carries the `action_` infix -- the same reason `cpp:ActionClient` and `cpp:ActionServer` are spelled as they are, and the same artifact as `cpp:Client::wait_for_action_server`. Two further facts a reader needs. It is the `NROS_CPP_STD` `std::string` overload in `std_compat.hpp`, so a `no_std` consumer does not get this spelling; the always-available one is the method `Node::create_action_client` (`cpp:Node::create_action_client`). And it is a free function, which corrects the record: `cpp:create_server` says 'ours is the method', written when the extractor compiled no `-DNROS_CPP_STD=1` translation unit -- issue 0818, the same correction `cpp:create_timer` and `cpp:create_publisher` already carry."
+  },
+  "cpp:create_action_client_raw": {
+    "verdict": "extension",
+    "why": "creates a raw, poll-style action client into caller-owned `cpp:ActionClientStorage`; the caller drives it with `nros_cpp_action_client_send_goal` / `..._try_recv_goal_response` / `..._get_result`. USER-FACING: `examples/workspaces/cpp/src/action_client_pkg/src/FibClient.cpp` calls it directly. The poll tier is the opt-in; `cpp:bind_action_client` is the callback tier built on it (RFC-0041). rclcpp_action has no poll tier -- `async_send_goal` returns a `shared_future`."
+  },
+  "cpp:create_action_server": {
+    "verdict": "divergence",
+    "why": "the action-server half of `cpp:create_action_client`: rclcpp_action's `create_server` under the `action_` infix our single namespace forces, available only under `NROS_CPP_STD` as the `std::string` overload. `cpp:create_server` and `cpp:Node::create_action_server` are the paired rows; both were written believing no free function existed on our side, which issue 0818 shows was an artifact of the extractor rather than a fact about the header."
+  },
+  "cpp:create_action_server_raw": {
+    "verdict": "extension",
+    "why": "the three FFI steps a raw action server needs, in one call against caller-owned storage: create, register on the executor, then set the goal and cancel callbacks. The goal callback returns a `GoalResponse` discriminant (`0` reject / `1` accept-and-execute / `2` accept-defer) and the cancel callback a `CancelResponse`; a goal is completed afterwards with `nros_cpp_action_server_complete_goal`. rclcpp_action's `create_server` takes goal, cancel AND accepted callbacks and returns a `SharedPtr`; ours has no accepted callback because there is no owning goal handle to hand back (see `cpp:ActionServer`) and no allocator to return from. Public and documented, but in practice reached through `cpp:bind_action_server_raw`, which supplies the trampolines."
   },
   "cpp:create_server": {
     "verdict": "declined",

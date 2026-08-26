@@ -112,6 +112,38 @@
     "verdict": "extension",
     "why": "an explicit node lifecycle (uninitialised / initialised / finalised) so double-init and use-after-fini return a code instead of being undefined. See `c:support_state_t`."
   },
+  "cpp:ComponentNode": {
+    "verdict": "divergence",
+    "why": "RFC-0044's IS-A-node authoring base: a user writes `class Talker : public nros::ComponentNode` and wires its entities in the ctor body, which is exactly what `class Talker : public rclcpp::Node` is. It reports ours-only because rclcpp needs ONE node type and we ship two. `nros::Node` is the value HANDLE -- caller-owned storage, move-only, carrying an FFI handle, with RFC-0022's rule that two live handles are a borrow error -- so deriving from it would put its move/dtor surface on every user node; RFC-0044 Q1 decided WRAP rather than derive, and `ComponentNode` owns an `nros::Node node_` member the convenience methods forward to. Two constraints hold the split in place: no allocator (there is no `std::make_shared<Talker>` -- the generated entry placement-news the component into an arena slot) and no exceptions (a ctor cannot throw on a failed entity creation, so RFC-0044 Q2 records an `ok()` flag instead -- see `cpp:ComponentNode::ok`). Whether the pair should be spelled differently is the open question this row records; the METHODS need no change, and each is filed under its own topic. Note `nros/nros.hpp` does not include `component_node.hpp`, so a ported node reaches this type only through the generated entry or an explicit include -- `cpp:Node::declare_parameter` records what that costs. Phase 379 W5, issue 0818: these rows exist at all only because the extractor now compiles `component_node.hpp` as its own translation unit."
+  },
+  "cpp:ComponentNode::ComponentNode": {
+    "verdict": "divergence",
+    "why": "`ComponentNode(NodeHandle, const char* name, const char* ns = nullptr)` against rclcpp's `Node(const std::string& name[, const std::string& ns], const NodeOptions&)`. Three differences, each with a constraint. The leading `NodeHandle`: the executor IS the session and owns the static entity arena, so a node is created ON one and cannot exist before it (`cpp:Executor::create_node`, `cpp:Context`, `cpp:NodeHandle`). `const char*` rather than `std::string`: no allocator, and a node name on a device is a literal. No `NodeOptions`: the `compile-time-options` rule. It also cannot throw -- a null handle or a failed `Node::create` sets the `ok()` flag and the generated entry halts boot naming the node (RFC-0044 Q2). See `cpp:Node::Node` for the same divergence on the handle type."
+  },
+  "cpp:ComponentNode::error_code": {
+    "verdict": "divergence",
+    "why": "the raw error CODE of the first failure, or `0` when `ok()`. The other half of `cpp:ComponentNode::error_what`; see `cpp:ComponentNode::ok`."
+  },
+  "cpp:ComponentNode::error_what": {
+    "verdict": "divergence",
+    "why": "the failure SITE (`\"create_publisher\"`, `\"node create\"`, ...) of the first error, or `nullptr` when `ok()`. Half of what a thrown rclcpp ctor exception would have carried; see `cpp:ComponentNode::ok` for why it is a flag and not a throw."
+  },
+  "cpp:ComponentNode::get_name": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::get_name`: same name, same no-argument shape, same `const char*` return, forwarding to the owned node. It reports ours-only ONLY because the owning TYPE is spelled differently -- `Node::get_name` correlates as `same`, so the method needs no change and `cpp:ComponentNode` carries the open question. Same pattern as `cpp:Client::wait_for_action_server`, where a method we ship reads as unmatched because rclcpp_action can spell its type `Client` and we cannot."
+  },
+  "cpp:ComponentNode::get_namespace": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::get_namespace`, forwarding to the owned node; `Node::get_namespace` correlates as `same`. A type-name artifact, not a new method -- see `cpp:ComponentNode::get_name`."
+  },
+  "cpp:ComponentNode::node": {
+    "verdict": "divergence",
+    "why": "the accessor for the owned `nros::Node`, and a direct consequence of RFC-0044 Q1's WRAP decision: a base that DERIVED from the node would need no accessor, which is why `rclcpp::Node` -- the thing a user derives -- has none. A component reaches through it for the lower-level `bind_*` / `create_*_raw` seam in `<nros/component.hpp>` and for the entities `ComponentNode`'s convenience members do not cover (services, actions). See `cpp:ComponentNode`."
+  },
+  "cpp:ComponentNode::ok": {
+    "verdict": "divergence",
+    "why": "RFC-0044 Q2. rclcpp reports a failed entity or parameter creation inside a node ctor by THROWING; we compile without exceptions, so the ctor records a flag and the generated entry / single-node carrier checks `ok()` immediately after construction and halts boot NAMING the failing node -- the multi-node boot diagnostic a thrown ctor would otherwise have given. Do not confuse it with the free `nros::ok()` / `rclcpp::ok()`, which report context liveness, or with `cpp:Executor::ok`. Issue #230 made the flag SMP-safe: the healthy value is the zero-initialised default, so a reader on a core the ctor's stores have not reached still sees `ok()`, and a real failure is published with a release store and read with an acquire load so it cannot be missed either."
+  },
   "cpp:Node::Node": {
     "verdict": "divergence",
     "why": "rclcpp constructs a node from `(name[, namespace][, NodeOptions])` and expects `std::make_shared`. Ours has a default constructor and a move constructor, and the node is produced by `Executor::create_node` / `nros::Node::create` into caller-owned storage -- the `out-param-first` and `no-shared-ptr` rules, applied to construction itself. Constraint: no allocator, and RFC-0022's rule that two live node handles are a borrow error rather than a second shared_ptr."
@@ -172,6 +204,18 @@
   "cpp:NodeBuilder": {
     "verdict": "extension",
     "why": "what replaces `NodeOptions`: a builder that names the four things a device varies -- domain, locator, namespace, RMW selection -- plus the scheduling context (RFC-0047). rclcpp's options object is mutable, copied and passed; a builder consumed at construction needs no storage to outlive the call."
+  },
+  "cpp:NodeHandle": {
+    "verdict": "divergence",
+    "why": "the ctor argument that stands in for rclcpp's implicit default `Context`: a `void* executor` the generated entry reads from `nros::global_handle()` and hands to every component ctor (`nros::NodeHandle __h(::nros::global_handle());`). rclcpp's `Node` ctor takes no context in the common case -- it picks up the global default -- and the node is attached to an executor afterwards with `add_node`. Ours cannot: the executor IS the session and owns the static entity arena every entity lands in, so a node is created ON one and there is nothing to add later (`cpp:Executor::create_node`, `cpp:Context`). It is a two-word `constexpr` struct with no allocation and no ownership -- see `cpp:NodeHandle::valid` and `cpp:NodeHandle::NodeHandle`."
+  },
+  "cpp:NodeHandle::NodeHandle": {
+    "verdict": "divergence",
+    "why": "`constexpr NodeHandle()` (null) and `explicit constexpr NodeHandle(void*)`. No allocation, no ownership; rclcpp has no counterpart because it has no such argument. See `cpp:NodeHandle`."
+  },
+  "cpp:NodeHandle::valid": {
+    "verdict": "divergence",
+    "why": "`executor != nullptr`. `ComponentNode`'s ctor checks it and sets `ok()=false` rather than throwing (`cpp:ComponentNode::ok`); rclcpp's nearest is `Context::is_valid`, which asks a different question of a different object. See `cpp:NodeHandle`."
   },
   "cpp:NodeOptions": {
     "verdict": "divergence",

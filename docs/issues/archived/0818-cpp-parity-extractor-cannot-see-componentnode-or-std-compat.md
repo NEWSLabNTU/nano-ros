@@ -3,7 +3,7 @@ id: 818
 title: "`--check` green is not evidence of C++ API coverage: the parity extractor
   compiles one TU that never reaches `component_node.hpp` and never defines
   `NROS_CPP_STD`, so two whole families produce zero ledger rows"
-status: open
+status: resolved
 type: bug
 area: api, tooling
 related: [phase-379, issue-0788]
@@ -85,7 +85,50 @@ print(sum(1 for f in glob.glob('docs/reference/api-parity-ledger/*.json')
 PY
 ```
 
-## Direction
+## Resolution (2026-08-26)
+
+`ours_cpp` now extracts the **union of three translation units** — base,
+`component_node.hpp`, and base again with `-DNROS_CPP_STD=1` — so no header the
+C++ API ships is invisible to the tool.
+
+Direction (2) was taken rather than simply defining the macro for everything:
+the std flavour is extracted SEPARATELY and its items tagged `std_only`, because
+a `no_std` consumer genuinely does not get those symbols. Folding them into the
+base surface would have traded one wrong answer for another.
+
+**Measured**: 11 items were hidden behind `NROS_CPP_STD`, 17 behind
+`component_node.hpp` (including `ComponentNode` itself and a C++ `NodeHandle`).
+Closing the blind spot produced **46 ours-only items with no ledger row**, now
+written — 24 `extension`, 22 `divergence`, across 8 shards.
+
+Eleven of those are **type-name artifacts, not inventions of ours**:
+`ComponentNode::{get_name,get_namespace,get_logger,create_publisher,
+create_subscription,create_callback_group,declare_parameter,get_parameter,
+has_parameter}` are `rclcpp::Node` methods under our type's name, and
+`create_action_client`/`create_action_server` are `rclcpp_action::create_client`/
+`create_server` renamed because we ship one `nros` namespace where
+`create_client` is already the service client. Their rows say the method needs no
+change and the owning TYPE name is the open question, rather than claiming we
+invented them.
+
+**The first attempt at this fix reintroduced the bug it was closing.** De-duping
+the union by `item["qual"]` looked right and was not: `extract` emits one record
+per DECLARATION, so overloads are separate records and a type's record carries
+its whole member list. Collapsing on the name dropped exactly what the extra TUs
+were added to see — `nros::spin` lost its `(uint32_t, int32_t)` overload and was
+reported `differs` against rclcpp when it is `systematic`; `nros::init` lost
+three of four; `Timer::attach_std_closure`, `GuardCondition::attach_std_closure`
+and `Seq::to_vector` vanished because their owning type had already been seen
+with a shorter member list. A silently narrowed C++ surface reported as
+agreement — this issue's own failure, one level down, introduced by its fix. The
+key is now the whole record.
+
+Direction (3) — a `tests/compile/` TU pairing `nros.hpp` with `NROS_CPP_STD` —
+is NOT done. The parity tool now compiles that combination, so the pairing is
+exercised, but `just check-cpp` still compiles every header standalone without
+the flag. Worth a follow-up if a second collision of the group-A kind appears.
+
+## Direction (as filed)
 
 Three separable moves; none decided here.
 

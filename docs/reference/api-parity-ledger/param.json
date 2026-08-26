@@ -233,6 +233,18 @@
     "verdict": "declined",
     "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half."
   },
+  "cpp:ComponentNode::declare_parameter": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `cpp:Node::declare_parameter`, which records the pair in full: `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` while `nros::Node` carries no parameter method at all, so a ported node reaching us through `nros/nros.hpp` finds nothing. The method needs no rename; the owning TYPE is the open question (`cpp:ComponentNode`). What genuinely differs from rclcpp: no `ParameterDescriptor` and no `ignore_override` (the `compile-time-options` rule); `const char*` keys, with a `std::string` overload only under `NROS_CPP_STD`; and no exception on a redeclare or a type mismatch -- rclcpp throws `ParameterAlreadyDeclaredException` / `InvalidParameterTypeException`, ours sets the `ok()` flag, and `NROS_RET_ALREADY_EXISTS` is read as launch-seeded and adopted rather than rejected (issue 0745). A `std::vector<T>` overload exists on hosted builds, backed by a fixed-capacity `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` (`cpp:Seq`) because there is no allocator behind it."
+  },
+  "cpp:ComponentNode::get_parameter": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `cpp:Node::get_parameter`; `cpp:ComponentNode::declare_parameter` records the pair. One difference deserves its own sentence: rclcpp's `get_parameter(name)` returns an `rclcpp::Parameter` and THROWS `ParameterNotDeclaredException` for a name never declared, while its `get_parameter(name, T&)` returns `bool`. Ours returns `T` by value and yields `T{}` for an undeclared name -- with no exceptions there is no second channel on a value-returning signature, so absence and a zero value are indistinguishable. The header's answer is that callers always `declare` before `get`; a caller that does not gets a silent default, and `cpp:ComponentNode::has_parameter` is the only way to tell the two apart."
+  },
+  "cpp:ComponentNode::has_parameter": {
+    "verdict": "divergence",
+    "why": "the ours-only half of `cpp:Node::has_parameter`: same name, same meaning, `const char*` key with a `std::string` overload under `NROS_CPP_STD`. It reports ours-only only because the owning TYPE is spelled differently (`cpp:ComponentNode`). It also carries weight rclcpp's does not -- it is the only non-throwing way to distinguish an undeclared parameter from a zero-valued one; see `cpp:ComponentNode::get_parameter`."
+  },
   "cpp:LifecycleNode::*parameter*": {
     "verdict": "gap",
     "bucket": "theirs-only",

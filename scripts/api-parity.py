@@ -128,14 +128,68 @@ RCLC_SOURCE = (
 # --------------------------------------------------------------------------
 
 
+# issue 0818 — the C++ surface is the UNION of three translation units, not
+# whatever `nros.hpp` happens to reach.
+#
+# `nros.hpp` is a curated convenience header. Using it as the definition of "our
+# C++ API" silently made every header it omits non-API, and the tool reported
+# that silence as agreement:
+#
+#   * `component_node.hpp` is not included by it at all, so `ComponentNode`,
+#     `NodeHandle`, the `bind_*` family and the `create_*_raw` family produced
+#     ZERO rows while holding ~half the C++ `create_timer` call sites.
+#   * `std_compat.hpp` IS included, but behind `#ifdef NROS_CPP_STD`, which this
+#     extractor never defined — so its eleven free functions were invisible.
+#
+# Two wrong ledger rows came out of that in one day: W5 group A renamed
+# `make_publisher` -> `create_publisher` against a row recording no collision
+# when `nros::create_publisher` already existed in std_compat, and
+# `cpp:create_timer` claimed the fix was "ADDING a free function" that had
+# existed all along.
+#
+# The std flavour is extracted SEPARATELY rather than by defining the macro for
+# everything, because a `no_std` consumer genuinely does not get those symbols —
+# folding them into the base surface would trade one wrong answer for another.
+# Items reachable only with the flag are tagged `std_only` so a row can say so.
+CPP_TRANSLATION_UNITS = (
+    ("base", '#include "nros/nros.hpp"\n', ()),
+    ("component", '#include "nros/component_node.hpp"\n', ()),
+    ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",)),
+)
+
+
 def ours_cpp(tmpdir):
-    return extract_cxx.extract(
-        '#include "nros/nros.hpp"\n',
-        "c++",
-        extract_cxx.nros_cpp_include_args(),
-        {"nros"},
-        tmpdir,
-    )
+    # The de-dup key is the WHOLE RECORD, not its `qual`. `extract` emits one
+    # record per DECLARATION -- overloads are separate records that `correlate.
+    # flatten` groups afterwards, and a type's record carries its member list --
+    # so collapsing on the name alone drops exactly what the extra TUs were
+    # added to see. Measured: `nros::spin` lost its `(uint32_t, int32_t)`
+    # overload and was reported `differs` against rclcpp when it is
+    # `systematic`; `nros::init` lost three of four; `Timer::attach_std_closure`,
+    # `GuardCondition::attach_std_closure` and `Seq::to_vector` vanished because
+    # their owning type was already seen in the base TU with a shorter member
+    # list. That is issue 0818's own failure -- a silently narrowed C++ surface
+    # reported as agreement -- one level down.
+    seen = set()
+    order = []
+    for label, source, extra in CPP_TRANSLATION_UNITS:
+        items = extract_cxx.extract(
+            source,
+            "c++",
+            extract_cxx.nros_cpp_include_args() + list(extra),
+            {"nros"},
+            tmpdir,
+        )
+        for item in items:
+            key = json.dumps(item, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            if label == "std":
+                # Only reachable when the consumer opted into the std flavour.
+                item["std_only"] = True
+            order.append(item)
+    return order
 
 
 def ours_c(tmpdir):

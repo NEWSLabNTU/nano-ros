@@ -546,6 +546,10 @@
       "resolution": "Re-verdicted rename -> declined; no ours-half, so the suffix question does not arise. Consistent with cpp:Client::take_type_erased_response and cpp:Subscription::take_type_erased. No code change; no target name invented."
     }
   },
+  "cpp:ServiceClientStorage": {
+    "verdict": "extension",
+    "why": "the caller-owned byte buffer a component must declare for a raw, poll-style service client -- `alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE]`, app lifetime. It exists because there is no allocator: the client has to live somewhere the component owns, where rclcpp's `Node::create_client` returns a heap `SharedPtr`. USER-FACING -- `examples/workspaces/{cpp,mixed}/src/*_client_pkg` declare one and pass `client_.bytes`. Same shape as `cpp:ActionServerStorage` and `cpp:ActionClientStorage`, and one layer up as the `alignas(8)` inline arrays `cpp:Executor::create` records."
+  },
   "cpp:ServiceOptions": {
     "verdict": "extension",
     "why": "see `cpp:ClientOptions`."
@@ -578,6 +582,14 @@
     "verdict": "declined",
     "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
   },
+  "cpp:bind_service": {
+    "verdict": "extension",
+    "why": "RFC-0043's component seam for a TYPED service handler: it binds `Svc::Response C::on_request(const Svc::Request&)` by identity, and the generated trampoline `ffi_deserialize`s the request into a STACK `Svc::Request`, calls the member, and `ffi_serialize`s the response back into the reply buffer -- no hand-rolled CDR in the component, no heap, no `std::function`. The service type name comes from `Svc::TYPE_NAME`, so unlike `cpp:bind_service_raw` no `type_name` argument is needed. USER-FACING: `examples/workspaces/cpp/src/service_server_pkg` writes it and `nros-cpp/tests/compile/bind_service.cpp` is its compile regression (issue 0089 gap 4). rclcpp's equivalent is `create_service(name, std::bind(&C::on_request, this, _1, _2))`, which allocates. See `cpp:bind_subscription` for the family."
+  },
+  "cpp:bind_service_raw": {
+    "verdict": "extension",
+    "why": "the wire-bytes tier of `cpp:bind_service`: the bound member is `bool C::on_request(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len)`, with no serialisation on either side and a `false` return dropping the reply. Same relationship as `cpp:bind_subscription_raw` to `cpp:bind_subscription`, and the same no-allocator reason."
+  },
   "cpp:create_client": {
     "verdict": "rename",
     "why": "rclcpp's free-function form; ours is `nros::make_client` if it existed -- today there is none, so this is the gap half. `create_publisher`/`make_publisher` was the same pair in pubsub, landed 2026-08-26. Phase 379 W5."
@@ -585,6 +597,14 @@
   "cpp:create_service": {
     "verdict": "rename",
     "why": "see `cpp:create_client`."
+  },
+  "cpp:create_service_client_raw": {
+    "verdict": "extension",
+    "why": "creates a raw, poll-style service client into caller-owned `cpp:ServiceClientStorage`; the caller then drives it with `nros_cpp_service_client_send_request` / `nros_cpp_service_client_try_recv_reply`. USER-FACING: the C++ and mixed workspaces' `AddClient` components and the Zephyr `service-client` example call it directly. It is the POLL tier -- RFC-0021's answer to rclcpp's `async_send_request` returning a `std::shared_future`, which needs a runtime to await (`cpp:Client::async_send_request`). rclcpp has no counterpart."
+  },
+  "cpp:create_service_raw": {
+    "verdict": "extension",
+    "why": "the non-template function `cpp:bind_service_raw` and `cpp:bind_service` are both built on -- register a raw request/response callback on the executor that owns `node`, the executor owning the server. Public and documented, but PLUMBING in practice: no in-tree caller writes it directly. Same relationship as `cpp:create_subscription_raw` to `cpp:bind_subscription_raw`."
   },
   "rust:AnyClientOutputSender": {
     "verdict": "declined",

@@ -378,6 +378,18 @@
     "verdict": "declined",
     "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
   },
+  "cpp:ComponentNode::create_publisher": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::create_publisher<M>(topic, qos)` in rclcpp's value-returning shape: `pub_ = create_publisher<Int32>(\"/chatter\")` is the line a ported node already has. It reports ours-only only because the owning TYPE is spelled differently (`cpp:ComponentNode`); `Node::create_publisher` correlates as `systematic` under the `out-param-first` rule, and this member is precisely the one that escapes that rule, because a `ComponentNode` has an `ok()` flag to record the failure in (`cpp:ComponentNode::ok`). What still differs from rclcpp: `const char*` topic, our `QoS` rather than `rclcpp::QoS`, no `PublisherOptions` (the `compile-time-options` rule), and a `Publisher<M>` BY VALUE rather than a `SharedPtr` -- no allocator, the same constraint `cpp:Publisher::Publisher<M>` records."
+  },
+  "cpp:ComponentNode::create_subscription": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::create_subscription`, with the callback bound at COMPILE time: ours is `create_subscription<M, Self, &Self::on_msg>(topic, qos)` (or the `NROS_SUBSCRIBE(M, on_msg, topic)` macro), rclcpp's is `create_subscription<M>(topic, qos, CallbackT&&)`. rclcpp takes the callback as a runtime callable it owns; with no allocator we cannot own a `std::function`, so the member-function pointer is a template argument and the deserialize-then-dispatch trampoline is generated (`cpp:bind_subscription`). Nothing is returned because the executor arena owns the subscriber -- there is no `SharedPtr` a caller must keep alive. Also `const char*` topic, no `SubscriptionOptions`, no message memory strategy. Reports ours-only because the owning TYPE is spelled differently; see `cpp:ComponentNode`."
+  },
+  "cpp:ComponentNode::create_subscription_in": {
+    "verdict": "extension",
+    "why": "the callback-group form: like `cpp:ComponentNode::create_subscription` but associates the subscription with a named group, so the executor binds it to that group's SchedContext (RFC-0047). rclcpp carries the group through `SubscriptionOptions` instead -- `cpp:Node::create_publisher_in` records the shape."
+  },
   "cpp:GenericPublisher": {
     "verdict": "declined",
     "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
@@ -858,6 +870,14 @@
     "verdict": "declined",
     "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
   },
+  "cpp:bind_subscription": {
+    "verdict": "extension",
+    "why": "RFC-0043's component seam, and USER-FACING: every C++ example workspace writes it by hand in a component's `configure(Node&)` -- `::nros::bind_subscription<Int32, Listener, &Listener::on_msg>(node, \"/chatter\", this)` -- and `nros new` scaffolds it. It binds a component MEMBER function as the subscription callback BY IDENTITY, with the component pointer carried as the executor `ctx` and a compile-time-generated trampoline; no callback name appears anywhere. rclcpp needs no equivalent because `create_subscription(topic, qos, std::bind(&Listener::on_msg, this, _1))` allocates a `std::function`, and there is no allocator here. RFC-0044's `cpp:ComponentNode::create_subscription` wraps this; both tiers are supported and the `bind_*` one is the fallible `Result`-returning option."
+  },
+  "cpp:bind_subscription_raw": {
+    "verdict": "extension",
+    "why": "the zero-copy tier of `cpp:bind_subscription`: the bound member takes the WIRE BYTES (`const uint8_t*`, `size_t`) with no deserialize and no typed header, for a component that parses or forwards its own payload. rclcpp's nearest is `cpp:GenericSubscription`, which hands back an allocated `SerializedMessage`. User-facing -- `NROS_BIND_SUB_RAW` exists for it and `cpp_multi_node_entry` exercises it -- but the example workspaces use the typed form."
+  },
   "cpp:create_generic_publisher": {
     "verdict": "declined",
     "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
@@ -893,6 +913,10 @@
   "cpp:create_subscription_factory": {
     "verdict": "declined",
     "why": "see `cpp:PublisherFactory`."
+  },
+  "cpp:create_subscription_raw": {
+    "verdict": "extension",
+    "why": "the non-template function `cpp:bind_subscription_raw` is built on: register a raw `void(*)(const uint8_t*, size_t, void*)` on the executor that owns `node`, the executor owning the subscription so no caller-side storage object is needed. Public and documented, but PLUMBING in practice -- no in-tree caller writes it directly; every one goes through `bind_subscription_raw` or `bind_subscription`, which is what supplies the trampoline. rclcpp has no counterpart because its subscription owns a `std::function` and there is no raw-callback tier to expose."
   },
   "rust:ClientTrait::try_recv_reply": {
     "verdict": "extension",
