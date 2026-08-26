@@ -87,4 +87,87 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
     return q;
 }
 
+/* issue 0823 — read back what the participant ACTUALLY holds.
+ *
+ * QoS is a negotiation and this runtime used to report the value it REQUESTED
+ * as the value it got: all six `*_get_actual_qos` slots were inert, so a
+ * downgrade (the RELIABLE reader that matched a BEST_EFFORT writer, the depth
+ * the middleware clamped) was invisible at every layer. Silence from a QoS
+ * mismatch is indistinguishable from a name typo, a domain split (issue 0801)
+ * or a discovery failure (issue 0803) — all three cost hours this month.
+ *
+ * The inverse of `make_dds_qos`. Fields Cyclone does not report keep the value
+ * the caller passed in, so an unreported field reads as "unchanged" rather than
+ * as zero — a zeroed `depth` would look like a legitimate answer.
+ */
+rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out) {
+    if (entity <= 0 || out == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_qos_t *q = dds_create_qos();
+    if (q == nullptr) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    if (dds_get_qos(entity, q) != DDS_RETCODE_OK) {
+        dds_delete_qos(q);
+        return NROS_RMW_RET_ERROR;
+    }
+
+    dds_reliability_kind_t rel;
+    dds_duration_t max_block;
+    if (dds_qget_reliability(q, &rel, &max_block)) {
+        out->reliability = (rel == DDS_RELIABILITY_RELIABLE)
+                               ? NROS_RMW_RELIABILITY_RELIABLE
+                               : NROS_RMW_RELIABILITY_BEST_EFFORT;
+    }
+
+    dds_durability_kind_t dur;
+    if (dds_qget_durability(q, &dur)) {
+        out->durability = (dur == DDS_DURABILITY_VOLATILE)
+                              ? NROS_RMW_DURABILITY_VOLATILE
+                              : NROS_RMW_DURABILITY_TRANSIENT_LOCAL;
+    }
+
+    dds_history_kind_t hist;
+    int32_t depth = 0;
+    if (dds_qget_history(q, &hist, &depth)) {
+        out->history = (hist == DDS_HISTORY_KEEP_ALL) ? NROS_RMW_HISTORY_KEEP_ALL
+                                                      : NROS_RMW_HISTORY_KEEP_LAST;
+        /* KEEP_ALL reports no meaningful depth; leave the requested value
+         * rather than writing a 0 that reads as an answer. */
+        if (hist != DDS_HISTORY_KEEP_ALL && depth > 0) {
+            out->depth = (depth > 0xFFFF) ? 0xFFFFu : (uint16_t)depth;
+        }
+    }
+
+    dds_duration_t dl = 0;
+    if (dds_qget_deadline(q, &dl)) {
+        out->deadline_ms = (dl == DDS_INFINITY) ? NROS_RMW_DURATION_INFINITE_MS
+                                                : (uint32_t)(dl / DDS_NSECS_IN_MSEC);
+    }
+    dds_duration_t ls = 0;
+    if (dds_qget_lifespan(q, &ls)) {
+        out->lifespan_ms = (ls == DDS_INFINITY) ? NROS_RMW_DURATION_INFINITE_MS
+                                                : (uint32_t)(ls / DDS_NSECS_IN_MSEC);
+    }
+
+    dds_liveliness_kind_t lk;
+    dds_duration_t lease = 0;
+    if (dds_qget_liveliness(q, &lk, &lease)) {
+        /* MANUAL_BY_NODE folds to MANUAL_BY_TOPIC on the way IN (Cyclone has no
+         * MANUAL_BY_NODE), so it cannot come back out — reporting
+         * MANUAL_BY_TOPIC is the truth about the entity, not a lossy round
+         * trip. */
+        out->liveliness_kind = (lk == DDS_LIVELINESS_AUTOMATIC)
+                                   ? NROS_RMW_LIVELINESS_AUTOMATIC
+                                   : NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC;
+        out->liveliness_lease_ms = (lease == DDS_INFINITY)
+                                       ? NROS_RMW_DURATION_INFINITE_MS
+                                       : (uint32_t)(lease / DDS_NSECS_IN_MSEC);
+    }
+
+    dds_delete_qos(q);
+    return NROS_RMW_RET_OK;
+}
+
 } // namespace nros_rmw_cyclonedds

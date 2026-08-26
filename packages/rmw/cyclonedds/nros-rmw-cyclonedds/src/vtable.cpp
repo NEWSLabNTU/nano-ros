@@ -29,6 +29,30 @@ namespace {
  * UNSET is refused rather than guessed: it means "no severity stated", and a
  * backend inventing one would be choosing a verbosity the caller did not ask
  * for. */
+/* issue 0823 — QoS is a negotiation; report what was GRANTED.
+ *
+ * `out` is pre-loaded with the requested profile so a field Cyclone does not
+ * report stays as requested rather than reading back as zero. The runtime's
+ * caller can then compare the two: equality is silence, a difference is the
+ * diagnostic. */
+static rmw_ret_t cyclone_publisher_get_actual_qos(const rmw_publisher_t *publisher,
+                                                  rmw_qos_profile_t *qos) {
+    if (publisher == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::publisher_writer(publisher), qos);
+}
+
+static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t *subscription,
+                                                     rmw_qos_profile_t *qos) {
+    if (subscription == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::subscription_reader(subscription), qos);
+}
+
 static rmw_ret_t cyclone_set_log_severity(rmw_log_severity_t severity) {
     uint32_t mask;
     switch (severity) {
@@ -170,8 +194,8 @@ const nros_rmw_vtable_t kVtable = {
     /*get_gid_for_publisher*/ nullptr,
     /*publisher_count_matched_subscriptions*/ nullptr,
     /*subscription_count_matched_publishers*/ nullptr,
-    /*publisher_get_actual_qos*/ nullptr,
-    /*subscription_get_actual_qos*/ nullptr,
+    /*publisher_get_actual_qos*/ cyclone_publisher_get_actual_qos,
+    /*subscription_get_actual_qos*/ cyclone_subscription_get_actual_qos,
     /*client_request_publisher_get_actual_qos*/ nullptr,
     /*client_response_subscription_get_actual_qos*/ nullptr,
     /*service_request_subscription_get_actual_qos*/ nullptr,

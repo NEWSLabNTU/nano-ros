@@ -185,12 +185,13 @@ MAP = {
     ),
     "rmw_deserialize": ("layer", "as rmw_serialize"),
     "rmw_get_serialized_message_size": (
-        "gap",
-        "issue 0776. The old reason — \"generated per type; the bound is baked\" — was FALSE: "
-        "nros-serdes declares only serialize/deserialize/deserialize_borrowed, no "
-        "generated crate emits a size constant, and buffers are sized by env knobs "
-        "(NROS_SUBSCRIPTION_BUFFER_SIZE). `report_dropped_take` says outright that it "
-        "cannot name the size that would have worked",
+        "layer",
+        "nros-serdes `size.rs` — `size_bound` / `max_serialized_size` / `buffer_fits` / "
+        "`serialized_size`, per TYPE and `const` where the type is bounded (phase-380 W1, "
+        "issue 0776, resolved). Not a vtable slot and never will be: upstream takes a "
+        "`rosidl_message_type_support_t *`, declined ABI-wide since W3.c, so the symbol "
+        "cannot cross this seam — but the CAPABILITY it provides is answered, which is what "
+        "`layer` records. This read `gap` until 2026-08-27, after 0776 had closed",
     ),
     "rmw_publish_serialized_message": ("vtable", "publish — grouped; our payload IS CDR"),
     "rmw_take_serialized_message": ("vtable", "take — grouped; our payload IS CDR"),

@@ -3947,6 +3947,19 @@ caller outliving the call (`nros-c`/`nros-cpp` `try_borrow`), with the no-produc
 header and the parity detail. `process_raw_in_place`'s reason rewritten around the leak-proof scoped borrow.
 Adjacent finding filed as #0800. See `archived/0781-*`.
 
+Recently resolved (2026-08-27): **#0823** (rmw) — QoS is a negotiation and the runtime reported the QoS it
+REQUESTED as the one it got; all six `*_get_actual_qos` slots were inert (#0800). Cyclonedds now reads back
+through `read_entity_qos` (the inverse of `make_dds_qos`) on publisher and subscription: produced 33 -> 35,
+inert 34 -> 32. `out` arrives carrying the request and unreported fields are LEFT as they came, so an
+unreported field reads as "unchanged" instead of a zero that looks like an answer — which is what KEEP_ALL
+needs, since Cyclone reports no meaningful depth for it. The test refuses to pass vacuously: "returns OK"
+would be satisfied by an implementation that echoes its input, which IS the bug, so it pre-loads the
+out-struct with values the entity cannot have and checks each field came off the entity — verified by
+short-circuiting the read (ctest exit 8). Left for phase-393 W1: the four client/service variants, and the
+half that turns this into a diagnostic — comparing granted against requested and SAYING so, which is what
+makes a RELIABLE/BEST_EFFORT mismatch distinguishable from a name typo. zenoh-pico stays NULL, correct rather
+than missing. See `archived/0823-*`.
+
 Recently resolved (2026-08-27): **#0800** (rmw tech-debt) — "42 slots with no producer" was the wrong
 number; splitting by whether anything READS a slot gave 32 produced, 8 NULL-with-documented-behaviour, 0
 undocumented-but-reachable, and **34 written by nothing and read by nothing**. `just

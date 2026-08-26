@@ -131,6 +131,13 @@ dds_entity_t publisher_writer(const rmw_publisher_t *publisher);
  *  uninitialised. */
 dds_entity_t subscription_reader(const rmw_subscription_t *subscriber);
 
+/** issue 0823 — the QoS the participant ACTUALLY holds for `entity`.
+ *
+ * Inverse of `make_dds_qos`. `out` must arrive carrying the REQUESTED profile:
+ * fields Cyclone does not report are left as they came in, so an unreported
+ * field reads as "unchanged" instead of as a zero that looks like an answer. */
+rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out);
+
 
 /* ---- session.cpp ---- */
 rmw_ret_t session_create(const char *locator, uint8_t mode,

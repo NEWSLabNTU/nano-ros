@@ -112,6 +112,26 @@ add_test(
     COMMAND nros_rmw_cyclonedds_status_events
 )
 
+# Issue 0823 — the QoS read-back. Pre-loads the out-struct with values the
+# entity cannot have, so an echoing or zeroing implementation is visible.
+add_executable(nros_rmw_cyclonedds_actual_qos
+    actual_qos.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_actual_qos
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_actual_qos
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_actual_qos
+    COMMAND nros_rmw_cyclonedds_actual_qos
+)
+
 # Issue 0800 — the Cyclone `set_log_severity` body, asserted by reading the mask
 # back rather than trusting the return code. No session or router needed.
 add_executable(nros_rmw_cyclonedds_log_severity
