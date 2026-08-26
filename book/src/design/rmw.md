@@ -12,12 +12,24 @@ This page documents the architectural differences and trade-offs. For trait sign
 
 `rmw.h` heap-allocates everywhere -- handles, serialized message buffers, wait sets, type support tables. Bare-metal targets often have no allocator; RTOS targets have allocators with hard total budgets (~16-256 KB) that must cover the application as well.
 
-nros-rmw moves all I/O buffers to the caller. `publish_raw(&[u8])` and `try_recv_raw(&mut [u8])` operate on slices that the caller stack- or statically-allocates. Type metadata is a string-only `TopicInfo` struct, not a pointer-laden `rosidl_message_type_support_t` table. What the abstraction itself allocates is nothing. What the BACKENDS allocate
-was measured in 2026-08 (issue 0777) and is not nothing: zenoh-pico's internal
-transport buffers (~64 KB, exposed through `PlatformAlloc` and replaceable with
-a bump allocator on bare-metal), Cyclone DDS per publish and per take, XRCE per
-streamed publish, and the CFFI shim on a fallback loan. Only uORB allocates
-nothing at all.
+nros-rmw moves all I/O buffers to the caller. `publish_raw(&[u8])` and `try_recv_raw(&mut [u8])` operate on slices that the caller stack- or statically-allocates. Type metadata is a string-only `TopicInfo` struct, not a pointer-laden `rosidl_message_type_support_t` table. What the abstraction itself allocates is nothing. What the BACKENDS allocate is
+enumerated by `scripts/rmw-alloc-sites.py`, which reports each site with its
+file and line and — the distinction that decides whether you care — whether it
+sits on the STEADY-STATE path (per message, so it is latency and a heap that
+must sustain traffic) or in CREATE/INIT (bounded, so it lands in startup):
+
+| backend | steady-state | create / init |
+| --- | ---: | ---: |
+| Cyclone DDS | 6 | 6 |
+| XRCE-DDS | 0 | 9 |
+| uORB | 0 | 3 |
+
+Run the script rather than trusting this table; it is the re-runnable source and
+this is a snapshot of it. Two caveats it states and this page inherits: it
+counts nano-ros's OWN sites, so allocations inside Cyclone below `dds_write` and
+inside zenoh-pico's `z_malloc` are real but not listed (they are not ours to
+remove), and zenoh-pico's internal transport buffers (~64 KB) reach the image
+through `PlatformAlloc`, where a bump allocator suffices on bare-metal.
 
 ### Threading model
 
@@ -84,11 +96,13 @@ relocation work at startup, not the indirect call.
 
 **On heap:** the abstraction adds none — I/O buffers are caller-owned, and
 entity handles are inline. The BACKENDS are another matter, and this page
-overstated it for years: measured in 2026-08 (issue 0777), Cyclone DDS
-allocates per publish and per take, zenoh-pico allocates inside its transport,
-XRCE allocates per streamed publish, and the CFFI shim itself allocates on a
-fallback loan. uORB is the only backend that allocates nothing. Plan the heap
-budget from your backend's row, not from this abstraction's shape.
+overstated it for years ("no heap", flatly). Issue 0777 established that;
+`scripts/rmw-alloc-sites.py` now answers it precisely and repeatably. Only
+Cyclone DDS allocates on the steady-state path in nano-ros's own code (6 sites);
+XRCE and uORB allocate at entity/transport setup only. Plan the heap budget from
+your backend's row in that report — and remember it excludes what the middleware
+libraries do underneath, which for Cyclone and zenoh-pico is a general allocator
+call per message regardless.
 
 ## Object Model
 

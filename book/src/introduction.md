@@ -81,8 +81,9 @@ When a project grows beyond one node, continue with
   following rclc conventions.
 - **True `no_std`** — runs on bare-metal Cortex-M3; the `alloc` and `std`
   features are opt-in. Whether the IMAGE needs an allocator is the backend's
-  call, not the core's: XRCE is fully static, zenoh-pico wants one (a bump
-  allocator suffices on bare-metal), and Cyclone DDS requires a real heap.
+  call, not the core's: XRCE allocates only at entity setup, zenoh-pico wants
+  an allocator (a bump allocator suffices on bare-metal), and Cyclone DDS
+  allocates per message. `scripts/rmw-alloc-sites.py` reports every site.
 - **Standalone tooling** — `nros generate-rust` produces message
   bindings without a ROS 2 installation (bundled interface definitions).
 - **Formally verified** — 148 Kani bounded model checking harnesses and 83
