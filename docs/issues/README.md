@@ -706,8 +706,6 @@ lane=tier2 build after the last source edit), and the panic is at the receive-co
 NOT established: whether it also fails on origin/main — the revert-and-rebuild control was not run — and where
 delivery stops, since the guest console is buffered and not persisted to test-logs/. See `0820-*`. (2026-08-27)
 
-**#0821** (rmw, open 2026-08-27) — the board takes a USAGE FAULT with `pc=0` at exactly 2 × `Z_TRANSPORT_LEASE`: the auto-reconnect teardown runs inside the task it is dismantling. On mr_canhubk3/s32k344 with zenoh over serial, publishing works and then dies at the first lease expiry. See `0821-*`.
-
 **#0819** (rmw, open 2026-08-26) — XRCE payloads at/above the 4096 transport MTU are DELIVERED CORRUPTED
 rather than refused. With `NROS_XRCE_BUFFER_SIZE` raised so the receive ring is not the constraint,
 3584-byte payloads arrive 10/10 valid and 4096-byte payloads arrive 10/10 INVALID — `try_recv_raw` returns
