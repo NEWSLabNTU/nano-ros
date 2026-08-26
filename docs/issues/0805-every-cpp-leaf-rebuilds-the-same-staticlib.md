@@ -308,3 +308,37 @@ having before this spreads to more platforms.
   at a list that accumulates instead of replacing.
 * **The platform has two spellings** — `threadx` and `threadx_riscv64` at the
   same board/rmw/triple, so that platform keeps 4 key dirs where 2 may do.
+
+## `threadx-linux` wired (2026-08-26) — third lane, same verification
+
+Lane-level A/B on the current tree, same leaf both ways:
+
+```
+sharing OFF   b60d444f95579f1ca04d1199
+sharing ON    b60d444f95579f1ca04d1199   -> byte-identical
+```
+
+Both halves built fresh on the same commit, deliberately: the earlier native
+scare came from comparing against a baseline captured before a 50-commit rebase.
+A checksum pair is evidence only when nothing else moved between the two.
+
+`nros_build_dir` was verified IN SCOPE in that recipe BEFORE wiring, per defect 3
+— a missing helper expands the flag empty and the cmake side quietly keeps
+per-leaf dirs, so the change would read as applied while doing nothing.
+
+Note what the run also shows: **23 of 24 per-leaf dirs remained.** That is the
+documented degrade path, not a failure — an existing build dir already has a
+real `cargo/` directory, so sharing applies to leaves configured fresh. The
+platform converts as its build dirs are wiped, and `just gc-shared-cargo` is what
+keeps the store from accumulating while that happens.
+
+### Lanes now wired
+
+| lane | per-leaf dirs before | verified |
+| --- | --- | --- |
+| `threadx_riscv64` | 29 -> 0 | byte-identical, 1706 s -> 898 s |
+| `native` | 59 -> 0, 186 GB -> 61 GB | byte-identical |
+| `threadx-linux` | 24 (converts on wipe) | byte-identical |
+
+Remaining: freertos, nuttx, esp32, zephyr — one line each, each needing its own
+in-scope check and its own lane-level A/B. Not wired blind.

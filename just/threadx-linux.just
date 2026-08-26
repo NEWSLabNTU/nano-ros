@@ -136,7 +136,11 @@ build-fixture-extras:
     # nano-ros-threadx.cmake's threadx-linux branch); DISABLE_FIND_PACKAGE forces
     # the pinned source over any system /opt/ros Cyclone. No build/install /
     # `just cyclonedds setup` needed; idlc resolves host-side (186.3).
-    export NROS_CMAKE_EXTRA_DEFS="-DNANO_ROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    # issue 0805 — one Corrosion cargo dir per (platform, resolved feature
+    # inputs) instead of one per leaf. cmake keys the subdirectory itself;
+    # `nros_build_dir` verified IN SCOPE here first (a missing helper expands
+    # the flag EMPTY and silently keeps per-leaf dirs — defect 3 on native).
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-linux) -DNANO_ROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
     bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
     if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
