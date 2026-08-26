@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-26): **#0802** (verification/ci) — `just verification kani` installed an
+UNPINNED `kani-verifier`, so the prover behind every harness was whatever crates.io published that
+day (`--locked` pins the crate's dependency graph, NOT its version). That is 0.67.0, whose
+`kani-driver` needs GLIBC_2.39 — Ubuntu 24.04 only — so the recipe could not succeed on a 22.04
+host. Precisely ONE binary in the bundle is over the line: `kani-compiler` and every `.so` need only
+2.34, which is why the failure reads as a broken toolchain rather than one over-linked entry point.
+Compounded by an "already installed" guard that trusted a `~/.kani` directory it never
+version-checked or ran — the same accumulating-store trap as 0500, where a stale prefix shadows the
+pin. Found in phase-382 W2', whose proofs could only be run by downgrading to 0.62.0 by hand. Now
+pinned via `KANI_VERSION`, with install and `doctor` both asking the DRIVER instead of the
+filesystem and failing on a mismatch. See `archived/0802-*`. (2026-08-26)
+
 Recently resolved (2026-08-25): **#0797** — nightly was red on every real run with five of eight jobs aborting in 2-5 s: the matrix provisioned the CLI by hand (`cargo build … --bin nros`) and never built `nros-launch-resolve`, so `nros sync` refused and nightly exercised ONE platform, not six. The refusal is correct (0409) — the bug was the missing step. Fixed by `just setup-launch-resolve` in all FOUR provisioning blocks (a fix to the single block this issue quoted would have left three jobs failing identically). The issue's own unresolved question is answered: `ws.rs::resolver_from` searches a SIBLING of `nros` (arm 2 — the wording in the error, which would send you to copy the binary) and ALSO `<repo>/packages/cli/nros-launch-resolve/target/release/` via `ancestors().nth(4)` (arm 3), which is exactly where the recipe writes — so no copying is needed. Verified by running `nros` from nightly's path through a real `nros sync`. `pr-checks`/`host-tests` carry the same block and are deliberately NOT patched: only nightly is red, so they do not reach the refusal. See `archived/0797-*`. (2026-08-25)
 
 Recently resolved (2026-08-26): **#0770** (testing) — NOT REPRODUCED. The reporter (me)
