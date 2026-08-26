@@ -284,7 +284,7 @@ fn a_materialized_entry_is_left_alone_and_still_builds() {
     // phase-383 W7.d. A decorative escape silently deletes capability, so the
     // property under test is that a materialised entry survives a build
     // untouched AND still reaches the handoff.
-    use nros_cli_core::builder::materialize::{is_materialized, Stamp, STAMP_FILE};
+    use nros_cli_core::builder::materialize::{STAMP_FILE, Stamp, is_materialized};
 
     let tmp = tempfile::tempdir().unwrap();
     fixture(tmp.path());
@@ -301,7 +301,10 @@ fn a_materialized_entry_is_left_alone_and_still_builds() {
 
     let before = std::fs::read_to_string(entry.join("src/main.rs")).unwrap();
     let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
-    assert!(plans[0].handoff.is_some(), "a materialised entry still builds");
+    assert!(
+        plans[0].handoff.is_some(),
+        "a materialised entry still builds"
+    );
     assert_eq!(
         std::fs::read_to_string(entry.join("src/main.rs")).unwrap(),
         before,
@@ -314,7 +317,7 @@ fn a_materialized_entry_is_left_alone_and_still_builds() {
 fn shape_drift_on_a_materialized_entry_warns_and_never_errors() {
     // W7.c — autoware-safety-island will hold a materialised entry forever by
     // design; erroring would break a legitimate downstream permanently.
-    use nros_cli_core::builder::materialize::{check, Stamp};
+    use nros_cli_core::builder::materialize::{Stamp, check};
 
     let tmp = tempfile::tempdir().unwrap();
     let entry = tmp.path().join("src/freertos_entry");
