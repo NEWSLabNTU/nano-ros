@@ -1,7 +1,7 @@
 # Phase 384 — XRCE advertises the type's size, instead of inheriting the Agent's 1028
 
-**Status (2026-08-26). DRAFT — design only, nothing landed. Depends on
-phase-380, which built the number this phase transmits.**
+**Status (2026-08-26). W4 RUN FIRST — premise CONFIRMED by measurement. W1-W3,
+W5 open.** Depends on phase-380, which built the number this phase transmits.
 
 ## Why
 
@@ -49,6 +49,55 @@ change 0741's behaviour that is information, not the goal — and anyone measuri
 it should first check `pgrep -c -f add_two_ints_server`, because 54 orphaned
 participants were found on one host on 2026-08-26 and every prior measurement was
 taken with them live.
+
+## W4 ran first, and the cliff is exactly where the Agent's constant puts it
+
+The acceptance test was ordered ahead of the design work precisely so a wrong
+premise would stop the phase cheaply. It did not stop it.
+
+Measured with `test_xrce_e2e_integrity` (nano -> Agent -> nano, which crosses the
+Agent's DDS type registration), varying only `PAYLOAD_SIZE`, on a bus cleared of
+orphans first:
+
+| payload bytes | delivered |
+| --- | --- |
+| 512 | yes |
+| 1000 | yes |
+| **1024** | **yes** |
+| **1028** | **no — `received=0` after 20 s** |
+| 1029 | no |
+| 1032 | no |
+| 1100 | no |
+| 1500 | no |
+| 2048 | no |
+
+**The boundary sits between 1024 and 1028, which is `m_typeSize = 1024 + 4`
+byte for byte.**
+
+Two alternative explanations are excluded by the same numbers:
+
+* **Not the MTU.** The posix transport runs at 4096, and delivery stops at
+  ~1024 — a quarter of it.
+* **Not fragmentation or a client-side publish limit.**
+  `test_xrce_large_publish_sizes` already publishes successfully up to 12288
+  bytes. Publishing works; DELIVERY is what stops. The sample leaves the client
+  and never reaches the peer, which is 0757's signature — accepted, then
+  discarded, with nothing reporting an error.
+
+So the premise holds: every nano-ros XRCE topic carrying a message over ~1024
+bytes is silently undeliverable today, and the phase's remaining work items are
+worth doing.
+
+**Reproduce:** set both `PAYLOAD_SIZE` values in `test_xrce_e2e_integrity` to
+1028 and run it. Check `pgrep -c -f add_two_ints_server` first — 14 orphans were
+live on this host at the start of this measurement and were killed before the
+numbers above were taken.
+
+**Note for W4 proper.** The measurement above modifies an existing test by hand;
+it is evidence, not a landed gate. W4's deliverable is still a committed test
+that fails without this phase's fix and passes with it, and it should assert
+delivery at a size ABOVE 1028 rather than sweeping — the sweep was for finding
+the boundary, and now the boundary is known.
 
 ## Design
 
