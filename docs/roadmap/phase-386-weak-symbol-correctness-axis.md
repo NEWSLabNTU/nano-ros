@@ -1,10 +1,12 @@
 # Phase 386 — a weak body is either CORRECT or merely LINKABLE, and nothing records which
 
-**Status (2026-08-26). Survey + plan, nothing landed.** Opened from a review of
-all 17 audited files (~43 weak definitions) while working
-[issue 0769](../issues/0769-weak-netif-signature-and-tie.md). The audit's
-existing classification answers a different question from the one that predicts
-damage. Implements nothing yet; issue 0050 owns the allowlist and both gates.
+**Status (2026-08-26). W1 + W2 LANDED, W3 measured and split, W4 open.** Two
+real defects fixed; the phase's own opening claim ("17 symbols can fail
+silently") was too broad and is corrected below — two could. W3's investigation
+found a gate hole that outranks the labelling question it was opened for: a
+COVERAGE row whose image is not built is skipped silently, so
+`nros_board_register_netif` has been unverified while the gate reported green
+(**W3b**, the next piece worth doing).
 
 ## The axis that exists
 
@@ -331,3 +333,38 @@ absent from routine builds, and the gate reported green throughout.
   missing must be reported, not skipped. Same class as the absorbing-STALE
   verdict of 0445 and the `required-features` targets nobody builds: a check
   that cannot run should say so rather than pass.
+
+
+## Checkpoint (2026-08-26)
+
+| wave | state | commit |
+| --- | --- | --- |
+| **W1** — gated `body:` axis | **landed** | `c61b80a05` |
+| **W2** — make silent bodies fail loud | **complete** | `3e4a84305`, `04cc6df98` |
+| **W3** — decouple guaranteed vs expected | **measured, split** | `6c9f73918` |
+| W3a — header prose | open (small) | — |
+| **W3b — report un-runnable coverage rows** | **open, highest value** | — |
+| W4 — 0769's archive-order tie | open, needs board owner | — |
+
+### What actually changed in the tree
+
+* ThreadX libc stubs set `errno` (`ENOSYS` / `EBADF`) instead of returning -1
+  with a stale value.
+* zpico `_z_{send,read}_serial_internal` return `SIZE_MAX`, the sentinel the
+  callers test, instead of `0` — which those callers read as SUCCESS.
+* All 17 allowlist rows carry a validated `body:` axis; `check-weak-symbols.sh`
+  fails on a missing or invalid value, verified in both directions.
+
+### Two corrections this phase made to itself
+
+1. **"17 symbols can fail silently" was wrong** — 2 could. The other 15 were
+   already reporting failure in a form their callers understand. The original
+   survey grouped by CAUSE and inferred risk from the grouping; reading each
+   symbol against its callers showed the inference did not hold.
+2. **0769's warning that a relabel would narrow coverage was wrong** — the image
+   gate parses `[img:]` from any row starting with a digit and never reads the
+   classification. I had declined to make that edit on the strength of the
+   warning; testing it took two minutes and would have saved the caution.
+
+Both were found by checking a claim instead of building on it, which is the
+habit this phase should be judged on more than the two stub fixes.
