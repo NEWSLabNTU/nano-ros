@@ -504,10 +504,37 @@ knob receives an external config directory.
 | NuttX | `CONFIG_APPS_DIR` |
 | FreeRTOS / ThreadX / baremetal | none — the board crate owns the config header |
 
-Zephyr's `APPLICATION_CONFIG_DIR` is documented as taking *all* configuration
-files from the named directory, so pointing it at
-`src/<bringup>/boards/<board>/` preserves Zephyr's own `boards/<board>.conf`
-auto-discovery with no copying.
+Zephyr's `APPLICATION_CONFIG_DIR` takes configuration files from the named
+directory — but **the builder must pass overlays as `EXTRA_CONF_FILE`, never
+`CONF_FILE`.** `configuration_files.cmake` puts every auto-discovery inside a
+guard:
+
+```cmake
+zephyr_get(CONF_FILE SYSBUILD LOCAL)
+if(NOT DEFINED CONF_FILE)                       # <- only when UNSET
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}        KCONF CONF_FILE NAMES "prj.conf" … REQUIRED)
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/socs   KCONF CONF_FILE QUALIFIERS …)
+  zephyr_file(CONF_FILES ${APPLICATION_CONFIG_DIR}/boards KCONF CONF_FILE …)
+```
+
+Setting `CONF_FILE` explicitly **suppresses `boards/` and `socs/` discovery
+entirely**. An earlier draft of this RFC claimed the opposite. Both of our own
+downstream projects had already hit it — `nano-ros-rt-eval`'s justfile carries
+the note *"boards/<board>.conf does not automerge under explicit -DCONF_FILE;
+pass the NSOS … overlay explicitly"* — and our own zephyr entries pass
+`-DCONF_FILE="prj.conf;prj-zenoh.conf"`, so they are suppressing it today.
+
+Note also `socs/` beside `boards/`, and Zephyr's own **variant** mechanism:
+`prj_<buildtype>.conf` sets `CONF_FILE_BUILD_TYPE`, which then selects
+`boards/<board>_<buildtype>.conf`. An image's variant maps onto that rather than
+inventing a parallel axis — ASI's `prj_actuation.conf` is already this shape.
+
+**Conf fragments are per-IMAGE, not per-board.** `nano-ros-rt-eval` builds one
+app on one board twice — `build-zephyr-edf` with `prj-edf.conf`,
+`build-zephyr-backfill` without — and ASI carries `tracing.conf`,
+`tracing_stats.conf` and `nano_ros_overlay.conf`, named by concern. So the
+overlay set is declared on `[image.<id>]`, and `boards/<board>/` is only the
+default location for the board-keyed ones.
 
 **A path whitelist is explicitly rejected.** Zephyr's overlay surface is open
 and grows with releases — `.conf`, `.overlay`, `dts/bindings/`, `snippets/`,
@@ -784,6 +811,64 @@ message integrity** (a CRC on `/chatter`), not certification. The
 safety-critical persona here is the downstream consumer — the autoware safety
 island work — not that workspace.
 
+## Migration simulation
+
+Walked the nine in-tree workspaces plus two downstream projects — **`autoware-safety-island`**
+(branch `nano-ros`) and **`nano-ros-rt-eval`** — against D1–D14 before committing
+to the design. Ten findings; F1 corrected a decision, and the rest are
+requirements the waves must carry.
+
+| # | finding | where it bites |
+| --- | --- | --- |
+| **F1** | `CONF_FILE` suppresses `boards/` + `socs/` auto-discovery; overlays must go through `EXTRA_CONF_FILE` | D10 — **corrected above** |
+| **F2** | Zephyr's `prj_<buildtype>.conf` → `CONF_FILE_BUILD_TYPE` is already a variant axis | D10 — map onto it, don't invent one |
+| **F3** | conf fragments are per-image, not per-board | D10 — **corrected above** |
+| **F4** | a cargo member with **no `package.xml`** is invisible to the walk | D1 stage 1 |
+| **F5** | a real root carries a preamble (`find_package(Eigen3)`) and **conditional** packages | D3 |
+| **F6** | a project may own its `main` permanently, plus `.ld` fragments and `.S` | D5, D12 |
+| **F7** | a workspace may declare **several bringups** | D1, D6 |
+| **F8** | a bringup may have **variant system configs** | D6 |
+| **F9** | a vendored nano-ros checkout inside the workspace needs `.nros-ignore` honoured | D1 stage 1 |
+| **F10** | building **N images at once** is routine | D1 |
+
+**F4 — packages without `package.xml`.** `nano-ros-rt-eval/src/island_clock/`
+is `Cargo.toml` + `src/` and nothing else: a plain helper crate, not a ROS
+package. D1 stage 1 walks `package.xml`, so a synthesized `[workspace] members`
+would drop it and the build would fail on an unresolved path dependency. **The
+cargo root must union the `package.xml` walk with the cargo members it can
+already see**, rather than deriving membership from the walk alone.
+
+**F5 — the generated root is not the whole root.** ASI's workspace root calls
+`find_package(Eigen3 REQUIRED)` and adds `src/s32z2_board_glue` only when the
+NXP SDK is provisioned ("the pkg's own CMakeLists gates and reports"). Neither
+is derivable. The generated root therefore needs a **user preamble hook** and
+must treat a package's own self-gating as normal — a package that excludes
+itself is not an error.
+
+**F6 — `materialize` is a steady state, not an escape.** ASI's
+`actuation_module/freertos_s32z2/` carries `freertos_main.cpp`, `board_init.c`,
+`lwip_bringup.c`, `newlib_stubs.c`, `operator_new.cpp`, `cp15_arm.S` and **four
+linker-script fragments** (`discard_unwind.ld`, `node_stack_in_sram.ld`,
+`netc_bd_no_cacheable.ld`). Two consequences: D5's shape stamp must be a
+*warning*, never an error, because this project will carry a materialised entry
+forever by design; and **D12 covers libraries but not linker fragments** —
+Zephyr's `zephyr_linker_sources()` is the seam those need, and
+`nano_ros_support_library` must grow an equivalent.
+
+**F7/F8 — bringups are plural, and have variants.** `nano-ros-rt-eval` declares
+`demo_bringup` **and** `load_bringup`, each with its own `system.toml`; and
+`demo_bringup/ablation/{baseline,no_contract,prio_inverted}.toml` are whole
+alternate system configs selected per experiment. So `[system] default_images`
+cannot live in "the" `system.toml` — there may be several — and D6 needs a slot
+for a variant config. This is the same shape as F3 one level up: **the image,
+not the bringup and not the board, is where a variant is named.**
+
+**F10 confirms D1's default.** `just build` in `nano-ros-rt-eval` is `cargo
+build -p native_entry -p peer_entry`, and its root manifest warns that a bare
+workspace-wide build "would try [the cross-target member] for the host and
+fail". Both halves of D1 — name your images, and do not build everything by
+accident — are answering a problem that project already has.
+
 ## Related work
 
 Surveyed 2026-08-25. Each row changed or confirmed a decision; none is cited
@@ -877,6 +962,16 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26 (d)** — migration simulation against the nine in-tree
+  workspaces and two downstream projects (`autoware-safety-island`,
+  `nano-ros-rt-eval`). **D10 corrected**: `CONF_FILE` suppresses `boards/` and
+  `socs/` auto-discovery, so overlays must go through `EXTRA_CONF_FILE` — both
+  projects had already hit this, and our own zephyr entries suppress it today.
+  Records nine further findings (F2–F10) as wave requirements: Zephyr's
+  `prj_<buildtype>.conf` variant axis, per-image rather than per-board conf
+  sets, cargo members without `package.xml`, root preambles and self-gating
+  packages, permanently-materialised entries with linker fragments, plural
+  bringups with variant configs, and N-image builds.
 - **2026-08-26 (c)** — last two open questions become decisions. **D13**:
   migration is a third wave — builder first, then all nine repository
   workspaces, then the hand-written paths are RETIRED rather than kept as a
