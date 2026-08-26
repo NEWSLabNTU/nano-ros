@@ -9,13 +9,12 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). W1, W2, W4 COMPLETE. W3 complete except W3.b (the entry
-emitter). `nros build` runs all five stages: it discovers packages, resolves an
-image, preflights, generates the cargo root (at the workspace root — cargo
-forbids `build/`) or the cmake root (under `build/<coord>/`), and hands off with
-`execvp`. Zephyr and ESP-IDF images need no generated root and work today.
-Remaining: W3.b, W5–W10. Fixed issue 0809 en route; corrected RFC-0065 D3 and
-D6.**
+**Status (2026-08-26). W1, W2, W4, W5 COMPLETE. W3 complete except W3.b (the
+entry emitter). W6 COMPLETE. W7 complete except
+W7.b (blocked on W3.b) and W7.e/W7.f (the cmake support library, in progress).
+`nros build` runs all five stages for cargo, cmake, west and ESP-IDF images.
+Remaining: W3.b, then W8–W10's migration. Fixed issue 0809 en route; corrected
+RFC-0065 D3, D6 and D10 against what the tools actually do.**
 
 ## Goal
 
@@ -246,21 +245,21 @@ archive under `|` (the issue-0475 link-edge check).
 Carries **F1, F2**. F1 is a **correction already made in the RFC** — implement
 the corrected form.
 
-- [ ] **W5.a** (RFC-0065 D10) Pass overlays as **`EXTRA_CONF_FILE`, never `CONF_FILE`**.
+- [x] **W5.a** (RFC-0065 D10) Pass overlays as **`EXTRA_CONF_FILE`, never `CONF_FILE`**.
       Zephyr's `configuration_files.cmake` puts `boards/` and `socs/`
       auto-discovery inside `if(NOT DEFINED CONF_FILE)`, so setting `CONF_FILE`
       suppresses both. Our own zephyr entries suppress it today;
       `nano-ros-rt-eval`'s justfile carries the workaround note.
-- [ ] **W5.b** Point `APPLICATION_CONFIG_DIR` at
+- [x] **W5.b** Point `APPLICATION_CONFIG_DIR` at
       `src/<bringup>/boards/<board>/`. Verified reachable for sysbuild too:
       `share/sysbuild/cmake/modules/sysbuild_kconfig.cmake` resolves
       `sysbuild.conf` through it and FORCEs it into the cache so images inherit
       it.
-- [ ] **W5.c** Map an image's `variant` onto Zephyr's own
+- [x] **W5.c** Map an image's `variant` onto Zephyr's own
       `prj_<buildtype>.conf` → `CONF_FILE_BUILD_TYPE` mechanism (**F2**),
       rather than inventing a parallel axis. `autoware-safety-island`'s
       `prj_actuation.conf` is already this shape.
-- [ ] **W5.d** Detect sysbuild by the **presence of `sysbuild.conf`** in the
+- [x] **W5.d** Detect sysbuild by the **presence of `sysbuild.conf`** in the
       board's config dir and pass `--sysbuild`. Zephyr's own comment:
       "sysbuild.conf is an optional file, because sysbuild is an opt-in
       feature." Invent no key.
@@ -273,22 +272,24 @@ identical to the one today's explicit `west build` line produces, including the
 
 ## W6 — `dist/` and the manifest
 
-- [ ] **W6.a** (RFC-0065 D8) `dist/<image>/` holds the artifact **set** plus `manifest.toml`
+- [x] **W6.a** (RFC-0065 D8) `dist/<image>/` holds the artifact **set** plus `manifest.toml`
       naming which member is flashable and at what address. A host image is a
       set of one — the same shape, not a special case.
-- [ ] **W6.b** **Completeness gate**: every file in `dist/<image>/` is named by
+- [x] **W6.b** **Completeness gate**: every file in `dist/<image>/` is named by
       that image's manifest; an unnamed artifact fails the build. ESP-IDF's
       `flasher_args.json` supplies the cautionary tale — a filed bug reads
       "missing entry for `bootloader` when built with secure boot v2", the
       manifest silently falling behind its artifacts.
-- [ ] **W6.c** (RFC-0065 D14) `--offline`: stages 1–4 perform no network I/O, and stage 5 is
+- [x] **W6.c** (RFC-0065 D14) `--offline`: stages 1–4 perform no network I/O, and stage 5 is
       invoked with the native tool's offline spelling (`cargo --frozen`).
       **The value is converting a silent fallback into a named failure** —
       `NanoRosCorrosion.cmake` falls through to
       `FetchContent_Declare(Corrosion GIT_REPOSITORY …)` when the SDK store has
       no matching prefix, and the file calls itself "offline-hostile".
-- [ ] **W6.d** Amend RFC-0070 R1 in the same commit as W6.a lands
-      (`install/` → `dist/`), so the two documents never disagree.
+- [x] **W6.d** Amend RFC-0070 R1 in the same commit as W6.a lands
+      (`install/` → `dist/`), so the two documents never disagree. **Landed
+      early**, during the 2026-08-25 framework-fit pass that introduced `dist/`
+      — the two documents have never disagreed.
 
 **Acceptance.** `nros build native --offline` in a tree with no Corrosion in
 the SDK store fails naming the missing package, and `strace -f -e trace=connect`
@@ -300,17 +301,23 @@ records no outbound connection.
 
 Carries **F6**.
 
-- [ ] **W7.a** Forward `panic` and `profile` from `[image.<id>]` into the
+- [x] **W7.a** Forward `panic` and `profile` from `[image.<id>]` into the
       generated entry (RFC-0065 D5). These are the only escapes the D4 survey
       found; the custom spin loop already has RFC-0024 §11.8.
 - [ ] **W7.b** `nros materialize <image>` writes `src/<image>_entry/`. Naming
       follows the **image**, which D6 made the named unit.
-- [ ] **W7.c** **Shape stamp that WARNS, never errors.** **F6**:
+
+      **BLOCKED ON W3.b, and that is structural rather than scheduling.**
+      Materialising means "write the generated entry out and stop regenerating
+      it" — there is nothing to write until the generator exists. The stamp and
+      drift machinery it needs (W7.c/W7.d) are landed and tested, so this is a
+      thin verb over `builder::materialize` once W3.b lands.
+- [x] **W7.c** **Shape stamp that WARNS, never errors.** **F6**:
       `autoware-safety-island` carries `freertos_main.cpp`, `board_init.c`,
       `cp15_arm.S` and four `.ld` fragments — it will hold a materialised entry
       **forever, by design**. An error would break a legitimate downstream
       permanently.
-- [ ] **W7.d** A test that a materialised entry still builds. A decorative
+- [x] **W7.d** A test that a materialised entry still builds. A decorative
       escape silently deletes capability.
 - [ ] **W7.e** `nano_ros_support_library(<name> SRCS … INCLUDES … WHOLE_ARCHIVE)`
       (RFC-0065 D12). The keyword emits the flag **and** the `LINK_DEPENDS` —

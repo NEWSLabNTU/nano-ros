@@ -280,6 +280,65 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
 }
 
 #[test]
+fn a_materialized_entry_is_left_alone_and_still_builds() {
+    // phase-383 W7.d. A decorative escape silently deletes capability, so the
+    // property under test is that a materialised entry survives a build
+    // untouched AND still reaches the handoff.
+    use nros_cli_core::builder::materialize::{is_materialized, Stamp, STAMP_FILE};
+
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let entry = tmp.path().join("src/native_entry");
+    write(
+        &entry.join("Cargo.toml"),
+        "[package]\nname = \"native_entry\"\nversion = \"0.0.0\"\n",
+    );
+    write(&entry.join("src/main.rs"), "fn main() {}\n");
+    Stamp::current("native", "linux", "posix", "hosted-main")
+        .write(&entry)
+        .expect("stamp written");
+    assert!(is_materialized(&entry));
+
+    let before = std::fs::read_to_string(entry.join("src/main.rs")).unwrap();
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert!(plans[0].handoff.is_some(), "a materialised entry still builds");
+    assert_eq!(
+        std::fs::read_to_string(entry.join("src/main.rs")).unwrap(),
+        before,
+        "the builder must not touch an owned entry"
+    );
+    assert!(entry.join(STAMP_FILE).is_file(), "the stamp survives");
+}
+
+#[test]
+fn shape_drift_on_a_materialized_entry_warns_and_never_errors() {
+    // W7.c — autoware-safety-island will hold a materialised entry forever by
+    // design; erroring would break a legitimate downstream permanently.
+    use nros_cli_core::builder::materialize::{check, Stamp};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let entry = tmp.path().join("src/freertos_entry");
+    std::fs::create_dir_all(&entry).unwrap();
+    Stamp::current("freertos", "mps2-an385-freertos", "freertos", "board-run")
+        .write(&entry)
+        .unwrap();
+
+    // The board now needs a different shape.
+    let now = Stamp::current(
+        "freertos",
+        "mps2-an385-freertos",
+        "freertos",
+        "zephyr-staticlib",
+    );
+    let warnings = check(&entry, &now);
+    assert!(!warnings.is_empty(), "drift is detected");
+    assert!(
+        warnings[0].contains("nros materialize"),
+        "and names the fix: {warnings:?}"
+    );
+}
+
+#[test]
 fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
     // RFC-0065 D2 — a missing prerequisite fails at stage 3, naming the command
     // that fixes it, rather than mid-compile.
