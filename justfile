@@ -501,6 +501,7 @@ check-fast: _check-skip-reset \
     check-interface-glob-configure-depends \
     check-wait-evidence-discarded \
     check-path-env-fingerprints check-retired-platform-clock-symbols \
+    check-cmake-support-library \
     check-tests-can-fail
     #!/usr/bin/env bash
     set -e
@@ -1082,6 +1083,29 @@ check-platform-abi-mirror:
 # regeneration from the C-header SSoT packages. Loud skip when bindgen-cli
 # (pinned; maintainer/CI-only dep) is absent — embedded consumers never
 # need it.
+# phase-383 W7.e/W7.f (RFC-0065 D12) — `nano_ros_support_library()` must emit the
+# force-link flag AND the `LINK_DEPENDS` that gives it a rebuild edge (issue
+# 0475), and must route `.ld` fragments to whichever seam the platform has. The
+# test configures throwaway projects against the HOST compiler only — no
+# nano-ros build, no SDK, seconds — so it belongs on the fast line where every
+# task runs it. Loud skip when the host has no cmake/ninja/compiler: `check-fast`
+# is documented to run green on a pristine worktree.
+check-cmake-support-library:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja nm ar "${CC:-cc}"; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip check-cmake-support-library \
+            "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-support-library-tests.sh
+
 check-abi-bindings:
     #!/usr/bin/env bash
     set -euo pipefail
