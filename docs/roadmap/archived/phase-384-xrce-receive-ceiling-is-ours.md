@@ -1,11 +1,12 @@
 # Phase 384 — XRCE's 1024-byte receive ceiling is OURS, and it was reported under the wrong name
 
-**Status (2026-08-26). The phase's premise was WRONG TWICE and is now measured to
-the byte. The Agent is not the ceiling; our own `XRCE_BUFFER_SIZE` is, it is
+**Status: COMPLETE (2026-08-26).** W1, W2, W3 and W4 landed; W5 withdrawn as
+having no subject. The phase's premise was wrong twice and is now measured to
+the byte: the Agent is not the ceiling, our own `XRCE_BUFFER_SIZE` is, it was
 already raisable, and the failure was never silent — it was reported as
-`DeserializationError` by a code path that does no deserialization. That
-mislabelling is fixed here. What remains is documentation and a regression test,
-plus a genuinely silent failure one ceiling up, filed as issue 0819.**
+`DeserializationError` by a code path that deserializes nothing. What this phase
+did NOT fix is the genuinely silent failure one ceiling up, filed as issue
+0819.
 
 ## What actually happens
 
