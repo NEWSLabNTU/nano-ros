@@ -163,7 +163,7 @@ MAP = {
     "rmw_destroy_guard_condition": ("declined", "as rmw_create_guard_condition"),
     "rmw_trigger_guard_condition": (
         "declined",
-        "GuardConditionHandle::trigger -> the platform wake primitive; ISR-safety is a "
+        "GuardCondition::trigger -> the platform wake primitive; ISR-safety is a "
         "platform-ABI guarantee no backend makes",
     ),
     # `layer`, not `declined` — the reason's own first five words are "codegen,

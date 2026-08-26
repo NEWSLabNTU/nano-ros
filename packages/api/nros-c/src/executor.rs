@@ -134,7 +134,7 @@ pub type nros_executor_trigger_t = Option<
 /// Callback invocation mode
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_executor_invocation_t {
+pub enum nros_executor_handle_invocation_t {
     /// Only invoke callback when new data is available
     NROS_EXECUTOR_ON_NEW_DATA = 0,
     /// Always invoke callback (even with NULL data)
@@ -745,7 +745,7 @@ pub unsafe extern "C" fn nros_executor_trigger_one(
 pub unsafe extern "C" fn nros_executor_add_subscription(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
-    invocation: nros_executor_invocation_t,
+    invocation: nros_executor_handle_invocation_t,
 ) -> nros_ret_t {
     validate_not_null!(executor, subscription);
 
@@ -832,7 +832,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
                 sub_mut.set_handle_id(handle_id);
 
                 // Set invocation mode
-                if invocation == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS {
+                if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
                 }
 
@@ -1040,7 +1040,7 @@ pub unsafe extern "C" fn nros_executor_add_timer(
 pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
-    invocation: nros_executor_invocation_t,
+    invocation: nros_executor_handle_invocation_t,
     callback_group: *const c_char,
 ) -> nros_ret_t {
     validate_not_null!(executor, subscription);
@@ -1124,7 +1124,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
                 sub_mut.set_handle_id(handle_id);
 
                 // Apply invocation override if not the default (on-new-data = 0).
-                if invocation == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS {
+                if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
                 }
 

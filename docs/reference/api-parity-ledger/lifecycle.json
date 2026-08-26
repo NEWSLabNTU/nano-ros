@@ -39,9 +39,9 @@
     "verdict": "extension",
     "why": "the executor-scoped half of the lifecycle API. RFC-0002 gives one executor per RTOS task and the executor owns the node's entities, so the state machine that the five REP-2002 services drive lives THERE, not on a caller-held handle. rclc has no counterpart because its state machine hangs off `rclc_lifecycle_node_t`. This is the family a C app actually uses: the standalone `nros_lifecycle_*` family cannot register services (see `c:make_node_a_lifecycle_node`)."
   },
-  "c:executor_lifecycle_get_state": {
+  "c:executor_lifecycle_get_current_state": {
     "verdict": "extension",
-    "why": "see `c:executor_lifecycle_change_state`."
+    "why": "Renamed 2026-08-26 (phase-379 W5) to `nros_executor_lifecycle_get_current_state` — see `cpp:LifecycleNode::get_current_state`. see `c:executor_lifecycle_change_state`."
   },
   "c:executor_lifecycle_register_on_activate": {
     "verdict": "extension",
@@ -99,9 +99,9 @@
     "verdict": "declined",
     "why": "no runtime options struct; see the `compile-time-options` rule and `c:lifecycle_state_machine_options_t`."
   },
-  "c:lifecycle_get_state": {
+  "c:lifecycle_get_current_state": {
     "verdict": "extension",
-    "why": "rclc reads the state straight out of the struct (`node->state_machine->current_state->id`). `nros_lifecycle_state_machine_t` keeps the real state machine in an opaque `u64[]` so the C-visible layout stays fixed across a Rust-side change, so an accessor is required rather than optional. Same reason as the executor-scoped `c:executor_lifecycle_get_state`."
+    "why": "Renamed 2026-08-26 (phase-379 W5) to `nros_lifecycle_get_current_state`, with the C++ and executor-scoped spellings — see `cpp:LifecycleNode::get_current_state`. rclc reads the state straight out of the struct (`node->state_machine->current_state->id`). `nros_lifecycle_state_machine_t` keeps the real state machine in an opaque `u64[]` so the C-visible layout stays fixed across a Rust-side change, so an accessor is required rather than optional. Same reason as the executor-scoped `c:executor_lifecycle_get_current_state`."
   },
   "c:lifecycle_get_state_callback": {
     "verdict": "declined",
@@ -217,7 +217,7 @@
   },
   "c:lifecycle_state_t": {
     "verdict": "divergence",
-    "why": "rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain. Ours is `NROS_LIFECYCLE_STATE_*` plus the `uint8_t` a `get_state` returns."
+    "why": "rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain. Ours is `NROS_LIFECYCLE_STATE_*` plus the `uint8_t` a `get_current_state` returns."
   },
   "c:lifecycle_transition_fini": {
     "verdict": "declined",
@@ -293,7 +293,13 @@
   },
   "cpp:LifecycleNode::get_current_state": {
     "verdict": "rename",
-    "why": "rclcpp spells it `get_current_state()`; we spell it `get_state()`. Nothing about an RTOS asks for the shorter name, and a ported rclcpp lifecycle node calls the longer one. OUR LANGUAGES DISAGREE, three ways: C++ `get_state()`, C `nros_lifecycle_get_state` / `nros_executor_lifecycle_get_state`, Rust `LifecyclePollingNode::state()`. Rust's is correct for Rust (RFC-430 drops `get_`); C and C++ should both read `get_current_state`. Phase 379 W3."
+    "why": "LANDED 2026-08-26 (phase-379 W5, group A) — every name this row named has moved, in one commit: C++ `LifecycleNode::get_state()` -> `get_current_state()`, C `nros_lifecycle_get_state` -> `nros_lifecycle_get_current_state` and `nros_executor_lifecycle_get_state` -> `nros_executor_lifecycle_get_current_state` (cbindgen-regenerated in `nros_generated.h`), plus the private C++ FFI `nros_cpp_lifecycle_get_state` -> `nros_cpp_lifecycle_get_current_state`. Rust's `LifecyclePollingNode::state()` deliberately did NOT move: RFC-430 drops `get_`, so Rust was already correct. The ours-only half of this pair (`cpp:LifecycleNode::get_state`) is merged into this row. The paragraph that follows is the row's ORIGINAL reasoning and describes the PRE-rename tree. rclcpp spells it `get_current_state()`; we spell it `get_state()`. Nothing about an RTOS asks for the shorter name, and a ported rclcpp lifecycle node calls the longer one. OUR LANGUAGES DISAGREE, three ways: C++ `get_state()`, C `nros_lifecycle_get_state` / `nros_executor_lifecycle_get_state`, Rust `LifecyclePollingNode::state()`. Rust's is correct for Rust (RFC-430 drops `get_`); C and C++ should both read `get_current_state`. Phase 379 W3.",
+    "rename": {
+      "from": "get_state",
+      "to": "get_current_state",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "cpp:LifecycleNode::get_logger": {
     "verdict": "divergence",
@@ -339,13 +345,9 @@
     "verdict": "declined",
     "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an interface bundle."
   },
-  "cpp:LifecycleNode::get_state": {
-    "verdict": "rename",
-    "why": "the ours-only half of `cpp:LifecycleNode::get_current_state`; see that row."
-  },
   "cpp:LifecycleNode::get_transition_graph": {
     "verdict": "gap",
-    "why": "MISFILED BY THE TAXONOMY, and a real finding underneath: this is the LIFECYCLE state machine's full transition table (`ros2 lifecycle list`), not the ROS graph -- it lands in this stage only because `topics.py`'s pattern matches the word `graph`. And we already have the data: `nros-node/src/lifecycle_services.rs` holds `ALL_TRANSITIONS` as a static table and serves it over `~/get_transition_graph` (sharing the `GetAvailableTransitions` type with `~/get_available_transitions`, which is why the five lifecycle services use four service types). So a remote peer can read our transition table over the wire and the node's own code cannot read it in process, in any of the three languages -- there is no local accessor beside `nros_lifecycle_get_state`. Cheap to close: the table is already `const`. Phase 379 W3."
+    "why": "MISFILED BY THE TAXONOMY, and a real finding underneath: this is the LIFECYCLE state machine's full transition table (`ros2 lifecycle list`), not the ROS graph -- it lands in this stage only because `topics.py`'s pattern matches the word `graph`. And we already have the data: `nros-node/src/lifecycle_services.rs` holds `ALL_TRANSITIONS` as a static table and serves it over `~/get_transition_graph` (sharing the `GetAvailableTransitions` type with `~/get_available_transitions`, which is why the five lifecycle services use four service types). So a remote peer can read our transition table over the wire and the node's own code cannot read it in process, in any of the three languages -- there is no local accessor beside `nros_lifecycle_get_current_state`. Cheap to close: the table is already `const`. Phase 379 W3."
   },
   "cpp:LifecycleNode::make_shared": {
     "verdict": "declined",
@@ -409,7 +411,13 @@
   },
   "cpp:LifecycleNode::trigger_transition": {
     "verdict": "rename",
-    "why": "rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3."
+    "why": "rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "VISIBILITY — trigger() is protected at lifecycle.hpp:163; renaming alone leaves a ported node just as unable to call it"
+    }
   },
   "cpp:LifecyclePublisher": {
     "verdict": "gap",

@@ -646,7 +646,7 @@ typedef enum nros_publisher_state_t {
 /**
  * Callback invocation mode
  */
-typedef enum nros_executor_invocation_t {
+typedef enum nros_executor_handle_invocation_t {
   /**
    * Only invoke callback when new data is available
    */
@@ -655,7 +655,7 @@ typedef enum nros_executor_invocation_t {
    * Always invoke callback (even with NULL data)
    */
   NROS_EXECUTOR_ALWAYS = 1,
-} nros_executor_invocation_t;
+} nros_executor_handle_invocation_t;
 
 /**
  * Timer state
@@ -2305,7 +2305,7 @@ typedef uint32_t nros_shutdown_callback_handle_t;
  *
  * The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
  * `u64` array to keep C-ABI struct layout predictable for C callers.
- * Treat the struct as opaque — use [`nros_lifecycle_get_state`] and the
+ * Treat the struct as opaque — use [`nros_lifecycle_get_current_state`] and the
  * `nros_lifecycle_register_on_*` functions to interact with it.
  */
 typedef struct nros_lifecycle_state_machine_t {
@@ -4242,7 +4242,7 @@ NROS_PUBLIC bool nros_executor_trigger_one(const bool *ready, size_t count, void
 NROS_PUBLIC
 nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
                                           struct nros_subscription_t *subscription,
-                                          enum nros_executor_invocation_t invocation);
+                                          enum nros_executor_handle_invocation_t invocation);
 
 /**
  * Phase 189.M3.4 — register a raw subscription whose callback also receives
@@ -4299,7 +4299,7 @@ nros_ret_t nros_executor_add_timer(struct nros_executor_t *executor,
 NROS_PUBLIC
 nros_ret_t nros_executor_add_subscription_in_group(struct nros_executor_t *executor,
                                                    struct nros_subscription_t *subscription,
-                                                   enum nros_executor_invocation_t invocation,
+                                                   enum nros_executor_handle_invocation_t invocation,
                                                    const char *callback_group);
 
 /**
@@ -4680,7 +4680,8 @@ nros_ret_t nros_lifecycle_change_state(struct nros_lifecycle_state_machine_t *sm
 /**
  * Get the current lifecycle state.
  */
-NROS_PUBLIC uint8_t nros_lifecycle_get_state(const struct nros_lifecycle_state_machine_t *sm);
+NROS_PUBLIC
+uint8_t nros_lifecycle_get_current_state(const struct nros_lifecycle_state_machine_t *sm);
 
 /**
  * Register a callback for the `configure` transition.
@@ -4736,7 +4737,7 @@ nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_
  * After this call, `ros2 lifecycle set|get|list|nodes` can drive the
  * executor-owned state machine. Register transition callbacks via
  * `nros_executor_lifecycle_register_on_*` and inspect the state via
- * `nros_executor_lifecycle_get_state`.
+ * `nros_executor_lifecycle_get_current_state`.
  */
 NROS_PUBLIC nros_ret_t nros_executor_register_lifecycle_services(struct nros_executor_t *executor);
 
@@ -4751,7 +4752,7 @@ NROS_PUBLIC nros_ret_t nros_executor_register_lifecycle_services(struct nros_exe
  * executor accessor shares storage with the services loop that needs
  * `&mut` during spin.
  */
-NROS_PUBLIC uint8_t nros_executor_lifecycle_get_state(struct nros_executor_t *executor);
+NROS_PUBLIC uint8_t nros_executor_lifecycle_get_current_state(struct nros_executor_t *executor);
 
 /**
  * Trigger a lifecycle transition on the executor's state machine.

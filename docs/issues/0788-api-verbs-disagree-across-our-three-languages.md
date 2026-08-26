@@ -22,7 +22,7 @@ Six, found across four stages:
 | reply to a service request | `nros_service_send_response` **and** `nros_service_send_reply_raw` | `Service::send_reply` | `ServiceTrait::send_reply` | `send_response` |
 | is the server up? | `nros_client_service_is_ready` **and** `nros_client_server_available` | `Client::server_available` | `ClientTrait::is_server_ready` **and** `ClientTrait::server_available` | `service_is_ready` |
 | non-blocking receive | `nros_service_take_request` but `nros_client_try_recv_response` | `try_recv*` throughout | `try_recv*` throughout | `take` |
-| cancelled timer | (no predicate at all) | `Timer::is_cancelled` | `Timer::is_canceled` | `is_canceled` |
+| cancelled timer | (no predicate at all) | `Timer::is_cancelled` → `is_canceled` (phase-379 W5, 2026-08-26) | `Timer::is_canceled` | `is_canceled` |
 | create a subscription | `nros_subscription_init` | `Node::create_subscription` | `Node::create_subscriber` | `create_subscription` |
 | serialized bytes | `publish_raw` | `publish_raw` | `publish_raw` | `serialized` |
 

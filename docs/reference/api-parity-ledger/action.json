@@ -254,7 +254,13 @@
   },
   "c:action_server_active_goal_count_raw": {
     "verdict": "rename",
-    "why": "the second spelling; see `c:action_server_get_active_goal_count`."
+    "why": "the second spelling; see `c:action_server_get_active_goal_count`.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "DUPLICATE API — same pair"
+    }
   },
   "c:action_server_get_action_name": {
     "verdict": "gap",
@@ -262,7 +268,13 @@
   },
   "c:action_server_get_active_goal_count": {
     "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, and inside one language: the C API ships this query TWICE. `nros_action_server_get_active_goal_count` returns `size_t` for the callback tier and `nros_action_server_active_goal_count_raw` returns `int32_t` for the polling tier, and both read the same arena field through the same `ActionServerRawHandle::active_goal_count`. One says `get_`, the other does not. Rust spells it `active_goal_count` on all four of its action types, agreeing with the `_raw` half; C's `get_` form is the outlier, and C++ has no count at all (only `for_each_active_goal`). Same shape as the service stage's `c:client_server_available` / `c:client_service_is_ready`. Phase 379 W5."
+    "why": "OUR LANGUAGES DISAGREE, and inside one language: the C API ships this query TWICE. `nros_action_server_get_active_goal_count` returns `size_t` for the callback tier and `nros_action_server_active_goal_count_raw` returns `int32_t` for the polling tier, and both read the same arena field through the same `ActionServerRawHandle::active_goal_count`. One says `get_`, the other does not. Rust spells it `active_goal_count` on all four of its action types, agreeing with the `_raw` half; C's `get_` form is the outlier, and C++ has no count at all (only `for_each_active_goal`). Same shape as the service stage's `c:client_server_available` / `c:client_service_is_ready`. Phase 379 W5.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "DUPLICATE API — two exported fns over one arena field, usize vs i32, and the i32 doubles as an error channel, so no naive merge"
+    }
   },
   "c:action_server_get_goal_handles": {
     "verdict": "declined",
@@ -818,11 +830,11 @@
   },
   "rust:CancelReturnCode": {
     "verdict": "extension",
-    "why": "the `action_msgs/srv/CancelGoal` RPC status (Ok / Rejected / UnknownGoal / GoalTerminated), split out from `CancelResponse` by issue 0796 \u2014 those were two concepts under one name, and `CallbackCtx::set_cancel_response` took the RPC enum to express a per-goal decision. C already named them apart (`nros_cancel_response_t` vs `nros_cancel_return_code_t`); Rust and C++ now follow. rclcpp_action has no separate type because its `CancelResponse` IS the per-goal decision and the RPC status is a field of the generated `CancelGoal::Response` message, which we do not surface as a message. Exported from `nros` so `ActionClient::cancel_goal`'s `Promise<CancelReturnCode>` can be named."
+    "why": "the `action_msgs/srv/CancelGoal` RPC status (Ok / Rejected / UnknownGoal / GoalTerminated), split out from `CancelResponse` by issue 0796 — those were two concepts under one name, and `CallbackCtx::set_cancel_response` took the RPC enum to express a per-goal decision. C already named them apart (`nros_cancel_response_t` vs `nros_cancel_return_code_t`); Rust and C++ now follow. rclcpp_action has no separate type because its `CancelResponse` IS the per-goal decision and the RPC status is a field of the generated `CancelGoal::Response` message, which we do not surface as a message. Exported from `nros` so `ActionClient::cancel_goal`'s `Promise<CancelReturnCode>` can be named."
   },
   "rust:CancelReturnCode::from_i8": {
     "verdict": "extension",
-    "why": "decodes the wire byte into `CancelReturnCode`; see `rust:CancelReturnCode`. The split exposed a latent inversion here \u2014 `try_handle_cancel` was writing the per-goal answer straight into the RPC reply, which was correct only while the two shared a type."
+    "why": "decodes the wire byte into `CancelReturnCode`; see `rust:CancelReturnCode`. The split exposed a latent inversion here — `try_handle_cancel` was writing the per-goal answer straight into the RPC reply, which was correct only while the two shared a type."
   },
   "rust:CompletedGoal": {
     "verdict": "extension",
@@ -1170,6 +1182,6 @@
   },
   "rust:action_channel_type": {
     "verdict": "extension",
-    "why": "derives the per-channel DDS type name (`\u2026::dds_::Fibonacci_SendGoal_`) from the action type name, in a `heapless::String` with no allocation. rclcpp_action gets these from generated typesupport structs; we need the derivation at runtime because the raw registration path has only the action's type name. See `c:action_type_t`."
+    "why": "derives the per-channel DDS type name (`…::dds_::Fibonacci_SendGoal_`) from the action type name, in a `heapless::String` with no allocation. rclcpp_action gets these from generated typesupport structs; we need the derivation at runtime because the raw registration path has only the action's type name. See `c:action_type_t`."
   }
 }

@@ -1901,7 +1901,7 @@ fn test_halt_raises_wake_flag() {
 
 #[test]
 fn test_guard_handle_send_across_thread() {
-    // Phase 124.B.7.d — GuardConditionHandle must be Send (so a
+    // Phase 124.B.7.d — GuardCondition must be Send (so a
     // worker thread / signal handler can own it and call trigger()).
     // Sync impl assertion via thread move and rejoin.
     let session = MockSession::new();

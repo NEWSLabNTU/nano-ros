@@ -145,7 +145,13 @@
   },
   "c:send_request": {
     "verdict": "rename",
-    "why": "rcl's free-function spelling; ours is `nros_client_send_request{,_async,_raw}`. See `c:publish`."
+    "why": "rcl's free-function spelling; ours is `nros_client_send_request{,_async,_raw}`. See `c:publish`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "word already matches; only free-fn shape differs, and the cited precedent is verdict declined"
+    }
   },
   "c:send_response": {
     "verdict": "rename",
@@ -401,7 +407,13 @@
   },
   "cpp:Client::take_type_erased_response": {
     "verdict": "rename",
-    "why": "see `c:take_response`; ours is the `_raw` form."
+    "why": "see `c:take_response`; ours is the `_raw` form.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "suffix unsettled: _raw vs _serialized vs type_erased"
+    }
   },
   "cpp:ClientOptions": {
     "verdict": "extension",
@@ -529,7 +541,13 @@
   },
   "cpp:Service::take_type_erased_request": {
     "verdict": "rename",
-    "why": "see `c:take_request`."
+    "why": "see `c:take_request`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "same"
+    }
   },
   "cpp:ServiceOptions": {
     "verdict": "extension",
@@ -565,7 +583,7 @@
   },
   "cpp:create_client": {
     "verdict": "rename",
-    "why": "rclcpp's free-function form; ours is `nros::make_client` if it existed -- today there is none, so this is the gap half. `create_publisher`/`make_publisher` is the same pair in pubsub. Phase 379 W5."
+    "why": "rclcpp's free-function form; ours is `nros::make_client` if it existed -- today there is none, so this is the gap half. `create_publisher`/`make_publisher` was the same pair in pubsub, landed 2026-08-26. Phase 379 W5."
   },
   "cpp:create_service": {
     "verdict": "rename",
@@ -669,7 +687,13 @@
   },
   "rust:ClientTrait::server_available": {
     "verdict": "rename",
-    "why": "a THIRD spelling of the same predicate, in the same trait as `is_server_ready`. See `cpp:Client::service_is_ready`."
+    "why": "a THIRD spelling of the same predicate, in the same trait as `is_server_ready`. See `cpp:Client::service_is_ready`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "MERGING DELETES A TRI-STATE: server_available -> Result<bool> (C: int32, -1 = backend cannot answer); is_server_ready -> bool. Their own doc says they are distinct on purpose. Name decision is clear; the semantic merge is undecided"
+    }
   },
   "rust:ClientTrait::start_server_discovery": {
     "verdict": "extension",
@@ -841,7 +865,7 @@
   },
   "rust:QoSProfile::parameter_services_default": {
     "verdict": "gap",
-    "why": "ROS 2 gives the parameter services their own profile \u2014 `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
+    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
   },
   "rust:QoSProfile::services_default": {
     "verdict": "rename",

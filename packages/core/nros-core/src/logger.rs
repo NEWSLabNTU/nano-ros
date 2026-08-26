@@ -148,55 +148,55 @@ impl core::fmt::Debug for OnceFlag {
     }
 }
 
-/// A logger associated with a ROS node
+/// A named logger
 ///
 /// Provides methods for logging at different severity levels.
-/// The logger includes the node name in log output for context.
+/// The logger includes its name in log output for context.
 #[derive(Debug, Clone)]
 pub struct Logger<'a> {
-    /// The node name for log context
-    node_name: &'a str,
+    /// The logger name used as the log target
+    name: &'a str,
 }
 
 impl<'a> Logger<'a> {
-    /// Create a new logger for the given node name
-    pub const fn new(node_name: &'a str) -> Self {
-        Self { node_name }
+    /// Create a new logger with the given name
+    pub const fn new(name: &'a str) -> Self {
+        Self { name }
     }
 
-    /// Get the node name associated with this logger
-    pub const fn node_name(&self) -> &str {
-        self.node_name
+    /// Get the name associated with this logger
+    pub const fn name(&self) -> &str {
+        self.name
     }
 
     /// Log a message at the DEBUG level
     #[inline]
     pub fn debug(&self, message: &str) {
-        log::debug!(target: self.node_name, "{}", message);
+        log::debug!(target: self.name, "{}", message);
     }
 
     /// Log a message at the INFO level
     #[inline]
     pub fn info(&self, message: &str) {
-        log::info!(target: self.node_name, "{}", message);
+        log::info!(target: self.name, "{}", message);
     }
 
     /// Log a message at the WARN level
     #[inline]
     pub fn warn(&self, message: &str) {
-        log::warn!(target: self.node_name, "{}", message);
+        log::warn!(target: self.name, "{}", message);
     }
 
     /// Log a message at the ERROR level
     #[inline]
     pub fn error(&self, message: &str) {
-        log::error!(target: self.node_name, "{}", message);
+        log::error!(target: self.name, "{}", message);
     }
 
     /// Log a message at the TRACE level
     #[inline]
     pub fn trace(&self, message: &str) {
-        log::trace!(target: self.node_name, "{}", message);
+        log::trace!(target: self.name, "{}", message);
     }
 
     // --- Once modifiers (log only first occurrence) ---
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn test_logger_creation() {
         let logger = Logger::new("test_node");
-        assert_eq!(logger.node_name(), "test_node");
+        assert_eq!(logger.name(), "test_node");
     }
 
     #[test]

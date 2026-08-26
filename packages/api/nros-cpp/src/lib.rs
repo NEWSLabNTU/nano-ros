@@ -278,7 +278,7 @@ const fn u64s_for<T>() -> usize {
 
 // Phase 87.6: `CPP_GUARD_HANDLE_OPAQUE_U64S` removed — the C++
 // `nros::GuardCondition` class sizes its `storage_` from
-// `NROS_GUARD_CONDITION_SIZE` (`size_of::<GuardConditionHandle>()`
+// `NROS_GUARD_CONDITION_SIZE` (`size_of::<GuardCondition>()`
 // probed from the nros rlib).
 
 // ============================================================================
@@ -415,7 +415,7 @@ const _: () = {
     // and `CppServiceClient` assertions removed — all four now use
     // thin-wrapper storage sized from the Rust SSoT (`NROS_*_SIZE`
     // probes in the generated header).
-    // Phase 87.6: `GuardConditionHandle` assertion removed — storage
+    // Phase 87.6: `GuardCondition` assertion removed — storage
     // sized from `NROS_GUARD_CONDITION_SIZE` (probed).
 };
 

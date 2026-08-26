@@ -851,11 +851,11 @@ pub mod internals {
 pub use nros_node::{
     BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
     BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, ExecutorConfig,
-    ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
-    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, RawCancelCallback, RawGoalCallback,
-    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn,
-    ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
-    Trigger, baked_domain_from_c_abi,
+    ExecutorSemantics, GuardCondition, HandleId, HandleSet, InvocationMode, NROS_BOOT_CONFIG_MAGIC,
+    NROS_BOOT_CONFIG_VERSION, RawCancelCallback, RawGoalCallback, RawServiceCallback,
+    RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn, ShutdownCallbackHandle,
+    ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+    baked_domain_from_c_abi,
 };
 
 // ---------------------------------------------------------------------------
@@ -1059,7 +1059,7 @@ pub mod prelude {
 
     // Re-export executor config + handle types (always available)
     pub use crate::{
-        ExecutorConfig, GuardConditionHandle, HandleId, HandleSet, InvocationMode, NodeError,
+        ExecutorConfig, GuardCondition, HandleId, HandleSet, InvocationMode, NodeError,
         SessionMode, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, TransportError, Trigger,
     };
 

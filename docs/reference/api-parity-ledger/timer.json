@@ -81,7 +81,13 @@
   },
   "c:difference_times": {
     "verdict": "rename",
-    "why": "rcl's `rcl_difference_times(start, finish, out)`; ours is `nros_time_sub`. Same operation, and `sub` matches `nros_time_add` which rcl has no counterpart for at all."
+    "why": "rcl's `rcl_difference_times(start, finish, out)`; ours is `nros_time_sub`. Same operation, and `sub` matches `nros_time_add` which rcl has no counterpart for at all.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "row argues FOR our spelling yet verdict is rename; no tie-break clause (compare c:clock_valid, which has one)"
+    }
   },
   "c:duration_from_nanoseconds": {
     "verdict": "extension",
@@ -429,7 +435,13 @@
   },
   "cpp:Node::create_wall_timer": {
     "verdict": "rename",
-    "why": "We spell it `create_timer`; rclcpp spells it `create_wall_timer` and a ported node calls that name. Nothing about an RTOS requires the shorter name -- our timers are wall-clock timers like rclcpp's. Phase 379 W3."
+    "why": "We spell it `create_timer`; rclcpp spells it `create_wall_timer` and a ported node calls that name. Nothing about an RTOS requires the shorter name -- our timers are wall-clock timers like rclcpp's. Phase 379 W3.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "base method explicit (create_timer -> create_wall_timer) but the row names ONLY the base, while create_timer_oneshot / create_timer_in / ComponentNode::create_timer share the stem. Renaming the family invents names the ledger never authorised. SOFT collision: rclcpp::Node::create_wall_timer already exists in rclcpp_compat.hpp:406 with different semantics"
+    }
   },
   "cpp:Node::get_node_clock_interface": {
     "verdict": "declined",
@@ -453,7 +465,13 @@
   },
   "cpp:QoS::liveliness_lease_duration": {
     "verdict": "rename",
-    "why": "ours is `QoS::liveliness_lease_ms`. The `_ms` suffix exists because C++ has no `Duration` type here -- so the name follows whatever W3 decides about `cpp:Duration`, not the other way round. The qos stage owns the family; recorded here because the reason is the missing duration type."
+    "why": "ours is `QoS::liveliness_lease_ms`. The `_ms` suffix exists because C++ has no `Duration` type here -- so the name follows whatever W3 decides about `cpp:Duration`, not the other way round. The qos stage owns the family; recorded here because the reason is the missing duration type.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "blocked on cpp:Duration, a type that does not exist yet"
+    }
   },
   "cpp:Rate": {
     "verdict": "declined",
@@ -509,11 +527,13 @@
   },
   "cpp:Timer::is_canceled": {
     "verdict": "rename",
-    "why": "rcl, rclcpp and our own Rust (`Timer::is_canceled`) all use ONE `l`. Our C++ spells it `Timer::is_cancelled`. A spelling, in one of three languages, against every other spelling in the tree. Phase 379 W5."
-  },
-  "cpp:Timer::is_cancelled": {
-    "verdict": "rename",
-    "why": "the ours-only half of `cpp:Timer::is_canceled`."
+    "why": "LANDED 2026-08-26 (phase-379 W5) — C++ now spells it `is_canceled`, so ours and theirs carry the same name and this row is satisfied. Two internal symbols moved with it, or the header would have stopped matching the shim: the private FFI export `nros_cpp_timer_is_cancelled` -> `nros_cpp_timer_is_canceled` (cbindgen-regenerated in `nros_cpp_ffi.h`) and `Executor::timer_is_cancelled` -> `timer_is_canceled` in `nros-node/src/executor/spin.rs`. The ours-only half of this pair (`cpp:Timer::is_cancelled`) is gone: renaming the item merges the two rows into this one. rcl, rclcpp and our own Rust (`Timer::is_canceled`) all use ONE `l`. Our C++ spells it `Timer::is_cancelled`. A spelling, in one of three languages, against every other spelling in the tree. Phase 379 W5.",
+    "rename": {
+      "from": "is_cancelled",
+      "to": "is_canceled",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "cpp:Timer::is_ready": {
     "verdict": "gap",
@@ -577,11 +597,23 @@
   },
   "cpp:create_timer": {
     "verdict": "rename",
-    "why": "rclcpp's free function; ours is a `Node` method. See the pubsub stage's `cpp:create_publisher` for the same free-function-vs-method pattern."
+    "why": "rclcpp's free function; ours is a `Node` method. See the pubsub stage's `cpp:create_publisher` for the same free-function-vs-method pattern.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "API SHAPE — free fn vs method; the fix is ADDING a free function, a gap not a spelling"
+    }
   },
   "cpp:create_wall_timer": {
     "verdict": "rename",
-    "why": "the free-function form; see `cpp:Node::create_wall_timer`."
+    "why": "the free-function form; see `cpp:Node::create_wall_timer`.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "API SHAPE — same"
+    }
   },
   "cpp:sleep_for": {
     "verdict": "declined",
@@ -719,9 +751,9 @@
     "verdict": "divergence",
     "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
-  "rust:Executor::timer_is_cancelled": {
+  "rust:Executor::timer_is_canceled": {
     "verdict": "divergence",
-    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "Renamed 2026-08-26 (phase-379 W5) with `cpp:Timer::is_canceled` — the C++ predicate calls straight through to this method, so the double-`l` could not stay here once the header moved. an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:Executor::timer_overruns": {
     "verdict": "divergence",
@@ -829,15 +861,33 @@
   },
   "rust:QoSProfile::deadline_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit."
+    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "TYPE change (u32 ms -> Duration); deferred to the qos stage by the row"
+    }
   },
   "rust:QoSProfile::lifespan_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit."
+    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "TYPE change; deferred to the qos stage"
+    }
   },
   "rust:QoSProfile::liveliness_lease_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit."
+    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "TYPE change; deferred to the qos stage"
+    }
   },
   "rust:QosSettings::clock_default": {
     "verdict": "rename",
@@ -913,7 +963,7 @@
   },
   "rust:Timer::is_canceled": {
     "verdict": "extension",
-    "why": "see `rust:Timer::cancel`; note this is the spelling `cpp:Timer::is_cancelled` should move to."
+    "why": "see `rust:Timer::cancel`; C++ moved to this spelling on 2026-08-26 (phase-379 W5), so all three languages now agree."
   },
   "rust:Timer::is_ready": {
     "verdict": "extension",

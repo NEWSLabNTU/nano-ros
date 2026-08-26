@@ -125,7 +125,7 @@ pub type nros_lifecycle_callback_t = Option<unsafe extern "C" fn(context: *mut c
 ///
 /// The `storage` field holds a [`LifecyclePollingNodeCtx`] placed into a
 /// `u64` array to keep C-ABI struct layout predictable for C callers.
-/// Treat the struct as opaque — use [`nros_lifecycle_get_state`] and the
+/// Treat the struct as opaque — use [`nros_lifecycle_get_current_state`] and the
 /// `nros_lifecycle_register_on_*` functions to interact with it.
 #[repr(C)]
 pub struct nros_lifecycle_state_machine_t {
@@ -259,7 +259,9 @@ pub unsafe extern "C" fn nros_lifecycle_change_state(
 
 /// Get the current lifecycle state.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_lifecycle_get_state(sm: *const nros_lifecycle_state_machine_t) -> u8 {
+pub unsafe extern "C" fn nros_lifecycle_get_current_state(
+    sm: *const nros_lifecycle_state_machine_t,
+) -> u8 {
     if sm.is_null() || !(*sm).initialized {
         return 0;
     }
@@ -378,7 +380,7 @@ mod service_backed {
     /// After this call, `ros2 lifecycle set|get|list|nodes` can drive the
     /// executor-owned state machine. Register transition callbacks via
     /// `nros_executor_lifecycle_register_on_*` and inspect the state via
-    /// `nros_executor_lifecycle_get_state`.
+    /// `nros_executor_lifecycle_get_current_state`.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_register_lifecycle_services(
         executor: *mut nros_executor_t,
@@ -403,7 +405,7 @@ mod service_backed {
     /// executor accessor shares storage with the services loop that needs
     /// `&mut` during spin.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_lifecycle_get_state(
+    pub unsafe extern "C" fn nros_executor_lifecycle_get_current_state(
         executor: *mut nros_executor_t,
     ) -> u8 {
         if executor.is_null() {
@@ -544,7 +546,7 @@ mod tests {
             assert_eq!(nros_lifecycle_init(&mut sm), NROS_RET_OK);
             assert!(sm.initialized);
             assert_eq!(
-                nros_lifecycle_get_state(&sm),
+                nros_lifecycle_get_current_state(&sm),
                 NROS_LIFECYCLE_STATE_UNCONFIGURED
             );
 
@@ -571,7 +573,7 @@ mod tests {
                 ),
                 NROS_RET_INVALID_ARGUMENT
             );
-            assert_eq!(nros_lifecycle_get_state(core::ptr::null()), 0);
+            assert_eq!(nros_lifecycle_get_current_state(core::ptr::null()), 0);
         }
     }
 
@@ -596,12 +598,18 @@ mod tests {
                 nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_OK
             );
-            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_INACTIVE);
+            assert_eq!(
+                nros_lifecycle_get_current_state(&sm),
+                NROS_LIFECYCLE_STATE_INACTIVE
+            );
             assert_eq!(
                 nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_ACTIVATE),
                 NROS_RET_OK
             );
-            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_ACTIVE);
+            assert_eq!(
+                nros_lifecycle_get_current_state(&sm),
+                NROS_LIFECYCLE_STATE_ACTIVE
+            );
         }
     }
 
@@ -617,7 +625,7 @@ mod tests {
                 NROS_RET_ERROR
             );
             assert_eq!(
-                nros_lifecycle_get_state(&sm),
+                nros_lifecycle_get_current_state(&sm),
                 NROS_LIFECYCLE_STATE_UNCONFIGURED
             );
         }
@@ -676,7 +684,10 @@ mod tests {
                 nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_OK
             );
-            assert_eq!(nros_lifecycle_get_state(&sm), NROS_LIFECYCLE_STATE_INACTIVE);
+            assert_eq!(
+                nros_lifecycle_get_current_state(&sm),
+                NROS_LIFECYCLE_STATE_INACTIVE
+            );
         }
     }
 }

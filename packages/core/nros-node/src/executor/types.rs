@@ -1035,7 +1035,7 @@ pub enum ExecutorSemantics {
 }
 
 // ============================================================================
-// GuardConditionHandle
+// GuardCondition
 // ============================================================================
 
 /// Handle for triggering a guard condition from outside the executor.
@@ -1043,7 +1043,7 @@ pub enum ExecutorSemantics {
 /// Obtained from `Executor::register_guard_condition`.
 /// Safe to use from any thread — the inner `&'static AtomicBool` is inherently
 /// `Send + Sync`.
-pub struct GuardConditionHandle {
+pub struct GuardCondition {
     // The AtomicBool lives in the executor's arena, which is never moved or
     // deallocated while handles exist. The 'static lifetime is asserted at
     // construction time (see `new()`).
@@ -1062,10 +1062,10 @@ pub struct GuardConditionHandle {
 // SAFETY: `wake_cb` is a plain function pointer; `wake_ctx` points
 // at a WakeCtx Arc allocated on Executor::new and never freed before
 // Executor::drop. Both are safe to share across threads.
-unsafe impl Send for GuardConditionHandle {}
-unsafe impl Sync for GuardConditionHandle {}
+unsafe impl Send for GuardCondition {}
+unsafe impl Sync for GuardCondition {}
 
-impl GuardConditionHandle {
+impl GuardCondition {
     /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
     ///
     /// # Safety

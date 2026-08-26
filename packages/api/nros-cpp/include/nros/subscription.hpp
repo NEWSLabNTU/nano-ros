@@ -696,11 +696,11 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
 }
 
 /// Phase 123.B.4 — value-returning subscription factory. Pairs
-/// with `make_publisher` so the full pub/sub create dance is
+/// with `create_publisher` so the full pub/sub create dance is
 /// expressible as a chain of `auto`-typed factories.
 template <typename M>
-inline Expected<Subscription<M>> make_subscription(Node& node, const char* topic,
-                                                   const QoS& qos = QoS::default_profile()) {
+inline Expected<Subscription<M>> create_subscription(Node& node, const char* topic,
+                                                     const QoS& qos = QoS::default_profile()) {
     Subscription<M> s;
     Result r = node.create_subscription<M>(s, topic, qos);
     if (!r.ok()) return Expected<Subscription<M>>::error(r);

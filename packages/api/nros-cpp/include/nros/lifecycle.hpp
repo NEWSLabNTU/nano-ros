@@ -22,14 +22,14 @@
 
 #include "nros/result.hpp"
 
-#include "nros_cpp_ffi.h" // lifecycle FFI: register_lifecycle_services / get_state /
+#include "nros_cpp_ffi.h" // lifecycle FFI: register_lifecycle_services / get_current_state /
                           // change_state / autostart / register_on_* (+ the
                           // nros_cpp_lifecycle_callback_t typedef), all cbindgen-generated
                           // from nros-cpp/src/lifecycle_shim.rs.
 
 namespace nros {
 
-/// REP-2002 primary states. Values match `nros_cpp_lifecycle_get_state()` /
+/// REP-2002 primary states. Values match `nros_cpp_lifecycle_get_current_state()` /
 /// `nros_core::lifecycle::LifecycleState` (`Unknown` is the `0` sentinel returned for a
 /// null executor or before services are registered).
 enum class LifecycleState : uint8_t {
@@ -67,7 +67,7 @@ class LifecycleNode {
     /// constructed before the executor handle exists, so a component that inherits
     /// `LifecycleNode` default-constructs here and calls `bind()` from its install
     /// hook (`configure(Node&)`, where `node.executor_handle()` is available) before
-    /// `register_services()`. Until bound, `get_state()` reads `Unconfigured` and the
+    /// `register_services()`. Until bound, `get_current_state()` reads `Unconfigured` and the
     /// register/transition calls return `InvalidArgument` rather than trapping.
     LifecycleNode() : exec_(nullptr) {}
 
@@ -148,8 +148,8 @@ class LifecycleNode {
     }
 
     /// Current REP-2002 state.
-    LifecycleState get_state() const {
-        return static_cast<LifecycleState>(nros_cpp_lifecycle_get_state(exec_));
+    LifecycleState get_current_state() const {
+        return static_cast<LifecycleState>(nros_cpp_lifecycle_get_current_state(exec_));
     }
 
     // Programmatic transitions (REP-2002 transition ids).
@@ -166,31 +166,31 @@ class LifecycleNode {
     void* exec_;
 
   private:
-    // Trampolines: `previous` = get_state() at callback entry (the SM invokes the
+    // Trampolines: `previous` = get_current_state() at callback entry (the SM invokes the
     // callback before committing the new state), then dispatch to the virtual.
     static uint8_t tramp_configure(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_configure(n->get_state()));
+        return static_cast<uint8_t>(n->on_configure(n->get_current_state()));
     }
     static uint8_t tramp_activate(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_activate(n->get_state()));
+        return static_cast<uint8_t>(n->on_activate(n->get_current_state()));
     }
     static uint8_t tramp_deactivate(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_deactivate(n->get_state()));
+        return static_cast<uint8_t>(n->on_deactivate(n->get_current_state()));
     }
     static uint8_t tramp_cleanup(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_cleanup(n->get_state()));
+        return static_cast<uint8_t>(n->on_cleanup(n->get_current_state()));
     }
     static uint8_t tramp_shutdown(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_shutdown(n->get_state()));
+        return static_cast<uint8_t>(n->on_shutdown(n->get_current_state()));
     }
     static uint8_t tramp_error(void* self) {
         auto* n = static_cast<LifecycleNode*>(self);
-        return static_cast<uint8_t>(n->on_error(n->get_state()));
+        return static_cast<uint8_t>(n->on_error(n->get_current_state()));
     }
 };
 

@@ -1,6 +1,6 @@
 //! Phase 124.B.7.d — ISR-safe wake contract test.
 //!
-//! Verifies that `GuardConditionHandle::trigger()` from a separate
+//! Verifies that `GuardCondition::trigger()` from a separate
 //! thread unblocks a `spin_once` blocked on `wake_cv` within a tight
 //! latency bound. This exercises the wake-callback path landed in
 //! Phase 124.B (commits 2e5204ca → 2d1009f5).

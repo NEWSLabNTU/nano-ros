@@ -5,7 +5,7 @@
 
 use core::ffi::c_void;
 
-use nros_node::GuardConditionHandle;
+use nros_node::GuardCondition;
 
 use crate::{
     NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cpp_ctx_checked,
@@ -14,7 +14,7 @@ use crate::{
 
 // Phase 87.6: no compile-time assertion needed — the C++ side sizes
 // `storage_` to `NROS_GUARD_CONDITION_SIZE`, which is literally
-// `size_of::<GuardConditionHandle>()` (probed from the nros rlib).
+// `size_of::<GuardCondition>()` (probed from the nros rlib).
 
 /// C callback type for guard conditions: `void callback(void* context)`.
 pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
@@ -22,7 +22,7 @@ pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c
 /// Create a guard condition and register it with the executor.
 ///
 /// The caller provides `storage` — a pointer to a buffer of at least
-/// `size_of::<GuardConditionHandle>()` bytes (exposed via
+/// `size_of::<GuardCondition>()` bytes (exposed via
 /// `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
 /// directly into this buffer.
 ///
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
         Ok((_handle_id, guard_handle)) => {
             // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                core::ptr::write(storage as *mut GuardConditionHandle, guard_handle);
+                core::ptr::write(storage as *mut GuardCondition, guard_handle);
             }
             // phase-308 — guard conditions never reach the RMW either; one
             // callback slot, same as a timer. No-op unless `metadata-mode`.
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_trigger(storage: *mut c_void) 
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let guard = unsafe { &*(storage as *const GuardConditionHandle) };
+    let guard = unsafe { &*(storage as *const GuardCondition) };
     guard.trigger();
     NROS_CPP_RET_OK
 }
@@ -93,12 +93,12 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_destroy(storage: *mut c_void) 
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        core::ptr::drop_in_place(storage as *mut GuardConditionHandle);
+        core::ptr::drop_in_place(storage as *mut GuardCondition);
     }
     NROS_CPP_RET_OK
 }
 
-/// Relocate a `GuardConditionHandle` from `old_storage` to `new_storage`.
+/// Relocate a `GuardCondition` from `old_storage` to `new_storage`.
 ///
 /// The handle itself contains a `&'static AtomicBool` pointing into the
 /// executor arena (stable address); the wrapper closure stored in the
@@ -117,8 +117,8 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_relocate(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     unsafe {
-        let value = core::ptr::read(old_storage as *mut GuardConditionHandle);
-        core::ptr::write(new_storage as *mut GuardConditionHandle, value);
+        let value = core::ptr::read(old_storage as *mut GuardCondition);
+        core::ptr::write(new_storage as *mut GuardCondition, value);
     }
     NROS_CPP_RET_OK
 }

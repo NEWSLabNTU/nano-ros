@@ -90,7 +90,7 @@ pub const ACTION_CLIENT_OPAQUE_U64S: usize = 1;
 
 // ── Guard Condition ──────────────────────────────────────────────────────
 
-pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();
+pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition>();
 
 // ── Opaque-storage guards (issue 0472) ───────────────────────────────────
 //
@@ -199,7 +199,7 @@ const _: () = {
     // disagree about.
     guard_opaque!(
         crate::config::PROBE_GUARD_HANDLE_U64S,
-        nros_node::GuardConditionHandle,
+        nros_node::GuardCondition,
         "GUARD_HANDLE_OPAQUE_U64S"
     );
     guard_opaque!(

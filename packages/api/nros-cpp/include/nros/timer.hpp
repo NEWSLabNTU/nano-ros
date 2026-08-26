@@ -56,9 +56,9 @@ class Timer {
     }
 
     /// Check if the timer is cancelled.
-    bool is_cancelled() const {
+    bool is_canceled() const {
         if (!initialized_) return true;
-        return nros_cpp_timer_is_cancelled(executor_, handle_id_);
+        return nros_cpp_timer_is_canceled(executor_, handle_id_);
     }
 
     /// Check if the timer is initialized and valid.

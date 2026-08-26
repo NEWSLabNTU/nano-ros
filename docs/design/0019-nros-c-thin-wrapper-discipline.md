@@ -63,7 +63,7 @@ For each entity, three categories:
 | `nros_action_server_t` | ❌ field-mirror | action_name + type_name + type_hash + goal_callback + cancel_callback + accepted_callback + context + node + `_internal` |
 | `nros_action_client_t` | ❌ field-mirror | action_name + type_name + type_hash + 3 callbacks + context + node + `_internal` |
 | `nros_timer_t` | ❌ field-mirror | period_ns + last_call_time_ns + callback + context + `_internal` |
-| `nros_guard_condition_t` | ⚠️ mixed | callback + context + `_guard_opaque` for `GuardConditionHandle` |
+| `nros_guard_condition_t` | ⚠️ mixed | callback + context + `_guard_opaque` for `GuardCondition` |
 
 Score: 4 of 11 entities follow the discipline.
 

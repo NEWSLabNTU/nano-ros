@@ -152,7 +152,7 @@ fn generate_config(
     // via `NROS_SERVICE_SERVER_SIZE` / `NROS_SERVICE_CLIENT_SIZE`.
 
     // Phase 87.6: GuardCondition is thin — storage sized to
-    // `size_of::<GuardConditionHandle>()` via `NROS_GUARD_CONDITION_SIZE`.
+    // `size_of::<GuardCondition>()` via `NROS_GUARD_CONDITION_SIZE`.
 
     let contents = format!(
         "/// Inline opaque storage for `CppContext` (in u64 units).\n\

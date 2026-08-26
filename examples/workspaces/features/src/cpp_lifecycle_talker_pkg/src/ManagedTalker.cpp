@@ -54,7 +54,7 @@ void ManagedTalker::on_tick() {
     // Register REP-2002 services (binds the on_* trampolines) and drive to Active.
     // The wrapper's autostart binds callbacks first, so the overrides above fire.
     r = autostart(::nros::LifecycleState::Active);
-    std::printf("LC:state=%d\n", static_cast<int>(get_state()));
+    std::printf("LC:state=%d\n", static_cast<int>(get_current_state()));
     return r;
 }
 

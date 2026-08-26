@@ -37,7 +37,13 @@
   ],
   "c:add_parameter": {
     "verdict": "rename",
-    "why": "rclc declares a parameter with `rclc_add_parameter(server, name, type)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, default)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The name is not: a ported rclc node writes `rclc_add_parameter` and there is nothing here spelled `add`. Ours half: the `c:param_declare_*` family."
+    "why": "rclc declares a parameter with `rclc_add_parameter(server, name, type)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, default)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The name is not: a ported rclc node writes `rclc_add_parameter` and there is nothing here spelled `add`. Ours half: the `c:param_declare_*` family.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "rclc add_parameter(server,name,TYPE) is a DIFFERENT call from ours (…,name,DEFAULT); the row endorses our fold and names no target"
+    }
   },
   "c:add_parameter_constraint_double": {
     "verdict": "gap",
@@ -472,7 +478,13 @@
   },
   "rust:ParameterError": {
     "verdict": "rename",
-    "why": "the ours-only half of `rust:ParameterValueError`."
+    "why": "the ours-only half of `rust:ParameterValueError`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "contradicts rust:SetParameterResult, which spells OUR current name as the survivor"
+    }
   },
   "rust:ParameterKind": {
     "verdict": "declined",
@@ -513,7 +525,13 @@
   },
   "rust:ParameterValueError": {
     "verdict": "rename",
-    "why": "rclrs's set-time failure enum -- `OutOfRange`, `TypeMismatch`, `ReadOnly`. Ours is `ParameterError` with those three plus `NotFound`, `StorageFull`, `StringConversion` and `InvalidRange`. Same concept, different name, no platform reason. Ours half: `rust:ParameterError`."
+    "why": "rclrs's set-time failure enum -- `OutOfRange`, `TypeMismatch`, `ReadOnly`. Ours is `ParameterError` with those three plus `NotFound`, `StorageFull`, `StringConversion` and `InvalidRange`. Same concept, different name, no platform reason. Ours half: `rust:ParameterError`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "same contradiction, other half"
+    }
   },
   "rust:ParameterVariant::*": {
     "verdict": "divergence",
@@ -522,11 +540,23 @@
   },
   "rust:ParameterVariant::kind": {
     "verdict": "rename",
-    "why": "rclrs names the trait method that reports a variant's type `kind`, returning `ParameterKind`; ours is `parameter_type`, returning `ParameterType`. See `rust:ParameterKind`. Ours half: `rust:ParameterVariant::parameter_type`."
+    "why": "rclrs names the trait method that reports a variant's type `kind`, returning `ParameterKind`; ours is `parameter_type`, returning `ParameterType`. See `rust:ParameterKind`. Ours half: `rust:ParameterVariant::parameter_type`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "justifies itself via rust:ParameterKind, whose verdict is declined — the reason resolves against the rename"
+    }
   },
   "rust:ParameterVariant::parameter_type": {
     "verdict": "rename",
-    "why": "the ours-only half of `rust:ParameterVariant::kind`."
+    "why": "the ours-only half of `rust:ParameterVariant::kind`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "same; carries no independent decision"
+    }
   },
   "rust:Parameters": {
     "verdict": "gap",
@@ -550,7 +580,13 @@
   },
   "rust:SetParameterResult": {
     "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3."
+    "why": "OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3.",
+    "rename": {
+      "to": null,
+      "category": "C",
+      "status": "not-a-rename",
+      "actual_change": "REMOVAL — collapses to Result<(), _>, takes is_success() and a From impl with it. Public Rust API break"
+    }
   },
   "rust:default_initial_value_discriminator": {
     "verdict": "declined",

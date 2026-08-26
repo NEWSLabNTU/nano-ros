@@ -58,7 +58,7 @@ citing it, and those had to be re-verdicted once the vtable was read.
 * **`get_transition_graph`**: `nros-node/src/lifecycle_services.rs` serves our
   full `ALL_TRANSITIONS` table over `~/get_transition_graph`, so a remote peer
   can read the lifecycle state machine over the wire while the node's own code
-  cannot read it in-process in any language — only `nros_lifecycle_get_state`
+  cannot read it in-process in any language — only `nros_lifecycle_get_current_state`
   exists. The table is already `const`.
 * **`subscription` vs `subscriber`**: rclrs says
   `get_subscription_names_and_types_by_node`, rcl says `subscriber`. Whichever

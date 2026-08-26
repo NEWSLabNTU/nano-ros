@@ -92,7 +92,7 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_change_state(
 /// `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`.
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_lifecycle_get_state(executor: *mut c_void) -> u8 {
+pub unsafe extern "C" fn nros_cpp_lifecycle_get_current_state(executor: *mut c_void) -> u8 {
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return 0;
     };
@@ -282,7 +282,10 @@ mod tests {
 
     /// Null executor reads back as `Unconfigured` (0) rather than trapping.
     #[test]
-    fn null_executor_get_state_is_unconfigured() {
-        assert_eq!(unsafe { nros_cpp_lifecycle_get_state(ptr::null_mut()) }, 0);
+    fn null_executor_get_current_state_is_unconfigured() {
+        assert_eq!(
+            unsafe { nros_cpp_lifecycle_get_current_state(ptr::null_mut()) },
+            0
+        );
     }
 }

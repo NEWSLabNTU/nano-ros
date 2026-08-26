@@ -95,9 +95,15 @@
     "verdict": "extension",
     "why": "'is this parameter declared?', asked without the six `rcl_interfaces/srv/*` servers being up. Parameters live on the EXECUTOR here rather than on a node (see the param stage's `c:executor_register_parameter_services`), and a device that bakes its parameter set (RFC-0045) wants a local existence check that costs no queryable slot -- `ZPICO_MAX_QUERYABLES` is 8 on embedded (issue 0460)."
   },
-  "c:executor_invocation_t": {
+  "c:executor_handle_invocation_t": {
     "verdict": "rename",
-    "why": "ours drops `handle_` from rclc's `rclc_executor_handle_invocation_t`; the values are the same pair (`ON_NEW_DATA` / `ALWAYS`) and the meaning is identical. The theirs-only half is filtered out of the report as plumbing, so this row carries both sides. No platform reason -- the shorter name costs a C user the rclc spelling for nothing. Phase 379 W5."
+    "why": "LANDED 2026-08-26 (phase-379 W5) — the enum is now `nros_executor_handle_invocation_t`, matching rclc's `rclc_executor_handle_invocation_t` (cbindgen-regenerated in `nros_generated.h`). The enum VALUES (`NROS_EXECUTOR_ON_NEW_DATA` / `NROS_EXECUTOR_ALWAYS`) were not part of this row and did not move. ours drops `handle_` from rclc's `rclc_executor_handle_invocation_t`; the values are the same pair (`ON_NEW_DATA` / `ALWAYS`) and the meaning is identical. The theirs-only half is filtered out of the report as plumbing, so this row carries both sides. No platform reason -- the shorter name costs a C user the rclc spelling for nothing. Phase 379 W5.",
+    "rename": {
+      "from": "nros_executor_invocation_t",
+      "to": "nros_executor_handle_invocation_t",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "c:executor_is_valid": {
     "verdict": "extension",
@@ -178,7 +184,7 @@
   },
   "c:guard_condition_is_triggered": {
     "verdict": "extension",
-    "why": "read the triggered flag without consuming it. The scenario is the RFC-0022 polling tier: a task that owns its own loop and never calls a callback still needs to see the flag an ISR set. rcl has no reader -- a wait set is the only way to observe an rcl guard condition. OUR LANGUAGES DISAGREE: C ships `is_triggered` + `clear`, C++ ships neither (only `trigger` and `is_valid`), and Rust's `GuardConditionHandle` ships only `trigger`. A polling C++ or Rust user cannot do what a polling C user can."
+    "why": "read the triggered flag without consuming it. The scenario is the RFC-0022 polling tier: a task that owns its own loop and never calls a callback still needs to see the flag an ISR set. rcl has no reader -- a wait set is the only way to observe an rcl guard condition. OUR LANGUAGES DISAGREE: C ships `is_triggered` + `clear`, C++ ships neither (only `trigger` and `is_valid`), and Rust's `GuardCondition` ships only `trigger`. A polling C++ or Rust user cannot do what a polling C user can."
   },
   "c:guard_condition_is_valid": {
     "verdict": "extension",
@@ -190,7 +196,7 @@
   },
   "c:guard_condition_set_callback": {
     "verdict": "divergence",
-    "why": "RFC-0041/0043 bind a callback to the ENTITY, and in C the binding is a SEPARATE call after `nros_guard_condition_init` -- which is exactly the after-the-fact installation shape we decline in C++ at `cpp:GuardCondition::set_on_trigger_callback`. OUR LANGUAGES DISAGREE: the guard condition is created three different ways, from three different owners, with three different callback bindings: C `nros_guard_condition_init(guard, SUPPORT)` then `nros_guard_condition_set_callback(...)`; C++ `NODE.create_guard_condition(out, cb, ctx)`, one call, callback at creation; Rust `EXECUTOR.register_guard_condition(closure)` returning `(HandleId, GuardConditionHandle)`. rclcpp constructs one free-standing from a `Context`. Nothing about no_std picks between these -- W5 has to pick one."
+    "why": "RFC-0041/0043 bind a callback to the ENTITY, and in C the binding is a SEPARATE call after `nros_guard_condition_init` -- which is exactly the after-the-fact installation shape we decline in C++ at `cpp:GuardCondition::set_on_trigger_callback`. OUR LANGUAGES DISAGREE: the guard condition is created three different ways, from three different owners, with three different callback bindings: C `nros_guard_condition_init(guard, SUPPORT)` then `nros_guard_condition_set_callback(...)`; C++ `NODE.create_guard_condition(out, cb, ctx)`, one call, callback at creation; Rust `EXECUTOR.register_guard_condition(closure)` returning `(HandleId, GuardCondition)`. rclcpp constructs one free-standing from a `Context`. Nothing about no_std picks between these -- W5 has to pick one."
   },
   "c:guard_condition_state_t": {
     "verdict": "extension",
@@ -226,7 +232,13 @@
   },
   "c:trigger_guard_condition": {
     "verdict": "rename",
-    "why": "rcl's free-function spelling of a verb our C already has method-style (`nros_guard_condition_trigger`). Same shape as `c:publish` and `c:send_response`: the WORD matches, the spelling is ours to align. Phase 379 W5."
+    "why": "rcl's free-function spelling of a verb our C already has method-style (`nros_guard_condition_trigger`). Same shape as `c:publish` and `c:send_response`: the WORD matches, the spelling is ours to align. Phase 379 W5.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "CLASS decision: the same 'the spelling is ours to align' clause appears on c:publish and c:send_response, so honouring it inverts the whole nros_<entity>_<verb> convention, not one symbol"
+    }
   },
   "c:wait": {
     "verdict": "declined",
@@ -670,7 +682,7 @@
   },
   "rust:Executor::register_guard_condition": {
     "verdict": "divergence",
-    "why": "creates the guard condition ON THE EXECUTOR and returns `(HandleId, GuardConditionHandle)`. rclrs constructs a `GuardCondition` from a `Context` and adds it to a wait set; rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. so the executor has to own the flag -- it lives in the arena, which is what makes the handle `Send + Sync` with no allocation. See `c:guard_condition_set_callback` for the three different owners our three languages create this from.",
+    "why": "creates the guard condition ON THE EXECUTOR and returns `(HandleId, GuardCondition)`. rclrs constructs a `GuardCondition` from a `Context` and adds it to a wait set; rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. so the executor has to own the flag -- it lives in the arena, which is what makes the handle `Send + Sync` with no allocation. See `c:guard_condition_set_callback` for the three different owners our three languages create this from.",
     "bucket": "ours-only"
   },
   "rust:Executor::remove_on_shutdown_callback": {
@@ -703,7 +715,7 @@
   },
   "rust:Executor::set_invocation": {
     "verdict": "extension",
-    "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_invocation_t`.",
+    "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_handle_invocation_t`.",
     "bucket": "ours-only"
   },
   "rust:Executor::set_node_identity": {
@@ -803,11 +815,13 @@
   },
   "rust:GuardCondition": {
     "verdict": "rename",
-    "why": "the ours-side name is `GuardConditionHandle`, so the rclrs name is unmatched. rclrs, our C (`nros_guard_condition_t`) and our C++ (`nros::GuardCondition`) all say `GuardCondition`; Rust alone appends `Handle`. OUR LANGUAGES DISAGREE: and it is the Rust name that is the odd one out, against both ROS 2 and our own other two languages. The `Handle` suffix does describe something real -- the Rust value is a `Send + Sync` trigger handle onto an `AtomicBool` in the executor arena, not the entity itself -- but the C and C++ types are equally 'a handle onto arena state' and do not say so. Record both halves; see `rust:GuardConditionHandle`. Phase 379 W5."
-  },
-  "rust:GuardConditionHandle": {
-    "verdict": "rename",
-    "why": "the ours-only half of `rust:GuardCondition`; recorded so the pair is visible from both sides. See that row for the reason."
+    "why": "the ours-side name is `GuardConditionHandle`, so the rclrs name is unmatched. rclrs, our C (`nros_guard_condition_t`) and our C++ (`nros::GuardCondition`) all say `GuardCondition`; Rust alone appends `Handle`. OUR LANGUAGES DISAGREE: and it is the Rust name that is the odd one out, against both ROS 2 and our own other two languages. The `Handle` suffix does describe something real -- the Rust value is a `Send + Sync` trigger handle onto an `AtomicBool` in the executor arena, not the entity itself -- but the C and C++ types are equally 'a handle onto arena state' and do not say so. Record both halves. LANDED 2026-08-26 (phase-379 W5, group A): the Rust type `nros_node::executor::types::GuardConditionHandle` became `GuardCondition`, across 36 occurrences in 15 files -- the definition and its `Send`/`Sync` impls, the `Executor::register_guard_condition` return type, the `nros-node` and `nros` re-exports, the opaque-size chain in `nros/src/sizes.rs` and `nros-c/src/opaque_sizes.rs`, the `nros-c`/`nros-cpp` storage casts, and the RFC-0019 / book references. The ours-only half of this pair, `rust:GuardConditionHandle`, is merged into this row: all three of our languages and rclrs now spell it `GuardCondition`, so there is one name and one row. NOTHING in the size-export chain moved: `GUARD_CONDITION_SIZE`, `__NROS_SIZE_GUARD_CONDITION_SIZE` and `GUARD_HANDLE_OPAQUE_U64S` are named for the CONSTANT, not the type, so no `#[no_mangle]` symbol and no C header macro changed (the 0088/0245/0268 sizes-header mirror class). Two cbindgen-visible `///` doc comments in `nros-cpp/src/guard_condition.rs` still say `GuardConditionHandle` and were left for the C/C++ half of W5 to carry through `just regen-c-headers`; `GuardConditionEntry<F>` in `arena.rs` and rclrs's `InnerGuardConditionHandle` are unrelated and untouched.",
+    "rename": {
+      "from": "GuardConditionHandle",
+      "to": "GuardCondition",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "rust:HandleId": {
     "verdict": "extension",
@@ -987,7 +1001,13 @@
   },
   "rust:SpinOptions::timeout": {
     "verdict": "rename",
-    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours is `SpinOptions::timeout_ms`, an `Option<u64>`. `core::time::Duration` is available in no_std, so nothing forces the milliseconds -- and our own `Executor::spin_once` and `Executor::spin` already take a `Duration`, so the `_ms` suffix is inconsistent inside our own Rust API as well as against rclrs. The ours-only half is `rust:SpinOptions::timeout_ms`, which the report files under the `other` stage rather than this one, so it cannot be recorded here; see this stage's report. Phase 379 W5."
+    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours is `SpinOptions::timeout_ms`, an `Option<u64>`. `core::time::Duration` is available in no_std, so nothing forces the milliseconds -- and our own `Executor::spin_once` and `Executor::spin` already take a `Duration`, so the `_ms` suffix is inconsistent inside our own Rust API as well as against rclrs. The ours-only half is `rust:SpinOptions::timeout_ms`, which the report files under the `other` stage rather than this one, so it cannot be recorded here; see this stage's report. Phase 379 W5.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "TYPE change Option<u64> -> Option<Duration>, hits BOTH a public field and a const builder. Its ours-half row (verdict extension) DEFENDS the milliseconds as 'the unit the platform ABI wait primitives take on every port' — the two rows contradict each other"
+    }
   },
   "rust:SpinOptions::timeout_ms": {
     "verdict": "extension",

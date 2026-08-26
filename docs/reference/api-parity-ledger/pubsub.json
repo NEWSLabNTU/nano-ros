@@ -77,7 +77,13 @@
   },
   "c:publish": {
     "verdict": "rename",
-    "why": "rcl's free function `rcl_publish(publisher, msg, allocation)`; ours is the method-style `nros_publisher_publish`. The WORD matches; the spelling is ours to align, and it is the same shape as `c:get_zero_initialized_publisher`."
+    "why": "rcl's free function `rcl_publish(publisher, msg, allocation)`; ours is the method-style `nros_publisher_publish`. The WORD matches; the spelling is ours to align, and it is the same shape as `c:get_zero_initialized_publisher`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "row argues from a symbol that does not exist (nros_publisher_publish); its cited precedent c:get_zero_initialized_publisher is verdict DECLINED, i.e. argues for keeping ours"
+    }
   },
   "c:publish_loaned_message": {
     "verdict": "divergence",
@@ -329,7 +335,13 @@
   },
   "c:take": {
     "verdict": "rename",
-    "why": "rcl, rclcpp and rclrs all spell the non-blocking receive `take`; we spell it `try_recv`. Both are non-blocking and both report emptiness without failing, so nothing about an RTOS asks for the other word -- and `try_recv` is Rust channel vocabulary that reads as a different contract to a ROS 2 user. Covers `nros_subscription_try_recv{,_raw,_sequence,_validated}` and the C++/Rust spellings. Phase 379 W5."
+    "why": "rcl, rclcpp and rclrs all spell the non-blocking receive `take`; we spell it `try_recv`. Both are non-blocking and both report emptiness without failing, so nothing about an RTOS asks for the other word -- and `try_recv` is Rust channel vocabulary that reads as a different contract to a ROS 2 user. Covers `nros_subscription_try_recv{,_raw,_sequence,_validated}` and the C++/Rust spellings. Phase 379 W5.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "CONTRACT COLLISION: nros::PollingSubscription<M>::take() already exists and returns the RETAINED latest value, reporting success when nothing new arrived — opposite of rclcpp's consuming take. No compile error; two same-named different-contract methods in one namespace"
+    }
   },
   "c:take_loaned_message": {
     "verdict": "divergence",
@@ -569,7 +581,13 @@
   },
   "cpp:SerializedMessage": {
     "verdict": "rename",
-    "why": "the owned byte buffer both sides pass around. Ours is a `(ptr, len)` pair at the call site with no wrapper type, which is a real divergence (no allocator to own a growable buffer) -- but the WORD is the rename in `c:take_serialized_message`, and a nano-ros type for this would be `RawMessage`, not `SerializedMessage`, on today's naming. Settle the word first."
+    "why": "the owned byte buffer both sides pass around. Ours is a `(ptr, len)` pair at the call site with no wrapper type, which is a real divergence (no allocator to own a growable buffer) -- but the WORD is the rename in `c:take_serialized_message`, and a nano-ros type for this would be `RawMessage`, not `SerializedMessage`, on today's naming. Settle the word first.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "deferred: settle RawMessage vs SerializedMessage first; neither exists today"
+    }
   },
   "cpp:Server::get_number_of_ready_subscriptions": {
     "verdict": "declined",
@@ -761,11 +779,23 @@
   },
   "cpp:Subscription::take_serialized": {
     "verdict": "rename",
-    "why": "see `c:take_serialized_message`."
+    "why": "see `c:take_serialized_message`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "two rows claim the SAME method (try_recv_raw); one method cannot take two names"
+    }
   },
   "cpp:Subscription::take_type_erased": {
     "verdict": "rename",
-    "why": "see `c:take` -- ours is `Subscription::try_recv_raw`."
+    "why": "see `c:take` -- ours is `Subscription::try_recv_raw`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "same conflict; our byte-oriented signature makes it take_serialized, so this row likely has no ours-half"
+    }
   },
   "cpp:Subscription::try_borrow": {
     "verdict": "extension",
@@ -841,7 +871,13 @@
   },
   "cpp:create_publisher": {
     "verdict": "rename",
-    "why": "rclcpp's free-function form. Ours is `nros::make_publisher` -- `--suggest-renames` pairs them at 0.83, and nothing about an RTOS asks for `make`. `make_subscription` moves with it. Phase 379 W5."
+    "why": "LANDED 2026-08-26 (phase-379 W5) — ours now carries this name; `make_subscription` -> `create_subscription` moved in the same commit. Neither had a caller, in-tree or in the book. COLLISION this row did not predict, found before landing and recorded here: `nros::create_publisher` and `nros::create_subscription` ALREADY EXIST as free functions in `std_compat.hpp`, gated on `NROS_CPP_STD` — the out-param, `std::string`-keyed convenience overloads `(Node&, Publisher<M>&, const std::string&, const QoS&)`. The parity extractor parses our headers WITHOUT `NROS_CPP_STD`, which is why it reported this name as theirs-only and why `--suggest-renames` saw no clash. The two are a legal, unambiguous overload set — the renamed factory is `(Node&, const char*, const QoS&)` returning `Expected<Publisher<M>>`, and no call can match both — but a future reader should know there are now two `nros::create_publisher` free functions with different result conventions. rclcpp's free-function form. Ours is `nros::make_publisher` -- `--suggest-renames` pairs them at 0.83, and nothing about an RTOS asks for `make`. `make_subscription` moves with it. Phase 379 W5.",
+    "rename": {
+      "from": "make_publisher",
+      "to": "create_publisher",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "cpp:create_publisher_factory": {
     "verdict": "declined",
@@ -849,19 +885,17 @@
   },
   "cpp:create_subscription": {
     "verdict": "rename",
-    "why": "see `cpp:create_publisher`."
+    "why": "LANDED 2026-08-26 (phase-379 W5) — ours now carries this name; see `cpp:create_publisher` for the pre-existing `std_compat.hpp` overload this shares a name with. see `cpp:create_publisher`.",
+    "rename": {
+      "from": "make_subscription",
+      "to": "create_subscription",
+      "status": "landed",
+      "category": "A"
+    }
   },
   "cpp:create_subscription_factory": {
     "verdict": "declined",
     "why": "see `cpp:PublisherFactory`."
-  },
-  "cpp:make_publisher": {
-    "verdict": "rename",
-    "why": "the ours-only half of `cpp:create_publisher`."
-  },
-  "cpp:make_subscription": {
-    "verdict": "rename",
-    "why": "the ours-only half of `cpp:create_publisher`."
   },
   "rust:ClientTrait::try_recv_reply": {
     "verdict": "extension",

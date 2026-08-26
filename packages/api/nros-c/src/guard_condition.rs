@@ -53,7 +53,7 @@ pub struct nros_guard_condition_t {
     pub _guard_opaque: [u64; GUARD_HANDLE_OPAQUE_U64S],
 }
 
-// GUARD_HANDLE_OPAQUE_U64S is computed from size_of::<GuardConditionHandle>() in
+// GUARD_HANDLE_OPAQUE_U64S is computed from size_of::<GuardCondition>() in
 // opaque_sizes.rs — always large enough by construction.
 
 // Safety: The triggered flag is designed for cross-thread access.
@@ -93,10 +93,10 @@ impl nros_guard_condition_t {
     }
 
     /// Set the guard handle for external triggering.
-    pub(crate) fn set_guard_handle(&mut self, handle: nros_node::GuardConditionHandle) {
+    pub(crate) fn set_guard_handle(&mut self, handle: nros_node::GuardCondition) {
         unsafe {
             core::ptr::write(
-                self._guard_opaque.as_mut_ptr() as *mut nros_node::GuardConditionHandle,
+                self._guard_opaque.as_mut_ptr() as *mut nros_node::GuardCondition,
                 handle,
             );
         }
@@ -104,13 +104,11 @@ impl nros_guard_condition_t {
     }
 
     /// Get the guard handle for triggering.
-    pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardConditionHandle> {
+    pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardCondition> {
         if !self._guard_valid {
             None
         } else {
-            Some(unsafe {
-                &*(self._guard_opaque.as_ptr() as *const nros_node::GuardConditionHandle)
-            })
+            Some(unsafe { &*(self._guard_opaque.as_ptr() as *const nros_node::GuardCondition) })
         }
     }
 }
@@ -270,9 +268,7 @@ pub unsafe extern "C" fn nros_guard_condition_fini(
 
     // Drop the inline guard handle if initialized
     if guard._guard_valid {
-        core::ptr::drop_in_place(
-            guard._guard_opaque.as_mut_ptr() as *mut nros_node::GuardConditionHandle
-        );
+        core::ptr::drop_in_place(guard._guard_opaque.as_mut_ptr() as *mut nros_node::GuardCondition);
     }
 
     guard.triggered = false;

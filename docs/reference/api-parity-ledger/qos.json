@@ -257,7 +257,13 @@
   },
   "cpp:QoS::default_profile": {
     "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE: one profile, three names. The plain default (RELIABLE + VOLATILE + KEEP_LAST(10)) is `NROS_QOS_DEFAULT` in C, `QoS::default_profile()` in C++ and `QosSettings::topics_default()` in Rust, and only the Rust one matches its upstream (rclrs spells it `topics_default`). rclcpp needs no name for it because its default CONSTRUCTOR is the profile -- and ours is too (`QoS::QoS`, already reconciled as systematic), which makes `default_profile()` a second spelling of a constructor we already match. Pick one word for the preset across the three languages, or drop the C++ one for the constructor."
+    "why": "OUR LANGUAGES DISAGREE: one profile, three names. The plain default (RELIABLE + VOLATILE + KEEP_LAST(10)) is `NROS_QOS_DEFAULT` in C, `QoS::default_profile()` in C++ and `QosSettings::topics_default()` in Rust, and only the Rust one matches its upstream (rclrs spells it `topics_default`). rclcpp needs no name for it because its default CONSTRUCTOR is the profile -- and ours is too (`QoS::QoS`, already reconciled as systematic), which makes `default_profile()` a second spelling of a constructor we already match. Pick one word for the preset across the three languages, or drop the C++ one for the constructor.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "row offers two mutually exclusive outcomes (pick one word across three languages, OR drop the C++ one for the constructor) and picks neither"
+    }
   },
   "cpp:QoS::durability": {
     "verdict": "rename",

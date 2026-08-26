@@ -264,7 +264,7 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
 /// # Safety
 /// `executor_handle` must be a valid executor handle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_timer_is_cancelled(
+pub unsafe extern "C" fn nros_cpp_timer_is_canceled(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> bool {
@@ -273,5 +273,5 @@ pub unsafe extern "C" fn nros_cpp_timer_is_cancelled(
     };
     let ctx = &*ctx;
     let id = nros_node::HandleId(handle_id);
-    ctx.executor.timer_is_cancelled(id)
+    ctx.executor.timer_is_canceled(id)
 }

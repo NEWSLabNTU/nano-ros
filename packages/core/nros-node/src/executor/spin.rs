@@ -37,7 +37,7 @@ use super::{
     spsc_ring::SpscRing,
     triple_buffer::TripleBuffer,
     types::{
-        ExecutorSemantics, GuardConditionHandle, HandleId, InvocationMode, NodeError,
+        ExecutorSemantics, GuardCondition, HandleId, InvocationMode, NodeError,
         RawResponseCallback, RawServiceCallback, RawSubscriptionCallback,
         RawSubscriptionInfoCallback, ReadinessSnapshot, SpinOnceResult, SpinPeriodPollingResult,
         Trigger,
@@ -5150,11 +5150,11 @@ impl<'s> Executor<'s> {
     /// Register a guard condition with a callback.
     ///
     /// Returns both the [`HandleId`] for trigger configuration and a
-    /// [`GuardConditionHandle`] for triggering from other threads.
+    /// [`GuardCondition`] for triggering from other threads.
     pub fn register_guard_condition<F>(
         &mut self,
         callback: F,
-    ) -> Result<(HandleId, GuardConditionHandle), NodeError>
+    ) -> Result<(HandleId, GuardCondition), NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -5175,7 +5175,7 @@ impl<'s> Executor<'s> {
             // Create a handle pointing to the flag in the arena
             let flag_ptr = &(*entry_ptr).flag as *const portable_atomic::AtomicBool;
             #[allow(unused_mut)]
-            let mut guard_handle = GuardConditionHandle::new(flag_ptr);
+            let mut guard_handle = GuardCondition::new(flag_ptr);
             // Phase 124.B.5 — wire the wake callback so trigger()
             // also signals the executor's wake_cv.
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -5240,7 +5240,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Check if a timer is cancelled.
-    pub fn timer_is_cancelled(&self, id: HandleId) -> bool {
+    pub fn timer_is_canceled(&self, id: HandleId) -> bool {
         let meta = match self.entries.get(id.0).and_then(|e| e.as_ref()) {
             Some(m) if matches!(m.kind, EntryKind::Timer) => m,
             _ => return false,

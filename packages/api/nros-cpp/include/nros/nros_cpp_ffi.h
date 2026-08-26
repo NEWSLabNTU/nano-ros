@@ -1078,7 +1078,7 @@ uint64_t nros_cpp_time_ns(void);
  * Create a guard condition and register it with the executor.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
- * `size_of::<GuardConditionHandle>()` bytes (exposed via
+ * `size_of::<GuardCondition>()` bytes (exposed via
  * `NROS_GUARD_CONDITION_SIZE`). The guard condition handle is written
  * directly into this buffer.
  *
@@ -1107,7 +1107,7 @@ nros_cpp_ret_t nros_cpp_guard_condition_trigger(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_destroy(void *storage);
 
 /**
- * Relocate a `GuardConditionHandle` from `old_storage` to `new_storage`.
+ * Relocate a `GuardCondition` from `old_storage` to `new_storage`.
  *
  * The handle itself contains a `&'static AtomicBool` pointing into the
  * executor arena (stable address); the wrapper closure stored in the
@@ -1726,7 +1726,7 @@ nros_cpp_ret_t nros_cpp_timer_reset(void *executor_handle, size_t handle_id);
  * # Safety
  * `executor_handle` must be a valid executor handle.
  */
-bool nros_cpp_timer_is_cancelled(void *executor_handle, size_t handle_id);
+bool nros_cpp_timer_is_canceled(void *executor_handle, size_t handle_id);
 
 /**
  * Create an action server on a node.
@@ -2381,7 +2381,7 @@ nros_cpp_ret_t nros_cpp_lifecycle_change_state(void *executor, uint8_t transitio
  * # Safety
  * `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`.
  */
-uint8_t nros_cpp_lifecycle_get_state(void *executor);
+uint8_t nros_cpp_lifecycle_get_current_state(void *executor);
 
 /**
  * Register the `on_configure` transition callback on the C++ executor's state machine.
