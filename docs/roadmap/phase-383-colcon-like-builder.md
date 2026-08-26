@@ -9,7 +9,10 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). NOT STARTED — waves defined, no code written.**
+**Status (2026-08-26). IN PROGRESS — W1.a–W1.d landed (`3c50cfa6f`): the
+`[image.<id>]` schema, `[image_defaults]` overlay, default-image selection and
+`panic` validation, 15 unit tests. W1.e (board resolution) and W1.f
+(deprecation) remain.**
 
 ## Goal
 
@@ -356,6 +359,61 @@ in-tree migration regardless of how green our own examples are.
       six-command ritual this phase deletes.
 
 ---
+
+## Measured blast radius (surveyed 2026-08-26, before W1 landed)
+
+Two audits ran before any code was written. Both changed the plan.
+
+**The authored data is far thinner than the schema.** 63 `[deploy.*]` blocks
+across 20 `system.toml` files, and **not one** uses `rmw`, `domain_id`,
+`locator`, `profile`, `optimize` or `features`. Only `kind`, `board`, `target`,
+`launch`, `nodes` and the `.nros` sub-table appear. So W1.f's deprecation of
+"build fields inside `[deploy.*]`" is nearly a no-op in practice — `board` and
+`target` are the only contested keys.
+
+| class | count | note |
+| --- | --- | --- |
+| BUILD ONLY (`kind = "embedded"`) | **40** | upstream excludes these from placement |
+| BOTH (`self` + ≥1 entry) | 14 | the `native` id in each workspace |
+| PLACEMENT ONLY (`self`, no entry) | 9 | `robot1`/`robot2` ×4, plus `smp_bringup:native` |
+
+**Two findings that are latent defects today, not migration work:**
+
+- **14 dangling `deploy = "<id>"` references** — entry packages naming an id no
+  `[deploy.*]` declares. `realtime-rust` is the worst: six entries, and its
+  bringup has no `[deploy.*]` table at all.
+- **8 duplicate-by-alias embedded ids** (`freertos` vs `mps2-an385-freertos`,
+  `nuttx` vs `nuttx-qemu-arm`) with identical `board` and identical `.nros`.
+  W9 should collapse these rather than migrate both.
+- `examples/workspaces/ws-*` (30 dirs) hold **only build artefacts** — no
+  `system.toml`, no sources. Untracked residue of phase-331, not workspaces.
+
+### The coupling the D6 argument missed
+
+D6 argued from cardinality that image and deploy are independent concepts, and
+that holds. But the **implementation** couples them through the resolved model,
+and W2 must not discover this the hard way:
+
+Upstream's `DeployBlock::apply_to_launch` reads BOTH halves — it takes `board`,
+`rmw`, `domain_id`, `locator`, `target`, `framework`, `profile`, `optimize`,
+`features` and stuffs them into `Deploy.extra` on the resolved model. Both entry
+emitters and `nros-macros` then read `execution.deploy[fqn].target` and
+`.extra["kind"]` from there.
+
+So moving build fields OUT of `[deploy.*]` silently empties `Deploy.extra`, and
+the macro path loses values it depends on. **The schema addition is safe** —
+upstream's `SystemConfigToml` is NOT `deny_unknown_fields`, so a top-level
+`[image.*]` is ignored by the resolver rather than fatal — but the *migration*
+of `board`/`target` is not, and needs one of: passing the image set into
+`apply_to_launch` as a second input (an upstream change), or having nano-ros
+populate `Deploy.extra` from `[image.*]` after the resolver returns.
+
+**W2 must settle this before W3/W4 consume the resolved model.** It is the one
+place where the clean conceptual split meets a dirty implementation seam.
+
+Second-highest risk site: `scripts/check-site-config.py --write` GENERATES
+`[deploy.<n>.nros]` blocks, so it must be retargeted or the gate will fight the
+migration.
 
 ## Risks
 
