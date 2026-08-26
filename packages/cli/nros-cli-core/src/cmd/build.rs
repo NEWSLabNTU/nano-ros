@@ -201,8 +201,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // hand-written root is used as-is, never overwritten.
                 let excluded = framework_entry_dirs(&found, &catalog);
                 let extra: Vec<PathBuf> = entry_dir.clone().into_iter().collect();
-                crate::builder::cargo_root::ensure(&found, &root, &excluded, &extra)
-                    .map_err(|e| eyre::eyre!("{e}"))?;
+                crate::builder::cargo_root::ensure(
+                    &found,
+                    &root,
+                    &excluded,
+                    &extra,
+                    Some(&bringup),
+                )
+                .map_err(|e| eyre::eyre!("{e}"))?;
                 let mut a = vec!["build".to_string()];
                 // Build ONLY this image's entry. A bare `cargo build` at the
                 // root builds every member, and nano-ros-rt-eval's own manifest
@@ -213,7 +219,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 {
                     a.push("-p".to_string());
                     a.push(name.to_string());
-                } else if root.join("src").join(&want_entry).is_dir() {
+                } else if root
+                    .join("src")
+                    .join(&want_entry)
+                    .join("Cargo.toml")
+                    .is_file()
+                {
                     a.push("-p".to_string());
                     a.push(want_entry.clone());
                 }
@@ -387,8 +398,14 @@ fn generate_entry(
     // worst — and D13's migration is a DELETION: remove the hand-written entry
     // and the next build generates it. This is what makes the migration
     // incremental, one entry at a time.
+    // Keyed on the MANIFEST, not the directory. `git rm -r src/<entry>` leaves
+    // gitignored residue behind — `.cargo/` holds the sync-written sidecar —
+    // so a directory-existence check reads a deleted entry as still present and
+    // silently generates nothing. phase-383 W10 tripped over exactly that on
+    // the first workspace it tried.
     let want = crate::builder::entry::package_name(image_id);
-    if root.join("src").join(&want).is_dir() {
+    let hand_written = root.join("src").join(&want);
+    if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
         return Ok(None);
     }
 
