@@ -77,6 +77,18 @@ if(CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS)
     zephyr_compile_definitions(Z_CONFIG_SOCKET_TIMEOUT=${CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS})
 endif()
 
+# The transport lease. Both tokens are #ifndef-guarded in the vendored
+# config.h for exactly this reason — upstream only exposes them as CMake cache
+# variables, which needs zenoh-pico's own CMakeLists, and the Zephyr module
+# compiles the sources directly. See NROS_ZENOH_LEASE_MS's help for why a
+# serial link cares.
+if(CONFIG_NROS_ZENOH_LEASE_MS)
+    zephyr_compile_definitions(Z_TRANSPORT_LEASE=${CONFIG_NROS_ZENOH_LEASE_MS})
+endif()
+if(CONFIG_NROS_ZENOH_LEASE_FACTOR)
+    zephyr_compile_definitions(Z_TRANSPORT_LEASE_EXPIRE_FACTOR=${CONFIG_NROS_ZENOH_LEASE_FACTOR})
+endif()
+
 # phase-279 (#145) / phase-290 (RFC-0049) — tx batching: one send per executor
 # spin instead of one send per put. TRI-STATE forward: the definition is
 # ALWAYS emitted (0 or 1) so an explicit Kconfig `n` can override an

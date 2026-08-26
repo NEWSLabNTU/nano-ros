@@ -247,6 +247,36 @@ config NROS_ZENOH_SOCKET_TIMEOUT_MS
       must lower this (5 ms => ~200 tx windows/s) at the cost of more
       read-task wakeups.
 
+config NROS_ZENOH_LEASE_MS
+    int "zenoh-pico transport lease (ms)"
+    default 10000
+    help
+      Z_TRANSPORT_LEASE — the session lease zenoh-pico announces, and the
+      value its lease task measures peer silence against. It is BOTH sides
+      of one number: keepalives go out every lease/NROS_ZENOH_LEASE_FACTOR,
+      and a peer is dropped after TWO lease periods with nothing received.
+
+      Raise this on a link whose peer does not send keepalives. Measured
+      against a stock rmw_zenohd over UART: the router completes the
+      handshake, answers the declares, then schedules nothing further on the
+      link — so a publisher, which has no return traffic to reset its lease,
+      closes with _Z_CLOSE_EXPIRED at exactly 2 x this value. At the 10000
+      default that is a 20 s session, which is long enough for discovery to
+      succeed sometimes and look like a flake. 60000 gives 120 s.
+
+      This is mitigation. The peer is what should be keepaliving; a longer
+      lease only delays the drop and slows genuine peer-loss detection by
+      the same factor.
+
+config NROS_ZENOH_LEASE_FACTOR
+    int "zenoh-pico lease expire factor"
+    default 3
+    help
+      Z_TRANSPORT_LEASE_EXPIRE_FACTOR — divides NROS_ZENOH_LEASE_MS to give
+      the keepalive interval. 3 means one keepalive every lease/3, so three
+      per lease period. Lower it to send keepalives more often against a
+      peer with a short lease of its own.
+
 config NROS_ZENOH_READ_PRIORITY
     int "zenoh-pico read task priority (normalized 0-31)"
     default 16
