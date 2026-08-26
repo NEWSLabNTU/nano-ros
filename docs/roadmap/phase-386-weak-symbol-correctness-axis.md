@@ -188,3 +188,53 @@ The two ThreadX non-function symbols (`stdin`, and the
 `#if !defined(__linux__)` guard). Both are declarations rather than behaviour,
 so neither has a return value to make honest — they may belong in W1's column
 instead.
+
+
+## W2 COMPLETE — and the remainder needed no change
+
+The two symbols left were re-examined rather than assumed to need work.
+
+**`nros_platform_panic` is not W2's business.** It is the eighth weak definition
+in `nros-platform-threadx/src/platform.c`, and it is group 2 — a layered default
+the platform ships, whose weak body IS a valid runtime state (RFC-0077,
+phase-366). Nothing to make honest.
+
+**`void *stdin = NULL` is already fail-loud, by the strongest mechanism
+available.** Nothing in-tree reads it (checked: the only `stdin` matches under
+`packages/` are `<stdint.h>` includes); it exists to satisfy libc references
+that would otherwise fail the link. And `NULL` is the truthful value — a caller
+testing `if (stdin == NULL)` learns there is no standard input, and a caller
+dereferencing it **faults immediately**. An immediate fault is louder than any
+diagnostic this file could produce, and unlike a printed message it cannot be
+ignored or lost.
+
+Changing it would make things worse: a non-NULL placeholder would turn a hard
+fault into a silent misread, which is the defect this phase exists to remove.
+
+### W2's result, and what it revised
+
+Two of the seventeen `linkable-only` symbols were actually wrong:
+
+| | was | now |
+| --- | --- | --- |
+| ThreadX libc stubs (6) | `-1`, stale `errno` | `-1` + `ENOSYS`/`EBADF` |
+| zpico `_z_{send,read}_serial_internal` | `0` (a success value) | `SIZE_MAX` (the API's error sentinel) |
+
+The other fifteen were already truthful, and the phase's opening claim — that
+seventeen symbols "can fail silently" — was too broad. The corrected statement:
+**two could, and the other fifteen were correctly reporting failure in a form
+their callers understand.**
+
+Three shapes emerged, and they want different treatment, which is the useful
+output of W2 for W1's column:
+
+1. **Wrong value** — the API defines an error sentinel and the stub returned a
+   success one (zpico send/read). Fix: return the sentinel.
+2. **Right value, no explanation** — POSIX -1 with a stale `errno` (ThreadX
+   libc). Fix: set the explanation.
+3. **Right value, self-enforcing** — `stdin = NULL`, where misuse faults.
+   Nothing to fix.
+
+Only shape 1 is a correctness bug. Shape 2 is a diagnosability bug. Shape 3 is
+neither, and a column that cannot distinguish the three would send someone to
+"fix" shape 3 and make it worse.
