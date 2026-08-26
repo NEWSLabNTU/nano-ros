@@ -5,6 +5,13 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+/// phase-383 — `nros build`, the colcon-like builder (RFC-0065).
+///
+/// Named `builder`, not `build`: `packages/cli/.gitignore` carries a `build/`
+/// rule, so a source directory with that name is silently untracked by
+/// `git add` AND invisible to ripgrep/fd by default. A negation rule would fix
+/// the first and not the second.
+pub mod builder;
 // Issue 0498 — temp + `rename(2)` for any file a concurrent `nros sync` may
 // read. Was a private helper in `cmd/ws.rs` whose doc claimed it was the
 // discipline "every other sync-owned file uses"; the metadata sidecar was not
