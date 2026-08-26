@@ -155,7 +155,7 @@ pub mod lifecycle_services;
 pub use node::{Node as StandaloneNode, NodeConfig, NodeError as StandaloneNodeError};
 
 pub use publisher::PublisherHandle;
-pub use subscriber::SubscriberHandle;
+pub use subscriber::SubscriptionHandle;
 
 // Re-export transport types for convenience
 pub use nros_rmw::{
@@ -190,7 +190,7 @@ pub use nros_core::{
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 
 // Re-export publisher/subscriber options (topic + QoS; backend-agnostic).
-pub use node::{PublisherOptions, SubscriberOptions};
+pub use node::{PublisherOptions, SubscriptionOptions};
 
 // Re-export session mode (used by ExecutorConfig)
 pub use nros_rmw::SessionMode;

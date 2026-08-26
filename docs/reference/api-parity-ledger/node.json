@@ -251,10 +251,6 @@
     "verdict": "declined",
     "why": "rclrs's handle for spawning work onto the executor from inside a callback (`ExecutorCommands`). It exists to support async tasks and workers, which need a runtime and an allocator; RFC-0002 gives one executor per RTOS task and no way to spawn into it."
   },
-  "rust:Node::create_subscriber": {
-    "verdict": "rename",
-    "why": "rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). Rust is the odd one out among our three languages as well as against ROS 2, and nothing about an RTOS asks for the shorter word. `create_subscription` -- and `SubscriberOptions`/`subscriber_count`/`subscriber_topic_info` move with it. Phase 379 W5."
-  },
   "rust:Node::create_worker": {
     "verdict": "declined",
     "why": "rclrs's worker owns a payload and serialises callbacks that touch it, so several entities can share mutable state without a mutex. Our equivalent of the sharing problem is the component's `State`, which `on_callback` already receives by `&mut` -- one owner, one task, decided at declaration rather than spawned. See `rust:Node::commands`."
@@ -266,14 +262,6 @@
   "rust:Node::register": {
     "verdict": "divergence",
     "why": "the one method the `Node` trait requires: declare this component's entities. rclrs's `Node` is a handle with no such method because entities are created ad hoc on a live node. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
-  },
-  "rust:Node::subscriber_count": {
-    "verdict": "extension",
-    "why": "counts what THIS NODE declared -- `active` entries of its own static table (nros-node/src/node.rs:360-367) -- which is a different question from what the graph holds. rclrs's `count_subscriptions` asks the graph about a topic. Recorded as an extension, matching `rust:Node::publisher_count` three lines away in the same impl; an earlier `rename` verdict here was wrong, because giving our declaration-side counter the graph query's name would leave the graph query nowhere to land. The rename applies to `create_subscriber`, the entity-creation verb, not to this."
-  },
-  "rust:Node::subscriber_topic_info": {
-    "verdict": "extension",
-    "why": "see `rust:Node::subscriber_count`."
   },
   "rust:NodeActionClient": {
     "verdict": "divergence",
@@ -403,10 +391,6 @@
   "rust:RuntimeNodeRecord": {
     "verdict": "extension",
     "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
-  },
-  "rust:SubscriberOptions": {
-    "verdict": "divergence",
-    "why": "options for a subscription declared on the standalone `Node` (not the component path). rclrs configures a subscription at creation on a live node."
   },
   "rust:TopicInfo::with_node_name": {
     "verdict": "extension",

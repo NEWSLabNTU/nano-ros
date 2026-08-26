@@ -4,7 +4,7 @@ use heapless::Vec;
 use nros_core::RosMessage;
 use nros_rmw::{QosSettings, TopicInfo};
 
-use crate::{publisher::PublisherHandle, subscriber::SubscriberHandle};
+use crate::{publisher::PublisherHandle, subscriber::SubscriptionHandle};
 
 /// Node configuration
 #[derive(Debug, Clone)]
@@ -164,14 +164,14 @@ impl<'a> PublisherOptions<'a> {
 
 /// Options for creating a subscriber
 #[derive(Debug, Clone)]
-pub struct SubscriberOptions<'a> {
+pub struct SubscriptionOptions<'a> {
     /// Topic name
     pub topic: &'a str,
     /// QoS settings
     pub qos: QosSettings,
 }
 
-impl<'a> SubscriberOptions<'a> {
+impl<'a> SubscriptionOptions<'a> {
     /// Create new subscriber options with the given topic and default QoS
     pub fn new(topic: &'a str) -> Self {
         Self {
@@ -277,10 +277,10 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     }
 
     /// Create a subscriber with the given options
-    pub fn create_subscriber<M: RosMessage>(
+    pub fn create_subscription<M: RosMessage>(
         &mut self,
-        options: SubscriberOptions,
-    ) -> Result<SubscriberHandle<M>, NodeError> {
+        options: SubscriptionOptions,
+    ) -> Result<SubscriptionHandle<M>, NodeError> {
         if self.subscribers.len() >= MAX_SUBS {
             return Err(NodeError::MaxSubscribersReached);
         }
@@ -304,7 +304,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
             .push(info)
             .map_err(|_| NodeError::MaxSubscribersReached)?;
 
-        Ok(SubscriberHandle::new(index))
+        Ok(SubscriptionHandle::new(index))
     }
 
     /// Get topic info for a publisher
@@ -316,7 +316,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     }
 
     /// Get topic info for a subscriber
-    pub fn subscriber_topic_info(&self, handle: SubscriberHandle<()>) -> Option<TopicInfo<'_>> {
+    pub fn subscription_topic_info(&self, handle: SubscriptionHandle<()>) -> Option<TopicInfo<'_>> {
         self.subscribers.get(handle.index()).map(|info| {
             TopicInfo::new(&info.topic_name, info.type_name, info.type_hash)
                 .with_domain(self.domain_id)
@@ -346,7 +346,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     /// The caller provides the raw bytes received from the transport layer.
     pub fn deserialize_message<M: RosMessage>(
         &self,
-        _handle: &SubscriberHandle<M>,
+        _handle: &SubscriptionHandle<M>,
         data: &[u8],
     ) -> Result<M, NodeError> {
         use nros_core::CdrReader;
@@ -362,7 +362,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     }
 
     /// Get the number of active subscribers
-    pub fn subscriber_count(&self) -> usize {
+    pub fn subscription_count(&self) -> usize {
         self.subscribers.iter().filter(|s| s.active).count()
     }
 }
@@ -438,10 +438,11 @@ mod tests {
     #[test]
     fn test_create_subscriber() {
         let mut node = Node::<4, 4>::default();
-        let handle = node.create_subscriber::<TestMessage>(SubscriberOptions::new("/test_topic"));
+        let handle =
+            node.create_subscription::<TestMessage>(SubscriptionOptions::new("/test_topic"));
 
         assert!(handle.is_ok());
-        assert_eq!(node.subscriber_count(), 1);
+        assert_eq!(node.subscription_count(), 1);
     }
 
     #[test]
@@ -462,7 +463,7 @@ mod tests {
             .create_publisher::<TestMessage>(PublisherOptions::new("/test"))
             .unwrap();
         let sub_handle = node
-            .create_subscriber::<TestMessage>(SubscriberOptions::new("/test"))
+            .create_subscription::<TestMessage>(SubscriptionOptions::new("/test"))
             .unwrap();
 
         let msg = TestMessage { data: 42 };

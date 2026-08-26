@@ -109,8 +109,8 @@ fn test_node_publisher() -> bool {
 /// Test subscriber creation via Node
 fn test_node_subscriber() -> bool {
     let mut node = Node::<4, 4>::default();
-    let result = node.create_subscriber::<Int32>(nros::SubscriberOptions::new("/counter"));
-    result.is_ok() && node.subscriber_count() == 1
+    let result = node.create_subscription::<Int32>(nros::SubscriptionOptions::new("/counter"));
+    result.is_ok() && node.subscription_count() == 1
 }
 
 /// Test message serialization via Node

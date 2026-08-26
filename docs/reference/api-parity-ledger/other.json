@@ -879,10 +879,6 @@
     "verdict": "extension",
     "why": "see `rust:SubMonitorCell`."
   },
-  "rust:SubscriberHandle": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, and it is the same word the node stage already flagged: rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). This is the standalone (non-component) node's handle type and it moves with `rust:Node::create_subscriber` / `SubscriberOptions` / `subscriber_count` -- see that row in the node stage. `SubscriptionHandle`. Nothing about an RTOS asks for the shorter word. Phase 379 W5. (Consumers outside `nros-node`: none -- it is re-exported from `nros::` and unused, so the rename is free today.)"
-  },
   "rust:TopicInfo": {
     "verdict": "extension",
     "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."

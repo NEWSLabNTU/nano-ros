@@ -1097,7 +1097,7 @@
   },
   "rust:Node::create_subscription": {
     "verdict": "rename",
-    "why": "the theirs-only half of the node stage's `rust:Node::create_subscriber` rename -- rclrs, rclcpp, rclc and our own C and C++ all say SUBSCRIPTION. Phase 379 W5."
+    "why": "SATISFIED 2026-08-26 — ours now carries this name. the theirs-only half of the node stage's `rust:Node::create_subscriber` rename -- rclrs, rclcpp, rclc and our own C and C++ all say SUBSCRIPTION. Phase 379 W5."
   },
   "rust:Node::get_publishers_info_by_topic": {
     "verdict": "gap",
@@ -1469,7 +1469,7 @@
   },
   "rust:SubscriptionOptions": {
     "verdict": "rename",
-    "why": "rclrs spells it `SubscriptionOptions`; ours is `SubscriberOptions`. Moves with `rust:Node::create_subscriber`."
+    "why": "SATISFIED 2026-08-26 — ours now carries this name. rclrs spells it `SubscriptionOptions`; ours is `SubscriberOptions`. Moves with `rust:Node::create_subscriber`."
   },
   "rust:SubscriptionTag": {
     "verdict": "extension",
@@ -1490,5 +1490,21 @@
   "rust:WorkerSubscriptionCallback": {
     "verdict": "declined",
     "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "rust:SubscriptionOptions::qos": {
+    "verdict": "extension",
+    "why": "The builder-style QoS setter on the standalone node's `SubscriptionOptions`. rclrs carries QoS in `SubscriptionOptions` too but reaches it through `IntoPrimitiveOptions`/`.qos(..)` on the topic string rather than a method on the options struct, so the member does not correlate. Surfaced 2026-08-26 by the `subscriber`->`subscription` rename: the type's old name meant this member was filed under a key that no longer exists."
+  },
+  "rust:Node::subscription_count": {
+    "verdict": "extension",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. Renamed to `subscription_count` on 2026-08-26 with the rest of the cluster; see `rust:Node::create_subscriber`. counts what THIS NODE declared -- `active` entries of its own static table (nros-node/src/node.rs:360-367) -- which is a different question from what the graph holds. rclrs's `count_subscriptions` asks the graph about a topic. Recorded as an extension, matching `rust:Node::publisher_count` three lines away in the same impl; an earlier `rename` verdict here was wrong, because giving our declaration-side counter the graph query's name would leave the graph query nowhere to land. The rename applies to `create_subscriber`, the entity-creation verb, not to this."
+  },
+  "rust:Node::subscription_topic_info": {
+    "verdict": "extension",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. see `rust:Node::subscriber_count`."
+  },
+  "rust:SubscriptionHandle": {
+    "verdict": "rename",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. NOTE: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`) — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked before renaming), but the two `SubscriptionHandle`s in this tree are unrelated. LANDED 2026-08-26 (phase-379 W5). Rust now spells this `subscription`, matching rclrs, rclcpp, rclc and our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). The whole cluster moved together — `create_subscriber`, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info`, `SubscriberHandle` — because renaming the verb and leaving its options/handle types behind is the half-fix this ledger keeps recording. NOTE for a future reader: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`), which is a different concept — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked), but the two `SubscriptionHandle`s in this tree are unrelated. OUR LANGUAGES DISAGREE, and it is the same word the node stage already flagged: rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). This is the standalone (non-component) node's handle type and it moves with `rust:Node::create_subscriber` / `SubscriberOptions` / `subscriber_count` -- see that row in the node stage. `SubscriptionHandle`. Nothing about an RTOS asks for the shorter word. Phase 379 W5. (Consumers outside `nros-node`: none -- it is re-exported from `nros::` and unused, so the rename is free today.)"
   }
 }

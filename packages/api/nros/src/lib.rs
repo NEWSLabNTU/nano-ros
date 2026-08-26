@@ -671,10 +671,10 @@ macro_rules! zephyr_component_main {
 }
 
 // Re-export node types
-pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
+pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriptionHandle};
 
 // Re-export publisher/subscriber options (topic + QoS; always available).
-pub use nros_node::{PublisherOptions, SubscriberOptions};
+pub use nros_node::{PublisherOptions, SubscriptionOptions};
 
 // Re-export timer types
 pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState};
@@ -1033,7 +1033,7 @@ pub mod prelude {
     pub use crate::{
         CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
         QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
-        RosService, Serialize, StandaloneNode, SubscriberHandle, TopicInfo,
+        RosService, Serialize, StandaloneNode, SubscriptionHandle, TopicInfo,
     };
 
     // Re-export component-mode API.
@@ -1079,7 +1079,7 @@ pub mod prelude {
     };
 
     // Publisher/Subscriber options (topic + QoS).
-    pub use crate::{PublisherOptions, SubscriberOptions};
+    pub use crate::{PublisherOptions, SubscriptionOptions};
 
     #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub use crate::SpinPeriodResult;
