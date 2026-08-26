@@ -281,3 +281,53 @@ parsing, and it does not touch `[img: …]`. `check-weak-symbols-image.sh`'s
 override-default handling is unchanged, so nothing that was being verified
 stopped being verified — the constraint 0769 established when it showed a
 well-meant relabel would have silently narrowed coverage.
+
+
+## W3 measured — the conflation is documentary, not mechanical
+
+0769 assumed relabelling `network_glue.c` to `optional-hook` would drop its
+`[img:]` set and silently stop verifying the two netif symbols. **Tested rather
+than reasoned about, and that is not what happens.**
+
+`check-weak-symbols-image.sh` parses `[img:]` with
+
+```sh
+grep -E '^[0-9]' "$allowlist" | sed -n 's/.*\[img:\([^]]*\)\].*/\1/p'
+```
+
+— any row starting with a digit. **It never inspects `override-default`.** So an
+`optional-hook` row carrying `[img: …]` is already accepted, and the combination
+W3 was opened to enable works today. Confirmed by relabelling the row and
+re-running: `checked=18 fail=0 warn=0`, unchanged.
+
+So W3 is mostly a DOC fix, not a schema change. The two axes are coupled only in
+the header prose, which says an `[img:]` token belongs to "an override-default
+line". That sentence is what made a safe edit look dangerous, and it is the thing
+to correct.
+
+### But the test exposed something worse
+
+Relabelling produced **zero mentions of `nros_board_register_netif` or
+`nros_board_poll_netif` in the gate output — before and after.** Coverage rows
+for them exist (`check-weak-symbols-image.sh:47-48`, the FreeRTOS rust entries),
+yet nothing is reported either way.
+
+The images those rows name were not built in this tree, so the gate had nothing
+to `nm` and said nothing. It reports `fail=0` and a per-symbol `note` only for
+symbols with NO coverage row at all — a symbol whose row exists but whose image
+is absent falls through both arms.
+
+**That is a coverage hole in the gate that 0769's guarantee depends on**, and it
+is more consequential than the labelling question W3 was opened for: the netif
+override has been unverified for however long those FreeRTOS images have been
+absent from routine builds, and the gate reported green throughout.
+
+### W3 revised
+
+* **W3a** — fix the header prose: `[img:]` is independent of the
+  override-default/optional-hook classification, and the parser already treats
+  it that way.
+* **W3b (new, and the one that matters)** — a COVERAGE row whose image is
+  missing must be reported, not skipped. Same class as the absorbing-STALE
+  verdict of 0445 and the `required-features` targets nobody builds: a check
+  that cannot run should say so rather than pass.
