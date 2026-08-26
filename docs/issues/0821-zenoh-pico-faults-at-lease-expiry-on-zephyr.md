@@ -158,12 +158,67 @@ read or lease task** — so the session may not have been established at all,
 and "230 publishes" may be the app publishing into a dead session rather than
 a healthy link. Not yet distinguished.
 
-## Next step
+## Bisected on hardware (2026-08-27)
 
-Establish whether the surviving run had a live session (check the router for a
-transport, not just the board for publishes). If it did not, the
-non-reproduction is meaningless and the analyzer build needs re-running with
-the link confirmed up.
+Every row is a real flash-and-run against a stock `rmw_zenohd`, `Z_TRANSPORT_LEASE`
+at the 10000 default, so the expiry lands at 20 s. "publishes" is the app's own
+count at 2 Hz, so 40 == died at expiry and 240 == survived the whole run.
+
+| build | publishes | fault |
+| --- | --- | --- |
+| baseline | 40 | `00:00:20.128` |
+| `Z_FEATURE_AUTO_RECONNECT=0` | 40 | `00:00:20.133` |
+| expiry teardown skipped (`close`/`clear` compiled out) | 40 | after the skip, before exit |
+| teardown restored, `return` instead of `_z_task_exit()` | 40 | **before** reaching the return |
+| **lease task parked in `k_sleep` forever, nothing else run** | **240** | **none** |
+| `CONFIG_THREAD_ANALYZER` + `CONFIG_INIT_STACKS` | 240 | none |
+| `CONFIG_INIT_STACKS` alone | 40 | `00:00:20.131` |
+
+## What that rules in and out
+
+**It is not one call site.** Skipping the teardown moved the fault later
+rather than removing it; restoring the teardown moved it earlier, before the
+`_z_task_exit` site was reached. Disabling auto-reconnect changed nothing.
+
+**It is not the teardown work, and not thread termination either.** Each was
+eliminated on its own. What removes the fault is parking the lease task so it
+executes *nothing* after deciding the peer expired — no liveliness undeclare,
+no join, no close, no clear, no reopen, no exit.
+
+**So: anything the lease task runs after expiry faults.** That is the shape of
+a thread whose stack is already unusable by the time it takes that branch, not
+of a bad pointer at one site. It also explains the all-zero exception frame:
+an overrun into zeroed `.bss` gives exactly `pc = 0`, `xpsr = 0`.
+
+The lease task's stack is 8 KiB — `Z_PTHREAD_STACK_SIZE_DEFAULT` is
+`CONFIG_MAIN_STACK_SIZE`, and the expiry teardown is by far the deepest call
+chain that task ever makes (liveliness undeclare -> transport close -> clear ->
+several `_z_mutex_drop`s). Parking is the one path that keeps it shallow.
+
+## The datapoint that does NOT fit, recorded rather than buried
+
+`CONFIG_THREAD_ANALYZER` + `CONFIG_INIT_STACKS` survived **six** full
+open/close cycles (router confirmed: 6 transports opened, 6 closed, 5 serial
+links) with zero faults, while running the full teardown every time. Neither
+option changes any stack size. If this were a plain stack overflow that build
+should have died too.
+
+`CONFIG_INIT_STACKS` alone does NOT save it, so the protective ingredient is
+`THREAD_ANALYZER` — an extra thread plus periodic stack walking, i.e. timing
+and `k_thread` bookkeeping (`THREAD_MONITOR`), not stack content. Until that is
+explained the "lease task stack" theory is the leading candidate, not the
+answer.
+
+## Blocked measurement
+
+The direct check — `CONFIG_HW_STACK_PROTECTION=y` to get a named
+"Stack overflow" naming the thread — cannot run: with the guard enabled `main`
+overflows first, at boot, in `Executor::assemble`, and `main` cannot be given
+more stack because zenoh-pico ties its four task stacks to
+`CONFIG_MAIN_STACK_SIZE` (8192 -> 16384 overflows RAM by 21588 bytes).
+
+Breaking that coupling — a separate stack size for zenoh tasks — is what
+unblocks this issue, and is worth doing for its own sake.
 
 ## Impact
 
