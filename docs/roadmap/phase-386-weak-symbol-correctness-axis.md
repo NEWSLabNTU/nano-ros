@@ -141,3 +141,50 @@ diagnostics from `platform.c`.
 
 Remaining in W2: group 4's serial aliases, and the two ThreadX symbols that are
 not functions (`stdin`, and the `#if !defined(__linux__)` guard itself).
+
+
+## W2 group 4 — zpico serial: the pair that lied, fixed
+
+Reviewed all 9 zpico serial aliases against what zenoh-pico's own callers do
+with the result. They are not uniform, and only two were wrong:
+
+| symbol | returned | verdict |
+| --- | --- | --- |
+| `_z_open_serial_from_{pins,dev}` | `-1` | **truthful** — caller checks and fails the link |
+| `_z_listen_serial_from_{pins,dev}` | `-1` | **truthful** |
+| `_z_close_serial` | void | **fine** — closing what was never opened |
+| **`_z_send_serial_internal`** | **`0`** | **LIED** |
+| **`_z_read_serial_internal`** | **`0`** | **LIED** |
+
+`0` is not an error in this API. zenoh-pico tests `ret == SIZE_MAX`
+(`src/system/common/serial.c`, in both `_z_connect_serial` and the read loop),
+so `0` reads as "succeeded, moved zero bytes" — a normal state. A send that
+discarded every byte and a read that reported "nothing yet" forever both looked
+healthy. Now `SIZE_MAX`.
+
+**Not a live bug**, and worth saying so: the open/listen stubs return -1, so
+these are unreachable in a default build. They become reachable under a PARTIAL
+override — a board shim supplying `_z_open_serial_*` and forgetting send/read
+links cleanly, opens the port, and loses all traffic silently. That is the exact
+failure this pair should be incapable of.
+
+### Printing was available here and was still not used
+
+The ThreadX group could not print because `write` is the console path. These
+are not, so a diagnostic could not recurse — the constraint recorded above does
+not bind. It was still not added: the sentinel already reaches a caller with
+real error handling (`_Z_ERR_TRANSPORT_RX_FAILED`), and an unconditional print
+inside a transport poll loop is its own hazard.
+
+**Returning the value the API already defines beats adding output.** Worth
+generalising: "fail loud" means the caller can tell, not that something prints.
+
+Verified: `check-weak-symbols` OK (17 files), `cargo build -p zpico-sys
+--release` clean.
+
+### W2 remaining
+
+The two ThreadX non-function symbols (`stdin`, and the
+`#if !defined(__linux__)` guard). Both are declarations rather than behaviour,
+so neither has a return value to make honest — they may belong in W1's column
+instead.

@@ -653,17 +653,37 @@ __attribute__((weak)) int8_t _z_listen_serial_from_dev(void *sock, char *dev, ui
 __attribute__((weak)) void _z_close_serial(void *sock) {
     (void)sock;
 }
+/* phase-386 W2 — SIZE_MAX, not 0.
+ *
+ * These two returned 0, and 0 is not an error in this API: zenoh-pico's own
+ * callers test `ret == SIZE_MAX` (`src/system/common/serial.c`, both
+ * `_z_connect_serial` and the read loop), so 0 reads as "succeeded, moved zero
+ * bytes" — a normal state. A send that silently discarded every byte and a read
+ * that reported "nothing yet" forever both looked healthy.
+ *
+ * Unreachable while the open/listen stubs above return -1, so this is not a
+ * live bug. It becomes one under a PARTIAL override: a board shim that supplies
+ * `_z_open_serial_*` and forgets send/read links cleanly, opens the port, and
+ * then loses all traffic with no diagnostic. That is precisely the shape this
+ * pair should refuse to have.
+ *
+ * Printing is available here — unlike the ThreadX libc stubs, these are not on
+ * the console path, so a diagnostic cannot recurse. It is still not used: the
+ * sentinel already reaches the caller, which has real error handling
+ * (`_Z_ERR_TRANSPORT_RX_FAILED`), and an unconditional print inside a transport
+ * poll loop would be its own hazard.
+ */
 __attribute__((weak)) size_t _z_send_serial_internal(void *sock, const uint8_t *buf, size_t len) {
     (void)sock;
     (void)buf;
     (void)len;
-    return 0;
+    return SIZE_MAX;
 }
 __attribute__((weak)) size_t _z_read_serial_internal(void *sock, uint8_t *buf, size_t len) {
     (void)sock;
     (void)buf;
     (void)len;
-    return 0;
+    return SIZE_MAX;
 }
 
 /* Weak stubs for legacy smoltcp_init / smoltcp_cleanup hooks. zpico.c
