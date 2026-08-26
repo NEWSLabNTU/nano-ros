@@ -917,3 +917,34 @@ Closing rather than continuing because the last five measurements each retired a
 proposed optimisation rather than enabling one. The remaining work — 0721's
 unconverted walk sites, nightly's unexamined cost profile, a cold-tree occupancy
 measurement — is ordinary and does not need a campaign.
+
+## Reconciling two concurrent sessions (2026-08-26)
+
+This file was written by two sessions at once, and they reached the same central
+conclusion independently — the launcher was never the lever, because the build's
+own processes are ~0.1 runnable and 92.6% of samples have nothing on CPU. Where
+they appear to disagree, both are right and the difference is cache state:
+
+**The gate fan-out.** The CLOSING SUMMARY reverts it (serial 84 s vs fan-out
+>516 s) because the fan-out invokes `just <gate>` per gate, which defeats
+cargo's shared target dir, and the 7 s figure was measured on a target dir a
+preceding SERIAL run had warmed. That is correct and the revert stands. Measured
+here afterwards on a tree whose cargo gates were warm from a session of repeated
+runs: serial 75 s, fan-out 12 s. The serial numbers agree (75 s vs 84 s); the
+fan-out number is exactly the confounder the summary names. So no fan-out figure
+in the priority-1 section above should be read as a general result — the
+`check-fast-parallel` wall-clock there is warm-cargo-dependent.
+
+**What is NOT affected by that.** The `check-deploy-board-resolves` measurement
+is of the gate itself, run directly, not through the phase: 231.83 s -> 0.09 s,
+same verdict. It matters MORE under a serial `check-fast`, which pays it in
+full, and the fix removes the cache dependence rather than benefiting from it —
+an index read is one file whatever the page cache holds.
+
+**One correction to the CLOSING SUMMARY's remaining-work list.** It names
+"0721's unconverted walk sites". There are none: the walk class has 9 live
+exemptions and every one is legitimately outside the git index — build output,
+UNTRACKED leaf `target/` dirs the index cannot see by definition, `--self-test`
+temp trees, the Zephyr submodule, an installed ROS include tree. The figure "86"
+that circulated for these is this issue's `grep -q` error-conflation sites,
+which have nothing to do with traversal I/O. Counted, not estimated.
