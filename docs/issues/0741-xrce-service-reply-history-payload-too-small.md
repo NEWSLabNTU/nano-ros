@@ -763,6 +763,49 @@ environmental still differs and it is none of the components anyone has checked.
 Recommend the third. Four eliminations in, inference has a poor record on this
 issue.
 
+## The advertising path, measured in the API (2026-08-26)
+
+Attempted the "advertise the computed bound" fix and stopped before writing it,
+because the shape of the work and the evidence disagree. Recording the API facts
+so nobody repeats the search.
+
+**The BIN profile cannot carry a size, at any level.** All three checked in the
+vendored client headers, not inferred:
+
+| call | carries |
+| --- | --- |
+| `uxr_buffer_create_topic_bin` | topic name, type name. No size. |
+| `uxr_buffer_create_replier_bin` | service name, request/reply type + topic names, `uxrQoS_t`. No size. |
+| `uxrQoS_t` | `durability`, `reliability`, `history`, `depth`. No size. |
+
+`subscriber.c`, `publisher.c` and `service.c` all use those BIN calls. So there
+is no field anywhere in the current registration path to put a bound in, and the
+Agent supplies its own default — which is where the 15 comes from.
+
+**What advertising would actually cost.** Switch entity creation to the XML
+profile (`uxr_buffer_create_topic_xml` / `..._replier_xml`, both present in the
+headers), generate DDS topic XML stating the type's max serialized size, and
+plumb that size across our C ABI. Subscriptions have somewhere to put it —
+`rmw_subscription_options_t::rx_buffer_hint`, which today carries the LOCAL
+buffer size and which the XRCE backend ignores entirely. Services have no
+equivalent field at all. Also unconfirmed: whether
+`UCLIENT_PROFILE_CREATE_ENTITIES_XML` is compiled into our client build.
+
+**Why it was not written.** This issue reproduces 1 run in 13 on the failing
+host and 0 in many on three other environments. A missing advertisement is
+IDENTICAL on every host, so it cannot by itself explain a split — the same
+objection that retired the Fast-DDS version and agent-pairing hypotheses. A
+backend change of this size, justified by a hypothesis the host evidence
+disfavours and unfalsifiable on a machine that cannot reproduce the failure, is
+the wrong trade.
+
+**What would justify it.** Either (a) the failing host shows the Agent
+advertising a size our registration did not supply — the bus snapshot this issue
+already arms is the place to look — or (b) someone reproduces on demand and can
+A/B an XML-profile build against it. Absent one of those, advertising is a real
+improvement to make on its own merits and should be filed as such rather than as
+this issue's fix.
+
 ## 0776 is CLOSED, and it moves this issue's next step (2026-08-26)
 
 The cross-link below said the investigation kept hitting a hole: nothing in this
