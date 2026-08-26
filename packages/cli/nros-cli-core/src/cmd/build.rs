@@ -92,7 +92,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     };
 
     // ---- stage 1 --------------------------------------------------------
-    let members = discover::cargo_workspace_members(&root);
+    let members = discover::cargo_members_or_walk(&root);
     let found = discover::discover(&root, &members).map_err(|e| eyre::eyre!("{e}"))?;
     for w in &found.warnings {
         eprintln!("nros build: warning: {w}");
@@ -150,11 +150,35 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         let board = image.board.clone().unwrap_or_default();
         let driver = plan::driver_for(&platform, has_non_rust);
 
-        // ---- stage 4 (not implemented yet) ------------------------------
-        let handoff = if driver.needs_generated_root() {
-            None
-        } else {
-            Some(native_handoff(driver, &root, &bringup_dir, &board, args))
+        // ---- stage 4 ----------------------------------------------------
+        let handoff = match driver {
+            Driver::Cargo => {
+                // The cargo root lives at the WORKSPACE root, not under
+                // build/ — cargo requires members to sit below their root and
+                // resolves a package's workspace by walking up. An existing
+                // hand-written root is used as-is, never overwritten.
+                let excluded = framework_entry_dirs(&found, &catalog);
+                crate::builder::cargo_root::ensure(&found, &root, &excluded)
+                    .map_err(|e| eyre::eyre!("{e}"))?;
+                let mut a = vec!["build".to_string()];
+                if args.offline {
+                    // `--frozen` is `--locked --offline` by definition; issue
+                    // 0676 records why `--offline` alone is the wrong spelling
+                    // (it restricts the cache without pinning resolution).
+                    a.push("--frozen".to_string());
+                }
+                a.extend(args.native_args.iter().cloned());
+                // Run FROM the workspace root, not the manifest dir: cargo
+                // discovers `.cargo/config.toml` by walking up from the CWD,
+                // and the leaf `[patch.crates-io]` redirects `nros sync` writes
+                // live there. Building from build/<coord> would lose every one
+                // of them and resolve message crates against the public
+                // registry — issue 0378 by a different road.
+                Some(Handoff::new("cargo", a).in_dir(&root))
+            }
+            // W4.
+            Driver::CMake => None,
+            _ => Some(native_handoff(driver, &root, &bringup_dir, &board, args)),
         };
 
         out.push(ResolvedBuild {
@@ -202,6 +226,55 @@ pub fn run(args: Args) -> Result<()> {
         eyre::bail!("{err}");
     }
     Ok(())
+}
+
+/// The build-tree coordinate for an image — RFC-0070 R2's vocabulary
+/// (platform, rmw), never a new ad-hoc suffix.
+///
+/// Used by the cmake root (W4). The cargo root cannot use it: cargo pins its
+/// workspace manifest to the workspace root, so there is no per-coordinate
+/// cargo root to name.
+#[allow(dead_code)]
+fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -> String {
+    match image.rmw.as_deref() {
+        Some(rmw) => format!("{platform}-{rmw}"),
+        None => platform.to_string(),
+    }
+}
+
+/// Package directories a cargo root must NOT list as members.
+///
+/// A west or ESP-IDF entry is built by its own framework; listing it makes a
+/// host `cargo build` try to compile a Zephyr staticlib.
+/// `examples/workspaces/rust` excludes exactly these by hand today.
+fn framework_entry_dirs(
+    found: &crate::builder::discover::Discovered,
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+) -> std::collections::BTreeSet<PathBuf> {
+    use crate::orchestration::board_descriptor::DeployResolution;
+    let mut out = std::collections::BTreeSet::new();
+    for pkg in &found.packages {
+        let Ok(text) = std::fs::read_to_string(pkg.dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let Ok(doc) = text.parse::<toml::Value>() else {
+            continue;
+        };
+        let deploy = doc
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("nros"))
+            .and_then(|n| n.get("entry"))
+            .and_then(|e| e.get("deploy"))
+            .and_then(|d| d.as_str());
+        let Some(deploy) = deploy else { continue };
+        if let DeployResolution::Board(d) = catalog.resolve_deploy(deploy)
+            && !plan::driver_for(d.platform.kebab(), false).needs_generated_root()
+        {
+            out.insert(pkg.dir.clone());
+        }
+    }
+    out
 }
 
 fn native_handoff(

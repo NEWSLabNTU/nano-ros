@@ -61,6 +61,13 @@ fn fixture(dir: &Path) {
         &dir.join("src/talker_pkg/package.xml"),
         &pkg_xml("talker_pkg"),
     );
+    // A real Rust node package carries BOTH — package.xml makes it a ROS
+    // package, Cargo.toml makes it buildable. Only the second makes it a cargo
+    // workspace member.
+    write(
+        &dir.join("src/talker_pkg/Cargo.toml"),
+        "[package]\nname = \"talker_pkg\"\nversion = \"0.0.0\"\n",
+    );
     write(
         &dir.join("src/demo_bringup/package.xml"),
         &pkg_xml("demo_bringup"),
@@ -151,17 +158,51 @@ fn default_images_removes_the_ambiguity() {
 }
 
 #[test]
-fn a_cargo_image_reports_no_handoff_rather_than_building_the_wrong_thing() {
-    // Honest partial delivery: W3/W4 are unwritten, so a cargo image must yield
-    // no handoff and let the caller say why, not silently produce something.
+fn a_cargo_image_uses_the_tracked_root_and_never_overwrites_it() {
+    // phase-383 W3.a. The cargo root lives at the WORKSPACE root, not under
+    // build/ — cargo resolves a package's workspace by walking UP and requires
+    // members to sit below the root, so `build/<coord>/Cargo.toml` is rejected
+    // twice over. Which means the generated path IS a user's file, so an
+    // authored root must survive untouched.
     let tmp = tempfile::tempdir().unwrap();
     fixture(tmp.path());
+    let authored = std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap();
+
     let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
     assert_eq!(plans[0].platform, "posix");
     assert_eq!(plans[0].driver, Driver::Cargo);
+    assert!(plans[0].handoff.is_some(), "stage 4 ran");
+
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
+        authored,
+        "an authored root must survive byte-for-byte"
+    );
+}
+
+#[test]
+fn a_cargo_image_generates_the_root_when_the_workspace_has_none() {
+    // RFC-0065 D13's end state: W9 DELETES the hand-written root, and the next
+    // build regenerates the same member set from the tree — including the
+    // cargo-only helper, found by walking once `[workspace] members` is no
+    // longer there to read (phase-383 F4, one step later).
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    std::fs::remove_file(tmp.path().join("Cargo.toml")).unwrap();
+
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert!(plans[0].handoff.is_some(), "stage 4 ran");
+
+    let body = std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap();
+    assert!(body.starts_with("# GENERATED"), "{body}");
+    assert!(body.contains("\"src/talker_pkg\""), "{body}");
     assert!(
-        plans[0].handoff.is_none(),
-        "a generated root is required and does not exist yet"
+        body.contains("\"src/helper\""),
+        "the cargo-only member must survive the root's deletion: {body}"
+    );
+    assert!(
+        !body.contains(tmp.path().to_str().unwrap()),
+        "no absolute path may appear (W3.c): {body}"
     );
 }
 

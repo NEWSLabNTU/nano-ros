@@ -179,6 +179,78 @@ pub fn cargo_workspace_members(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Cargo package directories found by WALKING, for a workspace with no root
+/// manifest.
+///
+/// The chicken-and-egg this exists for: cargo-only members are normally read
+/// from `[workspace] members` — but once RFC-0065 D13's migration deletes the
+/// hand-written root, that list is the thing being generated. Without a walk,
+/// the first `nros build` after the migration would silently drop every helper
+/// crate that carries no `package.xml` (phase-383 F4, one step later).
+///
+/// Uses the same pruning as the package walk so the two agree about what is in
+/// the workspace.
+#[must_use]
+pub fn cargo_packages_by_walk(root: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+        // The canonical layout is <root>/src/<pkg>/, so three levels is
+        // generous. A bound keeps a deep vendored tree from being scanned.
+        if depth > 3 {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(
+                name,
+                "target" | "build" | ".git" | ".cargo" | "node_modules" | "generated"
+            ) || name.starts_with("build-")
+                || name.starts_with("target-")
+            {
+                continue;
+            }
+            if [
+                "COLCON_IGNORE",
+                "AMENT_IGNORE",
+                "NROS_IGNORE",
+                ".nros-ignore",
+            ]
+            .iter()
+            .any(|m| p.join(m).exists())
+            {
+                continue;
+            }
+            if p.join("Cargo.toml").is_file() {
+                out.push(p);
+                // Do not descend into a package.
+                continue;
+            }
+            walk(&p, out, depth + 1);
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, &mut out, 0);
+    out.sort();
+    out
+}
+
+/// Cargo members for `root`: the declared list, or a walk when none exists.
+#[must_use]
+pub fn cargo_members_or_walk(root: &Path) -> Vec<PathBuf> {
+    let declared = cargo_workspace_members(root);
+    if declared.is_empty() {
+        cargo_packages_by_walk(root)
+    } else {
+        declared
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +415,60 @@ mod tests {
         let mut m = cargo_workspace_members(root);
         m.sort();
         assert_eq!(m, vec![root.join("src/a"), root.join("src/b")], "{m:?}");
+    }
+
+    #[test]
+    fn with_no_root_manifest_cargo_packages_are_found_by_walking() {
+        // Once D13 deletes the hand-written root, `[workspace] members` is the
+        // thing being generated — so it cannot also be the source of truth for
+        // which cargo packages exist.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            &root.join("src/helper/Cargo.toml"),
+            "[package]\nname = \"helper\"\n",
+        );
+        write(
+            &root.join("src/talker_pkg/Cargo.toml"),
+            "[package]\nname = \"t\"\n",
+        );
+        write(
+            &root.join("src/talker_pkg/package.xml"),
+            &pkg_xml("talker_pkg", &[]),
+        );
+
+        let m = cargo_members_or_walk(root);
+        assert!(m.contains(&root.join("src/helper")), "{m:?}");
+        assert!(m.contains(&root.join("src/talker_pkg")), "{m:?}");
+    }
+
+    #[test]
+    fn a_declared_member_list_wins_over_the_walk() {
+        // An authored `exclude` must be honoured; the walk cannot see it.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("src/a/Cargo.toml"), "[package]\nname = \"a\"\n");
+        write(&root.join("src/b/Cargo.toml"), "[package]\nname = \"b\"\n");
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"src/a\", \"src/b\"]\nexclude = [\"src/b\"]\n",
+        );
+        let m = cargo_members_or_walk(root);
+        assert_eq!(m, vec![root.join("src/a")], "{m:?}");
+    }
+
+    #[test]
+    fn the_walk_honours_ignore_markers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(&root.join("src/a/Cargo.toml"), "[package]\nname = \"a\"\n");
+        write(
+            &root.join("vendored/nano-ros/Cargo.toml"),
+            "[package]\nname = \"v\"\n",
+        );
+        write(&root.join("vendored/nano-ros/.nros-ignore"), "");
+        let m = cargo_packages_by_walk(root);
+        assert_eq!(m, vec![root.join("src/a")], "{m:?}");
     }
 
     #[test]
