@@ -10,7 +10,6 @@
 
 mod app_main;
 
-
 use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
 use std_msgs::msg::String as StringMsg;
 
@@ -41,17 +40,24 @@ impl ExecutableNode for Listener {
     }
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
-        if callback.as_str() == "on_chatter"
-            && let Ok(msg) = ctx.message::<StringMsg>()
-        {
-            *state += 1;
-            // Canonical delivery line every listener fixture (c/cpp/rust)
-            // emits — the E2E `count_zephyr_received` asserts on
-            // `I heard: [...]`. Without it the rust listener received
-            // samples silently and the native→Zephyr E2E read 0 despite
-            // working transport.
-            log::info!("I heard: [{}]", msg.data);
+        // Two constraints meet here, and only this shape satisfies both: this
+        // crate is edition 2021, where a LET-CHAIN is a hard error, and rust
+        // 1.97's clippy denies the nested `if` the chain replaced. Early
+        // returns need neither. (`8e7307c99` collapsed the nesting for clippy
+        // and broke the build for everyone on the west lane, which is the only
+        // lane that compiles this leaf.)
+        if callback.as_str() != "on_chatter" {
+            return;
         }
+        let Ok(msg) = ctx.message::<StringMsg>() else {
+            return;
+        };
+        *state += 1;
+        // Canonical delivery line every listener fixture (c/cpp/rust) emits —
+        // the E2E `count_zephyr_received` asserts on `I heard: [...]`. Without
+        // it the rust listener received samples silently and the native→Zephyr
+        // E2E read 0 despite working transport.
+        log::info!("I heard: [{}]", msg.data);
     }
 }
 
@@ -63,4 +69,3 @@ nros::node!(Listener);
 // still done by `nros_app_register_backends` — this is only a DCE anchor
 // (issues 0155 / 0163). cyclonedds needs none: its register entry lives in the
 // Zephyr module's C++ lib, which the image already links.
-
