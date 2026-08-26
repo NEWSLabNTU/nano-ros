@@ -653,6 +653,14 @@ re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-
 
 
 
+**#0820** (rmw/testing, open 2026-08-27) — `c_riscv_nuttx_talker_delivers_cross_process` fails on tier 2: the
+native listener starts and subscribes but receives NONE of the riscv-nuttx C talker's /chatter (0 of 3 in 90 s).
+Reproduced solo twice with `--retries 0` on an idle host, so not the usual in-sweep QEMU flake — its sibling
+`test_qemu_rtic_service_e2e` failed in the same sweep and passes solo. The fixture is NOT stale (rebuilt by the
+lane=tier2 build after the last source edit), and the panic is at the receive-count wait, not the readiness wait.
+NOT established: whether it also fails on origin/main — the revert-and-rebuild control was not run — and where
+delivery stops, since the guest console is buffered and not persisted to test-logs/. See `0820-*`. (2026-08-27)
+
 **#0819** (rmw, open 2026-08-26) — XRCE payloads at/above the 4096 transport MTU are DELIVERED CORRUPTED
 rather than refused. With `NROS_XRCE_BUFFER_SIZE` raised so the receive ring is not the constraint,
 3584-byte payloads arrive 10/10 valid and 4096-byte payloads arrive 10/10 INVALID — `try_recv_raw` returns
