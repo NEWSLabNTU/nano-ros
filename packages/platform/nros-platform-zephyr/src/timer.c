@@ -10,6 +10,7 @@
  */
 
 #include <nros/platform_timer.h>
+#include <nros/platform.h>
 
 #include <zephyr/kernel.h>
 
@@ -41,7 +42,7 @@ static void *create_timer(uint32_t value_us, int periodic,
                           nros_platform_timer_callback_t callback,
                           void *user_data) {
     if (callback == NULL || value_us == 0) return NULL;
-    nros_zephyr_timer_t *t = (nros_zephyr_timer_t *) k_malloc(sizeof(*t));
+    nros_zephyr_timer_t *t = (nros_zephyr_timer_t *) nros_platform_alloc(sizeof(*t));
     if (t == NULL) return NULL;
 
     t->callback  = callback;
@@ -75,7 +76,7 @@ void nros_platform_timer_destroy(void *handle) {
     nros_zephyr_timer_t *t = (nros_zephyr_timer_t *) handle;
     atomic_store_explicit(&t->cancelled, 1, memory_order_release);
     k_timer_stop(&t->kernel);
-    k_free(t);
+    nros_platform_dealloc(t);
 }
 
 int8_t nros_platform_timer_cancel(void *handle) {

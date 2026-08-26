@@ -489,10 +489,17 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 
 int8_t nros_platform_mutex_init(void *m) {
     if (m == NULL) return -1;
-    struct k_mutex *mu = k_malloc(sizeof(struct k_mutex));
+/* RFC-0034 D6 -- allocations here go through `nros_platform_alloc`, NOT
+ * `k_malloc` directly. On Zephyr both reach `_system_heap` today, so the
+ * distinction looks cosmetic; it is not. The funnel is what lets the arena's
+ * ALGORITHM be swapped (a constant-time allocator for the real-time tier)
+ * without hunting every allocation site in the tree. A direct `k_malloc` here
+ * would keep allocating from the kernel heap after the funnel moved, silently
+ * splitting the one arena D6 exists to keep whole. */
+    struct k_mutex *mu = nros_platform_alloc(sizeof(struct k_mutex));
     if (mu == NULL) return -1;
     if (k_mutex_init(mu) != 0) {
-        k_free(mu);
+        nros_platform_dealloc(mu);
         return -1;
     }
     NROS_Z_HANDLE(m) = mu;
@@ -503,7 +510,7 @@ int8_t nros_platform_mutex_drop(void *m) {
     if (m == NULL) return 0;
     struct k_mutex *mu = NROS_Z_HANDLE(m);
     if (mu == NULL) return 0;
-    k_free(mu);
+    nros_platform_dealloc(mu);
     NROS_Z_HANDLE(m) = NULL;
     return 0;
 }
@@ -544,10 +551,10 @@ int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_un
 
 int8_t nros_platform_condvar_init(void *cv) {
     if (cv == NULL) return -1;
-    struct k_condvar *c = k_malloc(sizeof(struct k_condvar));
+    struct k_condvar *c = nros_platform_alloc(sizeof(struct k_condvar));
     if (c == NULL) return -1;
     if (k_condvar_init(c) != 0) {
-        k_free(c);
+        nros_platform_dealloc(c);
         return -1;
     }
     NROS_Z_HANDLE(cv) = c;
@@ -558,7 +565,7 @@ int8_t nros_platform_condvar_drop(void *cv) {
     if (cv == NULL) return 0;
     struct k_condvar *c = NROS_Z_HANDLE(cv);
     if (c == NULL) return 0;
-    k_free(c);
+    nros_platform_dealloc(c);
     NROS_Z_HANDLE(cv) = NULL;
     return 0;
 }
@@ -630,11 +637,11 @@ int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     (void) attr;
     if (task == NULL || entry == NULL) return -1;
-    struct nros_z_task *t = k_malloc(sizeof(struct nros_z_task));
+    struct nros_z_task *t = nros_platform_alloc(sizeof(struct nros_z_task));
     if (t == NULL) return -1;
     t->stack = k_thread_stack_alloc(NROS_ZEPHYR_TASK_STACK_SIZE, 0);
     if (t->stack == NULL) {
-        k_free(t);
+        nros_platform_dealloc(t);
         return -1;
     }
     t->entry = entry;
@@ -676,7 +683,7 @@ void nros_platform_task_free(void **task) {
     if (t->stack != NULL) {
         (void) k_thread_stack_free(t->stack);
     }
-    k_free(t);
+    nros_platform_dealloc(t);
     *task = NULL;
 }
 

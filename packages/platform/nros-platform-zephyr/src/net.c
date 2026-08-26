@@ -17,6 +17,7 @@
  */
 
 #include <nros/platform_net.h>
+#include <nros/platform.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
@@ -333,16 +334,16 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     socklen_t bound_len = (socklen_t) sizeof(addr);
     (void) zsock_getsockname(fd, (struct sockaddr *) &addr, &bound_len);
 
-    struct sockaddr *lsockaddr = (struct sockaddr *) k_malloc(sizeof(addr));
+    struct sockaddr *lsockaddr = (struct sockaddr *) nros_platform_alloc(sizeof(addr));
     if (lsockaddr == NULL) {
         zsock_close(fd); sock->fd = -1; return -1;
     }
     memcpy(lsockaddr, &addr, sizeof(addr));
 
     struct zsock_addrinfo *laddr = (struct zsock_addrinfo *)
-        k_malloc(sizeof(struct zsock_addrinfo));
+        nros_platform_alloc(sizeof(struct zsock_addrinfo));
     if (laddr == NULL) {
-        k_free(lsockaddr); zsock_close(fd); sock->fd = -1; return -1;
+        nros_platform_dealloc(lsockaddr); zsock_close(fd); sock->fd = -1; return -1;
     }
     memset(laddr, 0, sizeof(*laddr));
     laddr->ai_family   = ai->ai_family;
@@ -441,8 +442,8 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
     }
     if (lep != NULL && lep->iptcp != NULL) {
         struct zsock_addrinfo *laddr = lep->iptcp;
-        k_free(laddr->ai_addr);
-        k_free(laddr);
+        nros_platform_dealloc(laddr->ai_addr);
+        nros_platform_dealloc(laddr);
     }
     if (sockrecv != NULL && sockrecv->fd >= 0) {
         zsock_close(sockrecv->fd); sockrecv->fd = -1;
