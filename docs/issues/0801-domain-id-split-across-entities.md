@@ -41,11 +41,38 @@ Two sources disagree:
 A caller that never sets the C-side domain therefore gets a session on the
 configured domain and entities on 0.
 
-## Proposed fix (in progress)
+## Ruled out: `nros-c/src/node.rs::resolve_session_and_domain`
 
-Record the domain on `CffiSession` at open and inherit from it wherever the
-support context does not supply one, so the two cannot disagree. The session's
-value is authoritative: it is what the backend actually received.
+That function does fall back to a hardcoded `0` when no support context is
+present, which is wrong on its own terms, and it was fixed to inherit the
+session's domain instead (`CffiSession` now records the domain it was opened
+with). **It is not this bug.** The listener image is byte-identical after the
+change, including after deleting the Rust build directory and rebuilding — so
+that code is not linked into a zephyr C example at all.
+
+## Where it must actually be
+
+The entry reaches the RMW through the C++ header path, not through nros-c:
+
+    zephyr_entry_main.cpp  ->  ::nros::create_node(node, "listener")
+                           ->  Node::create  ->  (C++ FFI)
+
+and the domain gets in via `ZephyrBoard::run_components`, which is correct --
+`main.hpp:367` forwards `NROS_ENTRY_LOCATOR, "node"` to the 3-arg form, which
+passes `static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)`, and `NROS_ENTRY_DOMAIN_ID`
+resolves to `CONFIG_NROS_DOMAIN_ID` = 10. That matches the observation: the NODE
+liveliness token is on 10.
+
+So init carries 10 and the node token proves it, while every entity created
+afterwards lands on 0. The remaining suspect is whatever the C++ `Node::create`
+path hands to publisher/subscriber creation -- something there is not reading
+back the value init resolved.
+
+Worth noting `LinuxBoard::run_components` deliberately calls
+`nros::init(nullptr, 0, sn)` so a host build picks `ROS_DOMAIN_ID` out of the
+environment. That is correct for a host and would be exactly wrong if any
+embedded path shared it, since there is no env on the target -- worth checking
+whether the two share code.
 
 ## Reproduce
 
