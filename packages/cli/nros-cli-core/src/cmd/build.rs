@@ -161,6 +161,22 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         // ---- stage 4 ----------------------------------------------------
         let handoff = match driver {
             Driver::Cargo => {
+                // W3.b — generate the entry package. This is D4's headline
+                // claim: the entry stops being hand-written.
+                let entry_dir = generate_entry(
+                    &root,
+                    &bringup_dir,
+                    &bringup,
+                    &image_id,
+                    &image,
+                    descriptor,
+                    &platform,
+                    nano_ros_root.as_deref(),
+                )?;
+                if let Some(d) = &entry_dir {
+                    eprintln!("nros build:   entry → {}", d.display());
+                }
+
                 // W7.a — the declarative escapes reach cargo here. `panic` is
                 // forwarded to the ENTRY (the macro consumes it) rather than to
                 // cargo; `profile` names a cargo profile.
@@ -173,7 +189,8 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // resolves a package's workspace by walking up. An existing
                 // hand-written root is used as-is, never overwritten.
                 let excluded = framework_entry_dirs(&found, &catalog);
-                crate::builder::cargo_root::ensure(&found, &root, &excluded)
+                let extra: Vec<PathBuf> = entry_dir.clone().into_iter().collect();
+                crate::builder::cargo_root::ensure(&found, &root, &excluded, &extra)
                     .map_err(|e| eyre::eyre!("{e}"))?;
                 let mut a = vec!["build".to_string()];
                 if let Some(profile) = image.profile.as_deref() {
@@ -303,6 +320,118 @@ pub fn run(args: Args) -> Result<()> {
         eyre::bail!("{err}");
     }
     Ok(())
+}
+
+/// Generate the entry package for a cargo image (W3.b), returning its
+/// directory. `None` when the launch tree cannot be resolved — reported as a
+/// warning rather than a failure, because a workspace whose entries are still
+/// hand-written must keep building through the migration (RFC-0065 D13).
+#[allow(clippy::too_many_arguments)]
+fn generate_entry(
+    root: &std::path::Path,
+    bringup_dir: &std::path::Path,
+    bringup: &str,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    platform: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<Option<PathBuf>> {
+    use crate::{
+        builder::entry::{BoardFacts, EntrySpec},
+        orchestration::model_location,
+    };
+
+    let Some(nros_root) = nano_ros_root else {
+        return Ok(None);
+    };
+
+    // A workspace that still has its hand-written entry keeps it. Generating a
+    // second one would be redundant at best and a conflicting `[[bin]]` name at
+    // worst — and D13's migration is a DELETION: remove the hand-written entry
+    // and the next build generates it. This is what makes the migration
+    // incremental, one entry at a time.
+    let want = crate::builder::entry::package_name(image_id);
+    if root.join("src").join(&want).is_dir() {
+        return Ok(None);
+    }
+
+    // (launch, args) → model → plan → the node packages the launch names.
+    let args_vec: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let model_rel = match model_location::launch_to_model_rel(
+        bringup_dir,
+        image.launch.as_deref(),
+        &args_vec,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("nros build: warning: cannot resolve launch for `{image_id}`: {e}");
+            return Ok(None);
+        }
+    };
+    let model_path = match model_location::ensure_model(bringup_dir, &model_rel) {
+        Ok((p, _inputs)) => p,
+        Err(e) => {
+            eprintln!("nros build: warning: cannot resolve the model for `{image_id}`: {e}");
+            return Ok(None);
+        }
+    };
+    let plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
+            return Ok(None);
+        }
+    };
+
+    // A launch file may name one package several times; cargo needs it once.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut nodes = Vec::new();
+    for n in &plan.nodes {
+        if !seen.insert(n.pkg.clone()) {
+            continue;
+        }
+        let dir = root.join("src").join(&n.pkg);
+        if dir.is_dir() {
+            nodes.push((n.pkg.clone(), dir));
+        }
+    }
+
+    let launch = match image.launch.as_deref() {
+        Some(f) => format!("{bringup}:{f}"),
+        None => bringup.to_string(),
+    };
+    let facade_dir = {
+        let d = root
+            .join("generated/nros-selection")
+            .join(crate::builder::entry::package_name(image_id));
+        d.is_dir().then_some(d)
+    };
+
+    let spec = EntrySpec {
+        image_id: image_id.to_string(),
+        // The deploy token is the IMAGE id — that is what `[deploy.<id>]`
+        // always keyed on and what `nros check` reads.
+        deploy: image_id.to_string(),
+        launch,
+        args: image.args.clone(),
+        panic: image.panic.clone(),
+        nodes,
+        nano_ros_root: nros_root.to_path_buf(),
+        facade_dir,
+    };
+    // Most specific first: the image id IS the deploy key, but an image named
+    // `robot1` is not a board token, so the board and platform back it up.
+    let board_name = image.board.clone().unwrap_or_default();
+    let facts = BoardFacts::from_descriptor_for(descriptor, &[image_id, &board_name, platform]);
+    let parent = root.join("build").join(coordinate(platform, image));
+    let dir = crate::builder::entry::write(&spec, &facts, &parent)
+        .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
+    Ok(Some(dir))
 }
 
 /// The build-tree coordinate for an image — RFC-0070 R2's vocabulary

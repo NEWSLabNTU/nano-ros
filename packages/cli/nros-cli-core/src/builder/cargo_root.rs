@@ -55,34 +55,6 @@ use std::{
 
 use super::discover::Discovered;
 
-/// Relative path from `from` to `to`, both absolute.
-///
-/// Returns `None` when no relative path exists (different roots), which the
-/// caller must treat as fatal rather than falling back to an absolute path:
-/// an absolute path in a generated manifest is exactly what W3.c forbids.
-fn relative(from: &Path, to: &Path) -> Option<String> {
-    let from: Vec<_> = from.components().collect();
-    let to: Vec<_> = to.components().collect();
-    let common = from
-        .iter()
-        .zip(to.iter())
-        .take_while(|(a, b)| a == b)
-        .count();
-    if common == 0 {
-        return None;
-    }
-    let mut parts: Vec<String> =
-        std::iter::repeat_n("..".to_string(), from.len() - common).collect();
-    for c in &to[common..] {
-        parts.push(c.as_os_str().to_string_lossy().into_owned());
-    }
-    if parts.is_empty() {
-        Some(".".to_string())
-    } else {
-        Some(parts.join("/"))
-    }
-}
-
 /// Render the workspace manifest for `discovered`, as written to
 /// `manifest_dir/Cargo.toml`.
 ///
@@ -94,8 +66,15 @@ pub fn render(
     discovered: &Discovered,
     manifest_dir: &Path,
     excluded: &BTreeSet<PathBuf>,
+    extra: &[PathBuf],
 ) -> Result<String, String> {
     let mut members: Vec<String> = Vec::new();
+    // Generated packages — the entry (W3.b) — live under `build/`, which the
+    // discovery walk PRUNES by design. They are members nonetheless, and cargo
+    // accepts them because `build/` is still below the workspace root.
+    for dir in extra {
+        members.push(super::paths::relative_or_err(manifest_dir, dir)?);
+    }
     for pkg in &discovered.packages {
         if excluded.contains(&pkg.dir) {
             continue;
@@ -107,14 +86,7 @@ pub fn render(
         if !pkg.dir.join("Cargo.toml").is_file() {
             continue;
         }
-        let rel = relative(manifest_dir, &pkg.dir).ok_or_else(|| {
-            format!(
-                "cannot express {} relative to {} — a generated manifest must \
-                 carry no absolute path (phase-383 W3.c)",
-                pkg.dir.display(),
-                manifest_dir.display()
-            )
-        })?;
+        let rel = super::paths::relative_or_err(manifest_dir, &pkg.dir)?;
         members.push(rel);
     }
     // Sorted so the output is byte-identical across machines and across runs.
@@ -172,12 +144,13 @@ pub fn ensure(
     discovered: &Discovered,
     root: &Path,
     excluded: &BTreeSet<PathBuf>,
+    extra: &[PathBuf],
 ) -> Result<PathBuf, String> {
     let path = root.join("Cargo.toml");
     if has_tracked_root(root) {
         return Ok(path);
     }
-    write(discovered, root, excluded)
+    write(discovered, root, excluded, extra)
 }
 
 /// Write the manifest into `manifest_dir`, creating it if needed.
@@ -188,8 +161,9 @@ pub fn write(
     discovered: &Discovered,
     manifest_dir: &Path,
     excluded: &BTreeSet<PathBuf>,
+    extra: &[PathBuf],
 ) -> Result<PathBuf, String> {
-    let body = render(discovered, manifest_dir, excluded)?;
+    let body = render(discovered, manifest_dir, excluded, extra)?;
     std::fs::create_dir_all(manifest_dir)
         .map_err(|e| format!("creating {}: {e}", manifest_dir.display()))?;
     let path = manifest_dir.join("Cargo.toml");
@@ -235,7 +209,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let body = render(&d, &root.join("build/native"), &Default::default()).expect("renders");
+        let body =
+            render(&d, &root.join("build/native"), &Default::default(), &[]).expect("renders");
         assert!(
             body.contains("\"../../src/talker_pkg\""),
             "members must be relative to the manifest: {body}"
@@ -252,8 +227,8 @@ mod tests {
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "zzz_pkg", true), pkg(root, "aaa_pkg", true)]);
         let dir = root.join("build/native");
-        let a = render(&d, &dir, &Default::default()).expect("a");
-        let b = render(&d, &dir, &Default::default()).expect("b");
+        let a = render(&d, &dir, &Default::default(), &[]).expect("a");
+        let b = render(&d, &dir, &Default::default(), &[]).expect("b");
         assert_eq!(a, b);
     }
 
@@ -264,7 +239,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "zzz_pkg", true), pkg(root, "aaa_pkg", true)]);
-        let body = render(&d, &root.join("build/native"), &Default::default()).expect("renders");
+        let body =
+            render(&d, &root.join("build/native"), &Default::default(), &[]).expect("renders");
         let a = body.find("aaa_pkg").expect("present");
         let z = body.find("zzz_pkg").expect("present");
         assert!(a < z, "sorted, not topological: {body}");
@@ -280,7 +256,8 @@ mod tests {
             pkg(root, "rust_pkg", true),
             pkg(root, "cpp_pkg", false),
         ]);
-        let body = render(&d, &root.join("build/native"), &Default::default()).expect("renders");
+        let body =
+            render(&d, &root.join("build/native"), &Default::default(), &[]).expect("renders");
         assert!(body.contains("rust_pkg"), "{body}");
         assert!(!body.contains("cpp_pkg"), "{body}");
     }
@@ -294,7 +271,7 @@ mod tests {
         let zephyr = pkg(root, "zephyr_entry", true);
         let d = discovered(vec![pkg(root, "native_entry", true), zephyr.clone()]);
         let excluded: BTreeSet<PathBuf> = [zephyr.dir.clone()].into_iter().collect();
-        let body = render(&d, &root.join("build/native"), &excluded).expect("renders");
+        let body = render(&d, &root.join("build/native"), &excluded, &[]).expect("renders");
         assert!(body.contains("native_entry"), "{body}");
         assert!(!body.contains("zephyr_entry"), "{body}");
     }
@@ -304,7 +281,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "cpp_pkg", false)]);
-        let e = render(&d, &root.join("build/native"), &Default::default())
+        let e = render(&d, &root.join("build/native"), &Default::default(), &[])
             .expect_err("nothing to list");
         assert!(e.contains("W4"), "points at the cmake root: {e}");
     }
@@ -317,10 +294,10 @@ mod tests {
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
         let dir = root.join("build/native");
-        let p1 = write(&d, &dir, &Default::default()).expect("first");
+        let p1 = write(&d, &dir, &Default::default(), &[]).expect("first");
         let m1 = std::fs::metadata(&p1).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        let p2 = write(&d, &dir, &Default::default()).expect("second");
+        let p2 = write(&d, &dir, &Default::default(), &[]).expect("second");
         let m2 = std::fs::metadata(&p2).unwrap().modified().unwrap();
         assert_eq!(m1, m2, "unchanged content must not rewrite the file");
     }
@@ -336,7 +313,7 @@ mod tests {
         let authored = "[workspace]\nmembers = [\"src/talker_pkg\"]\n# hand-written\n";
         std::fs::write(root.join("Cargo.toml"), authored).unwrap();
 
-        let p = ensure(&d, root, &Default::default()).expect("uses it");
+        let p = ensure(&d, root, &Default::default(), &[]).expect("uses it");
         assert_eq!(p, root.join("Cargo.toml"));
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
@@ -350,7 +327,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let p = ensure(&d, root, &Default::default()).expect("generates");
+        let p = ensure(&d, root, &Default::default(), &[]).expect("generates");
         let body = std::fs::read_to_string(&p).unwrap();
         assert!(body.starts_with("# GENERATED"), "{body}");
         assert!(
@@ -372,7 +349,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let body = render(&d, &root.join("build/native"), &Default::default()).expect("renders");
+        let body =
+            render(&d, &root.join("build/native"), &Default::default(), &[]).expect("renders");
         assert!(body.starts_with("# GENERATED"), "{body}");
         assert!(body.contains("DO NOT EDIT"), "{body}");
     }

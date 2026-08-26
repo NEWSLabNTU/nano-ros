@@ -70,24 +70,6 @@ pub struct CmakeRootSpec {
     pub excluded: BTreeSet<PathBuf>,
 }
 
-fn relative(from: &Path, to: &Path) -> Option<String> {
-    let f: Vec<_> = from.components().collect();
-    let t: Vec<_> = to.components().collect();
-    let common = f.iter().zip(t.iter()).take_while(|(a, b)| a == b).count();
-    if common == 0 {
-        return None;
-    }
-    let mut parts: Vec<String> = std::iter::repeat_n("..".to_string(), f.len() - common).collect();
-    for c in &t[common..] {
-        parts.push(c.as_os_str().to_string_lossy().into_owned());
-    }
-    Some(if parts.is_empty() {
-        ".".to_string()
-    } else {
-        parts.join("/")
-    })
-}
-
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
 pub fn render(
     discovered: &Discovered,
@@ -102,14 +84,7 @@ pub fn render(
         if spec.excluded.contains(&pkg.dir) || !pkg.dir.join("CMakeLists.txt").is_file() {
             continue;
         }
-        let rel = relative(manifest_dir, &pkg.dir).ok_or_else(|| {
-            format!(
-                "cannot express {} relative to {} — a generated root must carry \
-                 no absolute path (phase-383 W3.c)",
-                pkg.dir.display(),
-                manifest_dir.display()
-            )
-        })?;
+        let rel = super::paths::relative_or_err(manifest_dir, &pkg.dir)?;
         subdirs.push((rel, pkg.name.clone()));
     }
     if subdirs.is_empty() {
@@ -141,7 +116,7 @@ pub fn render(
     // compiler probe, and a toolchain set afterwards is a toolchain nobody used.
     if let Some(tc) = &spec.toolchain_file {
         let abs = spec.nano_ros_root.join(tc);
-        let rel = relative(manifest_dir, &abs)
+        let rel = super::paths::relative(manifest_dir, &abs)
             .ok_or_else(|| format!("cannot express toolchain file {} relatively", abs.display()))?;
         out.push_str(&format!(
             "# Before project(): that call is the first compiler probe, so a\n\
