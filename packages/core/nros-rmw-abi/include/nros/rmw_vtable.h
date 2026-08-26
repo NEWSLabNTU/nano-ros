@@ -1080,9 +1080,24 @@ typedef struct nros_rmw_vtable_t {
      *  - `rmw_init_options_{init,copy,fini}` have nothing to do here. Upstream
      *    needs the trio because its options OWN heap and carry an
      *    `rcutils_allocator_t`, which cannot cross this seam; ours is a
-     *    build-time POD, so "copy" is `=` and "fini" is nothing. (This does NOT
-     *    decide `security_options` / `discovery_options`, which we answer
-     *    nowhere — see the phase doc.)
+     *    build-time POD, so "copy" is `=` and "fini" is nothing.
+     *
+     *    This does NOT decide what the options CARRY. Of Humble's eight
+     *    fields, `create_session` takes `domain_id`; `implementation_identifier`
+     *    and `impl` are answered elsewhere (the identity slot,
+     *    `rmw_session_t::backend_data`); `allocator` is declined ABI-wide and
+     *    `instance_id` is rcl-side process identity. `security_options` is
+     *    declined on the target: it is a DDS-SROS2 keystore PATH plus an
+     *    enforcement switch, and neither a filesystem nor a security plugin
+     *    exists where this ABI runs. `localhost_only` and `enclave` are real
+     *    GAPS — issue 0785, to be carried by whatever shape issue 0808 gives
+     *    backend-private session config, because this flat argument list
+     *    cannot grow either without another ABI break.
+     *
+     *    `discovery_options` is NOT in this list: it is an IRON field, and the
+     *    recorded contract is Humble. It was named here until issue 0785, the
+     *    third unchecked sentence about an upstream struct in this campaign
+     *    (issue 0777 supplied the other two). Read the header, not the memory.
      *
      *  - `rmw_wait`, the wait set, and the guard conditions are declined
      *    together, because `has_data` / `has_request` + `drive_io` +
@@ -1174,7 +1189,11 @@ typedef struct nros_rmw_vtable_t {
  * backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it
  * rather than fail. Folding it into backend-private config behind the locator
  * — so the agnostic vtable stops carrying a backend-shaped field — is the
- * structural fix, and is not done here; see issue 0331.
+ * structural fix, and is not done here; see issue 0808. (This said "see issue
+ * 0331" until 2026-08-26. That issue documented this enum and stated in its own
+ * resolution that the structural half was NOT done, deferring it to issue 0330
+ * part 3 — which resolved a different concern entirely. Both are closed, so the
+ * fold was tracked by nothing; 0808 is its home.)
  */
 typedef enum nros_rmw_session_mode_t {
     /** Connect to a router/agent as a client. The default. */

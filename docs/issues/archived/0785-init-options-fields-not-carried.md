@@ -2,10 +2,10 @@
 id: 785
 title: "`create_session` carries four of Humble's eight `rmw_init_options_t`
   fields, and one of the four it drops makes a GROUPED answer hollow"
-status: open
+status: resolved
 type: bug
 area: rmw
-related: [phase-376, issue-0331]
+related: [phase-376, issue-0331, issue-0800, issue-0808]
 ---
 
 ## Problem
@@ -83,3 +83,64 @@ that `create_session`'s flat argument list cannot grow without another ABI
 break. Issue 0331 already proposes folding backend-shaped session config behind
 the locator; whatever shape that takes should carry these two, and the
 `enclave` grouping should stay recorded as hollow until it can be filled.
+
+## Resolution, 2026-08-26
+
+Three of the four asks are done. The fourth — actually CARRYING `localhost_only`
+and `enclave` — could not be done here and, it turns out, was deferred to
+nothing; that is the finding this issue ends on.
+
+### The answered column stops over-counting, per SYMBOL
+
+The complaint was that `rmw_get_node_names_with_enclaves` is recorded as
+answered while nothing in this ABI can fill an enclave. Rather than special-case
+that one symbol, the question is now asked of every contract symbol, using the
+producer/consumer dimension issue 0800 added. `rmw-api-parity.py` reports:
+
+```
+  vtable     70
+  ...
+  Of the 70 contract symbol(s) in the `vtable` column, 34 are answered by a slot
+  something writes or reads, and 36 by an INERT one (issue 0785).
+
+## answered by an inert slot (36)
+  ...
+```
+
+So the hollow grouping was not an isolated case. **36 of the 70 symbols in the
+answered column rest on a slot nothing writes and nothing reads** — including
+both halves of this grouping, because `get_node_names` is itself inert. The
+enclave argument being structurally NULL is now the smaller of the two facts
+about that row.
+
+### The stale claims are corrected
+
+`discovery_options` is gone from the surviving enumeration in `rmw_vtable.h` and
+from the parity map's `rmw_init_options_init` detail. Both now say what the
+eight Humble fields actually are and what happens to each: `domain_id` carried,
+`implementation_identifier` / `impl` answered elsewhere, `allocator` and
+`instance_id` declined, `security_options` declined on the target,
+`localhost_only` and `enclave` gaps. The historical note recording the wrong
+version stays, deliberately.
+
+### The deferral was dangling — issue 0808
+
+This issue's Fix said the two gaps should be carried by "whatever shape issue
+0331 takes". **Issue 0331 is resolved**, and its own resolution says the
+structural half — folding backend-shaped session config behind the locator — is
+NOT done, deferring it to issue 0330 part 3. **Issue 0330 is also resolved**,
+and its part 3 turned out to be about something else entirely (moving a
+force-link anchor to `nros::force_link_backend!`). Neither did the fold.
+
+So `rmw_vtable.h` was telling readers "see issue 0331" for work that issue
+explicitly declined to do and that no open issue owned. Three separate needs —
+the backend-shaped `mode`, `localhost_only`, `enclave` — all pointed at nothing.
+
+Filed as **issue 0808**, which exists to be that home, and the two pointers in
+`rmw_vtable.h` now name it. A deferral to a resolved issue is indistinguishable
+from a deferral to a plan; that is the reusable part of this.
+
+Same failure mode as the rest of this campaign, in a third medium: issue 0781
+had a capability with two mechanisms and no test, issue 0800 had slots with no
+producer and no consumer, and this one had a fix with no owner. Each read as
+handled.

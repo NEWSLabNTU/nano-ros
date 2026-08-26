@@ -3786,14 +3786,28 @@ short-delivery case, because it is the only part of that path reachable without 
 first: the slot itself works, and the zenoh half of the original report was withdrawn.
 See `archived/0782-*`.
 
-**#0785** (rmw, open 2026-08-24) — `create_session` carries `domain_id` and nothing else from Humble's
-eight-field `rmw_init_options_t`. Two are real gaps: `localhost_only` (a discovery-scope control that maps
-to a real cyclonedds setting) and `enclave` — and the second makes a GROUPED answer hollow, because
-`rmw_get_node_names_with_enclaves` is counted as answered while nothing in this ABI accepts an enclave, so
-the visitor's `enclave` argument is structurally always NULL. `security_options` stays declined on a target
-reason (filesystem keystore + DDS security plugin). Also fixed two header comments that listed the init
-fields as "domain_id, enclave, security_options and discovery_options": `discovery_options` is an IRON
-field, not Humble, and the list omitted five of eight. See `0785-*`. (2026-08-24)
+Recently resolved (2026-08-26): **#0785** (rmw) — `create_session` carries `domain_id` and nothing else of
+Humble's eight `rmw_init_options_t` fields. The complaint was that `rmw_get_node_names_with_enclaves` counts
+as ANSWERED while nothing in this ABI accepts an enclave, so the visitor argument is structurally always
+NULL. Generalised instead of special-cased, using #0800's producer/consumer dimension: `rmw-api-parity` now
+resolves the question per SYMBOL and reports that **36 of the 70 symbols in the `vtable` column are answered
+by an INERT slot** — nothing writes them, nothing reads them — including both halves of that grouping, since
+`get_node_names` is itself inert. Stale claims corrected: `discovery_options` is an IRON field and is gone
+from the surviving enumeration (third unchecked sentence about an upstream struct this campaign; #0777
+supplied two). The finding it ends on: its own fix deferred `localhost_only`/`enclave` to #0331, which is
+RESOLVED and whose resolution says the structural fold was NOT done, deferring to #0330 part 3 — also
+resolved, and about something else (the `force_link_backend!` anchor). Neither did the fold, so
+`rmw_vtable.h` pointed readers at work no open issue owned. Filed as **#0808**; the pointers now name it. A
+deferral to a resolved issue is indistinguishable from a deferral to a plan. See `archived/0785-*`.
+
+**#0808** (rmw tech-debt, open 2026-08-26) — `create_session`'s flat argument list cannot carry session
+config without an ABI break, and three things want in: the backend-SHAPED `mode` (zenoh's `whatami`, which
+cyclonedds and XRCE are told to ignore), `localhost_only`, and `enclave`. The agreed shape each time it was
+written down is to fold backend-private config behind the locator. Deferred twice into issues that are now
+closed and never did it (#0331 → #0330 part 3), which is why this exists: not a promise about shape, a
+promise that the shape has an owner. Carry all three together or the ABI break is spent without retiring the
+problem, and `localhost_only` needs a backend that honours it — a carried field nobody reads is an inert
+slot in a different costume. See `0808-*`. (2026-08-26)
 
 Recently resolved (2026-08-25): **#0787** (ci/rmw) — xrce and uORB had no host lane, so their C was
 only ever compiled by tier 2. `just check-rmw-xrce` / `check-rmw-uorb` now build and CTest both on the

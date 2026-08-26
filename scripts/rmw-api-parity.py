@@ -135,7 +135,7 @@ MAP = {
         "declined",
         "upstream needs the init/copy/fini trio because its options OWN heap and carry "
         "an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. "
-        "Does NOT decide security_options / discovery_options, which we answer nowhere",
+        "Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have",
     ),
     "rmw_init_options_copy": ("declined", "as rmw_init_options_init — \"copy\" is `=`"),
     "rmw_init_options_fini": ("declined", "as rmw_init_options_init — \"fini\" is nothing"),
@@ -219,7 +219,7 @@ MAP = {
         "get_node_names — W4. A VISITOR (`rmw_node_visit_fn`), not an out-array: there is "
         "no allocator at this seam to hand back `rcutils_string_array_t` with",
     ),
-    "rmw_get_node_names_with_enclaves": ("vtable", "get_node_names — grouped; the visitor carries `enclave`"),
+    "rmw_get_node_names_with_enclaves": ("vtable", "get_node_names — grouped, and HOLLOW: nothing in this ABI accepts an enclave, so the visitor argument is structurally always NULL (issue 0785). The slot is also inert (issue 0800)"),
     "rmw_get_topic_names_and_types": ("vtable", "get_topic_names_and_types — `rmw_names_and_types_visit_fn`"),
     "rmw_get_service_names_and_types": ("vtable", "get_service_names_and_types — visitor"),
     "rmw_get_publisher_names_and_types_by_node": ("vtable", "get_publisher_names_and_types_by_node — visitor"),
@@ -460,7 +460,36 @@ def self_test():
 
 
 
-def _producer_note():
+def _slot_kinds():
+    """`{slot: produced|default|unimplemented|inert}` from the producer scan."""
+    spec = _util.spec_from_file_location(
+        "_producers", os.path.join(ROOT, "scripts", "check-rmw-slot-producers.py")
+    )
+    mod = _util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.scan()
+
+
+def _slot_for(symbol):
+    """The vtable slot a contract symbol is answered by.
+
+    The name rule is mechanical (`rmw_take` -> `take`); `GROUPED_SYMBOLS` in
+    rmw-abi-shape.py is the authored exception list for one slot answering
+    several upstream names.
+    """
+    try:
+        spec = _util.spec_from_file_location(
+            "_shape", os.path.join(ROOT, "scripts", "rmw-abi-shape.py")
+        )
+        mod = _util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        grouped = getattr(mod, "GROUPED_SYMBOLS", {})
+    except Exception:  # noqa: BLE001
+        grouped = {}
+    return grouped.get(symbol) or symbol[len("rmw_"):]
+
+
+def _producer_note(contract):
     """`vtable` means a SLOT exists, never that a backend fills it.
 
     Issue 0800: the loan trio and `set_log_severity` were each counted answered
@@ -468,27 +497,56 @@ def _producer_note():
     do we answer this" and a declared slot IS where. Rather than overload the
     bucket — `check_against_vtable` would reject a `gap` for a slot that
     exists, correctly — the second dimension is printed beside it.
+
+    Issue 0785 is why this is now resolved per SYMBOL and not only per slot.
+    That issue found `rmw_get_node_names_with_enclaves` counted as answered
+    while nothing in this ABI can carry an enclave, and asked for the answered
+    column to stop over-counting. It generalises: the same question asked of
+    every contract symbol shows most of the `vtable` column resting on slots
+    nothing writes and nothing reads.
     """
     try:
-        spec = _util.spec_from_file_location(
-            "_producers", os.path.join(ROOT, "scripts", "check-rmw-slot-producers.py")
-        )
-        mod = _util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        kinds = mod.scan()
+        kinds = _slot_kinds()
     except Exception as exc:  # noqa: BLE001 - a report must not die on its footnote
         return f"  (slot-producer breakdown unavailable: {exc})"
+
     counts = {}
     for k in kinds.values():
         counts[k] = counts.get(k, 0) + 1
-    return (
+
+    inert_syms = []
+    live_syms = 0
+    for sym in contract:
+        entry = MAP.get(sym)
+        if not entry or entry[0] != "vtable":
+            continue
+        kind = kinds.get(_slot_for(sym))
+        if kind == "inert":
+            inert_syms.append(sym)
+        else:
+            live_syms += 1
+
+    lines = [
         "  NOTE  `vtable` counts a SLOT, not a backend that fills one. Of "
-        f"{len(kinds)} slots:\n"
+        f"{len(kinds)} slots:",
         f"        {counts.get('produced', 0)} filled by some backend, "
         f"{counts.get('default', 0)} NULL with documented behaviour, "
-        f"{counts.get('inert', 0)} written and read by nothing.\n"
-        "        `just check-rmw-slot-producers` is that dimension (issue 0800)."
-    )
+        f"{counts.get('inert', 0)} written and read by nothing.",
+        "        `just check-rmw-slot-producers` is that dimension (issue 0800).",
+        "",
+        f"  Of the {live_syms + len(inert_syms)} contract symbol(s) in the `vtable` "
+        f"column, {live_syms} are answered by a slot something",
+        f"  writes or reads, and {len(inert_syms)} by an INERT one (issue 0785). "
+        "An inert slot is a reserved shape,",
+        "  not a working capability — see the declared families in "
+        "check-rmw-slot-producers.py.",
+    ]
+    if inert_syms:
+        lines.append("")
+        lines.append(f"## answered by an inert slot ({len(inert_syms)})")
+        for sym in inert_syms:
+            lines.append(f"  {sym:52s} -> {_slot_for(sym)}")
+    return "\n".join(lines)
 
 
 def main(argv):
@@ -531,7 +589,7 @@ def main(argv):
     for b in BUCKETS:
         print(f"  {b:9s} {counts[b]:3d}")
     print()
-    print(_producer_note())
+    print(_producer_note(contract))
     print()
     for bucket in ("gap", "declined"):
         items = [r for r in rows if r[0] == bucket]

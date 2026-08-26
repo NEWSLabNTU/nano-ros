@@ -120,8 +120,18 @@ GROUPED_SYMBOLS = {
     "rmw_take_event": "subscription_take_event",
     # Upstream split `_with_enclaves` off `rmw_get_node_names` only because
     # appending to a fixed out-parameter list would have broken its ABI. A
-    # visitor has no such list, so the enclave is a fourth argument, NULL where
-    # untracked.
+    # visitor has no such list, so the enclave is a fourth argument.
+    #
+    # The grouping is sound in SHAPE and hollow in CONTENT, and issue 0785 is
+    # the record of that: nothing in this ABI accepts an enclave — no field on
+    # `create_session`, none on `rmw_node_t` — so the visitor's argument is
+    # structurally always NULL, and we can only ever answer "no enclave".
+    # Worse than a missing slot in one specific way: the parity report counts
+    # it in the ANSWERED column. It now says so, per symbol.
+    #
+    # And `get_node_names` is itself INERT (issue 0800): no backend fills it
+    # and nothing calls it. So both names in this grouping are answered by a
+    # slot that does not work yet, which is the honest state.
     "rmw_get_node_names_with_enclaves": "get_node_names",
     # Our `publish` and `take` ALREADY deal in serialized bytes — the payload
     # crossing this seam is CDR, written by `nros-serdes` above it. So these
