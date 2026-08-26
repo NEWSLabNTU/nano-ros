@@ -150,6 +150,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         let board = image.board.clone().unwrap_or_default();
         let driver = plan::driver_for(&platform, has_non_rust);
 
+        // ---- stage 3 ----------------------------------------------------
+        // Before anything is generated or compiled: a missing prerequisite
+        // fails HERE, naming the command that fixes it (RFC-0065 D2).
+        let missing = crate::builder::preflight::check(descriptor, &root);
+        if !missing.is_empty() {
+            eyre::bail!("{}", crate::builder::preflight::report(&missing));
+        }
+
         // ---- stage 4 ----------------------------------------------------
         let handoff = match driver {
             Driver::Cargo => {
@@ -214,9 +222,6 @@ pub fn run(args: Args) -> Result<()> {
                 p.qualified
             );
         };
-        if args.offline {
-            eprintln!("nros build: --offline - nothing will be fetched");
-        }
         if args.dry_run {
             println!("{}", hand.display());
             continue;

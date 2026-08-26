@@ -19,3 +19,4 @@ pub mod cargo_root;
 pub mod discover;
 pub mod handoff;
 pub mod plan;
+pub mod preflight;

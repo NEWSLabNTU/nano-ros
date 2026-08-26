@@ -88,6 +88,10 @@ fn fixture(dir: &Path) {
         &dir.join("Cargo.toml"),
         "[workspace]\nmembers = [\"src/talker_pkg\", \"src/helper\"]\n",
     );
+    // Stage 3 refuses a workspace that has never been synced (issue 0463: the
+    // alternative failure is a cargo manifest-PARSE error four frames deep that
+    // never names `nros sync`). A real workspace has this; so must the fixture.
+    std::fs::create_dir_all(dir.join("build/nros")).unwrap();
 }
 
 fn args(ws: &Path, images: &[&str]) -> Args {
@@ -204,6 +208,19 @@ fn a_cargo_image_generates_the_root_when_the_workspace_has_none() {
         !body.contains(tmp.path().to_str().unwrap()),
         "no absolute path may appear (W3.c): {body}"
     );
+}
+
+#[test]
+fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
+    // RFC-0065 D2 — a missing prerequisite fails at stage 3, naming the command
+    // that fixes it, rather than mid-compile.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    std::fs::remove_dir_all(tmp.path().join("build/nros")).unwrap();
+    let e = plan_builds(&args(tmp.path(), &["native"])).expect_err("must refuse");
+    let msg = format!("{e:#}");
+    assert!(msg.contains("nros sync"), "names the exact command: {msg}");
+    assert!(msg.contains("nothing was built"), "{msg}");
 }
 
 #[test]
