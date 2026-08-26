@@ -144,13 +144,12 @@
     "why": "see `c:service_callback_t`."
   },
   "c:send_request": {
-    "verdict": "rename",
-    "why": "rcl's free-function spelling; ours is `nros_client_send_request{,_async,_raw}`. See `c:publish`.",
+    "verdict": "divergence",
+    "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence, with two factual errors fixed.\n(1) There is no bare `nros_client_send_request` -- the brace spelling `nros_client_send_request{,_async,_raw}` claimed one. Verified word-boundary, repo-wide: the C API ships exactly `nros_client_send_request_async(client, request_data, request_len)` (executor-registered client) and `nros_client_send_request_raw(client, data, len)` (L1 polling-mode client). The `_async` / `_raw` split is two client MODES, not two spellings of one call.\n(2) 'only the free-function shape differs' is wrong the same way `c:publish` was: both of ours ARE free functions taking the client first, exactly rcl's shape. `nros_client_` is a module prefix -- rcl uses the identical construction for `rcl_client_fini` / `rcl_client_request_publisher_get_actual_qos`. And the chain of precedent argues the other way in any case: `c:get_zero_initialized_client` defers to `c:get_zero_initialized_publisher`, which is verdict DECLINED, i.e. it argues for KEEPING our spelling.\nWhat actually differs, and the constraint for each: `rcl_send_request(client, ros_request, sequence_number)` takes a typed `const void *` plus an OUT sequence number. Ours take bytes (`const uint8_t *`, `size_t`) because there is no runtime typesupport dispatch and no allocator to serialize into -- the same reason `c:publish` splits. And neither returns a sequence number because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle, `nros-node/src/executor/handles.rs`) rather than a correlation table; the backend does hand one back since issue 0778 and the raw handle drops it explicitly rather than by omission. Correlating replies across a client restart is the `rust:RequestId` divergence, one layer down.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "word already matches; only free-fn shape differs, and the cited precedent is verdict declined"
+      "status": "resolved",
+      "resolution": "Not a rename. The word `send_request` already matches and so does the free-function shape; the row's remaining argument rested on a symbol spelling that does not exist and on a precedent that is itself `declined`. Re-verdicted to divergence naming the real differences (bytes not `const void *`; no out sequence number, one call in flight). No code change; no target name invented."
     }
   },
   "c:send_response": {
@@ -406,13 +405,12 @@
     "why": "see `c:take_response`."
   },
   "cpp:Client::take_type_erased_response": {
-    "verdict": "rename",
-    "why": "see `c:take_response`; ours is the `_raw` form.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> declined. The blocker asked which suffix ours should carry (`_raw` vs `_serialized` vs `type_erased`); the question was moot, because there is no ours-side method here to suffix.\n`ClientBase::take_type_erased_response(void * response_out, rmw_request_id_t & request_header_out)` erases over a DESERIALIZED response STRUCT -- it is the function the typed `Client::take_response` forwards to (`client.hpp:515`). Our C++ client has no such entry point: the reply comes back concretely typed through `Future<ResponseType>` from `Client::async_send_request`. Our only erasure is BYTES (`nros_cpp_service_client_try_recv_reply`, `nros_client_try_recv_reply_raw`), and those correlate with the SERIALIZED/RAW rows, not with this one -- so pointing this row at a `_raw` form was the same mis-pairing that `cpp:Subscription::take_type_erased` had.\nNot a gap: a runtime type-erased take needs rosidl typesupport resolved at runtime and a heap-allocated message struct to take into -- exactly what `cpp:Subscription::create_message` declines for the no-allocator reason. Kept consistent with `cpp:Subscription::take_type_erased` (pubsub), decided the same day on the same evidence.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "suffix unsettled: _raw vs _serialized vs type_erased"
+      "status": "resolved",
+      "resolution": "Re-verdicted rename -> declined; there is no ours-half, so the suffix question it was blocked on does not arise. Consistent with cpp:Subscription::take_type_erased. No code change; no target name invented."
     }
   },
   "cpp:ClientOptions": {
@@ -540,13 +538,12 @@
     "why": "see `c:take_request`; ours is `Service::try_recv_request`."
   },
   "cpp:Service::take_type_erased_request": {
-    "verdict": "rename",
-    "why": "see `c:take_request`.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> declined. Same evidence as `cpp:Client::take_type_erased_response`.\n`ServiceBase::take_type_erased_request(void * request_out, rmw_request_id_t & request_id_out)` erases over a DESERIALIZED request STRUCT -- the function the typed `Service::take_request` forwards to (`service.hpp:452`). Ours is `Service<S>::try_recv_request(RequestType& req, int64_t& seq_id)`, a template on the concrete type, and it already belongs to `cpp:Service::take_request`. The byte form underneath (`nros_cpp_service_server_try_recv_raw`) is FFI, not a user-facing C++ method, and belongs to the SERIALIZED/RAW rows. Note ours carries a bare `int64_t seq_id` where rclcpp carries `rmw_request_id_t`; that difference is its own row (`rust:RequestId` / `rust:rmw_request_id_t`, verdict divergence).\nNot a gap: a runtime type-erased take needs rosidl typesupport resolved at runtime and a heap-allocated message struct to take into -- exactly what `cpp:Subscription::create_message` declines for the no-allocator reason. Kept consistent with `cpp:Subscription::take_type_erased` (pubsub), decided the same day on the same evidence.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "same"
+      "status": "resolved",
+      "resolution": "Re-verdicted rename -> declined; no ours-half, so the suffix question does not arise. Consistent with cpp:Client::take_type_erased_response and cpp:Subscription::take_type_erased. No code change; no target name invented."
     }
   },
   "cpp:ServiceOptions": {
@@ -692,7 +689,7 @@
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "MERGING DELETES A TRI-STATE: server_available -> Result<bool> (C: int32, -1 = backend cannot answer); is_server_ready -> bool. Their own doc says they are distinct on purpose. Name decision is clear; the semantic merge is undecided"
+      "blocker": "MERGING DELETES A TRI-STATE -- verified against the source 2026-08-26; NOT EXECUTED. `ClientTrait::server_available` (packages/core/nros-rmw/src/traits.rs:2426) returns `Result<bool, Self::Error>` and DEFAULTS to `Err(TransportError::Unsupported)`; `ClientTrait::is_server_ready` (same trait, :2404) returns plain `bool` and defaults to `true`. The doc comment on `server_available` names the distinction as deliberate, in those words: `is_server_ready` 'collapses \"don't know\" and \"no server\" into the same false answer'. The split is load-bearing, not decorative: the zenoh backend overrides BOTH (rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs:979 and :983), while XRCE cannot answer at all (micro-XRCE-DDS-Client has no participant enumeration) and is the reason the `Err` arm exists. The same three states are carried through to C as `int32_t *out` -- 1 visible / 0 none yet / -1 backend cannot answer (nros_generated.h:5717) -- beside a SEPARATE `bool nros_client_service_is_ready` (:5752). And the tri-state has a caller: `handles.rs:2183-2195` uses it to gate the FIRST request so a startup-ordering race does not surface as a request-side timeout, which needs 'cannot answer' distinguishable from 'no'. So this is not one predicate wearing two names. Folding `server_available` into `service_is_ready` requires, in the same edit, deleting or renaming `is_server_ready`, and deciding what the merged name does with the 'cannot answer' arm -- rclcpp and rclrs have no tri-state to map onto, so ROS 2 supplies no answer to copy. THE CHOICE A HUMAN HAS TO MAKE: (a) fold, and say which arm loses (collapse `Err` to `false`, losing the startup gate; or to `true`, losing the 'no server' signal); or (b) keep both, rename only the boolean one to `service_is_ready`, and re-verdict THIS row `divergence` documenting the pair -- which is what the C API already ships and what `rust:EmbeddedServiceClient::server_available` is already verdicted. The NAME question is easy; the SEMANTIC one is the blocker, and it is not the ledger's to settle."
     }
   },
   "rust:ClientTrait::start_server_discovery": {

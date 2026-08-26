@@ -36,13 +36,11 @@
     "`--self-test` rejects a row whose item belongs to a different stage."
   ],
   "c:add_parameter": {
-    "verdict": "rename",
-    "why": "rclc declares a parameter with `rclc_add_parameter(server, name, type)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, default)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The name is not: a ported rclc node writes `rclc_add_parameter` and there is nothing here spelled `add`. Ours half: the `c:param_declare_*` family.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rclc declares a parameter with `rclc_add_parameter(server, name, TYPE)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, DEFAULT)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The two are not one call under two names: rclc's third argument is a TYPE (`rclc_parameter_type_t`, confirmed in the recorded rclc surface), ours is a VALUE. So no target name exists for this row to carry -- which is exactly why it sat blocked, and a row that endorses our shape and can name no destination is a DECLINE, not a rename. What a user loses: the two-step idiom; a ported rclc node rewrites `rclc_add_parameter(s, \"x\", RCLC_PARAMETER_INT)` + `rclc_parameter_set_int(s, \"x\", 5)` as one `nros_param_declare_int(s, \"x\", 5)`. The reader's other complaint -- that nothing here is spelled `add` -- is really the `param` vs `parameter` PREFIX question, and that is a DIFFERENT row: `c:parameter_server_t` owns it. Ours half: the `c:param_declare_*` family.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "rclc add_parameter(server,name,TYPE) is a DIFFERENT call from ours (…,name,DEFAULT); the row endorses our fold and names no target"
+      "status": "resolved",
+      "resolution": "re-verdicted `declined` -- the declare/set fold means rclc's call and ours take different arguments, so no rename target exists; the prefix question is c:parameter_server_t's, not this row's"
     }
   },
   "c:add_parameter_constraint_double": {
@@ -477,13 +475,11 @@
     "why": "the per-parameter metadata `rcl_interfaces/msg/ParameterDescriptor` carries -- description, read-only, dynamic typing, range -- as ONE inline value stored beside the parameter. rclrs splits the same information across `ParameterOptions`, `ParameterRanges` and `AvailableValues`, which are owned/`Arc` shaped. Constraint: no allocator -- the descriptor lives in the server's fixed slot array, so the description is a `heapless::String` and the range an inline enum, and both are sized at compile time. `validate_range` is called on every set, which is where `SetParameterResult::OutOfRange` comes from. This row covers `ParameterDescriptor::*`. See `rust:ParameterOptions`."
   },
   "rust:ParameterError": {
-    "verdict": "rename",
-    "why": "the ours-only half of `rust:ParameterValueError`.",
+    "verdict": "extension",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. The ours-only half of `rust:ParameterValueError`, now `declined`: one error type (`packages/core/nros-params/src/typed.rs:18`) spanning what rclrs splits into `ParameterValueError` and `DeclarationError`, plus `StorageFull` and `StringConversion` -- the two failures a fixed-capacity `heapless` store has and an allocating one does not. The blocker recorded here, that this contradicted `rust:SetParameterResult`, was NOT a real contradiction: that row writes its destination as `Result<(), ParameterError>` meaning 'the surviving error type, spelled as it is today', and its change is the REMOVAL of `SetParameterResult` (and of `is_success` and the panicking `From` impl), which says nothing about what the survivor is called. The two rows compose -- collapse first, and there is then one error type, this one.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "contradicts rust:SetParameterResult, which spells OUR current name as the survivor"
+      "status": "resolved",
+      "resolution": "re-verdicted `extension` -- follows its theirs-half rust:ParameterValueError, now declined; the rust:SetParameterResult 'contradiction' was shorthand for 'the surviving error type', not a naming claim"
     }
   },
   "rust:ParameterKind": {
@@ -524,13 +520,11 @@
     "why": "typed accessors (`as_bool`, `as_string`, `as_double_array`, ...) and constructors (`from_bool`, `from_string`, ...) on the value enum. rclrs converts through `From`/`TryFrom` impls that hand back owned `String`/`Vec`; ours cannot, because the value is stored in a `heapless::String<MAX_STRING_VALUE_LEN>` / `heapless::Vec<_, MAX_ARRAY_LEN>` inside the server's fixed slot and there is no allocator to copy it out of. So the readers return BORROWS (`Option<&str>`, `Option<&[u8]>`) and the writers are fallible on capacity (`from_string` returns `Option<Self>`). Constraint: no allocator, compile-time capacity. Same reason `rust:ParameterVariant::*` exists."
   },
   "rust:ParameterValueError": {
-    "verdict": "rename",
-    "why": "rclrs's set-time failure enum -- `OutOfRange`, `TypeMismatch`, `ReadOnly`. Ours is `ParameterError` with those three plus `NotFound`, `StorageFull`, `StringConversion` and `InvalidRange`. Same concept, different name, no platform reason. Ours half: `rust:ParameterError`.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`, and the old reason was wrong on two counts. rclrs's set-time failure enum is exactly `OutOfRange`, `TypeMismatch`, `ReadOnly` (recorded surface: rclrs 0.7.0, `rclrs/src/parameter.rs`). It is one of rclrs's TWO parameter error enums -- the other is `DeclarationError` (`AlreadyDeclared`, `NoValueAvailable`, `OverrideValueTypeMismatch`, `PriorValueTypeMismatch`, `InitialValueOutOfRange`, `InvalidRange`). Ours is ONE `ParameterError` (`packages/core/nros-params/src/typed.rs:18`) whose seven variants span both: those three, plus `InvalidRange` -- which is rclrs's DECLARATION error, and ours is raised by `ParameterBuilder::integer_range`/`float_range` -- plus `NotFound`, plus `StorageFull` and `StringConversion`, the two failures a fixed-capacity `heapless` store has and an allocating one does not. So (a) it is NOT 'the same concept under a different name': our declare path already returns it (`ParameterBuilder::mandatory`/`optional`/`read_only` -> `Result<_, ParameterError>`), and a type called `ParameterValueError` would report a full store and a malformed range as 'value' errors. And (b) it is not 'no platform reason': two of the four extra variants are the capacity constraint made visible, the same one `rust:ParameterValue::*` and `rust:ParameterVariant::*` record. Taking rclrs's narrow name would also fight `rust:DeclarationError`, the open gap for the other half of rclrs's split. What a user loses: that split -- a type-level distinction between a declare-time and a set-time failure -- which is recorded as the `rust:DeclarationError` gap, not here. Ours half: `rust:ParameterError`.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "same contradiction, other half"
+      "status": "resolved",
+      "resolution": "re-verdicted `declined` -- ours is not a renamed ParameterValueError but a union of rclrs's ParameterValueError and DeclarationError plus two heapless-capacity variants; the missing split is the rust:DeclarationError gap"
     }
   },
   "rust:ParameterVariant::*": {
@@ -539,23 +533,19 @@
     "why": "`to_parameter_value` / `from_parameter_value` / `try_to_parameter_value` -- the conversion trait between a Rust type and a stored `ParameterValue`. rclrs's `ParameterVariant` declares only `kind()` and does its conversions through `From`. The third method is the constraint made visible: `to_parameter_value` cannot report that a `String` exceeded `MAX_STRING_VALUE_LEN` or a `Vec` exceeded `MAX_ARRAY_LEN`, and the hosted impls used to `unwrap_or_default()` -- turning an over-long string into `NotSet` (a TYPE change) and an oversized vec into an EMPTY array, both indistinguishable from a caller who meant it (issue 0323). Fixed capacity forces a fallible conversion; an allocator would not. See `rust:ParameterValue::*`."
   },
   "rust:ParameterVariant::kind": {
-    "verdict": "rename",
-    "why": "rclrs names the trait method that reports a variant's type `kind`, returning `ParameterKind`; ours is `parameter_type`, returning `ParameterType`. See `rust:ParameterKind`. Ours half: `rust:ParameterVariant::parameter_type`.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rclrs names the trait method that reports a variant's type `kind()`, returning `ParameterKind`; ours is `parameter_type()`, returning `ParameterType` (both are associated fns with no receiver -- ours at `packages/core/nros-params/src/types.rs:426`). The rename justified itself entirely by pointing at `rust:ParameterKind` -- whose verdict is `declined`, because ours is the better name of the two: it is what `rcl_interfaces/msg/ParameterType`, rclcpp and our own C (`nros_parameter_type_t`) all call it. The stated reason therefore resolves AGAINST the rename. Renaming the method alone would buy no rclrs parity either -- a `kind()` that returns a `ParameterType` still does not match rclrs's `kind() -> ParameterKind` -- while costing the one consistency we do have, that the accessor is named for the type it returns. What a user loses: the `kind()` spelling. Ours half: `rust:ParameterVariant::parameter_type`.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "justifies itself via rust:ParameterKind, whose verdict is declined — the reason resolves against the rename"
+      "status": "resolved",
+      "resolution": "re-verdicted `declined` -- the rename's only argument was rust:ParameterKind, which is itself declined; the method is named after the type we keep"
     }
   },
   "rust:ParameterVariant::parameter_type": {
-    "verdict": "rename",
-    "why": "the ours-only half of `rust:ParameterVariant::kind`.",
+    "verdict": "extension",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. The ours-only half of `rust:ParameterVariant::kind`, now `declined`: the accessor is named for the type it returns, and that type (`ParameterType`, see `rust:ParameterKind`) is the one we keep. Recorded so the pair is visible from both sides; it carries no decision of its own.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "same; carries no independent decision"
+      "status": "resolved",
+      "resolution": "re-verdicted `extension` -- follows its theirs-half rust:ParameterVariant::kind, now declined"
     }
   },
   "rust:Parameters": {

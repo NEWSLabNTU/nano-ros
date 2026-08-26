@@ -76,13 +76,12 @@
     "why": "the typesupport handle a publisher or subscription is created with. rosidl's `rosidl_message_type_support_t` carries function pointers into generated code plus an identifier used to pick a middleware-specific implementation at RUNTIME; ours names the one linked backend's descriptor, because an image has exactly one."
   },
   "c:publish": {
-    "verdict": "rename",
-    "why": "rcl's free function `rcl_publish(publisher, msg, allocation)`; ours is the method-style `nros_publisher_publish`. The WORD matches; the spelling is ours to align, and it is the same shape as `c:get_zero_initialized_publisher`.",
+    "verdict": "divergence",
+    "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence. The previous text argued from `nros_publisher_publish`, a symbol that has never existed: the only occurrence of that spelling anywhere in the tree is a comment in `examples/native/c/custom-transport-loopback/src/main.c` recording that phase 212 replaced the never-defined name. Our C publish entry points are `nros_publish_raw(publisher, data, len)` for the byte form and the codegen'd per-message `<pkg>_<msg>_publish(publisher, msg)` for the typed form (`packs/c/message.h.jinja`, e.g. `std_msgs_msg_int32_publish`). BOTH already have rcl's shape -- a free function taking the publisher first -- so there is no free-function-vs-method rename here. The cited precedent does not apply either, twice over: `c:get_zero_initialized_publisher` is verdict DECLINED, i.e. it argues for KEEPING our spelling, and it declines because ours there IS method-style, which ours here is not.\nWhat actually differs is the SHAPE, and a platform constraint is why. `rcl_publish(publisher, ros_message, allocation)` is ONE type-erased function over a `const void *` ROS message plus an `rmw_publisher_allocation_t *`. We have no runtime typesupport dispatch and no allocator, so the typed publish is generated per message type (concrete struct pointer, no typesupport lookup, serializes into a `NROS_PUB_BUFFER_SIZE` stack buffer) and the type-erased publish is byte-oriented. The generated typed helper lives in a message header, which the report drops as message plumbing -- that, not an absence, is why this row reads theirs-only.\nThe `_raw` suffix on the byte form is a separate and still-open question, tracked by the SERIALIZED -> RAW pair (`c:take_serialized_message`, `c:publish_serialized_message`). It is not this row's.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "row argues from a symbol that does not exist (nros_publisher_publish); its cited precedent c:get_zero_initialized_publisher is verdict DECLINED, i.e. argues for keeping ours"
+      "status": "resolved",
+      "resolution": "Not a rename. The word and the free-function shape already match; the row's premise (nros_publisher_publish) was a symbol that does not exist. Re-verdicted to divergence, naming the two real differences and their constraints: no `rmw_publisher_allocation_t` (no allocator) and per-type codegen instead of a `const void *` (no runtime typesupport dispatch). No code change; no target name invented."
     }
   },
   "c:publish_loaned_message": {
@@ -95,7 +94,7 @@
   },
   "c:publish_serialized_message": {
     "verdict": "rename",
-    "why": "see `c:take_serialized_message`; ours is `nros_publisher_publish_raw`."
+    "why": "see `c:take_serialized_message`; ours is `nros_publish_raw`. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_publisher_publish_raw`, which does not exist -- the C API has no `nros_publisher_publish*` byte entry point at all; see `c:publish`. Verdict unchanged.)"
   },
   "c:publisher_can_loan_messages": {
     "verdict": "gap",
@@ -340,7 +339,7 @@
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "CONTRACT COLLISION: nros::PollingSubscription<M>::take() already exists and returns the RETAINED latest value, reporting success when nothing new arrived — opposite of rclcpp's consuming take. No compile error; two same-named different-contract methods in one namespace"
+      "blocker": "CONTRACT COLLISION -- verified against the source 2026-08-26; NOT EXECUTED. `nros::PollingSubscription<M>::take(M& out)` (packages/api/nros-cpp/include/nros/polling_subscription.hpp:74) first DRAINS to the newest pending sample and then returns `true` if any value has EVER been received, cached or new -- so it reports SUCCESS when nothing new arrived. rclcpp's `Subscription::take` is consuming and returns false when nothing was taken. Renaming `Subscription<M>::try_recv` -> `take` puts both in namespace `nros` under one word with opposite contracts, and there is NO compile error to catch it: they are different class templates. The rest of that class is already committed to the non-consuming reading -- `take_data` / `take_new_data` deliberately mirror autoware_utils `InterProcessPollingSubscriber::takeData` / `takeNewData` (issue 0278), so the whole `take*` family on the polling type is spoken for. (C is clear: the only `take` in the C headers is `nros_service_take_request`, a different entity. Rust has no `take` today.) SCOPE, so the cost is visible: this one decision fixes the word for `nros_subscription_try_recv{,_raw,_sequence,_validated}`, `Subscription<M>::try_recv{,_raw,_sequence,_validated}`, the Rust spellings, and every child row that says 'see c:take' (`c:take_sequence`, `cpp:Subscription::take`, `cpp:Subscription::take_serialized`, `cpp:Service::take_request`, `c:take_request`, `c:take_response`). THE CHOICE A HUMAN HAS TO MAKE: (a) rename `try_recv` -> `take` AND rename PollingSubscription's family with it, accepting a break on the autoware-facing port that issue 0278 was written for; (b) keep `try_recv` and re-verdict this row `divergence` on the grounds that `take` is already bound here; or (c) a third word for one of the two. Nothing can land until one is picked."
     }
   },
   "c:take_loaned_message": {
@@ -353,7 +352,7 @@
   },
   "c:take_serialized_message": {
     "verdict": "rename",
-    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; we say RAW (`publish_raw`, `try_recv_raw`, `nros_cpp_publisher_publish_raw`). One word, used consistently on both sides, and ours is the one that has to move. Phase 379 W5."
+    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; we say RAW (`publish_raw`, `try_recv_raw`, `nros_cpp_publish_raw`). One word, used consistently on both sides, and ours is the one that has to move. Phase 379 W5. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`. Verdict unchanged.)"
   },
   "cpp:CallbackGroup::find_subscription_ptrs_if": {
     "verdict": "declined",
@@ -580,13 +579,12 @@
     "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
   },
   "cpp:SerializedMessage": {
-    "verdict": "rename",
-    "why": "the owned byte buffer both sides pass around. Ours is a `(ptr, len)` pair at the call site with no wrapper type, which is a real divergence (no allocator to own a growable buffer) -- but the WORD is the rename in `c:take_serialized_message`, and a nano-ros type for this would be `RawMessage`, not `SerializedMessage`, on today's naming. Settle the word first.",
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> divergence. The row deferred on 'settle the word first', but the word cannot settle it: a rename needs two names, and there is no ours-side type to rename. `rclcpp::SerializedMessage` is an OWNING, GROWABLE byte buffer -- constructor, `reserve`, `capacity`, `size`, `get_rcl_serialized_message`, `release_rcl_serialized_message`, wrapping `rcl_serialized_message_t` behind an allocator. Ours is a caller-owned `(uint8_t*, size_t)` pair at every call site (`Publisher::publish_raw(const uint8_t*, size_t)`, `Subscription::try_recv_raw(uint8_t*, size_t, size_t&)`, `nros_publish_raw`), with no wrapper type, because there is no allocator to own a growable buffer and no exceptions to report a failed grow. That is a shape change with a named platform constraint, which is what divergence means.\nThe SERIALIZED -> RAW question (`c:take_serialized_message`) is about METHOD names and does not reach this row either way: whichever word wins, we still have no type here. If nano-ros ever introduces one, that is a NEW-TYPE decision made under whatever naming is in force then -- not a rename of this row. Six member rows inherit this verdict.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "deferred: settle RawMessage vs SerializedMessage first; neither exists today"
+      "status": "resolved",
+      "resolution": "Re-verdicted rename -> divergence. Theirs-only with no ours-item and a stated constraint (no allocator, no exceptions), so the deferral had nothing to wait for. No name proposed, no code change."
     }
   },
   "cpp:Server::get_number_of_ready_subscriptions": {
@@ -779,22 +777,21 @@
   },
   "cpp:Subscription::take_serialized": {
     "verdict": "rename",
-    "why": "see `c:take_serialized_message`.",
+    "why": "OWNERSHIP SETTLED 2026-08-26 (phase-379 W5). This row -- not `cpp:Subscription::take_type_erased` -- is the one that owns `Subscription<M>::try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len)`. rclcpp's `take_serialized(SerializedMessage& message_out, MessageInfo&)` is the BYTE-form take; ours is byte-form too, differing only in that the buffer is caller-owned rather than an owning `SerializedMessage` (see `cpp:SerializedMessage`). rclcpp's `take_type_erased(void*, MessageInfo&)` is erasure over a DESERIALIZED message struct, a different thing, and has no ours-half at all -- that row is now declined.\nTwo words still have to move here and both are decided elsewhere: `take` -> `try_recv` (`c:take`) and SERIALIZED -> RAW (`c:take_serialized_message`).",
     "rename": {
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "two rows claim the SAME method (try_recv_raw); one method cannot take two names"
+      "blocker": "No longer contested: `try_recv_raw` belongs to THIS row (verified against the signature -- `uint8_t*, size_t, size_t&` is the byte form) and cpp:Subscription::take_type_erased has been re-verdicted declined with no ours-half. What remains is inherited, not local: the target name is <take-word>_<byte-word>, and neither parent has landed -- `c:take` is blocked on the PollingSubscription::take contract collision, and `c:take_serialized_message` (SERIALIZED vs RAW) is still open. Decide those two and this row follows mechanically; there is nothing to decide here on its own."
     }
   },
   "cpp:Subscription::take_type_erased": {
-    "verdict": "rename",
-    "why": "see `c:take` -- ours is `Subscription::try_recv_raw`.",
+    "verdict": "declined",
+    "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> declined. The previous text pointed this row at `Subscription::try_recv_raw`, which belongs to `cpp:Subscription::take_serialized` -- one method cannot carry two names, and the byte-oriented signature (`uint8_t*, size_t, size_t&`) makes it the SERIALIZED half. This row has no ours-half and never had one.\n`take_type_erased(void * message_out, MessageInfo&)` erases over a DESERIALIZED ROS message struct, not over bytes; rclcpp's own doc says it exists to facilitate 'using the subscriptions in a type agnostic way using SubscriptionBase::create_message() and SubscriptionBase::handle_message()'. Every one of those collaborators is already declined in this shard -- `cpp:Subscription::create_message`, `create_serialized_message`, `handle_message`, `handle_serialized_message`, `return_message`, `return_serialized_message`, `is_serialized`, `use_take_shared_method` -- so declining the take that serves them is the consistent verdict, not a new decision. Our C++ has no `void *`-over-message-struct erasure anywhere: `Subscription<M>::try_recv(M&)` is a template on the concrete type, and our only erasure is BYTES.\nNot a gap: a runtime type-erased take needs rosidl typesupport resolved at runtime and a heap-allocated message struct to take into, which is exactly what `cpp:Subscription::create_message` declines for the no-allocator reason.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "same conflict; our byte-oriented signature makes it take_serialized, so this row likely has no ours-half"
+      "status": "resolved",
+      "resolution": "Re-verdicted rename -> declined. The conflict was resolved by SIGNATURE: `try_recv_raw` is byte-oriented so it belongs to take_serialized, leaving this row with no ours-item. Declined rather than gap because the whole type-agnostic dispatch surface it serves (create_message / handle_message / is_serialized) is already declined for the no-allocator, no-runtime-typesupport reason. No code change; no target name invented."
     }
   },
   "cpp:Subscription::try_borrow": {

@@ -80,13 +80,12 @@
     "why": "rcl's free-function spelling; ours is `nros_clock_is_valid`. Note ours also matches the `is_*` convention rcl uses elsewhere (`rcl_context_is_valid`), so rcl is the inconsistent one here -- but the drop-in claim is about matching, not about being right."
   },
   "c:difference_times": {
-    "verdict": "rename",
-    "why": "rcl's `rcl_difference_times(start, finish, out)`; ours is `nros_time_sub`. Same operation, and `sub` matches `nros_time_add` which rcl has no counterpart for at all.",
+    "verdict": "gap",
+    "why": "rcl's `rcl_difference_times(const rcl_time_point_t *start, const rcl_time_point_t *finish, rcl_duration_t *delta)` -- **Time - Time -> Duration** (`docs/reference/api-surface/rclc.json`). CORRECTED 2026-08-26 (phase-379 W5, group B): the previous text read \"Same operation\", pairing this with `nros_time_sub` on the grounds that `sub` matches `nros_time_add`. It is NOT the same operation. `nros_time_sub(nros_time_t time, nros_duration_t duration) -> nros_time_t` (`packages/api/nros-c/src/clock.rs:530`, `nros_generated.h:3130`) is **Time - Duration -> Time** -- different operands, different return type, different meaning. Renaming it would have put rcl's name on a function that computes something else, which is why the row could argue for our spelling and call itself a rename at the same time: there was never a rename to make. Contrast `c:clock_valid`, where the operation IS identical and only the spelling differs, so `the drop-in claim is about matching, not about being right` decides it. That clause is absent here because it does not apply. So this is a theirs-only operation our C does not ship at all: a gap. And it is the `our languages disagree` shape of issues 0788 / 0789 rather than a naming question -- C++ ships it as `Time::operator-(const Time&) -> Duration` (`packages/api/nros-cpp/include/nros/time.hpp:85`) and Rust as `impl Sub<Time> for Time { type Output = Duration }` (`packages/core/nros-core/src/time.rs:118`); only C has no way to get a duration out of two timestamps. No target name is proposed: filling a gap is an ADDITION, and what to call the addition is the addition's decision, not this row's.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "row argues FOR our spelling yet verdict is rename; no tie-break clause (compare c:clock_valid, which has one)"
+      "status": "resolved",
+      "resolution": "RE-VERDICTED rename -> gap. The two functions are different operations (Time-Time->Duration vs Time-Duration->Time), so the rename premise was false and no target name is needed. C lacks the operation that C++ (time.hpp:85) and Rust (time.rs:118) both ship.",
+      "category": "B"
     }
   },
   "c:duration_from_nanoseconds": {
@@ -167,7 +166,7 @@
   },
   "c:time_add": {
     "verdict": "extension",
-    "why": "rcl has no time addition -- only `rcl_difference_times`. See `c:difference_times`."
+    "why": "`nros_time_add(nros_time_t, nros_duration_t) -> nros_time_t`. rcl has no time addition at all. CORRECTED 2026-08-26 (phase-379 W5, group B): the old text offered `only rcl_difference_times` as the neighbouring operation, which reads as though the two were a pair; they are not -- `rcl_difference_times` is Time - Time -> Duration and has no additive form. Ours pairs with `nros_time_sub` (Time +/- Duration -> Time), matching C++ (time.hpp:78/81) and Rust (time.rs:100/109). See `c:difference_times`."
   },
   "c:time_compare": {
     "verdict": "extension",
@@ -191,7 +190,7 @@
   },
   "c:time_sub": {
     "verdict": "extension",
-    "why": "the ours-only half of `c:difference_times`."
+    "why": "`nros_time_sub(nros_time_t, nros_duration_t) -> nros_time_t` -- subtract a DURATION from a TIME. CORRECTED 2026-08-26 (phase-379 W5, group B): this is NOT `the ours-only half of c:difference_times`. rcl's function is Time - Time -> Duration; this one is Time - Duration -> Time, and rcl has no Time - Duration operation under any spelling. Ours is the extension because C++ (`Time::operator-(const Duration&)`, time.hpp:81) and Rust (`impl Sub<Duration> for Time`, time.rs:109) both ship it and C agrees with them."
   },
   "c:time_t": {
     "verdict": "divergence",
@@ -435,12 +434,13 @@
   },
   "cpp:Node::create_wall_timer": {
     "verdict": "rename",
-    "why": "We spell it `create_timer`; rclcpp spells it `create_wall_timer` and a ported node calls that name. Nothing about an RTOS requires the shorter name -- our timers are wall-clock timers like rclcpp's. Phase 379 W3.",
+    "why": "We spell it `create_timer`; rclcpp spells it `create_wall_timer` and a ported node calls that name. Nothing about an RTOS requires the shorter name. Phase 379 W3. EVIDENCE ADDED 2026-08-26 (phase-379 W5, group B) -- the semantics check out, which the original row asserted without a citation: rclcpp's `WallTimer` is a `std::chrono::steady_clock` timer, and ours is monotonic too, by two ledger rows already decided on that ground (`cpp:GenericTimer::is_steady` declined -- `Ours run on the platform clock, which is monotonic by the RFC-0073 contract`; `c:timer_clock` declined -- `created on the executor's clock and cannot be created on another`). So `wall` would be accurate, not aspirational. It also FREES the name `create_timer`, which in rclcpp means the clock-taking form (`rclcpp::create_timer(node, clock, Duration, cb, group)`) that we do not offer -- so keeping `create_timer` on a steady timer actively misinforms a ported node. What is not settled is the SCOPE; see the rename block.",
     "rename": {
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "base method explicit (create_timer -> create_wall_timer) but the row names ONLY the base, while create_timer_oneshot / create_timer_in / ComponentNode::create_timer share the stem. Renaming the family invents names the ledger never authorised. SOFT collision: rclcpp::Node::create_wall_timer already exists in rclcpp_compat.hpp:406 with different semantics"
+      "blocker": "SCOPE, not the base name. Investigated 2026-08-26 (phase-379 W5, group B) and left unexecuted because the sweep cannot be verified from this report. (1) STEM SPLIT: the base rename leaves `create_wall_timer` beside `create_timer_oneshot` (node.hpp:548) and `create_timer_in` (node.hpp:585) on the same class. Neither may follow it -- `create_timer_oneshot` is the name rclrs 0.7.0 independently adopted (this shard's `cpp:Node::create_timer_oneshot` records that), so `create_wall_timer_oneshot` would move AWAY from the one ROS 2 spelling that exists, and `_in` is our callback-group suffix shared with `create_publisher_in` / `create_subscription_in`. Both alternatives are inventions. (2) HALF THE CODE SITES ARE INVISIBLE TO THIS REPORT: `nros.hpp` -- the single header the C++ extractor compiles -- does not include `component_node.hpp`, so `ComponentNode::create_timer` / `create_timer_in` and the `NROS_COMPONENT_*` macro at component_node.hpp:635 produce ZERO ledger rows (12 of the ~24 C++ `create_timer` occurrences live in that one file), and `nros::create_timer` / `create_timer_oneshot` in std_compat.hpp:61/78 are a no-op without `NROS_CPP_STD`, which the extractor does not set -- the same blind spot group A recorded for `create_publisher` / `create_subscription`. So `--check` staying green proves nothing about those two families, and no gate covers them. (3) SOFT COLLISION CONFIRMED: `rclcpp::Node::create_wall_timer` at rclcpp_compat.hpp:406 returns `shared_ptr<TimerBase>` from a `chrono::duration` and is driven by that class's own `pump()` loop, not by the nros executor. Different namespace and different class, so no ODR break and no overload set -- but the header set would then hold two `create_wall_timer`s with different driving mechanisms.",
+      "recommendation": "EXECUTE the base rename, but as ONE four-name decision taken together, not piecemeal, and not inside W5-timer: `nros::Node::create_timer` -> `create_wall_timer`; `nros::create_timer` (std_compat.hpp:61, matching rclcpp's free `create_wall_timer` in create_timer.hpp) -> `create_wall_timer`; `ComponentNode::create_timer` -> `create_wall_timer`, since both of its overloads are thin wrappers over the base (component_node.hpp:324, 301-310); and `create_timer_oneshot` / `create_timer_in` / `ComponentNode::create_timer_in` KEEP their names, recorded explicitly so the stem split is a decision rather than an oversight. No deprecated `create_timer` alias -- it would keep the ours-only row alive forever. Two of the four names are outside this report's surface, so whoever executes it must sweep with `rg -w create_timer` over `packages/api/nros-cpp/` and `examples/**/cpp/` (6 example call sites) and put that command in the commit message; the ledger cannot check it."
     }
   },
   "cpp:Node::get_node_clock_interface": {
@@ -465,12 +465,17 @@
   },
   "cpp:QoS::liveliness_lease_duration": {
     "verdict": "rename",
-    "why": "ours is `QoS::liveliness_lease_ms`. The `_ms` suffix exists because C++ has no `Duration` type here -- so the name follows whatever W3 decides about `cpp:Duration`, not the other way round. The qos stage owns the family; recorded here because the reason is the missing duration type.",
+    "why": "rclcpp's `QoS::liveliness_lease_duration`; ours is `QoS::liveliness_lease_ms` (`packages/api/nros-cpp/include/nros/qos.hpp`, setter :151, getter :200). The `_ms` suffix was chosen when C++ had no duration type. CORRECTED 2026-08-26 (phase-379 W5, group B): the premise `C++ has no Duration type here` -- and the cross-reference `cpp:Duration::Duration`, a key that exists in no shard -- are both dead. `nros::Duration` landed 2026-08-25 (issue 0789, commit 2b58bbd38, `packages/api/nros-cpp/include/nros/duration.hpp`) and is in this report's surface via `nros.hpp:26`. So the name no longer `follows whatever W3 decides about cpp:Duration`: W3's dependency is satisfied, and what remains is a family decision the QOS stage owns. Recorded here because the topic classifier files it here on the word `duration`, while its two siblings (`cpp:QoS::deadline`, `cpp:QoS::lifespan`) and its own ours-only half (`cpp:QoS::liveliness_lease_ms`) sit in qos.json.",
     "rename": {
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "blocked on cpp:Duration, a type that does not exist yet"
+      "depends_on": {
+        "item": "cpp:Duration",
+        "state": "SATISFIED 2026-08-25",
+        "evidence": "`nros::Duration` in packages/api/nros-cpp/include/nros/duration.hpp, issue 0789, commit 2b58bbd38; exported by nros.hpp:26; correlated in this shard as cpp:Duration::from_nanoseconds / to_chrono / to_msg / from_rmw_time / to_rmw_time."
+      },
+      "blocker": "The dependency this row recorded is satisfied and is no longer what blocks it. Three things still do, and none is a spelling. (1) FAMILY, SPLIT ACROSS SHARDS: `nros::QoS` has three millisecond accessors -- `deadline_ms` / `lifespan_ms` / `liveliness_lease_ms` (setters qos.hpp:132/138/151, getters :196/198/200). Their rows are `cpp:QoS::deadline`, `cpp:QoS::lifespan` and this one, and the first two live in qos.json. Renaming one third of a family from the timer stage leaves `liveliness_lease_duration(Duration)` beside `deadline_ms(uint32_t)` on the same class. (2) TYPE, NOT SPELLING: `uint32_t` milliseconds -> `nros::Duration`. Both the setter and the getter are `constexpr` so a profile is buildable in a `static`; `nros::Duration` is `constexpr` throughout, so that survives -- but it must be shown to, not assumed. (3) INCLUDE ORDER: `qos.hpp` today includes only `<stdint.h>` plus the FFI fallback block, and `nros.hpp` pulls `qos.hpp` (line 22) BEFORE `duration.hpp` (line 26). A `Duration`-taking accessor makes qos.hpp depend on duration.hpp, which in turn includes the C header `nros/clock.h` -- so the umbrella order changes or qos.hpp gains the include. Also note the C ABI does not move: the value crosses as `nros_qos_t.liveliness_lease_ms`, a `uint32_t` millisecond field (`nros_generated.h:1535`) shared with the C and Rust lanes, so any `Duration` on the C++ side is a boundary conversion, and the row that lands this must say where the conversion happens and what it does with `Duration`s finer than a millisecond. DECISION OWNER: the qos stage, which holds the other two thirds."
     }
   },
   "cpp:Rate": {
@@ -597,22 +602,22 @@
   },
   "cpp:create_timer": {
     "verdict": "rename",
-    "why": "rclcpp's free function; ours is a `Node` method. See the pubsub stage's `cpp:create_publisher` for the same free-function-vs-method pattern.",
+    "why": "rclcpp's free function `rclcpp::create_timer(node, clock, Duration, callback, group)`. CORRECTED 2026-08-26 (phase-379 W5, group B): the previous text said ours is a `Node` method and the fix is ADDING a free function. A free function already exists -- `nros::create_timer(Node&, Timer&, std::chrono::milliseconds, std::function<void()>)` at std_compat.hpp:61, plus `create_timer_oneshot` at :78 -- but the extractor compiles headers without `NROS_CPP_STD`, under which std_compat.hpp is empty, so it reports the free function as absent (the same blind spot group A recorded for `create_publisher` / `create_subscription`). What rclcpp's free function has that ours does not is the CLOCK parameter: it is the ROS-time form, and `c:timer_clock` already records that our timers cannot be created on another clock. So the remaining difference is a clock, not a shape.",
     "rename": {
       "to": null,
       "category": "C",
       "status": "not-a-rename",
-      "actual_change": "API SHAPE — free fn vs method; the fix is ADDING a free function, a gap not a spelling"
+      "actual_change": "CORRECTED 2026-08-26: not `ADDING a free function` -- one exists at std_compat.hpp:61, hidden from the report by `NROS_CPP_STD`. The real difference is the CLOCK parameter (rclcpp's free `create_timer` is the ROS-time form), which `c:timer_clock` already declines."
     }
   },
   "cpp:create_wall_timer": {
     "verdict": "rename",
-    "why": "the free-function form; see `cpp:Node::create_wall_timer`.",
+    "why": "the free-function form; see `cpp:Node::create_wall_timer`. CORRECTED 2026-08-26 (phase-379 W5, group B): rclcpp's free `create_wall_timer` lives in `rclcpp/create_timer.hpp`, and we DO ship a free function of this shape -- `nros::create_timer(Node&, Timer&, std::chrono::milliseconds, std::function<void()>)` at std_compat.hpp:61. It is invisible to this report because std_compat.hpp is a no-op without `NROS_CPP_STD` and the extractor does not set it. So the free-function form is a NAME difference, not a missing shape.",
     "rename": {
       "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "API SHAPE — same"
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "reclassified C -> B on 2026-08-26: the previous `API SHAPE - same` reading assumed we had no free function, but `nros::create_timer` exists at std_compat.hpp:61 behind `NROS_CPP_STD`. It is therefore the fourth name in `cpp:Node::create_wall_timer`'s recommendation and moves with it."
     }
   },
   "cpp:sleep_for": {
@@ -861,32 +866,41 @@
   },
   "rust:QoSProfile::deadline_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "why": "rclrs 0.7.0's `QoSProfile::deadline_duration(Duration)` builder -- the deadline window. THEIRS-ONLY: we ship no `QoSProfile` type at all. Ours is `nros_rmw::QosSettings` (`packages/core/nros-rmw/src/traits.rs:608`), and the QOS stage already owns renaming that TYPE (`rust:QosSettings`, verdict rename -> `QoSProfile`). CORRECTED 2026-08-26 (phase-379 W5, group B) -- the previous text was wrong three times over. (1) `ours takes milliseconds` implies a method to rename; there is none. Ours is a public FIELD, `QosSettings::deadline_ms: u32` (traits.rs:621), set by struct literal or by `apply_override_value`. (2) `there is no Duration type in C++ at all` has been false since 2026-08-25: `nros::Duration` ships in `packages/api/nros-cpp/include/nros/duration.hpp` (issue 0789, commit 2b58bbd38) and is inside this report's extracted C++ surface via `nros.hpp:26` -- which is why `cpp:Duration::from_nanoseconds` and `cpp:Duration::to_msg` correlate in this shard. (3) `the C API has none either` is false: `nros_duration_t` and `nros_duration_from_nanoseconds` are ledgered right here as `c:duration_value_t` and `c:duration_from_nanoseconds`, and Rust's own duration type is `rust:Duration`. The cross-reference `cpp:Duration::Duration` names a key that exists in no shard. The millisecond unit is therefore a choice about the shared repr(C) QoS record -- `nros_qos_t` carries `uint32_t deadline_ms` / `lifespan_ms` / `liveliness_lease_ms` (`nros_generated.h:1527-1535`) -- not a consequence of a type nobody had.",
     "rename": {
       "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "TYPE change (u32 ms -> Duration); deferred to the qos stage by the row"
+      "category": "C",
+      "status": "resolved",
+      "resolution": "NOT W5-timer work, and not a spelling. Reassigned to the QOS stage: the change is a TYPE change (a `u32` millisecond FIELD becomes a `Duration` accessor) on a type the qos stage is already renaming (`rust:QosSettings` -> `QoSProfile`), so this row cannot land before that one and has nothing of its own to land after it. Kept as `rename` because the eventual spelling really is rclrs's; the block is what stops it reading as timer work.",
+      "actual_change": "TYPE change (u32 ms field -> Duration accessor) + owning-type rename",
+      "owner": "qos stage -- `rust:QosSettings` in qos.json",
+      "shard_note": "the row sits in timer.json because `--check` derives the shard from the DECLARING HEADER, not from the name; it cannot be filed under qos without failing the gate. The owner field, not the filename, is where the work lives."
     }
   },
   "rust:QoSProfile::lifespan_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "why": "rclrs 0.7.0's `QoSProfile::lifespan_duration(Duration)` builder -- the lifespan window. THEIRS-ONLY: we ship no `QoSProfile` type at all. Ours is `nros_rmw::QosSettings` (`packages/core/nros-rmw/src/traits.rs:608`), and the QOS stage already owns renaming that TYPE (`rust:QosSettings`, verdict rename -> `QoSProfile`). CORRECTED 2026-08-26 (phase-379 W5, group B) -- the previous text was wrong three times over. (1) `ours takes milliseconds` implies a method to rename; there is none. Ours is a public FIELD, `QosSettings::lifespan_ms: u32` (traits.rs:624), set by struct literal or by `apply_override_value`. (2) `there is no Duration type in C++ at all` has been false since 2026-08-25: `nros::Duration` ships in `packages/api/nros-cpp/include/nros/duration.hpp` (issue 0789, commit 2b58bbd38) and is inside this report's extracted C++ surface via `nros.hpp:26` -- which is why `cpp:Duration::from_nanoseconds` and `cpp:Duration::to_msg` correlate in this shard. (3) `the C API has none either` is false: `nros_duration_t` and `nros_duration_from_nanoseconds` are ledgered right here as `c:duration_value_t` and `c:duration_from_nanoseconds`, and Rust's own duration type is `rust:Duration`. The cross-reference `cpp:Duration::Duration` names a key that exists in no shard. The millisecond unit is therefore a choice about the shared repr(C) QoS record -- `nros_qos_t` carries `uint32_t deadline_ms` / `lifespan_ms` / `liveliness_lease_ms` (`nros_generated.h:1527-1535`) -- not a consequence of a type nobody had.",
     "rename": {
       "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "TYPE change; deferred to the qos stage"
+      "category": "C",
+      "status": "resolved",
+      "resolution": "NOT W5-timer work, and not a spelling. Reassigned to the QOS stage: the change is a TYPE change (a `u32` millisecond FIELD becomes a `Duration` accessor) on a type the qos stage is already renaming (`rust:QosSettings` -> `QoSProfile`), so this row cannot land before that one and has nothing of its own to land after it. Kept as `rename` because the eventual spelling really is rclrs's; the block is what stops it reading as timer work.",
+      "actual_change": "TYPE change (u32 ms field -> Duration accessor) + owning-type rename",
+      "owner": "qos stage -- `rust:QosSettings` in qos.json",
+      "shard_note": "the row sits in timer.json because `--check` derives the shard from the DECLARING HEADER, not from the name; it cannot be filed under qos without failing the gate. The owner field, not the filename, is where the work lives."
     }
   },
   "rust:QoSProfile::liveliness_lease_duration": {
     "verdict": "rename",
-    "why": "a QoS duration accessor. rclrs takes a `Duration`; ours takes milliseconds, because there is no `Duration` type in C++ at all (see `cpp:Duration::Duration`) and the C API has none either. The qos stage owns the naming; this row records the unit.",
+    "why": "rclrs 0.7.0's `QoSProfile::liveliness_lease_duration(Duration)` builder -- the liveliness lease window. THEIRS-ONLY: we ship no `QoSProfile` type at all. Ours is `nros_rmw::QosSettings` (`packages/core/nros-rmw/src/traits.rs:608`), and the QOS stage already owns renaming that TYPE (`rust:QosSettings`, verdict rename -> `QoSProfile`). CORRECTED 2026-08-26 (phase-379 W5, group B) -- the previous text was wrong three times over. (1) `ours takes milliseconds` implies a method to rename; there is none. Ours is a public FIELD, `QosSettings::liveliness_lease_ms: u32` (traits.rs:626), set by struct literal or by `apply_override_value`. (2) `there is no Duration type in C++ at all` has been false since 2026-08-25: `nros::Duration` ships in `packages/api/nros-cpp/include/nros/duration.hpp` (issue 0789, commit 2b58bbd38) and is inside this report's extracted C++ surface via `nros.hpp:26` -- which is why `cpp:Duration::from_nanoseconds` and `cpp:Duration::to_msg` correlate in this shard. (3) `the C API has none either` is false: `nros_duration_t` and `nros_duration_from_nanoseconds` are ledgered right here as `c:duration_value_t` and `c:duration_from_nanoseconds`, and Rust's own duration type is `rust:Duration`. The cross-reference `cpp:Duration::Duration` names a key that exists in no shard. The millisecond unit is therefore a choice about the shared repr(C) QoS record -- `nros_qos_t` carries `uint32_t deadline_ms` / `lifespan_ms` / `liveliness_lease_ms` (`nros_generated.h:1527-1535`) -- not a consequence of a type nobody had.",
     "rename": {
       "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "TYPE change; deferred to the qos stage"
+      "category": "C",
+      "status": "resolved",
+      "resolution": "NOT W5-timer work, and not a spelling. Reassigned to the QOS stage: the change is a TYPE change (a `u32` millisecond FIELD becomes a `Duration` accessor) on a type the qos stage is already renaming (`rust:QosSettings` -> `QoSProfile`), so this row cannot land before that one and has nothing of its own to land after it. Kept as `rename` because the eventual spelling really is rclrs's; the block is what stops it reading as timer work.",
+      "actual_change": "TYPE change (u32 ms field -> Duration accessor) + owning-type rename",
+      "owner": "qos stage -- `rust:QosSettings` in qos.json",
+      "shard_note": "the row sits in timer.json because `--check` derives the shard from the DECLARING HEADER, not from the name; it cannot be filed under qos without failing the gate. The owner field, not the filename, is where the work lives."
     }
   },
   "rust:QosSettings::clock_default": {

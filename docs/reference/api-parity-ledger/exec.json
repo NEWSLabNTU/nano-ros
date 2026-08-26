@@ -231,13 +231,11 @@
     "why": "`void (*)(void* context)` -- the shutdown-hook signature. A LOCAL typedef in nros-c rather than a re-export of `nros_node::ShutdownCallbackFn`, because cbindgen runs with `parse_deps = false` and a foreign type in an `extern \"C\"` signature degrades to an opaque struct C cannot call through. rclc has no shutdown hook, so no counterpart. Issue 0790."
   },
   "c:trigger_guard_condition": {
-    "verdict": "rename",
-    "why": "rcl's free-function spelling of a verb our C already has method-style (`nros_guard_condition_trigger`). Same shape as `c:publish` and `c:send_response`: the WORD matches, the spelling is ours to align. Phase 379 W5.",
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rcl's free-function spelling `rcl_trigger_guard_condition(rcl_guard_condition_t *)`; ours is `nros_guard_condition_trigger` (`packages/api/nros-c/include/nros/nros_generated.h:4618`). The WORD already matches -- only the ORDER differs, and that order is our C API's single convention, `nros_<entity>_<verb>`. So the old row's 'the spelling is ours to align' was never a statement about one symbol: the identical clause sits on `c:publish` and `c:send_response`, and honouring it inverts the convention across the whole C surface. The class already has a settled precedent in the other direction -- `c:get_zero_initialized_guard_condition` and `c:get_zero_initialized_publisher` are both `declined` for exactly this reason. What a user loses: rcl's verb-first spelling; a ported rcl node rewrites `rcl_trigger_guard_condition(&gc)` as `nros_guard_condition_trigger(&gc)`. Ours half: `c:guard_condition_trigger`.",
     "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "CLASS decision: the same 'the spelling is ours to align' clause appears on c:publish and c:send_response, so honouring it inverts the whole nros_<entity>_<verb> convention, not one symbol"
+      "status": "resolved",
+      "resolution": "re-verdicted `declined` -- same class as the zero-init family, which is already declined; nros_<entity>_<verb> is the C convention and rcl's verb-first ORDER is what we decline, the word itself already matches"
     }
   },
   "c:wait": {
@@ -1001,12 +999,12 @@
   },
   "rust:SpinOptions::timeout": {
     "verdict": "rename",
-    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours is `SpinOptions::timeout_ms`, an `Option<u64>`. `core::time::Duration` is available in no_std, so nothing forces the milliseconds -- and our own `Executor::spin_once` and `Executor::spin` already take a `Duration`, so the `_ms` suffix is inconsistent inside our own Rust API as well as against rclrs. The ours-only half is `rust:SpinOptions::timeout_ms`, which the report files under the `other` stage rather than this one, so it cannot be recorded here; see this stage's report. Phase 379 W5.",
+    "why": "rclrs's `SpinOptions::timeout` takes a `Duration`; ours is `SpinOptions::timeout_ms` -- a public `Option<u64>` field plus a `pub const fn timeout_ms(u64)` builder (`packages/core/nros-node/src/executor/types.rs:119,137`). `core::time::Duration` is available in no_std, so nothing forces the milliseconds -- and our own `Executor::spin_once` and `Executor::spin` already take a `Duration`, so the `_ms` suffix is inconsistent inside our own Rust API as well as against rclrs. Ours half: `rust:SpinOptions::timeout_ms` -- CORRECTION 2026-08-26: it is recorded in THIS shard (exec.json) and `--check` is green with it there; the older claim that the report filed it under the `other` stage 'so it cannot be recorded here' is stale. Phase 379 W5; facts gathered 2026-08-26, the decision is still a human's -- see `blocker`.",
     "rename": {
       "to": null,
       "category": "B",
       "status": "blocked-needs-decision",
-      "blocker": "TYPE change Option<u64> -> Option<Duration>, hits BOTH a public field and a const builder. Its ours-half row (verdict extension) DEFENDS the milliseconds as 'the unit the platform ABI wait primitives take on every port' — the two rows contradict each other"
+      "blocker": "NEEDS A HUMAN, one question: may the PUBLIC Rust option carry the platform ABI's unit when its two sibling entry points already do not? Everything else is settled (verified 2026-08-26). (1) THE TWO ROWS DO NOT DISAGREE ON FACT, only on layer. This row is right that `Executor::spin_once(&mut self, timeout: core::time::Duration)` (nros-node/src/executor/spin.rs:5368) and `Executor::spin(&mut self, timeout: Duration) -> !` (spin.rs:6272) take `Duration`. The ours-half row (`rust:SpinOptions::timeout_ms`, verdict extension) is right that ms is the ABI unit: spin.rs:5369 converts straight back (`timeout.as_millis().min(i32::MAX as u128) as i32`) into `drive_io(i32)`, and the platform hook is `RuntimeHooks::spin_once(&mut self, timeout_ms: u32)` (nros-platform/src/board/runtime.rs:94). Both true; the public layer has already chosen `Duration` twice. (2) THE `const fn` OBJECTION DOES NOT HOLD: MSRV is 1.75 (root Cargo.toml:525) and `Duration::from_millis` has been a `const fn` since Rust 1.32, so `pub const fn timeout(mut self, d: Duration) -> Self` compiles unchanged at MSRV; `Duration` is `Copy`, so the by-value `mut self` builder shape survives verbatim. (3) BLAST RADIUS IS 9 SITES, ALL IN-TREE: field reads at executor/tests.rs:1670,1678; builder calls at executor/tests.rs:1677,1737,1811; ONE consumption, spin.rs:6946 + 6954 (`opts.timeout_ms.map(|ms| ms * 1_000)`, whose unchecked multiply an `as_micros()` would delete); one doc example, spin.rs:6917; two book sites, book/src/concepts/rtos-cooperation.md:50,112. NO struct-literal construction outside types.rs, NO C or C++ exposure (`SpinOptions` appears in neither nros-c nor nros-cpp), no example, fixture or generated code. (4) IT IS A PUBLIC RUST BREAK EITHER WAY -- the field is `pub`, so a rename of the builder alone would not hide it."
     }
   },
   "rust:SpinOptions::timeout_ms": {
