@@ -112,6 +112,24 @@ add_test(
     COMMAND nros_rmw_cyclonedds_status_events
 )
 
+# Issue 0800 — the Cyclone `set_log_severity` body, asserted by reading the mask
+# back rather than trusting the return code. No session or router needed.
+add_executable(nros_rmw_cyclonedds_log_severity
+    log_severity.cpp
+)
+target_link_libraries(nros_rmw_cyclonedds_log_severity
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_log_severity
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_log_severity
+    COMMAND nros_rmw_cyclonedds_log_severity
+)
+
 # Phase 117.6.B raw-CDR data round-trip via publish_raw / try_recv_raw.
 add_executable(nros_rmw_cyclonedds_data_roundtrip
     data_roundtrip.cpp

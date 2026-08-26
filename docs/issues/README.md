@@ -3947,21 +3947,21 @@ caller outliving the call (`nros-c`/`nros-cpp` `try_borrow`), with the no-produc
 header and the parity detail. `process_raw_in_place`'s reason rewritten around the leak-proof scoped borrow.
 Adjacent finding filed as #0800. See `archived/0781-*`.
 
-**#0800** (rmw tech-debt, open 2026-08-26) — "42 slots with no producer" was the wrong number because it
-mixed three states. Splitting by whether anything READS the slot: 32 produced, 8 NULL-with-documented-
-behaviour, 0 undocumented-but-reachable, and **34 written by nothing and read by nothing**. Reserving a
-slot's shape ahead of filling it is legitimate; nothing distinguishing reserved from working was not.
-`just check-rmw-slot-producers` is that distinction, two-way (an inert slot in no declared family fails; a
-family naming a slot that stopped being inert fails), and `rmw-api-parity` now prints the producer counts
-beside its buckets so `vtable 70` cannot read as 70 working — not by changing the bucket, since
-`check_against_vtable` rightly rejects a `gap` for a slot that exists. The split found what the count could
-not: `destroy_node` was consumed nowhere, so `close()` cleared the shim's node slot and never told the
-backend — a leak of one node's state per session close for any backend that allocates in `create_node`,
-invisible because no-producer-and-no-consumer looks exactly like an optional slot. Fixed and tested (0
-destroys vs 2 against pre-fix code). Also corrected: `graph.cpp` PUBLISHES participant info, it implements
-none of the graph QUERIES, which both the parity map and CLAUDE.md imply. Still open: `set_log_severity`
-has a slot, a dispatcher and stub tests but no backend body, though Cyclone has `dds_set_log_mask` — a
-missing feature rather than a lie, since its NULL behaviour is documented. See `0800-*`. (2026-08-26)
+Recently resolved (2026-08-27): **#0800** (rmw tech-debt) — "42 slots with no producer" was the wrong
+number; splitting by whether anything READS a slot gave 32 produced, 8 NULL-with-documented-behaviour, 0
+undocumented-but-reachable, and **34 written by nothing and read by nothing**. `just
+check-rmw-slot-producers` is that distinction, two-way, and `rmw-api-parity` prints the producer counts
+beside its buckets. The split found what the count could not: `destroy_node` was consumed nowhere, so
+`close()` cleared the shim's node slot and never told the backend — a leak of one node's state per session
+close, invisible because no-producer-and-no-consumer looks exactly like an optional slot. Closed out
+2026-08-27 with the last item: `set_log_severity` now has a cyclonedds body (`dds_set_log_mask`), mapping the
+severity ladder onto Cyclone's category BITMASK cumulatively, DEBUG to `DDS_LC_ALL`, UNSET refused rather
+than guessed. Filling it meant naming the 37 slots after `process_raw_in_place` — the table is positional and
+this is slot 73 of 74 — so `check-rmw-vtable-order` now checks all 74 and an upstream insertion cannot shift
+the tail silently. produced 32 -> 33. Its test reads the mask BACK rather than trusting the return code, and
+fails on a deliberately wrong mapping. What remains is the 34 inert slots, each declared with a reason and
+gated both ways: wiring one is a feature, not a defect — the ABI no longer claims they work. See
+`archived/0800-*`.
 
 Recently resolved (2026-08-25): **#0782** (rmw/memory) — XRCE's `publish_streamed` `malloc`ed the whole
 message on every publish: the only message-sized, per-publish allocation in that backend, on heaps that fail

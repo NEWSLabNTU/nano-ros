@@ -2,7 +2,7 @@
 id: 800
 title: "34 of 74 vtable slots are written by nothing and read by nothing, and
   the parity map counted them answered because a slot exists"
-status: open
+status: resolved
 type: tech-debt
 area: rmw
 related: [phase-376, issue-0781, issue-0777]
@@ -151,3 +151,51 @@ has `dds_set_log_mask`, zenoh-pico has a log level and the XRCE client has one.
 Its NULL behaviour IS documented (the runtime answers `UNSUPPORTED`), so the ABI
 is honest about it — it is a missing feature, not a lie, which is why it did not
 block closing the rest.
+
+## `set_log_severity` implemented on cyclonedds — 2026-08-27
+
+The one item this issue left open. It had a slot, a runtime dispatcher
+(`cffi/src/lib.rs`) and stub-vtable tests since phase-376 W5, and no backend
+body — so every real image answered `UNSUPPORTED` while Cyclone has had
+`dds_set_log_mask` the whole time.
+
+Cyclone's control is a CATEGORY BITMASK, not a level ladder, so the ladder maps
+onto cumulative masks — each severity enables itself and everything more urgent:
+
+| severity | mask |
+| --- | --- |
+| FATAL | `DDS_LC_FATAL` |
+| ERROR | `+ DDS_LC_ERROR` |
+| WARN | `+ DDS_LC_WARNING` |
+| INFO | `+ DDS_LC_INFO` |
+| DEBUG | `DDS_LC_ALL` |
+| UNSET | refused, `INVALID_ARGUMENT` |
+
+DEBUG opens everything because every category outside FATAL/ERROR/WARNING/INFO
+falls into trace (`ddsrt/log.h`). UNSET is refused rather than guessed: it means
+"no severity stated", and a backend inventing one picks a verbosity nobody asked
+for.
+
+Filling it meant naming the 37 slots after `process_raw_in_place`: the table is
+POSITIONAL and `set_log_severity` is slot 73 of 74, so reaching it cannot skip.
+`check-rmw-vtable-order` now checks all 74 against the header, which is
+strictly better than a table that stopped early and leaned on
+value-initialisation — an upstream insertion can no longer shift the tail
+silently.
+
+Measured effect on this issue's own numbers: **produced 32 -> 33, default
+8 -> 7**. `set_log_severity` is no longer a documented-NULL.
+
+Test `nros_rmw_cyclonedds_log_severity` reads the mask BACK with
+`dds_get_log_mask()` rather than trusting the return code — the return says the
+call was made, the mask says what it did, which is the distinction issue 0803
+spent a day inside. It also asserts a refused UNSET leaves the mask untouched,
+so the refusal cannot be a no-op that changed state anyway. Verified
+load-bearing: a deliberately wrong WARN mapping fails it.
+
+### What stays open, and is now the whole of it
+
+The 34 inert slots. They are declared with a reason each in
+`check-rmw-slot-producers.py`'s families and the gate keeps that honest in both
+directions, which is what this issue asked for. Wiring any of them is a feature,
+not a defect — the ABI no longer claims they work.

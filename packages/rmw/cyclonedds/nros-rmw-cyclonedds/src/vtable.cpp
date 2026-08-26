@@ -14,6 +14,48 @@
 
 namespace {
 
+/* issue 0800 — `set_log_severity` had a slot, a runtime dispatcher and stub
+ * tests since phase-376 W5, and no backend body: every image answered
+ * UNSUPPORTED while Cyclone has had `dds_set_log_mask` all along. That is the
+ * shape 0800 is about — a declared capability nothing implements reading as
+ * covered.
+ *
+ * Cyclone's control is a CATEGORY BITMASK, not a level ladder, so the ladder is
+ * mapped onto cumulative masks: each severity enables itself and everything
+ * more urgent. DEBUG opens `DDS_LC_ALL` because every category other than
+ * FATAL/ERROR/WARNING/INFO falls into trace (`ddsrt/log.h`), which is what a
+ * caller asking for DEBUG wants.
+ *
+ * UNSET is refused rather than guessed: it means "no severity stated", and a
+ * backend inventing one would be choosing a verbosity the caller did not ask
+ * for. */
+static rmw_ret_t cyclone_set_log_severity(rmw_log_severity_t severity) {
+    uint32_t mask;
+    switch (severity) {
+    case RMW_LOG_SEVERITY_FATAL:
+        mask = DDS_LC_FATAL;
+        break;
+    case RMW_LOG_SEVERITY_ERROR:
+        mask = DDS_LC_FATAL | DDS_LC_ERROR;
+        break;
+    case RMW_LOG_SEVERITY_WARN:
+        mask = DDS_LC_FATAL | DDS_LC_ERROR | DDS_LC_WARNING;
+        break;
+    case RMW_LOG_SEVERITY_INFO:
+        mask = DDS_LC_FATAL | DDS_LC_ERROR | DDS_LC_WARNING | DDS_LC_INFO;
+        break;
+    case RMW_LOG_SEVERITY_DEBUG:
+        mask = DDS_LC_ALL;
+        break;
+    case RMW_LOG_SEVERITY_UNSET:
+    default:
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_set_log_mask(mask);
+    return NROS_RMW_RET_OK;
+}
+
+
 using namespace nros_rmw_cyclonedds;
 
 // Phase 108 event hooks left NULL until a follow-up phase wires
@@ -115,6 +157,50 @@ const nros_rmw_vtable_t kVtable = {
      * backend; nullptr → runtime uses the buffered path. */
     /*subscription_supports_in_place*/ nullptr,
     /*process_raw_in_place*/      nullptr,
+
+    /* issue 0800 — the table now runs to the END of the struct rather than
+     * stopping early and leaning on value-initialisation. Positional init
+     * cannot skip: reaching `set_log_severity` (slot 73) means naming every
+     * slot before it. `check-rmw-vtable-order` verifies these comments against
+     * the header's field order, so a slot inserted upstream cannot silently
+     * shift the ones below it. */
+    /*get_implementation_identifier*/ nullptr,
+    /*get_serialization_format*/ nullptr,
+    /*feature_supported*/ nullptr,
+    /*get_gid_for_publisher*/ nullptr,
+    /*publisher_count_matched_subscriptions*/ nullptr,
+    /*subscription_count_matched_publishers*/ nullptr,
+    /*publisher_get_actual_qos*/ nullptr,
+    /*subscription_get_actual_qos*/ nullptr,
+    /*client_request_publisher_get_actual_qos*/ nullptr,
+    /*client_response_subscription_get_actual_qos*/ nullptr,
+    /*service_request_subscription_get_actual_qos*/ nullptr,
+    /*service_response_publisher_get_actual_qos*/ nullptr,
+    /*publisher_wait_for_all_acked*/ nullptr,
+    /*take_with_info*/ nullptr,
+    /*take_loaned_message_with_info*/ nullptr,
+    /*service_set_on_new_request_callback*/ nullptr,
+    /*client_set_on_new_response_callback*/ nullptr,
+    /*subscription_set_on_new_message_callback*/ nullptr,
+    /*get_node_names*/ nullptr,
+    /*get_topic_names_and_types*/ nullptr,
+    /*get_service_names_and_types*/ nullptr,
+    /*get_publisher_names_and_types_by_node*/ nullptr,
+    /*get_subscriber_names_and_types_by_node*/ nullptr,
+    /*get_service_names_and_types_by_node*/ nullptr,
+    /*get_client_names_and_types_by_node*/ nullptr,
+    /*get_publishers_info_by_topic*/ nullptr,
+    /*get_subscriptions_info_by_topic*/ nullptr,
+    /*subscription_set_content_filter*/ nullptr,
+    /*subscription_get_content_filter*/ nullptr,
+    /*publisher_get_network_flow_endpoints*/ nullptr,
+    /*subscription_get_network_flow_endpoints*/ nullptr,
+    /*count_publishers*/ nullptr,
+    /*count_subscribers*/ nullptr,
+    /*node_get_graph_guard_condition*/ nullptr,
+    /*create_node*/ nullptr,
+    /*destroy_node*/ nullptr,
+    /*set_log_severity*/ cyclone_set_log_severity,
 };
 
 } // namespace
