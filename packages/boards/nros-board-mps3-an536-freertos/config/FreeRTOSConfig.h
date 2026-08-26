@@ -12,6 +12,22 @@
  * than trusting this number, so it is only the FreeRTOS-visible constant. */
 #define NROS_BOARD_CPU_CLOCK_HZ 62500000
 #define NROS_BOARD_PRIO_BITS    5 /* GICv3 supports 32 priority levels here */
+
+/* Heap. The family default is 3 MiB, sized for the MPS2-AN385 demo cells on a
+ * board with 16 MiB of SRAM. This one has 3 GiB of DDR and exists to host REAL
+ * consumer images: the ASI controller (MPC + PID, a 256-slot parameter store,
+ * 16 KiB subscription buffers and CycloneDDS) exhausts 3 MiB during node
+ * construction and dies with `*** MALLOC FAILED ***` right after `Network
+ * ready` — a failure that reads as a network problem rather than a heap one.
+ *
+ * 32 MiB is chosen to be uninteresting rather than tuned: it is far past what
+ * any current cell needs and still a fraction of both the DDR and this board's
+ * 48 MiB RAM window (the heap is a static array in .bss, so it must fit there).
+ * A consumer that wants a different number sets NROS_FREERTOS_HEAP_KB. */
+#ifndef NROS_FREERTOS_HEAP_KB
+#define NROS_FREERTOS_HEAP_KB 32768
+#endif
+
 #include "../../nros-board-freertos/config/FreeRTOSConfig.h"
 
 /* GCC/ARM_CRx_No_GIC tick seam — implemented in c/board_an536.c against the
